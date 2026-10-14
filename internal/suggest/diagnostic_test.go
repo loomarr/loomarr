@@ -18,7 +18,7 @@ func (p *diagnosticProvider) Chat(_ context.Context, messages []llm.Message, opt
 	p.messages = append([]llm.Message(nil), messages...)
 	p.opts = opts
 	return llm.Response{
-		Content:     `{"channelName":"Signal Cinema","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix","rationale":"A grounded science-fiction match.","confidence":0.98}],"policy":{"genres":{"include":["Science Fiction"]}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+		Content:     `{"channelName":"Signal Cinema","rationale":"Grounded science fiction.","picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol","rationale":"A grounded science-fiction match.","confidence":0.98}],"policy":{"genres":{"include":["Science Fiction"]}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 		Attribution: llm.Attribution{RequestedProvider: "diagnostic", RequestedModel: "fixture-model", Charge: &llm.Money{Amount: "0.001", Currency: "USD"}},
 	}, nil
 }

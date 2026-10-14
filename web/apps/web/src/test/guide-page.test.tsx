@@ -189,6 +189,10 @@ describe("Guide", () => {
     await user.click(view.getByRole("button", { name: "Show 2 hours" }));
     expect(view.getByRole("button", { name: "Show 2 hours" })).toHaveAttribute("aria-pressed", "true");
     expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "false");
+    // Pressed is neutral (#1909 Q2): a foreground border on the elevated fill, never amber.
+    const pressed = view.getByRole("button", { name: "Show 2 hours" });
+    expect(pressed).toHaveClass("border-foreground", "bg-static-800", "font-semibold");
+    expect(pressed.className).not.toContain("signal");
     await vi.waitFor(() => expect(spans).toContain(2 * 3_600_000));
   });
 

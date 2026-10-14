@@ -189,7 +189,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
     <Disclosure className="rounded-md border border-border">
       <div className="flex items-center gap-2 px-3 py-2">
         <ShieldAlert
-          className={cn("size-4 shrink-0", safety > 0 ? "text-signal" : "text-muted-foreground")}
+          className={cn("size-4 shrink-0", safety > 0 ? "text-caution" : "text-muted-foreground")}
           aria-hidden
         />
         <p className="text-sm">
@@ -227,7 +227,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
               <span
                 className={cn(
                   "text-xs",
-                  isSafetyReason(item.reason) ? "text-signal" : "text-muted-foreground",
+                  isSafetyReason(item.reason) ? "text-caution" : "text-muted-foreground",
                 )}
               >
                 {REASON_LABEL[item.reason]}
@@ -420,7 +420,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5">
-            <Clapperboard className="size-4 shrink-0 text-signal" aria-hidden />
+            <Clapperboard className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             {body.activeRule.matched ? (
               <p className="text-sm">
                 Active rule: <span className="font-medium">{body.activeRule.label}</span>{" "}

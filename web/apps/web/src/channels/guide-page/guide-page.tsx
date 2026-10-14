@@ -465,7 +465,7 @@ const GuidePage = ({
               <Button
                 variant="outline"
                 size="sm"
-                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-signal")}
+                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-foreground")}
                 onClick={() => {
                   setHourShift(0);
                   setDayOffset(0);
@@ -503,8 +503,9 @@ const GuidePage = ({
                       aria-pressed={active}
                       className={cn(
                         "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
+                        // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                         active
-                          ? "border-signal bg-signal-tint-15 text-signal"
+                          ? "border-foreground bg-static-800 font-semibold text-foreground"
                           : "border-border text-static-400 hover:border-static-400",
                       )}
                     >
@@ -518,14 +519,17 @@ const GuidePage = ({
             <Button
               variant="outline"
               size="sm"
-              className={cn("h-6.5", (viewOptionsOpen || hasCustomView) && "text-signal")}
+              className={cn(
+                "h-6.5",
+                viewOptionsOpen && "border-foreground bg-static-800 font-semibold text-foreground",
+              )}
               aria-label={hasCustomView ? "View options, custom" : "View options"}
               aria-expanded={viewOptionsOpen}
               aria-controls="guide-view-options"
               onClick={() => setViewOptionsOpen((open) => !open)}
             >
               {hasCustomView ? (
-                <span className="size-2 rounded-full bg-signal" aria-hidden />
+                <span className="size-2 rounded-full bg-foreground" aria-hidden />
               ) : (
                 <SlidersHorizontal className="size-3.5" aria-hidden />
               )}

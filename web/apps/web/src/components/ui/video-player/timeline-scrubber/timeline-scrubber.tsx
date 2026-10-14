@@ -215,7 +215,12 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
               key={`${a.startMs}-${a.kind}`}
               className={cn(
                 "h-full border-static-900 border-r transition-opacity last:border-r-0",
-                isBreak(a) ? "bg-static-700" : current ? "bg-signal" : "bg-static-500 group-hover:opacity-90",
+                // The airing block is a neutral tone step (#1909 Q3), short of the white playhead.
+                isBreak(a)
+                  ? "bg-static-700"
+                  : current
+                    ? "bg-static-400"
+                    : "bg-static-500 group-hover:opacity-90",
               )}
               style={{ width: `${widthPct}%` }}
             />

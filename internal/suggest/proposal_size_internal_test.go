@@ -15,8 +15,8 @@ import (
 // size: its fields are absent on the wire, never a 0 that reads as an empty file.
 func TestFromCandidate_LibrarySize(t *testing.T) {
 	owned := fromCandidate(catalog.Candidate{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-		InLibrary: true, LibraryItemID: "lib-603", SizeBytes: 21_914_038_799,
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
+		InLibrary: true, LibraryItemID: "lib-90000603", SizeBytes: 21_914_038_799,
 	}, "", 0)
 	if owned.SizeBytes != 21_914_038_799 || owned.SizeConfidence != storagegovernor.SizeExact {
 		t.Errorf("owned pick = %d bytes (%q), want 21914038799 exact", owned.SizeBytes, owned.SizeConfidence)
@@ -24,10 +24,10 @@ func TestFromCandidate_LibrarySize(t *testing.T) {
 
 	cases := map[string]catalog.Candidate{
 		// A series has no media source of its own; summing episodes would need new calls.
-		"owned series": {MediaType: provision.Series, TMDBID: 63639, Name: "The Expanse", InLibrary: true, LibraryItemID: "lib-1"},
-		"acquisition":  {MediaType: provision.Movie, TMDBID: 604, Name: "The Matrix Reloaded"},
+		"owned series": {MediaType: provision.Series, TMDBID: 90063639, Name: "Ferrocene Station", InLibrary: true, LibraryItemID: "lib-1"},
+		"acquisition":  {MediaType: provision.Movie, TMDBID: 90000604, Name: "Marigold Protocol II"},
 		// A size on a title we do not own is not a library fact; it must not be shown as one.
-		"stray size": {MediaType: provision.Movie, TMDBID: 605, Name: "The Matrix Revolutions", SizeBytes: 9},
+		"stray size": {MediaType: provision.Movie, TMDBID: 90000605, Name: "Marigold Protocol III", SizeBytes: 9},
 	}
 	for name, candidate := range cases {
 		t.Run(name, func(t *testing.T) {

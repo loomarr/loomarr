@@ -54,7 +54,7 @@ func TestWorkLedgerReservesAllWindowsAtomically(t *testing.T) {
 }
 
 func TestRunToolProjectsAcceptedMovieWindowsBeforeUnionDispatch(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 1, Name: "Window Movie", Year: 1995}}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Window Movie", Year: 1995}}}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
 	ledger := newWorkLedger()
 	ledger.beginGeneration()
@@ -111,11 +111,11 @@ func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
 	for _, failure := range []error{errors.New("membership lookup failed"), context.Canceled} {
 		t.Run(failure.Error(), func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{
-				Candidates: []catalog.Candidate{{MediaType: provision.Series, TVDBID: 762, Name: "Full House", Year: 1987}},
+				Candidates: []catalog.Candidate{{MediaType: provision.Series, TVDBID: 90000762, Name: "Grand Oak Hotel", Year: 1987}},
 				SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) { return nil, failure },
 			}
 			s := New(nil, catalog.New(nil, corpus), nil, 10)
-			intent := Intent{Description: "1980s named programming block with Full House", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			intent := Intent{Description: "1980s named programming block with Grand Oak Hotel", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 			arguments := map[string]any{
 				"media_type": "series",
 				"dateMeaning": map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 5}},

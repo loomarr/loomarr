@@ -13,7 +13,7 @@ import (
 // survives the model naming the channel something else; with none fixed, the model's name stands.
 func TestBuildProposalKeepsFixedChannelName(t *testing.T) {
 	surfaced := map[provision.Key]catalog.Candidate{
-		"movie:tmdb:910001": {MediaType: provision.Movie, TMDBID: 910001, Name: "The Lantern Keeper", InLibrary: true},
+		"movie:tmdb:90910001": {MediaType: provision.Movie, TMDBID: 90910001, Name: "The Lantern Keeper", InLibrary: true},
 	}
 	for _, tc := range []struct {
 		name, fixed, model, want string
@@ -30,7 +30,7 @@ func TestBuildProposalKeepsFixedChannelName(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := parsePicks(fmt.Sprintf(`{"channelName":%q,"picks":[{"key":"movie:tmdb:910001","mediaType":"movie","name":"The Lantern Keeper"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`, tc.model))
+			out, err := parsePicks(fmt.Sprintf(`{"channelName":%q,"picks":[{"key":"movie:tmdb:90910001","mediaType":"movie","name":"The Lantern Keeper"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`, tc.model))
 			if err != nil {
 				t.Fatal(err)
 			}

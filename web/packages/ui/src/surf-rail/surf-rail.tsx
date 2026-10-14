@@ -164,8 +164,9 @@ const SurfRail = ({
                     key={`${group.kind}-${channel.id}`}
                     onFocus={() => onFocusSelection({ channelId: channel.id, group: group.kind })}
                     onPress={() => onTune(channel.id)}
+                    // A selected channel is neutral (#1909 Q0): amber is left for focus.
                     selected={selected}
-                    tone={selected ? "primary" : "secondary"}
+                    tone="secondary"
                   >
                     {`${channel.channelNumber}  ${channel.channelName}`}
                   </Action>

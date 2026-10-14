@@ -12,15 +12,15 @@ import (
 
 func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 1, Name: "Obvious Space Adventure", Genres: []string{"Science Fiction"}, InLibrary: true},
-		{MediaType: provision.Movie, TMDBID: 2, Name: "Quiet Space Discovery", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 3, Name: "Forbidden Space Film", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 4, Name: "Grounded Mystery", Genres: []string{"Mystery"}},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Obvious Space Adventure", Genres: []string{"Science Fiction"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Quiet Space Discovery", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Forbidden Space Film", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000004, Name: "Grounded Mystery", Genres: []string{"Mystery"}},
 	}
 	signals := []FeedbackSignal{
-		{Target: "movie:tmdb:1", Action: FeedbackLess},
-		{Target: "movie:tmdb:3", Action: FeedbackNever},
-		{Target: "movie:tmdb:2", Action: FeedbackSurprise},
+		{Target: "movie:tmdb:90000001", Action: FeedbackLess},
+		{Target: "movie:tmdb:90000003", Action: FeedbackNever},
+		{Target: "movie:tmdb:90000002", Action: FeedbackSurprise},
 	}
 	first := RankGroundedCandidates("space discoveries", candidates, signals)
 	second := RankGroundedCandidates("space discoveries", candidates, signals)
@@ -31,16 +31,16 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 	for _, candidate := range first {
 		ids = append(ids, candidate.TMDBID)
 	}
-	if slices.Contains(ids, 3) {
+	if slices.Contains(ids, 90000003) {
 		t.Fatalf("never target survived ranking: %v", ids)
 	}
-	if len(ids) < 2 || ids[0] != 2 || ids[1] != 1 {
+	if len(ids) < 2 || ids[0] != 90000002 || ids[1] != 90000001 {
 		t.Fatalf("feedback ranking = %v, want surprise discovery before demoted related anchor", ids)
 	}
 	trace := RankGroundedCandidatesWithTrace("space discoveries", candidates, signals).Trace
 	foundNever := false
 	for _, decision := range trace.Candidates {
-		if decision.Key == "movie:tmdb:3" {
+		if decision.Key == "movie:tmdb:90000003" {
 			foundNever = decision.Disposition == DispositionNotSelected && decision.Reason == ReasonNever
 		}
 	}
@@ -51,23 +51,23 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 
 func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
-		{MediaType: provision.Movie, TMDBID: 200, Name: "Space Familiar", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 300, Name: "Space Western", Genres: []string{"Western"}},
-		{MediaType: provision.Movie, TMDBID: 400, Name: "Unrelated Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Familiar", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 90000400, Name: "Unrelated Western", Genres: []string{"Western"}},
 	}
 	baseline := candidateIDs(RankGroundedCandidates("space", candidates, nil))
-	if baseline[0] != 200 {
+	if baseline[0] != 90000200 {
 		t.Fatalf("baseline = %v, fixture must put the familiar canonical tie first", baseline)
 	}
 
-	signals := []FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackSurprise}}
+	signals := []FeedbackSignal{{Target: "movie:tmdb:90000100", Action: FeedbackSurprise}}
 	ranked := RankGroundedCandidatesWithTrace("space", candidates, signals)
 	got := candidateIDs(ranked.Candidates)
-	if got[0] != 300 || got[1] != 200 || got[2] != 100 {
+	if got[0] != 90000300 || got[1] != 90000200 || got[2] != 90000100 {
 		t.Fatalf("surprise ranking = %v, want diverse neighbor before familiar and marked titles", got)
 	}
-	if got[3] != 400 {
+	if got[3] != 90000400 {
 		t.Fatalf("surprise ranking = %v, irrelevant diversity crossed the relevance floor", got)
 	}
 	if ranked.Trace.Candidates[0].Rank.Novelty != rankNoveltyMax {
@@ -80,24 +80,24 @@ func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing
 
 func TestRankGroundedCandidatesLessDemotesGroundedGenreNeighbors(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 100, Name: "Night Anchor", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 300, Name: "Night Mystery", Genres: []string{"Mystery"}},
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Night Anchor", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Night Mystery", Genres: []string{"Mystery"}},
 	}
 	got := candidateIDs(RankGroundedCandidates("night", candidates,
-		[]FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackLess}}))
-	if !slices.Equal(got, []int{300, 200, 100}) {
+		[]FeedbackSignal{{Target: "movie:tmdb:90000100", Action: FeedbackLess}}))
+	if !slices.Equal(got, []int{90000300, 90000200, 90000100}) {
 		t.Fatalf("less ranking = %v, want unrelated, related demotion, exact demotion", got)
 	}
 }
 
 func TestRankGroundedCandidatesProducesByteIdenticalResult(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
-		{MediaType: provision.Movie, TMDBID: 200, Name: "Space Western", Genres: []string{"Western"}},
-		{MediaType: provision.Movie, TMDBID: 300, Name: "Space Mystery", Genres: []string{"Mystery"}},
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Mystery", Genres: []string{"Mystery"}},
 	}
-	signals := []FeedbackSignal{{Target: "movie:tmdb:100", Action: FeedbackSurprise}}
+	signals := []FeedbackSignal{{Target: "movie:tmdb:90000100", Action: FeedbackSurprise}}
 	want, err := json.Marshal(RankGroundedCandidatesWithTrace("space", candidates, signals))
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func candidateIDs(candidates []catalog.Candidate) []int {
 func TestRankGroundedCandidatesWithTracePublishesExactLexicographicTupleAndBound(t *testing.T) {
 	candidates := make([]catalog.Candidate, 0, DecisionTraceMaxCandidates+1)
 	for i := 0; i < DecisionTraceMaxCandidates+1; i++ {
-		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: i + 1, Name: "same", Genres: []string{"same"}})
+		candidates = append(candidates, catalog.Candidate{MediaType: provision.Movie, TMDBID: 90_000_001 + i, Name: "same", Genres: []string{"same"}})
 	}
 	got := RankGroundedCandidatesWithTrace("same", candidates, nil)
 	if !got.Trace.Truncated || got.Trace.SurfacedTotal != DecisionTraceMaxCandidates+1 || len(got.Trace.Candidates) != DecisionTraceMaxCandidates {
@@ -157,10 +157,10 @@ func TestRankGroundedCandidatesWithTraceClassifiesRetrievalEmpty(t *testing.T) {
 func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *testing.T) {
 	intent := Intent{
 		Description: "science fiction", Tone: "energetic", Era: "1990s",
-		MustInclude: []string{"matrix"}, MustExclude: []string{"comedy"}, RefineText: "more sequels",
+		MustInclude: []string{"marigold"}, MustExclude: []string{"comedy"}, RefineText: "more sequels",
 	}
 	candidate := catalog.Candidate{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix sequel",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol sequel",
 		Overview: "An energetic 1990s science fiction story with more sequels",
 	}
 	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, nil).Trace.Candidates[0]
@@ -173,7 +173,7 @@ func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *t
 func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T) {
 	intent := Intent{Description: "Please build a channel like this reference"}
 	candidate := catalog.Candidate{
-		MediaType: provision.Movie, TMDBID: 604, Name: "Unrelated Mechanics",
+		MediaType: provision.Movie, TMDBID: 90000604, Name: "Unrelated Mechanics",
 		Overview: "They build this machine for a difficult job.",
 	}
 
@@ -185,22 +185,22 @@ func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T)
 
 func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *testing.T) {
 	for _, description := range []string{
-		"TGIF",
-		"TGIF with Family Matters and Step by Step.",
-		"Criterion",
-		"The Criterion Channel",
-		"Criterion Channel",
+		"QFUN",
+		"QFUN with Crumb Street Bakery and Bowling Alley Blues.",
+		"Bellwether",
+		"The Bellwether Channel",
+		"Bellwether Channel",
 		"Lantern",
 		"Lantern Parade",
-		"a channel like TGIF from the 90s",
+		"a channel like QFUN from the 90s",
 		"a named Friday-night family sitcom collection",
-		"Criterion Collection lineup",
+		"Bellwether Collection lineup",
 		"Lantern Collection",
-		"Classic Simpsons",
-		"Criterion Channel classics",
-		"TGIF like the 90s, with shows from the ABC network",
+		"Classic Mudpuddles",
+		"Bellwether Channel classics",
+		"QFUN like the 90s, with shows from the ZBN network",
 		"make a channel for FFS like the 90s",
-		"shows from NBN",
+		"shows from NQN",
 		"the XYZ programming block",
 		"lineup from Friday Family Showcase",
 	} {
@@ -210,12 +210,12 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	}
 	for _, description := range []string{
 		"UFO movies",
-		"shows from the ABC network",
-		"shows from network ABC",
-		"network ABC shows",
-		"ABC network shows",
-		"ABC network shows, not TGIF",
-		"movies starring Tom Hanks",
+		"shows from the ZBN network",
+		"shows from network ZBN",
+		"network ZBN shows",
+		"ZBN network shows",
+		"ZBN network shows, not QFUN",
+		"movies starring Rowan Pike",
 		"feel-good sci-fi",
 		"1990s family comedies",
 		"Comedy",
@@ -231,18 +231,18 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 	for _, intent := range []Intent{
 		{Description: "Please suggest comedy"},
 		{Description: "Let us make a family comedy channel"},
-		{Description: "90s family comedies", MustInclude: []string{"The Matrix"}},
-		{Description: "family comedies, but not The Matrix"},
+		{Description: "90s family comedies", MustInclude: []string{"The Understudies"}},
+		{Description: "family comedies, but not The Understudies"},
 	} {
 		if requiresMembershipEvidence(intent) {
 			t.Fatalf("ordinary request was over-gated: %+v", intent)
 		}
 	}
 	for _, intent := range []Intent{
-		{Description: "Criterion Channel", RefineText: "best picks"},
-		{Description: "Criterion Channel", MustInclude: []string{"Classic Simpsons"}},
-		{Description: "Criterion Collection lineup", RefineText: "best picks"},
-		{Description: "Criterion Channel", RefineText: "Classic Comedy"},
+		{Description: "Bellwether Channel", RefineText: "best picks"},
+		{Description: "Bellwether Channel", MustInclude: []string{"Classic Mudpuddles"}},
+		{Description: "Bellwether Collection lineup", RefineText: "best picks"},
+		{Description: "Bellwether Channel", RefineText: "Classic Comedy"},
 	} {
 		if !requiresMembershipEvidence(intent) {
 			t.Fatalf("cross-field cue bypassed named-set gate: %+v", intent)
@@ -252,11 +252,11 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 
 func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t *testing.T) {
 	dst := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []DecisionCandidate{{Key: "movie:tmdb:603", Source: string(catalog.ScopeAdjacent)}}}
+		Candidates: []DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAdjacent)}}}
 	src := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
 		Candidates: []DecisionCandidate{
-			{Key: "movie:tmdb:603", Source: string(catalog.ScopeAll)},
-			{Key: "movie:tmdb:604", Source: string(catalog.ScopeAll)},
+			{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAll)},
+			{Key: "movie:tmdb:90000604", Source: string(catalog.ScopeAll)},
 		}}
 	mergeDecisionTrace(&dst, &src)
 	if dst.SurfacedTotal != 71 || dst.RecordedTotal != 71 || !dst.Truncated || len(dst.Candidates) != 2 {

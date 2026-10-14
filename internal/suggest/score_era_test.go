@@ -9,8 +9,8 @@ import (
 )
 
 func TestScore_NamedMembershipAndRetiredComposite(t *testing.T) {
-	series := ProposalItem{MediaType: provision.Series, TVDBID: 42, Name: "Continuing Show", InLibrary: true}
-	missing := ProposalItem{MediaType: provision.Series, TVDBID: 7, Name: "Missing", InLibrary: false}
+	series := ProposalItem{MediaType: provision.Series, TVDBID: 90000042, Name: "Continuing Show", InLibrary: true}
+	missing := ProposalItem{MediaType: provision.Series, TVDBID: 90000007, Name: "Missing", InLibrary: false}
 	key, err := series.Key()
 	if err != nil {
 		t.Fatal(err)

@@ -16,35 +16,36 @@ import (
 
 // exampleFillCorpus is the real library's shape for #1499: the two named
 // titles, on-era family/comedy neighbours, and off-era titles that a title-word
-// search for "back" or "future" drags in (Sister Act 2 1993, To Be or Not to Be
-// 1942 were observed filling next to the 1980s anchors).
+// search for "back" drags in (a 1993 sequel and a 1942 comedy were observed
+// filling next to the 1980s anchors).
 func exampleFillCorpus() *catalogfixture.Corpus {
-	rows := []struct {
-		name   string
-		year   int
-		genres []string
-	}{
-		{"Back to the Future", 1985, []string{"Adventure", "Comedy", "Science Fiction"}},
-		{"Gremlins", 1984, []string{"Comedy", "Horror", "Fantasy"}},
-		{"Ghostbusters", 1984, []string{"Comedy", "Fantasy"}},
-		{"Honey, I Shrunk the Kids", 1989, []string{"Comedy", "Family", "Science Fiction"}},
-		{"Beetlejuice", 1988, []string{"Comedy", "Fantasy"}},
-		{"Big", 1988, []string{"Comedy", "Fantasy", "Family"}},
-		{"Ferris Bueller's Day Off", 1986, []string{"Comedy"}},
-		{"Coming to America", 1988, []string{"Comedy", "Romance"}},
-		{"Short Circuit", 1986, []string{"Comedy", "Science Fiction", "Family"}},
-		{"Teen Wolf", 1985, []string{"Comedy", "Fantasy"}},
-		{"Weekend at Bernie's", 1989, []string{"Comedy"}},
-		{"Sister Act 2: Back in the Habit", 1993, []string{"Comedy", "Family", "Music"}},
-		{"To Be or Not to Be", 1942, []string{"Comedy", "War"}},
-		{"Lover Come Back", 1961, []string{"Comedy", "Romance"}},
-		{"Harry Potter and the Prisoner of Azkaban", 2004, []string{"Adventure", "Fantasy", "Family"}},
-		{"Your Name.", 2016, []string{"Animation", "Romance", "Fantasy"}},
-	}
+	return exampleFillCorpusOf([]titleRow{
+		{"Back to the Lighthouse", 1985, []string{"Adventure", "Comedy", "Science Fiction"}},
+		{"Gloomwings", 1984, []string{"Comedy", "Horror", "Fantasy"}},
+		{"Fogcatchers", 1984, []string{"Comedy", "Fantasy"}},
+		{"Darling, I Folded the Twins", 1989, []string{"Comedy", "Family", "Science Fiction"}},
+		{"Mothwhistle", 1988, []string{"Comedy", "Fantasy"}},
+		{"Gusto", 1988, []string{"Comedy", "Fantasy", "Family"}},
+		{"Pennywhistle's Day Off", 1986, []string{"Comedy"}},
+		{"Arriving in Varnholm", 1988, []string{"Comedy", "Romance"}},
+		{"Tin Sparks", 1986, []string{"Comedy", "Science Fiction", "Family"}},
+		{"Teen Owl", 1985, []string{"Comedy", "Fantasy"}},
+		{"Weekend at Wexcombe's", 1989, []string{"Comedy"}},
+		{"Choir Camp 2: Back in the Loft", 1993, []string{"Comedy", "Family", "Music"}},
+		{"To Sing or Not to Sing", 1942, []string{"Comedy", "War"}},
+		{"Sweetheart Come Back", 1961, []string{"Comedy", "Romance"}},
+		{"Wren Halloway and the Salt Lantern", 2004, []string{"Adventure", "Fantasy", "Family"}},
+		{"Our Song.", 2016, []string{"Animation", "Romance", "Fantasy"}},
+	})
+}
+
+// exampleFillCorpusOf builds the #1499 library from rows, in order, with ids from
+// 90003000. Search is a title-word search; discovery honours genre and year filters.
+func exampleFillCorpusOf(rows []titleRow) *catalogfixture.Corpus {
 	cands := make([]catalog.Candidate, 0, len(rows))
 	for i, r := range rows {
 		cands = append(cands, catalog.Candidate{
-			MediaType: "movie", TMDBID: 3000 + i, Name: r.name, Year: r.year, InLibrary: true, Genres: r.genres,
+			MediaType: "movie", TMDBID: 90_003_000 + i, Name: r.name, Year: r.year, InLibrary: true, Genres: r.genres,
 			VoteCount: 5000 - i*100, Overview: "A film in the library.",
 		})
 	}
@@ -110,7 +111,7 @@ func pickJSON(corpus *catalogfixture.Corpus, names ...string) string {
 }
 
 // #1499: the request names two 1980s titles and no era. The model's title-word
-// search only reaches noise (Sister Act 2 1993), so the anchors' era and genre
+// search only reaches noise (Choir Camp 2, 1993), so the anchors' era and genre
 // must feed a discovery whose on-era neighbours reach the model as ordinary tool
 // evidence. The model still chooses: nothing is dropped or padded server-side.
 func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
@@ -118,20 +119,20 @@ func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "back", "media_type": "movie", "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Honey, I Shrunk the Kids"), none),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	prompt := model.Prompt()
-	for _, neighbour := range []string{"Ghostbusters", "Honey, I Shrunk the Kids", "Beetlejuice", "Big"} {
+	for _, neighbour := range []string{"Fogcatchers", "Darling, I Folded the Twins", "Mothwhistle", "Gusto"} {
 		if !strings.Contains(prompt, neighbour) {
 			t.Errorf("on-era neighbour %q never reached the model as tool evidence", neighbour)
 		}
 	}
-	for _, offEra := range []string{"To Be or Not to Be", "Harry Potter", "Your Name."} {
+	for _, offEra := range []string{"To Sing or Not to Sing", "Wren Halloway", "Our Song."} {
 		if strings.Contains(prompt, offEra) {
 			t.Errorf("off-era %q reached the model", offEra)
 		}
@@ -146,8 +147,8 @@ func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 	corpus := exampleFillCorpus()
 	corpus.Candidates = append(corpus.Candidates,
-		catalog.Candidate{MediaType: "movie", TMDBID: 3900, Name: "Casablanca", Year: 1942, InLibrary: true, Genres: []string{"Drama", "Romance"}, VoteCount: 900},
-		catalog.Candidate{MediaType: "movie", TMDBID: 3901, Name: "Avatar", Year: 2009, InLibrary: true, Genres: []string{"Science Fiction", "Adventure"}, VoteCount: 900},
+		catalog.Candidate{MediaType: "movie", TMDBID: 90003900, Name: "Tessaline", Year: 1942, InLibrary: true, Genres: []string{"Drama", "Romance"}, VoteCount: 900},
+		catalog.Candidate{MediaType: "movie", TMDBID: 90003901, Name: "Aetherion", Year: 2009, InLibrary: true, Genres: []string{"Science Fiction", "Adventure"}, VoteCount: 900},
 	)
 	search := corpus.SearchFunc
 	corpus.SearchFunc = func(ctx context.Context, q string, limit int) ([]catalog.Candidate, error) {
@@ -164,11 +165,11 @@ func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 	}
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "Casablanca", "media_type": "movie", "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Casablanca", "Avatar"), none),
+		catalogSearchResponse(map[string]any{"query": "Tessaline", "media_type": "movie", "dateMeaning": none}),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Tessaline", "Aetherion"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Casablanca and Avatar"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Tessaline and Aetherion"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,22 +191,22 @@ func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	leaked := "<tool_call>\n<function=catalog_search>\n<parameter=input>\n" +
-		`{"dateMeaning": {"anchors": [], "axes": [], "kind": "none"}, "media_type": "movie", "query": "Gremlins"}` +
+		`{"dateMeaning": {"anchors": [], "axes": [], "kind": "none"}, "media_type": "movie", "query": "Gloomwings"}` +
 		"\n</parameter>\n</function>\n</tool_call>"
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
+		catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 		llm.Response{Content: leaked},
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Honey, I Shrunk the Kids"), none),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if model.Calls != 3 {
 		t.Errorf("model calls = %d, want 3: the leaked tool call must be sent to repair", model.Calls)
 	}
-	if names := exampleFillNames(proposal); !slices.Contains(names, "Ghostbusters") {
+	if names := exampleFillNames(proposal); !slices.Contains(names, "Fogcatchers") {
 		t.Errorf("repaired lineup lost the model's on-era picks: %v", names)
 	}
 }
@@ -217,11 +218,11 @@ func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
+		catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
 		finalResponseWithDateMeaning(`{"picks":[]}`, none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +236,7 @@ func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 
 // #1499 cause 1: "in the spirit of" (and its siblings; not "think X", see reference.go) offer example titles
 // exactly like "like" does, so the anchors are required. The model here drops
-// Gremlins; the required-title check must bring it back for every phrasing.
+// Gloomwings; the required-title check must bring it back for every phrasing.
 func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 	for _, phrase := range []string{
 		"in the spirit of", "inspired by", "a la", "à la",
@@ -244,16 +245,16 @@ func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 			corpus := exampleFillCorpus()
 			none := dateMeaningNone()
 			model := testkit.NewLLM(
-				catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
-				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Ghostbusters", "Big"), none),
-				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Big"), none),
+				catalogSearchResponse(map[string]any{"query": "Back to the Lighthouse", "media_type": "movie", "dateMeaning": none}),
+				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Fogcatchers", "Gusto"), none),
+				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 			)
 			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies " + phrase + " Back to the Future and Gremlins for a family night"})
+			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies " + phrase + " Back to the Lighthouse and Gloomwings for a family night"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if names := exampleFillNames(proposal); !slices.Contains(names, "Gremlins") || !slices.Contains(names, "Back to the Future") {
+			if names := exampleFillNames(proposal); !slices.Contains(names, "Gloomwings") || !slices.Contains(names, "Back to the Lighthouse") {
 				t.Errorf("%q did not require its anchors: %v", phrase, names)
 			}
 		})
@@ -266,21 +267,21 @@ func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) 
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Big"), none),
+		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	prompt := model.Prompt()
-	for _, neighbour := range []string{"Ghostbusters", "Honey, I Shrunk the Kids", "Big"} {
+	for _, neighbour := range []string{"Fogcatchers", "Darling, I Folded the Twins", "Gusto"} {
 		if !strings.Contains(prompt, neighbour) {
 			t.Errorf("collection result never surfaced on-era neighbour %q", neighbour)
 		}
 	}
-	if strings.Contains(prompt, "To Be or Not to Be") {
+	if strings.Contains(prompt, "To Sing or Not to Sing") {
 		t.Error("off-era title reached the model")
 	}
 	if names := exampleFillNames(proposal); len(names) != 4 {
@@ -294,14 +295,14 @@ func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins"), none),
+		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none}),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "A channel of the Back to the Future and Gremlins movies"}); err != nil {
+	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "A channel of the Back to the Lighthouse and Gloomwings movies"}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(model.Prompt(), "Ghostbusters") {
+	if strings.Contains(model.Prompt(), "Fogcatchers") {
 		t.Error("a non-example request got era neighbours")
 	}
 }
@@ -312,20 +313,20 @@ func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
 func TestSuggest_TitlesWithoutModeAreACollectionLookupNotADeadEnd(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
-	call := catalogSearchResponse(map[string]any{"media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none})
+	call := catalogSearchResponse(map[string]any{"media_type": "movie", "titles": []any{"Back to the Lighthouse", "Gloomwings"}, "dateMeaning": none})
 	model := testkit.NewLLM(
 		call, call, call, call, call, call, call,
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters"), none),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatalf("titles without mode exhausted the rounds: %v", err)
 	}
-	if !strings.Contains(model.Prompt(), "Ghostbusters") {
+	if !strings.Contains(model.Prompt(), "Fogcatchers") {
 		t.Error("the titles call produced no evidence for the model")
 	}
-	if names := exampleFillNames(proposal); !slices.Contains(names, "Gremlins") {
+	if names := exampleFillNames(proposal); !slices.Contains(names, "Gloomwings") {
 		t.Errorf("lineup = %v", names)
 	}
 }

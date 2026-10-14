@@ -15,16 +15,16 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`
+const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines"}]}`
 
 func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{}
 	owned := suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 672, Name: "Owned addition",
-		InLibrary: true, LibraryItemID: "library-672", OfficialRating: "PG",
+		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition",
+		InLibrary: true, LibraryItemID: "library-90000672", OfficialRating: "PG",
 	}
-	missing := suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 673, Name: "Missing addition"}
+	missing := suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition"}
 	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
 		{Item: owned, Owned: true},
 		{Item: missing, Owned: false},
@@ -32,11 +32,11 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	approver := suggest.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
 	p := store.Proposal{
 		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
-		ProposalJSON: `{"lineup":[{"mediaType":"movie","tmdbId":671,"name":"Existing","inLibrary":true,"libraryItemId":"library-671"}]}`,
+		ProposalJSON: `{"lineup":[{"mediaType":"movie","tmdbId":90000671,"name":"Existing","inLibrary":true,"libraryItemId":"library-90000671"}]}`,
 	}
 	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 672, Name: "Owned addition", InLibrary: false},
-		{MediaType: provision.Movie, TMDBID: 673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
+		{MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition", InLibrary: false},
+		{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
 	}}
 
 	if _, err := approver.Approve(context.Background(), p, edit, "admin"); err != nil {
@@ -46,10 +46,10 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 		t.Fatalf("commits = %+v, want existing + owned available and one missing wanted", st.Commits)
 	}
 	records := st.Commits[0].Titles
-	if records[1].Key != "movie:tmdb:672" || records[1].State != provision.Available || records[1].LibraryID != "library-672" {
+	if records[1].Key != "movie:tmdb:90000672" || records[1].State != provision.Available || records[1].LibraryID != "library-90000672" {
 		t.Fatalf("owned record = %+v, want available authoritative Library item", records[1])
 	}
-	if records[2].Key != "movie:tmdb:673" || records[2].State != provision.Wanted || records[2].LibraryID != "" {
+	if records[2].Key != "movie:tmdb:90000673" || records[2].State != provision.Wanted || records[2].LibraryID != "" {
 		t.Fatalf("missing record = %+v, want wanted without forged Library id", records[2])
 	}
 	var committed suggest.Proposal
@@ -134,7 +134,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 		WithDecisionQuality(decisionQuality)
 	p := store.Proposal{
 		ID: "p1", JobID: "job1", Status: "submitted",
-		ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed"}]}`,
+		ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines"}]}`,
 	}
 
 	result, err := approver.Approve(context.Background(), p, nil, "admin")
