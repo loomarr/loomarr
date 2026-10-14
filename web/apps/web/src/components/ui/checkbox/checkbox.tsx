@@ -14,8 +14,9 @@ import { cn } from "@/lib/utils";
 // Checked is a selection, so it is neutral-pressed like the design-system Toggle (#1909): elevated
 // fill, foreground border and a foreground mark. Amber is only the focus ring. `accent-color` cannot
 // draw that (the browser picks the mark's colour and ignores the border), so the box is
-// `appearance-none` and paints its own mark; the element stays a real checkbox. The box is 24 px,
-// the WCAG 2.5.8 target minimum.
+// `appearance-none` and paints its own mark; the element stays a real checkbox. Forced-colors mode
+// drops background images, so there it returns to the native box. The box is 24 px, the WCAG 2.5.8
+// target minimum.
 //
 // Token-backed like the Input (#970 step 45): the colours come from `semanticColors` as inline
 // style and CSS variables; the size, radius and the cursor (which `disabled:` flips) stay classes.
@@ -29,7 +30,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HT
       type="checkbox"
       ref={ref}
       className={cn(
-        "checked:bg-(image:--checkbox-mark) size-6 cursor-pointer appearance-none rounded-sm border border-(--checkbox-border) border-solid bg-background bg-center bg-no-repeat transition-colors checked:border-(--checkbox-checked-border) checked:bg-(--checkbox-checked-fill) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+        "checked:bg-(image:--checkbox-mark) size-6 cursor-pointer appearance-none rounded-sm border border-(--checkbox-border) border-solid bg-background bg-center bg-no-repeat transition-colors checked:border-(--checkbox-checked-border) checked:bg-(--checkbox-checked-fill) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 forced-colors:appearance-auto",
         className,
       )}
       style={

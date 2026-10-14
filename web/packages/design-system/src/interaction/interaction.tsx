@@ -444,6 +444,18 @@ const FieldHint = ({ children, className, density = "pointer", id, role, tone = 
   </Text>
 );
 
+// The amber focus ring around a checkbox, switch or radio box, outside a gap so it never touches
+// the box's own border.
+const boxFocusRing = (focused: boolean, density: Density) =>
+  focused
+    ? ({
+        outlineColor: "$actionFocus",
+        outlineOffset: 2,
+        outlineStyle: "solid",
+        outlineWidth: density === "tv" ? 3 : 2,
+      } as const)
+    : {};
+
 type ToggleProps = {
   checked: boolean;
   density?: Density;
@@ -471,7 +483,9 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
-  const [focused, setFocused] = useState(false);
+  const [hasFocus, setFocused] = useState(false);
+  const behindModal = useBehindModal();
+  const focused = hasFocus && !behindModal;
   return (
     <Pressable
       accessibilityLabel={label}
@@ -500,12 +514,9 @@ const Toggle = ({
         borderRadius={kind === "switch" ? "$round" : "$control"}
         height={controlSize}
         justifyContent="center"
-        outlineColor={focused ? "$actionFocus" : undefined}
-        outlineOffset={focused ? 2 : undefined}
-        outlineStyle={focused ? "solid" : undefined}
-        outlineWidth={focused ? (density === "tv" ? 3 : 2) : undefined}
         padding={kind === "switch" ? 3 : 0}
         width={kind === "switch" ? switchWidth : controlSize}
+        {...boxFocusRing(focused, density)}
       >
         {kind === "switch" ? (
           <View
@@ -554,6 +565,67 @@ type ChoiceGroupProps<Value extends string> = {
   value: Value;
 };
 
+const ChoiceRow = ({
+  checked,
+  density,
+  onPress,
+  option,
+}: {
+  checked: boolean;
+  density: Density;
+  onPress: () => void;
+  option: ChoiceOption<string>;
+}) => {
+  const [hasFocus, setFocused] = useState(false);
+  const behindModal = useBehindModal();
+  return (
+    <Pressable
+      accessibilityLabel={option.label}
+      accessibilityRole="radio"
+      accessibilityState={{ checked, disabled: option.disabled }}
+      aria-checked={checked}
+      aria-disabled={option.disabled || undefined}
+      disabled={option.disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        flexDirection: "row",
+        gap: semanticSpace.control,
+        minHeight: semanticTargets[density],
+        opacity: option.disabled ? 0.55 : 1,
+      }}
+    >
+      <Surface
+        alignItems="center"
+        // A chosen option is neutral-pressed (#1909), like a checked box; amber is the focus ring.
+        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
+        borderColor={checked ? "$contentPrimary" : "$borderControl"}
+        borderRadius="$round"
+        height={density === "tv" ? 36 : 24}
+        justifyContent="center"
+        width={density === "tv" ? 36 : 24}
+        {...boxFocusRing(hasFocus && !behindModal, density)}
+      >
+        {checked ? (
+          <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
+        ) : null}
+      </Surface>
+      <View flex={1} gap={2}>
+        <Text density={density} textRole="label">
+          {option.label}
+        </Text>
+        {option.description ? (
+          <Text density={density} textRole="metadata">
+            {option.description}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+};
+
 const ChoiceGroup = <Value extends string>({
   density = "pointer",
   label,
@@ -565,53 +637,15 @@ const ChoiceGroup = <Value extends string>({
     <Text density={density} textRole="label">
       {label}
     </Text>
-    {options.map((option) => {
-      const checked = option.value === value;
-      return (
-        <Pressable
-          accessibilityLabel={option.label}
-          accessibilityRole="radio"
-          accessibilityState={{ checked, disabled: option.disabled }}
-          aria-checked={checked}
-          aria-disabled={option.disabled || undefined}
-          disabled={option.disabled}
-          key={option.value}
-          onPress={() => onValueChange(option.value)}
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            gap: semanticSpace.control,
-            minHeight: semanticTargets[density],
-            opacity: option.disabled ? 0.55 : 1,
-          }}
-        >
-          <Surface
-            alignItems="center"
-            // A chosen option is neutral-pressed (#1909), like a checked box.
-            backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
-            borderColor={checked ? "$contentPrimary" : "$borderControl"}
-            borderRadius="$round"
-            height={density === "tv" ? 36 : 24}
-            justifyContent="center"
-            width={density === "tv" ? 36 : 24}
-          >
-            {checked ? (
-              <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
-            ) : null}
-          </Surface>
-          <View flex={1} gap={2}>
-            <Text density={density} textRole="label">
-              {option.label}
-            </Text>
-            {option.description ? (
-              <Text density={density} textRole="metadata">
-                {option.description}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
-      );
-    })}
+    {options.map((option) => (
+      <ChoiceRow
+        checked={option.value === value}
+        density={density}
+        key={option.value}
+        onPress={() => onValueChange(option.value)}
+        option={option}
+      />
+    ))}
   </View>
 );
 

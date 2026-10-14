@@ -4,7 +4,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Action, ChoiceGroup, LoomarrProvider, ModalLayer, semanticThemes, Toggle } from "../index";
+import {
+  Action,
+  brandChroma,
+  ChoiceGroup,
+  LoomarrProvider,
+  ModalLayer,
+  semanticThemes,
+  Toggle,
+} from "../index";
 
 describe("Action variants", () => {
   // react-native-web flattens the Pressable's own style object to inline rgba() (not hex, and
@@ -143,42 +151,49 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
 
   // The primary's fill is amber, so an amber focus border on it was invisible (the tvOS Retry
   // audit, shots 41/42). Focus now adds a foreground ring outside a gap of the surface behind it.
-  it.each(["pointer", "touch", "tv"] as const)(
-    "draws a focused %s primary differently from its rest look",
-    (density) => {
-      act(() => {
-        root.render(
-          <LoomarrProvider>
-            <Action density={density} tone="primary">
-              Retry
-            </Action>
-          </LoomarrProvider>,
-        );
-      });
-      const rest = look(button());
-      expect(rest.outlineStyle).not.toBe("solid");
+  // Every solid fill gets the ring: an amber border is invisible on amber and under 3:1 on red.
+  const fills = [
+    { name: "primary", props: { tone: "primary" } },
+    { name: "danger", props: { tone: "danger" } },
+    { name: "suggest", props: { variant: "suggest" } },
+    { name: "destructive", props: { variant: "destructive" } },
+  ] as const;
+  it.each(
+    (["pointer", "touch", "tv"] as const).flatMap((density) => fills.map((fill) => ({ density, ...fill }))),
+  )("draws a focused $density $name fill differently from its rest look", ({ density, props }) => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action density={density} {...props}>
+            Retry
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+    const rest = look(button());
+    expect(rest.outlineStyle).not.toBe("solid");
 
-      act(() => button().focus());
-      const focusedLook = look(button());
-      expect(focusedLook).not.toEqual(rest);
-      expect(focusedLook.backgroundColor).toBe(rest.backgroundColor);
-      expect(focusedLook.outlineStyle).toBe("solid");
-      expect(focusedLook.outlineWidth).toBe("3px");
-      expect(focusedLook.outlineColor).toBe("rgb(231, 234, 240)");
-      expect(Number.parseFloat(focusedLook.outlineOffset)).toBeGreaterThan(0);
+    act(() => button().focus());
+    const focusedLook = look(button());
+    expect(focusedLook).not.toEqual(rest);
+    expect(focusedLook.backgroundColor).toBe(rest.backgroundColor);
+    expect(focusedLook.outlineStyle).toBe("solid");
+    expect(focusedLook.outlineWidth).toBe("3px");
+    expect(focusedLook.outlineColor).toBe("rgb(231, 234, 240)");
+    expect(Number.parseFloat(focusedLook.outlineOffset)).toBeGreaterThan(0);
 
-      act(() => button().blur());
-      expect(look(button())).toEqual(rest);
-    },
-  );
+    act(() => button().blur());
+    expect(look(button())).toEqual(rest);
+  });
 
   it.each(["dark", "light"] as const)(
-    "keeps the %s ring at 3:1 against the surface, and the gap at 3:1 against the fill",
+    "keeps the %s ring at 3:1 against the surface, and the gap at 3:1 against every fill",
     (mode) => {
       const theme = semanticThemes[mode];
+      const fillColors = [theme.action.primary, theme.state.danger, theme.guide.onAir, brandChroma[4]];
       for (const surface of [theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
         expect(contrast(theme.content.primary, surface)).toBeGreaterThanOrEqual(3);
-        expect(contrast(surface, theme.action.primary)).toBeGreaterThanOrEqual(3);
+        for (const fill of fillColors) expect(contrast(surface, fill)).toBeGreaterThanOrEqual(3);
       }
     },
   );
@@ -245,6 +260,34 @@ describe("Action behind a modal", () => {
     render(false);
     act(() => byText("Open").focus());
     expect(byText("Open").style.borderTopColor).toBe(amber);
+  });
+
+  // Sibling modals are common (a confirm opened from a sheet), so opening order decides which
+  // layer is in front, not tree depth.
+  it("puts a control in the first modal behind a sibling modal opened over it", () => {
+    const render = (second: boolean) =>
+      act(() => {
+        root.render(
+          <LoomarrProvider>
+            <ModalLayer visible>
+              <Action tone="secondary">First</Action>
+            </ModalLayer>
+            <ModalLayer visible={second}>
+              <Action tone="secondary">Second</Action>
+            </ModalLayer>
+          </LoomarrProvider>,
+        );
+      });
+
+    render(false);
+    act(() => byText("First").focus());
+    expect(byText("First").style.borderTopColor).toBe(amber);
+
+    render(true);
+    expect(byText("First").style.borderTopColor).not.toBe(amber);
+
+    render(false);
+    expect(byText("First").style.borderTopColor).toBe(amber);
   });
 });
 
