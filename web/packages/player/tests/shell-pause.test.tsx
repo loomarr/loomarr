@@ -224,6 +224,10 @@ describe("shell pause", () => {
     try {
       const { controller, listeners, transport } = await playingOnA();
       const attemptId = controller.getSnapshot().attemptId as number;
+      // The native transport reports its own pause back, as it does on the phone.
+      vi.mocked(transport.pause).mockImplementation(() => {
+        for (const listener of listeners) listener({ attemptId, type: "paused" });
+      });
       for (const listener of listeners) listener({ attemptId, type: "stalled" });
       await vi.advanceTimersByTimeAsync(20_000);
       const failed = { error: "Lost the connection to the server.", status: "failed" };

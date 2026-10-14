@@ -290,6 +290,8 @@ const createPlayerController = ({
     }
     if (event.type === "paused") {
       cancelRecoveryTimers();
+      // The native transport echoes the pause of a failed player; the failure stands (see pause).
+      if (snapshot.status === "failed") return;
       publish({ ...snapshot, error: undefined, reconnecting: undefined, status: "paused" });
       return;
     }
