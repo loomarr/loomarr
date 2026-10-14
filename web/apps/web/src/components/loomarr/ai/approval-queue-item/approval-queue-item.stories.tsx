@@ -58,7 +58,6 @@ const WithRefused: Story = {
         item: {
           mediaType: "movie",
           name: "Midnight Toons",
-          tmdbId: 5004,
           officialRating: "TV-MA",
           inLibrary: true,
         },
@@ -68,7 +67,6 @@ const WithRefused: Story = {
         item: {
           mediaType: "series",
           name: "After Hours Doodles",
-          tmdbId: 5005,
           officialRating: "TV-14",
           inLibrary: false,
         },
