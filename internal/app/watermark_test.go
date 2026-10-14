@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -395,5 +396,45 @@ func TestWatermarkColoursAndMotifs_AgreeAcrossRendererAndPolicy(t *testing.T) {
 	slices.Sort(drawn)
 	if !slices.Equal(motifs, drawn) {
 		t.Errorf("policy motifs %v, renderer %v", motifs, drawn)
+	}
+}
+
+// The section's options come from the backend (#1659 W2c): the derived name, the era and its
+// colours, and only the holidays the channel honours, with the scheduler's "in effect today".
+func TestChannelWatermarks_Options(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{Holidays: []string{"christmas", "halloween"}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "ghost"}}
+	oct13 := time.Date(2026, time.October, 13, 20, 0, 0, 0, time.UTC)
+
+	got, err := testWatermarks(t, ch, true).Options(context.Background(), "ch-1", oct13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AutoCallsign != "SC" || got.Era != "1980s" || !slices.Equal(got.EraPalette, []string{"red", "amber", "cyan"}) {
+		t.Fatalf("name/era = %q %q %v, want SC 1980s [red amber cyan]", got.AutoCallsign, got.Era, got.EraPalette)
+	}
+	if len(got.Holidays) != 2 {
+		t.Fatalf("holidays = %+v, want halloween and christmas only", got.Holidays)
+	}
+	hw, xm := got.Holidays[0], got.Holidays[1]
+	if hw.ID != "halloween" || hw.Name != "Halloween" || hw.Start != "2026-10-01" || hw.End != "2026-10-31" || !hw.Active ||
+		hw.Picture != "ghost" || len(hw.Pictures) != 3 || hw.Pictures[0] != (api.WatermarkPicture{ID: "pumpkin", Name: "Pumpkin"}) {
+		t.Fatalf("halloween = %+v", hw)
+	}
+	if xm.ID != "christmas" || xm.Active || xm.Picture != "holly" || xm.Start != "2026-12-01" || xm.End != "2026-12-26" {
+		t.Fatalf("christmas = %+v", xm)
+	}
+
+	// Ignore holidays: none, and no era is amber's palette.
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}
+	ch.Policy.Scope.Dates = nil
+	got, err = testWatermarks(t, ch, true).Options(context.Background(), "ch-1", oct13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Holidays) != 0 || got.Holidays == nil || got.Era != "" || got.EraPalette[0] != "amber" {
+		t.Fatalf("ignore holidays = %+v, want an empty list, no era, amber", got)
 	}
 }

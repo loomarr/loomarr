@@ -95,6 +95,29 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
+// HonouredHolidays lists the built-in holidays a channel honours, in calendar order, each with its
+// window that is on at `now` or comes next (#1659 W2c, the On-screen logo's holiday rows). A channel
+// whose seasonal mode is off (Ignore holidays) honours none; a chosen subset limits the list.
+func HonouredHolidays(now time.Time, seasonal SeasonalPolicy) []HolidayWindow {
+	if seasonal.Mode == SeasonalOff {
+		return nil
+	}
+	sel := lowerSet(seasonal.Holidays)
+	var out []HolidayWindow
+	for _, h := range builtinCalendar {
+		if _, ok := sel[h.id]; len(sel) > 0 && !ok {
+			continue
+		}
+		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
+			if start, end := h.window(y); !end.Before(now) {
+				out = append(out, HolidayWindow{ID: h.id, Start: start, End: end})
+				break
+			}
+		}
+	}
+	return out
+}
+
 // ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
 // boosts, through the same calendar, selection and evaluation, so the on-screen logo's holiday
 // version (WatermarkHoliday) can never disagree with the programming. A channel whose seasonal mode

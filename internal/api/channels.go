@@ -94,6 +94,7 @@ func (s *Server) registerChannels(api huma.API) {
 		MaxBodyBytes: maxIconBytes + 1024,
 	}, RoleAdmin), s.uploadChannelWatermark)
 	s.registerWatermarkPreview(api)
+	s.registerWatermarkOptions(api)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",

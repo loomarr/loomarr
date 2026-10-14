@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 )
@@ -115,5 +116,29 @@ func TestWatermarkEraDecade(t *testing.T) {
 		if got := WatermarkEraDecade(ScopePolicy{Dates: c.dates}); got != c.want {
 			t.Errorf("%+v: %d, want %d", c.dates, got, c.want)
 		}
+	}
+}
+
+// HonouredHolidays is the On-screen logo's holiday rows (#1659 W2c): the channel's holidays, each
+// window on today or next, through New Year's year boundary; Ignore holidays honours none.
+func TestHonouredHolidays(t *testing.T) {
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 12, 0, 0, 0, time.UTC) }
+	ids := func(ws []HolidayWindow) (out []string) {
+		for _, w := range ws {
+			out = append(out, w.ID+" "+w.Start.Format(time.DateOnly)+".."+w.End.Format(time.DateOnly))
+		}
+		return out
+	}
+	got := ids(HonouredHolidays(day(time.March, 1), SeasonalPolicy{}))
+	want := []string{"halloween 2026-10-01..2026-10-31", "thanksgiving 2026-11-15..2026-11-30",
+		"christmas 2026-12-01..2026-12-26", "newyear 2026-12-27..2027-01-02", "valentines 2027-02-01..2027-02-14"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("all, Mar 1 = %v, want %v", got, want)
+	}
+	if got := ids(HonouredHolidays(day(time.January, 1), SeasonalPolicy{Holidays: []string{"NewYear"}})); !slices.Equal(got, []string{"newyear 2025-12-27..2026-01-02"}) {
+		t.Fatalf("subset, Jan 1 = %v, want the window on now", got)
+	}
+	if got := HonouredHolidays(day(time.October, 13), SeasonalPolicy{Mode: SeasonalOff}); got != nil {
+		t.Fatalf("ignore holidays = %v, want none", got)
 	}
 }
