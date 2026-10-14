@@ -30,7 +30,7 @@ const ListRow = ({ tone, toneLabel = "", title, sub, progress, action, className
   >
     <StatusDot tone={tone} label={toneLabel} />
     <div className="min-w-0 flex-1">
-      <p className="m-0 font-medium text-[13px]">{title}</p>
+      <p className="m-0 font-medium text-base">{title}</p>
       {sub != null && <p className="mt-0.5 mb-0 text-static-400 text-xs">{sub}</p>}
     </div>
     {progress && (

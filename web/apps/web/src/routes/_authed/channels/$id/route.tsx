@@ -233,9 +233,9 @@ const ChannelDetailLayout = () => {
                 onSave={saveName}
               />
             ) : (
-              <h1 className="font-semibold text-2xl leading-tight">{ch.name}</h1>
+              <h1 className="font-semibold text-xl leading-tight">{ch.name}</h1>
             )}
-            <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            <span className="flex items-center gap-1.5 text-muted-foreground text-sm">
               <span
                 aria-hidden
                 className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
@@ -243,7 +243,7 @@ const ChannelDetailLayout = () => {
               {airLine.text}
             </span>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-[13px] text-muted-foreground">
+          <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
             <span className="font-mono uppercase tracking-wide">Ch</span>
             {isAdmin ? (
               <ChannelIdentityField
@@ -289,7 +289,7 @@ const ChannelDetailLayout = () => {
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
+        <div className="mx-auto flex w-full max-w-detail flex-col gap-4 p-6">
           <ChannelDetailProvider
             value={{
               id,

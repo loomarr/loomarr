@@ -1,8 +1,7 @@
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
-import { Image } from "@/components/ui/image";
 import { SectionHeader } from "@/components/ui/section-header";
+import { AiringArtwork } from "../on-now";
 import type { WatchingCard, WatchingNowProps } from "./watching-now.type";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -68,23 +67,11 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
               viewer={viewer}
               programme={programme}
               artwork={
-                airing.thumbImage ? (
-                  <Image
-                    image={airing.thumbImage}
-                    alt=""
-                    sizes="22rem"
-                    fallback={
-                      <ArtworkFallback
-                        channel={{ name: channel.source.name, number: channel.source.number }}
-                      />
-                    }
-                    className="size-full object-cover"
-                  />
-                ) : airing.thumbUrl ? (
-                  <img src={airing.thumbUrl} alt="" className="size-full object-cover" />
-                ) : (
-                  <ArtworkFallback channel={{ name: channel.source.name, number: channel.source.number }} />
-                )
+                <AiringArtwork
+                  airing={airing}
+                  channel={{ name: channel.source.name, number: channel.source.number }}
+                  sizes="22rem"
+                />
               }
             />
           </Link>

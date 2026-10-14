@@ -397,10 +397,13 @@ const GuidePage = ({
         }
       />
 
-      {/* The inline create surface — describe a channel, review, approve, land on it. */}
+      {/* The inline create surface — describe a channel, review, approve, land on it. The band
+          spans the guide; its content sits in the centred form tier (#1817 Q10), inside the
+          page-edge contract's 24 px gutter (16 below `sm`). */}
       {adding && (
-        <div className="border-border border-b bg-card px-7 py-4.5">
+        <div className="border-border border-b bg-card px-4 py-4.5 sm:px-6">
           <ChannelSuggestPanel
+            className="mx-auto max-w-form"
             initialIntent={initialIntent}
             initialJobId={initialJobId}
             initialManual={openManualOnArrival}

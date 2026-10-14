@@ -78,7 +78,7 @@ const HomePage = () => {
       <div className="flex-1 overflow-auto">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
-        <div className="mx-auto flex max-w-[1120px] flex-col gap-6 p-4 sm:gap-8 sm:p-6">
+        <div className="mx-auto flex max-w-overview flex-col gap-6 p-4 sm:gap-8 sm:p-6">
           <HomeStrip
             state={stripState}
             count={channels.length}

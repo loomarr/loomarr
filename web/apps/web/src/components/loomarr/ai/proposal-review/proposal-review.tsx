@@ -133,11 +133,11 @@ const ProposalReview = ({
         <div className="min-w-0">
           {showWorkflowHeading ? (
             <>
-              <h2 className="font-semibold text-xl">Review your channel</h2>
+              <h2 className="font-semibold text-lg">Review your channel</h2>
               <p className="mt-1 font-medium text-base">{proposal.channelName || "Your new channel"}</p>
             </>
           ) : (
-            <h2 className="font-semibold text-xl">{proposal.channelName || "Your new channel"}</h2>
+            <h2 className="font-semibold text-lg">{proposal.channelName || "Your new channel"}</h2>
           )}
         </div>
         {statusDisplay && <Badge variant={statusDisplay.variant}>{statusDisplay.label}</Badge>}
