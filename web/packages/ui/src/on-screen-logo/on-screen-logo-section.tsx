@@ -256,7 +256,7 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
         </View>
         {onReset ? (
           <View style={row}>
-            <Badge tone={overridden ? "warning" : "neutral"}>
+            <Badge shape="square" tone={overridden ? "signal" : "neutral"}>
               {overridden ? "Channel override" : "Default"}
             </Badge>
             <Action
@@ -310,7 +310,7 @@ const Pick = <V extends string>({ label, onPick, options, value }: PickProps<V>)
             paddingVertical={8}
           >
             {o.visual}
-            <Text textRole="metadata">{o.label}</Text>
+            <Text textRole="cardLabel">{o.label}</Text>
           </Surface>
         </Pressable>
       );
@@ -419,7 +419,7 @@ const OnScreenLogoSection = ({
   const { width } = useWindowDimensions();
   const phone = width < 720;
   const [scene, setScene] = useState<Scene>("bright");
-  const [zoom, setZoom] = useState(false);
+  const [zoom, setZoom] = useState(true);
   // undefined follows today: the holiday in effect, else the everyday logo.
   const [view, setView] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState<"size" | "margin" | "opacity" | null>(null);
@@ -602,7 +602,11 @@ const OnScreenLogoSection = ({
                   >
                     <Text textRole="metadata">{h.name}</Text>
                     <FieldHint>{`${day(h.start)} – ${day(h.end)}`}</FieldHint>
-                    {h.active ? <Badge tone="lock">In effect now</Badge> : null}
+                    {h.active ? (
+                      <Badge shape="square" tone="lock">
+                        In effect now
+                      </Badge>
+                    ) : null}
                     {h.pictures.length > 1 ? (
                       <Pick
                         label={`Picture for ${h.name}`}
@@ -695,6 +699,7 @@ const OnScreenLogoSection = ({
         overridden={p.size !== undefined}
       >
         <SelectControl
+          appearance="field"
           label="Size"
           onOpenChange={(o) => setOpen(o ? "size" : null)}
           onValueChange={(v) => onChange({ size: Number(v) })}
@@ -711,6 +716,7 @@ const OnScreenLogoSection = ({
         overridden={p.margin !== undefined}
       >
         <SelectControl
+          appearance="field"
           label="Distance from the edge"
           onOpenChange={(o) => setOpen(o ? "margin" : null)}
           onValueChange={(v) => onChange({ margin: Number(v) })}
@@ -727,6 +733,7 @@ const OnScreenLogoSection = ({
         overridden={p.opacity !== undefined}
       >
         <SelectControl
+          appearance="field"
           label="How see-through"
           onOpenChange={(o) => setOpen(o ? "opacity" : null)}
           onValueChange={(v) => onChange({ opacity: Number(v) })}
