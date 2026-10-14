@@ -110,26 +110,26 @@ func upsertLineupChannel(t *testing.T, st store.Store, id string, entries []sche
 	}
 }
 
-// A themed channel (e.g. Star Trek) offers each series' own poster — the point of
+// A themed channel (e.g. late-night sci-fi) offers each series' own poster — the point of
 // §icon P2: candidates come from the channel's OWN lineup, not a generic library.
 func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
-		"/tv/1000":   "/tng.jpg",
-		"/movie/603": "/matrix.jpg",
-		"/find/2000": "/ds9.jpg",
+		"/tv/90001000":    "/orbit.jpg",
+		"/movie/90000603": "/marigold.jpg",
+		"/find/90002000":  "/tessera.jpg",
 	}, nil)
 	defer mock.Close()
 
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
-		{Key: "series:tmdb:1000", Title: "Star Trek: TNG"},
-		{Key: "series:tvdb:2000", Title: "Star Trek: DS9"},
-		{Key: "movie:tmdb:603", Title: "The Matrix"},
+		{Key: "series:tmdb:90001000", Title: "Orbit of Quiet Machines"},
+		{Key: "series:tvdb:90002000", Title: "Signal from Tessera"},
+		{Key: "movie:tmdb:90000603", Title: "Marigold Protocol"},
 	})
 
 	a, hashes := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"),
-		tmdbPoster("/tng.jpg"), tmdbPoster("/ds9.jpg"), tmdbPoster("/matrix.jpg"))
+		tmdbPoster("/orbit.jpg"), tmdbPoster("/tessera.jpg"), tmdbPoster("/marigold.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -145,9 +145,9 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	// remove: the icon picker is one of the three surfaces that loaded third-party images in the
 	// operator's browser.
 	for _, c := range []struct{ title, src string }{
-		{"Star Trek: TNG", tmdbPoster("/tng.jpg")},
-		{"Star Trek: DS9", tmdbPoster("/ds9.jpg")},
-		{"The Matrix", tmdbPoster("/matrix.jpg")},
+		{"Orbit of Quiet Machines", tmdbPoster("/orbit.jpg")},
+		{"Signal from Tessera", tmdbPoster("/tessera.jpg")},
+		{"Marigold Protocol", tmdbPoster("/marigold.jpg")},
 	} {
 		sg := byTitle[c.title]
 		if want := iconPosterURL(hashes[c.src]); sg.URL != want {
@@ -170,19 +170,19 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
 	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
-		"/tv/1000": "/tng.jpg",
-		"/tv/1001": "/ds9.jpg",
+		"/tv/90001000": "/orbit.jpg",
+		"/tv/90001001": "/tessera.jpg",
 	}, nil)
 	defer mock.Close()
 
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
-		{Key: "series:tmdb:1000", Title: "Warm"},
-		{Key: "series:tmdb:1001", Title: "Cold"},
+		{Key: "series:tmdb:90001000", Title: "Warm"},
+		{Key: "series:tmdb:90001001", Title: "Cold"},
 	})
 
-	// Only TNG is seeded as fetched; DS9 stays cold and its fetch is refused by the empty allowlist.
-	a, hashes := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
+	// Only Orbit is seeded as fetched; Tessera stays cold and its fetch is refused by the empty allowlist.
+	a, hashes := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/orbit.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
 	if len(got) != 1 || got[0].Title != "Warm" {
 		t.Fatalf("suggestions = %+v, want exactly the warm one", got)
 	}
-	if want := iconPosterURL(hashes[tmdbPoster("/tng.jpg")]); got[0].URL != want {
+	if want := iconPosterURL(hashes[tmdbPoster("/orbit.jpg")]); got[0].URL != want {
 		t.Errorf("url = %q, want %q", got[0].URL, want)
 	}
 }
@@ -200,18 +200,18 @@ func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
 func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
 	t.Parallel()
 	mock := tmdbPosterStub(t,
-		map[string]string{"/tv/1000": "/tng.jpg"},
-		map[string]bool{"/tv/1001": true}, // this one 500s
+		map[string]string{"/tv/90001000": "/orbit.jpg"},
+		map[string]bool{"/tv/90001001": true}, // this one 500s
 	)
 	defer mock.Close()
 
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
-		{Key: "series:tmdb:1000", Title: "Good Title"},
-		{Key: "series:tmdb:1001", Title: "Bad Title"},
+		{Key: "series:tmdb:90001000", Title: "Good Title"},
+		{Key: "series:tmdb:90001001", Title: "Bad Title"},
 	})
 
-	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
+	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/orbit.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatalf("a bad title must not fail the whole request: %v", err)
@@ -225,12 +225,12 @@ func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
 // simply omitted from the candidates.
 func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
 	t.Parallel()
-	mock := tmdbPosterStub(t, map[string]string{"/tv/1000": ""}, nil)
+	mock := tmdbPosterStub(t, map[string]string{"/tv/90001000": ""}, nil)
 	defer mock.Close()
 
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
-		{Key: "series:tmdb:1000", Title: "No Poster"},
+		{Key: "series:tmdb:90001000", Title: "No Poster"},
 	})
 
 	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"))
@@ -248,18 +248,18 @@ func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
 func TestIconAdapter_DedupesByURL(t *testing.T) {
 	t.Parallel()
 	mock := tmdbPosterStub(t, map[string]string{
-		"/tv/1000":  "/tng.jpg",
-		"/tv/99000": "/tng.jpg", // same poster under a different id, for the test
+		"/tv/90001000": "/orbit.jpg",
+		"/tv/90099000": "/orbit.jpg", // same poster under a different id, for the test
 	}, nil)
 	defer mock.Close()
 
 	st := testkit.MigratedSQLiteStore(t)
 	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
-		{Key: "series:tmdb:1000", Title: "TNG"},
-		{Key: "series:tmdb:99000", Title: "TNG (dup)"},
+		{Key: "series:tmdb:90001000", Title: "Orbit"},
+		{Key: "series:tmdb:90099000", Title: "Orbit (dup)"},
 	})
 
-	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
+	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/orbit.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)

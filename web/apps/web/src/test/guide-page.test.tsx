@@ -55,9 +55,9 @@ const CHANNELS = [
 ];
 
 const TITLES: TitleDTO[] = [
-  { key: "movie:tmdb:1", mediaType: "movie", state: "available", name: "Landed" },
-  { key: "movie:tmdb:2", mediaType: "movie", state: "downloading", name: "Coming" },
-  { key: "movie:tmdb:3", mediaType: "movie", state: "unavailable", name: "Gave Up", tmdbId: 3 },
+  { key: "movie:tmdb:90000001", mediaType: "movie", state: "available", name: "Landed" },
+  { key: "movie:tmdb:90000002", mediaType: "movie", state: "downloading", name: "Coming" },
+  { key: "movie:tmdb:90000003", mediaType: "movie", state: "unavailable", name: "Gave Up", tmdbId: 90000003 },
 ];
 
 // GET /v1/guide's shape, read off the generated GuideChannelTimeline/GuideAiring DTOs
@@ -123,7 +123,7 @@ const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
     }),
     getEnqueueTitleMockHandler(async ({ request }) => {
       enqueued.push(await request.json());
-      return { key: "movie:tmdb:3", mediaType: "movie", state: "wanted" };
+      return { key: "movie:tmdb:90000003", mediaType: "movie", state: "wanted" };
     }),
     // tunarr.url set → the list's Rebuild button is enabled (it's gated on Tunarr being
     // connected, so a rebuild can't 501). ⚠ The old entry supplied four of SettingEntry's eight
@@ -189,6 +189,10 @@ describe("Guide", () => {
     await user.click(view.getByRole("button", { name: "Show 2 hours" }));
     expect(view.getByRole("button", { name: "Show 2 hours" })).toHaveAttribute("aria-pressed", "true");
     expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "false");
+    // Pressed is neutral (#1909 Q2): a foreground border on the elevated fill, never amber.
+    const pressed = view.getByRole("button", { name: "Show 2 hours" });
+    expect(pressed).toHaveClass("border-foreground", "bg-static-800", "font-semibold");
+    expect(pressed.className).not.toContain("signal");
     await vi.waitFor(() => expect(spans).toContain(2 * 3_600_000));
   });
 

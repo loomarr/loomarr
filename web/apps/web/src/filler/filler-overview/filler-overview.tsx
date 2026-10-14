@@ -4,6 +4,7 @@ import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLeve
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
+import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,15 @@ type Action = ActionBase &
         section: FillerSettingsSection;
       }
     | {
-        to: "/filler/incoming" | "/filler/library" | "/filler/manage" | "/filler/sources";
+        to: "/filler/incoming" | "/filler/library" | "/filler/sources";
         section?: never;
+        hash?: never;
+      }
+    | {
+        // Diagnostics live in Manage's Needs attention panel, which opens on this hash.
+        to: "/filler/manage";
+        section?: never;
+        hash: "diagnostics";
       }
   );
 
@@ -80,6 +88,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         description: `${pluralize(readiness.actionCount ?? 0, "item")} could not finish downloading.`,
         label: "Open diagnostics",
         to: "/filler/manage",
+        hash: "diagnostics",
       };
     case "retry_failed_work":
       return {
@@ -87,6 +96,7 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
         description: `${pluralize(readiness.actionCount ?? 0, "item")} hit a recoverable processing problem.`,
         label: "Open diagnostics",
         to: "/filler/manage",
+        hash: "diagnostics",
       };
     case "review_incoming":
       return {
@@ -136,6 +146,7 @@ const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; variant: "loc
   };
 
 const FillerOverview = () => {
+  const { isAdmin } = useAuth();
   const readinessQuery = fillerApi.useFillerReadiness();
   const readiness = unwrap(readinessQuery.data, (body) => body);
 
@@ -155,33 +166,50 @@ const FillerOverview = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className={readiness.ready ? "border-signal/35 p-5" : "border-caution/40 p-5"}>
-        <div className="flex flex-col items-start gap-4 sm:flex-row">
-          <div className="min-w-0 flex-1">
-            <Badge variant={readiness.ready ? "signal" : "caution"}>
-              {readiness.ready ? "Working automatically" : "Action recommended"}
-            </Badge>
-            <h2 className="mt-3 font-semibold text-xl">{action?.title ?? "Filler is working on its own"}</h2>
-            <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-              {action?.description ??
-                "Loomarr is preparing clips automatically. Nothing needs your attention."}
+      {/* Normal is quiet and the exception is loud (#1817, decided on #1908). Amber is the brand's
+          action colour, so a state where nothing needs doing doesn't wear it: the ready card is
+          plain, with the same green dot as the healthy watch line above it. */}
+      {action ? (
+        <Card className="border-caution/40 bg-caution/5 p-5">
+          <div className="flex flex-col items-start gap-4 sm:flex-row">
+            <div className="min-w-0 flex-1">
+              <Badge variant="caution">Action recommended</Badge>
+              <h2 className="mt-3 font-semibold text-xl">{action.title}</h2>
+              <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{action.description}</p>
+              {/* Every destination behind the button is admin-only, so a member got a button
+                  that bounced. They get the state and who can act on it instead. */}
+              {isAdmin ? null : (
+                <p className="mt-2 text-muted-foreground text-sm">
+                  An admin can sort this out from Filler › Manage.
+                </p>
+              )}
+            </div>
+            {isAdmin ? (
+              <Button
+                render={
+                  action.section ? (
+                    <Link to="/filler/settings/$section" params={{ section: action.section }} />
+                  ) : (
+                    <Link to={action.to} {...(action.hash ? { hash: action.hash } : {})} />
+                  )
+                }
+              >
+                {action.label}
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+      ) : (
+        <Card className="flex items-center gap-2.5 p-4">
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-lock" />
+          <div className="min-w-0">
+            <h2 className="font-semibold">Filler is working on its own</h2>
+            <p className="text-muted-foreground text-sm">
+              Loomarr is preparing clips automatically. Nothing needs your attention.
             </p>
           </div>
-          {action ? (
-            <Button
-              render={
-                action.section ? (
-                  <Link to="/filler/settings/$section" params={{ section: action.section }} />
-                ) : (
-                  <Link to={action.to} />
-                )
-              }
-            >
-              {action.label}
-            </Button>
-          ) : null}
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <section aria-labelledby="coverage-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -209,6 +237,7 @@ const FillerOverview = () => {
                         className="font-medium hover:underline"
                         to="/channels/$id/filler"
                         params={{ id: channel.channelId }}
+                        search={{ from: "filler" }}
                       >
                         {channel.number} · {channel.name}
                       </Link>

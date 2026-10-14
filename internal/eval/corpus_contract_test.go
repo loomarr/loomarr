@@ -89,8 +89,8 @@ func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Pr
 func TestDeterministicChecksCountGroundedTitlesAcrossOwnership(t *testing.T) {
 	caseUnderTest := Case{MinGrounded: 2}
 	proposal := suggest.Proposal{
-		Lineup:       []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "Owned"}},
-		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 2, Name: "Discovered"}},
+		Lineup:       []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Owned"}},
+		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000002, Name: "Discovered"}},
 	}
 	if failures := deterministicChecks(caseUnderTest, proposal, nil); len(failures) != 0 {
 		t.Fatalf("ownership-neutral grounded count failed: %v", failures)
@@ -184,10 +184,10 @@ func TestCorpusContainsExactShippedStarterIntents(t *testing.T) {
 
 func TestDeterministicChecksRejectNegativeConstraintViolations(t *testing.T) {
 	caseUnderTest := Case{
-		MinLineup: 1, ForbidGenres: []string{"horror"}, ForbidTitleTerms: []string{"Saw"},
+		MinLineup: 1, ForbidGenres: []string{"horror"}, ForbidTitleTerms: []string{"Lark"},
 	}
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 1, Name: "Saw II", Genres: []string{"Horror"}},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Lark II", Genres: []string{"Horror"}},
 	}}
 	failures := deterministicChecks(caseUnderTest, proposal, nil)
 	if len(failures) != 2 {

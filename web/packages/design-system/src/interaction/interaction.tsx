@@ -5,6 +5,7 @@ import { Pressable, TextInput } from "react-native";
 
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
+import { useBehindModal } from "../modal-layer";
 import { Surface, Text } from "../primitives";
 import {
   brandChroma,
@@ -121,12 +122,30 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     ref,
   ) => {
     const theme = useTheme();
-    const [focused, setFocused] = useState(false);
+    const [hasFocus, setFocused] = useState(false);
+    // A native Modal never blurs its opener, so a control behind an open modal drops its focus look.
+    const behindModal = useBehindModal();
+    const focused = hasFocus && !behindModal;
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
+    // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
+    // under 3:1 on the danger, destructive and suggest fills. A focused fill keeps its rest look
+    // and gains a 3px foreground ring outside a gap of the surface behind it, so the ring sits
+    // against that surface (about 16:1 in the dark theme) and the gap against the fill (10:1 on
+    // amber). The ring is `outline`, which RN 0.86 and react-native-web draw outside the box.
+    const filled = variant ? variant === "suggest" || variant === "destructive" : tone !== "secondary";
+    const focusRing =
+      filled && focused
+        ? {
+            outlineColor: theme.contentPrimary.val,
+            outlineOffset: tv ? 3 : 2,
+            outlineStyle: "solid" as const,
+            outlineWidth: 3,
+          }
+        : undefined;
     const backgroundColor = look
       ? look.background
       : tone === "danger"
@@ -136,24 +155,34 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           : selected
             ? theme.surfaceFocus.val
             : theme.surfaceElevated.val;
+    // Amber is focus, never selection (#1887). A selected secondary action is neutral-pressed
+    // (#1909 Q1/Q2): the `surfaceFocus` fill, a foreground border and a heavier label, so the
+    // current item reads from across a room while one amber border still marks where the remote is.
+    const pressed = !look && tone === "secondary" && selected;
     const borderColor = look
-      ? focused
+      ? focused && !filled
         ? theme.actionFocus.val
         : look.border
-      : focused || selected
+      : focused && !filled
         ? theme.actionFocus.val
         : tone === "danger"
           ? theme.stateDanger.val
           : tone === "primary"
             ? theme.actionPrimary.val
-            : stacked
-              ? backgroundColor
-              : theme.borderControl.val;
+            : pressed
+              ? theme.contentPrimary.val
+              : stacked
+                ? backgroundColor
+                : theme.borderControl.val;
     const textColor = variant ? variantTextColor(theme, variant) : undefined;
+    // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
+    const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "secondary" && !selected
-        ? "secondary"
+      : tone === "secondary"
+        ? selected
+          ? "content"
+          : "secondary"
         : "inverse";
 
     const content =
@@ -163,12 +192,13 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             decorative
             glyph={icons[icon]}
             size="default"
-            tone={look ? look.iconTone : tone === "secondary" && !selected ? "content" : "inverse"}
+            tone={look ? look.iconTone : tone === "secondary" ? "content" : "inverse"}
           />
           <TamaguiText
             color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
             fontFamily="$body"
             fontSize={typography[density].cardMeta.size}
+            fontWeight={pressed ? "600" : undefined}
             lineHeight={typography[density].cardMeta.lineHeight}
             numberOfLines={1}
           >
@@ -187,7 +217,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
             fontFamily="$body"
             fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-            fontWeight={tv ? "400" : "700"}
+            fontWeight={labelWeight}
             textDecorationLine={variant === "link" ? "underline" : undefined}
           >
             {children}
@@ -198,7 +228,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
           fontFamily="$body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-          fontWeight={tv ? "400" : "700"}
+          fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
         >
           {children}
@@ -217,13 +247,14 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           : focused
             ? 2
             : 1
-        : focused
+        : focused && !filled
           ? tv
             ? 3
             : 4
-          : tv
+          : tv && !pressed
             ? 1
             : 2,
+      ...focusRing,
       justifyContent: "center" as const,
       minHeight: tv ? 0 : semanticTargets[density],
       opacity: isDisabled ? 0.55 : 1,
@@ -380,6 +411,58 @@ const Field = ({
   );
 };
 
+type FieldHintProps = {
+  children: ReactNode;
+  /** Web layout hooks only (a grid span, a gap beside an icon). Never colour or type: those are the hint's own. */
+  className?: string;
+  density?: Density;
+  /** The id a control's `aria-describedby` points at, so the hint is read with the field. */
+  id?: string;
+  /**
+   * `alert` announces a validation message the moment it appears. Leave it unset for standing help,
+   * which a screen reader reaches through the control's `aria-describedby` instead.
+   */
+  role?: "alert" | "status";
+  tone?: "error" | "help";
+};
+
+/**
+ * A form field's help or validation line (#970 step 45). On the Web it is a real `<p>`, so a native
+ * `<input>`'s `aria-describedby` resolves to it and its text joins the control's accessible
+ * description; the control itself stays a browser element, keeping form submission and the
+ * browser's own validation. Help reads in the secondary content colour, an error in the danger
+ * colour: the two Web conventions it replaces (`text-muted-foreground` / `text-onair-300`).
+ *
+ * Field's own description and error lines keep their `metadata` measure: the native field has
+ * its own approved look, and folding it onto this one would change it.
+ */
+const FieldHint = ({ children, className, density = "pointer", id, role, tone = "help" }: FieldHintProps) => (
+  <Text
+    // `role` is outside TextProps on purpose (a readout is not a landmark); a hint is the exception.
+    {...({ role } as object)}
+    as={isWeb ? "p" : undefined}
+    className={className}
+    density={density}
+    id={id}
+    textRole="hint"
+    tone={tone === "error" ? "danger" : "secondary"}
+  >
+    {children}
+  </Text>
+);
+
+// The amber focus ring around a checkbox, switch or radio box, outside a gap so it never touches
+// the box's own border.
+const boxFocusRing = (focused: boolean, density: Density) =>
+  focused
+    ? ({
+        outlineColor: "$actionFocus",
+        outlineOffset: 2,
+        outlineStyle: "solid",
+        outlineWidth: density === "tv" ? 3 : 2,
+      } as const)
+    : {};
+
 type ToggleProps = {
   checked: boolean;
   density?: Density;
@@ -407,6 +490,9 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
+  const [hasFocus, setFocused] = useState(false);
+  const behindModal = useBehindModal();
+  const focused = hasFocus && !behindModal;
   return (
     <Pressable
       accessibilityLabel={label}
@@ -415,6 +501,8 @@ const Toggle = ({
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onPress={() => onCheckedChange(!checked)}
       style={{
         alignItems: "center",
@@ -424,19 +512,22 @@ const Toggle = ({
         opacity: disabled ? 0.55 : 1,
       }}
     >
+      {/* Checked is a selection, so it is neutral-pressed (#1909): elevated fill with a foreground
+          border and mark. Amber is the focus ring around the box, outside a gap. */}
       <Surface
         alignItems={kind === "switch" ? (checked ? "flex-end" : "flex-start") : "center"}
-        backgroundColor={checked ? "$actionPrimary" : "$surfaceCanvas"}
-        borderColor={checked ? "$actionPrimary" : "$borderControl"}
+        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
+        borderColor={checked ? "$contentPrimary" : "$borderControl"}
         borderRadius={kind === "switch" ? "$round" : "$control"}
         height={controlSize}
         justifyContent="center"
         padding={kind === "switch" ? 3 : 0}
         width={kind === "switch" ? switchWidth : controlSize}
+        {...boxFocusRing(focused, density)}
       >
         {kind === "switch" ? (
           <View
-            backgroundColor={checked ? "$contentInverse" : "$contentSecondary"}
+            backgroundColor={checked ? "$contentPrimary" : "$contentSecondary"}
             borderRadius="$round"
             height={controlSize - 8}
             width={controlSize - 8}
@@ -446,7 +537,7 @@ const Toggle = ({
             decorative
             glyph={icons.success}
             size={density === "tv" ? "control" : "compact"}
-            tone="inverse"
+            tone="content"
           />
         ) : null}
       </Surface>
@@ -456,7 +547,7 @@ const Toggle = ({
             {label}
           </Text>
           {description ? (
-            <Text density={density} textRole="metadata">
+            <Text density={density} textRole="hint">
               {description}
             </Text>
           ) : null}
@@ -481,6 +572,67 @@ type ChoiceGroupProps<Value extends string> = {
   value: Value;
 };
 
+const ChoiceRow = ({
+  checked,
+  density,
+  onPress,
+  option,
+}: {
+  checked: boolean;
+  density: Density;
+  onPress: () => void;
+  option: ChoiceOption<string>;
+}) => {
+  const [hasFocus, setFocused] = useState(false);
+  const behindModal = useBehindModal();
+  return (
+    <Pressable
+      accessibilityLabel={option.label}
+      accessibilityRole="radio"
+      accessibilityState={{ checked, disabled: option.disabled }}
+      aria-checked={checked}
+      aria-disabled={option.disabled || undefined}
+      disabled={option.disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        flexDirection: "row",
+        gap: semanticSpace.control,
+        minHeight: semanticTargets[density],
+        opacity: option.disabled ? 0.55 : 1,
+      }}
+    >
+      <Surface
+        alignItems="center"
+        // A chosen option is neutral-pressed (#1909), like a checked box; amber is the focus ring.
+        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
+        borderColor={checked ? "$contentPrimary" : "$borderControl"}
+        borderRadius="$round"
+        height={density === "tv" ? 36 : 24}
+        justifyContent="center"
+        width={density === "tv" ? 36 : 24}
+        {...boxFocusRing(hasFocus && !behindModal, density)}
+      >
+        {checked ? (
+          <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
+        ) : null}
+      </Surface>
+      <View flex={1} gap={2}>
+        <Text density={density} textRole="label">
+          {option.label}
+        </Text>
+        {option.description ? (
+          <Text density={density} textRole="hint">
+            {option.description}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+};
+
 const ChoiceGroup = <Value extends string>({
   density = "pointer",
   label,
@@ -492,54 +644,25 @@ const ChoiceGroup = <Value extends string>({
     <Text density={density} textRole="label">
       {label}
     </Text>
-    {options.map((option) => {
-      const checked = option.value === value;
-      return (
-        <Pressable
-          accessibilityLabel={option.label}
-          accessibilityRole="radio"
-          accessibilityState={{ checked, disabled: option.disabled }}
-          aria-checked={checked}
-          aria-disabled={option.disabled || undefined}
-          disabled={option.disabled}
-          key={option.value}
-          onPress={() => onValueChange(option.value)}
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            gap: semanticSpace.control,
-            minHeight: semanticTargets[density],
-            opacity: option.disabled ? 0.55 : 1,
-          }}
-        >
-          <Surface
-            alignItems="center"
-            backgroundColor={checked ? "$actionPrimary" : "$surfaceCanvas"}
-            borderColor={checked ? "$actionPrimary" : "$borderControl"}
-            borderRadius="$round"
-            height={density === "tv" ? 36 : 24}
-            justifyContent="center"
-            width={density === "tv" ? 36 : 24}
-          >
-            {checked ? (
-              <View backgroundColor="$contentInverse" borderRadius="$round" height="45%" width="45%" />
-            ) : null}
-          </Surface>
-          <View flex={1} gap={2}>
-            <Text density={density} textRole="label">
-              {option.label}
-            </Text>
-            {option.description ? (
-              <Text density={density} textRole="metadata">
-                {option.description}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
-      );
-    })}
+    {options.map((option) => (
+      <ChoiceRow
+        checked={option.value === value}
+        density={density}
+        key={option.value}
+        onPress={() => onValueChange(option.value)}
+        option={option}
+      />
+    ))}
   </View>
 );
 
-export type { ActionProps, ActionVariant, ChoiceGroupProps, ChoiceOption, FieldProps, ToggleProps };
-export { Action, ChoiceGroup, Field, Toggle };
+export type {
+  ActionProps,
+  ActionVariant,
+  ChoiceGroupProps,
+  ChoiceOption,
+  FieldHintProps,
+  FieldProps,
+  ToggleProps,
+};
+export { Action, ChoiceGroup, Field, FieldHint, Toggle };

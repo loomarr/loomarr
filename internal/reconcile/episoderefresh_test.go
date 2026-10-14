@@ -23,8 +23,8 @@ func TestEpisodeRefreshSnapshotsResolverOnceAcrossRun(t *testing.T) {
 		key       provision.Key
 		libraryID string
 	}{
-		{key: provision.Key("series:tvdb:101"), libraryID: "show-101"},
-		{key: provision.Key("series:tvdb:202"), libraryID: "show-202"},
+		{key: provision.Key("series:tvdb:90000101"), libraryID: "show-101"},
+		{key: provision.Key("series:tvdb:90000202"), libraryID: "show-202"},
 	}
 	lineup := make([]schedule.LineupEntry, 0, len(shows))
 	for _, show := range shows {

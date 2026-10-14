@@ -23,7 +23,13 @@ playback.
 - **Controls.** Channel Up/Down are visible controls; `ArrowUp`/`ArrowDown`, `PageUp`/`PageDown` and
   `ChannelUp`/`ChannelDown` invoke them when focus is not in a control that owns those keys. The OSD
   switches at once to the target and `Tuning…` and stays over the held frame until the replacement
-  decodes. A failed tune keeps the target visible with a retry. Digits tune a channel by number
+  decodes. A failed tune keeps the target visible with a retry, which takes focus on a TV. A start
+  the server refuses (a 5xx answer to the master, the request that starts the stream) shows the
+  server's reason with that retry at once, with no automatic retry: the server already waited out
+  its start deadline, and a retry would wait it out again for the same answer. Native clients
+  fetch a cold tune's master themselves for this, because AVPlayer reports a refused master as
+  "resource unavailable" with no status and no body, and then open its only rendition. A server
+  that can't be reached says so in words. Digits tune a channel by number
   (up to three, 1.2 s to finish, `Enter` tunes at once), the same entry the TV remote uses; on the
   web, `G` opens the channels drawer. Both go through the same latest-request-wins tune. A settled
   tune (its first frame) records itself in the viewer's recents; a warm or a channel surfed past
@@ -169,6 +175,13 @@ credential or pairing state; the responder stays silent while `server.public_url
 discovery failure never blocks readiness. The client browses only while the connection screen is in
 the foreground, for at most thirty seconds per visit, then leaves manual entry. Discovery grants no
 trust: the viewer picks a server and completes the revocable device-code pairing.
+
+**Plain HTTP.** A server may be plain `http://`, often under a local DNS name such as `loomarr.lan`
+or `loomarr.home.arpa`, which neither platform's default treats as local. Every client permits it.
+Android opts the application into cleartext (`with-loomarr-android-network.cjs`). iOS and tvOS
+replace App Transport Security with `NSAllowsArbitraryLoads` alone (`with-loomarr-ios-network.cjs`),
+because Apple ignores that key while `NSAllowsLocalNetworking` is also present. A credential sent
+over plain HTTP is only as private as the network; HTTPS stays the recommended setup.
 
 **Changing servers.** A catalog failure offers **Retry** and **Change server**; the saved credential
 stays until a new pairing atomically replaces it. **Disconnect device** revokes remotely first; if

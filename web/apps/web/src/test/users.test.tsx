@@ -336,27 +336,27 @@ describe("Users page", () => {
   it("opens the import dialog with real candidate names", async () => {
     stubUsers({
       candidates: [
-        { id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true },
-        { id: "e2", name: "Lovelace", imported: true, disabled: false, isAdmin: false },
+        { id: "e1", name: "Finch", imported: false, disabled: false, isAdmin: true },
+        { id: "e2", name: "Hale", imported: true, disabled: false, isAdmin: false },
       ],
     });
     renderAt("/people");
     await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
-    expect(await screen.findByText("Hopper")).toBeInTheDocument();
+    expect(await screen.findByText("Finch")).toBeInTheDocument();
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
     expect(screen.getByText(/already imported/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/lovelace/i)).toBeDisabled();
+    expect(screen.getByLabelText(/hale/i)).toBeDisabled();
   });
 
   it("imports selected ids without asking the caller to reinterpret server roles", async () => {
     const { imports } = stubUsers({
-      candidates: [{ id: "e1", name: "Hopper", imported: false, disabled: false, isAdmin: true }],
+      candidates: [{ id: "e1", name: "Finch", imported: false, disabled: false, isAdmin: true }],
     });
     renderAt("/people");
 
     await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
-    await userEvent.click(await screen.findByLabelText(/^Hopper/));
+    await userEvent.click(await screen.findByLabelText(/^Finch/));
     expect(screen.queryByLabelText(/grant admin to server admins/i)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /import 1 account/i }));
 

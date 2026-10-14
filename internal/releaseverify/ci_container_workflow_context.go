@@ -10,10 +10,10 @@ import (
 
 // The household self-hosted runner (#1570) must never execute a `pull_request` run, including one
 // from a fork — the repository is public. `push` alone matches every branch, not just `main`, so
-// only `merge_group`, a write-access `workflow_dispatch`, and a push to `main` specifically may
-// select it; every other event or ref, including a push to any other branch, falls back to
-// `ubuntu-latest`.
-const goWorkflowSelfHostedRunsOn = `${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}`
+// only `merge_group` and a push to `main` specifically may select it; every other event or ref,
+// including `workflow_dispatch` (which would otherwise starve the merge queue of the two runners)
+// and a push to any other branch, falls back to `ubuntu-latest`.
+const goWorkflowSelfHostedRunsOn = `${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}`
 
 type workflowJobContextKey struct {
 	workflow string
@@ -105,10 +105,16 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 			name: "Build image (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}",
 			strategy: &workflowStrategyAuthority{include: []workflowMatrixEntryAuthority{{platform: "linux/amd64", runner: "ubuntu-24.04", arch: "amd64"}, {platform: "linux/arm64", runner: "ubuntu-24.04-arm", arch: "arm64"}}},
 		},
-		{workflow: "release.yml", job: "publish"}:               {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
-		{workflow: "deadcode.yml", job: "report"}:               {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
-		{workflow: "rust-maintenance.yml", job: "supply-chain"}: {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
-		{workflow: "rust-maintenance.yml", job: "fuzz"}:         {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
+		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
+		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "visual-baselines.yml", job: "resolve"}:       {name: "Resolve the pull request's branch", runsOn: "ubuntu-latest", timeoutMinutes: 5},
+		{workflow: "visual-baselines.yml", job: "render"}:        {name: "Render on the pull request's branch", runsOn: "ubuntu-latest", needs: "resolve", timeoutMinutes: 60},
+		{workflow: "visual-baselines.yml", job: "commit"}:        {name: "Commit the changed baselines", runsOn: "ubuntu-latest", needsList: []string{"resolve", "render"}, timeoutMinutes: 10},
+		{workflow: "visual-baselines.yml", job: "ci"}:            {name: "Re-run CI on the new head", runsOn: "ubuntu-latest", needsList: []string{"resolve", "commit"}, timeoutMinutes: 10},
+		{workflow: "visual-baselines-render.yml", job: "render"}: {name: "Render the visual baselines", runsOn: "ubuntu-latest", timeoutMinutes: 45},
 	}
 }
 

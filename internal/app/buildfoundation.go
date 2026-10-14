@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -43,6 +44,7 @@ type foundationBuild struct {
 	diagnosticProcesses    *diagnostics.ProcessLog
 	diagnosticBundles      *diagnostics.BundleService
 	clientDiagnostics      *diagnostics.ClientIngestor
+	clientCrashes          *diagnostics.ClientCrashes
 	processDiagnostics     *diagnostics.ProcessManager
 	startup                *diagnostics.Startup
 	startupReports         *diagnostics.StartupReports
@@ -87,7 +89,7 @@ func buildFoundation(
 		}, time.Now)
 		if st == nil {
 			result.startup.Complete("database", diagnostics.StartupFailed, "no store configured", "/settings/system/database", "")
-		} else if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && err != store.ErrNotFound {
+		} else if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && !errors.Is(err, store.ErrNotFound) {
 			result.startup.Complete("database", diagnostics.StartupFailed, "store unreachable", "/settings/system/database", "")
 		} else {
 			result.startup.Complete("database", diagnostics.StartupPassed, "ready", "", "")
@@ -108,6 +110,7 @@ func buildFoundation(
 		owner.addStop(result.diagnostics.Close)
 		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now).WithDropped(result.diagnostics.Dropped)
 		result.clientDiagnostics = diagnostics.NewClientIngestor(result.diagnostics, time.Now)
+		result.clientCrashes = diagnostics.NewClientCrashes(st, time.Now)
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}

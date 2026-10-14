@@ -12,23 +12,12 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-func lineupEntry(tmdbID int, title string) schedule.LineupEntry {
+// lineupEntry is film n's lineup entry, keyed like acqItem(n).
+func lineupEntry(n int, title string) schedule.LineupEntry {
 	return schedule.LineupEntry{
-		Key:   provision.Key("movie:tmdb:" + itoa(tmdbID)),
+		Key:   movieKey(n),
 		Title: title,
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }
 
 // seedFullChannel writes an auto-curate channel AT its cap, with `airing` marked as currently
@@ -93,13 +82,13 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	// Cap of 2, both slots full. Only "Bench Title" is retirable — the other is on the air.
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Bench Title")},
-		[]provision.Key{provision.Key("movie:tmdb:100")})
+		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	item := acqItem(300, "Much Better Fit", 0.95)
 	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{item}, Trace: suggest.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:300", Name: item.Name, Ownership: "acquisition",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}}
 	blob, err := json.Marshal(body)
 	if err != nil {
@@ -120,7 +109,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 		t.Fatalf("enqueued = %d, want 1 (the turnstile should admit a better title)", d.Enqueued)
 	}
 	retired := retiredOf(t, st, "p1")
-	if !retired[provision.Key("movie:tmdb:200")] {
+	if !retired[provision.Key("movie:tmdb:90000200")] {
 		t.Error("the weakest retirable title should have been retired")
 	}
 	persisted, err := st.GetProposal(context.Background(), "p1")
@@ -134,17 +123,17 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if len(after.Trace.Candidates) != 1 || after.Trace.Candidates[0] != body.Trace.Candidates[0] {
 		t.Fatalf("re-curation rewrote original decision evidence: before=%+v after=%+v", body.Trace, after.Trace)
 	}
-	if retired[provision.Key("movie:tmdb:100")] {
+	if retired[provision.Key("movie:tmdb:90000100")] {
 		t.Error("the AIRING title must never be retired")
 	}
 	lineup := lineupOf(t, st, "ch1")
-	if lineup[provision.Key("movie:tmdb:200")] {
+	if lineup[provision.Key("movie:tmdb:90000200")] {
 		t.Error("retired title still exists in the committed channel lineup")
 	}
-	if !lineup[provision.Key("movie:tmdb:100")] {
+	if !lineup[provision.Key("movie:tmdb:90000100")] {
 		t.Error("airing title disappeared from the committed channel lineup")
 	}
-	if !lineup[provision.Key("movie:tmdb:300")] {
+	if !lineup[provision.Key("movie:tmdb:90000300")] {
 		t.Error("admitted replacement is missing from the committed channel lineup")
 	}
 }
@@ -154,10 +143,10 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 	st := newStore(t)
 	seedFullChannel(t, st, "ch-keep", "job-keep",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Family Favorite")},
-		[]provision.Key{"movie:tmdb:100"})
+		[]provision.Key{"movie:tmdb:90000100"})
 	if err := st.AppendDiscoveryFeedback(context.Background(), store.DiscoveryFeedback{
 		ID: "keep-1", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "ch-keep",
-		Target: "movie:tmdb:200", Action: store.FeedbackKeep,
+		Target: "movie:tmdb:90000200", Action: store.FeedbackKeep,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -168,10 +157,10 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Enqueued != 0 || retiredOf(t, st, "p-keep")["movie:tmdb:200"] {
+	if d.Enqueued != 0 || retiredOf(t, st, "p-keep")["movie:tmdb:90000200"] {
 		t.Fatalf("keep feedback allowed automatic retirement: decision=%+v", d)
 	}
-	if !lineupOf(t, st, "ch-keep")["movie:tmdb:200"] {
+	if !lineupOf(t, st, "ch-keep")["movie:tmdb:90000200"] {
 		t.Fatal("kept title disappeared from the channel")
 	}
 }
@@ -185,7 +174,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 	// Cap of 1, and that one title is on the air.
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title")},
-		[]provision.Key{provision.Key("movie:tmdb:100")})
+		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "Much Better Fit", 0.99),
@@ -199,7 +188,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 	if d.Enqueued != 0 {
 		t.Fatalf("enqueued = %d, want 0 (nothing retirable ⇒ drop the newcomer)", d.Enqueued)
 	}
-	if !lineupOf(t, st, "ch1")[provision.Key("movie:tmdb:100")] {
+	if !lineupOf(t, st, "ch1")[provision.Key("movie:tmdb:90000100")] {
 		t.Fatal("an airing title was retired — a viewer's programme was pulled out from under them")
 	}
 }
@@ -221,7 +210,7 @@ func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := lineupOf(t, st, "ch1")
-	if !got[provision.Key("movie:tmdb:100")] || !got[provision.Key("movie:tmdb:200")] {
+	if !got[provision.Key("movie:tmdb:90000100")] || !got[provision.Key("movie:tmdb:90000200")] {
 		t.Fatal("nothing should be retired while the channel is under its cap")
 	}
 }
@@ -250,7 +239,7 @@ func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
 		t.Fatalf("enqueued = %d, want 0 (an unknown schedule must retire nothing)", d.Enqueued)
 	}
 	got := lineupOf(t, st, "ch1")
-	if !got[provision.Key("movie:tmdb:100")] || !got[provision.Key("movie:tmdb:200")] {
+	if !got[provision.Key("movie:tmdb:90000100")] || !got[provision.Key("movie:tmdb:90000200")] {
 		t.Fatal("a channel with an unknown schedule had its lineup churned")
 	}
 }
@@ -263,7 +252,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 	st := newStore(t)
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing"), lineupEntry(200, "Bench")},
-		[]provision.Key{provision.Key("movie:tmdb:100")})
+		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	// A lineup entry carries no stored confidence, so the bench scores 0 — an incoming 0
 	// therefore ties it and must NOT displace it.
@@ -275,7 +264,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 	if _, err := cur.Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
-	if retiredOf(t, st, "p1")[provision.Key("movie:tmdb:200")] {
+	if retiredOf(t, st, "p1")[provision.Key("movie:tmdb:90000200")] {
 		t.Fatal("a tie retired the bench title — that is coin-flip churn")
 	}
 }
@@ -293,7 +282,7 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 		[]schedule.LineupEntry{
 			lineupEntry(100, "Airing"), lineupEntry(200, "Stale"), lineupEntry(300, "Also Stale"),
 		},
-		[]provision.Key{provision.Key("movie:tmdb:100")})
+		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(400, "Fresh Pick", 0.95),
@@ -311,12 +300,12 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 	// `wanted` title and does not join ch.Lineup until it lands, so counting entries cannot
 	// distinguish "traded" from "took a free slot". One of the two stale titles must be gone.
 	retired := retiredOf(t, st, "p1")
-	staleGone := retired[provision.Key("movie:tmdb:200")] || retired[provision.Key("movie:tmdb:300")]
+	staleGone := retired[provision.Key("movie:tmdb:90000200")] || retired[provision.Key("movie:tmdb:90000300")]
 	if !staleGone {
 		t.Fatal("above the rotation target a better candidate must retire a stale title, " +
 			"even though a free slot exists (the ratchet is back)")
 	}
-	if retired[provision.Key("movie:tmdb:100")] {
+	if retired[provision.Key("movie:tmdb:90000100")] {
 		t.Error("the airing title must never be retired, target or no target")
 	}
 }
@@ -329,7 +318,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 	// Cap 10 ⇒ target 7. Two titles is well below it.
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
-		[]provision.Key{provision.Key("movie:tmdb:100")})
+		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
 		acqItem(300, "New", 0.95),
@@ -340,7 +329,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := lineupOf(t, st, "ch1")
-	if !got[provision.Key("movie:tmdb:100")] || !got[provision.Key("movie:tmdb:200")] {
+	if !got[provision.Key("movie:tmdb:90000100")] || !got[provision.Key("movie:tmdb:90000200")] {
 		t.Fatal("a young channel must fill up, not churn")
 	}
 }
@@ -354,7 +343,7 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B"), lineupEntry(300, "C")},
 		[]provision.Key{
-			provision.Key("movie:tmdb:100"), provision.Key("movie:tmdb:200"), provision.Key("movie:tmdb:300"),
+			provision.Key("movie:tmdb:90000100"), provision.Key("movie:tmdb:90000200"), provision.Key("movie:tmdb:90000300"),
 		})
 
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
@@ -373,7 +362,7 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 	if len(lineup) != 4 {
 		t.Fatalf("lineup = %d titles, want the three protected titles plus the newcomer", len(lineup))
 	}
-	for _, key := range []provision.Key{"movie:tmdb:100", "movie:tmdb:200", "movie:tmdb:300"} {
+	for _, key := range []provision.Key{"movie:tmdb:90000100", "movie:tmdb:90000200", "movie:tmdb:90000300"} {
 		if !lineup[key] {
 			t.Errorf("airing title %s was retired", key)
 		}

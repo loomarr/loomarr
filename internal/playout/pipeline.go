@@ -699,9 +699,14 @@ func (b *builder) nvenc() error {
 	}
 	if bug {
 		// overlay_cuda outputs the aligned surface (1088 lines at 1080p); passthrough=0 makes the
-		// scale a real pass that restores the output geometry and a bug-off-identical SPS.
+		// scale a real pass that restores the output geometry and a bug-off-identical SPS. The bug's
+		// RGB→YUV matrix is stated, as on the VAAPI path: ffmpeg's unstated default is BT.601, which
+		// white survives but a coloured bug does not (#1659); the main is BT.709 limited range.
+		// overlay_cuda negotiates one colourspace and range for both inputs, and an untagged main
+		// cannot meet the tagged bug once both are CUDA frames, so the main takes the output's own
+		// declaration (conformColour, metadata only: tail() declares the same) before the blend.
 		b.p.Watermark = true
-		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Straight+",format=yuva420p,hwupload_cuda",
+		b.p.VideoFilter = overlaid(append(f, conformColour), "movie=filename="+b.wm.Straight+",format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda",
 			"overlay_cuda="+b.bugPosition(),
 			fmt.Sprintf("scale_cuda=w=%d:h=%d:format=yuv420p:passthrough=0", b.out.Width, b.out.Height), b.tail())
 		return nil

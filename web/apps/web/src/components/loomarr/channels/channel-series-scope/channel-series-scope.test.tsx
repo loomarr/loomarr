@@ -54,28 +54,28 @@ describe("ChannelSeriesScope", () => {
     stubSearch([]);
     render(
       <ChannelSeriesScope
-        policy={{ scope: { series: ["series:tvdb:73739", "series:tvdb:71663"] } }}
+        policy={{ scope: { series: ["series:tvdb:90073739", "series:tvdb:90071663"] } }}
         onChange={vi.fn()}
       />,
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("tvdb 73739")).toBeInTheDocument();
+    expect(screen.getByText("tvdb 90073739")).toBeInTheDocument();
   });
 
   // The whole reason this needed a picker rather than a text box: the field is
   // []provision.Key — RESOLVED ids, never names — so a search result must be lowered to a key.
   it("adds a picked series as a resolved provisioning key", async () => {
-    stubSearch([{ name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: true }]);
+    stubSearch([{ name: "Kettle Kids", year: 1989, mediaType: "series", tvdbId: 90071663, inLibrary: true }]);
     const onChange = vi.fn();
     render(<ChannelSeriesScope policy={POPULATED} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
-    await userEvent.type(screen.getByLabelText("Search"), "simpsons");
-    await userEvent.click(await screen.findByText("The Simpsons"));
+    await userEvent.type(screen.getByLabelText("Search"), "kettle");
+    await userEvent.click(await screen.findByText("Kettle Kids"));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: expect.objectContaining({ series: ["series:tvdb:71663"], dates: POPULATED.scope?.dates }),
+        scope: expect.objectContaining({ series: ["series:tvdb:90071663"], dates: POPULATED.scope?.dates }),
       }),
     );
     // Reconcile-owned `applied` rides through untouched.
@@ -87,28 +87,30 @@ describe("ChannelSeriesScope", () => {
   // than offered-then-rejected — the same prevention the lineup editor uses.
   it("offers only series that carry a resolvable id", async () => {
     stubSearch([
-      { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
+      { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
       { name: "Nameless Show", mediaType: "series", inLibrary: false },
-      { name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: true },
+      { name: "Kettle Kids", year: 1989, mediaType: "series", tvdbId: 90071663, inLibrary: true },
     ]);
     render(<ChannelSeriesScope policy={POPULATED} onChange={vi.fn()} />);
 
     await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
     await userEvent.type(screen.getByLabelText("Search"), "the");
 
-    await waitFor(() => expect(screen.getByText("The Simpsons")).toBeInTheDocument());
-    expect(screen.queryByText("Heat")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Kettle Kids")).toBeInTheDocument());
+    expect(screen.queryByText("The Velvet Cartographer")).not.toBeInTheDocument();
     expect(screen.queryByText("Nameless Show")).not.toBeInTheDocument();
   });
 
   it("does not offer a series already picked", async () => {
-    stubSearch([{ name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: true }]);
-    render(<ChannelSeriesScope policy={{ scope: { series: ["series:tvdb:71663"] } }} onChange={vi.fn()} />);
+    stubSearch([{ name: "Kettle Kids", year: 1989, mediaType: "series", tvdbId: 90071663, inLibrary: true }]);
+    render(
+      <ChannelSeriesScope policy={{ scope: { series: ["series:tvdb:90071663"] } }} onChange={vi.fn()} />,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
-    await userEvent.type(screen.getByLabelText("Search"), "simpsons");
+    await userEvent.type(screen.getByLabelText("Search"), "kettle");
 
-    await waitFor(() => expect(screen.queryByText("The Simpsons")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Kettle Kids")).not.toBeInTheDocument());
   });
 
   // Clearing the last chip must send [] rather than dropping the key: `series` is omitempty,
@@ -117,9 +119,11 @@ describe("ChannelSeriesScope", () => {
   it("removing the last series commits an empty array, not undefined", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ChannelSeriesScope policy={{ scope: { series: ["series:tvdb:71663"] } }} onChange={onChange} />);
+    render(
+      <ChannelSeriesScope policy={{ scope: { series: ["series:tvdb:90071663"] } }} onChange={onChange} />,
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: /Remove tvdb 71663/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Remove tvdb 90071663/ }));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ scope: { series: [] } }));
     expect(onChange.mock.lastCall?.[0].scope).toHaveProperty("series");
@@ -130,15 +134,15 @@ describe("ChannelSeriesScope", () => {
     const onChange = vi.fn();
     render(
       <ChannelSeriesScope
-        policy={{ scope: { series: ["series:tvdb:73739", "series:tvdb:71663"] } }}
+        policy={{ scope: { series: ["series:tvdb:90073739", "series:tvdb:90071663"] } }}
         onChange={onChange}
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /Remove tvdb 73739/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Remove tvdb 90073739/ }));
 
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: { series: ["series:tvdb:71663"] } }),
+      expect.objectContaining({ scope: { series: ["series:tvdb:90071663"] } }),
     );
   });
 
@@ -151,7 +155,7 @@ describe("ChannelSeriesScope", () => {
     render(<ChannelSeriesScope policy={POPULATED} onChange={vi.fn()} />);
 
     await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
-    await userEvent.type(screen.getByLabelText("Search"), "simp");
+    await userEvent.type(screen.getByLabelText("Search"), "kett");
     await userEvent.keyboard("{Escape}");
 
     expect(await screen.findByRole("button", { name: /Add a show/ })).toBeInTheDocument();

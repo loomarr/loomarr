@@ -18,8 +18,9 @@ type packagerSource struct {
 	gpu     func() playout.GPUFilters
 	// targetLUFS reads filler.target_lufs live, so a changed target applies at the next clip.
 	targetLUFS func() string
-	// watermark is the channel's bug for an output (channelWatermarks.For); nil draws none.
-	watermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
+	// watermark is the channel's bug for an output at an airing's start (channelWatermarks.For);
+	// nil draws none.
+	watermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int, at time.Time) *playout.Watermark
 	log       *slog.Logger
 }
 
@@ -30,7 +31,7 @@ func (s packagerSource) watermarkFor(channelID string, airing playout.Airing) pl
 		return nil
 	}
 	return func(ctx context.Context, enc playout.Encoder, width, height int) *playout.Watermark {
-		return s.watermark(ctx, channelID, enc, width, height)
+		return s.watermark(ctx, channelID, enc, width, height, airing.StartedAt)
 	}
 }
 

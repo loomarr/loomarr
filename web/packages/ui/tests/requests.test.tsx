@@ -177,7 +177,7 @@ describe("requests list", () => {
     it("keeps a member out of both groups even when the snapshot carries them", () => {
       const markup = list({ snapshot: requestsSnapshot({ approvals, fillerPulls }), tab: "needs-you" });
       expect(markup).not.toContain("Retro game-show bumpers");
-      expect(markup).not.toContain("Grace Hopper");
+      expect(markup).not.toContain("Greta Finch");
     });
 
     it("gives an admin two groups first, then their own failures, counted together", () => {
@@ -186,7 +186,7 @@ describe("requests list", () => {
       expect(at("Channel requests")).toBeLessThan(at("Filler downloads"));
       expect(at("Filler downloads")).toBeLessThan(at("Couldn&#x27;t be built"));
       expect(markup).toContain('aria-label="Needs you, 6"');
-      expect(markup).toContain("Requested by Grace Hopper");
+      expect(markup).toContain("Requested by Greta Finch");
       expect(markup.match(/>Approve</g)).toHaveLength(5);
     });
 
@@ -242,7 +242,7 @@ describe("requests list", () => {
     it("shows a group in Select mode as checkboxes, and only that group", () => {
       const review: ReviewState = {
         ...initialReview,
-        selected: { filler: [], requests: ["approval-grace"] },
+        selected: { filler: [], requests: ["approval-greta"] },
         selecting: { filler: false, requests: true },
       };
       const markup = list({ review, snapshot: admin(), tab: "needs-you" });
@@ -263,7 +263,7 @@ describe("requests list", () => {
     });
 
     it("disables the decision being made", () => {
-      const markup = list({ snapshot: admin({ deciding: ["approval-grace"] }), tab: "needs-you" });
+      const markup = list({ snapshot: admin({ deciding: ["approval-greta"] }), tab: "needs-you" });
       expect(markup).toContain(">Approving…<");
       expect(markup).toContain('aria-disabled="true"');
     });
@@ -431,7 +431,7 @@ describe("review sheet", () => {
 
   it("confirms a bulk approve with its count, its group and the one-group scope", () => {
     const markup = sheet({
-      selected: { filler: [], requests: ["approval-grace", "approval-mary"] },
+      selected: { filler: [], requests: ["approval-greta", "approval-maren"] },
       sheet: { group: "requests", kind: "bulk" },
     });
     expect(markup).toContain("2 selected in Channel requests");
@@ -444,7 +444,7 @@ describe("review sheet", () => {
   });
 
   it("names the group the sheet is for and counts only that group's ticks when both have some", () => {
-    const selected = { filler: ["pull-stingers"], requests: ["approval-grace", "approval-mary"] };
+    const selected = { filler: ["pull-stingers"], requests: ["approval-greta", "approval-maren"] };
     const filler = sheet({ selected, sheet: { group: "filler", kind: "bulk" } });
     expect(filler).toContain("1 selected in Filler downloads");
     expect(filler).toContain(">Approve 1<");
@@ -455,7 +455,7 @@ describe("review sheet", () => {
 
   it("counts only the rows still waiting when a ticked row was decided elsewhere", () => {
     const markup = sheet({
-      selected: { filler: [], requests: ["approval-grace", "gone"] },
+      selected: { filler: [], requests: ["approval-greta", "gone"] },
       sheet: { group: "requests", kind: "bulk" },
     });
     expect(markup).toContain("1 selected in Channel requests");
@@ -497,7 +497,7 @@ describe("review sheet", () => {
   });
 
   it("denies a channel request with an optional note to the requester", () => {
-    const markup = sheet({ sheet: { group: "requests", id: "approval-grace", kind: "deny" } });
+    const markup = sheet({ sheet: { group: "requests", id: "approval-greta", kind: "deny" } });
     expect(markup).toContain("Deny &quot;Black-and-white thrillers&quot;?");
     expect(markup).toContain("Optional note to the requester");
     expect(markup).toContain('aria-label="Deny request"');
@@ -510,7 +510,7 @@ describe("review sheet", () => {
   });
 
   it("edits a request by unticking titles, approving on the same call", () => {
-    const markup = sheet({ sheet: { id: "approval-grace", kind: "edit" } });
+    const markup = sheet({ sheet: { id: "approval-greta", kind: "edit" } });
     expect(markup).toContain("The Lighthouse Ledger (1998)");
     expect(markup).toContain("Marmalade Street (2003)");
     expect(markup).toContain("Harbour Lights (2011)");
@@ -568,7 +568,7 @@ describe("request detail", () => {
 
   it("lists only the titles still on their way, each with its state", () => {
     const markup = detail("downloading");
-    expect(markup).toContain("Approved by Ada Lovelace");
+    expect(markup).toContain("Approved by Adela Hale");
     expect(markup).toContain("Titles being added");
     expect(markup).toContain(">Downloading<");
     expect(markup).toContain(">Waiting<");

@@ -32,8 +32,8 @@ func body(fill byte, n int) []byte { return bytes.Repeat([]byte{fill}, n) }
 func TestClipID_SameContentInTwoFoldersIsOneIdentity(t *testing.T) {
 	dir := t.TempDir()
 	content := body('a', 200_000)
-	a := writeBytes(t, dir, "folder-one/ads/coke.mp4", content)
-	b := writeBytes(t, dir, "folder-two/ads/coke.mp4", content)
+	a := writeBytes(t, dir, "folder-one/ads/sparkra.mp4", content)
+	b := writeBytes(t, dir, "folder-two/ads/sparkra.mp4", content)
 
 	idA, err := filler.ClipID(a)
 	if err != nil {

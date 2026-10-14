@@ -17,6 +17,7 @@ import {
   getSyncFillerMockHandler,
   getTagFillerClipMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, render, screen, within } from "@testing-library/react";
@@ -38,7 +39,7 @@ const MEMBER: MeBody = me({ role: "member" });
 const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   hash: "c1-hash",
   tunarrProgramId: "c1",
-  name: "Frosted Flakes",
+  name: "Crunchlings",
   kind: "commercial",
   durationMs: 30000,
   era: 1992,
@@ -47,6 +48,7 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   tags: ["cereal", "food"],
   assertedTags: ["cereal"],
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -230,11 +232,14 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+  // LoomarrProvider as main.tsx mounts it: the Library's select box and chip are @loomarr/ui.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
   return router;
 };
@@ -261,7 +266,7 @@ describe("Filler page", () => {
   it("lists the catalog with each clip's match tags", async () => {
     stubFiller();
     renderAt("/filler/library");
-    expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
+    expect(await screen.findByText("Crunchlings")).toBeInTheDocument();
     // §10 V45a era label: a SPECIFIC year renders plain (the tagger grounds a literal year, §8), only
     // a decade boundary gets the "s". 1992 → "1992", not the old nonsense "1992s".
     expect(screen.getByText("1992")).toBeInTheDocument();
@@ -273,20 +278,20 @@ describe("Filler page", () => {
     const { listQueries } = stubFiller({
       clips: [
         clip(),
-        clip({ hash: "c2-hash", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
+        clip({ hash: "c2-hash", tunarrProgramId: "c2", name: "Shell Squad figures", category: "toys" }),
       ],
     });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
-    await userEvent.type(screen.getByLabelText("Search"), "tmnt");
+    await userEvent.type(screen.getByLabelText("Search"), "shell");
 
-    await screen.findByText("TMNT figures");
-    expect(screen.queryByText("Frosted Flakes")).not.toBeInTheDocument();
+    await screen.findByText("Shell Squad figures");
+    expect(screen.queryByText("Crunchlings")).not.toBeInTheDocument();
     // The query params are read off the REQUEST inside the handler bound to `GET /v1/filler`, so
-    // this cannot be satisfied by a `q=tmnt` appearing on some other endpoint's URL.
+    // this cannot be satisfied by a `q=shell` appearing on some other endpoint's URL.
     expect(
-      listQueries.some((s) => new URLSearchParams(s).get("q") === "tmnt"),
+      listQueries.some((s) => new URLSearchParams(s).get("q") === "shell"),
       "the filter must reach the API, not filter a cached list",
     ).toBe(true);
   });
@@ -303,7 +308,7 @@ describe("Filler page", () => {
   it("offers no whole-catalog sync or tag button — that work runs on its own", async () => {
     stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     expect(screen.queryByRole("button", { name: /^sync$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /ai tag/i })).not.toBeInTheDocument();
@@ -315,7 +320,7 @@ describe("Filler page", () => {
   it("heads the page with how many sources are on", async () => {
     stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
   });
@@ -387,14 +392,14 @@ describe("Filler page", () => {
     await userEvent.click(within(editor).getByLabelText("Type"));
     await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
     await userEvent.clear(within(editor).getByLabelText("Advertiser"));
-    await userEvent.type(within(editor).getByLabelText("Advertiser"), "Warner Bros.");
+    await userEvent.type(within(editor).getByLabelText("Advertiser"), "Larkspur Bros.");
     await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
 
     // ⚠ Was `find(([, i]) => i?.method === "PATCH")` — "a PATCH, to anything". `tagPatches` is fed
     // only by the resolver bound to `PATCH /v1/filler/tags`.
     await expect.poll(() => tagPatches).toHaveLength(1);
     expect((tagPatches[0] as { kind: string }).kind).toBe("trailer");
-    expect((tagPatches[0] as { brand: string }).brand).toBe("Warner Bros.");
+    expect((tagPatches[0] as { brand: string }).brand).toBe("Larkspur Bros.");
   });
 
   it("round-trips only directly assigned tags, never inherited rollups", async () => {
@@ -420,11 +425,11 @@ describe("Filler page", () => {
       },
     });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     await userEvent.click(screen.getByRole("button", { name: /view details for/i }));
     await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
-    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    const editor = await screen.findByRole("region", { name: /edit details: crunchlings/i });
     await userEvent.click(within(editor).getByText("Topics and tags"));
     expect(within(editor).getByRole("button", { name: /cereal$/i })).toHaveAttribute("aria-pressed", "true");
     expect(within(editor).getByRole("button", { name: "Food" })).toHaveAttribute("aria-pressed", "false");
@@ -569,11 +574,11 @@ describe("Filler page", () => {
       ],
     });
     renderAt("/filler/library");
-    await userEvent.click(await screen.findByRole("button", { name: /view details for frosted flakes/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /view details for crunchlings/i }));
     expect(screen.queryByText("1985s?")).not.toBeInTheDocument();
     expect(tagPatches).toEqual([]);
     await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
-    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    const editor = await screen.findByRole("region", { name: /edit details: crunchlings/i });
     await userEvent.type(within(editor).getByLabelText("Year"), "1985");
     await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
     await expect.poll(() => tagPatches).toHaveLength(1);
@@ -600,9 +605,9 @@ describe("Filler page", () => {
       ],
     });
     renderAt("/filler/library");
-    await userEvent.click(await screen.findByRole("button", { name: /view details for frosted flakes/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /view details for crunchlings/i }));
     await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
-    const editor = await screen.findByRole("region", { name: /edit details: frosted flakes/i });
+    const editor = await screen.findByRole("region", { name: /edit details: crunchlings/i });
     await userEvent.click(within(editor).getByLabelText("Audience"));
     await userEvent.click(await screen.findByRole("option", { name: "Family" }));
     expect(tagPatches).toEqual([]);
@@ -621,10 +626,10 @@ describe("Filler page", () => {
       clips: [clip({ era: 0, suggestedEra: 1985, tagged: false, isComposite: true, durationMs: 900_000 })],
     });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
     expect(screen.queryByText("1985s?")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /view details for frosted flakes/i }));
+    await userEvent.click(screen.getByRole("button", { name: /view details for crunchlings/i }));
     expect(screen.queryByRole("button", { name: /^edit details$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
@@ -636,7 +641,7 @@ describe("Filler page", () => {
   it("does not offer splitting on a clip that is not a compilation", async () => {
     stubFiller({ clips: [clip()] }); // the default: a 30s commercial
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
     expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
   });
 
@@ -644,7 +649,7 @@ describe("Filler page", () => {
   it("asks before starting a split, and starts nothing if the operator backs out", async () => {
     const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
 
@@ -669,7 +674,7 @@ describe("Filler page", () => {
     // is confirmed rather than fired on the first click.
     const { splitCount } = stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
     const router = renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
     await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
@@ -678,7 +683,7 @@ describe("Filler page", () => {
     await expect.poll(splitCount, { message: "the action should POST the split job" }).toBe(1);
     // The status line now reads the clip's NAME (§10 V45a): `ClipDTO` carries no path any more,
     // and a content hash is meaningless to read in a sentence.
-    expect(await screen.findByText(/detecting cuts in frosted flakes/i)).toBeInTheDocument();
+    expect(await screen.findByText(/detecting cuts in crunchlings/i)).toBeInTheDocument();
 
     act(() => {
       fireFrame("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
@@ -700,7 +705,7 @@ describe("Filler page", () => {
   it("surfaces the split job's terminal error instead of navigating", async () => {
     stubFiller({ clips: [clip({ isComposite: true, durationMs: 900_000 })] });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
     await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
 
@@ -722,11 +727,11 @@ describe("Filler page", () => {
   it("shows the bulk bar only once something is selected", async () => {
     stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
     expect(screen.queryByText(/clip selected/i)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /select crunchlings/i }));
 
     expect(await screen.findByText("1 clip selected")).toBeInTheDocument();
   });
@@ -737,8 +742,8 @@ describe("Filler page", () => {
   it("offers removal in terms of the catalog, never the files", async () => {
     stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
-    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await screen.findByText("Crunchlings");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select crunchlings/i }));
 
     const remove = await screen.findByRole("button", { name: /remove from catalog/i });
     expect(remove).toHaveAttribute("title", expect.stringMatching(/files stay/i));
@@ -748,8 +753,8 @@ describe("Filler page", () => {
   it("bulk-removes the selection through the bulk route", async () => {
     const { bulkRemoves } = stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
-    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await screen.findByText("Crunchlings");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select crunchlings/i }));
     await userEvent.click(await screen.findByRole("button", { name: /remove from catalog/i }));
 
     // §10 V45a: the bulk endpoint takes HASHES (the wire identity `selected` is built from), matching
@@ -763,8 +768,8 @@ describe("Filler page", () => {
   it("sends only the tag field the operator picked", async () => {
     const { bulkTags } = stubFiller();
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
-    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await screen.findByText("Crunchlings");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select crunchlings/i }));
 
     // ⚠ "Set audience", not "Audience": the catalog's filter bar already owns that name, and
     // the first draft of this test found two comboboxes. The distinct label is the fix, and
@@ -781,8 +786,8 @@ describe("Filler page", () => {
   it("gives a member no way to select clips", async () => {
     stubFiller({ me: MEMBER });
     renderAt("/filler/library");
-    await screen.findByText("Frosted Flakes");
+    await screen.findByText("Crunchlings");
 
-    expect(screen.queryByRole("checkbox", { name: /select frosted flakes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /select crunchlings/i })).not.toBeInTheDocument();
   });
 });

@@ -24,7 +24,7 @@ func TestLibraryBoxSetsCacheUsesFullConnectionGeneration(t *testing.T) {
 	now := time.Now()
 	connection := library.Connection{Flavor: library.Emby, BaseURL: "https://emby.invalid/", Token: "token-a"}
 	generation := boxSetGeneration(t, connection)
-	index := map[provision.Key][]string{"movie:tmdb:1": {"collection-1"}}
+	index := map[provision.Key][]string{"movie:tmdb:90000001": {"collection-1"}}
 	cache := &libraryBoxSets{
 		lib: library.NewDynamic(func() library.Connection { return connection }, "device-1"),
 		ttl: time.Hour, index: index, fetched: now, generation: generation,
@@ -64,7 +64,7 @@ func TestLibraryBoxSetsValidatesConnectionBeforeCacheHit(t *testing.T) {
 			lib: library.NewDynamic(func() library.Connection { return incomplete }, "device-1"),
 			ttl: time.Hour,
 			index: map[provision.Key][]string{
-				"movie:tmdb:1": {"collection-1"},
+				"movie:tmdb:90000001": {"collection-1"},
 			},
 			fetched:    time.Now(),
 			generation: boxSetGeneration(t, valid),
@@ -79,12 +79,12 @@ func TestEpisodeResolverCarriesProductionYearToScheduler(t *testing.T) {
 	mediaServer := testkit.NewMediaServer(t)
 	t.Cleanup(mediaServer.Close)
 	mediaServer.SetEpisodeItems(testkit.EpisodeStub{
-		LibraryItemID: "episode-1", Name: "Homer at the Bat", RunTimeMs: 1_320_000,
+		LibraryItemID: "episode-1", Name: "Puddle Town Plays Ball", RunTimeMs: 1_320_000,
 		Season: 3, Episode: 17, ProductionYear: 1992, OfficialRating: "TV-PG",
 	})
 	lib := library.New(library.Emby, mediaServer.URL, mediaServer.AdminToken, "test-device")
 
-	episodes, err := episodeResolver(lib)(context.Background(), "the-simpsons")
+	episodes, err := episodeResolver(lib)(context.Background(), "the-mudpuddles")
 	if err != nil {
 		t.Fatal(err)
 	}

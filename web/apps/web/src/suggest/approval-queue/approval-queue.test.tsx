@@ -37,10 +37,12 @@ const proposal = {
   status: "submitted",
   proposal: {
     intent: { description: "90s action night" },
-    rationale: "Heat leads it",
-    lineup: [{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }],
+    rationale: "The Velvet Cartographer leads it",
+    lineup: [
+      { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+    ],
     acquisitions: [
-      { name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: false },
+      { name: "Kettle Kids", year: 1989, mediaType: "series", tvdbId: 90071663, inLibrary: false },
     ],
   },
 };
@@ -96,7 +98,7 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
         return Promise.resolve(
           jsonResponse({
             candidates: [
-              { name: "Added Series", year: 1989, mediaType: "series", tmdbId: 456, inLibrary: false },
+              { name: "Added Series", year: 1989, mediaType: "series", tmdbId: 90000456, inLibrary: false },
             ],
           }),
         );
@@ -127,7 +129,14 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
                 episodeSelectionPreview: preview,
                 proposal: {
                   intent: { description: "Movie-only proposal before a series is added" },
-                  lineup: [{ name: "Heat", mediaType: "movie", tmdbId: 949, inLibrary: true }],
+                  lineup: [
+                    {
+                      name: "The Velvet Cartographer",
+                      mediaType: "movie",
+                      tmdbId: 90000949,
+                      inLibrary: true,
+                    },
+                  ],
                   acquisitions: [],
                 },
               },
@@ -161,7 +170,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     expect(await screen.findByText(/Short lineup:/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: /Review & edit picks/ }));
     expect(screen.getByText("Titles")).toBeVisible();
-    expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" })).toBeVisible();
     expect(approvals).toEqual([]);
   });
 
@@ -173,7 +182,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     await userEvent.click(toggle);
 
     expect(screen.getByText("Titles")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" })).toBeInTheDocument();
     expect(screen.getByLabelText("Note to the requester")).toBeInTheDocument();
   });
 
@@ -198,12 +207,12 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     render(<ApprovalQueue />);
 
     await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "too violent");
     await userEvent.click(await rowApprove());
 
     await waitFor(() => expect(approvals).toHaveLength(1));
-    expect(approvals[0]).toEqual({ drop: ["movie:tmdb:949"], note: "too violent" });
+    expect(approvals[0]).toEqual({ drop: ["movie:tmdb:90000949"], note: "too violent" });
   });
 
   it("undoing every edit returns to the unmodified body", async () => {
@@ -211,8 +220,8 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     render(<ApprovalQueue />);
 
     await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     await userEvent.click(await rowApprove());
 
     await waitFor(() => expect(approvals).toHaveLength(1));
@@ -236,7 +245,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     await userEvent.click(await rowApprove());
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({
-      add: [{ name: "Added Series", mediaType: "series", inLibrary: false, year: 1989, tmdbId: 456 }],
+      add: [{ name: "Added Series", mediaType: "series", inLibrary: false, year: 1989, tmdbId: 90000456 }],
     });
   });
 });
@@ -442,7 +451,13 @@ describe("ApprovalQueue — bulk approve per group with a consequence summary", 
       channelName: "Action Night",
       policy: { audience: { ceiling: "PG-13" } },
       lineup: [
-        { name: "Heat", mediaType: "movie", inLibrary: true, sizeBytes: 2 * GiB, sizeConfidence: "exact" },
+        {
+          name: "The Velvet Cartographer",
+          mediaType: "movie",
+          inLibrary: true,
+          sizeBytes: 2 * GiB,
+          sizeConfidence: "exact",
+        },
       ],
     },
   };

@@ -77,13 +77,13 @@ func TestProgrammingChanges_PassesTheDraftAndRendersBeforeAfter(t *testing.T) {
 		}},
 	}
 
-	body := `{"lineup":[{"key":"movie:tmdb:1","name":"Alpha"}],"policy":{"ordering":"shuffle"}}`
+	body := `{"lineup":[{"key":"movie:tmdb:90000001","name":"Alpha"}],"policy":{"ordering":"shuffle"}}`
 	out := decodeChanges(t, do(t, srv, http.MethodPost, changesPath+"?from=2026-07-26T12:00:00Z&horizonHours=24", adminToken, body))
 
 	if chSvc.draftPolicy == nil || chSvc.draftPolicy.Ordering != "shuffle" {
 		t.Errorf("draft policy not passed through: %+v", chSvc.draftPolicy)
 	}
-	if len(chSvc.draftLineup) != 1 || chSvc.draftLineup[0].Key != "movie:tmdb:1" {
+	if len(chSvc.draftLineup) != 1 || chSvc.draftLineup[0].Key != "movie:tmdb:90000001" {
 		t.Errorf("draft lineup not passed through: %+v", chSvc.draftLineup)
 	}
 	if !chSvc.diffFrom.Equal(changesFrom) || chSvc.diffHorizon != 24*time.Hour {

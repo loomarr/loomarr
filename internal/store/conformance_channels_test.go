@@ -28,12 +28,12 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	ch.Shuffle.Seed = 7
 	ch.UpdatedAt = 1_700_000_000
 	ch.Lineup = []schedule.LineupEntry{
-		{Key: "movie:tmdb:1", Title: "A", DurationMs: 3600000},
-		{Key: "movie:tmdb:2", Title: "B"},
+		{Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000},
+		{Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	ch.Desired = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
-		{Kind: schedule.SlotFiller, Key: "movie:tmdb:2", Title: "B"},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	// A non-empty policy exercises the policy_json round-trip: an audience ceiling,
 	// a separation window (Duration → "168h" JSON), an era range, and an applied
@@ -76,7 +76,7 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if got.ID != want.ID || got.Number != want.Number || got.Strategy != want.Strategy || got.Status != want.Status {
 		t.Errorf("channel scalar round-trip mismatch: got %+v", got.Channel)
 	}
-	if len(got.Lineup) != 2 || got.Lineup[0].Key != "movie:tmdb:1" || got.Lineup[0].DurationMs != 3600000 {
+	if len(got.Lineup) != 2 || got.Lineup[0].Key != "movie:tmdb:90000001" || got.Lineup[0].DurationMs != 3600000 {
 		t.Errorf("lineup JSON round-trip lost data: %+v", got.Lineup)
 	}
 	if len(got.Desired) != 2 || got.Desired[0].Kind != schedule.SlotProgram || got.Desired[1].Kind != schedule.SlotFiller {
@@ -124,10 +124,10 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("GetChannelByNumber(5) = %q,%v want ch-a", byNum.ID, err)
 	}
 	// Missing lookups are ErrNotFound.
-	if _, err := s.GetChannel(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetChannel(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetChannel(missing) = %v, want ErrNotFound", err)
 	}
-	if _, err := s.GetChannelByNumber(ctx, 999); err != ErrNotFound {
+	if _, err := s.GetChannelByNumber(ctx, 999); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetChannelByNumber(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -239,7 +239,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	if len(after) != 2 {
 		t.Errorf("after delete: %d channels, want 2", len(after))
 	}
-	if _, err := s.GetChannel(ctx, "ch-2"); err != ErrNotFound {
+	if _, err := s.GetChannel(ctx, "ch-2"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("deleted channel still present: %v", err)
 	}
 }
@@ -492,7 +492,7 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	fetched := time.Now().Truncate(time.Second)
 	eps := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993,
-			CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
+			AirDate: time.Date(1993, time.December, 16, 0, 0, 0, 0, time.UTC), CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
 		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
 		{LibraryItemID: "ep-3", Title: "Third", DurationMs: 1_320_000, Season: 1, Episode: 4,
 			CommunityRating: 11, Overview: strings.Repeat("x", 2050), Tags: append([]string{"holiday"}, make([]string, 20)...)},
@@ -510,6 +510,9 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.Episodes[0].Year != 1993 {
 		t.Fatalf("Year = %d, want 1993 (episode era must survive the cache blob)", got.Episodes[0].Year)
+	}
+	if !got.Episodes[0].AirDate.Equal(eps[0].AirDate) || !got.Episodes[1].AirDate.IsZero() {
+		t.Fatalf("AirDate = %v / %v, want the holiday evidence date and zero for unknown", got.Episodes[0].AirDate, got.Episodes[1].AirDate)
 	}
 	if got.Episodes[0].CommunityRating != 9.1 || got.Episodes[0].Overview != "A Christmas homecoming" ||
 		len(got.Episodes[0].Tags) != 2 || got.Episodes[0].Tags[0] != "holiday" || got.Episodes[0].Tags[1] != "family" {
@@ -596,10 +599,10 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 		}
 		return got
 	}
-	film := provision.Key("movie:tmdb:149")
-	show := provision.Key("series:tvdb:71663")
+	film := provision.Key("movie:tmdb:90000149")
+	show := provision.Key("series:tvdb:90071663")
 
-	record("ch-1", film, "lib-149", opened.Add(-72*time.Hour), opened.Add(-72*time.Hour))
+	record("ch-1", film, "lib-90000149", opened.Add(-72*time.Hour), opened.Add(-72*time.Hour))
 	// Two episodes of ONE series are two units: history is per episode, not per title.
 	record("ch-1", show, "ep-1", opened.Add(-30*time.Hour), opened.Add(-30*time.Hour))
 	record("ch-1", show, "ep-2", opened.Add(-29*time.Hour), opened.Add(-29*time.Hour))
@@ -612,13 +615,13 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	// THE CUTOFF: the film re-airs inside the window. As of the window's start it still last aired
 	// three days ago — an upserted "last airing" would have lost that — while the next window sees
 	// the new airing. Playout re-resolves one airing many times; only the first write counts.
-	record("ch-1", film, "lib-149", opened.Add(2*time.Hour), opened.Add(2*time.Hour))
-	record("ch-1", film, "lib-149", opened.Add(2*time.Hour), opened.Add(3*time.Hour))
-	if got := read("ch-1", opened); !got["lib-149"].Equal(opened.Add(-72 * time.Hour)) {
-		t.Errorf("as of the window start, last-aired = %v, want the airing before it %v", got["lib-149"], opened.Add(-72*time.Hour))
+	record("ch-1", film, "lib-90000149", opened.Add(2*time.Hour), opened.Add(2*time.Hour))
+	record("ch-1", film, "lib-90000149", opened.Add(2*time.Hour), opened.Add(3*time.Hour))
+	if got := read("ch-1", opened); !got["lib-90000149"].Equal(opened.Add(-72 * time.Hour)) {
+		t.Errorf("as of the window start, last-aired = %v, want the airing before it %v", got["lib-90000149"], opened.Add(-72*time.Hour))
 	}
-	if got := read("ch-1", opened.Add(24*time.Hour)); !got["lib-149"].Equal(opened.Add(2 * time.Hour)) {
-		t.Errorf("next window last-aired = %v, want the latest airing %v", got["lib-149"], opened.Add(2*time.Hour))
+	if got := read("ch-1", opened.Add(24*time.Hour)); !got["lib-90000149"].Equal(opened.Add(2 * time.Hour)) {
+		t.Errorf("next window last-aired = %v, want the latest airing %v", got["lib-90000149"], opened.Add(2*time.Hour))
 	}
 
 	// A LATE WRITE — a programme that started before the boundary, first observed after it (a
@@ -630,12 +633,12 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 
 	// RETENTION: a unit keeps its recent airings plus the newest older one, so the log stays
 	// bounded by lineup size and a read as of any recent instant still has its answer.
-	record("ch-2", film, "lib-149", opened.Add(-40*24*time.Hour), opened.Add(-40*24*time.Hour))
-	record("ch-2", film, "lib-149", opened.Add(-30*24*time.Hour), opened.Add(-30*24*time.Hour))
-	record("ch-2", film, "lib-149", opened.Add(-20*24*time.Hour), opened.Add(-20*24*time.Hour))
-	record("ch-2", film, "lib-149", opened, opened)
-	if got := read("ch-2", opened); !got["lib-149"].Equal(opened.Add(-20 * 24 * time.Hour)) {
-		t.Errorf("after pruning, last-aired before the window = %v, want %v", got["lib-149"], opened.Add(-20*24*time.Hour))
+	record("ch-2", film, "lib-90000149", opened.Add(-40*24*time.Hour), opened.Add(-40*24*time.Hour))
+	record("ch-2", film, "lib-90000149", opened.Add(-30*24*time.Hour), opened.Add(-30*24*time.Hour))
+	record("ch-2", film, "lib-90000149", opened.Add(-20*24*time.Hour), opened.Add(-20*24*time.Hour))
+	record("ch-2", film, "lib-90000149", opened, opened)
+	if got := read("ch-2", opened); !got["lib-90000149"].Equal(opened.Add(-20 * 24 * time.Hour)) {
+		t.Errorf("after pruning, last-aired before the window = %v, want %v", got["lib-90000149"], opened.Add(-20*24*time.Hour))
 	}
 	if got := read("ch-2", opened.Add(-25*24*time.Hour)); len(got) != 0 {
 		t.Errorf("pruned airings still answer a read far outside retention: %v", got)
@@ -643,7 +646,7 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 
 	// PER-CHANNEL SCOPING: the same film on two channels is two independent rotations, and
 	// collapsing them would let one channel's schedule suppress another's.
-	if got := read("ch-2", opened.Add(time.Hour)); len(got) != 1 || !got["lib-149"].Equal(opened) {
+	if got := read("ch-2", opened.Add(time.Hour)); len(got) != 1 || !got["lib-90000149"].Equal(opened) {
 		t.Errorf("ch-2 history = %v, want only its own airing", got)
 	}
 

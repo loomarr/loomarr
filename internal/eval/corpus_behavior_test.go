@@ -11,31 +11,12 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-func TestDurableNegativeConstraintPinsExactSawIdentity(t *testing.T) {
-	c := corpusCase(t, "explicit_negative_constraint")
-	if !slices.Contains(c.ForbidKeys, provision.Key("movie:tmdb:176")) {
-		t.Fatalf("durable negative constraint ForbidKeys = %v, want exact Saw identity", c.ForbidKeys)
-	}
-	if c.TitleEvidence != TitleEvidenceGrounded || !slices.Contains(c.ForbidTitles, "Saw") ||
-		!slices.Contains(c.ForbidTitleTerms, "Saw") {
-		t.Fatalf("durable negative title contract = scope %q exact %v heuristic %v",
-			c.TitleEvidence, c.ForbidTitles, c.ForbidTitleTerms)
-	}
-}
-
-func TestDurableNamedIncludePinsExactGroundedTitle(t *testing.T) {
-	c := corpusCase(t, "must_include_grounding")
-	if c.TitleEvidence != TitleEvidenceGrounded || !slices.Contains(c.RequireTitles, "The Matrix") {
-		t.Fatalf("durable named include title contract = scope %q required %v", c.TitleEvidence, c.RequireTitles)
-	}
-}
-
 func TestActionMarathonCorpusRejectsAnySeriesIdentity(t *testing.T) {
 	c := corpusCase(t, "template_action_marathon")
 	proposal := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{
-			{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Genres: []string{"Action"}, OfficialRating: "PG-13"},
-			{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", Genres: []string{"Action"}, OfficialRating: "TV-PG"},
+			{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Genres: []string{"Action"}, OfficialRating: "PG-13"},
+			{MediaType: provision.Series, TMDBID: 90000456, Name: "The Mudpuddles", Genres: []string{"Action"}, OfficialRating: "TV-PG"},
 		},
 		Scores: suggest.Scores{ThemeFit: new(0.9)},
 	}
@@ -54,42 +35,42 @@ func TestActionMarathonCorpusRejectsAnySeriesIdentity(t *testing.T) {
 
 func TestRunnerRejectsMissingRequiredExactGroundedTitle(t *testing.T) {
 	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction",
+		MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner",
 	}}}}, RunnerConfig{}).Run(context.Background(), []Case{{
 		Name: "required_exact_title", TitleEvidence: TitleEvidenceGrounded,
-		RequireTitles: []string{"The Matrix"},
+		RequireTitles: []string{"Marigold Protocol"},
 	}})
 
 	result := card.Results[0]
 	if card.Certified || result.FailureStage != FailureStageDeterministic ||
-		!slices.Contains(result.Failures, `required grounded title "The Matrix" is missing`) {
+		!slices.Contains(result.Failures, `required grounded title "Marigold Protocol" is missing`) {
 		t.Fatalf("missing exact grounded title result = %+v", result)
 	}
 }
 
 func TestRunnerRejectsForbiddenExactGroundedTitle(t *testing.T) {
 	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 176, Name: "  sAw\t",
+		MediaType: provision.Movie, TMDBID: 90000176, Name: "  lARk\t",
 	}}}}, RunnerConfig{}).Run(context.Background(), []Case{{
 		Name: "forbidden_exact_title", TitleEvidence: TitleEvidenceGrounded,
-		ForbidTitles: []string{"Saw"},
+		ForbidTitles: []string{"Lark"},
 	}})
 
 	result := card.Results[0]
 	if card.Certified || result.FailureStage != FailureStageDeterministic ||
-		!slices.Contains(result.Failures, `forbidden grounded title "Saw" is present`) {
+		!slices.Contains(result.Failures, `forbidden grounded title "Lark" is present`) {
 		t.Fatalf("forbidden exact grounded title result = %+v", result)
 	}
 }
 
 func TestRunnerExactGroundedTitlesDoNotMatchNearOrSubstringTitles(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 215, Name: "Saw II"},
-		{MediaType: provision.Movie, TMDBID: 999001, Name: "Seesaw"},
+		{MediaType: provision.Movie, TMDBID: 90000215, Name: "Lark II"},
+		{MediaType: provision.Movie, TMDBID: 90999001, Name: "Skylark"},
 	}}
 	cases := []Case{
-		{Name: "near_is_not_required", TitleEvidence: TitleEvidenceGrounded, RequireTitles: []string{"Saw"}},
-		{Name: "substring_is_not_forbidden", TitleEvidence: TitleEvidenceGrounded, ForbidTitles: []string{"Saw"}},
+		{Name: "near_is_not_required", TitleEvidence: TitleEvidenceGrounded, RequireTitles: []string{"Lark"}},
+		{Name: "substring_is_not_forbidden", TitleEvidence: TitleEvidenceGrounded, ForbidTitles: []string{"Lark"}},
 	}
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).Run(context.Background(), cases)
 
@@ -119,7 +100,7 @@ func TestRequiredThemeFloorRejectsUnknownAndPartialEvidence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-				Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+				Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 				Scores: suggest.Scores{Version: 1, ThemeFit: tc.value},
 			}}, RunnerConfig{}).Run(context.Background(), []Case{{Name: "theme_floor", MinThemeFit: 0.5}})
 			if card.Results[0].Passed() != tc.pass {

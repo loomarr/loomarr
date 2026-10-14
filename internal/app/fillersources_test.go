@@ -256,9 +256,9 @@ func TestIngest_AutoFetchDoesNotRegisterEveryClipAsASource(t *testing.T) {
 
 	// The shape auto-fetch sends: individual ITEMS inside a collection already registered.
 	items := []string{
-		"https://archive.org/details/CLE-B01_161770-162673",
-		"https://archive.org/details/CalpolAdvert",
-		"https://archive.org/details/CampbellsSoupAdvert",
+		"https://archive.org/details/KTL-B01_261770-262673",
+		"https://archive.org/details/SootholAdvert",
+		"https://archive.org/details/HearthpotsSoupAdvert",
 	}
 	// ⚠ A nil fetcher makes this return ErrIngestUnavailable BEFORE downloading, which is what
 	// keeps the test hermetic — registration happens (or must not) regardless of the download.

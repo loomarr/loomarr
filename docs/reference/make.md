@@ -73,6 +73,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
+| `make vuln` | ✅ | govulncheck: known vulnerabilities reachable from Loomarr code, stdlib included |
 | `make deadcode` |  | functions no ./cmd binary reaches, per package (report only; not a PR gate) |
 | `make deadcode-baseline` |  | rewrite the committed deadcode baseline the monthly report compares against |
 | `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
@@ -236,7 +237,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |
 | `make fe-codegen` | ✅ | regenerate tokens + orval api client from api/openapi.yaml |
 | `make fe-api-codegen` | ✅ | regenerate only the orval api client from api/openapi.yaml |
-| `make fe-lint` |  | Biome lint + format check (web/) |
+| `make fe-lint` |  | Biome lint + format check, import and boundary gates (web/; needs codegen first) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery |
@@ -249,7 +250,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make storybook-build` |  | offline storybook-static build (what fe-visual snapshots) |
 | `make ensure-playwright-image` |  | use a cached Playwright image or pull it with bounded retries |
 | `make fe-visual` | ✅ | Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2) <br>*runs:* `storybook-build` `ensure-playwright-image` |
-| `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
+| `make fe-visual-update` | ✅ | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
 | `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-quarantine` | ✅ | resolve the tuner tests the flake quarantine holds out (TUNER_QUARANTINE=exclude|only; needs gh) |
@@ -276,7 +277,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual-update` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

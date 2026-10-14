@@ -213,9 +213,9 @@ func TestScoreStage_AnyGroundedSignalCountsAsIdentified(t *testing.T) {
 		{"era", func(c *filler.Clip) { c.Era = 1987 }},
 		{"audience", func(c *filler.Clip) { c.Audience = filler.Kids }},
 		{"a taxonomy tag", func(c *filler.Clip) { c.Tags = []string{"toys"} }},
-		{"an advertiser", func(c *filler.Clip) { c.Brand = "Kellogg's" }},
-		{"on-screen text", func(c *filler.Clip) { c.VisibleText = "COCA-COLA" }},
-		{"speech", func(c *filler.Clip) { c.Transcript = "the real thing" }},
+		{"an advertiser", func(c *filler.Clip) { c.Brand = "Brightfield's" }},
+		{"on-screen text", func(c *filler.Clip) { c.VisibleText = "SPARKRA-COLA" }},
+		{"speech", func(c *filler.Clip) { c.Transcript = "the bright thing" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newScoreMemStore()

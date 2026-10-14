@@ -167,6 +167,9 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			Tags:        []string{"diagnostics"}, DefaultStatus: http.StatusAccepted,
 		}, RoleMember), s.ingestClientDiagnostics)
 	}
+	if s.clientCrashes != nil || s.schemaOnly {
+		s.registerClientCrashes(api)
+	}
 	op := huma.Operation{
 		OperationID: "list-diagnostic-events",
 		Method:      http.MethodGet,

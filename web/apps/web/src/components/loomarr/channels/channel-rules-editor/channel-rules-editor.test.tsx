@@ -127,12 +127,12 @@ describe("ChannelRulesEditor", () => {
         vocabulary={ruleVocabularyFixture}
         policy={POPULATED}
         onChange={vi.fn()}
-        lineupKeys={[{ key: "series:tvdb:81189", title: "Breaking Bad" }]}
+        lineupKeys={[{ key: "series:tvdb:90081189", title: "Copperline Foundry" }]}
       />,
     );
 
     await userEvent.click(screen.getByRole("combobox", { name: /what for christmas · marathon/i }));
-    expect(await screen.findByRole("option", { name: "Series: Breaking Bad" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Series: Copperline Foundry" })).toBeInTheDocument();
   });
 
   it("selecting a series WHAT option lowers to a scope intersected with that key", async () => {
@@ -142,20 +142,20 @@ describe("ChannelRulesEditor", () => {
         vocabulary={ruleVocabularyFixture}
         policy={{ rules: [{ id: "r1", label: "Weekend", priority: 10, when: { weekend: true } }] }}
         onChange={onChange}
-        lineupKeys={[{ key: "series:tvdb:81189", title: "Breaking Bad" }]}
+        lineupKeys={[{ key: "series:tvdb:90081189", title: "Copperline Foundry" }]}
       />,
     );
 
     await userEvent.click(screen.getByRole("combobox", { name: /what for weekend/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "Series: Breaking Bad" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Series: Copperline Foundry" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.lastCall?.[0] as ChannelPolicy;
-    expect(next.rules?.[0]?.what).toEqual({ series: ["series:tvdb:81189"] });
+    expect(next.rules?.[0]?.what).toEqual({ series: ["series:tvdb:90081189"] });
     // The label shows the series' own display title (from lineupKeys), not the raw
     // "Series: <title>" option text — that phrasing already lives on the WHAT select
-    // itself, so the row caption stays terse ("Weekend · Breaking Bad").
-    expect(next.rules?.[0]?.label).toBe("Weekend · Breaking Bad");
+    // itself, so the row caption stays terse ("Weekend · Copperline Foundry").
+    expect(next.rules?.[0]?.label).toBe("Weekend · Copperline Foundry");
   });
 
   it("selecting the marathon HOW token sets noBreaks + unbounded block + the full-run window", async () => {

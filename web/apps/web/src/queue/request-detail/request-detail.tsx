@@ -105,7 +105,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <div className="flex max-w-3xl flex-1 flex-col gap-6 overflow-auto p-6">
+      <div className="mx-auto flex w-full max-w-reading flex-1 flex-col gap-6 overflow-auto p-6">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.tone}>{status.line}</Badge>
         </div>

@@ -99,7 +99,7 @@ do. Both themes are rendered and contrast-checked in Storybook.
 
 | Token | Hex | Meaning / use | Contrast notes |
 | --- | --- | --- | --- |
-| `signal` (amber) | `#FFB020` | **Brand & primary actions**, focus ring, active nav | 10.7:1 on bg — AA everywhere; 8.8:1 on its tint |
+| `signal` (amber) | `#FFB020` | **Focus, the primary action, and brand moments only** (#1909): the focus ring, the one solid primary action per view, the colour bars, the tuner lock and display numerals (direct-tune digits, the pairing code). Selection (the current page, pressed toggles, checked boxes, the tuned channel), now-airing, elapsed progress and channel numbers at rest are neutral. A focused filled action keeps its fill and adds a 3px foreground ring outside a gap, because an amber border cannot show on an amber fill | 10.7:1 on bg — AA everywhere; 8.8:1 on its tint |
 | `onair` (red) | `#E5484D` | Live/actively-streaming indicators; destructive actions | 5.0:1 on bg; **on its tint use `onair-300`** |
 | `onair-300` | `#E85A5F` | Badge/pill text on the onair tint | 5.0:1 on tint (computed with margin) |
 | `suggest` (magenta) | `#D6409F` | **The AI color**: intent input focus, generation progress, proposal accents | 4.75:1 on bg; **on its tint use `suggest-300`** |
@@ -125,6 +125,12 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 - **Geist** (UI) + **Geist Mono** (data) — one family pair, OFL-licensed, **self-hosted from the embed** (satisfies the main doc's offline rule *and* makes visual tests deterministic — no CDN font swaps).
 - Mono is a design signature, not a garnish: **channel numbers, EPG times, state badges, external ids, durations** are always mono. If it came from a machine, it's set in mono.
 - Scale: 12 / 13 / 14 (body) / 16 / 20 / 24 / 32, line-height 1.5 body · 1.2 headings. Channel-number display style: mono 24–32, tabular numerals.
+- **One size per role on web** (#1817, decided 2026-10-13): page title 24/600 (entity headers
+  such as the channel header included); focused-flow title 32/600 (pairing); status line and
+  section 20/600; subsection 14/600; eyebrow 11 mono (`Caption`); item title 14/600 on cards and
+  14/500 on rows; body 14 (16 in a focused flow); meta 12; data 12–13 mono; badge 11 mono. Nothing
+  renders under 11px, content stays at 12px or above, and new code takes its size from the
+  `--text-*` scale rather than an arbitrary `text-[Npx]`.
 
 ### 2.3 Space, radius, elevation
 
@@ -321,7 +327,7 @@ Coverage says every component *has* a story. It says nothing about whether a per
 This is also what keeps the visual suite honest: fixtures are deterministic by construction (§4.2 — no `Date.now`, no randomness), while an inline literal invites a live clock straight into a snapshot.
 
 **Audit result: the library already complies.** Eight stories import fixtures and the rest pass presentational args only — no story constructs a DTO inline. An earlier draft of this section reported "38 of 46 stories hand-roll their args", which was a miscount: it subtracted the fixture importers from the total and assumed the remainder were all domain data. Recorded because the wrong number nearly bought a 38-file migration that the codebase did not need.
-- **`make fe-visual`** builds `storybook-static` on the host, then runs Playwright **inside the pinned official Playwright Docker image** (the reference rasterizer, §5.2) over every story at **two viewports** (1280×800 desktop, 390×844 mobile-web) with `maxDiffPixelRatio: 0.001`. The committed baselines are the `*-linux.png` that image produces; **the only sanctioned update path is `make fe-visual-update`** (same image), and baseline diffs are reviewed as images in the PR. The container reuses the host's JS-only `node_modules` and the browsers baked into the image — no in-container install, so a dev's native binaries are untouched.
+- **`make fe-visual`** builds `storybook-static` on the host, then runs Playwright **inside the pinned official Playwright Docker image** (the reference rasterizer, §5.2) over every story at **two viewports** (1280×800 desktop, 390×844 mobile-web) with `maxDiffPixelRatio: 0.001`. The committed baselines are the `*-linux.png` that image produces; **the only sanctioned update path is the Visual baselines workflow**, which runs `make fe-visual-update` (same image) on a CI runner and commits only the changed PNGs to the PR ([Testing](contributing/testing.md#updating-visual-baselines)), and baseline diffs are reviewed as images in the PR. The container reuses the host's JS-only `node_modules` and the browsers baked into the image — no in-container install, so a dev's native binaries are untouched.
 - **Interactive story setup must finish successfully before a baseline is evidence.** The gallery waits for Storybook's render phase and accepts only `finished`; `errored` and `aborted` fail the test before pixels or axe are evaluated. Capturing the component's pre-interaction fallback after a broken `play()` function is a false-green baseline, not graceful degradation.
 - **`make storybook`** runs the dev workshop; **`make storybook-build`** produces the static gallery.
 - Page-level snapshots cover key screens (each wizard step, Channels, Suggest workspace, Settings) with a shared `mask()` helper for dynamic regions.
@@ -409,6 +415,28 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - TV layouts use logical units and fill both 1920x1080 and 3840x2160 output. Overscan/safe-area
   padding lives inside an edge-to-edge surface and never produces an outer frame.
 - **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
+- **Content width is picked by task, from six named tiers** (#1817, decided 2026-10-13). A route
+  names its tier (`max-w-reading`, defined in `apps/web/src/styles.css`) and never types a pixel
+  width. Every capped tier is centred with `mx-auto`. The gutter is 24px, and 16px below `sm`
+  where a surface has adopted it (the Guide's create panel); other routes keep their `p-6`.
+
+  | Tier | Width | For | Routes |
+  | --- | --- | --- | --- |
+  | `browse` | full | a time grid you scan across | Guide |
+  | `overview` | 1120 | a page of several sections and grids | Home |
+  | `detail` | 896 | one entity, tabbed, mixed forms and lists | channel detail, the Watch player included |
+  | `reading` | 768 | a single-column queue or list | Requests, request detail |
+  | `form` | 672 | a form or an inline workflow | Account, the Guide's create panel |
+  | `focused` | 512 | one task with no chrome competing | Pair |
+
+  Settings (1024) is outside the tiers and left as it is.
+- **Card or row** (#1817, decided 2026-10-13). A *card* has a picture slot (artwork or the
+  code-drawn `ArtworkFallback`) and the whole item is one destination; it sits in a grid. A
+  *decision card* is one item the viewer must decide on, with several actions and consequence text
+  (Requests' Needs you). A *row* is a scannable item of one kind with at most one progress readout
+  or one trailing action, inside a `ListGroup` (Requests' In progress and Done, Home's lists). A
+  *panel* holds a form or a group of rows and is never a link. The same entity takes the same shape
+  at the same density.
 - **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---

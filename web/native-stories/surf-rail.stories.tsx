@@ -5,7 +5,7 @@ import { useState } from "react";
 
 const SurfWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
   const [selection, setSelection] = useState<SurfSelection>({
-    channelId: "ch-springfield",
+    channelId: "ch-cartoons",
     group: "recent",
   });
   // The TV rail's channel-number wait row (#1659 decision N4); the TV app passes the ui-tv choices.

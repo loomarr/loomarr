@@ -9,8 +9,8 @@ import (
 )
 
 // Seasonality (programming-design §6): holiday-aware programming. Detection is
-// deterministic and data-driven — an entry is seasonal for holiday H if it matches
-// H's keyword set. Evaluation is against the container wall-clock `now` at reconcile
+// holidayvocab's judgment of whether an entry is about holiday H (`about`) or only
+// fits its mood (`adjacent`). Evaluation is against the container wall-clock `now` at reconcile
 // time; the periodic sweep naturally rolls channels in/out of windows, so
 // seasonality needs no scheduler of its own.
 //
@@ -19,38 +19,57 @@ import (
 // out-of-window detected-seasonal items are BENCHED (the half viewers notice —
 // Christmas episodes in July break the spell). A zero `now` disables all of it.
 
-// holiday is one entry in the built-in calendar (§6). Windows + keyword sets ship
+// holiday is one entry in the built-in calendar (§6). Windows + vocabulary ship
 // as DATA, not code; custom/regional holidays are future work.
 type holiday struct {
 	id string
 	// window reports the holiday's [start, end] for a given year (some windows
 	// straddle a year boundary, e.g. New Year).
 	window func(year int) (start, end time.Time)
+	// day is the holiday's own date in a given year (the night a Heavy channel runs its
+	// holiday-episode marathon, §6 "Holiday episodes"). Only month and day are read.
+	day func(year int) time.Time
 }
 
-// builtinCalendar is the v1 holiday set (§6). Keyword matching is case-insensitive
-// substring against an entry's TITLE — never its genres (see isSeasonal for why).
+// builtinCalendar is the v1 holiday set (§6). holidayvocab judges membership; a genre
+// is never evidence on its own (see isSeasonal for why).
 var builtinCalendar = []holiday{
 	{
 		id:     "halloween",
 		window: fixedWindow(time.October, 1, time.October, 31),
+		day:    fixedDay(time.October, 31),
 	},
 	{
 		id:     "thanksgiving",
 		window: fixedWindow(time.November, 15, time.November, 30),
+		day:    thanksgivingDay,
 	},
 	{
 		id:     "christmas",
 		window: fixedWindow(time.December, 1, time.December, 26),
+		day:    fixedDay(time.December, 25),
 	},
 	{
 		id:     "newyear",
 		window: newYearWindow,
+		day:    fixedDay(time.December, 31),
 	},
 	{
 		id:     "valentines",
 		window: fixedWindow(time.February, 1, time.February, 14),
+		day:    fixedDay(time.February, 14),
 	},
+}
+
+func fixedDay(month time.Month, day int) func(int) time.Time {
+	return func(year int) time.Time { return time.Date(year, month, day, 0, 0, 0, 0, time.UTC) }
+}
+
+// thanksgivingDay is the fourth Thursday of November (US).
+func thanksgivingDay(year int) time.Time {
+	first := time.Date(year, time.November, 1, 0, 0, 0, 0, time.UTC)
+	offset := (int(time.Thursday) - int(first.Weekday()) + 7) % 7
+	return first.AddDate(0, 0, offset+21)
 }
 
 // fixedWindow builds a same-year [start, end] window (inclusive of the end day).
@@ -95,12 +114,65 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
-// activeHolidays returns the calendar holidays whose window contains `now`, limited
-// to the channel's selected subset (empty subset = all built-in holidays).
-func activeHolidays(now time.Time, selected []string) []holiday {
+// civilNoon is noon UTC of `now`'s calendar date on zone's wall clock (nil = UTC): the instant a
+// holiday window, which is a run of whole dates, is evaluated at. Evaluating the instant itself
+// would end Halloween at 8 pm on Oct 31 in New York.
+func civilNoon(now time.Time, zone *time.Location) time.Time {
+	if zone == nil {
+		zone = time.UTC
+	}
+	y, m, d := now.In(zone).Date()
+	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+}
+
+// HonouredHolidays lists the built-in holidays a channel honours, in calendar order, each with its
+// window that is on at `now` or comes next (#1659 W2c, the On-screen logo's holiday rows). A channel
+// whose seasonal mode is off (Ignore holidays) honours none; a chosen subset limits the list. Like
+// activeHolidays it dates `now` on zone's wall clock (nil = UTC), so a row is on exactly while
+// ActiveHolidayAt names it.
+func HonouredHolidays(now time.Time, seasonal SeasonalPolicy, zone *time.Location) []HolidayWindow {
+	if seasonal.Mode == SeasonalOff {
+		return nil
+	}
+	now = civilNoon(now, zone)
+	sel := lowerSet(seasonal.Holidays)
+	var out []HolidayWindow
+	for _, h := range builtinCalendar {
+		if _, ok := sel[h.id]; len(sel) > 0 && !ok {
+			continue
+		}
+		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
+			if start, end := h.window(y); !end.Before(now) {
+				out = append(out, HolidayWindow{ID: h.id, Start: start, End: end})
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
+// boosts, through the same calendar, selection and channel-local evaluation (zone = the channel's
+// wall clock, nil = UTC), so the on-screen logo's holiday version (WatermarkHoliday) flips at the
+// same local instant as the programming. A channel whose seasonal mode is off (Ignore holidays)
+// honours none.
+func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy, zone *time.Location) string {
+	if seasonal.Mode == SeasonalOff {
+		return ""
+	}
+	if active := activeHolidays(t, zone, seasonal.Holidays); len(active) > 0 {
+		return active[0].id
+	}
+	return ""
+}
+
+// activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
+// clock, limited to the channel's selected subset (empty subset = all built-in holidays).
+func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {
 	if now.IsZero() {
 		return nil
 	}
+	now = civilNoon(now, zone)
 	sel := lowerSet(selected)
 	var active []holiday
 	for _, h := range builtinCalendar {
@@ -129,10 +201,14 @@ func holidayActive(h holiday, now time.Time) bool {
 	return false
 }
 
-// isSeasonal reports whether an entry matches ANY holiday's keyword set (detection,
-// §6). Matching is case-insensitive substring against the entry's TITLE.
+// isSeasonal reports whether an entry is ABOUT any of the holidays (detection, §6):
+// holidayvocab's `about` verdict over the entry's title. Bench and boost act on this
+// alone, because a false bench silently removes programming: a mood word such as
+// "ghost" never benches (an action film named "Ghost …" airs all year), even with
+// genres that make it `adjacent`.
 //
-// ⚠ GENRES ARE DELIBERATELY NOT MATCHED, and this is a correction. Haying over
+// ⚠ A GENRE IS NEVER EVIDENCE ON ITS OWN, and this is a correction: genres only
+// corroborate a mood word into `adjacent`, which bench and boost ignore. Haying over
 // title + genres conflated "this title is ABOUT a holiday" with "this title is in a
 // genre that correlates with one" — different claims, and only the first is something
 // a holiday window should act on.
@@ -148,13 +224,27 @@ func holidayActive(h holiday, now time.Time) bool {
 // channel and left the mechanism to re-fire on the next collision (Romance near
 // Valentine's, Family near Christmas).
 func isSeasonal(e LineupEntry, holidays []holiday) bool {
-	hay := strings.ToLower(e.Title)
 	for _, h := range holidays {
-		if holidayvocab.MatchesEvidence(h.id, hay) {
+		if judgeEntry(e, h).Verdict == holidayvocab.VerdictAbout {
 			return true
 		}
 	}
 	return false
+}
+
+// fitsSeason reports whether an entry belongs on an exclusive holiday channel in
+// window: about the holiday, or `adjacent` (a mood word the genres corroborate).
+func fitsSeason(e LineupEntry, holidays []holiday) bool {
+	for _, h := range holidays {
+		if judgeEntry(e, h).Fits() {
+			return true
+		}
+	}
+	return false
+}
+
+func judgeEntry(e LineupEntry, h holiday) holidayvocab.Judgment {
+	return holidayvocab.Judge(h.id, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres})
 }
 
 // isSeasonalForAny reports whether an entry is seasonal for ANY built-in holiday
@@ -176,15 +266,15 @@ func isSeasonalForAny(e LineupEntry) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
-	return applySeasonalWithTrace(entries, rp, now, nil)
+	return applySeasonalWithTrace(entries, rp, now, nil, nil)
 }
 
-func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, zone *time.Location, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	inWindow := len(active) > 0
 
 	switch rp.Seasonal.Mode {
@@ -206,7 +296,7 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 		for _, e := range entries {
 			// A series title is not evidence about each of its episodes. The
 			// concrete exclusive filter runs after episode safety and grouping.
-			if e.Key.IsSeries() || isSeasonal(e, active) {
+			if e.Key.IsSeries() || fitsSeason(e, active) {
 				kept = append(kept, e)
 			} else {
 				report.add(e, "out_of_season")
@@ -236,11 +326,11 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 	}
 }
 
-func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time) map[string]bool {
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, zone *time.Location) map[string]bool {
 	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
 		return nil
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	if len(active) == 0 {
 		return nil
 	}

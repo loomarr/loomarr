@@ -79,10 +79,10 @@ func seqChannel() schedule.Channel {
 
 func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"),
-		entry("movie:tmdb:2", "B"),
+		entry("movie:tmdb:90000001", "A"),
+		entry("movie:tmdb:90000002", "B"),
 	}
-	avail := mapAvail{"movie:tmdb:1": "lib-A", "movie:tmdb:2": "lib-B"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-A", "movie:tmdb:90000002": "lib-B"}
 
 	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
 
@@ -102,7 +102,7 @@ func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 }
 
 func TestComputeDesiredHighlightsSelectsRatedEpisodePoolBeforeOrdering(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
 	for episode, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -115,7 +115,7 @@ func TestComputeDesiredHighlightsSelectsRatedEpisodePoolBeforeOrdering(t *testin
 		})
 	}
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -132,7 +132,7 @@ func TestComputeDesiredHighlightsSelectsRatedEpisodePoolBeforeOrdering(t *testin
 }
 
 func TestComputeDesiredHighlightsSchedulesDeterministicVariedDeck(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 12)
 	for episode, rating := range []float64{5.1, 9.9, 5.2, 9.8, 5.3, 9.7, 5.4, 9.6, 5.5, 9.5, 5.6, 9.4} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -144,7 +144,7 @@ func TestComputeDesiredHighlightsSchedulesDeterministicVariedDeck(t *testing.T) 
 	ch.Shuffle.Seed = 492
 	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}
 	lineup := []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
+		Key: key, Title: "The Mudpuddles", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes})
 
@@ -176,15 +176,15 @@ func TestComputeDesiredHighlightsSchedulesDeterministicVariedDeck(t *testing.T) 
 }
 
 func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ordinary", Title: "A Regular Tuesday", DurationMs: 1, Season: 2, Episode: 1},
-		{LibraryItemID: "xmas-1", Title: "A Springfield Christmas (1)", DurationMs: 1, Season: 2, Episode: 2},
-		{LibraryItemID: "xmas-2", Title: "A Springfield Christmas (2)", DurationMs: 1, Season: 2, Episode: 3},
+		{LibraryItemID: "xmas-1", Title: "A Puddleford Christmas (1)", DurationMs: 1, Season: 2, Episode: 2},
+		{LibraryItemID: "xmas-2", Title: "A Puddleford Christmas (2)", DurationMs: 1, Season: 2, Episode: 3},
 		{LibraryItemID: "overview", Title: "Home for Winter", Overview: "The family meets Santa", DurationMs: 1, Season: 2, Episode: 4},
 	}
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{
+		Key: key, Title: "The Mudpuddles", EpisodeSelection: schedule.EpisodeSelection{
 			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
 		},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
@@ -202,10 +202,10 @@ func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(
 }
 
 func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
-		{LibraryItemID: "near-match", Title: "The Ghostwriter", DurationMs: 1, Season: 1, Episode: 1},
-		{LibraryItemID: "match", Title: "A Ghost Story", DurationMs: 1, Season: 1, Episode: 2},
+		{LibraryItemID: "near-match", Title: "The Halloweenites", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "match", Title: "A Halloween Story", DurationMs: 1, Season: 1, Episode: 2},
 		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 3},
 	}
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
@@ -226,8 +226,71 @@ func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
 	}
 }
 
+// A ghost in an ordinary episode's overview is not Halloween (§6 floor); the annual special that
+// names the holiday is, even when its title only says "Terror".
+func TestComputeDesiredHolidaySelectionNeedsTheHolidayNotAMoodWord(t *testing.T) {
+	key := provision.Key("series:tmdb:90000456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ghost", Title: "Grandpa's Attic", Overview: "Tansy is sure a ghost lives upstairs.", DurationMs: 1, Season: 3, Episode: 1},
+		{LibraryItemID: "special", Title: "Treetop of Terror II", Overview: "The annual Halloween special: three spooky tales.", DurationMs: 1, Season: 3, Episode: 7},
+		{LibraryItemID: "haunted-tag", Title: "Night Lanterns", Tags: []string{"haunted"}, DurationMs: 1, Season: 3, Episode: 9},
+	}
+	october := time.Date(2026, time.October, 20, 20, 0, 0, 0, time.UTC)
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"halloween"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, october)
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() && !slices.Contains(ids, slot.LibraryItemID) {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"special"}; !slices.Equal(ids, want) {
+		t.Fatalf("Halloween episodes = %v, want only the episode that names the holiday", ids)
+	}
+}
+
+// An Animation/Comedy sitcom's annual anthology never says "Halloween" and has no tags: its
+// premiere dates and episode titles are the evidence (§6). An ordinary episode that aired in late
+// October, or one whose overview mentions a ghost, is not a Halloween episode.
+func TestComputeDesiredHolidaySelectionFindsAnthologyByAirDateAndTitle(t *testing.T) {
+	key := provision.Key("series:tmdb:90000456")
+	aired := func(month time.Month, day, year int) time.Time {
+		return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	}
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "terror-1", Title: "Treetop of Terror", Overview: "Three tales of a cursed doll.", AirDate: aired(time.October, 25, 1990), DurationMs: 1, Season: 2, Episode: 3},
+		{LibraryItemID: "ordinary-oct", Title: "The New Neighbor", Overview: "Dad buys a boat.", AirDate: aired(time.October, 28, 1991), DurationMs: 1, Season: 3, Episode: 5},
+		{LibraryItemID: "terror-2", Title: "Treetop of Terror II", Overview: "A wish goes wrong.", AirDate: aired(time.November, 2, 1991), DurationMs: 1, Season: 3, Episode: 7},
+		{LibraryItemID: "ghost-spring", Title: "Grandpa's Attic", Overview: "Tansy is sure a ghost lives upstairs.", AirDate: aired(time.April, 8, 1992), DurationMs: 1, Season: 3, Episode: 20},
+		{LibraryItemID: "terror-undated", Title: "Treetop of Terror III", Overview: "Three more tales.", DurationMs: 1, Season: 4, Episode: 5},
+	}
+	october := time.Date(2026, time.October, 20, 20, 0, 0, 0, time.UTC)
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", Genres: []string{"Animation", "Comedy"}, EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"halloween"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, october)
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() && !slices.Contains(ids, slot.LibraryItemID) {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	slices.Sort(ids)
+	if want := []string{"terror-1", "terror-2", "terror-undated"}; !slices.Equal(ids, want) {
+		t.Fatalf("Halloween episodes = %v, want the three anthology episodes only", ids)
+	}
+}
+
 func TestComputeDesiredHolidaySelectionUsesIntentKnownNewYearAlias(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "nye", Title: "The NYE Party", DurationMs: 1, Season: 1, Episode: 1},
 		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 2},
@@ -251,7 +314,7 @@ func TestComputeDesiredHolidaySelectionUsesIntentKnownNewYearAlias(t *testing.T)
 }
 
 func TestComputeDesiredEpisodeSelectionFallsBackWhenEvidenceIsSparse(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "One", DurationMs: 1, Season: 1, Episode: 1, CommunityRating: 9.5},
 		{LibraryItemID: "ep-2", Title: "Two", DurationMs: 1, Season: 1, Episode: 2},
@@ -267,7 +330,7 @@ func TestComputeDesiredEpisodeSelectionFallsBackWhenEvidenceIsSparse(t *testing.
 }
 
 func TestComputeDesiredHighlightsRequiresRepresentativeRatingCoverage(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
 	for i, rating := range []float64{9.5, 9.2, 8.9, 8.6, 8.3, 0, 0, 0} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -281,7 +344,7 @@ func TestComputeDesiredHighlightsRequiresRepresentativeRatingCoverage(t *testing
 	}
 
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -292,7 +355,7 @@ func TestComputeDesiredHighlightsRequiresRepresentativeRatingCoverage(t *testing
 }
 
 func TestComputeDesiredHighlightsRejectsInvalidRatings(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
 	for i, rating := range []float64{11, 9.2, 8.9, 8.6, 8.3, 8.0, 7.7, 7.4} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -306,7 +369,7 @@ func TestComputeDesiredHighlightsRejectsInvalidRatings(t *testing.T) {
 	}
 
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -322,7 +385,7 @@ func TestComputeDesiredHighlightsRejectsInvalidRatings(t *testing.T) {
 }
 
 func TestComputeDesiredHighlightsDoesNotBreakQualityTiesArbitrarily(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
 	for i := range 8 {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -336,7 +399,7 @@ func TestComputeDesiredHighlightsDoesNotBreakQualityTiesArbitrarily(t *testing.T
 	}
 
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -347,7 +410,7 @@ func TestComputeDesiredHighlightsDoesNotBreakQualityTiesArbitrarily(t *testing.T
 }
 
 func TestComputeDesiredHighlightsCapAndTieOverCapFallback(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	makeEpisodes := func(tieAtCap bool) []schedule.ResolvedProgram {
 		episodes := make([]schedule.ResolvedProgram, 193)
 		for i := range episodes {
@@ -379,7 +442,7 @@ func TestComputeDesiredHighlightsCapAndTieOverCapFallback(t *testing.T) {
 }
 
 func TestComputeDesiredHolidayNoMatchRemainsEmpty(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "Ordinary One", DurationMs: 1, Season: 1, Episode: 1},
 		{LibraryItemID: "ep-2", Title: "Ordinary Two", DurationMs: 1, Season: 1, Episode: 2},
@@ -407,7 +470,7 @@ func TestComputeDesiredHolidayNoMatchRemainsEmpty(t *testing.T) {
 }
 
 func TestComputeDesiredUnknownEpisodeModeFallsBackToCompletePool(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "One", DurationMs: 1, Season: 1, Episode: 1},
 		{LibraryItemID: "ep-2", Title: "Two", DurationMs: 1, Season: 1, Episode: 2},
@@ -430,10 +493,10 @@ func TestComputeDesiredUnknownEpisodeModeFallsBackToCompletePool(t *testing.T) {
 }
 
 func TestComputeDesiredHighlightsRanksMultipartStoryAsOneUnit(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
-		{LibraryItemID: "part-1", Title: "A Tale of Two Springfields (1)", DurationMs: 1, Season: 7, Episode: 1, CommunityRating: 9.9},
-		{LibraryItemID: "part-2", Title: "A Tale of Two Springfields (2)", DurationMs: 1, Season: 7, Episode: 2, CommunityRating: 9.8},
+		{LibraryItemID: "part-1", Title: "A Tale of Two Puddlefords (1)", DurationMs: 1, Season: 7, Episode: 1, CommunityRating: 9.9},
+		{LibraryItemID: "part-2", Title: "A Tale of Two Puddlefords (2)", DurationMs: 1, Season: 7, Episode: 2, CommunityRating: 9.8},
 	}
 	for i, rating := range []float64{9.7, 9.6, 9.5, 7.4, 7.3, 7.2, 7.1} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -447,7 +510,7 @@ func TestComputeDesiredHighlightsRanksMultipartStoryAsOneUnit(t *testing.T) {
 	}
 
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -490,14 +553,14 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 	// breaks fall after prog 1, 2, 3 (not after the last — no trailing break).
 	min15 := int64(15 * 60 * 1000)
 	avail := durAvail{
-		"movie:tmdb:1": {id: "l1", dur: min15},
-		"movie:tmdb:2": {id: "l2", dur: min15},
-		"movie:tmdb:3": {id: "l3", dur: min15},
-		"movie:tmdb:4": {id: "l4", dur: min15},
+		"movie:tmdb:90000001": {id: "l1", dur: min15},
+		"movie:tmdb:90000002": {id: "l2", dur: min15},
+		"movie:tmdb:90000003": {id: "l3", dur: min15},
+		"movie:tmdb:90000004": {id: "l4", dur: min15},
 	}
 	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
-		entry("movie:tmdb:3", "C"), entry("movie:tmdb:4", "D"),
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
+		entry("movie:tmdb:90000003", "C"), entry("movie:tmdb:90000004", "D"),
 	}
 
 	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
@@ -513,8 +576,8 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 	// adjacent to another break.
 	for i, s := range got.Slots {
 		if s.Kind == schedule.SlotFiller {
-			if s.DurationMs != 30*1000 {
-				t.Errorf("break duration = %dms, want default 30s", s.DurationMs)
+			if s.DurationMs != 2*60*1000 {
+				t.Errorf("break duration = %dms, want default 2m", s.DurationMs)
 			}
 			if i == len(got.Slots)-1 {
 				t.Errorf("break is the last slot (trailing break): %+v", got.Slots)
@@ -530,11 +593,11 @@ func TestComputeDesired_UsesChannelBreakDuration(t *testing.T) {
 	ch := breakChannel(4)
 	ch.BreakDurationMs = 90_000
 	avail := durAvail{
-		"movie:tmdb:1": {id: "l1", dur: 15 * 60 * 1000},
-		"movie:tmdb:2": {id: "l2", dur: 15 * 60 * 1000},
+		"movie:tmdb:90000001": {id: "l1", dur: 15 * 60 * 1000},
+		"movie:tmdb:90000002": {id: "l2", dur: 15 * 60 * 1000},
 	}
 	got := schedule.ComputeDesired(ch, []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
 	}, avail, schedule.PodFill)
 	if len(got.Slots) != 3 || got.Slots[1].Kind != schedule.SlotFiller {
 		t.Fatalf("slots = %+v, want program / break / program", got.Slots)
@@ -551,14 +614,14 @@ func TestComputeDesired_UsesChannelBreakDuration(t *testing.T) {
 func TestDesiredCounts_BreaksAreNotPending(t *testing.T) {
 	min15 := int64(15 * 60 * 1000)
 	avail := durAvail{
-		"movie:tmdb:1": {id: "l1", dur: min15},
-		"movie:tmdb:2": {id: "l2", dur: min15},
-		"movie:tmdb:3": {id: "l3", dur: min15},
-		"movie:tmdb:4": {id: "l4", dur: min15},
+		"movie:tmdb:90000001": {id: "l1", dur: min15},
+		"movie:tmdb:90000002": {id: "l2", dur: min15},
+		"movie:tmdb:90000003": {id: "l3", dur: min15},
+		"movie:tmdb:90000004": {id: "l4", dur: min15},
 	}
 	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
-		entry("movie:tmdb:3", "C"), entry("movie:tmdb:4", "D"),
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
+		entry("movie:tmdb:90000003", "C"), entry("movie:tmdb:90000004", "D"),
 	}
 	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
 
@@ -581,8 +644,8 @@ func TestDesiredCounts_BreaksAreNotPending(t *testing.T) {
 // pending title, not a commercial break — the Key is what tells them apart.
 func TestDesiredCounts_PodFillPlaceholderIsPending(t *testing.T) {
 	min15 := int64(15 * 60 * 1000)
-	avail := durAvail{"movie:tmdb:1": {id: "l1", dur: min15}} // :2 absent → pod-fill pending
-	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+	avail := durAvail{"movie:tmdb:90000001": {id: "l1", dur: min15}} // :2 absent → pod-fill pending
+	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
 	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
 
@@ -604,10 +667,10 @@ func TestDesiredCounts_PodFillPlaceholderIsPending(t *testing.T) {
 func TestComputeDesired_ShortProgramsFewerBreaks(t *testing.T) {
 	min22 := int64(22 * 60 * 1000)
 	avail := durAvail{
-		"movie:tmdb:1": {id: "l1", dur: min22},
-		"movie:tmdb:2": {id: "l2", dur: min22},
+		"movie:tmdb:90000001": {id: "l1", dur: min22},
+		"movie:tmdb:90000002": {id: "l2", dur: min22},
 	}
-	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
 	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
 
@@ -622,8 +685,8 @@ func TestComputeDesired_ShortProgramsFewerBreaks(t *testing.T) {
 // break gaps, preserving the old behavior for channels that don't want ads.
 func TestComputeDesired_NoBreaksWhenDensityZero(t *testing.T) {
 	min15 := int64(15 * 60 * 1000)
-	avail := durAvail{"movie:tmdb:1": {id: "l1", dur: min15}, "movie:tmdb:2": {id: "l2", dur: min15}}
-	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+	avail := durAvail{"movie:tmdb:90000001": {id: "l1", dur: min15}, "movie:tmdb:90000002": {id: "l2", dur: min15}}
+	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
 	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
 
@@ -640,8 +703,8 @@ func TestComputeDesired_NoBreaksWhenDensityZero(t *testing.T) {
 // (Tunarr rejects a program with duration ≤ 0). A lineup entry has no runtime of
 // its own — Availability.Resolve provides it from the library.
 func TestComputeDesired_ProgramCarriesResolvedDuration(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("movie:tmdb:603", "The Matrix")}
-	avail := durAvail{"movie:tmdb:603": {id: "lib-603", dur: 8_160_000}} // 136 min
+	entries := []schedule.LineupEntry{entry("movie:tmdb:90000603", "Marigold Protocol")}
+	avail := durAvail{"movie:tmdb:90000603": {id: "lib-603", dur: 8_160_000}} // 136 min
 
 	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
 
@@ -655,13 +718,13 @@ func TestComputeDesired_ProgramCarriesResolvedDuration(t *testing.T) {
 // episode, each with the episode's own item id + duration — NOT one slot with the
 // show's (unplayable, duration-0) id.
 func TestComputeDesired_SeriesExpandsToEpisodes(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:79169", "Seinfeld")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90079169", "Hank & Delphine")}
 	avail := seriesAvail{
 		episodes: map[provision.Key][]schedule.ResolvedProgram{
-			"series:tvdb:79169": {
+			"series:tvdb:90079169": {
 				{LibraryItemID: "ep-1", Title: "The Pilot", DurationMs: 1380000},
-				{LibraryItemID: "ep-2", Title: "The Stake Out", DurationMs: 1380000},
-				{LibraryItemID: "ep-3", Title: "The Robbery", DurationMs: 1380000},
+				{LibraryItemID: "ep-2", Title: "The Pie Shortage", DurationMs: 1380000},
+				{LibraryItemID: "ep-3", Title: "The Night Cook", DurationMs: 1380000},
 			},
 		},
 	}
@@ -685,13 +748,13 @@ func TestComputeDesired_SeriesExpandsToEpisodes(t *testing.T) {
 
 // TestComputeDesired_SeasonRangeFiltersEpisodes covers the season-range intent
 // filter (§9): a series entry with SeasonMin/SeasonMax expands to only the
-// in-range episodes (e.g. "old-school Simpsons", seasons 1–2 of a longer run).
+// in-range episodes (e.g. "old-school Mudpuddles", seasons 1–2 of a longer run).
 func TestComputeDesired_SeasonRangeFiltersEpisodes(t *testing.T) {
-	e := entry("series:tvdb:456", "The Simpsons")
+	e := entry("series:tvdb:90000456", "The Mudpuddles")
 	e.SeasonMin, e.SeasonMax = 1, 2 // classic era only
 	avail := seriesAvail{
 		episodes: map[provision.Key][]schedule.ResolvedProgram{
-			"series:tvdb:456": {
+			"series:tvdb:90000456": {
 				{LibraryItemID: "s1e1", Title: "S1E1", DurationMs: 1320000, Season: 1},
 				{LibraryItemID: "s2e1", Title: "S2E1", DurationMs: 1320000, Season: 2},
 				{LibraryItemID: "s5e1", Title: "S5E1", DurationMs: 1320000, Season: 5},    // out of range
@@ -715,11 +778,11 @@ func TestComputeDesired_SeasonRangeFiltersEpisodes(t *testing.T) {
 // TestComputeDesired_SeasonRangeNoMatchIsPending: a range matching no in-library
 // episodes yet → a pending slot (not an empty channel).
 func TestComputeDesired_SeasonRangeNoMatchIsPending(t *testing.T) {
-	e := entry("series:tvdb:456", "The Simpsons")
+	e := entry("series:tvdb:90000456", "The Mudpuddles")
 	e.SeasonMin, e.SeasonMax = 40, 50 // seasons we don't have
 	avail := seriesAvail{
 		episodes: map[provision.Key][]schedule.ResolvedProgram{
-			"series:tvdb:456": {{LibraryItemID: "s1e1", DurationMs: 1320000, Season: 1}},
+			"series:tvdb:90000456": {{LibraryItemID: "s1e1", DurationMs: 1320000, Season: 1}},
 		},
 	}
 	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.ComingSoon)
@@ -732,7 +795,7 @@ func TestComputeDesired_SeasonRangeNoMatchIsPending(t *testing.T) {
 // playable episodes yet degrades to a single pending slot (not zero programs, not
 // a broken push) — episodes join on a later reconcile.
 func TestComputeDesired_SeriesNoEpisodesIsPending(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:1", "New Show")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000001", "New Show")}
 	avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{}} // none yet
 
 	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.ComingSoon)
@@ -745,9 +808,9 @@ func TestComputeDesired_SeriesNoEpisodesIsPending(t *testing.T) {
 // TestComputeDesired_ResolvedZeroFallsBackToEntry: if the resolver reports 0
 // (server had no runtime), ComputeDesired falls back to the entry's own duration.
 func TestComputeDesired_ResolvedZeroFallsBackToEntry(t *testing.T) {
-	e := entry("movie:tmdb:1", "A")
+	e := entry("movie:tmdb:90000001", "A")
 	e.DurationMs = 5_400_000 // 90 min known on the entry
-	avail := durAvail{"movie:tmdb:1": {id: "lib-A", dur: 0}}
+	avail := durAvail{"movie:tmdb:90000001": {id: "lib-A", dur: 0}}
 
 	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
 
@@ -757,14 +820,14 @@ func TestComputeDesired_ResolvedZeroFallsBackToEntry(t *testing.T) {
 }
 
 func TestComputeDesired_PendingPodFill_KeepsKeyAsFiller(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("movie:tmdb:9", "Coming")}
+	entries := []schedule.LineupEntry{entry("movie:tmdb:90000009", "Coming")}
 	got := schedule.ComputeDesired(seqChannel(), entries, mapAvail{}, schedule.PodFill)
 
 	s := got.Slots[0]
 	if s.Kind != schedule.SlotFiller {
 		t.Fatalf("pod-fill: want SlotFiller, got %s", s.Kind)
 	}
-	if s.Key != "movie:tmdb:9" {
+	if s.Key != "movie:tmdb:90000009" {
 		t.Fatalf("pod-fill must preserve key for backfill, got %q", s.Key)
 	}
 	if s.LibraryItemID != "" {
@@ -776,27 +839,27 @@ func TestComputeDesired_PendingPodFill_KeepsKeyAsFiller(t *testing.T) {
 }
 
 func TestComputeDesired_PendingComingSoon_KeepsKeyAsPending(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:7", "Later")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000007", "Later")}
 	got := schedule.ComputeDesired(seqChannel(), entries, mapAvail{}, schedule.ComingSoon)
 
 	s := got.Slots[0]
 	if s.Kind != schedule.SlotPending {
 		t.Fatalf("coming-soon: want SlotPending, got %s", s.Kind)
 	}
-	if s.Key != "series:tvdb:7" {
+	if s.Key != "series:tvdb:90000007" {
 		t.Fatalf("coming-soon must preserve key, got %q", s.Key)
 	}
 }
 
 func TestComputeDesired_Shuffle_DeterministicUnderSeed(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
-		entry("movie:tmdb:3", "C"), entry("movie:tmdb:4", "D"),
-		entry("movie:tmdb:5", "E"),
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
+		entry("movie:tmdb:90000003", "C"), entry("movie:tmdb:90000004", "D"),
+		entry("movie:tmdb:90000005", "E"),
 	}
 	avail := mapAvail{
-		"movie:tmdb:1": "1", "movie:tmdb:2": "2", "movie:tmdb:3": "3",
-		"movie:tmdb:4": "4", "movie:tmdb:5": "5",
+		"movie:tmdb:90000001": "1", "movie:tmdb:90000002": "2", "movie:tmdb:90000003": "3",
+		"movie:tmdb:90000004": "4", "movie:tmdb:90000005": "5",
 	}
 	ch := schedule.Channel{ID: "ch", Name: "S", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 42}}
 
@@ -856,14 +919,16 @@ func TestChannelValidate(t *testing.T) {
 }
 
 func TestComputeDesiredChristmasScopeRejectsPetAndOtherHolidayEvidence(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
+	// "Santa's Little Helper" is a pet-name look-alike in the product's own vocabulary
+	// (holidayvocab/vocabulary.go), not a fixture title.
 	negatives := []schedule.ResolvedProgram{
-		{LibraryItemID: "dog", Title: "Dog of Death", Overview: "The family pays for surgery for Santa's Little Helper.", DurationMs: 1, Season: 3, Episode: 19},
-		{LibraryItemID: "dog-curly", Title: "The Canine Mutiny", Overview: "Bart replaces Santa’s Little Helper with a new dog.", DurationMs: 1, Season: 8, Episode: 20},
-		{LibraryItemID: "halloween", Title: "Halloween of Horror", Overview: "Homer brings out the holiday decorations.", DurationMs: 1, Season: 27, Episode: 4},
+		{LibraryItemID: "dog", Title: "A Trip to the Vet", Overview: "The family pays for surgery for Santa's Little Helper.", DurationMs: 1, Season: 3, Episode: 19},
+		{LibraryItemID: "dog-curly", Title: "The Puppy Swap", Overview: "Pip replaces Santa’s Little Helper with a new dog.", DurationMs: 1, Season: 8, Episode: 20},
+		{LibraryItemID: "halloween", Title: "Halloween at the Puddle House", Overview: "Grandpa Puddle brings out the holiday decorations.", DurationMs: 1, Season: 27, Episode: 4},
 	}
 	positives := []schedule.ResolvedProgram{
-		{LibraryItemID: "christmas", Title: "Simpsons Roasting on an Open Fire", Overview: "At Christmas the family adopts Santa's Little Helper.", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "christmas", Title: "Mudpuddles Roasting on an Open Fire", Overview: "At Christmas the family adopts Santa's Little Helper.", DurationMs: 1, Season: 1, Episode: 1},
 		{LibraryItemID: "santa", Title: "Winter Visitor", Overview: "The family meets Santa.", DurationMs: 1, Season: 1, Episode: 2},
 	}
 	for _, withPositives := range []bool{false, true} {
@@ -871,7 +936,7 @@ func TestComputeDesiredChristmasScopeRejectsPetAndOtherHolidayEvidence(t *testin
 		if withPositives {
 			episodes = append(episodes, positives...)
 		}
-		got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill, schedule.ChannelPolicy{}, time.Time{})
+		got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{Key: key, Title: "The Mudpuddles", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill, schedule.ChannelPolicy{}, time.Time{})
 		var ids []string
 		for _, slot := range got.Slots {
 			if slot.IsProgram() {

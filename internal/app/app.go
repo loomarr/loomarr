@@ -214,7 +214,7 @@ func buildHandler(
 	handler := buildHTTP(httpBuild{
 		rootCtx: rootCtx, store: st, log: log, overrides: ov, foundation: foundation,
 		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
-		auth: operations.auth, backups: operations.backups,
+		auth: operations.auth, backups: operations.backups, watermarks: watermarks,
 		restart: operations.restart, bootConfig: operations.bootConfig,
 		guide: operations.guide, settings: operations.settings,
 		notificationDestinations: operations.notificationDestinations,

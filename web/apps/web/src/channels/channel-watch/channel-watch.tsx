@@ -454,8 +454,9 @@ const ChannelWatch = ({
           onClick={() => setDrawerOpen((open) => !open)}
           className={cn(
             "flex h-9 shrink-0 items-center gap-[7px] rounded-lg border px-[13px] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
             drawerOpen
-              ? "border-signal/45 bg-signal/15 text-signal"
+              ? "border-foreground bg-static-800 font-semibold text-foreground"
               : "border-static-0/14 bg-static-0/6 text-foreground hover:bg-static-0/12",
           )}
         >

@@ -62,8 +62,8 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	}
 
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
+	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
 	_, err = workflow.Complete(context.Background(), work, proposal)
 	if err != nil {
 		t.Fatalf("Complete grounded Proposal: %v", err)
@@ -93,11 +93,11 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 
 	repo.completed = nil
 	refusedOnly := suggest.Proposal{Refused: []suggest.RefusedPick{{Item: suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}, Reason: suggest.ReasonOverCeiling}}, Trace: suggest.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603", Name: "The Matrix", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
 	}}
 	if _, err := workflow.Complete(context.Background(), work, refusedOnly); err != nil {
 		t.Fatalf("Complete refused-only review Proposal: %v", err)
@@ -115,8 +115,8 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 	_, err := workflow.Complete(context.Background(), Work{
 		Version: WorkflowVersion1, JobID: "job-1", Attempt: 1,
 	}, suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
-	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "acquisition")})
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
+	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "acquisition")})
 	if !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("Complete stale Attempt error = %v, want ErrStaleAttempt", err)
 	}

@@ -8,8 +8,8 @@ import (
 )
 
 const streamReply = "Here you go:\n```json\n" + `{"channelName":"90s {Action}","rationale":"says \"fast\" } ok","picks":[` +
-	`{"key":"movie:tmdb:100","rationale":"a \"bus\" that }{ can't stop","confidence":0.9},` +
-	`{"key":"movie:tmdb:603","seasonMin":0,"confidence":0.8}` +
+	`{"key":"movie:tmdb:90000100","rationale":"a \"bus\" that }{ can't stop","confidence":0.9},` +
+	`{"key":"movie:tmdb:90000603","seasonMin":0,"confidence":0.8}` +
 	`],"policy":{"rules":[{"when":"weekend"}],"genres":{"include":["a"]}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}` + "\n```"
 
 func collectPicks(chunks []string) []string {
@@ -23,7 +23,7 @@ func collectPicks(chunks []string) []string {
 
 func TestPickStream_WholeReplyYieldsPicksInOrder(t *testing.T) {
 	got := collectPicks([]string{streamReply})
-	if want := []string{"movie:tmdb:100", "movie:tmdb:603"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"movie:tmdb:90000100", "movie:tmdb:90000603"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("picks = %v, want %v", got, want)
 	}
 }
@@ -49,31 +49,31 @@ func TestPickStream_EverySplitPointGivesTheSameAnswer(t *testing.T) {
 
 // A pick is emitted only when its object CLOSES, never earlier from a half-written entry.
 func TestPickStream_IncompleteObjectIsNotEmitted(t *testing.T) {
-	head := `{"picks":[{"key":"movie:tmdb:100","rationale":"a"},{"key":"movie:tmdb:603","rati`
-	if got := collectPicks([]string{head}); !reflect.DeepEqual(got, []string{"movie:tmdb:100"}) {
+	head := `{"picks":[{"key":"movie:tmdb:90000100","rationale":"a"},{"key":"movie:tmdb:90000603","rati`
+	if got := collectPicks([]string{head}); !reflect.DeepEqual(got, []string{"movie:tmdb:90000100"}) {
 		t.Fatalf("picks = %v, want only the closed first entry", got)
 	}
 }
 
 // Nested arrays/objects elsewhere (policy.rules, genres) must never be mistaken for picks.
 func TestPickStream_OnlyTopLevelPicksArrayEmits(t *testing.T) {
-	reply := `{"policy":{"picks":[{"key":"movie:tmdb:1"}],"rules":[{"key":"movie:tmdb:2"}]},"picks":[{"key":"movie:tmdb:3"}]}`
-	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:3"}) {
+	reply := `{"policy":{"picks":[{"key":"movie:tmdb:90000001"}],"rules":[{"key":"movie:tmdb:90000002"}]},"picks":[{"key":"movie:tmdb:90000003"}]}`
+	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:90000003"}) {
 		t.Fatalf("picks = %v, want only the top-level entry", got)
 	}
 }
 
 func TestPickStream_UnparseableEntryIsSkippedNotFatal(t *testing.T) {
-	reply := `{"picks":[{"key":movie},{"key":"movie:tmdb:9"}]}`
-	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:9"}) {
+	reply := `{"picks":[{"key":movie},{"key":"movie:tmdb:90000009"}]}`
+	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:90000009"}) {
 		t.Fatalf("picks = %v, want the later valid entry", got)
 	}
 }
 
 // An escaped quote must not end the string: the brace after it is text, not the object's end.
 func TestPickStream_EscapedQuoteDoesNotEndTheString(t *testing.T) {
-	reply := `{"picks":[{"key":"movie:tmdb:1","rationale":"he said \"}\" loudly"},{"key":"movie:tmdb:2"}]}`
-	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:1", "movie:tmdb:2"}) {
+	reply := `{"picks":[{"key":"movie:tmdb:90000001","rationale":"he said \"}\" loudly"},{"key":"movie:tmdb:90000002"}]}`
+	if got := collectPicks([]string{reply}); !reflect.DeepEqual(got, []string{"movie:tmdb:90000001", "movie:tmdb:90000002"}) {
 		t.Fatalf("picks = %v", got)
 	}
 }

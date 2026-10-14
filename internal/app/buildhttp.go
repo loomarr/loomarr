@@ -8,23 +8,26 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 )
 
 type httpBuild struct {
-	rootCtx                  context.Context
-	store                    fillerstore.Store
-	log                      *slog.Logger
-	overrides                Overrides
-	foundation               foundationBuild
-	channels                 channelBuild
-	approval                 approvalBuild
-	suggestions              suggestionBuild
-	fillers                  fillerBuild
-	auth                     authBuild
-	backups                  api.BackupsService
+	rootCtx     context.Context
+	store       fillerstore.Store
+	log         *slog.Logger
+	overrides   Overrides
+	foundation  foundationBuild
+	channels    channelBuild
+	approval    approvalBuild
+	suggestions suggestionBuild
+	fillers     fillerBuild
+	auth        authBuild
+	backups     api.BackupsService
+	// watermarks draws the channel page's On-screen logo preview (#1659).
+	watermarks               *channelWatermarks
 	restart                  api.RestartService
 	bootConfig               *config.Config
 	guide                    api.GuideReader
@@ -142,6 +145,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		DiagnosticBundles:   deps.foundation.diagnosticBundles,
 		DiagnosticCapture:   deps.foundation.diagnostics,
 		ClientDiagnostics:   deps.foundation.clientDiagnostics,
+		ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
 		StartupReports:      deps.foundation.startupReports,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
@@ -179,6 +183,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
 		PlayoutCapability: playoutCapability,
+		WatermarkPreview:  deps.watermarks,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
@@ -204,4 +209,13 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
 	})
+}
+
+// clientCrashService keeps a store-less build's nil module from becoming a non-nil interface,
+// which would mount the crash routes over nothing.
+func clientCrashService(c *diagnostics.ClientCrashes) api.ClientCrashService {
+	if c == nil {
+		return nil
+	}
+	return c
 }

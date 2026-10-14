@@ -497,24 +497,31 @@ func declared() []Setting {
 			// The middle tier of channel policy.watermark.opacity > this > built-in (#1617); the
 			// maintainer chose 40% from a real 1080p preview. Read per programme item, and the
 			// rendered-bug cache is keyed by opacity, so a change re-renders the bugs.
-			Key: "playout.watermark_opacity_pct", Label: "Channel logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
+			Key: "playout.watermark_opacity_pct", Label: "On-screen logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
 			Kind: KindInt, Default: "40", Validate: watermarkOpacityRange,
-			Doc: "How solid the channel logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own watermark opacity keeps it. A change shows from each channel's next programme.",
+			Doc: "How solid the on-screen logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
-			// The maintainer's four styles (#1617, picked from real-frame previews), Text by default;
-			// the middle tier of channel policy.watermark.look > this > built-in. Values match
-			// schedule.WatermarkLooks and watermark.Styles (pinned by an internal/app test). Read per
-			// programme item; the rendered-bug cache is keyed by look, so a change re-renders.
-			Key: "playout.watermark_look", Label: "Channel logo style", EnvVar: "PLAYOUT_WATERMARK_LOOK", Group: GroupPlayout,
+			// The maintainer's four styles (#1617, picked from real-frame previews), Text by default,
+			// then the approved design's six (#1659); the middle tier of channel
+			// policy.watermark.look > this > built-in. Values match schedule.WatermarkLooks and
+			// watermark.DesignStyles (pinned by an internal/app test). Read per programme item; the
+			// rendered-bug cache is keyed by look, so a change re-renders.
+			Key: "playout.watermark_look", Label: "On-screen logo style", EnvVar: "PLAYOUT_WATERMARK_LOOK", Group: GroupPlayout,
 			Kind: KindEnum, Enum: []EnumOption{
 				opt("plate", "Plate — the name cut out of a rounded badge"),
 				opt("text", "Text — the name alone, with a soft shadow"),
 				opt("outline", "Outline — the name as hollow letters"),
 				opt("small-plate", "Small plate — a smaller badge with no shadow"),
+				opt("tint", "Colour plate — the name cut out of a coloured badge"),
+				opt("twotone", "Number + name — the channel number in a coloured tab beside the name"),
+				opt("badge", "Number badge — the channel number in a coloured rounded square"),
+				opt("lockup", "Number | name — number, thin line, name, in white"),
+				opt("glass", "Glass — the name on a frosted see-through plate"),
+				opt("stripe", "Era stripe — the name over a three-colour stripe"),
 			},
 			Default: "text",
-			Doc:     "How the channel logo Loomarr draws from a channel's name looks. A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
+			Doc:     "How the on-screen logo Loomarr draws from a channel's name looks. Coloured styles use each channel's colour (by default, colours from the channel's decade). A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
 		},
 		{
 			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
@@ -1129,8 +1136,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
-			Kind: KindDuration, Default: "30s", Validate: breakDuration,
-			Doc: "How long each commercial break lasts by default — short, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+			Kind: KindDuration, Default: "2m", Validate: breakDuration,
+			Doc: "How long each commercial break lasts by default, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
 		},
 		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
@@ -1138,9 +1145,9 @@ func declared() []Setting {
 			Doc: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
-			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
-			Kind: KindInt, Default: 1800, Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Preferred seconds before the same commercial airs again. Loomarr relaxes this predictably when a small pool would otherwise leave a break empty.",
+			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
+			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "Default seconds before the same commercial airs again on a channel (14400 is 4 hours). Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a

@@ -2,14 +2,18 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import {
   getListChannelIdeasMockHandler,
   getSearchMockHandler,
+  getSettingsListMockHandler,
   getSubmitManualChannelMockHandler,
 } from "@loomarr/api/msw";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { POLL_MS } from "../use-ai-reconnect";
 import { ManualChannelBuilder } from "./manual-channel-builder";
 
 const makeWrapper = () => {
@@ -28,13 +32,13 @@ const comedyIdea: ChannelIdeaDTO = {
   reason: { kind: "unaired", count: 2 },
   facet: "genre",
   value: "Comedy",
-  keys: ["movie:tmdb:1", "movie:tmdb:2"],
+  keys: ["movie:tmdb:90000001", "movie:tmdb:90000002"],
   titles: [
     {
       name: "Autumn Market",
       year: 2003,
       mediaType: "movie",
-      tmdbId: 1,
+      tmdbId: 90000001,
       inLibrary: true,
       libraryItemId: "lib-1",
     },
@@ -42,7 +46,7 @@ const comedyIdea: ChannelIdeaDTO = {
       name: "The Understudy",
       year: 1999,
       mediaType: "movie",
-      tmdbId: 2,
+      tmdbId: 90000002,
       inLibrary: true,
       libraryItemId: "lib-2",
     },
@@ -91,17 +95,25 @@ describe("ManualChannelBuilder", () => {
     stubIdeas([]);
     server.use(
       getSearchMockHandler({
-        candidates: [{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }],
+        candidates: [
+          {
+            name: "The Velvet Cartographer",
+            year: 1995,
+            mediaType: "movie",
+            tmdbId: 90000949,
+            inLibrary: true,
+          },
+        ],
       }),
     );
     const user = userEvent.setup();
     render(<ManualChannelBuilder isAdmin onCancel={vi.fn()} onSubmitted={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Search titles" }));
-    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "heat");
-    await user.click(await screen.findByText("Heat"));
+    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "velvet");
+    await user.click(await screen.findByText("The Velvet Cartographer"));
 
-    expect(screen.getByText("Heat")).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
   });
 
   it("disables Continue to review until a name and at least one title are chosen", async () => {
@@ -149,5 +161,173 @@ describe("ManualChannelBuilder", () => {
     render(<ManualChannelBuilder isAdmin onCancel={onCancel} onSubmitted={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+});
+
+// The resume banner (#1817, mock #1872 Alt A): AI comes back while an admin is building by hand.
+describe("ManualChannelBuilder resume banner", () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  const renderWithTheme = (ui: ReactElement) => render(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
+
+  // GET /v1/settings' computed `features.suggestions`, flipped by the test; reads are counted.
+  const stubFeatures = (initial: boolean) => {
+    const state = { suggestions: initial, reads: 0 };
+    server.use(
+      getSettingsListMockHandler(() => {
+        state.reads += 1;
+        return { settings: [], features: { suggestions: state.suggestions } };
+      }),
+    );
+    return state;
+  };
+
+  const reconnect = async (features: { suggestions: boolean; reads: number }) => {
+    await waitFor(() => expect(features.reads).toBe(1));
+    features.suggestions = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    return screen.findByText("AI is connected now");
+  };
+
+  const setupUser = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+  it("appears when AI comes back, and Try AI suggestions records the picks before handing over", async () => {
+    const features = stubFeatures(false);
+    let submitted: unknown;
+    server.use(
+      getSubmitManualChannelMockHandler(async ({ request }) => {
+        submitted = await request.json();
+        return { jobId: "job-manual-2" };
+      }),
+    );
+    const onAiSubmitted = vi.fn();
+    const user = setupUser();
+    renderWithTheme(
+      <ManualChannelBuilder
+        isAdmin
+        initialIdea={comedyIdea}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+        onAiSubmitted={onAiSubmitted}
+        onDescribeWithAi={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("AI is connected now")).not.toBeInTheDocument();
+
+    await reconnect(features);
+    expect(
+      screen.getByText(
+        "Your manual lineup (2 titles) is still here. Keep building it by hand, or let Loomarr suggest titles for this description — your picks stay in the lineup either way.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Try AI suggestions" }));
+
+    await waitFor(() =>
+      expect(onAiSubmitted).toHaveBeenCalledWith("job-manual-2", comedyIdea.pitch, "Comedy Movies"),
+    );
+    expect(submitted).toEqual({
+      name: "Comedy Movies",
+      description: comedyIdea.pitch,
+      lineup: comedyIdea.titles,
+    });
+  });
+
+  it("with nothing picked yet, sends the description back to the describe form instead", async () => {
+    stubIdeas([]);
+    const features = stubFeatures(false);
+    const onDescribeWithAi = vi.fn();
+    const onAiSubmitted = vi.fn();
+    const user = setupUser();
+    renderWithTheme(
+      <ManualChannelBuilder
+        isAdmin
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+        onAiSubmitted={onAiSubmitted}
+        onDescribeWithAi={onDescribeWithAi}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+
+    await reconnect(features);
+    expect(screen.getByText(/Your manual lineup \(0 titles\) is still here/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try AI suggestions" }));
+
+    expect(onDescribeWithAi).toHaveBeenCalledWith(
+      CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
+    );
+    expect(onAiSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("holds Try AI suggestions with a reason until the picked lineup has a name", async () => {
+    const features = stubFeatures(false);
+    const user = setupUser();
+    renderWithTheme(
+      <ManualChannelBuilder
+        isAdmin
+        initialIdea={comedyIdea}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+        onAiSubmitted={vi.fn()}
+        onDescribeWithAi={vi.fn()}
+      />,
+    );
+    await reconnect(features);
+
+    await user.clear(screen.getByLabelText("Channel name"));
+
+    expect(screen.getByRole("button", { name: "Try AI suggestions" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByText("Name this channel to try AI suggestions.")).toBeInTheDocument();
+  });
+
+  it("Keep building manually hides the banner for the session and stops polling", async () => {
+    const features = stubFeatures(false);
+    const user = setupUser();
+    renderWithTheme(
+      <ManualChannelBuilder
+        isAdmin
+        initialIdea={comedyIdea}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+        onAiSubmitted={vi.fn()}
+        onDescribeWithAi={vi.fn()}
+      />,
+    );
+    await reconnect(features);
+
+    await user.click(screen.getByRole("button", { name: "Keep building manually" }));
+    expect(screen.queryByText("AI is connected now")).not.toBeInTheDocument();
+
+    const reads = features.reads;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    });
+    expect(features.reads).toBe(reads);
+    expect(screen.getByText("Autumn Market")).toBeInTheDocument();
+  });
+
+  it("a member never polls the admin-only signal", async () => {
+    const features = stubFeatures(false);
+    renderWithTheme(
+      <ManualChannelBuilder
+        isAdmin={false}
+        initialIdea={comedyIdea}
+        onCancel={vi.fn()}
+        onSubmitted={vi.fn()}
+        onAiSubmitted={vi.fn()}
+        onDescribeWithAi={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    });
+    expect(features.reads).toBe(0);
   });
 });

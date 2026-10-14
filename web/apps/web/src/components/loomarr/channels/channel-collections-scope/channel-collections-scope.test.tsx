@@ -38,7 +38,7 @@ afterEach(() => vi.unstubAllGlobals());
 const TWO = {
   collections: [
     { id: "bs-1", name: "Halloween", childCount: 12 },
-    { id: "bs-2", name: "Criterion" },
+    { id: "bs-2", name: "Bellwether" },
   ],
 };
 
@@ -81,8 +81,8 @@ describe("ChannelCollectionsScope", () => {
 
     // The chip shows the NAME even though the policy stores the id — the whole reason the
     // component holds the fetched list rather than rendering ids raw.
-    expect(await screen.findByText("Criterion")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Remove Criterion" }));
+    expect(await screen.findByText("Bellwether")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove Bellwether" }));
 
     // ⚠ Removing the last one must send [], not undefined. `collections` is omitempty, so
     // dropping the key leaves the previous restriction in place and the field would appear to
@@ -98,8 +98,8 @@ describe("ChannelCollectionsScope", () => {
   it("ranks curated lists above auto-generated franchise collections", async () => {
     stubCollections(200, {
       collections: [
-        { id: "f-1", name: "Alien Collection" },
-        { id: "f-2", name: "Batman Collection" },
+        { id: "f-1", name: "Marigold Protocol Collection" },
+        { id: "f-2", name: "Wren Halloway Collection" },
         { id: "c-1", name: "Zzz Best Of" }, // alphabetically last, but curated
       ],
     });
@@ -115,7 +115,7 @@ describe("ChannelCollectionsScope", () => {
     expect(options).toHaveLength(3);
     expect(options[0]).toHaveTextContent("Zzz Best Of");
     // …and the franchises follow, alphabetically among themselves.
-    expect(options[1]).toHaveTextContent("Alien Collection");
+    expect(options[1]).toHaveTextContent("Marigold Protocol Collection");
   });
 
   // ⚠ Escape closes the picker. SearchCommand deliberately does not bind it (the ⌘K palette

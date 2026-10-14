@@ -53,9 +53,9 @@ func TestAutoConfirmable_AcceptsAnUnambiguousReel(t *testing.T) {
 func TestAutoConfirmable_IgnoresDescriptiveNaming(t *testing.T) {
 	base := goodSeg(0, 0, 30_000)
 	before := filler.AutoConfirmable(proposalOf(base), policy(true, 85, 120*time.Second), floor).Verdict()
-	base.Name = "Toys R Us commercial"
+	base.Name = "Toyburrow commercial"
 	base.NameOrigin = "model-proposed"
-	base.NameEvidence = "TOYS R US"
+	base.NameEvidence = "TOYBURROW"
 	after := filler.AutoConfirmable(proposalOf(base), policy(true, 85, 120*time.Second), floor).Verdict()
 	if before != after || after != filler.AutoSplitOK {
 		t.Fatalf("naming changed admission: before=%q after=%q", before, after)

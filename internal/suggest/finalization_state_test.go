@@ -29,8 +29,8 @@ func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T
 				t.Fatal(err)
 			}
 			model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
-			references := &testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"The Matrix"}}}
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			references := &testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			const prefix = "This is the reference intent-interpretation phase."
 			model.OnChat = func() {
 				if model.Calls == 1 || model.Calls == 2 {
@@ -95,7 +95,7 @@ func TestSuggest_FinalizationCarriesAcceptedMeaningThroughRepair(t *testing.T) {
 					}
 				}
 			}
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), intent)
 			if err != nil {
 				t.Fatal(err)

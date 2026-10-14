@@ -1,5 +1,15 @@
+export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
+export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
+export type {
+  ChannelSeasonalFieldsProps,
+  SeasonalHoliday,
+  SeasonalMode,
+  SeasonalOffSeason,
+  SeasonalStrength,
+} from "./src/channels";
+export { ChannelSeasonalFields } from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -7,6 +17,8 @@ export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
+export type { ClipSelectProps } from "./src/filler";
+export { ClipSelect, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export type {
   GuideArtworkRenderer,
@@ -38,10 +50,17 @@ export type {
   ProgrammeIdentityProps,
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
+export type {
+  OnScreenLogoHoliday,
+  OnScreenLogoPolicy,
+  OnScreenLogoPreviewRequest,
+  OnScreenLogoSectionProps,
+} from "./src/on-screen-logo";
+export { OnScreenLogoSection } from "./src/on-screen-logo";
 export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
-export { PairingShell } from "./src/pairing-shell";
+export { PairingShell, pairingBackAvailable } from "./src/pairing-shell";
 export type {
   ProgrammeCardData,
   ProgrammeCardLayout,
@@ -111,4 +130,9 @@ export type {
   WatchingScheduleData,
   WatchingSurfaceProps,
 } from "./src/watching-surface";
-export { WatchingPanel, WatchingSurface, watchingPanelFromGuide } from "./src/watching-surface";
+export {
+  WatchingPanel,
+  WatchingSurface,
+  watchingPanelFromGuide,
+  watchingScheduleTimeMs,
+} from "./src/watching-surface";

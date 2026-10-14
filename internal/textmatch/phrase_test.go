@@ -53,3 +53,19 @@ func TestContainsPhraseOutsidePreservesOccurrenceBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestContainsPhraseOutsideMasksEveryExcludedPhrase(t *testing.T) {
+	excluded := []string{"Santa's Little Helper", "Santa Clarita"}
+	for _, tt := range []struct {
+		text string
+		want bool
+	}{
+		{"Santa Clarita meets Santa's Little Helper", false},
+		{"Santa Clarita meets Santa", true},
+		{"Santa", true},
+	} {
+		if got := textmatch.ContainsPhraseOutside(tt.text, "santa", excluded...); got != tt.want {
+			t.Errorf("ContainsPhraseOutside(%q, santa, %v) = %v, want %v", tt.text, excluded, got, tt.want)
+		}
+	}
+}

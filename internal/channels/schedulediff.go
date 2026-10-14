@@ -195,7 +195,7 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 		if !arranged.WindowOpened.IsZero() {
 			indexAt = arranged.WindowOpened
 		}
-		key := memoKey{schedule.ClockSignature(ch.Policy, at), window, schedule.WindowIndex(indexAt, window, zone)}
+		key := memoKey{schedule.ClockSignature(ch.Policy, at, zone), window, schedule.WindowIndex(indexAt, window, zone)}
 		if r, ok := memo[key]; ok {
 			return r, window, zone, nil
 		}
@@ -251,7 +251,7 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 				end, turns = turn, true
 			}
 		}
-		if change := nextClockChange(ch.Policy, cursor, end); !change.IsZero() {
+		if change := nextClockChange(ch.Policy, zone, cursor, end); !change.IsZero() {
 			end, turns = change, false
 		}
 
@@ -286,12 +286,21 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 
 // nextClockChange is the first instant in (after, before) at which the clock changes what the
 // arrangement reads (schedule.ClockSignature), or zero when it does not change. Rule hours and
-// holidays turn on the hour, so the hour tops are checked, plus each rule's explicit date edges.
-func nextClockChange(policy schedule.ChannelPolicy, after, before time.Time) time.Time {
-	base := schedule.ClockSignature(policy, after)
+// holidays turn on the hour or at the channel's local midnight in zone, so the hour tops and the
+// zone's midnights are checked, plus each rule's explicit date edges.
+func nextClockChange(policy schedule.ChannelPolicy, zone *time.Location, after, before time.Time) time.Time {
+	base := schedule.ClockSignature(policy, after, zone)
 	var candidates []time.Time
 	top := time.Date(after.Year(), after.Month(), after.Day(), after.Hour(), 0, 0, 0, after.Location()).Add(time.Hour)
 	for t := top; t.Before(before); t = t.Add(time.Hour) {
+		candidates = append(candidates, t)
+	}
+	// A :30 or :45 zone's midnight is no hour top of the cursor's clock.
+	if zone == nil {
+		zone = time.UTC
+	}
+	y, m, d := after.In(zone).Date()
+	for t := time.Date(y, m, d+1, 0, 0, 0, 0, zone); t.Before(before); t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, zone) {
 		candidates = append(candidates, t)
 	}
 	for _, r := range policy.Rules {
@@ -310,7 +319,7 @@ func nextClockChange(policy schedule.ChannelPolicy, after, before time.Time) tim
 	}
 	slices.SortFunc(candidates, func(a, b time.Time) int { return a.Compare(b) })
 	for _, t := range candidates {
-		if schedule.ClockSignature(policy, t) != base {
+		if schedule.ClockSignature(policy, t, zone) != base {
 			return t
 		}
 	}

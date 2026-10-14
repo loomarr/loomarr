@@ -48,5 +48,11 @@ const ReadOnly: Story = {
   args: { pool: healthyPool },
 };
 
+// The phone library's one line (#1908), with Details to open the stats above.
+const Folded: Story = {
+  args: { pool: thinPool, folded: true },
+  decorators: [widthFrame(358)],
+};
+
 export default meta;
-export { ChannelWithNothingToPlay, FreshInstall, Healthy, NothingFitsABreak, ReadOnly };
+export { ChannelWithNothingToPlay, Folded, FreshInstall, Healthy, NothingFitsABreak, ReadOnly };

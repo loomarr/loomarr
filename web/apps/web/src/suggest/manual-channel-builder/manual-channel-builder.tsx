@@ -8,6 +8,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { AiReconnectBanner } from "@loomarr/ui";
 import { Plus, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
+import { useAiReconnect } from "../use-ai-reconnect";
 import type { ManualChannelBuilderProps } from "./manual-channel-builder.type";
 
 const proposalItemFromCandidate = (candidate: SearchCandidate): ProposalItem => ({
@@ -48,6 +50,8 @@ const ManualChannelBuilder = ({
   initialIdea,
   onCancel,
   onSubmitted,
+  onAiSubmitted,
+  onDescribeWithAi,
   className,
 }: ManualChannelBuilderProps) => {
   const fromIdea = initialIdea !== undefined;
@@ -69,13 +73,12 @@ const ManualChannelBuilder = ({
   );
   const candidates = unwrap(search.data, (body) => body.candidates) ?? [];
 
-  const submit = discoveryApi.useSubmitManualChannel({
-    mutation: {
-      onSuccess: (res) => {
-        if (res.status === 202) onSubmitted(res.data.jobId);
-      },
-    },
-  });
+  const submit = discoveryApi.useSubmitManualChannel();
+  // "Keep building manually" hides the banner for the rest of this builder session, and with it
+  // the polling.
+  const [keepManual, setKeepManual] = useState(false);
+  const offersAi = onAiSubmitted !== undefined && onDescribeWithAi !== undefined;
+  const aiReconnected = useAiReconnect(isAdmin && offersAi && !keepManual);
 
   const lineupKeys = new Set(lineup.map(provisionKey).filter((key) => key !== ""));
 
@@ -100,10 +103,34 @@ const ManualChannelBuilder = ({
   const removeItem = (key: string) => setLineup((prev) => prev.filter((item) => provisionKey(item) !== key));
 
   const canContinue = lineup.length > 0 && name.trim() !== "";
+  const submitLineup = (submitted: (jobId: string) => void) =>
+    submit.mutate(
+      { data: { name: name.trim(), description: description.trim(), lineup } },
+      {
+        onSuccess: (res) => {
+          if (res.status === 202) submitted(res.data.jobId);
+        },
+      },
+    );
   const continueToReview = () => {
     if (!canContinue) return;
-    submit.mutate({ data: { name: name.trim(), description: description.trim(), lineup } });
+    submitLineup(onSubmitted);
   };
+  // The picks go through the same grounded submit as "Continue to review", so AI starts from
+  // the recorded lineup rather than from a copy of it. AI is asked about the description the
+  // person wrote; the name stands in when there is none. The typed name rides along so the
+  // revision keeps it rather than taking the model's.
+  const tryAi = () => {
+    const brief = description.trim() || name.trim();
+    if (lineup.length === 0) {
+      onDescribeWithAi?.(brief);
+      return;
+    }
+    if (!canContinue) return;
+    submitLineup((jobId) => onAiSubmitted?.(jobId, brief, name.trim()));
+  };
+  const tryAiBlockedReason =
+    lineup.length > 0 && name.trim() === "" ? "Name this channel to try AI suggestions." : undefined;
 
   const missing = lineup.filter((item) => !item.inLibrary).length;
   const summary =
@@ -116,7 +143,7 @@ const ManualChannelBuilder = ({
   return (
     <div className={cn("flex flex-col gap-5", className)}>
       <div>
-        <h2 className="font-medium text-lg">
+        <h2 className="font-semibold text-lg">
           {fromIdea ? "Edit before you request" : isAdmin ? "Add a channel" : "Request a channel"}
         </h2>
         <p className="mt-1 text-muted-foreground text-sm">
@@ -125,6 +152,16 @@ const ManualChannelBuilder = ({
             : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
         </p>
       </div>
+
+      {aiReconnected && !keepManual && (
+        <AiReconnectBanner
+          pickCount={lineup.length}
+          busy={submit.isPending}
+          tryAiBlockedReason={tryAiBlockedReason}
+          onTryAi={tryAi}
+          onKeepManual={() => setKeepManual(true)}
+        />
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="manual-channel-name">Channel name</Label>

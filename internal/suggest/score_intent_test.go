@@ -9,30 +9,30 @@ import (
 
 func TestScoreIntentCounterexamples(t *testing.T) {
 	t.Run("one qualifier is not complete adherence", func(t *testing.T) {
-		scores := suggest.ScoreForTest(suggest.Intent{Description: "cozy British murder mysteries"}, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "A Case", Overview: "A murder investigation", Year: 1994}}, nil)
+		scores := suggest.ScoreForTest(suggest.Intent{Description: "cozy British murder mysteries"}, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "A Case", Overview: "A murder investigation", Year: 1994}}, nil)
 		if scores.ThemeFit == nil || *scores.ThemeFit >= 1 {
 			t.Fatalf("one matching qualifier received complete theme credit: %+v", scores)
 		}
 	})
 	t.Run("off era diversity cannot improve alignment", func(t *testing.T) {
 		intent := suggest.Intent{Description: "1990s movies", Era: "1990s"}
-		matching := []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "First", Year: 1993}, {MediaType: provision.Movie, TMDBID: 2, Name: "Second", Year: 1995}}
+		matching := []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "First", Year: 1993}, {MediaType: provision.Movie, TMDBID: 90000002, Name: "Second", Year: 1995}}
 		meaning := movieDateMeaning(t, intent)
 		before := suggest.ScoreWithDateForTest(intent, matching, nil, meaning)
-		after := suggest.ScoreWithDateForTest(intent, append(matching, suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 3, Name: "Older", Year: 1982}), nil, meaning)
+		after := suggest.ScoreWithDateForTest(intent, append(matching, suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90000003, Name: "Older", Year: 1982}), nil, meaning)
 		if before.EraBalance == nil || after.EraBalance == nil || *before.EraBalance != 1 || *after.EraBalance >= *before.EraBalance {
 			t.Fatalf("off-era title improved alignment: before=%+v after=%+v", before, after)
 		}
 	})
 	t.Run("unknown years remain unassessed", func(t *testing.T) {
 		intent := suggest.Intent{Era: "1990s"}
-		scores := suggest.ScoreWithDateForTest(intent, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "Unknown date"}}, nil, movieDateMeaning(t, intent))
+		scores := suggest.ScoreWithDateForTest(intent, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Unknown date"}}, nil, movieDateMeaning(t, intent))
 		if scores.EraBalance != nil {
 			t.Fatalf("unknown year earned era credit: %+v", scores)
 		}
 	})
 	t.Run("no era is not an adherence score", func(t *testing.T) {
-		scores := suggest.ScoreForTest(suggest.Intent{Description: "movies"}, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 1, Name: "Any year", Year: 1994}}, nil)
+		scores := suggest.ScoreForTest(suggest.Intent{Description: "movies"}, []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Any year", Year: 1994}}, nil)
 		if scores.EraBalance != nil {
 			t.Fatalf("unrequested era earned adherence credit: %+v", scores)
 		}
@@ -87,14 +87,14 @@ func TestThemeEvidenceUsesDedicatedGroundingFields(t *testing.T) {
 	}{
 		{
 			name:   "network",
-			intent: "HBO drama series",
-			item:   suggest.ProposalItem{Genres: []string{"Drama"}, Networks: []string{"HBO"}},
+			intent: "KBX drama series",
+			item:   suggest.ProposalItem{Genres: []string{"Drama"}, Networks: []string{"KBX"}},
 		},
 		{
 			name:   "people",
-			intent: "Tom Hanks movies written or directed by Nora Ephron",
+			intent: "Rowan Pike movies written or directed by Odessa Vane",
 			item: suggest.ProposalItem{
-				Cast: []string{"Tom Hanks"}, Creators: []string{"Nora Ephron"},
+				Cast: []string{"Rowan Pike"}, Creators: []string{"Odessa Vane"},
 			},
 		},
 	}
@@ -110,21 +110,21 @@ func TestThemeEvidenceUsesDedicatedGroundingFields(t *testing.T) {
 
 func TestThemeEvidenceUsesGroundedSeriesNameForEpisodeSubject(t *testing.T) {
 	scores := suggest.ScoreForTest(
-		suggest.Intent{Description: "Classic Simpsons: the best episodes, not a full binge."},
-		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "The Simpsons", Overview: "A family in Springfield"}}, nil,
+		suggest.Intent{Description: "Classic Mudpuddles: the best episodes, not a full binge."},
+		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "The Mudpuddles", Overview: "A family in Puddleford"}}, nil,
 	)
 	if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
 		t.Fatalf("grounded episode subject was reported as a loose match: %+v", scores)
 	}
-	if len(scores.Theme.Qualifiers) != 1 || scores.Theme.Qualifiers[0].Term != "simpsons" {
+	if len(scores.Theme.Qualifiers) != 1 || scores.Theme.Qualifiers[0].Term != "mudpuddles" {
 		t.Fatalf("editorial controls leaked into theme qualifiers: %+v", scores.Theme.Qualifiers)
 	}
 }
 
 func TestThemeEvidenceIgnoresDirectTitleInstructions(t *testing.T) {
 	scores := suggest.ScoreForTest(
-		suggest.Intent{Description: "family sitcoms; include Boy Meets World and exclude Married... with Children."},
-		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "Boy Meets World", Genres: []string{"Comedy", "Family"}}}, nil,
+		suggest.Intent{Description: "family sitcoms; include Kid Meets Kite and exclude Wedded... with Goldfish."},
+		[]suggest.ProposalItem{{MediaType: provision.Series, Name: "Kid Meets Kite", Genres: []string{"Comedy", "Family"}}}, nil,
 	)
 	if scores.ThemeFit == nil || *scores.ThemeFit != 1 || scores.Theme.Status != "supported" {
 		t.Fatalf("direct title instructions polluted theme evidence: %+v", scores)

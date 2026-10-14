@@ -213,6 +213,11 @@ func (c *cycleCache) put(base uint64, at time.Time, zone *time.Location, slots [
 // staleness is a deliberate trade, not an oversight. A change to any of them shows up within a
 // TTL rather than instantly.
 //
+// The channel's DealOrigin (#1676: created_at, else the playout anchor) is read by the arrangement
+// too and is not hashed either, because it cannot change under a cached entry: created_at is
+// stamped once, and the anchor is set once at first activation. The one move, a channel with no
+// created_at gaining its anchor, shows up within a TTL like the three above.
+//
 // `clock` is schedule.ClockSignature(policy, at): the rule and holiday state at `at`. It is
 // folded in for EVERY channel — for one whose policy cannot vary with time (seasonality off, no
 // rules) it is constant, so that channel keeps one entry across every instant.

@@ -17,7 +17,7 @@ const makeWrapper = () => {
 
 const proposal: Proposal = {
   intent: { description: "90s action movies" },
-  lineup: [{ name: "Heat", year: 1995, mediaType: "movie", inLibrary: true }],
+  lineup: [{ name: "The Velvet Cartographer", year: 1995, mediaType: "movie", inLibrary: true }],
   acquisitions: [],
   alternates: [],
   scores: {
@@ -88,7 +88,7 @@ describe("useChannelRefine", () => {
     const { landJourney } = stubRefine();
     const { result } = renderHook(() => useChannelRefine(), { wrapper: makeWrapper() });
 
-    act(() => result.current.start("ch-1", "add more Schwarzenegger"));
+    act(() => result.current.start("ch-1", "add more Juno Castellan"));
 
     // The list request is in flight (deliberately unresolved) — jobId is set, no
     // proposal yet, so the run reads as running.

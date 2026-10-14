@@ -23,7 +23,7 @@ func TestFederatedMergesDeduplicatesCapsAndKeepsStableIdentity(t *testing.T) {
 	one := time.Unix(100, 0).UTC()
 	two := time.Unix(200, 0).UTC()
 	packet := func(adapter, version string, at time.Time, urls ...string) Packet {
-		p := Packet{Query: "Tootsie Pop", Adapter: adapter, AdapterVersion: version, RetrievedAt: at}
+		p := Packet{Query: "Twirlpop", Adapter: adapter, AdapterVersion: version, RetrievedAt: at}
 		for i, value := range urls {
 			p.Citations = append(p.Citations, Citation{ID: i + 1, Title: value, URL: value, Extract: "evidence"})
 		}
@@ -38,7 +38,7 @@ func TestFederatedMergesDeduplicatesCapsAndKeepsStableIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := federated.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop"})
+	got, err := federated.Retrieve(t.Context(), Lookup{Title: "Twirlpop"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +60,8 @@ func TestFederatedMergesDeduplicatesCapsAndKeepsStableIdentity(t *testing.T) {
 }
 
 func TestFederatedContinuesAfterOneAdapterFails(t *testing.T) {
-	good := Packet{Query: "HP Sauce", Adapter: "archive-search", AdapterVersion: "v1",
-		RetrievedAt: time.Unix(100, 0).UTC(), Citations: []Citation{{ID: 1, Title: "HP Sauce", URL: "https://archive.org/details/hp", Extract: "British advert"}}}
+	good := Packet{Query: "Brambly Sauce", Adapter: "archive-search", AdapterVersion: "v1",
+		RetrievedAt: time.Unix(100, 0).UTC(), Citations: []Citation{{ID: 1, Title: "Brambly Sauce", URL: "https://archive.org/details/brambly", Extract: "British advert"}}}
 	federated, err := NewFederated(
 		scriptedRetriever{adapter: "mediawiki", version: "v2", err: errors.New("offline")},
 		scriptedRetriever{adapter: "archive-search", version: "v1", packet: good},
@@ -69,7 +69,7 @@ func TestFederatedContinuesAfterOneAdapterFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := federated.Retrieve(t.Context(), Lookup{Title: "HP Sauce Advert"})
+	got, err := federated.Retrieve(t.Context(), Lookup{Title: "Brambly Sauce Advert"})
 	if err != nil || len(got.Citations) != 1 || got.AdapterVersion != "federated-v1:mediawiki:v2+archive-search:v1" {
 		t.Fatalf("packet=%+v err=%v", got, err)
 	}

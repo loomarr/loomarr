@@ -24,6 +24,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 7 | `storagegovernor` |
 | `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
+| `holidayvocab` | 5 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
@@ -35,11 +36,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 23 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
-| `schedule` | 19 | `inventory`, `provision` |
+| `schedule` | 19 | `holidayvocab`, `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
 | `storagegovernor` | 6 | — |
 | `store` | 15 | `contact`, `diagnostics`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
+| `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
 | `taxonomy` | 5 | — |
 
 ## Every package, by layer
@@ -135,8 +136,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
-- **`holidayvocab`** · 4 importers · → `textmatch`
-  Owns Loomarr's immutable built-in holiday identities and aliases.
+- **`holidayvocab`** · 5 importers · → `textmatch`
+  Owns Loomarr's immutable built-in holiday identities and the judgment of whether a title or episode is about one (programming-design §6).
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
@@ -291,7 +292,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `ideas`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

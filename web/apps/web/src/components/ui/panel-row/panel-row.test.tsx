@@ -13,7 +13,7 @@ describe("PanelRow", () => {
       <ul>
         <PanelRow>
           <PanelRow.Main>
-            <span>Springfield</span>
+            <span>Cartoon Classics</span>
           </PanelRow.Main>
           <PanelRow.Meta>
             <span>ok</span>
@@ -21,7 +21,7 @@ describe("PanelRow", () => {
         </PanelRow>
       </ul>,
     );
-    expect(screen.getByText("Springfield")).toBeInTheDocument();
+    expect(screen.getByText("Cartoon Classics")).toBeInTheDocument();
     expect(screen.getByText("ok")).toBeInTheDocument();
   });
 

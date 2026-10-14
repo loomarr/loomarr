@@ -32,6 +32,11 @@ type CycleResult struct {
 	Excluded schedule.ExclusionReport
 	// Trace is the scheduler-owned evidence emitted by the same ComputeDesiredAt call as Slots.
 	Trace schedule.ScheduleTrace
+	// HolidayEpisodes is the auto-mode holiday-episode feature per selected holiday (§6), from
+	// the same call: what the seasonal control tells the operator its strength will do.
+	HolidayEpisodes []schedule.HolidayEpisodes
+	// Cycle sizes one full pass through the deck (before the rolling-window slice).
+	Cycle schedule.CycleSummary
 }
 
 // CyclePreview computes the channel's desired cycle at a chosen wall-clock `at` for the
@@ -124,6 +129,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
 	chDomain.WindowZone = e.windowZoneFor()
+	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)
@@ -166,7 +172,9 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
 		// a caller: reconcile computes the identical report and discards it, so a title refused
 		// by the ceiling or the scope filters was invisible everywhere in the product.
-		Excluded: desired.Excluded,
-		Trace:    desired.Trace,
+		Excluded:        desired.Excluded,
+		Trace:           desired.Trace,
+		HolidayEpisodes: desired.HolidayEpisodes,
+		Cycle:           desired.Cycle,
 	}, nil
 }

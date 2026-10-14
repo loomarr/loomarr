@@ -13,7 +13,7 @@ import (
 )
 
 // rotatingCycle mimics the real scheduler: it returns a DIFFERENT arrangement per rolling window,
-// the way windowSlice advances its start by the window index (§6.5). Records the instants it was
+// the way windowSliceDealt advances its start by the window index (§6.5). Records the instants it was
 // asked about so a test can assert the guide re-resolved at each boundary.
 type rotatingCycle struct {
 	mu                sync.Mutex
@@ -52,7 +52,7 @@ func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) 
 		dur = c.programmeDuration
 	}
 	return at, []schedule.Slot{{
-		Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:1"),
+		Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:90000001"),
 		Title: title, LibraryItemID: "x", DurationMs: dur.Milliseconds(),
 	}}, schedule.ActiveRuleAttribution{}, c.window, nil
 }
@@ -68,9 +68,9 @@ func (c *rotatingCycle) asks() int {
 // will never happen. Reconciliation commits each new window for AiringNow; the guide must forecast
 // the same later arrangements before they are committed.
 //
-// Measured on a live 27-title channel at the same instant 24h out: the guide advertised RoboCop /
-// The Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon /
-// Lethal Weapon 2 / Akira.
+// Measured on a live 27-title channel at the same instant 24h out: the guide advertised Tin Sheriff /
+// Iron Lullaby / Quiet Engines while the scheduler would arrange Smoke over Calloway /
+// Lemon Tree Heist / Thirteen Kites.
 func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 	t.Parallel()
 	eng := &rotatingCycle{window: 24 * time.Hour}

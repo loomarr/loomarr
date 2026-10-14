@@ -17,7 +17,7 @@ func TestLOCRetrievesCanonicalMovingImageCatalogEvidence(t *testing.T) {
 			t.Fatalf("user agent = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"id":"http://www.loc.gov/item/97516772/","title":"Television commercial","date":"1970","description":["Animated candy advertisement"]},{"id":"https://example.org/item/bad","title":"Bad","description":"unsafe"}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"id":"http://www.loc.gov/item/99516772/","title":"Television commercial","date":"1970","description":["Animated candy advertisement"]},{"id":"https://example.org/item/bad","title":"Bad","description":"unsafe"}]}`))
 	}))
 	defer server.Close()
 	provider, err := NewLOC(LOCConfig{Client: server.Client(), UserAgent: "Loomarr test", Endpoint: server.URL,
@@ -25,14 +25,14 @@ func TestLOCRetrievesCanonicalMovingImageCatalogEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop Classic Commercial"})
+	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Twirlpop Classic Commercial"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if format != "json" || attributes != "results" || count != "3" || query != "Tootsie Pop" {
+	if format != "json" || attributes != "results" || count != "3" || query != "Twirlpop" {
 		t.Fatalf("fo=%q at=%q c=%q q=%q", format, attributes, count, query)
 	}
-	if len(packet.Citations) != 1 || packet.Citations[0].URL != "https://www.loc.gov/item/97516772/" ||
+	if len(packet.Citations) != 1 || packet.Citations[0].URL != "https://www.loc.gov/item/99516772/" ||
 		!strings.Contains(packet.Citations[0].Extract, "Animated candy advertisement") {
 		t.Fatalf("packet = %+v", packet)
 	}

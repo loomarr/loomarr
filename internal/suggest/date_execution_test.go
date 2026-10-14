@@ -31,8 +31,8 @@ func dateExecutionSuggester(model *testkit.LLM, corpus *catalogfixture.Corpus) *
 	return suggest.New(model, catalog.New(nil, corpus), nil, 10)
 }
 
-func matrixCandidate() catalog.Candidate {
-	return catalog.Candidate{MediaType: "movie", TMDBID: 603, Name: "The Matrix", Year: 1999, InLibrary: true}
+func marigoldCandidate() catalog.Candidate {
+	return catalog.Candidate{MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999, InLibrary: true}
 }
 
 func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
@@ -45,12 +45,12 @@ func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
 			"intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}},
 		}},
 	}
-	candidate := catalog.Candidate{MediaType: "series", TMDBID: 3452, Name: "Frasier", Year: 1993, InLibrary: true, Genres: []string{"Comedy"}}
+	candidate := catalog.Candidate{MediaType: "series", TMDBID: 90003452, Name: "Lamplight Lane", Year: 1993, InLibrary: true, Genres: []string{"Comedy"}}
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{candidate}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Comedy"}, "media_type": "series", "dateMeaning": meaning}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:3452","name":"Frasier"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":30,"end":35}],"axes":[{"kind":"series_airing","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90003452","name":"Lamplight Lane"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":30,"end":35}],"axes":[{"kind":"series_airing","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
@@ -71,7 +71,7 @@ func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
 func finalWithDateMeaning(t *testing.T, meaning any) string {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{
-		"picks":       []any{map[string]any{"mediaType": "movie", "key": "movie:tmdb:603", "name": "The Matrix"}},
+		"picks":       []any{map[string]any{"mediaType": "movie", "key": "movie:tmdb:90000603", "name": "Marigold Protocol"}},
 		"dateMeaning": meaning,
 	})
 	if err != nil {
@@ -81,7 +81,7 @@ func finalWithDateMeaning(t *testing.T, meaning any) string {
 }
 
 func TestSuggest_DateWindowUnionRecordsAggregateDispatches(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	meaning := dateMeaning1990()
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
@@ -107,7 +107,7 @@ func TestSuggest_DateUnionFirstEmptyLaterNonemptyFinalizesAfterCompleteWindowSet
 	}}}}
 	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		if q.YearFrom == 1999 {
-			return []catalog.Candidate{matrixCandidate()}, nil
+			return []catalog.Candidate{marigoldCandidate()}, nil
 		}
 		return nil, nil
 	}}
@@ -124,7 +124,7 @@ func TestSuggest_DateUnionFirstEmptyLaterNonemptyFinalizesAfterCompleteWindowSet
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 90000603 {
 		t.Fatalf("proposal = %#v", proposal)
 	}
 	if proposal.Trace.WindowsCompleted != 2 || proposal.Trace.SourceQueriesDispatched != 2 {
@@ -145,7 +145,7 @@ func TestSuggest_DateOnlyConstraintsDispatchWithoutOtherDiscoveryQualifiers(t *t
 		"series airing": {meaning: dateMeaningAiring1990(), wantDispatches: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			model := testkit.NewLLM(
 				testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": tc.meaning}),
 				testkit.FinalResponse(finalWithDateMeaning(t, tc.meaning)),
@@ -167,7 +167,7 @@ func TestSuggest_DateOnlyConstraintsDispatchWithoutOtherDiscoveryQualifiers(t *t
 func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		if len(q.Genres) == 1 && q.Genres[0] == "later" {
-			return []catalog.Candidate{matrixCandidate()}, nil
+			return []catalog.Candidate{marigoldCandidate()}, nil
 		}
 		return nil, nil
 	}}
@@ -176,13 +176,13 @@ func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"must-not-dispatch"}, "dateMeaning": dateMeaning1990()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"later"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaning1990())),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 90000603 {
 		t.Fatalf("proposal = %#v", proposal)
 	}
 	if got := corpus.Discoveries(); len(got) != 2 || len(got[0].Query.Genres) != 1 || got[0].Query.Genres[0] != "first" || len(got[1].Query.Genres) != 1 || got[1].Query.Genres[0] != "later" {
@@ -191,7 +191,7 @@ func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 }
 
 func TestSuggest_NoneDateMeaningWithoutQualifierDoesNotDispatchBeforeValidDateDiscovery(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	meaning := dateMeaning1990()
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": dateMeaningNone()}),
@@ -202,7 +202,7 @@ func TestSuggest_NoneDateMeaningWithoutQualifierDoesNotDispatchBeforeValidDateDi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 90000603 {
 		t.Fatalf("proposal = %#v", proposal)
 	}
 	dispatches := corpus.Discoveries()
@@ -216,15 +216,15 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 		map[string]any{"anchor": 0, "start": 1990, "end": 1990},
 		map[string]any{"anchor": 0, "start": 2000, "end": 2000},
 	}}}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}, DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}, DiscoverFunc: func(_ context.Context, q catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		if q.YearFrom == 2000 {
 			return nil, catalogfixture.ErrDiscover
 		}
-		return []catalog.Candidate{matrixCandidate()}, nil
+		return []catalog.Candidate{marigoldCandidate()}, nil
 	}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": meaning, "media_type": "movie"}),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "The Matrix", "dateMeaning": meaning}),
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "Marigold Protocol", "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
 	var failedUnionToolMessages []string
@@ -232,8 +232,8 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 		if model.Calls != 2 {
 			return
 		}
-		if got := corpus.Searches(); len(got) != 1 || got[0].Query != "The Matrix" {
-			t.Fatalf("recovery title search = %#v, want exactly The Matrix", got)
+		if got := corpus.Searches(); len(got) != 1 || got[0].Query != "Marigold Protocol" {
+			t.Fatalf("recovery title search = %#v, want exactly Marigold Protocol", got)
 		}
 		for _, message := range model.LastMessages {
 			if message.Role == llm.Tool {
@@ -245,7 +245,7 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 603 {
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 90000603 {
 		t.Fatalf("proposal = %#v", proposal)
 	}
 	if proposal.Trace.WindowsCompleted != 1 || proposal.Trace.SourceQueriesDispatched != 2 {
@@ -257,7 +257,7 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 	if len(corpus.Searches()) != 1 {
 		t.Fatalf("recovery title searches = %#v, want one", corpus.Searches())
 	}
-	if len(failedUnionToolMessages) == 0 || !strings.Contains(failedUnionToolMessages[0], "error") || strings.Contains(failedUnionToolMessages[0], "The Matrix") {
+	if len(failedUnionToolMessages) == 0 || !strings.Contains(failedUnionToolMessages[0], "error") || strings.Contains(failedUnionToolMessages[0], "Marigold Protocol") {
 		t.Fatalf("failed union tool message = %#v, want error without partial candidate", failedUnionToolMessages)
 	}
 }
@@ -346,11 +346,11 @@ func TestSuggest_DateUnionCapacityExhaustionDispatchesNoWindows(t *testing.T) {
 }
 
 func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{}, "dateMeaning": dateMeaningNone()}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
 	if err != nil {
@@ -362,11 +362,11 @@ func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
 }
 
 func TestSuggest_FinalDateMeaningMismatchRepairsBeforeClarifying(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 then 2000 films"})
 	if err != nil {
@@ -417,10 +417,10 @@ func TestSuggest_InitialConflictingDateMeaningDoesNotDispatchCatalog(t *testing.
 }
 
 func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
-		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action"})
 	if err != nil {
@@ -432,8 +432,8 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 }
 
 func TestSuggest_ExhaustedFinalDateMeaningMismatchIsProviderFailure(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
-	mismatch := `{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
+	mismatch := `{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch),
@@ -456,7 +456,7 @@ func TestSuggest_StrictToolDateMeaningJSONRejectsThenRecovers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			model := testkit.NewLLM(
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"must-not-dispatch"}, "dateMeaning": tc.malformed}),
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"valid"}, "dateMeaning": valid}),
@@ -482,7 +482,7 @@ func TestSuggest_StrictFinalDateMeaningJSONRejectsBeforeGrounding(t *testing.T) 
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			valid := dateMeaning1990()
 			model := testkit.NewLLM(
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"valid"}, "dateMeaning": valid}),
@@ -504,7 +504,7 @@ func TestSuggest_StrictFinalDateMeaningJSONRejectsBeforeGrounding(t *testing.T) 
 
 func TestSuggest_ExhaustedMalformedFinalDateMeaningDoesNotGroundNames(t *testing.T) {
 	malformed := map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 4}}, "axes": []any{map[string]any{"kind": "movie_release", "combine": "any", "intervals": []any{map[string]any{"anchor": nil, "start": 1990, "end": 1999}}}}}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)))
 	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
@@ -538,7 +538,7 @@ func TestSuggest_EquivalentCanonicalToolAndFinalDateMeaningsKeepDisjointScope(t 
 			map[string]any{"anchor": 0, "start": 1990, "end": 1991},
 		}}},
 	}
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": toolMeaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, finalMeaning)),

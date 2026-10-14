@@ -56,6 +56,80 @@ describe("play URL source", () => {
     );
   });
 
+  describe("start", () => {
+    const minted = { uri: "https://loomarr.test/v1/playout/hls/seven/master.m3u8?sig=one" };
+    const start = (answer: Response | Error, signal = new AbortController().signal) => {
+      const request = vi.fn(() =>
+        answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer),
+      );
+      const source = createPlayUrlSourcePort({ baseUrl: "https://loomarr.test", fetch: request });
+      return { request, started: source.start?.(minted, signal) };
+    };
+
+    it("starts the stream with one plain read of the signed master", async () => {
+      const { request, started } = start(
+        new Response("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv/index.m3u8?sig=one\n", { status: 200 }),
+      );
+
+      await expect(started).resolves.toEqual({
+        mediaUri: "https://loomarr.test/v1/playout/hls/seven/v/index.m3u8?sig=one",
+        uri: minted.uri,
+      });
+      expect(request).toHaveBeenCalledExactlyOnceWith(minted.uri, expect.objectContaining({ method: "GET" }));
+    });
+
+    it("leaves a master that offers a choice to the player", async () => {
+      const choice =
+        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nbase.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=9\npremium.m3u8\n";
+      await expect(start(new Response(choice, { status: 200 })).started).resolves.toEqual(minted);
+    });
+
+    it("carries the server's reason and status for a refused start", async () => {
+      const { started } = start(
+        new Response(
+          JSON.stringify({ detail: "All tuners are busy right now.", title: "All tuners are busy" }),
+          {
+            status: 503,
+          },
+        ),
+      );
+
+      await expect(started).rejects.toMatchObject({
+        message: "All tuners are busy right now.",
+        name: "StartFailure",
+        status: 503,
+      });
+    });
+
+    it("falls back to the generic sentence when a refusal has no problem body", async () => {
+      await expect(start(new Response("Bad Gateway", { status: 502 })).started).rejects.toMatchObject({
+        message: "Couldn't start this channel. Try again in a moment.",
+        name: "StartFailure",
+        status: 502,
+      });
+    });
+
+    it("keeps a non-5xx answer out of the final start-failure state", async () => {
+      const failure = await start(new Response("", { status: 404 })).started?.catch(
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toMatchObject({ name: "StartFailure" });
+      expect(failure).toMatchObject({ message: "Couldn't start this channel. Try again in a moment." });
+    });
+
+    it("says the server can't be reached, but leaves a surf's abort alone", async () => {
+      await expect(start(new TypeError("Network request failed")).started).rejects.toThrow(
+        "Couldn't reach Loomarr. Check your connection and try again.",
+      );
+      const aborted = new AbortController();
+      aborted.abort();
+      const abort = new DOMException("Aborted", "AbortError");
+      await expect(start(abort, aborted.signal).started).rejects.toBe(abort);
+    });
+  });
+
   it("loads the generated Channel route into the controller's narrow catalog contract", async () => {
     const request = vi.fn().mockResolvedValue(
       new Response(

@@ -53,10 +53,26 @@ change per channel.
   [`library.md`](library.md#cached-series-episodes).
 
 **Strategies** are shared by both backends: sequential, shuffle, and time-slot blocks.
+**A shuffle is the channel's own and is dealt afresh each pass (#1676):** the seed is the stored one,
+or, when a channel stores none, a hash of its id, so two channels over one pool differ; each trip of
+the rolling window around the catalog is a new permutation, and the seam between trips keeps every
+unit at least a repeat spacing from its last airing: never twice in a row, and, for a pool wider
+than a window, never twice in one window. The rule and its one
+bounded relaxation are in [programming-design §6.5](../programming-design.md).
 **Ordering has one operator knob:** per-rule `How.Ordering` (within its window) >
 `policy.ordering` > `Channel.Strategy`, the create-time default used only when `policy.ordering` is
 unset. Omitted policy fields resolve to built-in Go constants; per-channel policy is the only
 operator override.
+
+**The Play order control explains its consequence.** A choice of order has a size: a channel set to
+"In order" over 226 episodes loops front to back about every 3½ days, and nothing used to say so.
+The cycle preview therefore carries `cycle` (`episodes`, `movies`, `series`, `runtimeMs`): one full
+pass through the deck, counted before the rolling-window slice, from the same computation that ships
+the guide. Pending titles are not counted and commercial breaks are not in the runtime. The
+Programming page shows a plain-language line under Play order built only from those numbers and the
+resolved ordering ("226 episodes, start to finish, then it starts over — about every 3½ days");
+`syndication` is always described as a deck dealt once before anything repeats. Copy never claims a
+reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
 
 ## Reconciliation and backfill
 
@@ -152,6 +168,12 @@ consumes about 13 films, so a week without repeats needs about 168 hours of cont
 constraint would relax on nearly every real channel and teach operators to ignore the ladder. The
 signal spreads airings evenly; only more content fixes frequency.
 
+On a shuffled channel wider than its window, recency trades next-day repeats out of the window's
+tile and holds the window to the repeat spacing. What the window before aired comes from the record
+where it has one and otherwise from that window's tile, less the units its own guard traded out
+(#1939). History therefore never brings a unit back sooner, or keeps one waiting longer, than the
+same channel with no history.
+
 ## Breaks and pods
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.
@@ -173,11 +195,33 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   substitutes for another. A clip's eligibility change wakes only the affected channels, through the
   same `SelectionForChannel` and `FitForChannel` predicates coverage, preview and playout use;
   the sweep remains the crash-safe retry.
-- **Density.** `FILLER_BREAK_DURATION` defaults to 30 s (`policy.breakDuration` per channel,
+- **Density.** `FILLER_BREAK_DURATION` defaults to 2 minutes (#1670: 30 s breaks felt too short;
+  `policy.breakDuration` per channel,
   minimum 30 s because Tunarr clamps smaller flex gaps). `policy.breaksPerHour = 0` is the only off
   switch. On internal playout the break length is a ceiling: a break slot is capped at its pod's
-  playable duration, so the programme resumes when the clips end. `FILLER_POD_MAX` yields to break
-  length when more clips are needed.
+  playable duration, so the programme resumes when the clips end. **One function owns the length**
+  (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
+  setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
+  the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
+  bumper together never exceed it, because the slot is cut at exactly the break length and anything
+  past it is lost. Assembly reserves the return bumper's real length before it places an ad, and
+  an ad is never cut to fit.
+- **A break with ads beats a break with bumpers.** If the bookends leave less room than the
+  shortest ad, assembly drops the return bumper, then the intro bumper, before it gives up: a
+  30 s break of 30 s ads still airs the ad. Only when no ad fits even alone is the break the 5 s
+  card, and the channel then airs no breaks (no playable file).
+- **Breaks use their time.** After the ads, assembly tops the break up with whole clips that fit
+  what is left, longest first: a short ad, a station ID or a bumper, ahead of the return bumper.
+  The top-up draws on the same ladder pools (audience ceiling, era, geography, quality and duration
+  bounds), the same no-repeat set and the same rotation and spacing rules as the ads, with category
+  variety relaxed rather than time left unused. It stops at the first moment nothing unused fits,
+  so a break ends within the shortest unused clip of its slot, not 18 s early. `FILLER_POD_MAX` is
+  a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
+  break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
+- **Previews are the break that airs.** The saved preview, the guide's per-break cards and both
+  draft previews (`pods/preview`, `programming/preview`) build their selection through
+  `channels.SelectionForPolicy`, which carries the policy's `breakDuration` and
+  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value.
 - **Placement** walks program durations and inserts a break after the program that crosses each
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
@@ -186,11 +230,19 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
   tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
   snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside `filler.cooldown_seconds`. A clip inside its cooldown ranks behind every
-  rested clip on any rung, so the ladder widens before a clip repeats, and cooldown relaxes only when
-  the whole ladder is resting. Cooldown never causes dead air. Pins come first and may repeat. On
-  Tunarr channels Tunarr owns rotation; Loomarr writes `fillerRepeatCooldown` to the channel and
-  leaves the list cooldown at zero.
+  recently aired outside the channel's commercial spacing. A clip inside its spacing ranks behind
+  every rested clip on any rung, so the ladder widens era before a clip repeats, and spacing relaxes
+  only when the whole ladder is resting (the pod records `CooldownRelaxed`). Spacing never causes
+  dead air. Pins come first and may repeat. **Spacing is per channel (#1670):**
+  `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
+  nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip
+  repeat in any later break. On Tunarr channels Tunarr owns rotation; Loomarr writes the channel's
+  effective spacing as `fillerRepeatCooldown` and leaves the list cooldown at zero. Tunarr makes a
+  clip unavailable for the whole cooldown and Loomarr's list is a pod's worth of clips, so the value
+  is capped at the time the channel takes to air half the list (breaks per hour × break length against
+  the list's runtime). A longer spacing would leave every clip cooling and Tunarr would fall back to
+  flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
+  honours the full spacing and relaxes it only when the whole ladder is resting.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
   with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break

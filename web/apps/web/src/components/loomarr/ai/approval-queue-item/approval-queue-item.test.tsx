@@ -74,14 +74,20 @@ describe("ApprovalQueueItem", () => {
       <ApprovalQueueItem
         title="90s Saturday morning cartoons"
         lineup={[
-          { mediaType: "movie", name: "Sunny Toons", tmdbId: 5001, officialRating: "TV-Y7", inLibrary: true },
+          {
+            mediaType: "movie",
+            name: "Sunny Toons",
+            tmdbId: 90005001,
+            officialRating: "TV-Y7",
+            inLibrary: true,
+          },
         ]}
         refused={[
           {
             item: {
               mediaType: "movie",
               name: "Midnight Toons",
-              tmdbId: 5004,
+              tmdbId: 90005004,
               officialRating: "TV-MA",
               inLibrary: true,
             },
@@ -112,14 +118,14 @@ describe("ApprovalQueueItem", () => {
     ));
     render(
       <ApprovalQueueItem
-        title="Classic Simpsons"
-        lineup={[{ mediaType: "series", name: "The Simpsons", tmdbId: 456, inLibrary: true }]}
+        title="Classic Kettle Kids"
+        lineup={[{ mediaType: "series", name: "Kettle Kids", tmdbId: 90000456, inLibrary: true }]}
         renderFeedback={renderFeedback}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /show picks/i }));
-    expect(screen.getByRole("button", { name: "Taste: The Simpsons" })).toBeInTheDocument();
-    expect(renderFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 456 }));
+    expect(screen.getByRole("button", { name: "Taste: Kettle Kids" })).toBeInTheDocument();
+    expect(renderFeedback).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 90000456 }));
   });
 
   it("explains complete and specific episode modes in the mounted edit surface", () => {
@@ -132,22 +138,22 @@ describe("ApprovalQueueItem", () => {
             {
               mediaType: "series",
               name: "Complete Series",
-              tmdbId: 1,
+              tmdbId: 90000001,
               inLibrary: true,
               episodeSelection: { mode: "complete" },
             },
-            { mediaType: "series", name: "Legacy Series", tmdbId: 2, inLibrary: true },
+            { mediaType: "series", name: "Legacy Series", tmdbId: 90000002, inLibrary: true },
             {
               mediaType: "series",
               name: "Christmas Series",
-              tmdbId: 3,
+              tmdbId: 90000003,
               inLibrary: true,
               episodeSelection: { mode: "holiday", holidays: ["christmas"] },
             },
             {
               mediaType: "series",
               name: "Holiday Series",
-              tmdbId: 4,
+              tmdbId: 90000004,
               inLibrary: true,
               episodeSelection: { mode: "holiday" },
             },

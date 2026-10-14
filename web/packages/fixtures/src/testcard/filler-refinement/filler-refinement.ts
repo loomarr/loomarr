@@ -6,7 +6,7 @@ import { taggedClip, untaggedClip } from "../testcard";
 
 const fillerRefinementKnownClip: ClipDTO = {
   ...taggedClip,
-  brand: "Sunny D",
+  brand: "Fizzbolt",
   assertedTags: ["soft_drinks"],
   tags: ["soft_drinks", "food_drink"],
   source: "classic-ads",

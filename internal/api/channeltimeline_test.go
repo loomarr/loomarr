@@ -73,7 +73,7 @@ func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
 	now := time.Now()
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
 		"ch1": {{
-			Kind: schedule.SlotProgram, Key: "movie:tmdb:89", Title: "Indiana Jones",
+			Kind: schedule.SlotProgram, Key: "movie:tmdb:90000089", Title: "Bellwether Junction",
 			Start: now, Stop: now.Add(2 * time.Hour),
 		}},
 	}}
@@ -83,7 +83,7 @@ func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 	srv, st := newTimelineServerWithImages(t, g, &fakeTimelineThumbs{hash: "watch-art"}, imageService)
-	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	seedChannel(t, st, "ch1", "Kettleton Classics", 1, "internal")
 
 	airings := getTimeline(t, srv, "ch1")
 	if len(airings) != 1 {
@@ -132,14 +132,14 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 	}
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
 		"ch1": {
-			prog("The Simpsons", "Moaning Lisa", 1, 6, "series:tmdb:456", now, 22),
+			prog("Kettle Kids", "The Whistling Teaspoon", 1, 6, "series:tmdb:90000456", now, 22),
 			brk(now.Add(22*time.Minute), 2),
-			prog("The Simpsons", "Bart the Genius", 1, 2, "series:tmdb:456", now.Add(24*time.Minute), 22),
+			prog("Kettle Kids", "Pip and the Sugar Bowl", 1, 2, "series:tmdb:90000456", now.Add(24*time.Minute), 22),
 		},
 	}}
 	thumbs := &fakeTimelineThumbs{}
 	srv, st := newTimelineServer(t, g, thumbs)
-	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	seedChannel(t, st, "ch1", "Kettleton Classics", 1, "internal")
 
 	airings := getTimeline(t, srv, "ch1")
 	if len(airings) != 3 {
@@ -148,7 +148,7 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 
 	// The first block carries the full episode identity the strip's hover card shows.
 	first := airings[0]
-	if first.Kind != "program" || first.Series != "The Simpsons" || first.Title != "Moaning Lisa" ||
+	if first.Kind != "program" || first.Series != "Kettle Kids" || first.Title != "The Whistling Teaspoon" ||
 		first.Season != 1 || first.Episode != 6 {
 		t.Errorf("first block episode identity wrong: %+v", first)
 	}
@@ -178,7 +178,7 @@ func TestChannelTimeline_EpisodesAndBreaks(t *testing.T) {
 
 func TestChannelTimelineCarriesServerClock(t *testing.T) {
 	srv, st := newTimelineServer(t, &fakeXMLTVGuide{}, nil)
-	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	seedChannel(t, st, "ch1", "Kettleton Classics", 1, "internal")
 	before := time.Now().UnixMilli()
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/ch1/timeline", nil)
 	req.Header.Set("Authorization", "Bearer "+adminToken)
@@ -203,7 +203,7 @@ func TestChannelTimelineCarriesServerClock(t *testing.T) {
 // status line rather than the page failing.
 func TestChannelTimeline_NoGuideIsEmptyNotError(t *testing.T) {
 	srv, st := newTimelineServer(t, nil, nil)
-	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	seedChannel(t, st, "ch1", "Kettleton Classics", 1, "internal")
 	if airings := getTimeline(t, srv, "ch1"); len(airings) != 0 {
 		t.Errorf("no guide should yield an empty strip, got %d airings", len(airings))
 	}
@@ -212,7 +212,7 @@ func TestChannelTimeline_NoGuideIsEmptyNotError(t *testing.T) {
 func TestChannelTimelineIncludesTheSharedDVRLookbehind(t *testing.T) {
 	g := &fakeXMLTVGuide{}
 	srv, st := newTimelineServer(t, g, nil)
-	seedChannel(t, st, "ch1", "Springfield Classics", 1, "internal")
+	seedChannel(t, st, "ch1", "Kettleton Classics", 1, "internal")
 
 	_ = getTimeline(t, srv, "ch1")
 	g.mu.Lock()

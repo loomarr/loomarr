@@ -66,17 +66,17 @@ func TestPostgresPlayoutLifecycleRestartsOnlyChangedInternalSchedule(t *testing.
 		}},
 		origin: origin,
 	}
-	lifecycle.rememberSchedule("simpsons", "old-cycle")
+	lifecycle.rememberSchedule("mudpuddles", "old-cycle")
 
 	for _, version := range []string{"old-cycle", "new-cycle", "new-cycle"} {
 		if err := lifecycle.apply(context.Background(), store.Invalidation{
-			Kind: store.InvalidationChannel, ChannelID: "simpsons", Status: schedule.StatusLive,
+			Kind: store.InvalidationChannel, ChannelID: "mudpuddles", Status: schedule.StatusLive,
 			ScheduleVersion: version,
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := origin.StoppedChannels(); len(got) != 1 || got[0] != "simpsons" {
+	if got := origin.StoppedChannels(); len(got) != 1 || got[0] != "mudpuddles" {
 		t.Fatalf("schedule cutover stops = %v, want exactly one for the changed version", got)
 	}
 }

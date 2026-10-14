@@ -23,6 +23,7 @@ var testServerConstructors = map[string]string{
 	"channels_test.go:newServerWithSchedulerAndSuggest":   "channels suggestions",
 	"channeltimeline_test.go:newTimelineServer":           "channel timeline",
 	"channeltimeline_test.go:newTimelineServerWithImages": "channel timeline images",
+	"channelwatermarkpreview_test.go:newWatermarkServer":  "channel watermark preview",
 	"dashboard_panels_test.go:serverWithPanels":           "dashboard panels",
 	"dashboard_test.go:newDashboardServer":                "dashboard playout",
 	"events_test.go:newEventsServer":                      "events",

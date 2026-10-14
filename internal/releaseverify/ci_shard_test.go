@@ -2,6 +2,7 @@ package releaseverify
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -617,7 +618,7 @@ exit "${FAKE_GO_EXIT:-0}"
 	}
 	if err := run("7"); err == nil {
 		t.Fatal("go-test-packages.sh hid the go test failure")
-	} else if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 7 {
+	} else if exitErr := (*exec.ExitError)(nil); !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
 		t.Fatalf("go-test-packages.sh failure = %v, want exit 7", err)
 	}
 }

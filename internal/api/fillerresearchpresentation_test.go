@@ -11,11 +11,11 @@ func TestClipContextSuggestionUsesOnlyCitedPagesAndYieldsToVerifiedFacts(t *test
 		CountryCode: "US", Country: "United States", Confidence: 70, CitationIDs: []int{2}},
 		Packet: fillerresearch.Packet{Citations: []fillerresearch.Citation{
 			{ID: 1, Title: "Uncited", URL: "https://en.wikipedia.org/wiki/Uncited"},
-			{ID: 2, Title: "Tootsie Pop", URL: "https://en.wikipedia.org/wiki/Tootsie_Pop"},
+			{ID: 2, Title: "Twirlpop", URL: "https://en.wikipedia.org/wiki/Twirlpop"},
 		}}}
 	detail := clipContextSuggestionDTO(report, 0, "")
 	if detail == nil || detail.Decade != 1970 || detail.CountryCode != "US" ||
-		len(detail.Sources) != 1 || detail.Sources[0].Title != "Tootsie Pop" {
+		len(detail.Sources) != 1 || detail.Sources[0].Title != "Twirlpop" {
 		t.Fatalf("detail = %+v", detail)
 	}
 	detail = clipContextSuggestionDTO(report, 1999, "")

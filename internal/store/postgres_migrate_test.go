@@ -396,6 +396,9 @@ func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 			}
 			plan.WriteString(line + "\n")
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
 		_ = rows.Close()
 		if !strings.Contains(plan.String(), "idx_diagnostic_events_"+column) {
 			t.Errorf("%s filter does not use idx_diagnostic_events_%s:\n%s", column, column, plan.String())

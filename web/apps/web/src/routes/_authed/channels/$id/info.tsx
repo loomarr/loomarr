@@ -1,5 +1,6 @@
 import { channelNumber, pluralize } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
+import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
 import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
 import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
@@ -13,6 +14,7 @@ import { useChannelDetail } from "./-channel-detail-context";
 // them — see route.tsx, which redirects bare /channels/$id here).
 const InfoScreen = () => {
   const { id, channel: ch, isAdmin, air, ready, total, savePolicy, saveLogo } = useChannelDetail();
+  const navigate = Route.useNavigate();
 
   return (
     <>
@@ -69,6 +71,16 @@ const InfoScreen = () => {
           />
         </div>
       </section>
+
+      {/* The On-screen logo (#1659): admin-only like Programming and Filler, autosaving
+          policy.watermark like the Programming fields. Members never see it. */}
+      {isAdmin && (
+        <ChannelOnScreenLogo
+          channel={ch}
+          onOpenProgramming={() => void navigate({ to: "/channels/$id/programming", params: { id } })}
+          savePolicy={savePolicy}
+        />
+      )}
 
       {/* Admin-only diagnostics disclosure (P7): the relaxation ladder the last reconcile
           applied + the Tunarr channel id are STATUS, not settings — so they live here as a

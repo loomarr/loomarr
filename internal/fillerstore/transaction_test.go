@@ -75,9 +75,9 @@ func sampleChannel(id string, number int, deadline time.Time) store.Channel {
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusLive
 	ch.UpdatedAt = 1_700_000_000
-	ch.Lineup = []schedule.LineupEntry{{Key: "movie:tmdb:1", Title: "A", DurationMs: 3600000}}
+	ch.Lineup = []schedule.LineupEntry{{Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000}}
 	ch.Desired = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
 	}
 	ch.ReconcileDeadline = deadline
 	return ch

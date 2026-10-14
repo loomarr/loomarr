@@ -62,6 +62,34 @@ classify() {
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;
+    # migratedTests: the unit tests #1592 moved onto the demo catalogue.
+    web/apps/web/src/components/loomarr/ai/approval-queue-item/*|web/apps/web/src/components/loomarr/ai/episode-selection-label/*|web/apps/web/src/components/loomarr/ai/proposal-edit/*|web/apps/web/src/components/loomarr/ai/proposal-review/*|web/apps/web/src/components/loomarr/ai/refine-panel/*|web/apps/web/src/components/loomarr/ai/refine-review/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/loomarr/feedback/generation-progress/*|web/apps/web/src/discovery-feedback/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/suggest/approval-queue/*|web/apps/web/src/suggest/intent-form/*|web/apps/web/src/suggest/live-proposal-outlook/*|web/apps/web/src/suggest/movie-collection-choices/*|web/apps/web/src/suggest/suggestion-expansion/*|web/apps/web/src/suggest/suggestion-language/*|web/apps/web/src/suggest/use-channel-refine/*|web/apps/web/src/suggest/use-proposal-review-edit/*|web/apps/web/src/suggest/use-suggestion-run/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-player/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/shell/search-command/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/ui/panel-row/*|web/apps/web/src/components/ui/sheet/*|web/apps/web/src/components/ui/video-player/*|web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/channels/use-channel-lineup/*|web/apps/web/src/channels/use-channel-save/*|web/apps/web/src/filler/channel-filler/*|web/apps/web/src/filler/clip-details/*|web/apps/web/src/filler/incoming/*|web/apps/web/src/filler/sources-panel/*|web/apps/web/src/queue/request-lists/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/suggest/channel-suggest-panel/*|web/apps/web/src/suggest/manual-channel-builder/*|web/apps/web/src/test/*|web/packages/core/src/*|web/packages/core/tests/*|web/packages/player/tests/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/tests/e2e/*)
+      [[ "$path" != *.spec.ts ]] || select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
@@ -226,11 +254,11 @@ classify() {
       known=true
       select_gate web
       ;;
-    web/.dependency-cruiser.cjs|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
+    web/.dependency-cruiser.cjs|web/tsconfig.depcruise.json|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/check-ios-pods-binaries.sh|web/scripts/check-ios-pods-binaries.test.sh|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
@@ -759,7 +787,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
       known=true
       select_gate policy
       ;;

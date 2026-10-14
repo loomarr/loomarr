@@ -72,7 +72,7 @@ test.describe("People workspace certification", () => {
   for (const overlay of [
     {
       id: "people-userspage--selected-offline-ready",
-      trigger: "Manage Katherine Johnson",
+      trigger: "Manage Kira Brandt",
       snapshot: "people-workspace-selected.png",
     },
     {

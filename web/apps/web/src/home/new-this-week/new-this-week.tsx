@@ -60,13 +60,13 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         <Link
           to="/channels/$id/watch"
           params={{ id: lead.id }}
-          className="flex flex-wrap items-center gap-3 rounded-md border border-static-700 bg-static-900 p-3.5 text-foreground hover:border-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-static-700 bg-static-900 p-3.5 text-foreground hover:border-static-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
           <div className="min-w-0 flex-1">
             <span className="block text-static-400 text-xs">New channel</span>
             <span className="mt-0.5 block break-words font-semibold text-[15px]">
-              <span className="font-mono text-signal">{lead.number}</span> {lead.name}
+              <span className="font-mono text-foreground">{lead.number}</span> {lead.name}
             </span>
             <span className="mt-0.5 block text-static-400 text-xs">
               {addedLine(lead, viewerName, timeZone)}
@@ -93,7 +93,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   }
                 />
               </div>
-              <span className="break-words font-medium text-[13px]">{t.name ?? t.key}</span>
+              <span className="break-words font-medium text-sm">{t.name ?? t.key}</span>
               {t.channels?.[0] && (
                 <span className="truncate text-static-400 text-xs">{t.channels[0].name}</span>
               )}

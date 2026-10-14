@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
+import { AiringArtwork } from "../on-now";
 import type { RecentlyTunedProps } from "./recently-tuned.type";
 
 // RecentlyTuned — Home's "Recently tuned" return card (#1822 evidence, X2): the caller's
@@ -17,16 +18,26 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
   const channel = layout.channels.find((c) => c.source.channelId === continueWatching.channelId);
   if (!channel) return null;
   const data = surfChannelData(channel, nowMs, layout.timezone);
-  if (!data.now) return null;
+  const airing = channel.airings.find((a) => a.source.startMs <= nowMs && a.source.stopMs > nowMs)?.source;
+  if (!data.now || !airing) return null;
 
+  // A card has a picture slot (#1817 Q12), so this one draws the airing's artwork, or the
+  // code-drawn fallback, like every other Home card.
   return (
     <section aria-labelledby="home-recently-tuned">
       <SectionHeader id="home-recently-tuned" title="Recently tuned" />
-      <div className="flex flex-col items-start justify-between gap-4 rounded-lg border border-static-700 bg-static-900 p-4 sm:flex-row sm:items-center">
-        <div className="min-w-0">
+      <div className="flex flex-col items-start gap-4 rounded-lg border border-static-700 bg-static-900 p-4 sm:flex-row sm:items-center">
+        <div className="aspect-video w-full shrink-0 overflow-hidden rounded-md sm:w-48">
+          <AiringArtwork
+            airing={airing}
+            channel={{ name: data.channelName, number: channel.source.number }}
+            sizes="(min-width: 640px) 12rem, 100vw"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <ChannelIdent name={data.channelName} number={channel.source.number} logo={data.channelLogoUri} />
-            <span className="font-mono text-signal text-sm">
+            <span className="font-mono text-foreground text-sm">
               {String(channel.source.number).padStart(2, "0")}
             </span>
             <span className="text-sm text-static-400">{data.channelName}</span>

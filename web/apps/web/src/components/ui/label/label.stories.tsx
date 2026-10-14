@@ -15,7 +15,7 @@ const Default: Story = {
   render: () => (
     <div className="flex w-80 flex-col gap-1.5">
       <Label htmlFor="channel-name">Channel name</Label>
-      <Input id="channel-name" defaultValue="Springfield Classics" />
+      <Input id="channel-name" defaultValue="Cartoon Classics" />
     </div>
   ),
 };

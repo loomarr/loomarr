@@ -158,7 +158,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           <ul className="flex flex-col gap-1">
             {criteria.map((c) => (
               <li key={c.criterion} className="flex items-center gap-2 text-xs">
-                <span className="w-44 shrink-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
+                <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
                 <Caption
                   className={cn(
                     "shrink-0 tabular-nums",

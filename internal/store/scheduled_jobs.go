@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -99,7 +100,7 @@ func scanScheduledJob(sc scannable) (ScheduledJob, error) {
 		lastRun, nextRun, updatedAt int64
 	)
 	err := sc.Scan(&j.Name, &lastRun, &j.LastResult, &j.LastError, &nextRun, &updatedAt, &j.Paused)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ScheduledJob{}, ErrNotFound
 	}
 	if err != nil {

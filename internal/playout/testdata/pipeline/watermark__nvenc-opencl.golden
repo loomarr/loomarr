@@ -34,7 +34,7 @@ cuda
 -frames:v
 753
 -vf
-scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=yuv420p,pad_cuda=w=1920:h=1080:x=-1:y=-1[main];movie=filename=/data/watermarks/ch1-abc.png,format=yuva420p,hwupload_cuda[wm];[main][wm]overlay_cuda=x=1680:y=54,scale_cuda=w=1920:h=1080:format=yuv420p:passthrough=0,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
+scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=yuv420p,pad_cuda=w=1920:h=1080:x=-1:y=-1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left[main];movie=filename=/data/watermarks/ch1-abc.png,format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda[wm];[main][wm]overlay_cuda=x=1680:y=54,scale_cuda=w=1920:h=1080:format=yuv420p:passthrough=0,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
 -c:v
 h264_nvenc
 -preset

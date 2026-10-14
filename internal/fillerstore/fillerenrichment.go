@@ -271,7 +271,11 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 		}
 	case fillerenrichment.AxisGeography:
 		g := state.Value.Geography
-		if g != (fillerenrichment.Geography{}) {
+		if state.Status == fillerenrichment.StatusUnsupported {
+			// Apply accepts a withdrawal only over the same producer's own answer, so the location
+			// it projected was a registered-source stamp; clear exactly that and nothing stronger.
+			err = clips.ClearSourceDefaultGeography(ctx, state.ClipHash, updatedAt)
+		} else if g != (fillerenrichment.Geography{}) {
 			err = clips.FillGeography(ctx, state.ClipHash, store.ClipGeography{
 				Scope: g.Scope, Country: g.Country, Market: g.Market,
 				Network: g.Network, Station: g.Station, AirDate: g.AirDate,

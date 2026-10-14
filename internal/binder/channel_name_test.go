@@ -26,10 +26,10 @@ func TestChannelNameFromIntent(t *testing.T) {
 		{
 			name: "prefers the LLM channelName",
 			prop: suggest.Proposal{
-				ChannelName: "Springfield Classics",
-				Intent:      suggest.Intent{Description: "A channel with old-school Simpson's episodes"},
+				ChannelName: "Mudpuddle Classics",
+				Intent:      suggest.Intent{Description: "A channel with old-school Mudpuddles episodes"},
 			},
-			want: "Springfield Classics",
+			want: "Mudpuddle Classics",
 		},
 		{
 			name: "falls back to the intent when no channelName",

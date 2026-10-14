@@ -25,13 +25,13 @@ func FuzzKeyFromWebhook(f *testing.F) {
 	// series that must fall back to tmdb, an under-identified movie, and an
 	// invalid media type. mediaType is fuzzed as a byte selector so the
 	// engine explores movie/series/garbage uniformly.
-	f.Add(uint8(0), 1111867, 0) // movie by tmdb (Radarr "In Flames")
-	f.Add(uint8(1), 999, 12471) // series prefers tvdb over tmdb
-	f.Add(uint8(1), 555, 0)     // series falls back to tmdb
-	f.Add(uint8(0), 0, 0)       // movie, no id -> errors
-	f.Add(uint8(1), 0, 0)       // series, no id -> errors
-	f.Add(uint8(2), 1, 1)       // garbage media type -> errors
-	f.Add(uint8(1), -5, -7)     // negative ids (not > 0) -> errors
+	f.Add(uint8(0), 91111867, 0)        // movie by tmdb (Radarr "Ashgrove Anomaly")
+	f.Add(uint8(1), 90000999, 90012471) // series prefers tvdb over tmdb
+	f.Add(uint8(1), 90000555, 0)        // series falls back to tmdb
+	f.Add(uint8(0), 0, 0)               // movie, no id -> errors
+	f.Add(uint8(1), 0, 0)               // series, no id -> errors
+	f.Add(uint8(2), 90000001, 90000001) // garbage media type -> errors
+	f.Add(uint8(1), -5, -7)             // negative ids (not > 0) -> errors
 	f.Add(uint8(0), 2147483647, 0)
 
 	f.Fuzz(func(t *testing.T, mtSel uint8, tmdbID, tvdbID int) {

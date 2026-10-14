@@ -53,7 +53,7 @@ describe("SourceSearch", () => {
   it("renders a row that has no date", () => {
     render(<SourceSearch {...base} />);
 
-    const row = screen.getByText("Saturday Morning Cartoons Vol. 110 (full block)").closest("li");
+    const row = screen.getByText("Saturday Morning Block Vol. 7 (full block)").closest("li");
     expect(row).not.toBeNull();
     expect(row?.textContent).toContain("360p");
   });
@@ -71,10 +71,10 @@ describe("SourceSearch", () => {
     const onQueue = vi.fn();
     render(<SourceSearch {...base} onQueue={onQueue} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Queue download: Kellogg's Bran Flakes/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Queue download: Crunchlings Cereal/ }));
 
     expect(onQueue).toHaveBeenCalledTimes(1);
-    expect(onQueue.mock.calls[0]?.[0].id).toBe("kelloggs-bran-flakes");
+    expect(onQueue.mock.calls[0]?.[0].id).toBe("crunchlings-1989");
   });
 
   it("previews the clip that was clicked without queueing it", async () => {
@@ -82,10 +82,10 @@ describe("SourceSearch", () => {
     const onQueue = vi.fn();
     render(<SourceSearch {...base} onPreview={onPreview} onQueue={onQueue} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /Preview: Kellogg's Bran Flakes/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Preview: Crunchlings Cereal/ }));
 
     expect(onPreview).toHaveBeenCalledTimes(1);
-    expect(onPreview.mock.calls[0]?.[0].id).toBe("kelloggs-bran-flakes");
+    expect(onPreview.mock.calls[0]?.[0].id).toBe("crunchlings-1989");
     expect(onQueue).not.toHaveBeenCalled();
   });
 
@@ -101,11 +101,11 @@ describe("SourceSearch", () => {
   });
 
   it("reports the durable post-download handoff instead of a permanent queued label", () => {
-    render(<SourceSearch {...base} queueStatus={{ "kelloggs-bran-flakes": "success" }} />);
+    render(<SourceSearch {...base} queueStatus={{ "crunchlings-1989": "success" }} />);
 
     expect(screen.getByText("Added · being checked")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Queue download: Kellogg's Bran Flakes/ }),
+      screen.queryByRole("button", { name: /Queue download: Crunchlings Cereal/ }),
     ).not.toBeInTheDocument();
   });
 

@@ -242,6 +242,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	chDomain.WindowZone = e.windowZoneFor()
+	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
 	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
 	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
@@ -369,7 +370,8 @@ func (e *Engine) reconcileOnce(
 		// channel plays back-to-back with no empty flex. Best-effort: a filler failure never
 		// fails the reconcile (§9 resilience); the next sweep retries.
 		if e.pods != nil {
-			e.attachFillerList(ctx, ch, fillerIDs)
+			e.attachFillerList(ctx, ch, fillerIDs, chDomain.BreaksPerHour,
+				time.Duration(chDomain.BreakDurationMs)*time.Millisecond)
 		}
 
 		// 5: diff desired lineup vs actual; push only on a difference.
@@ -499,8 +501,15 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 // than leaving empty flex. Best-effort: a filler error is logged, never returned — the
 // channel still plays (§9 resilience), and EnsureFillerList is internally idempotent so a
 // stable pool makes no Tunarr write.
-func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string) {
-	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids); err != nil && e.log != nil {
+func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string, breaksPerHour int, breakDuration time.Duration) {
+	// The channel's own commercial spacing, not just the install-wide one, is what Tunarr should
+	// hold its clips back for — and the adapter needs the airing rate to know how much of it the
+	// list can honour.
+	policy := tunarr.FillerListPolicy{
+		RepeatCooldown:   SelectionForChannel(ch).Spacing,
+		AdRuntimePerHour: time.Duration(breaksPerHour) * breakDuration,
+	}
+	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids, policy); err != nil && e.log != nil {
 		e.log.Warn("attach filler list (channel plays without commercials this pass)",
 			"channel", ch.ID, "err", err)
 	}
@@ -574,9 +583,20 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
-	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope, schedule.DeriveFiller(ch.Policy, ch.Lineup))
-	if ch.Policy.BreakDuration != nil {
-		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
+	return SelectionForPolicy(ch.Policy, ch.Lineup)
+}
+
+// SelectionForPolicy is SelectionForChannel for a policy that is not (yet) the saved one — a draft.
+// It carries everything the saved path does, break length and commercial spacing included, so a
+// draft preview cannot assemble with the install defaults while the channel airs its own.
+func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntry) filler.Selection {
+	sel := SelectionFrom(pol.Filler, pol.Scope, schedule.DeriveFiller(pol, lineup))
+	if pol.BreakDuration != nil {
+		sel.BreakDurationMs = pol.BreakDuration.Std().Milliseconds()
+	}
+	if pol.CommercialSpacing != nil {
+		spacing := pol.CommercialSpacing.Std()
+		sel.Spacing = &spacing
 	}
 	return sel
 }
@@ -640,21 +660,16 @@ func (e *Engine) naturalBreaksFor(ctx context.Context, pol schedule.ChannelPolic
 	return e.naturalBreaks(ctx)
 }
 
-// BreakDurationFor resolves the per-channel break length against the live global setting.
-// Invalid zero/sub-30s values fail to the documented 5m default; disabling belongs exclusively
-// to BreaksPerHour.
+// BreakDurationFor resolves the per-channel break length against the live global setting, through
+// filler.ResolveBreakDurationMs — the same rule the pod is assembled to. An invalid (zero or
+// sub-30s) value falls to the next level, ending at the documented 2m default; disabling belongs
+// exclusively to BreaksPerHour.
 func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Duration {
-	const fallback = 5 * time.Minute
+	var channelMs int64
 	if pol.BreakDuration != nil {
-		if d := pol.BreakDuration.Std(); d >= 30*time.Second {
-			return d
-		}
-		return fallback
+		channelMs = pol.BreakDuration.Std().Milliseconds()
 	}
-	if global >= 30*time.Second {
-		return global
-	}
-	return fallback
+	return time.Duration(filler.ResolveBreakDurationMs(channelMs, global.Milliseconds())) * time.Millisecond
 }
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.

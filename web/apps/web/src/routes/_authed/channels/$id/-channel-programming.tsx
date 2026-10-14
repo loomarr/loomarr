@@ -101,11 +101,23 @@ const ChannelProgramming = ({
   });
   const vocabulary = unwrap(vocabQuery.data);
 
+  // The seasonal block's consequence line ("9 Halloween episodes found…") is counted by the
+  // scheduler, in the SAVED cycle preview. Same query key as the preview pane's "now" view, so it
+  // is one request, and a policy save already invalidates it (use-channel-save).
+  const savedCycle = channelsApi.usePreviewChannelCycle(channelId);
+  const holidayEpisodes = unwrap(savedCycle.data)?.holidayEpisodes;
+
   // The household guide timezone, so the change list's times read as the Guide shows them. The
   // same quantised window the Watch tab, Home and the Guide share, so this is usually cached.
   const [nowMs] = useState(() => Date.now());
   const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs), { query: { retry: false } });
   const guideTimeZone = unwrap(guide.data)?.timezone;
+
+  // One full pass through this channel's titles, so Play order can say what its choice means
+  // here. Same saved preview the cycle section below reads, so the two cannot disagree.
+  const cycleQuery = channelsApi.usePreviewChannelCycle(channelId, undefined, { query: { retry: false } });
+  const cycleBody = unwrap(cycleQuery.data);
+  const cycle = cycleBody ? { ...cycleBody.cycle, ordering: cycleBody.trace.ordering } : undefined;
 
   return (
     <div className="flex flex-col gap-6">
@@ -146,7 +158,13 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" strategy={strategy} />
+        <ChannelPolicyFields
+          policy={policy}
+          onChange={onPolicyChange}
+          show="ordering"
+          strategy={strategy}
+          cycle={cycle}
+        />
       </Block>
 
       <Block
@@ -192,7 +210,12 @@ const ChannelProgramming = ({
                 same BE-authored list, so the picker cannot offer a holiday the engine does
                 not know. */}
             <div className="border-border/60 border-t pt-4">
-              <ChannelSeasonal policy={policy} onChange={onPolicyChange} vocabulary={vocabulary} />
+              <ChannelSeasonal
+                policy={policy}
+                onChange={onPolicyChange}
+                vocabulary={vocabulary}
+                holidayEpisodes={holidayEpisodes}
+              />
             </div>
           </>
         ) : (
@@ -221,7 +244,8 @@ const ChannelProgramming = ({
           <p
             className={cn(
               "rounded-md px-2.5 py-1.5 text-xs",
-              rules.isDirty ? "bg-signal-tint-15 text-signal" : "bg-muted text-muted-foreground",
+              // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
+              rules.isDirty ? "bg-tune-tint-15 text-tune" : "bg-muted text-muted-foreground",
             )}
           >
             {rules.isDirty

@@ -151,11 +151,11 @@ func src1(t *testing.T, s Store) FillerSource {
 func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	c1 := sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal")
+	c1 := sampleClip("c1", "Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal")
 	c1.GeographicScope, c1.Country, c1.Market = filler.GeographicLocal, "US", "New York"
-	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Fox", "WNYW", "1992-04-03", "filename: WNYW 1992-04-03"
+	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Kestrel One", "WKTL", "1992-04-03", "filename: WKTL 1992-04-03"
 	_ = s.UpsertClip(ctx, c1)
-	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
 	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
 	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
 
@@ -164,17 +164,17 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Frosted Flakes" || got.Kind != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
+	if got.Name != "Crunchlings" || got.Kind != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
 		t.Errorf("clip round-trip mismatch: %+v", got.Clip)
 	}
 	if got.DurationMs != 30000 {
 		t.Errorf("duration lost: %d", got.DurationMs)
 	}
 	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
-		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
+		got.Network != "Kestrel One" || got.Station != "WKTL" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
 		t.Errorf("geography round-trip mismatch: %+v", got.Clip)
 	}
-	if _, err := s.GetClip(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetClip(missing) = %v, want ErrNotFound", err)
 	}
 
@@ -194,7 +194,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if len(ny) != 1 || ny[0].Hash != "c1" {
 		t.Errorf("US/New York geography = %+v, want just c1", ids2(ny))
 	}
-	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "", "CBC", "", "", "operator", time.Now()); err != nil {
+	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "", "Loon Network", "", "", "operator", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := s.GetClip(ctx, "c1")
@@ -210,6 +210,60 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	all, _ := s.ListClips(ctx, ClipFilter{})
 	if len(all) != 4 {
 		t.Errorf("no filter = %d, want 4", len(all))
+	}
+}
+
+// testClipNeedsDetailsAgreesWithSQL pins the store's UntaggedOnly SQL to clipcatalog's Go
+// NeedsDetails predicate, which feeds ClipDTO.needsDetails. If they drift, the Library's
+// "Needs details" chip and its "Untagged only" filter disagree about the same clip.
+//
+// The verdict is taken from the STORED rows, so a column that does not round-trip cannot make the
+// Go side agree by accident.
+func testClipNeedsDetailsAgreesWithSQL(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	fixtures := []Clip{
+		sampleClip("full", "full.mp4", filler.Commercial, 1991, filler.Kids, "toys"),
+		sampleClip("no-era", "no-era.mp4", filler.Commercial, 0, filler.Kids, "toys"),
+		sampleClip("no-aud", "no-aud.mp4", filler.Commercial, 1991, "", "toys"),
+		sampleClip("no-cat", "no-cat.mp4", filler.Commercial, 1991, filler.Kids, ""),
+		sampleClip("bare", "bare.mp4", filler.Commercial, 0, "", ""),
+		sampleClip("bumper", "bumper.mp4", filler.Bumper, 0, "", ""),
+		sampleClip("station", "station.mp4", filler.StationID, 0, "", ""),
+		sampleClip("psa", "psa.mp4", filler.PSA, 1991, "", ""),
+	}
+	for _, c := range fixtures {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != len(fixtures) {
+		t.Fatalf("stored %d clips, want %d", len(stored), len(fixtures))
+	}
+	want := map[string]bool{}
+	for _, c := range stored {
+		if c.NeedsDetails() {
+			want[c.Hash] = true
+		}
+	}
+	// Not vacuous: four commercials miss a tag, and no non-commercial ever needs details.
+	if len(want) != 4 || want["full"] || want["bumper"] || want["station"] || want["psa"] {
+		t.Fatalf("Go NeedsDetails = %v, want exactly no-era, no-aud, no-cat, bare", want)
+	}
+	untagged, err := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, c := range untagged {
+		got[c.Hash] = true
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("UntaggedOnly SQL selected %v, Go NeedsDetails selected %v — the predicates have drifted", got, want)
 	}
 }
 
@@ -235,7 +289,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); err != ErrNotFound {
+	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(missing) = %v, want ErrNotFound", err)
 	}
 
@@ -283,7 +337,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	if n != 1 {
 		t.Errorf("prune removed %d, want 1", n)
 	}
-	if _, err := s.GetClip(ctx, "u1"); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, "u1"); !errors.Is(err, ErrNotFound) {
 		t.Error("pruned clip still present")
 	}
 	if _, err := s.GetClip(ctx, "keep"); err != nil {
@@ -303,8 +357,8 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
-	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("c1", "Brightfield Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
 	_ = s.UpsertClip(ctx, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
 
 	names := func(f ClipFilter) []string {
@@ -321,11 +375,11 @@ func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Substring, and case-insensitive on BOTH backends.
-	if got := names(ClipFilter{Query: "flakes"}); len(got) != 1 || got[0] != "Frosted Flakes" {
-		t.Errorf("Query=flakes → %v, want [Frosted Flakes] (case-insensitive on both dialects)", got)
+	if got := names(ClipFilter{Query: "crunchlings"}); len(got) != 1 || got[0] != "Brightfield Crunchlings" {
+		t.Errorf("Query=crunchlings → %v, want [Brightfield Crunchlings] (case-insensitive on both dialects)", got)
 	}
-	if got := names(ClipFilter{Query: "FROSTED"}); len(got) != 1 {
-		t.Errorf("Query=FROSTED → %v, want 1 match", got)
+	if got := names(ClipFilter{Query: "BRIGHTFIELD"}); len(got) != 1 {
+		t.Errorf("Query=BRIGHTFIELD → %v, want 1 match", got)
 	}
 
 	// A literal % must not act as a wildcard. Without escaping this returns everything,
@@ -339,8 +393,8 @@ func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Search composes with the other filters rather than replacing them.
-	if got := names(ClipFilter{Query: "e", Category: "toys"}); len(got) != 1 || got[0] != "TMNT figures" {
-		t.Errorf("Query+Category → %v, want [TMNT figures]", got)
+	if got := names(ClipFilter{Query: "e", Category: "toys"}); len(got) != 1 || got[0] != "Shell Squad figures" {
+		t.Errorf("Query+Category → %v, want [Shell Squad figures]", got)
 	}
 }
 
@@ -354,7 +408,7 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	mustSaveChannel(t, s, sampleChannel("channel-1", 1, time.Time{}))
 
-	c := sampleClip("1994/toys.mp4", "TMNT toys", filler.Commercial, 1994, filler.Kids, "toys")
+	c := sampleClip("1994/toys.mp4", "Shell Squad toys", filler.Commercial, 1994, filler.Kids, "toys")
 	c.Thumbnail = "1994/toys.jpg"
 	// ⚠ The animated preview is a SEPARATE column, not derived from the still (V39, 00035). Both
 	// are asserted here because a column added to the INSERT and forgotten in the SELECT (or
@@ -408,12 +462,12 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	// A re-sync (what the periodic scan does) must leave the counters alone. Everything else
 	// about the row is legitimately refreshed.
-	c.Name = "TMNT toys (renamed)"
+	c.Name = "Shell Squad toys (renamed)"
 	if err := s.UpsertClip(ctx, c); err != nil {
 		t.Fatalf("re-sync: %v", err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
-	if got.Name != "TMNT toys (renamed)" {
+	if got.Name != "Shell Squad toys (renamed)" {
 		t.Errorf("a re-sync must refresh the name, got %q", got.Name)
 	}
 	if got.PlayCount != 3 {
@@ -586,7 +640,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// GetClip is hash-keyed.
-	if _, err := s.GetClip(ctx, c.Path); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, c.Path); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetClip(path) = %v, want ErrNotFound — GetClip is keyed WHERE hash = ?", err)
 	}
 	if _, err := s.GetClip(ctx, c.Hash); err != nil {
@@ -594,7 +648,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// UpdateClipClassification is hash-keyed, and its ErrNotFound is fatal to the tagging job.
-	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); err != ErrNotFound {
+	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
 	}
 	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, true, now); err != nil {
@@ -656,11 +710,11 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	// passed 0, so the era set by UpdateClipClassification above (1994) must SURVIVE — the CASE guard, not a
 	// blanket overwrite. It overwrites the text-grounded brand above, which is fine — both are
 	// grounded writers of the same column.
-	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 0, []string{"cereal"}, now); err != nil {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Brightfield's", "BRIGHTFIELD'S CRUNCHLINGS", 0, 0, []string{"cereal"}, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
-	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" || !got.VisionTagged {
+	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" || !got.VisionTagged {
 		t.Errorf("vision tags = {brand:%q visible:%q tagged:%v}, want them recorded", got.Brand, got.VisibleText, got.VisionTagged)
 	}
 	if got.Era != 1994 {
@@ -673,13 +727,13 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("invalid vision taxonomy error = %v, want ErrTaxonConflict", err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
-	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" {
+	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" {
 		t.Errorf("invalid vision taxonomy partially committed facts: brand=%q text=%q", got.Brand, got.VisibleText)
 	}
 	// ⚠ A grounded era SUPPRESSES the frame-heuristic suggestion: this clip already has era 1994, so
 	// passing suggestedEra=1960 must NOT set suggested_era — a clip with a known era has no question
 	// to ask. This pins the "era = 0" precondition in the store's CASE guard.
-	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 1960, []string{"cereal"}, now); err != nil {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Brightfield's", "BRIGHTFIELD'S CRUNCHLINGS", 0, 1960, []string{"cereal"}, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
@@ -719,7 +773,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Transcript != "buy our cereal today" {
 		t.Errorf("transcript = %q after a re-sync, want it PRESERVED — UpsertClip must omit transcript from DO UPDATE", got.Transcript)
 	}
-	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" || !got.VisionTagged {
+	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" || !got.VisionTagged {
 		t.Errorf("vision tags lost on re-sync {brand:%q visible:%q tagged:%v} — UpsertClip must omit them from DO UPDATE", got.Brand, got.VisibleText, got.VisionTagged)
 	}
 }
@@ -734,7 +788,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
 
-	old := sampleClip("old-content", "McDonald's 1993", filler.Commercial, 1993, filler.Kids, "fast_food")
+	old := sampleClip("old-content", "Burger Barn 1993", filler.Commercial, 1993, filler.Kids, "fast_food")
 	old.ParentHash = "parent-reel"
 	old.Held = true
 	old.Confidence = 91
@@ -1560,7 +1614,7 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 
 	// A composite (the recorded break) and two segments split out of it.
-	comp := sampleClip("break1", "kcpq-1996.mp4", filler.Commercial, 1996, filler.General, "")
+	comp := sampleClip("break1", "wktl-1996.mp4", filler.Commercial, 1996, filler.General, "")
 	comp.DurationMs = 971_000
 	if err := s.UpsertClip(ctx, comp); err != nil {
 		t.Fatal(err)
@@ -1570,7 +1624,7 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	}
 	seg1 := sampleClip("seg1", "aw-root-beer.mp4", filler.Commercial, 1996, filler.General, "fast_food")
 	seg1.ParentHash = comp.Hash
-	seg2 := sampleClip("seg2", "kfc.mp4", filler.Commercial, 1996, filler.General, "fast_food")
+	seg2 := sampleClip("seg2", "drumstick-shack.mp4", filler.Commercial, 1996, filler.General, "fast_food")
 	seg2.ParentHash = comp.Hash
 	if err := s.UpsertClip(ctx, seg1); err != nil {
 		t.Fatal(err)
@@ -4062,11 +4116,11 @@ func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
 
 	named := sampleClip("s1", "Crunchy Flakes 1994", filler.Commercial, 1994, filler.Kids, "cereal")
 	branded := sampleClip("s2", "unnamed spot", filler.Commercial, 1994, filler.Kids, "cereal")
-	branded.Brand = "Kellogg's"
+	branded.Brand = "Brightfield's"
 	seen := sampleClip("s3", "silent visual", filler.Commercial, 1994, filler.Kids, "cereal")
-	seen.VisibleText = "FORD TOUGH"
+	seen.VisibleText = "VENTOR TOUGH"
 	spoken := sampleClip("s4", "chatty spot", filler.Commercial, 1994, filler.Kids, "cereal")
-	spoken.Transcript = "you can afford a Ford this weekend"
+	spoken.Transcript = "every inventor drives a Ventor this weekend"
 	for _, c := range []Clip{named, branded, seen, spoken} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -4100,13 +4154,13 @@ func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
 		}
 	})
 	t.Run("MatchesBrand", func(t *testing.T) {
-		if got := hits(t, ClipFilter{Query: "kellogg"}); !sameHashes(got, []string{"s2"}) {
+		if got := hits(t, ClipFilter{Query: "brightfield"}); !sameHashes(got, []string{"s2"}) {
 			t.Errorf("brand search = %v, want [s2] — a catalog that cannot find a clip by its "+
 				"advertiser is a search box that looks broken", got)
 		}
 	})
 	t.Run("MatchesVisibleText", func(t *testing.T) {
-		if got := hits(t, ClipFilter{Query: "ford tough"}); !sameHashes(got, []string{"s3"}) {
+		if got := hits(t, ClipFilter{Query: "ventor tough"}); !sameHashes(got, []string{"s3"}) {
 			t.Errorf("visible-text search = %v, want [s3]", got)
 		}
 	})
@@ -4116,8 +4170,8 @@ func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
 				"per matching tag and make the total disagree with the rows", got)
 		}
 	})
-	// ⚠ The transcript is opt-in, and this pair is what proves the flag does something. "afford"
-	// contains "ford", which is also the noise argument for keeping it opt-in.
+	// ⚠ The transcript is opt-in, and this pair is what proves the flag does something. "inventor"
+	// contains "ventor", which is also the noise argument for keeping it opt-in.
 	t.Run("TranscriptOnlyWhenAskedFor", func(t *testing.T) {
 		if got := hits(t, ClipFilter{Query: "weekend"}); len(got) != 0 {
 			t.Errorf("default search matched the transcript (%v) — it is kilobytes per clip and the "+
@@ -4139,7 +4193,7 @@ func testClipTopLevelOnly(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	brk := sampleClip("brk", "KCPQ break 1996", filler.Commercial, 1996, filler.General, "")
+	brk := sampleClip("brk", "WKTL break 1996", filler.Commercial, 1996, filler.General, "")
 	brk.IsComposite = true
 	standalone := sampleClip("solo", "a single advert", filler.Commercial, 1996, filler.General, "toys")
 	segA := sampleClip("seg-a", "advert 1", filler.Commercial, 1996, filler.General, "toys")
@@ -4238,7 +4292,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := sampleClip("enrichment-clip", "HP Sauce Advert", filler.Commercial, 0, "", "")
+	clip := sampleClip("enrichment-clip", "Brambly Sauce Advert", filler.Commercial, 0, "", "")
 	clip.UpdatedAt = at
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
@@ -4265,7 +4319,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("weak inference apply = %+v, changed %v, err %v", accepted, changed, err)
 	}
 	brand := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisBrand,
-		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "HP Sauce"},
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "Brambly Sauce"},
 		Evidence: evidence(fillerenrichment.EvidenceItem, 100)}
 	if _, changed, err := s.ApplyFillerEnrichment(ctx, brand, at.Add(3*time.Second)); err != nil || !changed {
 		t.Fatalf("brand apply changed = %v, err %v", changed, err)
@@ -4278,7 +4332,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 		TaxonomyVersion: "seed-v2", CompletedAt: at.Add(4 * time.Second), States: []fillerenrichment.State{item, brand, {
 			ClipHash: clip.Hash, Axis: fillerenrichment.AxisProduct, Status: fillerenrichment.StatusComplete,
 			Value: fillerenrichment.Value{Tags: []string{"condiments"}}, Evidence: fillerenrichment.Evidence{
-				Kind: fillerenrichment.EvidenceTrustedMap, Reference: "trusted.product_mapping:hp sauce", Confidence: 100,
+				Kind: fillerenrichment.EvidenceTrustedMap, Reference: "trusted.product_mapping:brambly sauce", Confidence: 100,
 				Producer: "deterministic-metadata", ProducerVersion: "1", TaxonomyVersion: "seed-v2", ObservedAt: at,
 			},
 		}}}
@@ -4305,7 +4359,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("candidates after a routine catalog rescan = %+v, err %v", candidates, err)
 	}
-	if err := s.SetClipTranscript(ctx, clip.Path, "HP makes everything taste better", at.Add(6*time.Second)); err != nil {
+	if err := s.SetClipTranscript(ctx, clip.Path, "Brambly makes everything taste better", at.Add(6*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
@@ -4316,14 +4370,14 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if changed, err := s.ApplyFillerEnrichmentPass(ctx, pass); err != nil || changed != 0 {
 		t.Fatalf("refreshed pass changed = %d, err %v", changed, err)
 	}
-	if err := s.SetClipTranscript(ctx, clip.Path, "HP makes everything taste better", at.Add(8*time.Second)); err != nil {
+	if err := s.SetClipTranscript(ctx, clip.Path, "Brambly makes everything taste better", at.Add(8*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("candidates after the same transcript = %+v, err %v", candidates, err)
 	}
-	if err := s.ApplyClipVision(ctx, clip.Hash, clip.Path, "", "HP SAUCE", 0, 0, nil, at.Add(9*time.Second)); err != nil {
+	if err := s.ApplyClipVision(ctx, clip.Hash, clip.Path, "", "BRAMBLY SAUCE", 0, 0, nil, at.Add(9*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
@@ -4355,7 +4409,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projected.Era != 1999 || projected.Brand != "HP Sauce" || projected.Category != "condiments" ||
+	if projected.Era != 1999 || projected.Brand != "Brambly Sauce" || projected.Category != "condiments" ||
 		len(projected.AssertedTags) != 1 || projected.AssertedTags[0] != "condiments" {
 		t.Fatalf("projected clip = %+v", projected)
 	}
@@ -4375,7 +4429,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_500, 0).UTC()
-	clip := sampleClip("context-clip", "Tootsie Pop Classic Commercial", filler.Commercial, 0, "", "")
+	clip := sampleClip("context-clip", "Twirlpop Classic Commercial", filler.Commercial, 0, "", "")
 	clip.Source = "archive:classic_tv_commercials"
 	clip.UpdatedAt = at
 	if err := s.UpsertClip(ctx, clip); err != nil {
@@ -4392,8 +4446,8 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 			Confidence: 70, Explanation: "Likely campaign context; the exact cut is not proven.", CitationIDs: []int{1}},
 		Packet: fillerresearch.Packet{Query: clip.Name, Adapter: "mediawiki",
 			AdapterVersion: fillerresearch.MediaWikiAdapterVersion, RetrievedAt: at,
-			Citations: []fillerresearch.Citation{{ID: 1, Title: "Tootsie Pop",
-				URL:     "https://en.wikipedia.org/wiki/Tootsie_Pop",
+			Citations: []fillerresearch.Citation{{ID: 1, Title: "Twirlpop",
+				URL:     "https://en.wikipedia.org/wiki/Twirlpop",
 				Extract: "The animated commercial debuted on US television in 1970."}}}}
 	if err := s.SaveFillerResearchReport(ctx, report); err != nil {
 		t.Fatal(err)

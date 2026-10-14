@@ -167,9 +167,10 @@ const ApprovalQueueItem = ({
           titles, got five, and nothing anywhere said which two or why (#259). A fact that
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-signal/40 bg-signal/5 px-3 py-2">
+        // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
+        <div className="flex flex-col gap-1.5 rounded-md border border-caution-tint-40 bg-caution-tint-8 px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm">
-            <ShieldAlert className="size-4 shrink-0 text-signal" aria-hidden />
+            <ShieldAlert className="size-4 shrink-0 text-caution" aria-hidden />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title" : "titles"} won't be included
             </span>

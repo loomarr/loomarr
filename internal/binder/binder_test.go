@@ -20,17 +20,21 @@ func newStore(t *testing.T) store.Store {
 	return testkit.MigratedSQLiteStore(t)
 }
 
-func movieKey(tmdbID int) provision.Key {
-	k, _ := provision.Title{MediaType: provision.Movie, TMDBID: tmdbID}.Key()
+// demoTMDBID is the TMDB id of the n-th invented film: above every real id (#1592). The helpers
+// below take n and derive the id, so a test's films stay numbered 1, 2, 3…
+func demoTMDBID(n int) int { return 90_000_000 + n }
+
+func movieKey(n int) provision.Key {
+	k, _ := provision.Title{MediaType: provision.Movie, TMDBID: demoTMDBID(n)}.Key()
 	return k
 }
 
 // putAvailable writes an available title record so the merge sees it as still-in-library.
-func putAvailable(t *testing.T, st store.Store, tmdbID int, name string) {
+func putAvailable(t *testing.T, st store.Store, n int, name string) {
 	t.Helper()
 	rec := provision.Record{
-		Key:       movieKey(tmdbID),
-		Title:     provision.Title{MediaType: provision.Movie, TMDBID: tmdbID, Name: name},
+		Key:       movieKey(n),
+		Title:     provision.Title{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name},
 		State:     provision.Available,
 		LibraryID: "lib-" + name,
 	}
@@ -39,11 +43,11 @@ func putAvailable(t *testing.T, st store.Store, tmdbID int, name string) {
 	}
 }
 
-func putUnavailable(t *testing.T, st store.Store, tmdbID int, name string) {
+func putUnavailable(t *testing.T, st store.Store, n int, name string) {
 	t.Helper()
 	rec := provision.Record{
-		Key:   movieKey(tmdbID),
-		Title: provision.Title{MediaType: provision.Movie, TMDBID: tmdbID, Name: name},
+		Key:   movieKey(n),
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name},
 		State: provision.Unavailable,
 	}
 	if err := st.UpsertTitle(context.Background(), rec); err != nil {
@@ -51,8 +55,8 @@ func putUnavailable(t *testing.T, st store.Store, tmdbID int, name string) {
 	}
 }
 
-func entry(tmdbID int, name string) schedule.LineupEntry {
-	return schedule.LineupEntry{Key: movieKey(tmdbID), Title: name}
+func entry(n int, name string) schedule.LineupEntry {
+	return schedule.LineupEntry{Key: movieKey(n), Title: name}
 }
 
 // seedChannel writes an auto-curate channel bound to jobID with an existing lineup + policy.
@@ -101,8 +105,8 @@ func seedApprovedProposalRetiring(
 	}
 }
 
-func inLib(tmdbID int, name string) suggest.ProposalItem {
-	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
+func inLib(n int, name string) suggest.ProposalItem {
+	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
 }
 
 func lineupKeys(ch store.Channel) map[provision.Key]bool {
@@ -115,22 +119,22 @@ func lineupKeys(ch store.Channel) map[provision.Key]bool {
 
 // AUTO-CURATE IS ADDITIVE (§8.2): a refresh that re-picks a DIFFERENT subset must not drop a
 // still-available title the LLM merely didn't re-pick this run — it ADDS the new picks and
-// keeps the rest. This is the "1980s Action Heroes lost RoboCop/Terminator/Raiders" fix.
+// keeps the rest. This is the "1980s action channel lost three of its films" fix.
 func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	// Existing lineup: 3 available films.
-	putAvailable(t, st, 1, "RoboCop")
-	putAvailable(t, st, 2, "Terminator")
-	putAvailable(t, st, 3, "Raiders")
+	putAvailable(t, st, 1, "Tin Sheriff")
+	putAvailable(t, st, 2, "Clockwork Hunter")
+	putAvailable(t, st, 3, "Copper Canyon")
 	seedChannel(t, st, "c1", "job1",
-		[]schedule.LineupEntry{entry(1, "RoboCop"), entry(2, "Terminator"), entry(3, "Raiders")},
+		[]schedule.LineupEntry{entry(1, "Tin Sheriff"), entry(2, "Clockwork Hunter"), entry(3, "Copper Canyon")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
-	// The refresh re-picks only Raiders and adds a NEW film (Predator 2) — RoboCop + Terminator
-	// are simply omitted (not excluded, still available).
-	putAvailable(t, st, 4, "Predator 2")
+	// The refresh re-picks only Copper Canyon and adds a NEW film (Night Warden 2) — Tin Sheriff
+	// + Clockwork Hunter are simply omitted (not excluded, still available).
+	putAvailable(t, st, 4, "Night Warden 2")
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
-		[]suggest.ProposalItem{inLib(3, "Raiders"), inLib(4, "Predator 2")}, nil)
+		[]suggest.ProposalItem{inLib(3, "Copper Canyon"), inLib(4, "Night Warden 2")}, nil)
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -140,12 +144,12 @@ func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 
 	keys := lineupKeys(ch)
 	// The omitted-but-available films are KEPT.
-	for _, tmdbID := range []int{1, 2} {
-		if !keys[movieKey(tmdbID)] {
-			t.Errorf("available film tmdb:%d was dropped by auto-curate (churn — must be additive)", tmdbID)
+	for _, n := range []int{1, 2} {
+		if !keys[movieKey(n)] {
+			t.Errorf("available film %s was dropped by auto-curate (churn — must be additive)", movieKey(n))
 		}
 	}
-	// The new film was ADDED; Raiders (re-picked) still present.
+	// The new film was ADDED; Copper Canyon (re-picked) still present.
 	if !keys[movieKey(4)] || !keys[movieKey(3)] {
 		t.Errorf("auto-curate did not add the new pick / keep the re-picked one: %v", ch.Lineup)
 	}

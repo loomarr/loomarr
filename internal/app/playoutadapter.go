@@ -708,13 +708,13 @@ func (r *playoutResolver) cycleAt(
 	// The key carries what `at` changes about the arrangement (active rule, active holidays; the
 	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
 	// or a later visit reuses the work. See the cycle cache's header.
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at))
+	_, zone := r.engine.RollingWindow(ch.Policy, at)
+	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, zone))
 	if !ok {
 		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
 		return slots, window, cerr
 	}
 
-	_, zone := r.engine.RollingWindow(ch.Policy, at)
 	if slots, window, hit := r.cycles.get(key, at, zone); hit {
 		return slots, window, nil
 	}
@@ -743,7 +743,7 @@ const maxGuideSegments = 8
 //
 // # Why this exists
 //
-// The scheduler ROTATES: windowSlice advances its start by the window index, so day 0 airs one
+// The scheduler ROTATES: windowSliceDealt advances its start by the window index, so day 0 airs one
 // slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
 // airs"). Reconciliation commits that rotation into Desired at the new window; AiringNow reads the
 // accepted value. A multi-day guide still has to forecast the later windows: resolving ONE cycle

@@ -1,15 +1,17 @@
+// Titles come from the invented demo catalogue (internal/demolibrary); episode names are invented
+// in its style. The repo is public, so no real title belongs here (#1592).
 const classicEpisode = {
   artworkState: "ready",
   badge: { label: "On now", tone: "live" },
   channelLogoState: "missing",
   channelName: "Classic Animation",
   channelNumber: "07",
-  description: "Milhouse is cast as Fallout Boy when a Radioactive Man movie begins filming in Springfield.",
+  description: "Pip is cast as the teaspoon hero when a film crew starts shooting a movie in the kitchen.",
   episodeLabel: "S07E02",
   progressPercent: 42,
-  seriesTitle: "The Simpsons",
+  seriesTitle: "Kettle Kids",
   timeLabel: "7:00–7:30 PM",
-  title: "Radioactive Man",
+  title: "The Seventh Postcard",
 } as const;
 
 const missingArtworkEpisode = {
@@ -18,7 +20,7 @@ const missingArtworkEpisode = {
   badge: { label: "Up next", tone: "neutral" },
   progressPercent: undefined,
   timeLabel: "7:30–8:00 PM",
-  title: "Home Sweet Homediddly-Dum-Doodily",
+  title: "A Very Loud Doorbell at the Lighthouse",
 } as const;
 
 export { classicEpisode, missingArtworkEpisode };

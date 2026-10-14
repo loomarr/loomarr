@@ -171,7 +171,7 @@ type Policy struct {
 	// the adapter hardcoded 32, ignoring the knob.
 	PodMax int
 	// BreakDurationMs is the live global target for each break. A channel may override
-	// it through Selection; zero falls back to the documented 5 minute default.
+	// it through Selection; zero falls back to the documented 2 minute default (ResolveBreakDurationMs).
 	BreakDurationMs int64
 	// MinQualityHeight is the opt-in minimum clip height in pixels (FILLER_MIN_QUALITY, §15;
 	// V17c). 0 ⇒ OFF, which is the default and the only value that preserves what
@@ -235,11 +235,109 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	//    it, so the choice shapes bumpers (pickBumper) as well as the commercial fill.
 	catalog = filterKinds(catalog, w.Kinds)
 
-	pod := Pod{MatchLevel: MatchBumperCard}
-
 	// Intro bumper (best-effort — a matched bumper if we have one).
-	if b, ok := pickBumper(catalog, w, policy, used, rng); ok && b.DurationMs <= w.GapMs {
-		pod.append(b, used)
+	intro, hasIntro := pickBumper(catalog, w, policy, used, rng)
+	if hasIntro && intro.DurationMs > w.GapMs {
+		hasIntro = false
+	}
+
+	// Return bumper, chosen NOW so its real length comes off the break before anything is
+	// placed. It used to be picked after the ads and appended only "if it still fits", so a break
+	// the ads filled to the brim lost its return bumper; a constant 12s reserve was a guess at
+	// two bumpers that held only when they happened to be 6s. Reserving the actual clip means the
+	// intro + ads + return bumper always sum to at most the break, and the ads give way — a
+	// shorter whole clip fills the remainder — rather than the bumper or the last ad's tail.
+	// It is only appended after the ads; `used` already keeps the ads off it.
+	afterIntro := cloneSet(used)
+	if hasIntro {
+		reserve(afterIntro, intro)
+	}
+	ret, hasReturn := pickBumper(catalog, w, policy, afterIntro, rng)
+	if hasReturn && bookendMs(intro, hasIntro)+ret.DurationMs > w.GapMs {
+		hasReturn = false
+	}
+
+	// ⚠ **A break with ads beats a break with bumpers.** Reserving both bookends first means a
+	// break whose bumpers leave less room than the shortest ad (a 30s break, 30s ads and any
+	// bumper; or very long bumpers) has no room for ANY ad, and used to collapse to the 5s card —
+	// which has no playable file, so the channel's breaks switched off altogether. Each plan below
+	// is tried in order and the first that places real content wins: both bookends, then without
+	// the return bumper, then without the intro. Only when no ad fits even alone is it the card.
+	plans := []bookendPlan{{hasIntro, hasReturn}}
+	if hasReturn {
+		plans = append(plans, bookendPlan{hasIntro, false})
+	}
+	if hasIntro {
+		plans = append(plans, bookendPlan{false, false})
+	}
+	for _, plan := range plans {
+		trial := cloneSet(used) // a plan that fails must not leave its reservations behind
+		if pod, ok := assembleBreak(catalog, w, policy, trial, rng, plan.intro(intro), plan.ret(ret)); ok {
+			for id := range trial {
+				used[id] = true
+			}
+			return pod
+		}
+	}
+
+	// Bottom of the ladder: nothing content-bearing fits (no pins, no commercials), so the pod is
+	// just the embedded card and the break is never empty (§10 never dead air).
+	pod := Pod{MatchLevel: MatchBumperCard}
+	pod.append(FallbackCard, used)
+	return pod
+}
+
+// bookendPlan says which of a break's two bookends a plan keeps.
+type bookendPlan struct{ hasIntro, hasReturn bool }
+
+func (p bookendPlan) intro(e PodEntry) *PodEntry {
+	if !p.hasIntro {
+		return nil
+	}
+	return &e
+}
+
+func (p bookendPlan) ret(e PodEntry) *PodEntry {
+	if !p.hasReturn {
+		return nil
+	}
+	return &e
+}
+
+func bookendMs(e PodEntry, has bool) int64 {
+	if !has {
+		return 0
+	}
+	return e.DurationMs
+}
+
+func cloneSet(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(in)+8)
+	for id, v := range in {
+		out[id] = v
+	}
+	return out
+}
+
+// reserve keeps a clip out of every later pick. "" is not an identity (the same guard append has).
+func reserve(used map[string]bool, e PodEntry) {
+	if e.Hash != "" {
+		used[e.Hash] = true
+	}
+}
+
+// assembleBreak builds one break around the given bookends (either may be nil) and reports
+// whether it holds real content — pins or laddered commercials. `used` is the caller's scratch
+// copy, so a plan that comes back false leaves nothing reserved.
+func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand, intro, ret *PodEntry) (Pod, bool) {
+	pod := Pod{MatchLevel: MatchBumperCard}
+	if intro != nil {
+		pod.append(*intro, used)
+	}
+	var returnMs int64
+	if ret != nil {
+		returnMs = ret.DurationMs
+		reserve(used, *ret)
 	}
 
 	// PIN: force the channel's pinned clips in first, as a top-priority pool ahead of
@@ -247,7 +345,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	// the pod budget — a pin can't make an unbounded pod — and skip anything already
 	// `used` (i.e. excluded or a pinned bumper already placed).
 	pinWindow := w
-	pinWindow.GapMs -= pod.TotalMs
+	pinWindow.GapMs -= pod.TotalMs + returnMs
 	pinned := pickPinned(catalog, pinWindow, policy, used)
 	for _, c := range pinned {
 		e := clipToEntry(c, w, policy)
@@ -263,11 +361,11 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	// own "≤0 ⇒ default" fallback would treat an exhausted quota as "unset" and overfill.
 	var level MatchLevel
 	var commercials []Clip
+	remaining := w
+	remaining.GapMs = w.GapMs - pod.TotalMs - returnMs
+	pools := candidatePools(catalog, remaining, policy)
 	if remainMax := w.PodMax - len(pinned); remainMax > 0 {
-		remaining := w
 		remaining.PodMax = remainMax
-		remaining.GapMs = w.GapMs - pod.TotalMs
-		pools := candidatePools(catalog, remaining, policy)
 		level, commercials = fillCommercials(pools, remaining, policy, used, rng)
 		if level != "" {
 			pod.MatchLevel = level
@@ -277,29 +375,25 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		}
 	}
 
-	// Return bumper.
-	if b, ok := pickBumper(catalog, w, policy, used, rng); ok && pod.TotalMs+b.DurationMs <= w.GapMs {
-		pod.append(b, used)
-	}
-
-	// Bottom of the ladder: if NOTHING content-bearing matched (no pins, no
-	// commercials), the pod is just the embedded card so the break is never empty
-	// (§10 never dead air). Pins alone count as content — a pinned-only pod is a real
-	// pod, not the fallback.
+	// Pins alone count as content — a pinned-only pod is a real pod, not the fallback. With
+	// neither, this plan has no break body and the caller tries fewer bookends (or the card).
 	if len(pinned) == 0 && len(commercials) == 0 {
-		// An opportunistic intro bumper is not a matched break body. Replace it rather than
-		// appending the card: the comment has always promised "just the embedded card", and
-		// retaining a full-gap bumper before it can exceed the window's duration budget.
-		pod.Entries = nil
-		pod.TotalMs = 0
-		pod.append(FallbackCard, used)
-		pod.MatchLevel = MatchBumperCard
-	} else if level == "" && len(pinned) > 0 {
+		return Pod{}, false
+	}
+	if level == "" {
 		// Pins placed but no laddered commercials filled — the pod IS the pins (plus
 		// bumpers). Report an exact match: the operator got precisely what they pinned.
 		pod.MatchLevel = MatchExact
 	}
-	return pod
+
+	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
+	// whatever the ads could not was the "commercial breaks feel short" complaint.
+	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials))
+
+	if ret != nil {
+		pod.append(*ret, used)
+	}
+	return pod, true
 }
 
 // pickPinned returns the channel's pinned clips that exist in the (kind-filtered)
@@ -319,10 +413,8 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 	for _, c := range catalog {
 		byID[c.ID()] = c
 	}
-	budget := w.GapMs - 12000 // same bumper headroom as fillCommercials
-	if budget < 0 {
-		budget = w.GapMs
-	}
+	// w.GapMs is already net of both bumpers (Assemble reserves them).
+	budget := w.GapMs
 	var out []Clip
 	var totalMs int64
 	for _, id := range w.Pinned {
@@ -370,22 +462,27 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 	}
 }
 
-// pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
-// avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
-func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
+// bookendCandidates is every unused bumper/station-id the window may draw on: the era-matching
+// ones when there are any, else all of them.
+func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
 		if c.IsBumper() && !used[c.ID()] {
 			bumpers = append(bumpers, c)
 		}
 	}
+	if era := filterEraWindows(bumpers, w.eraWindows()); len(era) > 0 {
+		return era
+	}
+	return bumpers
+}
+
+// pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
+// avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
+func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
+	bumpers := bookendCandidates(catalog, w, used)
 	if len(bumpers) == 0 {
 		return PodEntry{}, false
-	}
-	// Prefer era-matching bumpers; fall back to any bumper.
-	era := filterEraWindows(bumpers, w.eraWindows())
-	if len(era) > 0 {
-		bumpers = era
 	}
 	sort.Slice(bumpers, func(i, j int) bool { return bumpers[i].Path < bumpers[j].Path })
 	// Keep the historical seeded choice among equally ranked bumpers, but never let it jump ahead

@@ -1417,7 +1417,7 @@ components:
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: "Length of each commercial break as a Go-duration string, e.g. \"2m\" or \"5m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m). There is no off value: breaksPerHour 0 turns breaks off"
           examples:
             - 168h
             - 24h
@@ -1425,6 +1425,12 @@ components:
         breaksPerHour:
           format: int64
           type: integer
+        commercialSpacing:
+          description: "How long the same commercial rests before this channel airs it again, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"
+          examples:
+            - 168h
+            - 24h
+          type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
         midRoll:
@@ -1582,6 +1588,258 @@ components:
         - clientVersion
         - platform
         - events
+      type: object
+    ClientCrashBreadcrumb:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC 3339
+          format: date-time
+          type: string
+        category:
+          enum:
+            - navigation
+            - http
+            - lifecycle
+            - log
+          type: string
+        message:
+          description: At most 256 bytes of UTF-8; URLs keep their path only
+          maxLength: 256
+          type: string
+      required:
+        - at
+        - category
+        - message
+      type: object
+    ClientCrashPage:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashPage.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ClientCrashSummary"
+          type: array
+        nextCursor:
+          description: Pass as cursor for the next older page; absent on the last page
+          type: string
+      required:
+        - items
+      type: object
+    ClientCrashReport:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReport.json
+          format: uri
+          readOnly: true
+          type: string
+        appBuild:
+          type: string
+        appVersion:
+          type: string
+        breadcrumbs:
+          items:
+            $ref: "#/components/schemas/ClientCrashBreadcrumb"
+          type: array
+        deviceId:
+          description: The paired device's id from the device list; absent for a browser session
+          type: string
+        deviceModel:
+          type: string
+        deviceName:
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          type: string
+        nativePayload: {}
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        receivedAt:
+          description: RFC 3339, the server's clock
+          format: date-time
+          type: string
+        stack:
+          type: string
+        userId:
+          description: The signed-in person whose app sent it; absent for an API-token caller
+          type: string
+      required:
+        - breadcrumbs
+        - id
+        - receivedAt
+        - occurredAt
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - message
+      type: object
+    ClientCrashReportInput:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReportInput.json
+          format: uri
+          readOnly: true
+          type: string
+        appBuild:
+          maxLength: 128
+          type: string
+        appVersion:
+          maxLength: 128
+          type: string
+        breadcrumbs:
+          items:
+            $ref: "#/components/schemas/ClientCrashBreadcrumb"
+          maxItems: 50
+          type: array
+        deviceModel:
+          maxLength: 128
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          description: At most 2 KiB of UTF-8
+          maxLength: 2048
+          minLength: 1
+          type: string
+        nativePayload:
+          description: "kind=native only: the MetricKit MXDiagnosticPayload JSON object, at most 64 KiB"
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          maxLength: 128
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        stack:
+          description: At most 32 KiB of UTF-8
+          maxLength: 32768
+          type: string
+      required:
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - occurredAt
+        - message
+        - breadcrumbs
+      type: object
+    ClientCrashReportOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReportOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          description: The stored report's id
+          type: string
+      required:
+        - id
+      type: object
+    ClientCrashSummary:
+      additionalProperties: false
+      properties:
+        appBuild:
+          type: string
+        appVersion:
+          type: string
+        deviceId:
+          description: The paired device's id from the device list; absent for a browser session
+          type: string
+        deviceModel:
+          type: string
+        deviceName:
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          type: string
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        receivedAt:
+          description: RFC 3339, the server's clock
+          format: date-time
+          type: string
+        userId:
+          description: The signed-in person whose app sent it; absent for an API-token caller
+          type: string
+      required:
+        - id
+        - receivedAt
+        - occurredAt
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - message
       type: object
     ClientDiagnosticsOutputBody:
       additionalProperties: false
@@ -1854,6 +2112,9 @@ components:
           description: Prepared playback file facts; included only for an exact single-clip detail read
         name:
           type: string
+        needsDetails:
+          description: A commercial missing a match tag (era, audience or category) — the same clips the untagged filter selects. Render the 'Needs details' exception from this field; do not re-derive it.
+          type: boolean
         network:
           type: string
         parentHash:
@@ -1907,6 +2168,7 @@ components:
         - playsCounted
         - aiTagged
         - tagged
+        - needsDetails
       type: object
     ClipEnrichmentDTO:
       additionalProperties: false
@@ -2168,6 +2430,9 @@ components:
           items:
             $ref: "#/components/schemas/CoverageCriterionDTO"
           type: array
+        geography:
+          $ref: "#/components/schemas/CoverageGeographyDTO"
+          description: "The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."
         level:
           description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card.
           enum:
@@ -2190,6 +2455,20 @@ components:
         - criteria
         - level
         - total
+        - geography
+      type: object
+    CoverageGeographyDTO:
+      additionalProperties: false
+      properties:
+        country:
+          description: ISO 3166-1 alpha-2 country code, or empty for no location limit
+          type: string
+        market:
+          description: Local market inside that country, or empty for the whole country
+          type: string
+      required:
+        - country
+        - market
       type: object
     CoverageRungDTO:
       additionalProperties: false
@@ -2388,6 +2667,31 @@ components:
           type: string
       required:
         - kind
+      type: object
+    CycleSummaryDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          description: Episodes in one full pass
+          format: int64
+          type: integer
+        movies:
+          description: Movies in one full pass
+          format: int64
+          type: integer
+        runtimeMs:
+          description: Programme runtime of one full pass in ms, without commercial breaks
+          format: int64
+          type: integer
+        series:
+          description: Distinct shows the episodes belong to
+          format: int64
+          type: integer
+      required:
+        - episodes
+        - movies
+        - series
+        - runtimeMs
       type: object
     DatabaseBackup:
       additionalProperties: false
@@ -4802,6 +5106,44 @@ components:
         - state
         - checks
       type: object
+    HolidayEpisodesDTO:
+      additionalProperties: false
+      properties:
+        active:
+          description: The holiday's window is open on the channel's date at the previewed instant
+          type: boolean
+        capped:
+          description: "The number of holiday episodes or the quarter-of-the-day limit holds the strength back: fewer a day than it asks for, or not every day"
+          type: boolean
+        episodes:
+          description: Holiday episodes found in this channel's series; a multi-part story counts once
+          format: int64
+          type: integer
+        everyDays:
+          description: The soonest any one of them airs again, in days
+          format: int64
+          type: integer
+        holiday:
+          description: Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)
+          type: string
+        perDay:
+          description: How many air on an ordinary day of the holiday window at the channel's strength
+          format: int64
+          type: integer
+        sameAs:
+          description: The other holiday strengths (light, featured, heavy) that would rotate these episodes exactly the same way, so choosing one changes nothing
+          items:
+            type: string
+          type: array
+      required:
+        - holiday
+        - episodes
+        - perDay
+        - everyDays
+        - active
+        - capped
+        - sameAs
+      type: object
     HostedModelView:
       additionalProperties: false
       properties:
@@ -5347,6 +5689,8 @@ components:
           items:
             $ref: "#/components/schemas/AdjacentContext"
           type: array
+        channelName:
+          type: string
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
@@ -7269,9 +7613,17 @@ components:
         at:
           description: The resolved wall-clock this preview was computed for (RFC3339)
           type: string
+        cycle:
+          $ref: "#/components/schemas/CycleSummaryDTO"
+          description: Size of one full pass through the deck, before the rolling-window slice
         excluded:
           $ref: "#/components/schemas/ExcludedDTO"
           description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
+        holidayEpisodes:
+          description: "Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."
+          items:
+            $ref: "#/components/schemas/HolidayEpisodesDTO"
+          type: array
         slots:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
@@ -7291,6 +7643,8 @@ components:
         - slots
         - excluded
         - trace
+        - holidayEpisodes
+        - cycle
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -7303,7 +7657,7 @@ components:
           readOnly: true
           type: string
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: Unsaved break length as a Go-duration string, e.g. "2m"; at least 30s. Omitted means the install setting filler.break_duration (default 2m)
           examples:
             - 168h
             - 24h
@@ -9077,6 +9431,10 @@ components:
         mode:
           type: string
         offSeason:
+          type: string
+        placement:
+          type: string
+        strength:
           type: string
       type: object
     SecretRegenerateOutputBody:
@@ -11195,12 +11553,109 @@ components:
         - what
         - how
       type: object
+    WatermarkHolidayOption:
+      additionalProperties: false
+      properties:
+        active:
+          description: "The holiday is in effect today for this channel: its logo shows the holiday version"
+          type: boolean
+        end:
+          description: Last day of that window, inclusive
+          format: date
+          type: string
+        id:
+          examples:
+            - halloween
+          type: string
+        name:
+          examples:
+            - Halloween
+          type: string
+        picture:
+          description: "The picture this channel shows for the holiday: its choice, else the default"
+          type: string
+        pictures:
+          description: The holiday's pictures, the default first; one means there is no choice
+          items:
+            $ref: "#/components/schemas/WatermarkPicture"
+          type: array
+        start:
+          description: First day of the holiday's window that is on today or comes next
+          format: date
+          type: string
+      required:
+        - id
+        - name
+        - start
+        - end
+        - active
+        - picture
+        - pictures
+      type: object
+    WatermarkOptions:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/WatermarkOptions.json
+          format: uri
+          readOnly: true
+          type: string
+        autoCallsign:
+          description: Text the logo shows when the name is left blank, derived from the channel name
+          type: string
+        era:
+          description: The channel's decade from its Programming era, such as 1980s; empty when it has none
+          type: string
+        eraPalette:
+          description: The colours "Match the era" uses, in order (amber, cyan, green without an era)
+          items:
+            type: string
+          type: array
+        holidays:
+          description: The holidays this channel honours, in calendar order; empty when it ignores holidays
+          items:
+            $ref: "#/components/schemas/WatermarkHolidayOption"
+          type: array
+      required:
+        - autoCallsign
+        - era
+        - eraPalette
+        - holidays
+      type: object
+    WatermarkPicture:
+      additionalProperties: false
+      properties:
+        id:
+          examples:
+            - pumpkin
+          type: string
+        name:
+          examples:
+            - Pumpkin
+          type: string
+      required:
+        - id
+        - name
+      type: object
     WatermarkPolicy:
       additionalProperties: false
       properties:
         callsign:
           description: Text of the generated Plate bug; omitted derives it from the channel name
           maxLength: 12
+          type: string
+        color:
+          description: "Colour of the coloured looks: era (colours from the channel's decade, amber without one) or a fixed colour; omitted is era"
+          enum:
+            - era
+            - amber
+            - cyan
+            - green
+            - red
+            - pink
+            - yellow
           type: string
         corner:
           description: Corner of the active picture; omitted is top-right
@@ -11213,16 +11668,25 @@ components:
         enabled:
           description: false turns the bug off; omitted is on (the default)
           type: boolean
+        holiday:
+          description: false turns the holiday version off; omitted is on unless the channel ignores holidays (seasonal mode off)
+          type: boolean
         image:
           description: Custom bug image hash (upload with role watermark); omitted is automatic
           type: string
         look:
-          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters) or small-plate (75% size, no shadow); omitted is the install setting playout.watermark_look (default text)"
+          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters), small-plate (75% size, no shadow), tint (colour plate), twotone (number + name), badge (number badge), lockup (number | name, white), glass (frosted plate) or stripe (era stripe); omitted is the install setting playout.watermark_look (default text)"
           enum:
             - plate
             - text
             - outline
             - small-plate
+            - tint
+            - twotone
+            - badge
+            - lockup
+            - glass
+            - stripe
           type: string
         margin:
           description: Inset from the picture edges as a share of the frame width and height, 0-0.2; omitted is 0.05
@@ -11230,6 +11694,11 @@ components:
           maximum: 0.2
           minimum: 0
           type: number
+        motifs:
+          additionalProperties:
+            type: string
+          description: "Holiday picture per holiday, where there is a choice: halloween is pumpkin, bat or ghost; christmas is holly or snowflake; an omitted holiday is the first"
+          type: object
         opacity:
           description: Bug opacity, 0.1-1; omitted is the install setting playout.watermark_opacity_pct (default 40%)
           format: double
@@ -12368,6 +12837,233 @@ paths:
       summary: Upload a custom channel watermark
       tags:
         - channels
+  /v1/channels/{id}/watermark/options:
+    get:
+      description: "Admin only. The name the logo shows when none is set, the channel's era and its colours, and the holidays the logo follows: each one's dates, whether it is in effect today and its pictures."
+      operationId: get-channel-watermark-options
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatermarkOptions"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: On-screen logo options for a channel
+      tags:
+        - channels
+  /v1/channels/{id}/watermark/preview:
+    get:
+      description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: its saved policy.watermark with the query's look, colour and size, in the named holiday's version. The `X-Loomarr-Watermark-Drawable` header is false while this server cannot overlay a logo. An unknown value, or a picture that is not one of the named holiday's own, is refused with 422."
+      operationId: preview-channel-watermark
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - description: Style to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: look
+          schema:
+            description: Style to draw; omitted is the channel's
+            enum:
+              - plate
+              - text
+              - outline
+              - small-plate
+              - tint
+              - twotone
+              - badge
+              - lockup
+              - glass
+              - stripe
+            type: string
+        - description: Colour to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: color
+          schema:
+            description: Colour to draw; omitted is the channel's
+            enum:
+              - era
+              - amber
+              - cyan
+              - green
+              - red
+              - pink
+              - yellow
+            type: string
+        - description: Holiday version to draw; omitted is the everyday logo
+          explode: false
+          in: query
+          name: holiday
+          schema:
+            description: Holiday version to draw; omitted is the everyday logo
+            enum:
+              - halloween
+              - thanksgiving
+              - christmas
+              - newyear
+              - valentines
+            type: string
+        - description: Bug height as a share of the frame height; omitted (0) is the channel's
+          explode: false
+          in: query
+          name: size
+          schema:
+            description: Bug height as a share of the frame height; omitted (0) is the channel's
+            format: double
+            maximum: 0.15
+            minimum: 0
+            type: number
+        - description: The holiday's picture to draw, one of its own; omitted is the channel's
+          explode: false
+          in: query
+          name: picture
+          schema:
+            description: The holiday's picture to draw, one of its own; omitted is the channel's
+            enum:
+              - pumpkin
+              - bat
+              - ghost
+              - leaf
+              - holly
+              - snowflake
+              - firework
+              - heart
+            type: string
+        - description: Draw only the holiday's picture, as a small square PNG; needs holiday
+          explode: false
+          in: query
+          name: motifOnly
+          schema:
+            description: Draw only the holiday's picture, as a small square PNG; needs holiday
+            type: boolean
+      responses:
+        "200":
+          content:
+            image/png: {}
+          description: The bug PNG
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview the channel's on-screen logo
+      tags:
+        - channels
+  /v1/diagnostics/client-crashes:
+    get:
+      description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. Operator and automation API: no Loomarr client calls it."
+      operationId: list-client-crashes
+      parameters:
+        - description: Page size
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: Page size
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Opaque cursor returned by the previous page
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Opaque cursor returned by the previous page
+            maxLength: 512
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashPage"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List app crash reports
+      tags:
+        - diagnostics
+    post:
+      description: Stores one crash report from a signed-in app. The server records the user and paired device from the request's credential; the body never names them. Tokens, cookies, credential headers and URL queries are scrubbed before storage. At most 128 KiB (413 above); rate limited per device (429).
+      operationId: report-client-crash
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCrashReportInput"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashReportOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Report an app crash
+      tags:
+        - diagnostics
+  /v1/diagnostics/client-crashes/{id}:
+    get:
+      description: Admin only. The full report, including stack, breadcrumbs and native payload.
+      operationId: get-client-crash
+      parameters:
+        - description: Crash report id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Crash report id
+            maxLength: 128
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashReport"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one app crash report
+      tags:
+        - diagnostics
   /v1/diagnostics/client-events:
     post:
       description: Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.

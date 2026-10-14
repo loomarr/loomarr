@@ -92,7 +92,7 @@ type BlockProps = {
   focusPending?: RefObject<boolean>;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
-  /** The channel is paused: nothing airs, so no block wears the airing amber. */
+  /** The channel is paused: nothing airs, so no block wears the airing tone. */
   offAir?: boolean;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;
@@ -177,7 +177,8 @@ const Block = ({
                   : "$borderDecorative"
           }
           borderLeftColor={
-            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
+            // Now-airing is a neutral tone step (#1909 Q3), so its edge takes the airing border.
+            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$borderAiring" : "$guideBlockAccent"
           }
           borderLeftWidth={2}
           borderRadius={4}

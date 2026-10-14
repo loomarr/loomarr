@@ -77,7 +77,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	}
 	fs := &fakeSuggest{}
 	search := &testkit.SearchService[api.SearchRequest, api.SearchCandidate]{Results: []api.SearchCandidate{{
-		MediaType: "movie", TMDBID: 603, Name: "The Matrix", InLibrary: true,
+		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
@@ -102,14 +102,14 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	return &proposalHarness{apiHarness: base, Suggest: fs}
 }
 
-// seedProposal writes a submitted proposal with one acquisition (Speed).
+// seedProposal writes a submitted proposal with one acquisition (Quiet Engines).
 func seedProposal(t *testing.T, st store.Store, id string) {
 	seedProposalAt(t, st, id, time.Time{})
 }
 
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
-	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:100","name":"Speed","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
+	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000100","name":"Quiet Engines","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:90000100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
 	err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
 		CreatedAt: created,
@@ -127,8 +127,8 @@ func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) 
 func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	// A proposal whose lineup has one in-library pick (The Matrix) and no acquisitions.
-	body := `{"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	// A proposal whose lineup has one in-library pick (Marigold Protocol) and no acquisitions.
+	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-lib", JobID: "job-lib", Status: "submitted", ProposalJSON: body,
 	}); err != nil {
@@ -145,8 +145,8 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 	if len(avail) != 1 {
 		t.Fatalf("approve created %d available titles, want 1 (the in-library pick)", len(avail))
 	}
-	if got := string(avail[0].Key); got != "movie:tmdb:603" {
-		t.Errorf("available title key = %q, want movie:tmdb:603", got)
+	if got := string(avail[0].Key); got != "movie:tmdb:90000603" {
+		t.Errorf("available title key = %q, want movie:tmdb:90000603", got)
 	}
 	if avail[0].LibraryID != "641641" {
 		t.Errorf("available title libraryID = %q, want 641641 (needed to play + resolve duration)", avail[0].LibraryID)
@@ -218,7 +218,7 @@ func TestSubmit_ConfiguredAIWithMissingTMDBNamesGroundingBlocker(t *testing.T) {
 func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	intent := `{"description":"Classic Simpson Episodes"}`
+	intent := `{"description":"Classic Kettle Kids Episodes"}`
 	now := time.Now()
 	err := st.CreateJob(context.Background(), store.Job{
 		ID: "job-grounding", Kind: "suggest", Status: "queued", IntentJSON: intent,
@@ -260,7 +260,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Intent.Description != "Classic Simpson Episodes" {
+	if got.Intent.Description != "Classic Kettle Kids Episodes" {
 		t.Errorf("intent = %q, want preserved request", got.Intent.Description)
 	}
 	if got.Failure.Code != suggest.FailureCodeNoGroundedTitles || got.Failure.Message != "We couldn't find any titles that fit this description." {
@@ -292,7 +292,7 @@ func TestGetProposalJobRequiresOwnerOrAdmin(t *testing.T) {
 func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:1","ownership":"library","disposition":"selected","reason":"selected"}]}}`
+	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:90000001","ownership":"library","disposition":"selected","reason":"selected"}]}}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
 		t.Fatal(err)
 	}
@@ -373,8 +373,8 @@ func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
 	if body.Status != "approved" || body.Enqueued != 1 {
 		t.Errorf("approve body = %+v, want approved/1", body)
 	}
-	// Speed (tmdb 100) is now a wanted title.
-	rec, err := st.GetTitle(context.Background(), "movie:tmdb:100")
+	// Quiet Engines (tmdb 90000100) is now a wanted title.
+	rec, err := st.GetTitle(context.Background(), "movie:tmdb:90000100")
 	if err != nil {
 		t.Fatalf("acquisition not enqueued: %v", err)
 	}
@@ -511,7 +511,7 @@ func TestListProposals_ApprovalQueue(t *testing.T) {
 func TestSearch_AnyAuthenticatedUser(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv := harness.Server
-	resp := do(t, srv, http.MethodGet, "/v1/search?q=matrix", adminToken, "")
+	resp := do(t, srv, http.MethodGet, "/v1/search?q=marigold", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("search → %d", resp.StatusCode)
 	}
@@ -522,7 +522,7 @@ func TestSearch_AnyAuthenticatedUser(t *testing.T) {
 		}
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if len(body.Candidates) != 1 || body.Candidates[0].Name != "The Matrix" {
+	if len(body.Candidates) != 1 || body.Candidates[0].Name != "Marigold Protocol" {
 		t.Errorf("search results = %+v", body.Candidates)
 	}
 }
@@ -557,7 +557,7 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	srv, fs := harness.Server, harness.Suggest
 	body := `{"description":"90s action movies","era":"1990s","tone":"high-energy",
 	          "runtimeTargetMin":180,"maxAcquisitions":7,
-	          "mustInclude":["Speed"],"mustExclude":["Cats"]}`
+	          "mustInclude":["Quiet Engines"],"mustExclude":["Pepperpot Summer"]}`
 
 	if resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, body); resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
@@ -573,11 +573,11 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	if got.MaxAcquire != 7 {
 		t.Errorf("maxAcquisitions = %d, want 7", got.MaxAcquire)
 	}
-	if len(got.MustInclude) != 1 || got.MustInclude[0] != "Speed" {
-		t.Errorf("mustInclude = %v, want [Speed]", got.MustInclude)
+	if len(got.MustInclude) != 1 || got.MustInclude[0] != "Quiet Engines" {
+		t.Errorf("mustInclude = %v, want [Quiet Engines]", got.MustInclude)
 	}
-	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Cats" {
-		t.Errorf("mustExclude = %v, want [Cats]", got.MustExclude)
+	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Pepperpot Summer" {
+		t.Errorf("mustExclude = %v, want [Pepperpot Summer]", got.MustExclude)
 	}
 }
 
@@ -594,7 +594,7 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"90s Saturday morning cartoons for the kids"},` +
-		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
+		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-ch", JobID: "job-ch", Status: "submitted", ProposalJSON: body,
@@ -640,9 +640,9 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	body := `{"intent":{"description":"Classic Simpsons"},` +
-		`"lineup":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons",` +
-		`"inLibrary":true,"libraryItemId":"lib-simpsons",` +
+	body := `{"intent":{"description":"Classic Kettle Kids"},` +
+		`"lineup":[{"mediaType":"series","tmdbId":90000456,"name":"Kettle Kids",` +
+		`"inLibrary":true,"libraryItemId":"lib-kettle-kids",` +
 		`"episodeSelection":{"mode":"highlights"}}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", ProposalJSON: body,
@@ -678,18 +678,18 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 		want       schedule.EpisodeSelection
 	}{
 		{
-			name: "classic", intent: "Classic highlights from The Simpsons",
-			proposalID: "p-added-classic", seriesID: 456,
+			name: "classic", intent: "Classic highlights from Kettle Kids",
+			proposalID: "p-added-classic", seriesID: 90000456,
 			want: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 		},
 		{
-			name: "named holiday", intent: "Christmas episodes from Bob's Burgers",
-			proposalID: "p-added-holiday", seriesID: 32726,
+			name: "named holiday", intent: "Christmas episodes from Lunar Lemmings",
+			proposalID: "p-added-holiday", seriesID: 90032726,
 			want: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 		},
 		{
-			name: "complete", intent: "Watch The Simpsons chronologically from the beginning",
-			proposalID: "p-added-complete", seriesID: 456,
+			name: "complete", intent: "Watch Kettle Kids chronologically from the beginning",
+			proposalID: "p-added-complete", seriesID: 90000456,
 			want: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 		},
 	}
@@ -698,7 +698,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			harness := newProposalHarness(t)
 			srv, st := harness.Server, harness.Store
 			body := fmt.Sprintf(`{"intent":{"description":%q},"lineup":[`+
-				`{"mediaType":"movie","tmdbId":603,"name":"The Matrix","inLibrary":true,"libraryItemId":"matrix"}],`+
+				`{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","inLibrary":true,"libraryItemId":"marigold"}],`+
 				`"acquisitions":[]}`, tt.intent)
 			if err := st.CreateProposal(context.Background(), store.Proposal{
 				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", ProposalJSON: body,
@@ -765,9 +765,9 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
-	body := `{"intent":{"description":"Watch The Simpsons chronologically from start to finish"},` +
-		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
-		`"inLibrary":true,"libraryItemId":"matrix"}],` +
+	body := `{"intent":{"description":"Watch Kettle Kids chronologically from start to finish"},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol",` +
+		`"inLibrary":true,"libraryItemId":"marigold"}],` +
 		`"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", ProposalJSON: body,
@@ -776,7 +776,7 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 	}
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-crafted-selection/approve", adminToken,
-		`{"add":[{"mediaType":"series","tmdbId":456,"name":"The Simpsons","inLibrary":false,`+
+		`{"add":[{"mediaType":"series","tmdbId":90000456,"name":"Kettle Kids","inLibrary":false,`+
 			`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}}]}`)
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -798,12 +798,12 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 	var seriesFound, movieFound bool
 	for _, item := range ch.Lineup {
 		switch item.Key {
-		case "series:tmdb:456":
+		case "series:tmdb:90000456":
 			seriesFound = true
 			if got := item.EpisodeSelection; got.Mode != schedule.EpisodeComplete || len(got.Holidays) != 0 {
 				t.Fatalf("crafted series selection survived approval: %+v", got)
 			}
-		case "movie:tmdb:603":
+		case "movie:tmdb:90000603":
 			movieFound = true
 			if got := item.EpisodeSelection; got.Mode != "" || len(got.Holidays) != 0 {
 				t.Fatalf("movie episode selection changed: %+v", got)
@@ -819,13 +819,13 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"intent":{"description":"Classic highlights"},` +
-		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix",` +
-		`"inLibrary":true,"libraryItemId":"matrix"}],"acquisitions":[],` +
+		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol",` +
+		`"inLibrary":true,"libraryItemId":"marigold"}],"acquisitions":[],` +
 		`"alternates":[` +
-		`{"mediaType":"series","tmdbId":456,"name":"Missing Series Mode","inLibrary":false},` +
-		`{"mediaType":"series","tmdbId":32726,"name":"Crafted Series Mode","inLibrary":false,` +
+		`{"mediaType":"series","tmdbId":90000456,"name":"Missing Series Mode","inLibrary":false},` +
+		`{"mediaType":"series","tmdbId":90032726,"name":"Crafted Series Mode","inLibrary":false,` +
 		`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}},` +
-		`{"mediaType":"movie","tmdbId":100,"name":"Crafted Movie Mode","inLibrary":false,` +
+		`{"mediaType":"movie","tmdbId":90000100,"name":"Crafted Movie Mode","inLibrary":false,` +
 		`"episodeSelection":{"mode":"highlights"}}]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", ProposalJSON: body,
@@ -866,7 +866,7 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	// The proposal's policy scopes programs to the 1990s — the filler era should follow.
 	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
-		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
+		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-era", JobID: "job-era", Status: "submitted", ProposalJSON: body,
@@ -899,7 +899,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	body := `{"intent":{"description":"90s cartoons"},"lineup":[{"mediaType":"movie",` +
-		`"tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
+		`"tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
 		`"acquisitions":[]}`
 	seed := func(id, job string, created time.Time) {
 		if err := st.CreateProposal(context.Background(), store.Proposal{
@@ -981,10 +981,10 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 	// Explicit timestamps an hour apart so "newest" is a property of the data, not of
 	// same-second scheduling luck (created_at persists as epoch seconds).
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	mk("p-orig", "603", "The Matrix", base)                 // original lineup
-	mk("p-refined", "106", "Predator", base.Add(time.Hour)) // the refine result (newer)
+	mk("p-orig", "90000603", "Marigold Protocol", base)                  // original lineup
+	mk("p-refined", "90000106", "Emberfall Canyon", base.Add(time.Hour)) // the refine result (newer)
 
-	// Approve the ORIGINAL first → binds a channel to the job with The Matrix.
+	// Approve the ORIGINAL first → binds a channel to the job with Marigold Protocol.
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-orig/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve original → %d, want 200", resp.StatusCode)
@@ -998,7 +998,7 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 	}
 
 	// Now approve the REFINED proposal. Same job → must patch the SAME channel, and the
-	// lineup must become the refined one (Predator), not stay the original (Matrix).
+	// lineup must become the refined one (Emberfall Canyon), not stay the original (Marigold Protocol).
 	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-refined/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve refined → %d, want 200", resp.StatusCode)
@@ -1026,14 +1026,14 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 		t.Errorf("IntentRef = %q, want %q (binding must survive refine)", ch.IntentRef, job)
 	}
 	// The load-bearing assertion: the lineup is the newer approved proposal's, so the
-	// refine's change actually took. A single Predator entry, no Matrix.
+	// refine's change actually took. A single Emberfall Canyon entry, no Marigold Protocol.
 	if len(ch.Lineup) != 1 {
 		t.Fatalf("lineup has %d entries, want 1 (the refined pick)", len(ch.Lineup))
 	}
 	got := string(ch.Lineup[0].Key)
-	if got != "movie:tmdb:106" {
-		t.Errorf("channel bound to %q — want the REFINED pick movie:tmdb:106 (Predator), "+
-			"not the original Matrix; approvedProposalForJob picked the wrong proposal", got)
+	if got != "movie:tmdb:90000106" {
+		t.Errorf("channel bound to %q — want the REFINED pick movie:tmdb:90000106 (Emberfall Canyon), "+
+			"not the original Marigold Protocol; approvedProposalForJob picked the wrong proposal", got)
 	}
 }
 
@@ -1052,8 +1052,8 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mk("p-older", "603", "The Matrix", base)
-	mk("p-newer", "106", "Predator", base.Add(time.Hour))
+	mk("p-older", "90000603", "Marigold Protocol", base)
+	mk("p-newer", "90000106", "Emberfall Canyon", base.Add(time.Hour))
 
 	newer := do(t, srv, http.MethodPost, "/v1/proposals/p-newer/approve", adminToken, "")
 	if newer.StatusCode != http.StatusOK {
@@ -1073,14 +1073,14 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != "movie:tmdb:106" {
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != "movie:tmdb:90000106" {
 		t.Fatalf("stale approval rolled channel back: %+v", ch.Lineup)
 	}
 	p, err := st.GetProposal(ctx, "p-older")
 	if err != nil || p.Status != "submitted" {
 		t.Fatalf("superseded proposal = (%+v, %v), want submitted", p, err)
 	}
-	if _, err := st.GetTitle(ctx, "movie:tmdb:603"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetTitle(ctx, "movie:tmdb:90000603"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("superseded approval inserted title: %v", err)
 	}
 }
@@ -1100,8 +1100,8 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":603,` +
-		`"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":90000603,` +
+		`"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-n", JobID: "job-n", Status: "submitted", ProposalJSON: body,
 	}); err != nil {
@@ -1133,8 +1133,8 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"acquisitions":[
-		{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994},
-		{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`
+		{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994},
+		{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
 		ID: "p-drop", JobID: "j", Status: "submitted", ProposalJSON: body,
 	}); err != nil {
@@ -1142,15 +1142,15 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 	}
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-drop/approve", adminToken,
-		`{"drop":["movie:tmdb:100"]}`)
+		`{"drop":["movie:tmdb:90000100"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve with edit → %d, want 200", resp.StatusCode)
 	}
 
-	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:90000100"); err == nil {
 		t.Error("the dropped title was enqueued anyway — the edit did not reach the gate")
 	}
-	if _, err := st.GetTitle(context.Background(), "movie:tmdb:603"); err != nil {
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:90000603"); err != nil {
 		t.Errorf("the kept title was not enqueued: %v", err)
 	}
 }
@@ -1163,12 +1163,12 @@ func TestApprove_AddedTitleIsEnqueued(t *testing.T) {
 	seedProposal(t, st, "p-add")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-add/approve", adminToken,
-		`{"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`)
+		`{"add":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`)
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("approve with add → %d, want 200: %s", resp.StatusCode, b)
 	}
-	rec, err := st.GetTitle(context.Background(), "movie:tmdb:603")
+	rec, err := st.GetTitle(context.Background(), "movie:tmdb:90000603")
 	if err != nil {
 		t.Fatalf("added title not enqueued: %v", err)
 	}
@@ -1186,7 +1186,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	seedProposal(t, st, "p-audit")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-audit/approve", adminToken,
-		`{"drop":["movie:tmdb:100"],"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}],"note":"swapped it, we already have Speed"}`)
+		`{"drop":["movie:tmdb:90000100"],"add":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}],"note":"swapped it, we already have Quiet Engines"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -1198,7 +1198,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.ModSummary != "dropped 1, added 1" {
 		t.Errorf("modSummary = %q, want the generated summary of what changed", p.ModSummary)
 	}
-	if p.Note != "swapped it, we already have Speed" {
+	if p.Note != "swapped it, we already have Quiet Engines" {
 		t.Errorf("note = %q, want the approver's message to the requester", p.Note)
 	}
 	// Not asserting approvedBy here: these tests authenticate with the break-glass TOKEN,
@@ -1211,7 +1211,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
 		t.Fatal(err)
 	}
-	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
+	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:90000100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
 		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
 	}
 }
@@ -1224,7 +1224,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	seedProposal(t, st, "p-stored")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-stored/approve", adminToken,
-		`{"drop":["movie:tmdb:100"],"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`)
+		`{"drop":["movie:tmdb:90000100"],"add":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -1238,7 +1238,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	}
 	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
 		for _, item := range items {
-			if item.Name == "Speed" {
+			if item.Name == "Quiet Engines" {
 				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
 			}
 		}
@@ -1251,7 +1251,7 @@ func TestApprove_RejectsAnEditThatRemovesEveryTitle(t *testing.T) {
 	seedProposal(t, st, "p-empty-edit")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-empty-edit/approve", adminToken,
-		`{"drop":["movie:tmdb:100"]}`)
+		`{"drop":["movie:tmdb:90000100"]}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("approve empty edit -> %d, want 422: %s", resp.StatusCode, b)
@@ -1298,11 +1298,11 @@ func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
 	seedProposal(t, st, "p-member")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-member/approve", "",
-		`{"drop":["movie:tmdb:100"],"note":"let me in"}`)
+		`{"drop":["movie:tmdb:90000100"],"note":"let me in"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("member approve with an edit → %d, want 401", resp.StatusCode)
 	}
-	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:90000100"); err == nil {
 		t.Error("a member's rejected approval still enqueued a title")
 	}
 }
@@ -1401,11 +1401,11 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	// DISTINCT titles per proposal. `seedProposal` gives every proposal the same acquisition
-	// (tmdbId 100), and enqueue is idempotent by provisioning key — so two seeded proposals
+	// (tmdbId 90000100), and enqueue is idempotent by provisioning key — so two seeded proposals
 	// would produce ONE wanted title and the count below could not distinguish "both went
 	// through the gate" from "one did".
-	seedProposalWithTMDB(t, st, "p1", 100, "Speed")
-	seedProposalWithTMDB(t, st, "p2", 101, "Heat")
+	seedProposalWithTMDB(t, st, "p1", 90000100, "Quiet Engines")
+	seedProposalWithTMDB(t, st, "p2", 90000101, "Midnight at the Mapleton")
 
 	resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", adminToken, `{"ids":["p1","p2"]}`)
 	defer func() { _ = resp.Body.Close() }()

@@ -22,14 +22,14 @@ describe("PodTimeline", () => {
         audience="kids"
         entries={[
           entry("Open", "bumper", 5000),
-          entry("Sunny D", "commercial", 30000),
+          entry("Fizzbolt", "commercial", 30000),
           entry("Close", "bumper", 5000),
         ]}
       />,
     );
     expect(screen.getByRole("list", { name: /pod segments/i })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByText("Sunny D, 30s")).toHaveClass("sr-only");
+    expect(screen.getByText("Fizzbolt, 30s")).toHaveClass("sr-only");
     expect(screen.getByText("1990s")).toBeInTheDocument();
     // A legend spells out the codes actually present (bumper + commercial here), so BMP/AD
     // don't read as mystery tokens — and only those two, not every possible kind. The legend
@@ -69,7 +69,7 @@ describe("PodTimeline", () => {
 
   it("offers a keyboard-accessible preview for a real clip but not the fallback card", async () => {
     const onPreview = vi.fn();
-    const ad = entry("Sunny D", "commercial", 30000);
+    const ad = entry("Fizzbolt", "commercial", 30000);
     render(
       <PodTimeline
         entries={[
@@ -79,7 +79,7 @@ describe("PodTimeline", () => {
         onPreview={onPreview}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Preview Sunny D" }));
+    await userEvent.click(screen.getByRole("button", { name: "Preview Fizzbolt" }));
     expect(onPreview).toHaveBeenCalledWith(ad);
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });

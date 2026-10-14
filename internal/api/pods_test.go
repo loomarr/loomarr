@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -127,7 +129,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	fp.pod = filler.Pod{
 		Entries: []filler.PodEntry{
 			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Kind: filler.Bumper, DurationMs: 5000},
-			{Hash: "h2", TunarrProgramID: "p2", Name: "Frosted Flakes", Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h2", TunarrProgramID: "p2", Name: "Crunchlings", Kind: filler.Commercial, DurationMs: 30000},
 		},
 		TotalMs:    35000,
 		MatchLevel: filler.MatchExact,
@@ -156,7 +158,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	}
 	// Play order is meaningful: a pod is bookended by bumpers (§10 pod structure), so
 	// the API must not reorder what the assembler produced.
-	if body.Entries[0].Name != "Bumper" || body.Entries[1].Name != "Frosted Flakes" {
+	if body.Entries[0].Name != "Bumper" || body.Entries[1].Name != "Crunchlings" {
 		t.Errorf("play order not preserved: %+v", body.Entries)
 	}
 	if body.Entries[1].TunarrProgramID != "p2" {
@@ -529,4 +531,52 @@ func TestClipFit_IsReadableByAMember(t *testing.T) {
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 — a read-only note is member-visible", resp.StatusCode)
 	}
+}
+
+// A draft preview must assemble exactly what the saved channel would air for the same choices:
+// the channel's own break length and commercial spacing ride along with the draft selection.
+// It used to hand the assembler the install defaults for both, so the sandbox could show a pod
+// the channel never aired (#1670).
+func TestPreviewDraftPods_SelectionMatchesWhatReconcileBuilds(t *testing.T) {
+	srv, st, fp := newPodsServer(t)
+	spacing := schedule.Duration(45 * time.Minute)
+	saved := store.Channel{
+		Channel: schedule.Channel{ID: "ch-2", Name: "Saturday", Number: 43, Status: "live"},
+		Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
+			Filler:            &schedule.FillerSelection{Audience: "kids"},
+			CommercialSpacing: &spacing,
+		}},
+	}
+	if _, err := st.SaveChannel(context.Background(), saved); err != nil {
+		t.Fatal(err)
+	}
+
+	// The draft re-states the same filler choice and a 3 minute break, and says nothing about spacing.
+	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-2/pods/preview", adminToken,
+		`{"filler":{"audience":"kids"},"breakDuration":"3m"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("draft preview → %d, want 200", resp.StatusCode)
+	}
+	if len(fp.draftAsked) != 1 {
+		t.Fatalf("PreviewDraft called %d times, want 1", len(fp.draftAsked))
+	}
+
+	// What reconcile builds for the channel once that draft is applied.
+	applied := saved
+	applied.Policy.BreakDuration = durationPtr(3 * time.Minute)
+	want := channels.SelectionForChannel(applied)
+	if !reflect.DeepEqual(fp.draftAsked[0], want) {
+		t.Errorf("draft selection = %+v\nreconcile selection = %+v", fp.draftAsked[0], want)
+	}
+	if fp.draftAsked[0].Spacing == nil || *fp.draftAsked[0].Spacing != 45*time.Minute {
+		t.Errorf("saved commercial spacing dropped from the draft preview: %v", fp.draftAsked[0].Spacing)
+	}
+	if fp.draftAsked[0].BreakDurationMs != 180_000 {
+		t.Errorf("draft break length = %dms, want 180000", fp.draftAsked[0].BreakDurationMs)
+	}
+}
+
+func durationPtr(d time.Duration) *schedule.Duration {
+	v := schedule.Duration(d)
+	return &v
 }

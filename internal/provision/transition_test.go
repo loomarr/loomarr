@@ -9,8 +9,8 @@ var (
 	t0       = time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 	reqTTL   = t0.Add(48 * time.Hour)
 	dlTTL    = t0.Add(12 * time.Hour)
-	testKey  = Key("movie:tmdb:1111867")
-	testTitl = Title{MediaType: Movie, TMDBID: 1111867, Name: "In Flames"}
+	testKey  = Key("movie:tmdb:91111867")
+	testTitl = Title{MediaType: Movie, TMDBID: 91111867, Name: "Ashgrove Anomaly"}
 )
 
 func rec(state State, deadline time.Time) Record {

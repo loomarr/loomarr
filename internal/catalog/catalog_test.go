@@ -15,10 +15,17 @@ import (
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
-// realLibrary builds a library client pointed at the testkit media-server mock,
-// exercising the pinned Emby search fixture.
+// realLibrary builds a library client pointed at the testkit media-server mock. Its
+// search answers "marigold" with three owned films in the real Emby /Items shape,
+// the same shape as the pinned search fixture, whose captured titles are real ones
+// (library/search_test.go keeps exercising that capture).
 func realLibrary(t *testing.T) *library.Client {
 	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
+	)
 	return library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 }
 
@@ -26,12 +33,12 @@ func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
 	lib := realLibrary(t)
 	c := catalog.New(lib, nil)
 
-	got, err := c.Search(context.Background(), "matrix", catalog.ScopeLibrary, 10)
+	got, err := c.Search(context.Background(), "marigold", catalog.ScopeLibrary, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) == 0 {
-		t.Fatal("expected library matches for 'matrix'")
+		t.Fatal("expected library matches for 'marigold'")
 	}
 	for _, cand := range got {
 		if !cand.InLibrary {
@@ -41,15 +48,15 @@ func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
 			t.Errorf("library candidate missing item id: %+v", cand)
 		}
 	}
-	// The pinned fixture's first result is The Matrix (tmdb 603).
-	var foundMatrix bool
+	// The library's first result is Marigold Protocol (tmdb 90000603).
+	var foundMarigold bool
 	for _, cand := range got {
-		if cand.TMDBID == 603 && cand.Name == "The Matrix" {
-			foundMatrix = true
+		if cand.TMDBID == 90000603 && cand.Name == "Marigold Protocol" {
+			foundMarigold = true
 		}
 	}
-	if !foundMatrix {
-		t.Error("expected The Matrix (tmdb:603) from the pinned search fixture")
+	if !foundMarigold {
+		t.Error("expected Marigold Protocol (tmdb:90000603) from the library search")
 	}
 }
 
@@ -59,23 +66,23 @@ func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	c := catalog.New(lib, tm)
 
-	// "matrix" is in BOTH the library fixture (tmdb 603) and the TMDB mock (603).
+	// "marigold" is in BOTH the library (tmdb 90000603) and the TMDB mock (90000603).
 	// The merged candidate must appear ONCE, in_library=true.
-	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	matrixCount := 0
+	marigoldCount := 0
 	for _, cand := range got {
-		if cand.TMDBID == 603 {
-			matrixCount++
+		if cand.TMDBID == 90000603 {
+			marigoldCount++
 			if !cand.InLibrary {
-				t.Error("The Matrix is in the library fixture; merged candidate must be in_library")
+				t.Error("Marigold Protocol is in the library; merged candidate must be in_library")
 			}
 		}
 	}
-	if matrixCount != 1 {
-		t.Errorf("The Matrix should appear once after dedupe, got %d", matrixCount)
+	if marigoldCount != 1 {
+		t.Errorf("Marigold Protocol should appear once after dedupe, got %d", marigoldCount)
 	}
 }
 
@@ -88,59 +95,59 @@ func TestCatalogSearch_EnrichesGenreOverview_WithoutChangingDedupe(t *testing.T)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	c := catalog.New(lib, tm)
 
-	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var matrix *catalog.Candidate
+	var marigold *catalog.Candidate
 	count := 0
 	for i := range got {
-		if got[i].TMDBID == 603 {
-			matrix = &got[i]
+		if got[i].TMDBID == 90000603 {
+			marigold = &got[i]
 			count++
 		}
 	}
-	if count != 1 || matrix == nil {
-		t.Fatalf("The Matrix should still dedupe to exactly one candidate, got %d", count)
+	if count != 1 || marigold == nil {
+		t.Fatalf("Marigold Protocol should still dedupe to exactly one candidate, got %d", count)
 	}
 	// The merged candidate carries theme signals (genres from TMDB, overview from
 	// TMDB) — the whole point of the enrichment.
-	if len(matrix.Genres) == 0 {
+	if len(marigold.Genres) == 0 {
 		t.Error("merged candidate lost genres (enrichment didn't survive merge)")
 	}
-	if matrix.Overview == "" {
+	if marigold.Overview == "" {
 		t.Error("merged candidate lost overview")
 	}
 	// And it's STILL in-library (identity/merge semantics unchanged).
-	if !matrix.InLibrary {
+	if !marigold.InLibrary {
 		t.Error("enrichment must not disturb in_library")
 	}
 }
 
 func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
-	// A TMDB title absent from the library ("Speed") → in_library=false.
+	// A TMDB title absent from the library ("Quiet Engines") → in_library=false.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
 	c := catalog.New(realLibrary(t), tm)
 
-	got, err := c.Search(context.Background(), "speed", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "quiet", catalog.ScopeAll, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var speed *catalog.Candidate
+	var engines *catalog.Candidate
 	for i := range got {
-		if got[i].Name == "Speed" {
-			speed = &got[i]
+		if got[i].Name == "Quiet Engines" {
+			engines = &got[i]
 		}
 	}
-	if speed == nil {
-		t.Fatal("expected Speed from TMDB")
+	if engines == nil {
+		t.Fatal("expected Quiet Engines from TMDB")
 	}
-	if speed.InLibrary {
-		t.Error("Speed is not in the library fixture; should be in_library=false")
+	if engines.InLibrary {
+		t.Error("Quiet Engines is not in the library; should be in_library=false")
 	}
-	if speed.TMDBID != 100 {
-		t.Errorf("Speed TMDBID = %d, want 100", speed.TMDBID)
+	if engines.TMDBID != 90000100 {
+		t.Errorf("Quiet Engines TMDBID = %d, want 90000100", engines.TMDBID)
 	}
 }
 
@@ -150,15 +157,15 @@ func TestCatalogSearch_AllScopeSkipsAnUnconfiguredLibrary(t *testing.T) {
 	unconfiguredLibrary := library.NewDynamic(func() library.Connection { return library.Connection{} }, "dev-1")
 	c := catalog.New(unconfiguredLibrary, tmdbClient)
 
-	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
 	if err != nil {
 		t.Fatalf("all configured corpora: %v", err)
 	}
-	if len(got) == 0 || got[0].TMDBID != 603 {
+	if len(got) == 0 || got[0].TMDBID != 90000603 {
 		t.Fatalf("TMDB results after skipping unconfigured Library = %+v", got)
 	}
 
-	_, err = c.Search(context.Background(), "matrix", catalog.ScopeLibrary, 20)
+	_, err = c.Search(context.Background(), "marigold", catalog.ScopeLibrary, 20)
 	if !errors.Is(err, library.ErrConnectionRequired) {
 		t.Fatalf("explicit Library search error = %v, want ErrConnectionRequired", err)
 	}
@@ -169,10 +176,10 @@ func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	tm := tmdb.NewWithBase(mt.URL, "k")
 	c := catalog.New(realLibrary(t), tm)
 
-	// "matrix" matches an in-library title; add a TMDB-only via broad-ish search
+	// "marigold" matches an in-library title; add a TMDB-only via broad-ish search
 	// isn't possible with distinct terms, so just assert in-library sorts first
-	// among the matrix results (all in-library here) — and that ordering is stable.
-	got, _ := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	// among the marigold results (all in-library here) — and that ordering is stable.
+	got, _ := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
 	seenNotInLib := false
 	for _, cand := range got {
 		if !cand.InLibrary {
@@ -195,7 +202,7 @@ func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit
 		items[i] = testkit.SearchStub{
 			Terms: []string{"a"}, LibraryItemID: fmt.Sprintf("owned-%02d", i),
 			Name: fmt.Sprintf("Archive Pick %02d", i), Type: "Movie", Year: 1990 + i%10,
-			TMDBID: 10_000 + i,
+			TMDBID: 90_010_000 + i,
 		}
 	}
 	ms.SetSearchItems(items...)
@@ -224,10 +231,10 @@ func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit
 }
 
 func TestCandidateKey(t *testing.T) {
-	c := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}
+	c := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
 	k, err := c.Key()
-	if err != nil || k != "movie:tmdb:603" {
-		t.Errorf("Key() = %q,%v want movie:tmdb:603", k, err)
+	if err != nil || k != "movie:tmdb:90000603" {
+		t.Errorf("Key() = %q,%v want movie:tmdb:90000603", k, err)
 	}
 	// A candidate with no usable id errors (grounding guarantee).
 	if _, err := (catalog.Candidate{MediaType: provision.Movie, Name: "Ghost"}).Key(); err == nil {
@@ -239,8 +246,8 @@ func TestCandidateKey(t *testing.T) {
 // grounding gate / in-library-first ordering could shift. Two otherwise-identical
 // candidates that differ ONLY in OfficialRating must produce the same Key.
 func TestCandidateKey_IgnoresOfficialRating(t *testing.T) {
-	rated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", OfficialRating: "R"}
-	unrated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}
+	rated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", OfficialRating: "R"}
+	unrated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}
 	rk, _ := rated.Key()
 	uk, _ := unrated.Key()
 	if rk != uk {
@@ -270,11 +277,11 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	lib := realLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	// The mock owns The Matrix (603), rated R → discovery of Action marks it in-library
-	// AND carries the rating, so audience enforcement has something to judge.
+	// The mock owns Marigold Protocol (90000603), rated R → discovery of Action marks it
+	// in-library AND carries the rating, so audience enforcement has something to judge.
 	c := catalog.New(lib, tm).WithPresence(fakePresence{
-		owned:   map[int]string{603: "lib-603"},
-		ratings: map[int]string{603: "R"},
+		owned:   map[int]string{90000603: "lib-90000603"},
+		ratings: map[int]string{90000603: "R"},
 	})
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
@@ -283,27 +290,27 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var matrix *catalog.Candidate
+	var marigold *catalog.Candidate
 	for i := range got {
-		if got[i].TMDBID == 603 {
-			matrix = &got[i]
+		if got[i].TMDBID == 90000603 {
+			marigold = &got[i]
 		}
 	}
-	if matrix == nil {
-		t.Fatal("The Matrix (action) should be discovered")
+	if marigold == nil {
+		t.Fatal("Marigold Protocol (action) should be discovered")
 	}
-	if !matrix.InLibrary || matrix.LibraryItemID != "lib-603" {
-		t.Errorf("owned discovered title should be backfilled in-library, got InLibrary=%v id=%q", matrix.InLibrary, matrix.LibraryItemID)
+	if !marigold.InLibrary || marigold.LibraryItemID != "lib-90000603" {
+		t.Errorf("owned discovered title should be backfilled in-library, got InLibrary=%v id=%q", marigold.InLibrary, marigold.LibraryItemID)
 	}
 	// The rating MUST ride along. Dropping it here is FINDING 6: a discovered-then-
 	// owned title reaches the scheduler unrated, and an audience ceiling silently
 	// excludes it — a channel that goes live playing nothing (§9 dead air).
-	if matrix.OfficialRating != "R" {
-		t.Errorf("backfill dropped the rating: got %q, want R — an owned title reaches the scheduler unrated", matrix.OfficialRating)
+	if marigold.OfficialRating != "R" {
+		t.Errorf("backfill dropped the rating: got %q, want R — an owned title reaches the scheduler unrated", marigold.OfficialRating)
 	}
 	// A discovered title NOT owned stays an acquisition candidate.
 	for _, c := range got {
-		if c.TMDBID == 100 && c.InLibrary { // Speed, not in the owned set
+		if c.TMDBID == 90000100 && c.InLibrary { // Quiet Engines, not in the owned set
 			t.Error("un-owned discovered title should stay not-in-library")
 		}
 	}
@@ -314,15 +321,15 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 // metadata from the response already in hand: no lookup is added to read it.
 func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
 	lib := &catalogfixture.Library{Results: []library.SearchResult{{
-		LibraryItemID: "lib-603", Name: "The Matrix", Year: 1999, MediaType: library.Movie,
-		TMDBID: 603, SizeBytes: 21_914_038_799,
+		LibraryItemID: "lib-90000603", Name: "Marigold Protocol", Year: 1999, MediaType: library.Movie,
+		TMDBID: 90000603, SizeBytes: 21_914_038_799,
 	}}}
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999,
-		Overview: "a hacker", Source: catalog.ScopeTMDB,
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999,
+		Overview: "a florist", Source: catalog.ScopeTMDB,
 	}}}
 
-	got, err := catalog.New(lib, corpus).Search(context.Background(), "matrix", catalog.ScopeAll, 10)
+	got, err := catalog.New(lib, corpus).Search(context.Background(), "marigold", catalog.ScopeAll, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,11 +345,11 @@ func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
 // confirms ownership.
 func TestCatalogDiscover_BackfillCarriesLibrarySize(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 604, Name: "The Matrix Reloaded", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000604, Name: "Marigold Protocol II", Source: catalog.ScopeTMDB},
 	}}
 	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
-		603: {LibraryItemID: "lib-603", SizeBytes: 63_546_611_800},
+		90000603: {LibraryItemID: "lib-90000603", SizeBytes: 63_546_611_800},
 	}}
 
 	got, err := catalog.New(nil, corpus).WithPresence(presence).Discover(
@@ -354,11 +361,11 @@ func TestCatalogDiscover_BackfillCarriesLibrarySize(t *testing.T) {
 	for _, c := range got {
 		sizes[c.TMDBID] = c.SizeBytes
 	}
-	if sizes[603] != 63_546_611_800 {
-		t.Errorf("owned title SizeBytes = %d, want 63546611800", sizes[603])
+	if sizes[90000603] != 63_546_611_800 {
+		t.Errorf("owned title SizeBytes = %d, want 63546611800", sizes[90000603])
 	}
-	if sizes[604] != 0 {
-		t.Errorf("un-owned title SizeBytes = %d, want 0 (no library file)", sizes[604])
+	if sizes[90000604] != 0 {
+		t.Errorf("un-owned title SizeBytes = %d, want 0 (no library file)", sizes[90000604])
 	}
 }
 
@@ -371,7 +378,7 @@ func TestCatalogDiscover_KeepsOutsideLibraryCandidatesAfterPresenceBackfill(t *t
 	owned := make(map[int]catalog.Presence, 24)
 	for i := range candidates {
 		candidates[i] = catalog.Candidate{
-			MediaType: provision.Movie, TMDBID: 20_000 + i,
+			MediaType: provision.Movie, TMDBID: 90_020_000 + i,
 			Name:   fmt.Sprintf("%c Holiday Pick %02d", 'A'+rune(i/24)*25, i),
 			Genres: []string{"Family"}, Source: catalog.ScopeTMDB,
 		}
@@ -407,7 +414,7 @@ func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *t
 	tmdbServer := testkit.NewTMDB(t)
 	owned := make(map[int]catalog.Presence, 20)
 	for i := range 28 {
-		id := 30_000 + i
+		id := 90_030_000 + i
 		tmdbServer.AddMovie(id, fmt.Sprintf("Holiday Pick %02d", i), 1990+i%10, []int{10_751}, "A family holiday gathering.")
 		if i < 20 {
 			owned[id] = catalog.Presence{LibraryItemID: fmt.Sprintf("owned-%02d", i)}
@@ -424,7 +431,7 @@ func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *t
 	}
 	var outside int
 	for _, candidate := range got {
-		if candidate.TMDBID >= 30_000 && !candidate.InLibrary {
+		if candidate.TMDBID >= 90_030_000 && !candidate.InLibrary {
 			outside++
 		}
 	}
@@ -439,12 +446,12 @@ func TestCatalogDiscover_ReachesOutsideLibraryCandidatesBeyondTMDBFirstPage(t *t
 func TestCatalogDiscover_UnpinnedMediaTypeKeepsMoviesAndSeries(t *testing.T) {
 	tmdbServer := testkit.NewTMDB(t)
 	for i := range 55 {
-		tmdbServer.AddMovie(50_000+i, fmt.Sprintf("Action Movie %02d", i), 2000+i%20,
+		tmdbServer.AddMovie(90_050_000+i, fmt.Sprintf("Action Movie %02d", i), 2000+i%20,
 			[]int{28}, "An action movie.")
 	}
 	// TMDB's TV genre namespace uses 10759 (Action & Adventure), not the movie
 	// namespace's 28 (Action). The adapter must translate the human genre per endpoint.
-	tmdbServer.AddSeries(51_000, "Action Dispatch", 2018, []int{10759}, "An action series.")
+	tmdbServer.AddSeries(90_051_000, "Action Dispatch", 2018, []int{10759}, "An action series.")
 	c := catalog.New(nil, tmdb.NewWithBase(tmdbServer.URL, "test-key"))
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{Genres: []string{"Action"}}, 24)
@@ -469,9 +476,9 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 	tmdbServer := testkit.NewTMDB(t)
 	// Register a broader substring first. The adapter must prefer the exact
 	// "Christmas" keyword rather than blindly taking TMDB's first search hit.
-	tmdbServer.AddKeywordMovie(41_000, "Midnight Eve", 2020, []int{35},
+	tmdbServer.AddKeywordMovie(90_041_000, "Midnight Eve", 2020, []int{35},
 		"A New Year's party goes sideways.", "Christmas Eve")
-	tmdbServer.AddKeywordMovie(41_001, "Snowbound Reunion", 2021, []int{35, 10_751},
+	tmdbServer.AddKeywordMovie(90_041_001, "Snowbound Reunion", 2021, []int{35, 10_751},
 		"Estranged siblings reunite during Christmas week.", "Christmas")
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
 	c := catalog.New(nil, tmdbClient).WithPresence(&catalogfixture.Presence{})
@@ -483,7 +490,7 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].TMDBID != 41_001 {
+	if len(got) != 1 || got[0].TMDBID != 90_041_001 {
 		t.Fatalf("keyword discovery = %+v, want Snowbound Reunion", got)
 	}
 	if got[0].InLibrary {
@@ -502,12 +509,12 @@ func TestCatalogDiscoverKeywords_FindsThematicTitleAndKeepsItOutsideLibrary(t *t
 
 func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{Name: "One", MediaType: provision.Movie, TMDBID: 101},
-		{Name: "Two", MediaType: provision.Movie, TMDBID: 202},
+		{Name: "One", MediaType: provision.Movie, TMDBID: 90000101},
+		{Name: "Two", MediaType: provision.Movie, TMDBID: 90000202},
 	}}
 	primary := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
-		101: {LibraryItemID: "item-101"},
-		202: {LibraryItemID: "item-202"},
+		90000101: {LibraryItemID: "item-101"},
+		90000202: {LibraryItemID: "item-202"},
 	}}
 	rotated := &catalogfixture.Presence{}
 	snapshots := 0
@@ -541,20 +548,20 @@ func TestCatalogDiscoverSnapshotsPresenceOnceAcrossBackfillBatch(t *testing.T) {
 
 func TestCatalogDiscoverPreservesUpstreamRelevanceWithinOwnedOutsideBlend(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 4, Name: "Zulu Outside", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 3, Name: "Zulu Owned", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 2, Name: "Alpha Outside", Source: catalog.ScopeTMDB},
-		{MediaType: provision.Movie, TMDBID: 1, Name: "Alpha Owned", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000004, Name: "Zulu Outside", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Zulu Owned", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Alpha Outside", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Alpha Owned", Source: catalog.ScopeTMDB},
 	}}
 	c := catalog.New(nil, corpus).WithPresence(&catalogfixture.Presence{Hits: map[int]catalog.Presence{
-		3: {LibraryItemID: "owned-3"}, 1: {LibraryItemID: "owned-1"},
+		90000003: {LibraryItemID: "owned-3"}, 90000001: {LibraryItemID: "owned-1"},
 	}})
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []int{3, 1, 4, 2}
+	want := []int{90000003, 90000001, 90000004, 90000002}
 	if len(got) != len(want) {
 		t.Fatalf("discovery count = %d, want %d", len(got), len(want))
 	}
@@ -630,14 +637,14 @@ func TestNewCandidateBlendPolicyRejectsInvalidPercentage(t *testing.T) {
 
 func TestCatalogDiscoverBreaksEqualSourceRanksByCanonicalIdentity(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 20, Name: "Earlier Alphabetically", RelevanceRank: 1},
-		{MediaType: provision.Movie, TMDBID: 10, Name: "Later Alphabetically", RelevanceRank: 1},
+		{MediaType: provision.Movie, TMDBID: 90000020, Name: "Earlier Alphabetically", RelevanceRank: 1},
+		{MediaType: provision.Movie, TMDBID: 90000010, Name: "Later Alphabetically", RelevanceRank: 1},
 	}}
 	got, err := catalog.New(nil, corpus).Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].TMDBID != 10 || got[1].TMDBID != 20 {
+	if len(got) != 2 || got[0].TMDBID != 90000010 || got[1].TMDBID != 90000020 {
 		t.Fatalf("equal-rank order = %+v, want canonical identity tie-break", got)
 	}
 }
@@ -656,11 +663,11 @@ func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) 
 		case 1990: // An empty window is not an error.
 			return nil, nil
 		case 1991:
-			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 1, Name: "Shared"}}, nil
+			return []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Shared"}}, nil
 		case 1992:
 			return []catalog.Candidate{
-				{MediaType: provision.Movie, TMDBID: 1, Name: "Shared", Overview: "merged"},
-				{MediaType: provision.Movie, TMDBID: 2, Name: "Later Window"},
+				{MediaType: provision.Movie, TMDBID: 90000001, Name: "Shared", Overview: "merged"},
+				{MediaType: provision.Movie, TMDBID: 90000002, Name: "Later Window"},
 			}, nil
 		default:
 			return nil, nil
@@ -674,7 +681,7 @@ func TestCatalogDiscoverUnion_AggregatesWindowsBeforeFinalization(t *testing.T) 
 	if got.WindowsCompleted != 3 || got.SourceQueriesDispatched != 3 {
 		t.Fatalf("counts = %+v, want three completed/dispatched", got)
 	}
-	if len(got.Candidates) != 2 || got.Candidates[0].TMDBID != 1 || got.Candidates[0].Overview != "merged" || got.Candidates[1].TMDBID != 2 {
+	if len(got.Candidates) != 2 || got.Candidates[0].TMDBID != 90000001 || got.Candidates[0].Overview != "merged" || got.Candidates[1].TMDBID != 90000002 {
 		t.Fatalf("union candidates = %+v, want deduplicated aggregate", got.Candidates)
 	}
 }
@@ -845,7 +852,7 @@ func TestCatalogDiscoverUnion_FailureAndCancellationAreAtomic(t *testing.T) {
 
 func TestCatalogDiscoverUnion_OneWindowMatchesDiscover(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 1, Name: "One"}, {MediaType: provision.Movie, TMDBID: 2, Name: "Two"},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "One"}, {MediaType: provision.Movie, TMDBID: 90000002, Name: "Two"},
 	}}
 	query := catalog.DiscoveryQuery{MediaType: provision.Movie, YearFrom: 2000, YearTo: 2001}
 	want, err := catalog.New(nil, corpus).Discover(context.Background(), query, 24)

@@ -3,7 +3,8 @@ export type {
   ActionVariant,
   ChoiceGroupProps,
   ChoiceOption,
+  FieldHintProps,
   FieldProps,
   ToggleProps,
 } from "./interaction";
-export { Action, ChoiceGroup, Field, Toggle } from "./interaction";
+export { Action, ChoiceGroup, Field, FieldHint, Toggle } from "./interaction";

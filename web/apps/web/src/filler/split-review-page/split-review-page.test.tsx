@@ -19,7 +19,7 @@ import {
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
-import { SplitReviewPage } from "./split-review-page";
+import { SplitReviewPage, validateSplitReviewSearch } from "./split-review-page";
 
 // A MINIMAL router, not the app tree: the page navigates on confirm/back, and TanStack
 // throws navigating to a route the tree doesn't have — so the tree is exactly the two
@@ -123,6 +123,7 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
     playsCounted: true,
     aiTagged: false,
     tagged: false,
+    needsDetails: true,
     suggestedEra: 0,
     isComposite: true,
   };
@@ -153,13 +154,18 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
   return { wasFetched: () => fetchedProposal, confirms, rewinds };
 };
 
-const renderPage = () => {
+const renderPage = (initialEntry = "/filler/splits/sp-1") => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const rootRoute = createRootRoute({ component: Outlet });
+  // The production route's own search validation, so `from=` is exercised as the app reads it.
   const reviewRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/filler/splits/$proposalId",
-    component: () => <SplitReviewPage proposalId="sp-1" />,
+    validateSearch: validateSplitReviewSearch,
+    component: () => {
+      const { from } = reviewRoute.useSearch();
+      return <SplitReviewPage proposalId="sp-1" from={from ?? "library"} />;
+    },
   });
   const fillerRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -174,7 +180,7 @@ const renderPage = () => {
   const router = createRouter({
     routeTree: rootRoute.addChildren([reviewRoute, fillerRoute, incomingRoute]),
     context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ["/filler/splits/sp-1"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   render(
     <QueryClientProvider client={queryClient}>
@@ -243,6 +249,38 @@ describe("SplitReviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
     await screen.findByText("the catalog");
     expect(confirms).toHaveLength(0);
+  });
+
+  // Back returns to where review was opened (#1908): Incoming's help card links with
+  // from=incoming; a Library card's split navigates with from=library.
+  it("returns to Incoming when review was opened from there", async () => {
+    stubSplit();
+    const router = renderPage("/filler/splits/sp-1?from=incoming");
+    const crumb = await screen.findByRole("link", { name: "Incoming" });
+    expect(crumb).toHaveAttribute("href", "/filler/incoming");
+    fireEvent.click(await screen.findByRole("button", { name: /^back$/i }));
+    await screen.findByText("incoming clips");
+    expect(router.state.location.pathname).toBe("/filler/incoming");
+  });
+
+  it.each([
+    ["from=library", "/filler/splits/sp-1?from=library"],
+    ["no origin", "/filler/splits/sp-1"],
+    ["an unknown origin", "/filler/splits/sp-1?from=https%3A%2F%2Felsewhere.invalid"],
+  ])("returns to Library with %s", async (_, entry) => {
+    stubSplit();
+    const router = renderPage(entry);
+    expect(await screen.findByRole("link", { name: "Library" })).toHaveAttribute("href", "/filler/library");
+    fireEvent.click(await screen.findByRole("button", { name: /^back$/i }));
+    await screen.findByText("the catalog");
+    expect(router.state.location.pathname).toBe("/filler/library");
+  });
+
+  it("keeps only the two known origins", () => {
+    expect(validateSplitReviewSearch({ from: "incoming" })).toEqual({ from: "incoming" });
+    expect(validateSplitReviewSearch({ from: "library" })).toEqual({ from: "library" });
+    expect(validateSplitReviewSearch({ from: "/channels" })).toEqual({});
+    expect(validateSplitReviewSearch({})).toEqual({});
   });
 
   // §19's negative half, on the UI side: a member gets the explanation, and the proposal

@@ -838,7 +838,7 @@ func assertRowAgreesWithItsLadder(t *testing.T, row filler.ClipPipeline) {
 // broke was the picture. `ClipPipeline.resolve` on the frontend prefers `row.stage`/`row.status`
 // over the visited ladder — correctly, since a rung mid-run has no entry yet — so the pip pulsed
 // "in progress" forever and the rung's note was never rendered. Measured live (§10 V51g): eight
-// reels, WAGA-5 among them, every one finished within seconds and every one drawn as still working.
+// reels, a local station's among them, every one finished within seconds and every one drawn as still working.
 func TestPipeline_ReviewStopsLookingLikeWorkInProgress(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "c1")

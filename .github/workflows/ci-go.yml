@@ -18,15 +18,14 @@ jobs:
     # every branch) are the household self-hosted runner (loomarr-go, provisioned by the sibling
     # homelab PR); `pull_request`, including from a fork, ALWAYS stays on GitHub-hosted — the
     # repository is public, so a self-hosted runner must never execute untrusted fork code.
-    # `workflow_dispatch` is allowed on any ref: only a collaborator with write access can dispatch
-    # (the same people who can push a branch and enqueue it), a fork never can, and it is the one way
-    # to exercise this runner without the merge queue. Release dispatch CI is unaffected: its
-    # `release-candidate` scope never enters this job (scripts/ci-dispatch-scope.sh sets go=false);
-    # only the explicit `full` scope does.
+    # `workflow_dispatch` stays on GitHub-hosted. The two household runners are sized for the merge
+    # queue; when dispatched runs (baseline regeneration, full-scope checks) also landed here, they
+    # took both runners and merge groups waited 30+ min for their Go lanes. The merge queue has
+    # priority on this capacity.
     # The `|| 'ubuntu-latest'` fallback is the fail-safe default for every event (and every non-main
     # push) this expression does not name, including a future trigger nobody has updated this comment
     # for yet.
-    runs-on: ${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
     # The weighted package plan budgets each lane's test step from #1570's ten-minute Go-only queue
     # target (`scripts/go-shard.sh --budgets`). This timeout is the backstop: crossing the
     # operator-facing 15-minute budget fails loud instead of delaying the queue.

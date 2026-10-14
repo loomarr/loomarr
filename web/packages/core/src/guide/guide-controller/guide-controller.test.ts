@@ -12,7 +12,7 @@ const guide = (channelId = "seven"): GuideOutputBody => ({
           scheduleBlockId: `airing-${channelId}-one`,
           startMs: 1_000,
           stopMs: 4_000,
-          title: "Radioactive Man",
+          title: "The Seventh Postcard",
         },
         {
           kind: "program",

@@ -8,11 +8,14 @@ import {
   getResolveMovieCollectionsMockHandler,
   getReviseProposalJobMockHandler,
   getSearchMockHandler,
+  getSettingsListMockHandler,
   getSubmitManualChannelMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +23,7 @@ import { outlook } from "@/test/fixtures/outlook";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import { POLL_MS } from "../use-ai-reconnect";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
 
@@ -77,7 +81,7 @@ const PROPOSAL: ProposalDTO = {
   proposal: {
     intent: { description: "80s teen comedies" },
     lineup: [
-      { mediaType: "movie", tmdbId: 9377, name: "Ferris Bueller's Day Off", year: 1986, inLibrary: true },
+      { mediaType: "movie", tmdbId: 90009377, name: "Pennywhistle's Day Off", year: 1986, inLibrary: true },
     ],
     acquisitions: [],
     // ⚠ `alternates` and `scores` are REQUIRED on Proposal and this fixture had neither. The
@@ -120,6 +124,8 @@ const stubSuggest = (
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
+    // The manual builder watches this for an admin, for its AI-reconnect banner; AI stays off.
+    getSettingsListMockHandler({ settings: [], features: { suggestions: false } }),
     // Approve — returns the created channel's id (what the panel navigates to).
     getApproveProposalMockHandler(async ({ params, request }) => {
       approvals.push({ id: String(params.id), edit: await request.json() });
@@ -265,11 +271,19 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: "Search titles" }));
     server.use(
       getSearchMockHandler({
-        candidates: [{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }],
+        candidates: [
+          {
+            name: "The Velvet Cartographer",
+            year: 1995,
+            mediaType: "movie",
+            tmdbId: 90000949,
+            inLibrary: true,
+          },
+        ],
       }),
     );
-    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "heat");
-    await user.click(await screen.findByText("Heat"));
+    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "velvet");
+    await user.click(await screen.findByText("The Velvet Cartographer"));
     await user.click(screen.getByRole("button", { name: "Continue to review" }));
 
     // The job the manual submit returned is now what the review panel polls (same
@@ -290,6 +304,51 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: "Build it manually instead" }));
 
     expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
+  });
+
+  // The resume banner with nothing picked yet (#1817): there is no lineup to keep, so "Try AI
+  // suggestions" leaves the builder for the describe form, carrying the description over.
+  it("returns an empty manual build to the describe form when AI comes back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      stubSuggest();
+      const features = { suggestions: false, reads: 0 };
+      server.use(
+        getListChannelIdeasMockHandler({ ideas: [] }),
+        getSettingsListMockHandler(() => {
+          features.reads += 1;
+          return { settings: [], features: { suggestions: features.suggestions } };
+        }),
+      );
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <RouterHarness
+          content={
+            <LoomarrProvider theme="dark">
+              <QueryClientProvider client={client}>
+                <ChannelSuggestPanel onCreated={() => {}} initialManual />
+              </QueryClientProvider>
+            </LoomarrProvider>
+          }
+        />,
+      );
+      await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+      await waitFor(() => expect(features.reads).toBe(1));
+
+      features.suggestions = true;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_MS);
+      });
+      await user.click(await screen.findByRole("button", { name: "Try AI suggestions" }));
+
+      expect(await screen.findByLabelText("Channel intent")).toHaveValue(
+        CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
+      );
+      expect(screen.queryByRole("heading", { name: "Add a channel" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps configured AI truthful and routes a missing grounding key to TMDB", async () => {
@@ -382,7 +441,7 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
     // The reused ProposalReview renders the lineup — no navigation away from the panel.
-    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
+    expect(await screen.findByText("Pennywhistle's Day Off")).toBeInTheDocument();
   });
 
   it("keeps title selection usable when a live response has no alternate list", async () => {
@@ -406,7 +465,7 @@ describe("ChannelSuggestPanel", () => {
     renderPanel(() => {});
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Include Pennywhistle's Day Off" }));
     await user.click(screen.getByText("How these suggestions were chosen"));
     expect(
       screen.getByText("You changed the title list. Check any titles you added against your brief."),
@@ -421,7 +480,7 @@ describe("ChannelSuggestPanel", () => {
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
     await user.click(await screen.findByRole("button", { name: "Edit brief" }));
-    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByText("Pennywhistle's Day Off")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Your new channel" })).toBeVisible();
     expect(screen.getByLabelText("Channel brief")).toHaveValue("80s teen comedies");
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
@@ -438,8 +497,8 @@ describe("ChannelSuggestPanel", () => {
           description: "80s teen comedies with more variety",
           currentLineup: [
             {
-              key: "movie:tmdb:9377",
-              name: "Ferris Bueller's Day Off",
+              key: "movie:tmdb:90009377",
+              name: "Pennywhistle's Day Off",
               year: 1986,
             },
           ],
@@ -448,7 +507,7 @@ describe("ChannelSuggestPanel", () => {
     );
     expect(submissions).toHaveLength(1);
     expect(screen.queryByLabelText("Channel intent")).not.toBeInTheDocument();
-    expect(screen.getByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(screen.getByText("Pennywhistle's Day Off")).toBeVisible();
   });
 
   it("keeps the one add-title action inside the current review", async () => {
@@ -475,7 +534,7 @@ describe("ChannelSuggestPanel", () => {
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
-    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeInTheDocument();
+    expect(await screen.findByText("Pennywhistle's Day Off")).toBeInTheDocument();
     expect(screen.getByText(/created automatically/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start over/i })).not.toBeInTheDocument();
     expect(approvals).toEqual([]);
@@ -510,7 +569,9 @@ describe("ChannelSuggestPanel", () => {
       ...PROPOSAL,
       proposal: {
         ...PROPOSAL.proposal,
-        acquisitions: [{ mediaType: "movie", tmdbId: 1701, name: "Con Air", year: 1997, inLibrary: false }],
+        acquisitions: [
+          { mediaType: "movie", tmdbId: 90001701, name: "Pelican Point Motel", year: 1997, inLibrary: false },
+        ],
       },
     };
     const { approvals } = stubSuggest({ proposals: [editable] });
@@ -518,10 +579,10 @@ describe("ChannelSuggestPanel", () => {
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
-    await user.click(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Include Pennywhistle's Day Off" }));
     await user.click(screen.getByRole("button", { name: "Create channel" }));
 
-    await waitFor(() => expect(approvals).toEqual([{ id: "p-1", edit: { drop: ["movie:tmdb:9377"] } }]));
+    await waitFor(() => expect(approvals).toEqual([{ id: "p-1", edit: { drop: ["movie:tmdb:90009377"] } }]));
   });
 
   it("normalizes Job-scoped title choices when a replacement landed while the review was closed", async () => {
@@ -530,15 +591,21 @@ describe("ChannelSuggestPanel", () => {
       id: "p-2",
       proposal: {
         ...PROPOSAL.proposal,
-        acquisitions: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
-        alternates: [{ mediaType: "movie", tmdbId: 754, name: "Face/Off", year: 1997, inLibrary: false }],
+        acquisitions: [
+          { mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false },
+        ],
+        alternates: [
+          { mediaType: "movie", tmdbId: 90000754, name: "Lemon Tree Heist", year: 1997, inLibrary: false },
+        ],
       },
     };
     window.sessionStorage.setItem(
       "loomarr.proposalReviewEdit.job-1",
       JSON.stringify({
-        drop: ["movie:tmdb:754"],
-        add: [{ mediaType: "movie", tmdbId: 603, name: "The Matrix", year: 1999, inLibrary: false }],
+        drop: ["movie:tmdb:90000754"],
+        add: [
+          { mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false },
+        ],
       }),
     );
     runOverride = failedRun({
@@ -552,12 +619,12 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     const view = renderPanel(() => {});
 
-    expect(await screen.findByText("The Matrix")).toBeVisible();
+    expect(await screen.findByText("Parallax Garden")).toBeVisible();
     expect(screen.queryByText("Added by you")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
         {
-          drop: ["movie:tmdb:754"],
+          drop: ["movie:tmdb:90000754"],
         },
       ),
     );
@@ -565,20 +632,20 @@ describe("ChannelSuggestPanel", () => {
   });
 
   it("keeps a user-added title selected when the replacement returns it only as an alternate", async () => {
-    const matrix = {
+    const parallax = {
       mediaType: "movie",
-      tmdbId: 603,
-      name: "The Matrix",
+      tmdbId: 90000603,
+      name: "Parallax Garden",
       year: 1999,
       inLibrary: false,
     };
-    window.sessionStorage.setItem("loomarr.proposalReviewEdit.job-1", JSON.stringify({ add: [matrix] }));
+    window.sessionStorage.setItem("loomarr.proposalReviewEdit.job-1", JSON.stringify({ add: [parallax] }));
     runOverride = failedRun({
       jobId: "job-1",
       proposal: {
         id: "p-2",
         status: "submitted",
-        proposal: { ...PROPOSAL.proposal, alternates: [matrix] },
+        proposal: { ...PROPOSAL.proposal, alternates: [parallax] },
       },
       failure: undefined,
       actions: ["review", "edit"],
@@ -591,22 +658,22 @@ describe("ChannelSuggestPanel", () => {
     await waitFor(() =>
       expect(JSON.parse(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1") ?? "null")).toEqual(
         {
-          drop: ["movie:tmdb:603"],
-          add: [matrix],
+          drop: ["movie:tmdb:90000603"],
+          add: [parallax],
         },
       ),
     );
-    expect(screen.getAllByText("The Matrix")).toHaveLength(1);
+    expect(screen.getAllByText("Parallax Garden")).toHaveLength(1);
     expect(screen.getByText("Will be added")).toBeVisible();
     view.unmount();
   });
 
   it("keeps the reviewer's selected lineup when a replacement proposes different primary titles", async () => {
-    const ferris = PROPOSAL.proposal.lineup[0]!;
-    const matrix = {
+    const pennywhistle = PROPOSAL.proposal.lineup[0]!;
+    const parallax = {
       mediaType: "movie",
-      tmdbId: 603,
-      name: "The Matrix",
+      tmdbId: 90000603,
+      name: "Parallax Garden",
       year: 1999,
       inLibrary: false,
     };
@@ -621,7 +688,7 @@ describe("ChannelSuggestPanel", () => {
     });
     const view = renderPanel(() => {});
 
-    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: "Include Pennywhistle's Day Off" })).toBeChecked();
 
     runOverride = failedRun({
       jobId: "job-1",
@@ -631,7 +698,7 @@ describe("ChannelSuggestPanel", () => {
         proposal: {
           ...PROPOSAL.proposal,
           lineup: [],
-          acquisitions: [matrix],
+          acquisitions: [parallax],
         },
       },
       failure: undefined,
@@ -641,10 +708,10 @@ describe("ChannelSuggestPanel", () => {
     });
     view.rerenderPanel();
 
-    expect(await screen.findByRole("checkbox", { name: "Include Ferris Bueller's Day Off" })).toBeChecked();
-    expect(screen.queryByRole("checkbox", { name: "Include The Matrix" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "Include Pennywhistle's Day Off" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "Include Parallax Garden" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByText("More suggestions"));
-    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Parallax Garden" })).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Create channel" }));
     await waitFor(() =>
@@ -652,8 +719,8 @@ describe("ChannelSuggestPanel", () => {
         {
           id: "p-2",
           edit: {
-            drop: ["movie:tmdb:603"],
-            add: [ferris],
+            drop: ["movie:tmdb:90000603"],
+            add: [pennywhistle],
           },
         },
       ]),
@@ -661,24 +728,24 @@ describe("ChannelSuggestPanel", () => {
   });
 
   it("keeps earlier options when another suggestion batch lands", async () => {
-    const faceOff = {
+    const lemonTree = {
       mediaType: "movie" as const,
-      tmdbId: 754,
-      name: "Face/Off",
+      tmdbId: 90000754,
+      name: "Lemon Tree Heist",
       year: 1997,
       inLibrary: false,
     };
-    const matrix = {
+    const parallax = {
       mediaType: "movie" as const,
-      tmdbId: 603,
-      name: "The Matrix",
+      tmdbId: 90000603,
+      name: "Parallax Garden",
       year: 1999,
       inLibrary: false,
     };
-    const conAir = {
+    const pelican = {
       mediaType: "movie" as const,
-      tmdbId: 1701,
-      name: "Con Air",
+      tmdbId: 90001701,
+      name: "Pelican Point Motel",
       year: 1997,
       inLibrary: false,
     };
@@ -687,7 +754,7 @@ describe("ChannelSuggestPanel", () => {
       proposal: {
         id: PROPOSAL.id,
         status: PROPOSAL.status,
-        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+        proposal: { ...PROPOSAL.proposal, alternates: [lemonTree] },
       },
       failure: undefined,
       actions: ["review", "edit"],
@@ -698,9 +765,9 @@ describe("ChannelSuggestPanel", () => {
     const view = renderPanel(() => {});
 
     await userEvent.click(await screen.findByText("More suggestions"));
-    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
     await waitFor(() => {
-      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Lemon Tree Heist")) {
         throw new Error("The initial review state has not settled yet");
       }
     });
@@ -718,8 +785,8 @@ describe("ChannelSuggestPanel", () => {
               "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
           },
           lineup: [],
-          acquisitions: [matrix],
-          alternates: [conAir],
+          acquisitions: [parallax],
+          alternates: [pelican],
         },
       },
       failure: undefined,
@@ -729,25 +796,25 @@ describe("ChannelSuggestPanel", () => {
     });
     view.rerenderPanel();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible());
-    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible());
+    expect(screen.getByRole("button", { name: "Add Parallax Garden" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Pelican Point Motel" })).toBeVisible();
     expect(screen.getByText("3 options")).toBeVisible();
 
     view.unmount();
     renderPanel(() => {});
     await userEvent.click(await screen.findByText("More suggestions"));
     expect(screen.getByText("3 options")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Parallax Garden" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Pelican Point Motel" })).toBeVisible();
   });
 
   it("keeps the option pool and explains when an expansion finds no new titles", async () => {
-    const faceOff = {
+    const lemonTree = {
       mediaType: "movie" as const,
-      tmdbId: 754,
-      name: "Face/Off",
+      tmdbId: 90000754,
+      name: "Lemon Tree Heist",
       year: 1997,
       inLibrary: false,
     };
@@ -756,7 +823,7 @@ describe("ChannelSuggestPanel", () => {
       proposal: {
         id: PROPOSAL.id,
         status: PROPOSAL.status,
-        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+        proposal: { ...PROPOSAL.proposal, alternates: [lemonTree] },
       },
       failure: undefined,
       actions: ["review", "edit"],
@@ -767,9 +834,9 @@ describe("ChannelSuggestPanel", () => {
     const view = renderPanel(() => {});
 
     await userEvent.click(await screen.findByText("More suggestions"));
-    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
     await waitFor(() => {
-      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Lemon Tree Heist")) {
         throw new Error("The initial review state has not settled yet");
       }
     });
@@ -786,7 +853,7 @@ describe("ChannelSuggestPanel", () => {
             refineText:
               "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
           },
-          alternates: [faceOff],
+          alternates: [lemonTree],
         },
       },
       failure: undefined,
@@ -802,28 +869,28 @@ describe("ChannelSuggestPanel", () => {
       ),
     ).toHaveAttribute("role", "status");
     expect(screen.getByText("1 option")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
   });
 
   it("refreshes stale options when the channel brief changes", async () => {
-    const faceOff = {
+    const lemonTree = {
       mediaType: "movie" as const,
-      tmdbId: 754,
-      name: "Face/Off",
+      tmdbId: 90000754,
+      name: "Lemon Tree Heist",
       year: 1997,
       inLibrary: false,
     };
-    const matrix = {
+    const parallax = {
       mediaType: "movie" as const,
-      tmdbId: 603,
-      name: "The Matrix",
+      tmdbId: 90000603,
+      name: "Parallax Garden",
       year: 1999,
       inLibrary: false,
     };
-    const conAir = {
+    const pelican = {
       mediaType: "movie" as const,
-      tmdbId: 1701,
-      name: "Con Air",
+      tmdbId: 90001701,
+      name: "Pelican Point Motel",
       year: 1997,
       inLibrary: false,
     };
@@ -832,7 +899,7 @@ describe("ChannelSuggestPanel", () => {
       proposal: {
         id: PROPOSAL.id,
         status: PROPOSAL.status,
-        proposal: { ...PROPOSAL.proposal, alternates: [faceOff] },
+        proposal: { ...PROPOSAL.proposal, alternates: [lemonTree] },
       },
       failure: undefined,
       actions: ["review", "edit"],
@@ -842,9 +909,9 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     const view = renderPanel(() => {});
     await userEvent.click(await screen.findByText("More suggestions"));
-    expect(screen.getByRole("button", { name: "Add Face/Off" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
     await waitFor(() => {
-      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Face/Off")) {
+      if (!window.sessionStorage.getItem("loomarr.proposalReviewState.job-1")?.includes("Lemon Tree Heist")) {
         throw new Error("The initial review state has not settled yet");
       }
     });
@@ -858,8 +925,8 @@ describe("ChannelSuggestPanel", () => {
           ...PROPOSAL.proposal,
           intent: { description: "90s science-fiction action" },
           lineup: [],
-          acquisitions: [matrix],
-          alternates: [conAir],
+          acquisitions: [parallax],
+          alternates: [pelican],
         },
       },
       failure: undefined,
@@ -870,9 +937,9 @@ describe("ChannelSuggestPanel", () => {
     view.rerenderPanel();
 
     await waitFor(() => expect(screen.getByText("2 options")).toBeVisible());
-    expect(screen.queryByRole("button", { name: "Add Face/Off" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add The Matrix" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add Con Air" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add Lemon Tree Heist" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Parallax Garden" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add Pelican Point Motel" })).toBeVisible();
   });
 
   it("a member's approve is inert — no approve call fires (approval is admin-only, §7)", async () => {
@@ -910,7 +977,7 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(await screen.findByText("Pennywhistle's Day Off")).toBeVisible();
     expect(screen.getByText(/Updating suggestions/)).toBeVisible();
     expect(await screen.findByRole("button", { name: "Create channel" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
@@ -925,7 +992,7 @@ describe("ChannelSuggestPanel", () => {
     stubSuggest();
     renderPanel(() => {});
 
-    expect(await screen.findByText("Ferris Bueller's Day Off")).toBeVisible();
+    expect(await screen.findByText("Pennywhistle's Day Off")).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent(/current lineup is unchanged/i);
     expect(screen.queryByText(/We couldn't finish this channel/i)).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Create channel" })).toBeEnabled();

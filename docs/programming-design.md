@@ -41,7 +41,9 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
   "ordering": "syndication",       // sequential | shuffle | syndication (§5)
   "seasonal": {                    // WHEN in the year (§6)
     "mode":     "auto",            // off | auto | exclusive
-    "holidays": ["halloween", "christmas"]  // subset of built-in calendar
+    "holidays": ["halloween", "christmas"], // subset of built-in calendar
+    "strength":  "featured",       // light | featured | heavy — holiday episodes per day (§6)
+    "placement": "evenings"        // evenings | anytime — when they air (§6)
   }
 }
 ```
@@ -233,8 +235,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 ## 5. Ordering modes ("feels like TV")
 
 - `sequential` — S1E1 onward, loops at the end (binge/marathon channels).
-- `shuffle` — seeded random, separation-constrained.
-- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
+- `shuffle` — seeded random, separation-constrained. **The seed is the channel's own.** A channel that stores none (every binder-made channel stores `0`) derives it from its id (FNV-1a), stable for the channel's life and needing no migration, so two channels over the same pool deal different decks. It reshuffles each pass, exactly as `syndication` does (below and §6.5).
+- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility). The deck index is the **pass** of the rolling window around the catalog (§6.5), counted from the channel's creation.
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 - **One operator knob, one canonical precedence ladder.** Ordering resolves in exactly this order: **per-rule `How.Ordering` (within that rule's active window, §6.5) > `policy.ordering` > `Channel.Strategy` (the create-time stored default)**. `policy.ordering` is *the* operator-facing knob (edited in Programming → How it's ordered); `Channel.Strategy` is the default the binder seeds and is consulted only on inherit — it is **not** a second editable field (design.md §9). A rule's `How` overrides only for the slots that rule governs; outside any rule window, the base `policy.ordering` applies. This is the single ladder that makes "three ways to express ordering" read as one.
 - **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language forces `sequential`, even when the model proposed shuffle or syndication. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces both deterministic outcomes so a small model cannot turn a rerun request into a box-set binge or a binge into a mixed deck.
@@ -296,8 +298,10 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   playable contract is violated; editorial repair remains tolerant. A valid `[]` alone represents
   an enumerated series with no playable episodes.
 
-  `holiday` matches normalized whole words/phrases in the episode title and bounded overview/tags,
-  restricted to the selected holiday ids (empty means all built-ins). Generic `holiday` text and
+  `holiday` applies the §6 holiday judgment to the episode title, bounded overview, tags and
+  original air date, restricted to the selected holiday ids (empty means all built-ins), and
+  selects episodes judged `about` or `adjacent`; a mood word such as "a ghost" in an ordinary
+  overview is not holiday evidence. Generic `holiday` text and
   a `Santa` mention naming Santa's Little Helper do not establish Christmas membership; separate
   Christmas evidence in the same episode still counts. No matching or unavailable holiday evidence
   selects no episodes, including during an off-season loop. Sparse highlight ratings, malformed
@@ -327,11 +331,18 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 
 Two symmetric behaviors, because knowing what October wants implies knowing what July doesn't:
 
-- **Detection** (deterministic, not LLM judgment): an item is *seasonal* for holiday H if it matches H's keyword set against episode/movie title, media-server tags/keywords, or overview ("halloween," "christmas," "thanksgiving," …). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and keyword sets ship as data, not code; custom holidays/regions are future work.
+- **Detection is a judgment of what a title is *about*, with a deterministic floor** (#1670). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and vocabulary ship as data, not code; custom holidays/regions are future work.
+  - **Verdict vocabulary.** For one (title or episode, holiday) pair the answer is closed: `about` (the holiday is its subject or setting), `adjacent` (it fits the holiday's mood without being about it — a haunted-house horror film for Halloween), or `not`. Each verdict carries a short reason code that clients word ("Halloween in the title", "Halloween keyword", "a haunted-house horror film"). One owner, `internal/holidayvocab`, judges; the scheduler, Channel ideas and the suggester all call it.
+  - **The floor** (always on; the only judge while the LLM is off, unavailable or undecided). Each holiday has *name* aliases (the holiday itself: "halloween"; "christmas", "xmas", "santa"; …) and *mood* aliases ("ghost", "haunted", "witch", "spooky", "horror"). A name alias in the title, the overview or media-server tags, or a TMDB keyword naming the holiday (Halloween keyword 3335), is `about`. A mood alias in the title or keywords is `adjacent` only when the genres corroborate the mood — Halloween: Horror, or a family genre (Family, Children, Kids, Animation) together with Fantasy, which keeps a teenage-witch sitcom or a friendly-ghost cartoon; a bare mood word never counts alone. So *Ghost World* (Comedy, Drama), *Mission: Impossible – Ghost Protocol* (Action) and *Ghost* (Fantasy, Romance — no family genre) are `not`, while *The Witch* (Horror) is `adjacent`. A name alias inside a known look-alike is not the holiday: *Santa's Little Helper*, *Santa Clarita* and other Santa place names, *Bill Nye*.
+  - **Episodes: the original air date.** Episodes carry no genres, but broadcast holiday episodes premiere near the holiday, and the media server's `PremiereDate` is cached per episode (`AirDate`). An episode whose original air date falls in the holiday's broadcast window **and** that has a mood alias in its title or overview is `about` — an animated sitcom's annual Halloween anthology whose overviews never say "Halloween" is proved by its late-October premieres. A mood alias in an *episode's* title with no air date in the window is `adjacent` (an episode title describes that one episode, unlike a film title such as *Ghost World*); a mood alias only in an ordinary overview is `not`. An air date alone is never evidence: plenty of ordinary episodes air in late October. Broadcast windows: Halloween Oct 15–Nov 7, Thanksgiving the seven days before the fourth Thursday of November through the Sunday after, Christmas Dec 1–Jan 2, New Year Dec 26–Jan 7, Valentine's Feb 7–21 (only Halloween has mood aliases today, so only its window decides anything yet). Cached episode lists written before the date was kept simply lack it — judged as "no date" — until the library refresh repopulates them. With the LLM off, the floor alone builds the holiday's Channel idea, and it is not offered below its minimum title count. Genres corroborate a mood word; a genre alone is never evidence (the correction below still holds).
+  - **The judgment** (when the configured LLM is available; *planned, #1670 — until it ships the floor is the only judge, and the review reasons and removal feedback below arrive with it*). A background job (`holiday-judgment`, daily and after a library refresh) batches candidates — titles with any floor signal, any holiday TMDB keyword, or a mood genre — into one compact closed-vocabulary call per holiday per refresh: at most 12 items of (id, title, year, genres, ≤200-character overview, keywords) per call, answer `{"id": ..., "verdict": "about|adjacent|not", "reason": "<≤6 words>"}`. Grounding drops unknown ids and malformed verdicts; an item the model skipped keeps its floor verdict. Verdicts are cached per (item, holiday, metadata revision — a hash of the fields sent), so pages and the scheduler read the cache and never wait on a model; changed metadata re-judges. TMDB keywords are fetched per title by the same job (cached with the verdict revision, throttled well under TMDB's limit), never on a request path. Episodes are judged on the same path (episode title + overview), only for series on channels where seasonal applies, cached per episode.
+  - **Combining.** A household's removal of a pick for a holiday (below) is `not` and wins. Otherwise a floor `about` stands (a title named for the holiday is about it); a cached model verdict decides everything else; with no model verdict the floor's answer stands.
+  - **What acts on which verdict.** Out-of-season **benching** and in-window **boost** in `auto` need `about` — a false bench silently removes programming, so a mood word or an `adjacent` verdict never benches. `exclusive` in-window membership, holiday episode selection and the Channel idea for a holiday accept `about` or `adjacent`.
+  - **Visible and correctable.** A holiday idea's proposal review shows each pick's reason. Removing a pick there is remembered as discovery feedback scoped to that holiday (`scope=holiday`, `action=never`), which the next idea, judgment and bench honour for the whole household.
   - **Entry and episode scope.** Entry-level seasonal bench/boost continues to match a movie or
     series title only. An explicitly holiday-curated series additionally carries a per-entry
-    `holiday` episode selector; after episode safety/scope filtering it matches the episode's title,
-    overview, and media-server tags against only the named holiday ids. This supports “Christmas
+    `holiday` episode selector; after episode safety/scope filtering it judges the episode's title,
+    overview, media-server tags and original air date against only the named holiday ids. This supports “Christmas
     Simpsons episodes” without mistaking every Comedy or Family episode for a holiday episode.
     In an active `exclusive` window, defer series membership to those concrete episode facts:
     a non-holiday series title cannot exclude its holiday episodes, and a holiday series title
@@ -342,11 +353,156 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     Genuine unavailability still follows the pending policy. This deferred filter does not change
     movie detection, ordinary `auto`/`off`, zero-clock behavior, or the exclusive off-season
     `loop`/`dark` contract. Calendar exclusion does not remove library availability from drift evidence.
-  - ⚠ **Genres are excluded deliberately, and this is a correction.** Detection originally hayed over title **+ genres**, which conflated *"this title is about a holiday"* with *"this title belongs to a genre that correlates with one"*. Those are different claims, and only the first is what a holiday window should act on. The failure was total rather than cosmetic: `horror` sat in the Halloween keyword set, so on a year-round horror channel **every** entry detected as seasonal, and `auto` mode benched all of them `out_of_season` for the eleven months outside October. The channel was legal to configure, reported `live`, and aired nothing. A genre is what a channel **is**; a holiday keyword is what a title is **about**. The rule's own example — *Christmas episodes in July break the spell* — is a title, and the fix restores exactly that reading. (A single genre-shaped keyword could have been dropped instead, but the mechanism would have re-fired on the next collision: a Romance channel near Valentine's, a Family channel near Christmas.)
+  - ⚠ **A genre is never evidence on its own, and this is a correction** (genres only corroborate a mood word into `adjacent`, which never benches). Detection originally hayed over title **+ genres**, which conflated *"this title is about a holiday"* with *"this title belongs to a genre that correlates with one"*. Those are different claims, and only the first is what a holiday window should act on. The failure was total rather than cosmetic: `horror` sat in the Halloween keyword set, so on a year-round horror channel **every** entry detected as seasonal, and `auto` mode benched all of them `out_of_season` for the eleven months outside October. The channel was legal to configure, reported `live`, and aired nothing. A genre is what a channel **is**; a holiday keyword is what a title is **about**. The rule's own example — *Christmas episodes in July break the spell* — is a title, and the fix restores exactly that reading. (A single genre-shaped keyword could have been dropped instead, but the mechanism would have re-fired on the next collision: a Romance channel near Valentine's, a Family channel near Christmas.)
 - **`mode: "auto"` (default):** in-window, seasonal items get a scheduling **boost** (weighted up, tasteful — not wall-to-wall); out-of-window, detected-seasonal items are **benched** (excluded). The bench is the half everyone forgets and the one viewers notice: *Christmas episodes in July break the spell.*
+- **Holiday episodes inside an ordinary series (`auto` only, #1670).** The title-level boost
+  cannot see that *The Simpsons* holds nine *Treehouse of Horror* episodes: the series title is
+  not about Halloween, so before this an October channel aired them only when the deck happened
+  to deal one. In `auto` mode the scheduler now features those episodes, matched by the same
+  episode evidence `exclusive` uses (title, overview, tags; `episodeHolidays`). A series whose
+  own title is seasonal keeps the entry-level bench/boost and is not featured twice.
+  - **One plan per day.** Each channel-local civil date of an active holiday window has one plan:
+    which pool episodes it features and the time each is due. The plan does not depend on the
+    rolling window's length; a window airs the features due inside it (`opening ≤ at < closing`),
+    so a 6-hour, 12-hour, daily or 3-day window airs the same day the same way, and never twice.
+    The pool is the deck's holiday episodes for that date's active selected holidays, in deck
+    order. The deck order never changes.
+  - **Where it runs: the season simulation (#1939).** A window is *in season* when any date it
+    touches has a non-empty pool. In-season windows, and the first out-of-season windows after
+    one (the *horizon*: twice the windows the repeat spacing spans, plus one), are not cut
+    independently. They are **simulated in order** from the season's *anchor*: its first in-season
+    window, found by walking back over in-season windows and gaps no longer than the horizon, at
+    most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
+    the dealer's tile (`windowSliceDealt`), arranged. In the horizon after the simulation (the
+    *hand-off*, `handOff`), the season's tiles still sit inside the repeat spacing. The dealer
+    repaired each seam against the deal before it, so while any window the spacing reaches back
+    over aired a tile other than its deal, the next window is repaired again against what really
+    aired. That repair reads back over every window the spacing spans, not only the window
+    before: a 12-hour spacing on a 6-hour window reaches two windows back (#1960).
+    The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
+    features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
+    repeat spacing. For each window in turn:
+    1. Take the dealer's tile for the window. Drop the pool, and any unit that would air sooner
+       than the spacing after its last airing. A deck that fits one window drops only the pool.
+    2. Keep units in deal order until their runtime meets the window less its features' runtime.
+       Units cut here are *owed*.
+    3. Top up a short tile with ordinary episodes. Owed units go first, in deal order. Then any
+       ordinary unit of the pass. The preferences, in order: not aired by the window before and
+       not dealt to the next; at least the spacing from its last actual airing and from its next
+       dealt airing; the farthest from both.
+    4. Arrange the window around its features, and check each unit where it really airs: an
+       off-season holiday episode leaving the evening pulls the units after it earlier than
+       their place in the tile. A unit now sooner than the spacing is dropped for the window and
+       the tile topped up again without it (step 3); each pass drops one unit, so it ends.
+    5. Record every programme's index in `airedAt`.
+    Every decision reads what actually aired, never a ring position. A feature is decided by its
+    day's plan. Its airing enters `airedAt`, so the windows after the season (and after a holiday
+    date) trade away a unit the season just featured, like any recent airing. The holiday date
+    itself keeps its whole plan. The spacing promised is the dealer's repeat spacing for
+    *Shuffled* and *Syndication* (two windows and a unit, §3.1). For *In order*, the dealer has
+    none, so the simulation uses half the deck less its holiday episodes.
+    One simulation serves the season. It is memoised by the dealer's inputs (seed, window,
+    policy, collapsed slots), the ring origin, zone, holiday evidence, break density and the
+    anchor and end windows, in a small LRU like the deal chain. A guide request therefore
+    simulates once per season per lineup, and an edit lands on a new key. A pool with airing
+    history is not shared. One run costs O(windows × deck): each top-up scans the pass once.
+    A deck that fits one window airs
+    whole, minus the pool, every window. Recency (`tradeRecent`, #1694)
+    then guards the tile as it does any tile. The pass is a pure function of (deck, window index,
+    zone, policy): it is idempotent within a window, there is no mid-window reshuffle
+    (#1674/#1675), and the cycle-cache key needs nothing new. A channel with no rolling window
+    (`window: full`) has no wall-clock anchor and is untouched.
+  - **Strength** (`seasonal.strength`, default `featured`). Per ordinary day of the window:
+    **Light 1, Featured 3, Heavy 5.** A day features at most ⌊day length ÷ (mean programme
+    runtime × break density) ÷ 4⌋, so the rest of the lineup keeps three quarters of the day. The
+    day length counts the 23-hour and 25-hour daylight-saving days, and the result can be 0. The
+    cap is applied before the rotation, so a capped pool still rotates evenly.
+  - **The holiday's own date** (Oct 31, fourth Thursday of November, Dec 25, Dec 31, Feb 14) is
+    the one exception. It features the day's ring picks plus extras, in ring order, up to the
+    strength's holiday quota: **Heavy every holiday episode, Featured up to 5, Light its 1.**
+    Extras prefer episodes the day before and the day after would not feature. The day before and
+    the day after then drop anything the holiday date airs, compared by episode because
+    neighbouring pools can differ (Christmas, then New Year). So no episode airs on the holiday
+    and on either neighbour. Heavy's whole-pool night leaves both neighbours with no holiday
+    episodes. The quarter cap is lifted for Heavy on the holiday date only. Heavy's holiday
+    night is a **marathon**: the whole pool back to back from 17:00. If it is longer than the
+    band, it starts early enough to end by 23:00, but never before the day starts. It uses the
+    evening band whatever the placement setting. Each episode is due when the one before it ends,
+    so a marathon longer than the rolling window carries on into the next window, and a window
+    the marathon fills airs the marathon alone. A window never goes empty. Episodes that would
+    start after the date ends do not air that night (a pool longer than a day fills the date).
+  - **Spacing: the in-season exception to `episodeNoRepeat`.** Honouring the channel's 7-day
+    episode spacing would cap a nine-episode pool at one a day at every strength. Featured holiday
+    episodes instead rotate evenly through the pool: day *d* features pool positions
+    `d·q … d·q+q−1` (mod pool size, pool in deck order), so an episode returns after at least
+    ⌊pool/q⌋ days, and *q* is capped so that gap is **never less than 2 days** (never twice in a
+    day, never on consecutive days). A small pool therefore caps the strength: nine episodes give
+    Light 1 every 9 days, Featured 3 every 3, Heavy 4 every 2. A pool of one airs every other day.
+  - **Placement** (`seasonal.placement`, default `evenings`). `evenings`: the day's featured
+    episodes are spaced evenly through **17:00–23:00 channel-local** (the guide time zone, the same
+    clock the rolling window turns on). `anytime`: spaced evenly through the whole day. Start
+    times are estimated from programme runtime stretched by the channel's break density.
+  - **Out of season** a holiday episode of an ordinary series is **never benched**: it stays in
+    its window's tile. With `anytime` it is untouched. With `evenings` it is kept out of the
+    channel-local evening band. If the clock reaches it inside the band, it is deferred to the
+    first moment outside the band. Holidays the channel has deselected are ordinary episodes.
+    - **Shuffled and Syndication: the repeat spacing wins over the evening (#1960).** Deferring
+      an episode brings every unit behind it, up to the band's end, one slot forward. The dealer
+      releases a held-back unit exactly at its spacing, so that slot re-aired it sooner than the
+      spacing promises, on any evening, at a rate set by the channel's deal origin. So an
+      episode first **swaps** places with one ordinary unit (one with no selected holiday)
+      that airs after the band in the same window. Every unit between keeps its place in the
+      programme count the spacing is promised in. The swap is taken only when the episode then
+      starts outside the band, and both units still rest the dealer's spacing (in programmes),
+      or no less than their deal gave them: the unit from its last airing, the episode before
+      its own next one. Nor may the swap's shift in start times carry any other unit past a
+      holiday feature's start, which would air that unit later. Of the units that qualify, the
+      one with the most slack over its spacing takes the episode's place. A multi-part story is
+      never split.
+    - When no unit qualifies, the episode is deferred as before, but only when every unit it
+      brings forward still rests the spacing from its last airing, and the episode still rests
+      it before its next airing. Otherwise it airs in place, in the evening. So does an episode
+      the window cannot carry past the band, because the window closes inside it. The checks read
+      the windows around as dealt, without arranging them. Away from a season that is exact.
+      Arrange moves only a holiday episode later and an ordinary unit only earlier, and a moved
+      episode leaves a slot of room for each episode its next window could defer from ahead of
+      it. Near a season the simulation and the hand-off check what really aired.
+    - **The cost.** Some off-season holiday episodes stay in the evening on these channels.
+      Measured over 30 deal origins in March, these are the holiday episodes dealt into the
+      evening that still air there: 51% on an 80-episode deck in 6-hour windows, 38% in 12-hour
+      and 70% in daily windows, and 23% on a 400-episode deck in daily windows. The dealer
+      rests a holiday episode only a little past its spacing, so moving it to after the band
+      often brings its own next airing too close. A daily window has only 23:00–24:00 after the
+      band.
+    - **In order** the dealer promises no spacing, and every episode leaves the band. If the
+      window ends inside the band (a short window), the deferred episodes move, as one run, to
+      just before that band. They go at the latest point where each still starts before 17:00.
+      Whatever does not fit before the band airs at the window's end: a window wholly inside
+      17:00–23:00, or one with less time before the band than the run needs.
+  - **Holiday windows are channel-local dates.** Whether a holiday is active, for the title-level
+    boost and bench, the `exclusive` pass, this feature and the cycle-cache clock signature, is
+    decided by the channel's date on the guide time zone. It is not decided by the UTC instant,
+    which would end Halloween at 20:00 on Oct 31 in New York.
+  - The cycle preview carries the consequence in `holidayEpisodes`, per selected holiday, open or
+    soonest first: the episodes found, the per-day count and spacing after the day cap, `capped`
+    (the pool or the cap holds the strength back: fewer a day than it asks for, or not every day),
+    and `sameAs` (the other strengths that rotate the pool identically; a pool of 5 makes Featured
+    the same as Heavy, and a pool of 1–2 makes all three the same). The channel page can then say
+    what a strength will do, and when a choice changes nothing, without counting anything itself.
+  - **Where the operator sets it.** The channel's Programming tab (`ChannelSeasonal`, built on
+    `ChannelSeasonalFields` in `@loomarr/ui`) offers **Holiday strength** (Light / Featured /
+    Heavy, each choice carrying its own plain-language consequence) and **Favour evenings** only
+    while the mode is the built-in rotation; `exclusive` and `off` keep their meaning and show
+    neither. Under Holiday strength one line restates the preview's `holidayEpisodes` for the
+    holiday that is on, or next: the episodes found and the resulting per-day count and spacing.
+    When `sameAs` is non-empty or `capped` is true the line says so plainly ("at this pool size
+    Featured and Heavy play the same"). The line is the backend's numbers, never a client-side
+    estimate.
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
-- Evaluation uses the container `TZ` wall-clock (main doc §9) at reconcile time; the periodic sweep naturally rolls channels into and out of windows within `CHANNEL_RECONCILE_EVERY` — seasonality needs no scheduler of its own.
+- Evaluation uses the reconcile instant's date on the guide time zone (`guide.timezone`, the clock
+  the rolling window turns on). The holiday-episode feature above reads the calendar dates of the
+  window it arranges instead. The periodic sweep naturally rolls channels into and out of windows within `CHANNEL_RECONCILE_EVERY` — seasonality needs no scheduler of its own.
 
 ## 6.5. Curation rules ("play different things at different times, like a real network")
 
@@ -415,6 +571,49 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   sentinel; a `marathon` rule sets it — no rotation, plays everything). A pool smaller than one
   window airs whole every window (nothing to rotate, nothing starved). The slice is floored to
   at least one program so a channel is never dark.
+  **Passes: a shuffled or syndicated catalog is dealt afresh each time the window wraps it
+  (#1676).** One trip of the window around the catalog is a *pass*; pass `p` is dealt under
+  `seed XOR p` (the seed is the channel's own, §5), so a pass is a new permutation, not a replay of
+  the one before, and still a pure function of its inputs. `sequential` keeps one deck for every
+  pass — its order is the promise. Passes are numbered from the channel's **origin**
+  (`created_at`, else its playout anchor, else a stable value derived from the channel id), not from
+  1970, so a channel's pass number is its age in passes: a few hundred in a year, never thousands.
+  The seam between two passes is **repaired**: every unit airs at least a *repeat spacing* after it
+  last aired — the episode/film no-repeat window, capped at a third of the pool's runtime (a pool
+  shorter than the spacing can never honour it; §7 owns that shortfall) — with floors that win over
+  that cap, none longer than the pool itself. **The true guarantee:** a unit never airs twice in a
+  row (the spacing is at least two longest units); a pool wider than a window rests every unit more
+  than a window (a window and a unit at least, two windows and a unit once the pool is three windows
+  wide, since a window's last programme runs past its close and two consecutive windows span up to
+  two windows and a unit), so a
+  unit never airs twice in one window and the next window starts exactly where this one stopped. A
+  shorter rest would let a unit from the end of one pass land in the same window again: the window
+  skips it and reads past its stride, and the next window re-airs what it pulled in (27 one-hour films
+  in a 24 h window re-aired units 2–3 h apart). A pool barely wider than a window (under a window and
+  a unit of slack) is pinned close to its old order: that is the price of never repeating inside a
+  window. A unit not yet allowed is held
+  back and goes out the moment the deck reaches its release time. A repair moves a unit at most
+  `2·spacing + 2·longest unit` into the deck. **When that stops short of the tail the next seam reads
+  (a pool wider than a window holding three spacings), the repaired tail is the
+  dealt tail**, so a pass needs only its own deal and its predecessor's: exact, at any age. A pool of
+  one to six windows (spacing raised to a window or two) is pushed into that tail, so each pass is
+  repaired against the deck that **really aired**, walked pass by pass (memoised per
+  pool/policy/seed/window; a lineup edit is a different pool, so it restarts the walk). A deal costs
+  5–22 ms for a multi-series pool, so **the walk is bounded in deals**: at most `2048 / pool size`
+  passes (16 to 2048, a multiple of 16), starting at the latest multiple of that bound at or before
+  the wanted pass; a 6-year-old channel with a 60-episode pool walks in ~0.13 s cold, once per
+  process. The pass that starts a walk is repaired against its predecessor *as dealt* rather than as
+  aired. That is the only place the seam guarantee can relax, and only for chained pools (a pool of
+  27 films meets it every 64 passes; measured, the short seam is ~5% under the spacing).
+  **A catalog that fits inside one window has no ring to wrap**, so it used to air the same deck in
+  the same order every window; there the **window is the pass**, dealt afresh and repaired against
+  the previous window **as it aired**: playout loops the deck until the window closes
+  (`elapsed % total`), so the units that closed it are wherever the loop stopped, not the deck's end,
+  and the seam is repaired against that looped tail. Since any part of the deck can be that tail,
+  such a pool is always walked pass by pass. Recency does not order such a deck: it airs every unit
+  every window, so oldest-aired-first is just yesterday's order, a replay that survived every
+  window once anyone watched (#1676, reversing #1694's "recency still orders a fitting deck"). The
+  window's order is fixed when it opens and does not move as viewing is recorded (#1674).
 - **Authorship is hybrid (§8 boundary intact).** The **LLM proposes a starter rule set**
   from intent ("Star Trek with weekend TNG marathons and Christmas episodes") — from the
   closed preset vocabulary, grounded + clamped (unknown tokens dropped, window clamped to

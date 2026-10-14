@@ -21,7 +21,9 @@ describe("suggestion presentation language", () => {
   });
 
   it("keeps a natural title explanation intact", () => {
-    expect(friendlyTitleRationale("Same era, same energy as Heat.")).toBe("Same era, same energy as Heat.");
+    expect(friendlyTitleRationale("Same era, same energy as The Velvet Cartographer.")).toBe(
+      "Same era, same energy as The Velvet Cartographer.",
+    );
   });
 
   it("translates proposal-level evidence language", () => {
@@ -36,9 +38,9 @@ describe("suggestion presentation language", () => {
   });
 
   it("hides machine identifiers when no human title was resolved", () => {
-    expect(friendlyCandidateName("series:tmdb:3921")).toBe("Unidentified title");
-    expect(friendlyCandidateName("movie:tvdb:123")).toBe("Unidentified title");
-    expect(friendlyCandidateName("Boy Meets World")).toBe("Boy Meets World");
+    expect(friendlyCandidateName("series:tmdb:90003921")).toBe("Unidentified title");
+    expect(friendlyCandidateName("movie:tvdb:90000123")).toBe("Unidentified title");
+    expect(friendlyCandidateName("Kid Meets Kite")).toBe("Kid Meets Kite");
     expect(friendlyCandidateName(undefined)).toBe("Unidentified title");
   });
 });

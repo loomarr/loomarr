@@ -14,9 +14,9 @@ const SRC = "data:video/mp4;base64,AAAA";
 
 describe("VideoPlayer", () => {
   it("renders a titled frame with the app's own controls", () => {
-    render(<VideoPlayer src={SRC} title="Frosted Flakes" />);
+    render(<VideoPlayer src={SRC} title="Crunchlings" />);
 
-    expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
+    expect(screen.getByText("Crunchlings")).toBeInTheDocument();
     // Play/pause and mute, both named. Native controls would have supplied these.
     expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mute" })).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("VideoPlayer", () => {
   // slider present is the VOLUME control; there is no "Seek" slider. This pins that removal so a
   // seek bar cannot creep back in unnoticed.
   it("has no seek slider — only the volume slider", () => {
-    render(<VideoPlayer src={SRC} title="Frosted Flakes" />);
+    render(<VideoPlayer src={SRC} title="Crunchlings" />);
 
     const sliders = screen.getAllByRole("slider");
     expect(sliders).toHaveLength(1);

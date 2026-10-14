@@ -14,7 +14,7 @@ func TestSeerrRequestMovie(t *testing.T) {
 	t.Cleanup(ms.Close)
 	r := NewSeerr(ms.URL, "secret-key")
 
-	err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 1111867})
+	err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 91111867})
 	if err != nil {
 		t.Fatalf("Request: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestSeerrIdempotentStatuses(t *testing.T) {
 		ms := testkit.NewSeerr(t)
 		ms.Status = code
 		r := NewSeerr(ms.URL, "k")
-		if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 1}); err != nil {
+		if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000001}); err != nil {
 			t.Errorf("status %d should be success (§6), got %v", code, err)
 		}
 		ms.Close()
@@ -59,7 +59,7 @@ func TestSeerrServerErrorFails(t *testing.T) {
 	t.Cleanup(ms.Close)
 	ms.Status = http.StatusInternalServerError
 	r := NewSeerr(ms.URL, "k")
-	if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 1}); err == nil {
+	if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000001}); err == nil {
 		t.Error("500 should be an error so the reconciler retries")
 	}
 }
@@ -75,16 +75,16 @@ func TestSeerrSeries(t *testing.T) {
 	}{
 		// The common path — "acquire all seasons". This is the one that broke in production:
 		// the old omitempty []int dropped `seasons` entirely and Jellyseerr returned 500.
-		{"all seasons (nil)", nil, `{"mediaType":"tv","mediaId":555,"seasons":"all"}`},
-		{"all seasons (empty)", []int{}, `{"mediaType":"tv","mediaId":555,"seasons":"all"}`},
-		{"specific seasons", []int{1, 2}, `{"mediaType":"tv","mediaId":555,"seasons":[1,2]}`},
+		{"all seasons (nil)", nil, `{"mediaType":"tv","mediaId":90000555,"seasons":"all"}`},
+		{"all seasons (empty)", []int{}, `{"mediaType":"tv","mediaId":90000555,"seasons":"all"}`},
+		{"specific seasons", []int{1, 2}, `{"mediaType":"tv","mediaId":90000555,"seasons":[1,2]}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ms := testkit.NewSeerr(t)
 			t.Cleanup(ms.Close)
 			r := NewSeerr(ms.URL, "k")
-			err := r.Request(context.Background(), provision.Title{MediaType: provision.Series, TMDBID: 555, Seasons: c.seasons})
+			err := r.Request(context.Background(), provision.Title{MediaType: provision.Series, TMDBID: 90000555, Seasons: c.seasons})
 			if err != nil {
 				t.Fatalf("series request: %v", err)
 			}
@@ -100,10 +100,10 @@ func TestSeerrMovieOmitsSeasons(t *testing.T) {
 	ms := testkit.NewSeerr(t)
 	t.Cleanup(ms.Close)
 	r := NewSeerr(ms.URL, "k")
-	if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 42}); err != nil {
+	if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000042}); err != nil {
 		t.Fatalf("movie request: %v", err)
 	}
-	if got, want := string(ms.LastBody), `{"mediaType":"movie","mediaId":42}`; got != want {
+	if got, want := string(ms.LastBody), `{"mediaType":"movie","mediaId":90000042}`; got != want {
 		t.Errorf("movie body\n got %s\nwant %s", got, want)
 	}
 }
@@ -125,15 +125,15 @@ func TestSeerrNoTMDBID(t *testing.T) {
 func TestSeerrQueueStatus(t *testing.T) {
 	ms := testkit.NewSeerr(t)
 	t.Cleanup(ms.Close)
-	// 82728 downloading, 65733 partly available, 3022 still pending; 999 not in the set at all.
-	ms.Processing = map[int]int{82728: 3, 65733: 4, 3022: 2}
+	// 90082728 downloading, 90065733 partly available, 90003022 still pending; 90000999 not in the set at all.
+	ms.Processing = map[int]int{90082728: 3, 90065733: 4, 90003022: 2}
 	r := NewSeerr(ms.URL, "k")
 
 	titles := []provision.Title{
-		{MediaType: provision.Series, TMDBID: 82728},
-		{MediaType: provision.Series, TMDBID: 65733},
-		{MediaType: provision.Series, TMDBID: 3022},
-		{MediaType: provision.Series, TMDBID: 999},
+		{MediaType: provision.Series, TMDBID: 90082728},
+		{MediaType: provision.Series, TMDBID: 90065733},
+		{MediaType: provision.Series, TMDBID: 90003022},
+		{MediaType: provision.Series, TMDBID: 90000999},
 	}
 	items, err := r.QueueStatus(context.Background(), titles)
 	if err != nil {
@@ -149,10 +149,10 @@ func TestSeerrQueueStatus(t *testing.T) {
 		grabbed bool
 		label   string
 	}{
-		{82728, true, "Downloading"},
-		{65733, true, "Partly available"},
-		{3022, false, ""}, // pending — not grabbed
-		{999, false, ""},  // absent from the processing set — not grabbed
+		{90082728, true, "Downloading"},
+		{90065733, true, "Partly available"},
+		{90003022, false, ""}, // pending — not grabbed
+		{90000999, false, ""}, // absent from the processing set — not grabbed
 	}
 	for _, w := range want {
 		got := byTMDB[w.tmdb]

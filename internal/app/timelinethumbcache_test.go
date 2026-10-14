@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
-// countingTMDB serves one episode still (series 456 S1E6 → /lisa.jpg) and counts EVERY request,
+// countingTMDB serves one episode still (series 90000456 S1E6 → /pip.jpg) and counts EVERY request,
 // which is the number these tests exist to hold down: the guide's cost was outbound calls per
 // request, so an assertion that only looked at the returned URL would pass with no cache at all.
 type countingTMDB struct {
@@ -34,8 +34,8 @@ func newCountingTMDB(t *testing.T) (*countingTMDB, *tmdb.Client) {
 			w.WriteHeader(s)
 			return
 		}
-		if r.URL.Path == "/tv/456/season/1/episode/6" {
-			_, _ = w.Write([]byte(`{"still_path":"/lisa.jpg"}`))
+		if r.URL.Path == "/tv/90000456/season/1/episode/6" {
+			_, _ = w.Write([]byte(`{"still_path":"/pip.jpg"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -91,8 +91,8 @@ func TestTimelineThumbsColdArtworkIsWarmedOutsideTheRequest(t *testing.T) {
 	_, client := newCountingTMDB(t)
 	contentHash := strings.Repeat("d", 64)
 	fetch := &gatedFetch{release: make(chan struct{}), warm: map[string]images.Image{
-		imgBase + "/lisa.jpg": {
-			Hash: contentHash, SourceURL: imgBase + "/lisa.jpg", Role: images.RoleBackdrop,
+		imgBase + "/pip.jpg": {
+			Hash: contentHash, SourceURL: imgBase + "/pip.jpg", Role: images.RoleBackdrop,
 			OriginFetchedAt: time.Unix(1_700_000_000, 0),
 		},
 	}}
@@ -101,7 +101,7 @@ func TestTimelineThumbsColdArtworkIsWarmedOutsideTheRequest(t *testing.T) {
 	done := make(chan struct{})
 	var url, hash string
 	go func() {
-		url, hash = th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6)
+		url, hash = th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6)
 		close(done)
 	}()
 	select {
@@ -119,7 +119,7 @@ func TestTimelineThumbsColdArtworkIsWarmedOutsideTheRequest(t *testing.T) {
 		t.Errorf("FetchNow calls = %d, want the one background warm", fetch.calls.Load())
 	}
 	want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v2"
-	if url, hash := th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6); url != want || hash != contentHash {
+	if url, hash := th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6); url != want || hash != contentHash {
 		t.Errorf("warm ThumbFor = (%q, %q), want (%q, %q)", url, hash, want, contentHash)
 	}
 }
@@ -130,8 +130,8 @@ func TestTimelineThumbsRepeatedRequestsMakeNoRepeatTMDBCalls(t *testing.T) {
 	t.Parallel()
 	tm, client := newCountingTMDB(t)
 	fetch := &gatedFetch{release: make(chan struct{}), warm: map[string]images.Image{
-		imgBase + "/lisa.jpg": {
-			Hash: strings.Repeat("e", 64), SourceURL: imgBase + "/lisa.jpg", Role: images.RoleBackdrop,
+		imgBase + "/pip.jpg": {
+			Hash: strings.Repeat("e", 64), SourceURL: imgBase + "/pip.jpg", Role: images.RoleBackdrop,
 			OriginFetchedAt: time.Unix(1_700_000_000, 0),
 		},
 	}}
@@ -139,8 +139,8 @@ func TestTimelineThumbsRepeatedRequestsMakeNoRepeatTMDBCalls(t *testing.T) {
 	th := newThumbsUnderTest(t, client, fetch, &lockedBuffer{})
 
 	ask := func() {
-		th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6) // has a still
-		th.ThumbFor(t.Context(), "series:tmdb:456", 9, 9) // TMDB 404s
+		th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6) // has a still
+		th.ThumbFor(t.Context(), "series:tmdb:90000456", 9, 9) // TMDB 404s
 	}
 	ask()
 	th.wait()
@@ -169,7 +169,7 @@ func TestTimelineThumbsRecordsFailureClassAndNegativelyCaches(t *testing.T) {
 	clock := time.Unix(1_700_000_000, 0)
 	th.now = func() time.Time { return clock }
 
-	th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6)
+	th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6)
 	th.wait()
 	first := tm.hits.Load()
 	if first == 0 {
@@ -180,7 +180,7 @@ func TestTimelineThumbsRecordsFailureClassAndNegativelyCaches(t *testing.T) {
 	}
 
 	for range 10 {
-		th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6)
+		th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6)
 		th.wait()
 	}
 	if got := tm.hits.Load(); got != first {
@@ -188,7 +188,7 @@ func TestTimelineThumbsRecordsFailureClassAndNegativelyCaches(t *testing.T) {
 	}
 
 	clock = clock.Add(timelineThumbFailureTTL + time.Second)
-	th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6)
+	th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6)
 	th.wait()
 	if got := tm.hits.Load(); got <= first {
 		t.Errorf("TMDB calls after the negative TTL = %d, want a retry (> %d)", got, first)
@@ -201,7 +201,7 @@ func TestTimelineThumbsCacheIsBounded(t *testing.T) {
 	_, client := newCountingTMDB(t)
 	th := newThumbsUnderTest(t, client, nil, &lockedBuffer{})
 	for i := range timelineThumbMaxEntries * 2 {
-		th.store(timelineThumbID{key: "movie:tmdb:1", season: i}, thumbEntry{})
+		th.store(timelineThumbID{key: "movie:tmdb:90000001", season: i}, thumbEntry{})
 	}
 	if n := th.size(); n > timelineThumbMaxEntries {
 		t.Errorf("cache holds %d entries, want ≤ %d", n, timelineThumbMaxEntries)
@@ -217,8 +217,8 @@ func TestTimelineThumbsOutboundCallsPerGuideRequest(t *testing.T) {
 	const programmes, requests = 50, 10
 	tm, client := newCountingTMDB(t)
 	fetch := &gatedFetch{release: make(chan struct{}), warm: map[string]images.Image{
-		imgBase + "/lisa.jpg": {
-			Hash: strings.Repeat("f", 64), SourceURL: imgBase + "/lisa.jpg", Role: images.RoleBackdrop,
+		imgBase + "/pip.jpg": {
+			Hash: strings.Repeat("f", 64), SourceURL: imgBase + "/pip.jpg", Role: images.RoleBackdrop,
 			OriginFetchedAt: time.Unix(1_700_000_000, 0),
 		},
 	}}
@@ -228,7 +228,7 @@ func TestTimelineThumbsOutboundCallsPerGuideRequest(t *testing.T) {
 	// Before: every request resolves every programme inline.
 	for range requests {
 		for e := range programmes {
-			_, _, _ = th.src.resolve(t.Context(), "series:tmdb:456", 1, 6+e%2*100)
+			_, _, _ = th.src.resolve(t.Context(), "series:tmdb:90000456", 1, 6+e%2*100)
 		}
 	}
 	before := tm.hits.Load()
@@ -239,7 +239,7 @@ func TestTimelineThumbsOutboundCallsPerGuideRequest(t *testing.T) {
 	for range requests {
 		start := tm.hits.Load()
 		for e := range programmes {
-			th.ThumbFor(t.Context(), "series:tmdb:456", 1, 6+e%2*100)
+			th.ThumbFor(t.Context(), "series:tmdb:90000456", 1, 6+e%2*100)
 		}
 		th.wait() // count the request's background warms too: they are still calls it caused
 		perRequest = append(perRequest, tm.hits.Load()-start)

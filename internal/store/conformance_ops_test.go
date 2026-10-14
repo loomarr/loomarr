@@ -146,7 +146,7 @@ func testUserCredentialCapabilities(t *testing.T, newStore NewStoreFunc) {
 func testSettings(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	if _, err := s.GetSetting(ctx, "instance_id"); err != ErrNotFound {
+	if _, err := s.GetSetting(ctx, "instance_id"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetSetting(missing) = %v, want ErrNotFound", err)
 	}
 	if err := s.SetSetting(ctx, "instance_id", "abc123"); err != nil {
@@ -307,7 +307,7 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteSetting(ctx, "library.url"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.GetSetting(ctx, "library.url"); err != ErrNotFound {
+	if _, err := s.GetSetting(ctx, "library.url"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("after delete, GetSetting = %v want ErrNotFound", err)
 	}
 }
@@ -536,9 +536,9 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	// Titles across three states: two requested, one available.
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:20", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:21", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:22", provision.Available, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000020", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000021", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000022", provision.Available, time.Time{}))
 
 	titles, err := s.CountTitlesByState(ctx)
 	if err != nil {
@@ -661,7 +661,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 	}{
 		{"oldest — CH 12 reconciled", ActivityInfo, 90 * time.Minute},
 		{"middle — Seerr timed out, retrying", ActivityWarn, 60 * time.Minute},
-		{"newest — Darkwing Duck landed", ActivityInfo, 30 * time.Minute},
+		{"newest — Gadget Goats Go! landed", ActivityInfo, 30 * time.Minute},
 	} {
 		if err := st.RecordActivity(ctx, Activity{
 			At: base.Add(-tc.age).Unix(), Kind: ActivityKindTitle, Level: tc.level,
@@ -851,7 +851,7 @@ func testDiagnostics(t *testing.T, newStore func(t *testing.T) Store) {
 	if gotRun.ExitCode == nil || *gotRun.ExitCode != exitCode || gotRun.Status != diagnostics.ProcessFailed || gotRun.ParentRunID != running.ID {
 		t.Fatalf("process run round trip = %+v", gotRun)
 	}
-	if _, err := st.GetDiagnosticProcessRun(ctx, "missing"); err != ErrNotFound {
+	if _, err := st.GetDiagnosticProcessRun(ctx, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing process run = %v, want ErrNotFound", err)
 	}
 	if foundRun, found, err := st.FindDiagnosticProcessRun(ctx, finished.ID); err != nil || !found || foundRun.ID != finished.ID {

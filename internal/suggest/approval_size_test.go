@@ -15,11 +15,11 @@ import (
 // surface whatever the resolver returns, including no resolver at all.
 func TestResolveApprovalEditDropsSizeFromUnownedAdditions(t *testing.T) {
 	forged := suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 3, Name: "Missing addition", InLibrary: true,
+		MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true,
 		LibraryItemID: "forged", SizeBytes: 9, SizeConfidence: storagegovernor.SizeExact,
 	}
 	owned := suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 2, Name: "Owned addition", InLibrary: true,
+		MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true,
 		LibraryItemID: "library-2", SizeBytes: 4_200_000_000, SizeConfidence: storagegovernor.SizeExact,
 	}
 	passThrough := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{

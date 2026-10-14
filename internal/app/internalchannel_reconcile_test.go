@@ -53,13 +53,13 @@ func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 
 	// Seed after Build so the one-time codec backfill observes the intentionally empty
 	// store. The channel then reaches reconciliation only through the HTTP request below.
-	title := provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999}
+	title := provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999}
 	key, err := title.Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpsertTitle(ctx, provision.Record{
-		Key: key, Title: title, State: provision.Available, LibraryID: "lib-matrix",
+		Key: key, Title: title, State: provision.Available, LibraryID: "lib-marigold",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +97,8 @@ func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 		t.Errorf("status = %q, want live", got.Status)
 	}
 	if len(got.Desired) != 1 || got.Desired[0].Kind != schedule.SlotProgram ||
-		got.Desired[0].LibraryItemID != "lib-matrix" {
-		t.Errorf("desired = %+v, want one persisted Matrix program", got.Desired)
+		got.Desired[0].LibraryItemID != "lib-marigold" {
+		t.Errorf("desired = %+v, want one persisted Marigold program", got.Desired)
 	}
 	if got.TunarrID != "" {
 		t.Errorf("TunarrID = %q, want empty on an internal-only channel", got.TunarrID)

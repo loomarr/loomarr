@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"net/url"
 	"testing"
@@ -61,7 +62,7 @@ func TestSSO_IncompleteConfigIsNotAvailable(t *testing.T) {
 			if svc.Available() {
 				t.Error("Available() = true for an incompletely configured provider")
 			}
-			if _, _, err := svc.Start(context.Background(), ""); err != auth.ErrSSONotConfigured {
+			if _, _, err := svc.Start(context.Background(), ""); !errors.Is(err, auth.ErrSSONotConfigured) {
 				t.Errorf("Start = %v, want ErrSSONotConfigured", err)
 			}
 		})
@@ -79,7 +80,7 @@ func TestSSO_UnknownStateIsRefused(t *testing.T) {
 	svc := auth.NewSSOService(ssoConfig(true), st, mgr, time.Now, slog.New(slog.DiscardHandler))
 
 	_, _, _, _, _, err := svc.Exchange(context.Background(), "never-issued", "some-code")
-	if err != auth.ErrSSOStateMismatch {
+	if !errors.Is(err, auth.ErrSSOStateMismatch) {
 		t.Errorf("Exchange with an unknown state = %v, want ErrSSOStateMismatch", err)
 	}
 }
@@ -163,7 +164,7 @@ func TestSSO_DisabledRowIsRefusedThroughTheRealFlow(t *testing.T) {
 	idp.captureNonce(authURL) // the browser would carry this to the provider and back
 
 	token, _, _, claims, _, err := svc.Exchange(ctx, state, "any-code")
-	if err != auth.ErrInvalidCredentials {
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Errorf("Exchange for a DISABLED row = %v, want ErrInvalidCredentials", err)
 	}
 	if token != "" {
@@ -192,7 +193,7 @@ func TestSSO_VerifiedIdentityWithNoRowIsRefused(t *testing.T) {
 	idp.captureNonce(authURL) // the browser would carry this to the provider and back
 
 	token, _, _, claims, _, err := svc.Exchange(ctx, state, "any-code")
-	if err != auth.ErrInvalidCredentials {
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("Exchange with no allowlist row = %v, want ErrInvalidCredentials", err)
 	}
 	if token != "" {
@@ -284,7 +285,7 @@ func TestSSO_TokenFromAnotherLoginIsRefused(t *testing.T) {
 	}
 
 	token, _, _, _, _, err := svc.Exchange(ctx, stateB, "code-for-a")
-	if err != auth.ErrSSOStateMismatch {
+	if !errors.Is(err, auth.ErrSSOStateMismatch) {
 		t.Errorf("Exchange of A's token into B's callback = %v, want ErrSSOStateMismatch", err)
 	}
 	if token != "" {
@@ -393,7 +394,7 @@ func TestSSO_StateCannotBeReplayed(t *testing.T) {
 	}
 	// Second use of the same state must fail.
 	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
-	if err != auth.ErrSSOStateMismatch {
+	if !errors.Is(err, auth.ErrSSOStateMismatch) {
 		t.Errorf("replayed state = %v, want ErrSSOStateMismatch", err)
 	}
 	if token != "" {
@@ -424,7 +425,7 @@ func TestSSO_PendingLoginExpires(t *testing.T) {
 	now = now.Add(2 * time.Hour)
 
 	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
-	if err != auth.ErrSSOStateMismatch {
+	if !errors.Is(err, auth.ErrSSOStateMismatch) {
 		t.Errorf("stale pending login = %v, want ErrSSOStateMismatch", err)
 	}
 	if token != "" {
@@ -468,7 +469,7 @@ func TestSSO_UserinfoWithAMismatchedSubjectIsIgnored(t *testing.T) {
 	token, _, u, claims, _, err := svc.Exchange(ctx, state, "code")
 	// With the mismatched claims discarded, the only name left is the opaque `sub`, which
 	// matches no row — so the login is REFUSED rather than succeeding as someone else.
-	if err != auth.ErrInvalidCredentials {
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("Exchange = %v, want ErrInvalidCredentials — a mismatched userinfo must not name the identity", err)
 	}
 	if token != "" {

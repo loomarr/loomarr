@@ -38,7 +38,7 @@ type MediaServer struct {
 	GoodUser string
 	GoodPass string
 	// PresentTMDB, if set, is an additional tmdb id the mock reports present
-	// (beyond the pinned 16153) — lets ingest tests flip a title to confirmed.
+	// (beyond the pinned 90016153) — lets ingest tests flip a title to confirmed.
 	PresentTMDB string
 	// ItemRunTimeTicks, if set, is the RunTimeTicks a GET /Items?Ids=<id> lookup
 	// returns (§9 ItemDurationMs). 0 ⇒ an empty item list (no runtime).
@@ -132,6 +132,7 @@ type EpisodeStub struct {
 	OmitEpisode     bool
 	EpisodeEnd      int
 	ProductionYear  int
+	PremiereDate    string // the server's wire form, e.g. "1990-10-25T00:00:00.0000000Z"; "" omits it
 	OfficialRating  string
 	CommunityRating float64
 	Overview        string
@@ -150,7 +151,7 @@ func (ms *MediaServer) stubRuntime(libraryItemID string) int64 {
 }
 
 // stubForProv returns the scripted stub matching an AnyProviderIdEquals value
-// (e.g. "tmdb.100"), so the presence check answers with that stub's full item —
+// (e.g. "tmdb.90000100"), so the presence check answers with that stub's full item —
 // rating and all — exactly as the real library does. This is what lets the
 // in-library backfill carry the rating through discovery (FINDING 6).
 func (ms *MediaServer) stubForProv(prov string) (SearchStub, bool) {
@@ -396,9 +397,9 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":1}`, stub.itemJSON())
 			return
 		}
-		// The pinned present fixture is tmdb.16153 (Phase 0); a test may add one
+		// The pinned present fixture is tmdb.90016153 (Phase 0); a test may add one
 		// more present id via PresentTMDB.
-		present := strings.EqualFold(prov, "tmdb.16153") ||
+		present := strings.EqualFold(prov, "tmdb.90016153") ||
 			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB))
 		if present {
 			_, _ = w.Write(Fixture(t, "emby/lookup_present.json"))
@@ -556,6 +557,9 @@ func (ms *MediaServer) episodeItems() []map[string]any {
 		}
 		if e.EpisodeEnd > 0 {
 			item["IndexNumberEnd"] = e.EpisodeEnd
+		}
+		if e.PremiereDate != "" {
+			item["PremiereDate"] = e.PremiereDate
 		}
 		items = append(items, item)
 	}

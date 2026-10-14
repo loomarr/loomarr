@@ -8,7 +8,7 @@ const meta = {
   args: {
     preview: {
       kind: "local",
-      username: "Ada",
+      username: "Adela",
       role: "member",
       credentialPath: "local_password",
       expiresAt: Date.UTC(2030, 2, 24, 13, 30),
@@ -34,7 +34,7 @@ export const LibraryAdmin: Story = {
   args: {
     preview: {
       kind: "library",
-      displayName: "Grace Hopper",
+      displayName: "Greta Finch",
       role: "admin",
       credentialPath: "library_password",
       expiresAt: Date.UTC(2030, 2, 24, 13, 30),

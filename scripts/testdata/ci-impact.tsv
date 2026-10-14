@@ -42,6 +42,7 @@ demo-titles-demo-seed	cmd/demo-library/seed.go	contracts,go,postgres,image
 demo-titles-catalogue	internal/demolibrary/catalog.go	contracts,go,postgres,image
 demo-titles-web-story	web/apps/web/src/components/ui/caption/caption.stories.tsx	contracts,web,visual,image
 demo-titles-native-story	web/native-stories/identity.stories.tsx	contracts,web,visual,image
+demo-titles-migrated-test	web/apps/web/src/suggest/use-suggestion-run/use-suggestion-run.test.tsx	contracts,web,image
 demo-titles-web-fixture	web/packages/fixtures/src/client-platform/surf/surf.ts	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 demo-titles-e2e-mock	web/apps/web/tests/e2e/mock-backend.ts	contracts,web,e2e,image
 demo-titles-tv-emulator	web/scripts/tv-emulator-fixture-server.mjs	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
@@ -51,6 +52,7 @@ client-tooling	web/turbo.json	clients
 client-browser-proof	web/apps/web/src/client-platform-proof/client-platform-proof.tsx	clients
 apple-client-script	web/scripts/test-apple-client.sh	contracts,apple_mobile,apple_tv
 apple-client-xcconfig	web/scripts/apple-simulator.xcconfig	contracts,apple_mobile,apple_tv
+ios-pods-binaries-guard	web/scripts/check-ios-pods-binaries.sh;web/scripts/check-ios-pods-binaries.test.sh	contracts,apple_mobile,apple_tv
 apple-compilation-cache-cli	scripts/apple-compilation-cache.sh;scripts/apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv,policy
 apple-compilation-cache-verifier	web/scripts/test-apple-client-cache-test.sh;web/scripts/apple-compilation-cache.xcconfig;web/scripts/validate-apple-compilation-cache.sh;web/scripts/validate-apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv,android
@@ -123,6 +125,7 @@ android-tv-compiler-cache	web/scripts/build-shield-play.sh	contracts,android
 android-shared-compiler-cache	web/scripts/android-ccache-env.sh;web/scripts/build-shield-play.test.sh;web/scripts/install-android-ccache.sh;web/scripts/install-android-ccache.test.sh;web/scripts/verify-android-ccache-evidence.sh	contracts,expo_android_mobile,android
 ios-testflight-script	web/scripts/build-ios-testflight.sh;web/scripts/build-ios-testflight.test.sh	contracts
 ios-testflight-workflow	.github/workflows/ios-testflight.yml	policy
+visual-baselines-workflow	.github/workflows/visual-baselines.yml;.github/workflows/visual-baselines-render.yml	policy
 make-root	Makefile	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench
 make-docs-module	mk/docs.mk	docs,policy
 make-eval-module	mk/eval.mk	contracts,go,policy

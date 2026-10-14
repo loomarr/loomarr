@@ -234,7 +234,8 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 		group.Rows = append(group.Rows, IncomingHelpDTO{
 			ID: proposal.ID, Kind: "split_boundary", ClipHash: proposal.ClipHash, Name: clip.Name,
 			Question: "Where should this compilation be split?", ActionLabel: "Review clips",
-			ActionHref: "/filler/splits/" + url.PathEscape(proposal.ID),
+			// from=incoming sends the review's Back to Incoming, where the task was opened.
+			ActionHref: "/filler/splits/" + url.PathEscape(proposal.ID) + "?from=incoming",
 			CreatedAt:  proposal.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}

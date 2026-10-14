@@ -1,10 +1,12 @@
 import type { Range } from "@loomarr/api/models/range";
+import { Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
+import { describePlayOrder } from "@/lib/play-order-copy";
 import {
   datesMode,
   isOverridden,
@@ -365,7 +367,18 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
   { value: "R", label: "R" },
 ];
 
-const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: ChannelPolicyFieldsProps) => {
+const ChannelPolicyFields = ({
+  policy,
+  onChange,
+  className,
+  show,
+  strategy,
+  cycle,
+}: ChannelPolicyFieldsProps) => {
+  // The mode that will actually run, for the consequence line: the policy's own choice, else
+  // what the scheduler resolved for "use channel strategy" (cycle.ordering), else the strategy.
+  const effectiveOrdering = policy.ordering || cycle?.ordering || strategy || "";
+  const orderConsequence = describePlayOrder(effectiveOrdering, cycle);
   // The era is read back from era-shaped dates: the backend stores and returns only `dates`.
   const dates = policy.scope?.dates;
   const era = eraOf(dates);
@@ -399,14 +412,17 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
           id="policy-ordering"
           htmlFor="policy-ordering"
           label="Play order"
-          help="The channel's normal play order. Scheduled rules can temporarily override it."
+          help="The channel's normal play order. In order plays the list start to finish and starts over. Shuffled plays a random mix. Syndication deals the list like a deck of cards, so everything plays once before anything repeats. Scheduled rules can temporarily override it."
           {...source("ordering")}
         >
           <Select
             value={policy.ordering || "inherit"}
             onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
           >
-            <SelectTrigger id="policy-ordering">
+            <SelectTrigger
+              id="policy-ordering"
+              aria-describedby={orderConsequence ? "policy-ordering-consequence" : undefined}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -417,6 +433,11 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               ))}
             </SelectContent>
           </Select>
+          {orderConsequence && (
+            <Text as="p" id="policy-ordering-consequence" textRole="caption" tone="muted">
+              {orderConsequence}
+            </Text>
+          )}
         </PolicyField>
       )}
 

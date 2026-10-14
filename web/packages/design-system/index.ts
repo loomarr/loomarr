@@ -22,10 +22,11 @@ export type {
   ActionVariant,
   ChoiceGroupProps,
   ChoiceOption,
+  FieldHintProps,
   FieldProps,
   ToggleProps,
 } from "./src/interaction";
-export { Action, ChoiceGroup, Field, Toggle } from "./src/interaction";
+export { Action, ChoiceGroup, Field, FieldHint, Toggle } from "./src/interaction";
 export type {
   AdaptiveDirection,
   AdaptiveSplitProps,
@@ -49,6 +50,10 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
+export type { LogoSceneKind, LogoSceneProps } from "./src/logo-scene";
+export { LogoScene } from "./src/logo-scene";
+export type { ModalLayerProps } from "./src/modal-layer";
+export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
@@ -82,12 +87,14 @@ export type {
   HintProps,
   MenuItem,
   MenuListProps,
+  RadioGroupProps,
+  RadioItemProps,
   SelectControlProps,
   SelectOption,
   TabOption,
   TabsProps,
 } from "./src/selection";
-export { Hint, MenuList, SelectControl, Tabs } from "./src/selection";
+export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";

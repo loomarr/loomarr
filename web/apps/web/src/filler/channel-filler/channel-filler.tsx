@@ -1,9 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -29,69 +31,128 @@ type BreakFrequencyFieldProps = {
   onChange: (next: number | undefined) => void;
 };
 
-type BreakDurationFieldProps = {
+type DurationChoiceFieldProps = {
+  // A Go duration string ("2m0s", "4h"); undefined follows the default.
   value: string | undefined;
   defaultValue: string | undefined;
   disabled: boolean;
   onChange: (next: string | undefined) => void;
 };
 
+// Go writes durations with every unit ("4h0m0s", "1h30m0s"); the field also accepts the short
+// forms it sends itself ("2m", "4h"). Returns total minutes.
 const durationMinutes = (value: string | undefined): number | undefined => {
-  const match = value?.trim().match(/^([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)$/);
-  if (!match) return undefined;
-  const amount = Number(match[1]);
-  const unit = match[2];
-  if (unit === "ms") return amount / 60_000;
-  if (unit === "s") return amount / 60;
-  if (unit === "h") return amount * 60;
-  return amount;
+  const text = value?.trim() ?? "";
+  if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
+  const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
+  let minutes = 0;
+  for (const [, amount, unit] of text.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)) {
+    minutes += Number(amount) * (perMinute[unit ?? "m"] ?? 1);
+  }
+  return minutes;
 };
 
-// Break length has inheritance and override, but deliberately no "off" sentinel. Frequency
-// owns whether a channel has breaks, keeping a zero duration from meaning two different things.
-const BreakDurationField = ({ value, defaultValue, disabled, onChange }: BreakDurationFieldProps) => {
+type DurationChoice = {
+  id: string;
+  label: string;
+  customOption: string;
+  customAriaLabel: string;
+  // The unit the custom number is typed in, and its Go duration suffix.
+  unit: { suffix: "m" | "h"; minutes: number; words: string; describe: (n: number) => string };
+  min: number;
+  step: number;
+  // Shown when the default setting cannot be read.
+  fallbackDefault: number;
+  help: string;
+};
+
+const BREAK_LENGTH: DurationChoice = {
+  id: "channel-break-duration",
+  label: "Break length",
+  customOption: "Custom length",
+  customAriaLabel: "Custom break length in minutes",
+  unit: { suffix: "m", minutes: 1, words: "minutes", describe: (n) => `${n} min` },
+  min: 0.5,
+  step: 0.5,
+  fallbackDefault: 2,
+  help: "Loomarr automatically uses enough clips to fill this target. The minimum is 30 seconds.",
+};
+
+const COMMERCIAL_SPACING: DurationChoice = {
+  id: "channel-commercial-spacing",
+  label: "Repeat spacing · same commercial",
+  customOption: "Custom spacing",
+  customAriaLabel: "Custom commercial repeat spacing in hours",
+  unit: { suffix: "h", minutes: 60, words: "hours", describe: (n) => pluralize(n, "hour") },
+  min: 0,
+  step: 0.5,
+  fallbackDefault: 4,
+  help: "Minimum time before a commercial repeats on this channel. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
+};
+
+// One field for a channel duration that follows a default or overrides it. Break length uses it
+// with deliberately no "off" sentinel: frequency owns whether a channel has breaks, keeping a
+// zero duration from meaning two different things. Commercial spacing allows 0 (repeat freely).
+const DurationChoiceField = ({
+  choice,
+  value,
+  defaultValue,
+  disabled,
+  onChange,
+}: DurationChoiceFieldProps & { choice: DurationChoice }) => {
+  const { unit, min } = choice;
+  const inUnit = (duration: string | undefined) => {
+    const minutes = durationMinutes(duration);
+    return minutes === undefined ? undefined : minutes / unit.minutes;
+  };
   const mode = value === undefined ? "default" : "custom";
-  const defaultMinutes = durationMinutes(defaultValue) ?? 5;
-  const [customValue, setCustomValue] = useState(String(durationMinutes(value) ?? defaultMinutes));
+  const defaultAmount = inUnit(defaultValue) ?? choice.fallbackDefault;
+  const [customValue, setCustomValue] = useState(String(inUnit(value) ?? defaultAmount));
 
   useEffect(() => {
     const minutes = durationMinutes(value);
-    if (minutes !== undefined) setCustomValue(String(minutes));
-  }, [value]);
+    if (minutes !== undefined) setCustomValue(String(minutes / unit.minutes));
+  }, [value, unit.minutes]);
 
   const options = [
-    { value: "default", label: `Follow default (${defaultMinutes} min)` },
-    { value: "custom", label: "Custom length" },
+    { value: "default", label: `Follow default (${unit.describe(defaultAmount)})` },
+    { value: "custom", label: choice.customOption },
   ];
 
   const changeMode = (next: string) => {
     if (next === "default") onChange(undefined);
     if (next === "custom") {
       const parsed = Number(customValue);
-      const nextValue = Number.isFinite(parsed) && parsed >= 0.5 ? parsed : defaultMinutes;
+      const nextValue = Number.isFinite(parsed) && parsed >= min ? parsed : defaultAmount;
       setCustomValue(String(nextValue));
-      onChange(`${nextValue}m`);
+      onChange(`${nextValue}${unit.suffix}`);
     }
   };
 
   const changeCustomValue = (next: string) => {
     setCustomValue(next);
     const parsed = Number(next);
-    if (Number.isFinite(parsed) && parsed >= 0.5) onChange(`${parsed}m`);
+    if (next.trim() !== "" && Number.isFinite(parsed) && parsed >= min) onChange(`${parsed}${unit.suffix}`);
   };
 
   const restoreValidValue = () => {
     const parsed = Number(customValue);
-    if (!Number.isFinite(parsed) || parsed < 0.5) {
-      setCustomValue(String(durationMinutes(value) ?? defaultMinutes));
+    if (customValue.trim() === "" || !Number.isFinite(parsed) || parsed < min) {
+      setCustomValue(String(inUnit(value) ?? defaultAmount));
     }
   };
 
   return (
     <div className="grid gap-2 sm:max-w-md">
-      <Label htmlFor="channel-break-duration">Break length</Label>
-      <Select value={mode} items={options} onValueChange={changeMode} disabled={disabled}>
-        <SelectTrigger id="channel-break-duration">
+      <Label htmlFor={choice.id}>{choice.label}</Label>
+      <Select
+        key={options[0]?.label}
+        value={mode}
+        items={options}
+        onValueChange={changeMode}
+        disabled={disabled}
+      >
+        <SelectTrigger id={choice.id}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -105,25 +166,33 @@ const BreakDurationField = ({ value, defaultValue, disabled, onChange }: BreakDu
       {mode === "custom" && (
         <div className="flex items-center gap-2">
           <Input
-            aria-label="Custom break length in minutes"
+            aria-label={choice.customAriaLabel}
             className="w-24"
             type="number"
-            min={0.5}
-            step={0.5}
+            min={min}
+            step={choice.step}
             inputMode="decimal"
             value={customValue}
             disabled={disabled}
             onChange={(event) => changeCustomValue(event.target.value)}
             onBlur={restoreValidValue}
           />
-          <span className="text-muted-foreground text-sm">minutes</span>
+          <span className="text-muted-foreground text-sm">{unit.words}</span>
         </div>
       )}
-      <p className="text-muted-foreground text-sm">
-        Loomarr automatically uses enough clips to fill this target. The minimum is 30 seconds.
-      </p>
+      <p className="text-muted-foreground text-sm">{choice.help}</p>
     </div>
   );
+};
+
+// The one-line summary of what this channel's pool is limited to, from the coverage the backend
+// computed: its location boundary and how many commercials fit. Undefined until coverage loads.
+const poolSummary = (coverage: CoverageDTO | undefined): string | undefined => {
+  if (!coverage) return undefined;
+  const { country, market } = coverage.geography;
+  const fits = `${coverage.total} ${coverage.total === 1 ? "fits" : "fit"} this channel`;
+  if (!country) return fits;
+  return `${market ? `${market}, ${country}` : country} commercials only · ${fits}`;
 };
 
 // The persisted pointer has three meaningful states. This field owns that encoding so the
@@ -221,7 +290,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProps) => {
   const [previewingClip, setPreviewingClip] = useState<PodEntryDTO>();
   const {
     draft,
@@ -230,6 +299,8 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
     setBreaksPerHour,
     breakDuration,
     setBreakDuration,
+    commercialSpacing,
+    setCommercialSpacing,
     preview,
     isPreviewing,
     previewError,
@@ -259,6 +330,9 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
   const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
   const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
   const defaultBreakDuration = settingEntries.find((e) => e.key === "filler.break_duration")?.value;
+  // A whole number of seconds; the field reads durations, so it gets the seconds unit.
+  const defaultSpacingSeconds = settingEntries.find((e) => e.key === "filler.cooldown_seconds")?.value;
+  const defaultCommercialSpacing = defaultSpacingSeconds ? `${defaultSpacingSeconds}s` : undefined;
   const homeCountry = settingEntries.find((e) => e.key === "filler.home_country")?.value;
   const homeMarket = settingEntries.find((e) => e.key === "filler.home_market")?.value;
 
@@ -274,6 +348,18 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
       <div>
+        {/* Reached from a Filler Overview coverage card, this page is a detour out of the Filler
+            area; the header's back arrow goes to the channel list, so the detour gets its own way
+            home (#1817, decided on #1908). The Settings index's "← Manage" link is the pattern. */}
+        {from === "filler" ? (
+          <Link
+            to="/filler"
+            className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Filler overview
+          </Link>
+        ) : null}
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
           This channel picks its commercials and clips automatically. Only change these settings if it needs
@@ -288,7 +374,9 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
       <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
         <div>
           <h3 className="font-semibold text-base">What this channel can play</h3>
-          <p className="text-muted-foreground text-sm">Clips that fit this channel's settings right now.</p>
+          <p className="text-muted-foreground text-sm">
+            {poolSummary(coverage) ?? "Clips that fit this channel's settings right now."}
+          </p>
         </div>
         {coverageQuery.isLoading ? (
           <p className="text-muted-foreground text-sm">Checking saved coverage…</p>
@@ -324,11 +412,20 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
           onChange={setBreaksPerHour}
         />
 
-        <BreakDurationField
+        <DurationChoiceField
+          choice={BREAK_LENGTH}
           value={breakDuration}
           defaultValue={defaultBreakDuration}
           disabled={isApplying}
           onChange={setBreakDuration}
+        />
+
+        <DurationChoiceField
+          choice={COMMERCIAL_SPACING}
+          value={commercialSpacing}
+          defaultValue={defaultCommercialSpacing}
+          disabled={isApplying}
+          onChange={setCommercialSpacing}
         />
 
         {/* scopeEra so the criteria panel can SHOW that a blank era follows the channel's own
