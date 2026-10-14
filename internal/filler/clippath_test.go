@@ -52,7 +52,7 @@ func TestClipPath_RefusesAnythingThatIsNotAHash(t *testing.T) {
 		testHash + "/../../../etc/passwd",
 		strings.ToUpper(testHash), // uppercase is not what ClipID produces
 		testHash[:63],             // one character short
-		"ads/coke.mp4",            // a pre-V38c path is no longer an id
+		"ads/sparkra.mp4",         // a pre-V38c path is no longer an id
 	} {
 		if got, err := filler.ClipPath("/clips", bad, ".mp4"); err == nil {
 			t.Errorf("accepted %q → %s", bad, got)

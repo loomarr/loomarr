@@ -142,7 +142,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	// A grounded product category the seed forest resolves. Era is left absent on purpose: below
 	// the confidence ceiling the gate asks only for tags, and an era this model did not read must
 	// not be invented.
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM MEGA SALE"}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 10 },
@@ -174,7 +174,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 
 func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
-	model := &fixedVision{answer: `{"visibleText":"TOYS R US MEGA SALE","proposedTitle":"Toys R Us commercial","tags":["toys"]}`}
+	model := &fixedVision{answer: `{"visibleText":"TOY KINGDOM MEGA SALE","proposedTitle":"Toy Kingdom commercial","tags":["toys"]}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
@@ -187,7 +187,7 @@ func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
 	if model.calls != 1 {
 		t.Fatalf("provider calls = %d, want the existing single grounding call", model.calls)
 	}
-	if segments[0].Name != "Toys R Us commercial" || segments[0].NameOrigin != SplitNameModelProposed || segments[0].NameEvidence != "TOYS R US MEGA SALE" {
+	if segments[0].Name != "Toy Kingdom commercial" || segments[0].NameOrigin != SplitNameModelProposed || segments[0].NameEvidence != "TOY KINGDOM MEGA SALE" {
 		t.Fatalf("grounded name = %q / %q / %q", segments[0].Name, segments[0].NameOrigin, segments[0].NameEvidence)
 	}
 	if segments[0].Category != "toys" {
@@ -199,7 +199,7 @@ func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
 }
 
 func TestSegmentVisionRejectsUnsupportedNameWithoutDiscardingOtherFields(t *testing.T) {
-	model := &fixedVision{answer: `{"visibleText":"ENJOY THE HOLIDAYS","proposedTitle":"Coca-Cola holiday commercial","tags":["holiday"]}`}
+	model := &fixedVision{answer: `{"visibleText":"ENJOY THE HOLIDAYS","proposedTitle":"Sparkra-Cola holiday commercial","tags":["holiday"]}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
@@ -218,7 +218,7 @@ func TestSegmentVisionRejectsUnsupportedNameWithoutDiscardingOtherFields(t *test
 }
 
 func TestSegmentVisionDropsMalformedTitleWithoutDiscardingOtherFields(t *testing.T) {
-	model := &fixedVision{answer: `{"visibleText":"TOYS R US","proposedTitle":0,"tags":["toys"]}`}
+	model := &fixedVision{answer: `{"visibleText":"TOY KINGDOM","proposedTitle":0,"tags":["toys"]}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
@@ -255,17 +255,17 @@ func TestMergeGroundingCopiesANameOnlyOntoTheExactFallbackSpan(t *testing.T) {
 
 func TestBindSplitNameEvidenceMakesTheServerAuthoritative(t *testing.T) {
 	persisted := []SplitSegment{{
-		StartMs: 0, EndMs: 30_000, Name: "Toys R Us commercial",
-		NameOrigin: SplitNameModelProposed, NameEvidence: "TOYS R US",
+		StartMs: 0, EndMs: 30_000, Name: "Toy Kingdom commercial",
+		NameOrigin: SplitNameModelProposed, NameEvidence: "TOY KINGDOM",
 	}}
 	submitted := []SplitSegment{
-		{StartMs: 0, EndMs: 30_000, Name: "Toys R Us commercial", NameOrigin: SplitNameSourceAuthored, NameEvidence: "forged"},
+		{StartMs: 0, EndMs: 30_000, Name: "Toy Kingdom commercial", NameOrigin: SplitNameSourceAuthored, NameEvidence: "forged"},
 		{StartMs: 0, EndMs: 30_000, Name: "My toy advert", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
-		{StartMs: 1_000, EndMs: 30_000, Name: "Toys R Us commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
+		{StartMs: 1_000, EndMs: 30_000, Name: "Toy Kingdom commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
 	}
 
 	got := bindSplitNameEvidence(submitted, persisted)
-	if got[0].NameOrigin != SplitNameModelProposed || got[0].NameEvidence != "TOYS R US" {
+	if got[0].NameOrigin != SplitNameModelProposed || got[0].NameEvidence != "TOY KINGDOM" {
 		t.Fatalf("unchanged name did not recover persisted evidence: %+v", got[0])
 	}
 	for _, edited := range got[1:] {
@@ -348,7 +348,7 @@ func TestSegmentVisionMissingAttributionCannotEstablishRole(t *testing.T) {
 
 func TestSegmentVisionEscalatesOnlyUnresolvedRolesToBoundedVideo(t *testing.T) {
 	escalator := &scriptedRoleEscalator{}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US","role":"","roleReason":""}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM","role":"","roleReason":""}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, RoleEscalator: escalator,
 		Taxa: seedTaxa{}, Budget: func() int { return 2 },
@@ -409,7 +409,7 @@ func TestSegmentVisionDirectVideoCanResolveAnIndependentFrameProviderFailure(t *
 // budget silently meant "reels this big can never auto-confirm".
 func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US MEGA SALE"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM MEGA SALE"}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment per pass — two passes for two segments
@@ -463,7 +463,7 @@ func TestSegmentVision_APassThatAchievesNothingReportsNoProgress(t *testing.T) {
 // in review rather than confirming a reel only partly looked at.
 func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM"}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment only
@@ -512,7 +512,7 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 // operator who turned vision off did not ask for it back on a different rung.
 func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM"}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 0 },
@@ -531,7 +531,7 @@ func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 
 func TestSegmentVision_ResumesAfterTheCheckedBatch(t *testing.T) {
 	tools := &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}}
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYS R US"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM"}`}
 	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 },

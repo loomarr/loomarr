@@ -129,7 +129,7 @@ func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
 
 func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{
-		raw("c1", "Frosted Flakes 1992", filler.Commercial, 30000, 1992),
+		raw("c1", "Crunchlings 1992", filler.Commercial, 30000, 1992),
 		raw("b1", "Bumper", filler.Bumper, 5000, 0),
 	}}
 	st := newMemStore()
@@ -503,7 +503,7 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 	}
 }
 
-// Two watched folders each holding `ads/coke.mp4` — different adverts that happen to share a
+// Two watched folders each holding `ads/sparkra.mp4` — different adverts that happen to share a
 // relative path. THE case V38c moved identity off the path for (§10).
 //
 // ⚠ This is the test the re-key was missing. `Sync` kept keying on `rc.Path` after identity
@@ -513,9 +513,9 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 // clip that is sitting right there on disk.
 func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{
-		{ID: "hash-coke-1985", Path: "ads/coke.mp4", Name: "Coke 1985",
+		{ID: "hash-sparkra-1985", Path: "ads/sparkra.mp4", Name: "Sparkra 1985",
 			Kind: filler.Commercial, DurationMs: 30000},
-		{ID: "hash-coke-1992", Path: "ads/coke.mp4", Name: "Coke 1992",
+		{ID: "hash-sparkra-1992", Path: "ads/sparkra.mp4", Name: "Sparkra 1992",
 			Kind: filler.Commercial, DurationMs: 15000},
 	}}
 	st := newMemStore()
@@ -532,14 +532,14 @@ func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
 		t.Fatalf("store holds %d clips, want 2", len(st.clips))
 	}
 	// And neither was pruned: `keep` must carry both identities, not one path twice.
-	if _, ok, _ := st.GetClip(context.Background(), "hash-coke-1985"); !ok {
+	if _, ok, _ := st.GetClip(context.Background(), "hash-sparkra-1985"); !ok {
 		t.Error("the 1985 advert was pruned — `keep` is collecting paths, so a live clip was deleted")
 	}
-	if _, ok, _ := st.GetClip(context.Background(), "hash-coke-1992"); !ok {
+	if _, ok, _ := st.GetClip(context.Background(), "hash-sparkra-1992"); !ok {
 		t.Error("the 1992 advert is missing from the catalog")
 	}
 	// The location still travels with each row — identity moved, the path did not disappear.
-	if got := st.clips["hash-coke-1985"].Path; got != "ads/coke.mp4" {
+	if got := st.clips["hash-sparkra-1985"].Path; got != "ads/sparkra.mp4" {
 		t.Errorf("Path = %q, want the on-disk location", got)
 	}
 }
@@ -1146,7 +1146,7 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	for i := range body {
 		body[i] = byte(i % 251)
 	}
-	if err := os.WriteFile(filepath.Join(watchDir, "Frosted Flakes 1993.mp4"), body, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(watchDir, "Crunchlings 1993.mp4"), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1178,7 +1178,7 @@ func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
 	if got.Era != 1993 {
 		t.Errorf("Era = %d, want 1993 — the filename's era signal was lost in the rename", got.Era)
 	}
-	if got.Name != "Frosted Flakes 1993" {
+	if got.Name != "Crunchlings 1993" {
 		t.Errorf("Name = %q, want the original filename, not the hash", got.Name)
 	}
 	// The watch folder drained.
@@ -1225,7 +1225,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	st := newMemStore()
 	st.clips[actual] = filler.StoreClip{Clip: filler.Clip{
 		Hash: actual, Path: oldRel, Name: stale, Kind: filler.Commercial,
-		Brand: "Coca-Cola", Era: 1992, Audience: filler.Family,
+		Brand: "Sparkra-Cola", Era: 1992, Audience: filler.Family,
 	}}
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
 	res, err := sync.Sync(context.Background())
@@ -1237,7 +1237,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	}
 	wantRel := filepath.ToSlash(filler.ClipRelPath(actual, ".mp4"))
 	got := st.clips[actual]
-	if got.Path != wantRel || got.Name != "Coca-Cola — 1992" {
+	if got.Path != wantRel || got.Name != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired row = path %q name %q, want %q and preserved title", got.Path, got.Name, wantRel)
 	}
 	if _, err := os.Stat(oldFull); !os.IsNotExist(err) {
@@ -1248,7 +1248,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 		t.Fatalf("canonical media identity = %q err=%v, want %q", id, err, actual)
 	}
 	tags, ok := filler.ReadSidecarTags(newFull)
-	if !ok || tags.OriginalName != "Coca-Cola — 1992" {
+	if !ok || tags.OriginalName != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
 	}
 }
@@ -1326,7 +1326,7 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 		}
 		return id, rel
 	}
-	const transcript = "real stories of the highway patrol. troopers close in on a desperate gunman"
+	const transcript = "true tales of the canyon patrol. troopers close in on a desperate gunman"
 	untitled, untitledRel := write("untitled", "untitled spot", filler.SidecarTags{OriginalName: "Untitled commercial"})
 	named, namedRel := write("named", "operator named spot", filler.SidecarTags{OriginalName: "Summer Sale Spot"})
 	source := &fakeSource{clips: []filler.RawClip{
@@ -1342,7 +1342,7 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	const want = "“Real stories of the highway patrol”"
+	const want = "“True tales of the canyon patrol”"
 	if got := st.clips[untitled].Name; got != want {
 		t.Fatalf("untitled clip name = %q, want %q", got, want)
 	}

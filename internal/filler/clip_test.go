@@ -50,16 +50,16 @@ func TestClip_Tagged(t *testing.T) {
 // KindFromName records explicit filename conventions without inventing a playable role.
 func TestKindFromName(t *testing.T) {
 	cases := map[string]filler.Kind{
-		"2002 Walgreens Commercial": filler.Commercial,
-		"Saturday Morning Bumper":   filler.Bumper,
-		"WKRP Station Ident":        filler.StationID,
-		"Smokey Bear PSA":           filler.PSA,
-		"Jurassic Park Trailer":     filler.Trailer,
-		"Local break interstitial":  filler.Interstitial,
-		"Beer ad":                   filler.Commercial,
-		"random clip":               filler.Unclassified,
-		"Commercialization report":  filler.Unclassified,
-		"Station tour":              filler.Unclassified,
+		"2002 Pellham Drugs Commercial": filler.Commercial,
+		"Saturday Morning Bumper":       filler.Bumper,
+		"WLMR Station Ident":            filler.StationID,
+		"Bramble Badger PSA":            filler.PSA,
+		"Emberfall Canyon Trailer":      filler.Trailer,
+		"Local break interstitial":      filler.Interstitial,
+		"Beer ad":                       filler.Commercial,
+		"random clip":                   filler.Unclassified,
+		"Commercialization report":      filler.Unclassified,
+		"Station tour":                  filler.Unclassified,
 	}
 	for name, want := range cases {
 		if got := filler.KindFromName(name); got != want {
@@ -69,7 +69,7 @@ func TestKindFromName(t *testing.T) {
 }
 
 func TestEraFromName(t *testing.T) {
-	if got := filler.EraFromName("Total-Cereal 1985.mp4"); got != 1985 {
+	if got := filler.EraFromName("Sunmeal-Cereal 1985.mp4"); got != 1985 {
 		t.Errorf("EraFromName = %d, want 1985", got)
 	}
 	if got := filler.EraFromName("no year here"); got != 0 {

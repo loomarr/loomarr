@@ -80,7 +80,7 @@ func newIntakeDirs(t *testing.T) (watch, clips string) {
 // drains, and the original filename survives into the sidecar.
 func TestTakeIn_FilesUnderTheHashAndKeepsTheOriginalName(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
-	src := writeClip(t, watch, "Frosted Flakes 1993.mp4", 4096, 7)
+	src := writeClip(t, watch, "Crunchlings 1993.mp4", 4096, 7)
 
 	want, err := ClipID(src)
 	if err != nil {
@@ -112,7 +112,7 @@ func TestTakeIn_FilesUnderTheHashAndKeepsTheOriginalName(t *testing.T) {
 	if !ok {
 		t.Fatal("no sidecar written beside the filed clip")
 	}
-	if tags.OriginalName != "Frosted Flakes 1993.mp4" {
+	if tags.OriginalName != "Crunchlings 1993.mp4" {
 		t.Errorf("originalName = %q, want the pre-rename filename — the era signal is lost without it",
 			tags.OriginalName)
 	}
@@ -125,8 +125,8 @@ func TestTakeIn_DeduplicatesByContentNotByName(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
 	// Same bytes, different names, and in different subfolders — the case a path-keyed identity
 	// got wrong, which is why identity moved to the hash in the first place.
-	writeClip(t, watch, "a/coke.mp4", 4096, 3)
-	writeClip(t, watch, "b/coca-cola-1985.mp4", 4096, 3)
+	writeClip(t, watch, "a/sparkra.mp4", 4096, 3)
+	writeClip(t, watch, "b/sparkra-cola-1985.mp4", 4096, 3)
 
 	res, err := TakeIn(watch, clips, false, nil)
 	if err != nil {
@@ -199,7 +199,7 @@ func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
 	src := writeClip(t, watch, "dl.mp4", 2048, 5)
 	if err := os.WriteFile(sidecarPathFor(src),
-		[]byte(`{"title":"Frosted Flakes","description":"They're grrreat","view_count":99}`),
+		[]byte(`{"title":"Crunchlings","description":"They're crunchtastic","view_count":99}`),
 		0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc["title"] != "Frosted Flakes" {
+	if doc["title"] != "Crunchlings" {
 		t.Errorf("title = %v, want the downloader's — the tagger's text signal is gone", doc["title"])
 	}
 	// ⚠ A field we do not model. WriteSidecarTags round-trips through a map precisely so keys it
@@ -339,7 +339,7 @@ func TestMove_MissingSourceFailsForMediaAndPassesForSidecars(t *testing.T) {
 }
 
 // ⚠ **THE case every unit test missed until the real binary was run.** `FILLER_DIR` has always
-// been documented as *the* drop-folder — an operator copies `Frosted Flakes 1993.mp4` straight
+// been documented as *the* drop-folder — an operator copies `Crunchlings 1993.mp4` straight
 // into it, and every release before V38c worked that way.
 //
 // Without draining the clip folder, such a file is scanned, catalogued at its arrival path, and
@@ -355,7 +355,7 @@ func TestTakeIn_FilesAClipDroppedStraightIntoTheClipFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Dropped where the operator has always dropped things: the clip folder itself.
-	writeClip(t, clips, "Frosted Flakes 1993.mp4", 4096, 9)
+	writeClip(t, clips, "Crunchlings 1993.mp4", 4096, 9)
 
 	res, err := TakeIn(watch, clips, false, nil)
 	if err != nil {
@@ -372,7 +372,7 @@ func TestTakeIn_FilesAClipDroppedStraightIntoTheClipFolder(t *testing.T) {
 	}
 	// The era signal survived the rename, exactly as it does for a watch-folder arrival.
 	tags, ok := ReadSidecarTags(filepath.Join(clips, got[0]))
-	if !ok || tags.OriginalName != "Frosted Flakes 1993.mp4" {
+	if !ok || tags.OriginalName != "Crunchlings 1993.mp4" {
 		t.Errorf("originalName = %q, want the pre-rename filename", tags.OriginalName)
 	}
 }

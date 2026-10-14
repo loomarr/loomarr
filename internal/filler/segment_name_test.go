@@ -12,14 +12,14 @@ func TestGroundSegmentNameRequiresExactContentEvidence(t *testing.T) {
 		wantOK                              bool
 	}{
 		{
-			name: "grounded visible product", candidate: "Toys R Us commercial",
-			evidence: "TOYS R US — THE WORLD'S BIGGEST TOY STORE", wantName: "Toys R Us commercial", wantOK: true,
+			name: "grounded visible product", candidate: "Toy Kingdom commercial",
+			evidence: "TOY KINGDOM — THE WORLD'S BIGGEST TOY STORE", wantName: "Toy Kingdom commercial", wantOK: true,
 		},
 		{
-			name: "grounded non-English product", candidate: "Café La Llave advert",
-			evidence: "CAFÉ LA LLAVE — el sabor de nuestra tradición", wantName: "Café La Llave advert", wantOK: true,
+			name: "grounded non-English product", candidate: "Café La Brisa advert",
+			evidence: "CAFÉ LA BRISA — el sabor de nuestra tradición", wantName: "Café La Brisa advert", wantOK: true,
 		},
-		{name: "unsupported identity", candidate: "Coca-Cola holiday commercial", evidence: "ENJOY THE HOLIDAYS"},
+		{name: "unsupported identity", candidate: "Sparkra-Cola holiday commercial", evidence: "ENJOY THE HOLIDAYS"},
 		{name: "generic label", candidate: "commercial", evidence: "COMMERCIAL"},
 		{name: "wordless", candidate: "Acme advert", evidence: ""},
 		{name: "malformed control", candidate: "Acme\u0007 advert", evidence: "ACME"},
@@ -59,7 +59,7 @@ func TestSplitNameProvenanceSurvivesProposalJSON(t *testing.T) {
 }
 
 func TestFallbackSegmentNameIsFriendlyAndBounded(t *testing.T) {
-	if got := fallbackSegmentName("TV_Puls-commercial-break.mp4", 3); got != "Clip 3 from TV Puls commercial break" {
+	if got := fallbackSegmentName("TV_Lato-commercial-break.mp4", 3); got != "Clip 3 from TV Lato commercial break" {
 		t.Fatalf("friendly fallback = %q", got)
 	}
 	for _, source := range []string{
@@ -77,8 +77,8 @@ func TestProposedSegmentNameFallsBackWhenTranscriptDoesNotSupportProduct(t *test
 	tests := []struct {
 		candidate, evidence, wantName, wantOrigin string
 	}{
-		{"Swiffer", "[00:02] Swiffer cleans your floor fast.", "Swiffer", SplitNameModelProposed},
-		{"Coca-Cola", "[00:02] Enjoy the holidays.", "Clip 2 from holiday reel", SplitNameFallback},
+		{"Dustwick", "[00:02] Dustwick cleans your floor fast.", "Dustwick", SplitNameModelProposed},
+		{"Sparkra-Cola", "[00:02] Enjoy the holidays.", "Clip 2 from holiday reel", SplitNameFallback},
 		{"unknown", "[00:02] Music plays.", "Clip 2 from holiday reel", SplitNameFallback},
 	}
 	for _, tt := range tests {

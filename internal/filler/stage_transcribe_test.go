@@ -141,7 +141,7 @@ func TestTranscribeStage_SkipsARichTaggedClip(t *testing.T) {
 	st := newFakeTranscribeStore()
 	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("should never run")}}
 	drop := sidecar("rich.mp4",
-		"Original 1994 broadcast commercial for the Turbo Teen toy line, a full two-sentence description.")
+		"Original 1994 broadcast commercial for the Turbo Tots toy line, a full two-sentence description.")
 	_, applied := runIfApplies(t, newTranscribeStage(st, tools, drop), tagged(transcribeClip("rich.mp4", "")))
 	if applied {
 		t.Error("a richly-described, already-tagged clip applied — it must not pay for Whisper")
@@ -155,7 +155,7 @@ func TestTranscribeStage_SkipsARichTaggedClip(t *testing.T) {
 // carry what the tagger needed, so the spoken text is the next signal to try (the OR arm).
 func TestTranscribeStage_TranscribesARichButUntaggedClip(t *testing.T) {
 	st := newFakeTranscribeStore()
-	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("Kellogg's Frosted Flakes")}}
+	tools := &scriptedTools{segs: []filler.TranscriptSegment{utter("Brightfield's Crunchlings")}}
 	drop := sidecar("untagged.mp4",
 		"A long, genuinely descriptive sentence that clears the thin threshold with room to spare.")
 	_, applied := runIfApplies(t, newTranscribeStage(st, tools, drop), transcribeClip("untagged.mp4", ""))

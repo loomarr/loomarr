@@ -76,15 +76,15 @@ func TestSegmentsFromBoundaries_NoGapsIsOneWholeSegment(t *testing.T) {
 
 func TestSegmentsFromChapters_FreeSplitWithTitles(t *testing.T) {
 	chapters := []Chapter{
-		{StartMs: 0, EndMs: 30000, Title: "McDonald's"},
+		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
 		{StartMs: 30000, EndMs: 30500, Title: "sliver"}, // dropped
-		{StartMs: 30500, EndMs: 61000, Title: "Lego"},
+		{StartMs: 30500, EndMs: 61000, Title: "Brickle"},
 	}
 	segs, _ := segmentsFromChapters(chapters, newSegmentFloor(0))
 	if len(segs) != 2 {
 		t.Fatalf("chapters = %+v, want 2 segments (sliver dropped)", segs)
 	}
-	if segs[0].Name != "McDonald's" || segs[1].Name != "Lego" {
+	if segs[0].Name != "Burger Barn" || segs[1].Name != "Brickle" {
 		t.Errorf("chapter titles not carried: %+v", segs)
 	}
 }
@@ -118,12 +118,12 @@ func TestSegmentsFromBoundaries_DropsUnderTheCatalogFloor(t *testing.T) {
 
 func TestSegmentsFromChapters_DropsUnderTheCatalogFloor(t *testing.T) {
 	chapters := []Chapter{
-		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
+		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 35_000, Title: "station ID"}, // 5s — the band that sank reels
-		{StartMs: 35_000, EndMs: 66_000, Title: "Lego"},
+		{StartMs: 35_000, EndMs: 66_000, Title: "Brickle"},
 	}
 	segs, dropped := segmentsFromChapters(chapters, newSegmentFloor(10*time.Second))
-	if len(segs) != 2 || segs[0].Name != "McDonald's" || segs[1].Name != "Lego" {
+	if len(segs) != 2 || segs[0].Name != "Burger Barn" || segs[1].Name != "Brickle" {
 		t.Fatalf("chapters = %+v, want the 5s station ID dropped and titles kept", segs)
 	}
 	if dropped.Count != 1 || dropped.Ms != 5_000 {
@@ -150,10 +150,10 @@ func TestValidateRescueSpans_TruncationCanPushASpanUnderTheFloor(t *testing.T) {
 				Product string `json:"product"`
 			}{Start: start, End: end, Product: product})
 		}
-		add("00:00", "00:30", "Swiffer")
-		// 12s as proposed — over a 10s floor — but it overlaps Swiffer by 8s, so truncation
+		add("00:00", "00:30", "Dustwick")
+		// 12s as proposed — over a 10s floor — but it overlaps Dustwick by 8s, so truncation
 		// leaves 4s. It must pass the first check and fail the second.
-		add("00:22", "00:34", "Aqua Globes")
+		add("00:22", "00:34", "Drip Orbs")
 		return out
 	}
 
@@ -161,8 +161,8 @@ func TestValidateRescueSpans_TruncationCanPushASpanUnderTheFloor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(spans) != 1 || spans[0].Product != "Swiffer" {
-		t.Fatalf("spans = %+v, want only Swiffer — the truncated 4s remainder is under the floor", spans)
+	if len(spans) != 1 || spans[0].Product != "Dustwick" {
+		t.Fatalf("spans = %+v, want only Dustwick — the truncated 4s remainder is under the floor", spans)
 	}
 
 	// At a 3s floor the truncated 4s remainder survives, which is what proves the drop above was
@@ -224,8 +224,8 @@ func TestValidateRescueSpans_MultiAdvertWithClampsAndOverlaps(t *testing.T) {
 			Product string `json:"product"`
 		}{Start: start, End: end, Product: product})
 	}
-	add("00:00", "00:27", "Swiffer")
-	add("00:26", "00:54", "Aqua Globes")    // overlaps Swiffer by 1s — truncated to 27s
+	add("00:00", "00:27", "Dustwick")
+	add("00:26", "00:54", "Drip Orbs")      // overlaps Dustwick by 1s — truncated to 27s
 	add("02:30", "03:00", "Beyond the end") // clamps into the segment, then < min → dropped
 	add("junk", "00:10", "Unparseable")     // dropped
 	spans, err := validateRescueSpans(out, 149_000, newSegmentFloor(0))
@@ -238,7 +238,7 @@ func TestValidateRescueSpans_MultiAdvertWithClampsAndOverlaps(t *testing.T) {
 	if spans[1].StartMs != 27_000 {
 		t.Errorf("overlap not truncated to the previous end: %+v", spans[1])
 	}
-	if spans[1].Product != "Aqua Globes" {
+	if spans[1].Product != "Drip Orbs" {
 		t.Errorf("product label lost: %+v", spans[1])
 	}
 }
