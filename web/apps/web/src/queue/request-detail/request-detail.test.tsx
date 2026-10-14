@@ -4,7 +4,7 @@ import { ADMIN, approved, MEMBER, renderAt, stub, title } from "@/test/requests-
 
 afterEach(() => vi.restoreAllMocks());
 
-const gaveUp = [{ mediaType: "movie", name: "Gave Up", tmdbId: 7, inLibrary: false }];
+const gaveUp = [{ mediaType: "movie", name: "Gave Up", tmdbId: 90000007, inLibrary: false }];
 
 describe("RequestDetail", () => {
   // An approval that has not produced its titles yet must say so, not drop the section.
@@ -21,14 +21,16 @@ describe("RequestDetail", () => {
     stub({
       me: MEMBER,
       journeys: [
-        approved("j-d", "live", [{ mediaType: "movie", name: "RoboCop 2", tmdbId: 8, inLibrary: false }]),
+        approved("j-d", "live", [
+          { mediaType: "movie", name: "Tin Sheriff 2", tmdbId: 90000008, inLibrary: false },
+        ]),
       ],
-      titles: { available: [title("RoboCop 2", "available", { tmdbId: 8 })] },
+      titles: { available: [title("Tin Sheriff 2", "available", { tmdbId: 90000008 })] },
     });
     renderAt("/requests/j-d");
 
     expect(await screen.findByText("All titles are on the channel.")).toBeInTheDocument();
-    expect(screen.queryByText("RoboCop 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tin Sheriff 2")).not.toBeInTheDocument();
   });
 
   it("keeps an outstanding title listed next to landed ones being hidden", async () => {
@@ -36,24 +38,24 @@ describe("RequestDetail", () => {
       me: MEMBER,
       journeys: [
         approved("j-d", "building", [
-          { mediaType: "movie", name: "RoboCop 2", tmdbId: 8, inLibrary: false },
-          { mediaType: "movie", name: "Still Coming", tmdbId: 9, inLibrary: false },
+          { mediaType: "movie", name: "Tin Sheriff 2", tmdbId: 90000008, inLibrary: false },
+          { mediaType: "movie", name: "Still Coming", tmdbId: 90000009, inLibrary: false },
         ]),
       ],
       titles: {
-        available: [title("RoboCop 2", "available", { tmdbId: 8 })],
-        downloading: [title("Still Coming", "downloading", { tmdbId: 9 })],
+        available: [title("Tin Sheriff 2", "available", { tmdbId: 90000008 })],
+        downloading: [title("Still Coming", "downloading", { tmdbId: 90000009 })],
       },
     });
     renderAt("/requests/j-d");
 
     expect(await screen.findByText("Still Coming")).toBeInTheDocument();
-    expect(screen.queryByText("RoboCop 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tin Sheriff 2")).not.toBeInTheDocument();
   });
 
   it("renders a title repeated in the lineup without a duplicate-key error", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const dup = { mediaType: "movie", name: "Twice", tmdbId: 181812 };
+    const dup = { mediaType: "movie", name: "Twice", tmdbId: 90181812 };
     stub({
       me: MEMBER,
       journeys: [
@@ -84,7 +86,7 @@ describe("RequestDetail", () => {
       me: ADMIN,
       journeys: [approved("j-d", "building", gaveUp)],
       titles: {
-        unavailable: [title("Gave Up", "unavailable", { tmdbId: 7, lastError: "deadline exceeded" })],
+        unavailable: [title("Gave Up", "unavailable", { tmdbId: 90000007, lastError: "deadline exceeded" })],
       },
     });
     renderAt("/requests/j-d");
@@ -97,7 +99,7 @@ describe("RequestDetail", () => {
     stub({
       me: MEMBER,
       journeys: [approved("j-d", "building", gaveUp)],
-      titles: { unavailable: [title("Gave Up", "unavailable", { tmdbId: 7 })] },
+      titles: { unavailable: [title("Gave Up", "unavailable", { tmdbId: 90000007 })] },
     });
     renderAt("/requests/j-d");
 
@@ -132,8 +134,16 @@ describe("RequestDetail while generating", () => {
       journeys: [
         generating({
           stage: "choosing",
-          terms: ["speed"],
-          picks: [{ key: "movie:tmdb:100", mediaType: "movie", name: "Speed", year: 1994, inLibrary: false }],
+          terms: ["quiet engines"],
+          picks: [
+            {
+              key: "movie:tmdb:90000100",
+              mediaType: "movie",
+              name: "Quiet Engines",
+              year: 1994,
+              inLibrary: false,
+            },
+          ],
           target: 8,
           startedAt: "2026-09-25T12:00:00Z",
         }),
@@ -142,7 +152,7 @@ describe("RequestDetail while generating", () => {
     renderAt("/requests/j-g");
 
     expect(await screen.findByText("Choosing titles…")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Titles chosen so far" })).toHaveTextContent("Speed");
+    expect(screen.getByRole("list", { name: "Titles chosen so far" })).toHaveTextContent("Quiet Engines");
     expect(screen.getByText(/1 of about 8 picked · \d+ s/)).toBeInTheDocument();
   });
 

@@ -144,18 +144,18 @@ describe("ChannelCyclePreview", () => {
         activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
         windowMs: 0,
         slots: [
-          { kind: "program", title: "Die Hard", key: "movie:tmdb:562" },
+          { kind: "program", title: "Snowfall at Hollis Tower", key: "movie:tmdb:90000562" },
           { kind: "break" },
-          { kind: "pending", title: "Elf", key: "movie:tmdb:10719" },
-          { kind: "program", title: "Home Alone 2", key: "movie:tmdb:772", part: 2 },
+          { kind: "pending", title: "Tinsel Apprentice", key: "movie:tmdb:90010719" },
+          { kind: "program", title: "Snowbound Twins 2", key: "movie:tmdb:90000772", part: 2 },
         ],
       }),
     );
 
     render(<ChannelCyclePreview channelId="ch-1" />);
 
-    expect(screen.getByText("Die Hard")).toBeInTheDocument();
-    expect(screen.getByText(/elf/i)).toBeInTheDocument();
+    expect(screen.getByText("Snowfall at Hollis Tower")).toBeInTheDocument();
+    expect(screen.getByText(/tinsel apprentice/i)).toBeInTheDocument();
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
     expect(screen.getByText(/commercial break/i)).toBeInTheDocument();
     expect(screen.getByText("Part 2")).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("ChannelCyclePreview", () => {
         at: "2026-07-24T14:00:00Z",
         activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
         windowMs: 24 * 60 * 60 * 1000,
-        slots: [{ kind: "program", title: "Die Hard", key: "movie:tmdb:562" }],
+        slots: [{ kind: "program", title: "Snowfall at Hollis Tower", key: "movie:tmdb:90000562" }],
         trace: {
           version: 1,
           ordering: "shuffle",
@@ -183,8 +183,8 @@ describe("ChannelCyclePreview", () => {
               stage: "placement",
               outcome: "placed",
               reason: ScheduleFactDTOReason.shuffle,
-              key: "movie:tmdb:562",
-              title: "Die Hard",
+              key: "movie:tmdb:90000562",
+              title: "Snowfall at Hollis Tower",
               deckPosition: 4,
               cyclePosition: 0,
             },
@@ -192,8 +192,8 @@ describe("ChannelCyclePreview", () => {
               stage: "availability",
               outcome: "pending",
               reason: ScheduleFactDTOReason.unavailable_pod_fill,
-              key: "movie:tmdb:10719",
-              title: "Elf",
+              key: "movie:tmdb:90010719",
+              title: "Tinsel Apprentice",
             },
           ],
         },
@@ -370,21 +370,21 @@ describe("ChannelCyclePreview — unsaved draft", () => {
         at: "2026-07-24T14:00:00Z",
         activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
         windowMs: 0,
-        slots: [{ kind: "program", title: "Rugrats", key: "series:tmdb:3022" }],
+        slots: [{ kind: "program", title: "Pram Patrol", key: "series:tmdb:90003022" }],
         excluded: {
           overCeiling: 2,
           unrated: 0,
           items: [
             {
-              key: "series:tmdb:2190",
-              title: "South Park",
+              key: "series:tmdb:90002190",
+              title: "Cul-de-Sac Capers",
               reason: ExcludedItemDTOReason.over_ceiling,
             },
             // Two rows sharing ONE key — a per-episode ceiling refusal carries its series key.
             // If the list keyed on `key` alone, React would drop one of these silently.
             {
-              key: "series:tmdb:2122",
-              title: "King of the Hill S04E06",
+              key: "series:tmdb:90002122",
+              title: "Hank & Delphine S04E06",
               reason: ExcludedItemDTOReason.over_ceiling,
             },
           ],
@@ -400,8 +400,8 @@ describe("ChannelCyclePreview — unsaved draft", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /show which titles are not airing/i }));
 
-    expect(screen.getByText("South Park")).toBeInTheDocument();
-    expect(screen.getByText("King of the Hill S04E06")).toBeInTheDocument();
+    expect(screen.getByText("Cul-de-Sac Capers")).toBeInTheDocument();
+    expect(screen.getByText("Hank & Delphine S04E06")).toBeInTheDocument();
     // The REASON is the whole point — a list of names alone answers "what", not "why".
     expect(screen.getAllByText(/rated above this channel's audience ceiling/i)).toHaveLength(2);
   });
@@ -412,7 +412,7 @@ describe("ChannelCyclePreview — unsaved draft", () => {
         at: "2026-07-24T14:00:00Z",
         activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
         windowMs: 0,
-        slots: [{ kind: "program", title: "Rugrats", key: "series:tmdb:3022" }],
+        slots: [{ kind: "program", title: "Pram Patrol", key: "series:tmdb:90003022" }],
         excluded: { overCeiling: 0, unrated: 0, items: [] },
       }),
     );
@@ -434,7 +434,9 @@ describe("ChannelCyclePreview — unsaved draft", () => {
         excluded: {
           overCeiling: 0,
           unrated: 0,
-          items: [{ key: "movie:tmdb:1", title: "Too Old", reason: ExcludedItemDTOReason.out_of_scope }],
+          items: [
+            { key: "movie:tmdb:90000001", title: "Too Old", reason: ExcludedItemDTOReason.out_of_scope },
+          ],
         },
       }),
     );

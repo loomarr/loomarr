@@ -28,7 +28,7 @@ const jsonResponse = <T,>(body: T, status = 200) =>
 // SuggestionsLoaded's play() additionally waits for decode. Three distinct solid-color
 // 1×1 PNGs keep the posters visually distinguishable in the grid.
 // biome-ignore format: data-URI payloads read better unwrapped
-const TNG_POSTER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+const COLD_RELAY_POSTER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 // A suggestion's image record. Since V52 phase 7 the backend adopts each TMDB poster and only
 // offers a suggestion once its bytes exist, so `image` present is the ORDINARY state here — which
 // is why the stories carry one: a grid of `<img>` fallbacks would snapshot the path the picker no
@@ -53,11 +53,11 @@ const suggestionImage = (hash: string) => ({
 });
 
 const POSTERS = [
-  { title: "The Next Generation", url: TNG_POSTER, image: suggestionImage("a".repeat(64)) },
+  { title: "Cold Relay", url: COLD_RELAY_POSTER, image: suggestionImage("a".repeat(64)) },
   // biome-ignore format: data-URI payloads read better unwrapped
-  { title: "Deep Space Nine", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYPj/HwAEAQH/7uJ9WQAAAABJRU5ErkJggg==", image: suggestionImage("b".repeat(64)) },
+  { title: "Ferrocene Station", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYPj/HwAEAQH/7uJ9WQAAAABJRU5ErkJggg==", image: suggestionImage("b".repeat(64)) },
   // biome-ignore format: data-URI payloads read better unwrapped
-  { title: "Voyager", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQzwAEjP8ZAAoDAv8T7QhZAAAAAElFTkSuQmCC", image: suggestionImage("c".repeat(64)) },
+  { title: "Long Drift Home", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQzwAEjP8ZAAoDAv8T7QhZAAAAAElFTkSuQmCC", image: suggestionImage("c".repeat(64)) },
 ];
 
 const withSuggestions =
@@ -109,7 +109,7 @@ const NoIcon: Story = {
 const WithIcon: Story = {
   args: {
     isAdmin: true,
-    logo: TNG_POSTER,
+    logo: COLD_RELAY_POSTER,
   },
   decorators: [withSuggestions()],
 };
@@ -148,7 +148,7 @@ const WithServiceHostedIcon: Story = {
 const ViewerOnly: Story = {
   args: {
     isAdmin: false,
-    logo: TNG_POSTER,
+    logo: COLD_RELAY_POSTER,
   },
   decorators: [withSuggestions()],
 };
@@ -159,7 +159,7 @@ const SuggestionsLoaded: Story = {
   decorators: [withSuggestions()],
   play: async ({ canvas, userEvent, expect, waitFor }) => {
     await userEvent.click(await canvas.findByRole("button", { name: /change icon/i }));
-    await canvas.findByRole("button", { name: /use the next generation's poster/i });
+    await canvas.findByRole("button", { name: /use cold relay's poster/i });
     // The poster button existing ≠ its <img> having painted (the imgs are `loading="lazy"`).
     // Wait until every poster image has actually decoded before the snapshot fires, so the
     // grid is never captured half-blank. With the data: URIs above this resolves on the

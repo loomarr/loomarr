@@ -8,7 +8,7 @@ import { ClipPlayer } from "./clip-player";
 // and the dialog's accessible name.
 
 const clip: ClipDTO = {
-  name: "Frosted Flakes",
+  name: "Crunchlings",
   kind: "commercial",
   durationMs: 30_000,
   era: 1990,
@@ -60,9 +60,9 @@ describe("ClipPlayer", () => {
   it("names the dialog for a screen reader without duplicating the visible title", () => {
     render(<ClipPlayer clip={clip} onClose={() => {}} />);
 
-    expect(screen.getByRole("dialog", { name: "Playing Frosted Flakes" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Playing Crunchlings" })).toBeInTheDocument();
     // The visible one is the player's overlay title — one element, not two.
-    expect(screen.getAllByText("Frosted Flakes")).toHaveLength(1);
+    expect(screen.getAllByText("Crunchlings")).toHaveLength(1);
   });
 
   it("closes through the dialog's own close control", async () => {

@@ -6,8 +6,8 @@ import type { SearchResult } from "./search-command.type";
 
 const results: SearchResult[] = [
   { id: "c1", scope: "channels", name: "90s Action", meta: "#42" },
-  { id: "l1", scope: "library", name: "Heat", meta: "1995", inLibrary: true },
-  { id: "t1", scope: "tmdb", name: "Con Air", meta: "1997" },
+  { id: "l1", scope: "library", name: "The Velvet Cartographer", meta: "1995", inLibrary: true },
+  { id: "t1", scope: "tmdb", name: "Pelican Point Motel", meta: "1997" },
 ];
 
 describe("SearchCommand", () => {
@@ -20,8 +20,8 @@ describe("SearchCommand", () => {
 
   it("selects a result", () => {
     const onSelect = vi.fn();
-    render(<SearchCommand query="heat" onQueryChange={() => {}} results={results} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("Heat"));
+    render(<SearchCommand query="velvet" onQueryChange={() => {}} results={results} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("The Velvet Cartographer"));
     expect(onSelect).toHaveBeenCalledWith(results[1]);
   });
 

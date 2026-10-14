@@ -12,7 +12,7 @@ const Theme = ({ children }: { children: ReactNode }) => (
 const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
-  name: "Sunny D — Dude!",
+  name: "Fizzbolt — Dude!",
   kind: "commercial",
   durationMs: 30000,
   era: 1990,
@@ -30,7 +30,7 @@ const base: ClipDTO = {
 describe("ClipRow", () => {
   it("renders the mock's columns: name, kind, era, audience and a mono duration", () => {
     render(<ClipRow clip={base} />);
-    expect(screen.getByText("Sunny D — Dude!")).toBeInTheDocument();
+    expect(screen.getByText("Fizzbolt — Dude!")).toBeInTheDocument();
     expect(screen.getByText("Commercial")).toBeInTheDocument();
     expect(screen.getByText("1990s")).toBeInTheDocument();
     expect(screen.getByText("Kids")).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("ClipRow", () => {
 
     const onToggleSelect = vi.fn();
     rerender(<ClipRow clip={base} onToggleSelect={onToggleSelect} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: /select sunny d/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select fizzbolt/i }));
     expect(onToggleSelect).toHaveBeenCalledOnce();
   });
 

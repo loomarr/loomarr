@@ -23,12 +23,12 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Admin: Story = { args: { isAdmin: true, userName: "Ada Lovelace" } };
+const Admin: Story = { args: { isAdmin: true, userName: "Adela Hale" } };
 const Member: Story = { args: { isAdmin: false, userName: "Guest Viewer" } };
 
 // The Requests entry carrying its "needs you" count (#1405).
 const RequestsBadge: Story = {
-  args: { isAdmin: true, userName: "Ada Lovelace", badges: { "/requests": 3 } },
+  args: { isAdmin: true, userName: "Adela Hale", badges: { "/requests": 3 } },
 };
 
 export default meta;
