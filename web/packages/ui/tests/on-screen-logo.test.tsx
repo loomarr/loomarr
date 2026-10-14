@@ -60,7 +60,7 @@ const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
     onRemoveImage: vi.fn(),
     onUploadImage: vi.fn(),
     policy: {},
-    previewSrc: (r) => `/preview?look=${r.look ?? ""}&holiday=${r.holiday ?? ""}`,
+    previewSrc: vi.fn((r) => `/preview?look=${r.look ?? ""}&holiday=${r.holiday ?? ""}`),
     ...over,
   };
   const container = doc.createElement("div");
@@ -140,9 +140,11 @@ describe("OnScreenLogoSection", () => {
     expect(text).toContain("From Oct 1 to Oct 31 this channel shows the Halloween logo.");
     expect(text).toContain("Today (10/13) that is the Halloween one.");
     expect(text).toContain("Text with a Halloween pumpkin");
-    expect(radio("Pumpkin").getAttribute("aria-checked")).toBe("true");
-    act(() => radio("Bat").click());
+    expect(radio("Pumpkin for Halloween").getAttribute("aria-checked")).toBe("true");
+    act(() => radio("Bat for Halloween").click());
     expect(props.onChange).toHaveBeenCalledWith({ motifs: { halloween: "bat" } });
+    // Each chip's picture is the backend's picture-only PNG, never a web drawing.
+    expect(props.previewSrc).toHaveBeenCalledWith({ holiday: "halloween", motifOnly: true, picture: "bat" });
     unmount();
   });
 

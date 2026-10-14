@@ -45,14 +45,17 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
       },
     }).data,
   );
-  const previewSrc = (r: OnScreenLogoPreviewRequest) =>
-    `${channelsApi.getPreviewChannelWatermarkUrl(channel.id, {
+  const previewSrc = (r: OnScreenLogoPreviewRequest) => {
+    const url = channelsApi.getPreviewChannelWatermarkUrl(channel.id, {
       color: r.color,
       holiday: (r.holiday ?? undefined) as PreviewChannelWatermarkHoliday | undefined,
       look: r.look,
+      motifOnly: r.motifOnly || undefined,
       picture: r.picture as PreviewChannelWatermarkPicture | undefined,
       size: r.size,
-    })}${r.look || r.color || r.holiday || r.size ? "&" : "?"}v=${version}`;
+    });
+    return `${url}${url.includes("?") ? "&" : "?"}v=${version}`;
+  };
 
   const drawable = useQuery({
     queryKey: ["watermark-drawable", channel.id, version],

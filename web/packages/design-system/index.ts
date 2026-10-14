@@ -50,6 +50,8 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
+export type { LogoSceneKind, LogoSceneProps } from "./src/logo-scene";
+export { LogoScene } from "./src/logo-scene";
 export type { ModalLayerProps } from "./src/modal-layer";
 export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";

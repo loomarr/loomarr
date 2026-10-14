@@ -66,7 +66,7 @@ describe("ChannelOnScreenLogo", () => {
       expect(screen.getByText(/This server can't draw the logo right now/)).toBeInTheDocument(),
     );
 
-    await userEvent.click(screen.getByRole("radio", { name: "Bat" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Bat for Halloween" }));
     expect(savePolicy).toHaveBeenCalledWith({
       ...policy,
       watermark: { look: "tint", motifs: { halloween: "bat" } },

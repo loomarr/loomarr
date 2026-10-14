@@ -10,6 +10,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // The backend draws the real PNG; a story stands in with an inline SVG that names what was asked
 // for (no remote images in stories), so each state's preview is still distinguishable.
 const previewSrc = (r: OnScreenLogoPreviewRequest) => {
+  if (r.motifOnly) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><circle cx="24" cy="24" r="20" fill="${semanticColors.state.info}"/></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
   const label = `SC ${r.look ?? "text"}${r.holiday ? ` + ${r.picture ?? r.holiday}` : ""}`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="64"><rect x="2" y="8" width="236" height="48" rx="6" fill="${semanticColors.state.info}"/><text x="120" y="40" font-family="sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="${semanticColors.content.primary}">${label}</text></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;

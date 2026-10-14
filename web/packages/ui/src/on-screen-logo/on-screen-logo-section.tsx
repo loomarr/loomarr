@@ -4,6 +4,7 @@ import {
   brandChroma,
   Field,
   FieldHint,
+  LogoScene,
   SelectControl,
   Surface,
   Text,
@@ -73,6 +74,8 @@ interface OnScreenLogoPreviewRequest {
   color?: LogoColor;
   holiday: string | null;
   look?: LogoLook;
+  /** Draw only the holiday's picture, as a small square (the picture chips). */
+  motifOnly?: boolean;
   /** The holiday's picture to draw instead of the channel's. */
   picture?: string;
   size?: number;
@@ -245,14 +248,29 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
       <View style={{ ...row, flexWrap: "wrap", justifyContent: "space-between" }}>
         <View style={{ ...row, gap: 6 }}>
           <Text textRole="label">{label}</Text>
-          <Action
+          {/* The mock's .help: an 18 px outlined circle beside the label, so the header stays one row. */}
+          <Pressable
             accessibilityLabel={`About ${label}`}
+            accessibilityRole="button"
+            aria-expanded={showHelp}
+            hitSlop={13}
             onPress={() => setShowHelp((v) => !v)}
-            tone="secondary"
-            variant="ghost"
           >
-            ?
-          </Action>
+            <Surface
+              alignItems="center"
+              backgroundColor="transparent"
+              borderColor="$borderControl"
+              borderRadius="$round"
+              borderWidth={1}
+              height={18}
+              justifyContent="center"
+              width={18}
+            >
+              <Text textRole="guideMeta" tone="muted">
+                ?
+              </Text>
+            </Surface>
+          </Pressable>
         </View>
         {onReset ? (
           <View style={row}>
@@ -318,12 +336,6 @@ const Pick = <V extends string>({ label, onPick, options, value }: PickProps<V>)
   </Surface>
 );
 
-const FRAME_BG: Record<Scene, string> = {
-  bright: "$contentSecondary",
-  dark: "$surfaceCanvas",
-  box: "$surfaceCanvas",
-};
-
 interface FrameProps {
   corner: LogoCorner;
   enabled: boolean;
@@ -334,8 +346,9 @@ interface FrameProps {
   zoom: boolean;
 }
 
-// One 16:9 frame with the aired PNG anchored inside the active picture (decision 0036): the PNG
-// is drawn for a 1080-line frame, so its own height over 1080 is its share of the picture.
+// One 16:9 scene with the aired PNG anchored inside the active picture (decision 0036): the PNG
+// is drawn for a 1080-line frame, so its own height over 1080 is its share of the picture height,
+// and the margin is a share of that height on both axes (the mock's cqh rule), in px.
 const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProps) => {
   const [dims, setDims] = useState<{ height: number; width: number } | null>(null);
   const [v, h] = corner.split("-");
@@ -353,44 +366,40 @@ const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProp
     };
   }, [enabled, src]);
   const share = dims ? (dims.height / 1080) * (zoom ? 2 : 1) : 0;
-  const inset = `${margin * 100}%`;
   return (
-    <Surface
-      aria-label={`${SCENES.find((s) => s.value === scene)?.label} frame with the logo ${enabled ? corner.replace("-", " ") : "off"}`}
-      role="img"
-      aspectRatio={16 / 9}
-      backgroundColor="$surfaceCanvas"
-      borderRadius="$control"
-      overflow="hidden"
-      width="100%"
-      alignItems="center"
+    <LogoScene
+      label={`${SCENES.find((s) => s.value === scene)?.label} frame with the logo ${enabled ? corner.replace("-", " ") : "off"}`}
+      scene={scene}
     >
-      <Surface
-        backgroundColor={FRAME_BG[scene]}
-        borderRadius={0}
-        borderWidth={0}
-        height="100%"
-        position="relative"
-        width={scene === "box" ? "75%" : "100%"}
-      >
-        {enabled ? (
+      {(picture) =>
+        enabled && dims ? (
           <Image
             accessibilityIgnoresInvertColors
             source={{ uri: src }}
             style={{
-              aspectRatio: dims ? dims.width / dims.height : 3,
-              height: `${share * 100}%`,
+              height: share * picture.height,
               opacity,
               position: "absolute",
-              [v === "top" ? "top" : "bottom"]: inset,
-              [h === "left" ? "left" : "right"]: inset,
+              width: (share * picture.height * dims.width) / dims.height,
+              [v === "top" ? "top" : "bottom"]: margin * picture.height,
+              [h === "left" ? "left" : "right"]: margin * picture.height,
             }}
           />
-        ) : null}
-      </Surface>
-    </Surface>
+        ) : null
+      }
+    </LogoScene>
   );
 };
+
+// A holiday picture at chip size: the backend's picture-only PNG (the mock's 24 px icon).
+const MotifIcon = ({ src }: { src: string }) => (
+  <Image
+    accessibilityIgnoresInvertColors
+    resizeMode="contain"
+    source={{ uri: src }}
+    style={{ height: 24, width: 24 }}
+  />
+);
 
 // "2026-10-01" → "Oct 1": a calendar day, so read and printed in UTC.
 const day = (iso: string) =>
@@ -451,7 +460,7 @@ const OnScreenLogoSection = ({
   const src = previewSrc({ color: p.color, holiday: hol, look: p.look, size: Number(size) });
 
   const fields = (
-    <View style={{ flex: phone ? undefined : 1, gap: 24, minWidth: 0 }}>
+    <View style={{ flex: phone ? undefined : 1, gap: 20, minWidth: 0 }}>
       <Row
         field="enabled"
         help="A small logo in the corner of movies and episodes. It never appears on commercials, bumpers or station IDs."
@@ -590,17 +599,24 @@ const OnScreenLogoSection = ({
             {holidayOn ? (
               <>
                 {holidays.map((h) => (
-                  <View
+                  // The mock's .hrow: one bordered row per holiday, its pictures as small chips.
+                  <Surface
+                    alignItems="center"
+                    backgroundColor="transparent"
+                    borderColor="$borderSubtle"
+                    borderRadius="$control"
+                    borderWidth={1}
+                    columnGap={14}
+                    flexDirection="row"
+                    flexWrap="wrap"
                     key={h.id}
-                    style={{
-                      alignItems: "center",
-                      columnGap: 12,
-                      flexDirection: "row",
-                      flexWrap: "wrap",
-                      rowGap: 6,
-                    }}
+                    paddingHorizontal={12}
+                    paddingVertical={10}
+                    rowGap={8}
                   >
-                    <Text textRole="metadata">{h.name}</Text>
+                    <View style={{ minWidth: 108 }}>
+                      <Text textRole="label">{h.name}</Text>
+                    </View>
                     <FieldHint>{`${day(h.start)} – ${day(h.end)}`}</FieldHint>
                     {h.active ? (
                       <Badge shape="square" tone="lock">
@@ -608,42 +624,46 @@ const OnScreenLogoSection = ({
                       </Badge>
                     ) : null}
                     {h.pictures.length > 1 ? (
-                      <Pick
-                        label={`Picture for ${h.name}`}
-                        onPick={(m) => onChange({ motifs: { ...p.motifs, [h.id]: m } })}
-                        options={h.pictures.map((m) => ({
-                          label: m.name,
-                          value: m.id,
-                          visual: (
-                            <Image
-                              accessibilityIgnoresInvertColors
-                              resizeMode="contain"
-                              source={{
-                                uri: previewSrc({
-                                  color: p.color,
-                                  holiday: h.id,
-                                  look: p.look,
-                                  picture: m.id,
-                                }),
-                              }}
-                              style={{ height: 26, width: 80 }}
-                            />
-                          ),
-                        }))}
-                        value={h.picture}
-                      />
+                      <Surface aria-label={`Picture for ${h.name}`} role="radiogroup" {...group} gap={6}>
+                        {h.pictures.map((m) => {
+                          const checked = m.id === h.picture;
+                          return (
+                            <Pressable
+                              accessibilityLabel={`${m.name} for ${h.name}`}
+                              accessibilityRole="radio"
+                              aria-checked={checked}
+                              key={m.id}
+                              onPress={() => onChange({ motifs: { ...p.motifs, [h.id]: m.id } })}
+                            >
+                              <Surface
+                                alignItems="center"
+                                backgroundColor={checked ? "$surfaceFocus" : "transparent"}
+                                borderColor={checked ? "$actionPrimary" : "$borderControl"}
+                                borderRadius="$control"
+                                borderWidth={1}
+                                flexDirection="row"
+                                gap={6}
+                                minHeight={36}
+                                paddingLeft={6}
+                                paddingRight={10}
+                                paddingVertical={4}
+                              >
+                                <MotifIcon
+                                  src={previewSrc({ holiday: h.id, motifOnly: true, picture: m.id })}
+                                />
+                                <Text textRole="cardLabel">{m.name}</Text>
+                              </Surface>
+                            </Pressable>
+                          );
+                        })}
+                      </Surface>
                     ) : (
-                      <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                        <Image
-                          accessibilityIgnoresInvertColors
-                          resizeMode="contain"
-                          source={{ uri: previewSrc({ color: p.color, holiday: h.id, look: p.look }) }}
-                          style={{ height: 26, width: 80 }}
-                        />
+                      <View style={{ ...row, gap: 6 }}>
+                        <MotifIcon src={previewSrc({ holiday: h.id, motifOnly: true })} />
                         <Text textRole="metadata">{h.pictures[0]?.name ?? ""}</Text>
                       </View>
                     )}
-                  </View>
+                  </Surface>
                 ))}
                 <FieldHint>
                   {`Holidays come from this channel’s Programming tab (${everyHoliday ? "it uses every built-in holiday" : `it uses ${holidays.map((h) => h.name).join(", ")}`}). ${holSentence} ${holidays.length > 1 ? "The other holidays follow the dates above; on all other days it shows the everyday logo." : "On every other day it shows the everyday logo."}`}
@@ -771,7 +791,7 @@ const OnScreenLogoSection = ({
     ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label}, ${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
     : "No logo on this channel.";
   const preview = (
-    <View style={{ gap: 12, width: phone ? "100%" : 420 }} testID="logo-preview">
+    <View style={{ flex: phone ? undefined : 1.3, gap: 10, minWidth: 0 }} testID="logo-preview">
       <Pick label="Preview picture" onPick={setScene} options={SCENES} value={scene} />
       <Toggle
         checked={zoom}
@@ -800,7 +820,7 @@ const OnScreenLogoSection = ({
         return (
           <>
             <Frame {...frame} scene={scene} />
-            <View style={row}>
+            <View style={{ ...row, gap: 10 }}>
               {SCENES.filter((s) => s.value !== scene).map((s) => (
                 <View key={s.value} style={{ flex: 1 }}>
                   <Frame {...frame} scene={s.value} />
@@ -857,7 +877,8 @@ const OnScreenLogoSection = ({
           {fields}
         </View>
       ) : (
-        <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 32 }}>
+        // The mock's minmax(0, 1fr) minmax(0, 1.3fr) split with a 28 px gap.
+        <View style={{ alignItems: "flex-start", flexDirection: "row", gap: 28 }}>
           {fields}
           {preview}
         </View>
