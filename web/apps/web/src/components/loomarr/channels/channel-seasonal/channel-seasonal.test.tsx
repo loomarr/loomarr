@@ -283,8 +283,24 @@ describe("ChannelSeasonal", () => {
           onChange={vi.fn()}
           vocabulary={VOCAB}
           holidayEpisodes={[
-            { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true },
-            { holiday: "christmas", episodes: 0, perDay: 0, everyDays: 0, active: false },
+            {
+              holiday: "halloween",
+              episodes: 9,
+              perDay: 3,
+              everyDays: 3,
+              active: true,
+              capped: false,
+              sameAs: [],
+            },
+            {
+              holiday: "christmas",
+              episodes: 0,
+              perDay: 0,
+              everyDays: 0,
+              active: false,
+              capped: false,
+              sameAs: [],
+            },
           ]}
         />,
       );
@@ -295,13 +311,99 @@ describe("ChannelSeasonal", () => {
       ).toBeInTheDocument();
     });
 
+    it("says which strengths play the same when the pool is too small to tell them apart", () => {
+      render(
+        <ChannelSeasonal
+          policy={{}}
+          onChange={vi.fn()}
+          vocabulary={VOCAB}
+          holidayEpisodes={[
+            {
+              holiday: "halloween",
+              episodes: 5,
+              perDay: 2,
+              everyDays: 2,
+              active: true,
+              capped: true,
+              sameAs: ["heavy"],
+            },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText(
+          "Halloween is on now. 5 Halloween episodes found: 2 a day, each back about every 2 days. At this pool size Featured and Heavy play the same.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("names all three when every strength plays the same, in strength order", () => {
+      render(
+        <ChannelSeasonal
+          policy={{ seasonal: { strength: "heavy" } }}
+          onChange={vi.fn()}
+          vocabulary={VOCAB}
+          holidayEpisodes={[
+            {
+              holiday: "halloween",
+              episodes: 1,
+              perDay: 1,
+              everyDays: 2,
+              active: true,
+              capped: true,
+              sameAs: ["light", "featured"],
+            },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText(/At this pool size Light, Featured and Heavy play the same\./),
+      ).toBeInTheDocument();
+    });
+
+    it("says the strength is held back when nothing else plays the same", () => {
+      render(
+        <ChannelSeasonal
+          policy={{ seasonal: { strength: "heavy" } }}
+          onChange={vi.fn()}
+          vocabulary={VOCAB}
+          holidayEpisodes={[
+            {
+              holiday: "halloween",
+              episodes: 9,
+              perDay: 4,
+              everyDays: 2,
+              active: true,
+              capped: true,
+              sameAs: [],
+            },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText(
+          "Halloween is on now. 9 Halloween episodes found: 4 a day, each back about every 2 days. That is fewer than Heavy asks for: there are not enough episodes, or a holiday never takes more than a quarter of the day.",
+        ),
+      ).toBeInTheDocument();
+    });
+
     it("says so when the next holiday has no episodes in the lineup", () => {
       render(
         <ChannelSeasonal
           policy={{}}
           onChange={vi.fn()}
           vocabulary={VOCAB}
-          holidayEpisodes={[{ holiday: "christmas", episodes: 0, perDay: 0, everyDays: 0, active: false }]}
+          holidayEpisodes={[
+            {
+              holiday: "christmas",
+              episodes: 0,
+              perDay: 0,
+              everyDays: 0,
+              active: false,
+              capped: false,
+              sameAs: [],
+            },
+          ]}
         />,
       );
       expect(

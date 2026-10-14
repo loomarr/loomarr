@@ -61,8 +61,16 @@ const HalloweenOn: Story = {
   args: {
     policy: {},
     holidayEpisodes: [
-      { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true },
-      { holiday: "thanksgiving", episodes: 0, perDay: 0, everyDays: 0, active: false },
+      { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true, capped: false, sameAs: [] },
+      {
+        holiday: "thanksgiving",
+        episodes: 0,
+        perDay: 0,
+        everyDays: 0,
+        active: false,
+        capped: false,
+        sameAs: [],
+      },
     ],
   },
 };
@@ -72,9 +80,30 @@ const HalloweenOn: Story = {
 const HeavyAnytime: Story = {
   args: {
     policy: { seasonal: { strength: "heavy", placement: "anytime" } },
-    holidayEpisodes: [{ holiday: "halloween", episodes: 9, perDay: 4, everyDays: 2, active: true }],
+    holidayEpisodes: [
+      { holiday: "halloween", episodes: 9, perDay: 4, everyDays: 2, active: true, capped: true, sameAs: [] },
+    ],
+  },
+};
+
+// Five episodes: Featured and Heavy both rotate two a day, so the line says choosing between them
+// changes nothing (the backend's `sameAs`).
+const SmallPool: Story = {
+  args: {
+    policy: {},
+    holidayEpisodes: [
+      {
+        holiday: "halloween",
+        episodes: 5,
+        perDay: 2,
+        everyDays: 2,
+        active: true,
+        capped: true,
+        sameAs: ["heavy"],
+      },
+    ],
   },
 };
 
 export default meta;
-export { Default, HalloweenOn, HeavyAnytime, HolidayChannel, Off, Picked };
+export { Default, HalloweenOn, HeavyAnytime, HolidayChannel, Off, Picked, SmallPool };

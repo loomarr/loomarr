@@ -18,7 +18,16 @@ const HOLIDAY_PREFIX = "holiday:";
 
 // The backend's count for the holiday that is on now, or the next one (it sends them soonest
 // first). Plain words: what the chosen strength will actually do with this lineup.
-const consequence = (h: HolidayEpisodesDTO, label: string): string => {
+//
+// The backend also says when the chosen strength is held back (`capped`) and which other
+// strengths would play identically (`sameAs`); this only words them, it never counts.
+const STRENGTH_LABEL: Record<string, string> = { light: "Light", featured: "Featured", heavy: "Heavy" };
+const STRENGTH_ORDER = ["light", "featured", "heavy"];
+
+const joinNames = (names: string[]): string =>
+  names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+const consequence = (h: HolidayEpisodesDTO, label: string, strength: string): string => {
   const when = h.active ? `${label} is on now` : `Next up: ${label}`;
   if (h.episodes === 0) return `${when}. No ${label} episodes found in this lineup.`;
   const found = `${h.episodes} ${label} ${h.episodes === 1 ? "episode" : "episodes"} found`;
@@ -26,7 +35,17 @@ const consequence = (h: HolidayEpisodesDTO, label: string): string => {
     h.perDay === 1 && h.everyDays > 1 && h.episodes === 1
       ? `it airs every ${h.everyDays} days`
       : `${h.perDay} a day, each back about every ${h.everyDays} days`;
-  return `${when}. ${found}: ${rate}.`;
+  const line = `${when}. ${found}: ${rate}.`;
+  if (h.sameAs.length > 0) {
+    const same = [strength, ...h.sameAs]
+      .sort((a, b) => STRENGTH_ORDER.indexOf(a) - STRENGTH_ORDER.indexOf(b))
+      .map((s) => STRENGTH_LABEL[s] ?? s);
+    return `${line} At this pool size ${joinNames(same)} play the same.`;
+  }
+  if (h.capped) {
+    return `${line} That is fewer than ${STRENGTH_LABEL[strength] ?? strength} asks for: there are not enough episodes, or a holiday never takes more than a quarter of the day.`;
+  }
+  return line;
 };
 
 // Every enum collapses the `"" = default` sentinel and its explicit twin (`auto`, `featured`,
@@ -91,7 +110,11 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, holidayEpisodes }: Chan
       onOffSeasonChange={(next) => setSeasonal({ offSeason: stored(next) })}
       onStrengthChange={(next) => setSeasonal({ strength: stored(next) })}
       strength={strength}
-      strengthConsequence={upcoming && upcomingLabel ? consequence(upcoming, upcomingLabel) : undefined}
+      strengthConsequence={
+        upcoming && upcomingLabel
+          ? consequence(upcoming, upcomingLabel, strength === "default" ? "featured" : strength)
+          : undefined
+      }
     />
   );
 };
