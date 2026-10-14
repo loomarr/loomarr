@@ -254,6 +254,52 @@ func TestHolidayEpisodes_SummaryIsTheConsequenceLine(t *testing.T) {
 	}
 }
 
+// withHolidayEvidence rewrites the holiday episodes' evidence, so a test can ask what the §6
+// judgment makes of evidence other than an overview naming the holiday.
+func withHolidayEvidence(avail libraryfixture.Availability, title, overview string, airDate time.Time) libraryfixture.Availability {
+	res := avail.Series[simpsonsKey]
+	for i, ep := range res.Programs {
+		if strings.HasPrefix(ep.LibraryItemID, "thoh-") {
+			res.Programs[i].Title, res.Programs[i].Overview, res.Programs[i].AirDate = title, overview, airDate
+		}
+	}
+	avail.Series[simpsonsKey] = res
+	return avail
+}
+
+func TestHolidayEpisodes_MoodTitleAndOctoberAirDateIsFeatured(t *testing.T) {
+	// The real Treehouse shape: a mood word in the title, a late-October air date, and an
+	// overview that never says Halloween.
+	avail := withHolidayEvidence(simpsonsLike(9), "Treehouse of Horror XIV",
+		"Homer takes over as the Grim Reaper.", time.Date(2003, time.October, 27, 0, 0, 0, 0, time.UTC))
+	d := schedule.ComputeDesiredAt(simpsonsChannel(), []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
+		avail, schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.October, 13, 9))
+	if len(d.HolidayEpisodes) == 0 || d.HolidayEpisodes[0].Episodes != 9 {
+		t.Fatalf("summary = %+v, want all 9 Treehouse-style episodes in the Halloween pool", d.HolidayEpisodes)
+	}
+	got := holidayAirings(arrange(t, simpsonsChannel(), avail, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.October, 13, 9)))
+	if len(got) != 3 {
+		t.Fatalf("Featured aired %d Treehouse-style episodes on Oct 13, want 3: %v", len(got), got)
+	}
+	for _, a := range got {
+		if !inEvening(a, nil) {
+			t.Fatalf("Treehouse-style episode %s starts %s, outside the evening band", a.id, a.start.Format(time.Kitchen))
+		}
+	}
+}
+
+func TestHolidayEpisodes_BareGhostInAnOrdinaryOverviewIsNotFeatured(t *testing.T) {
+	avail := withHolidayEvidence(simpsonsLike(9), "Bart's Attic",
+		"Bart is sure a ghost lives in the attic until Lisa finds the raccoon.", time.Time{})
+	d := schedule.ComputeDesiredAt(simpsonsChannel(), []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
+		avail, schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.October, 13, 9))
+	for _, h := range d.HolidayEpisodes {
+		if h.Episodes != 0 {
+			t.Fatalf("summary = %+v, want no holiday episodes: a ghost in an ordinary overview is not Halloween", d.HolidayEpisodes)
+		}
+	}
+}
+
 func TestHolidayRotation(t *testing.T) {
 	for _, tc := range []struct {
 		pool        int
