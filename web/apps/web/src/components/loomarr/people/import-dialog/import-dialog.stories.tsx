@@ -4,10 +4,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ImportDialog } from "./import-dialog";
 
 const mixedCandidates: ImportCandidate[] = [
-  { id: "ada", name: "Ada Lovelace", imported: false, disabled: false, isAdmin: true },
-  { id: "grace", name: "Grace Hopper", imported: false, disabled: false, isAdmin: false },
-  { id: "katherine", name: "Katherine Johnson", imported: false, disabled: true, isAdmin: false },
-  { id: "margaret", name: "Margaret Hamilton", imported: true, disabled: false, isAdmin: true },
+  { id: "adela", name: "Adela Hale", imported: false, disabled: false, isAdmin: true },
+  { id: "greta", name: "Greta Finch", imported: false, disabled: false, isAdmin: false },
+  { id: "kira", name: "Kira Brandt", imported: false, disabled: true, isAdmin: false },
+  { id: "marta", name: "Marta Hollis", imported: true, disabled: false, isAdmin: true },
 ];
 
 const meta = {
@@ -41,7 +41,7 @@ const AllImported: Story = {
 const Busy: Story = { args: { importing: true } };
 const Selection: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByLabelText(/^Ada Lovelace/));
+    await userEvent.click(await canvas.findByLabelText(/^Adela Hale/));
     await canvas.findByText("1 selected · 3 importable shown");
   },
 };

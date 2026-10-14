@@ -5,7 +5,7 @@ import { InvitationJoin } from "./invitation-join";
 
 const localPreview: InvitationPreviewOutputBody = {
   kind: "local",
-  username: "Ada",
+  username: "Adela",
   role: "admin",
   credentialPath: "local_password",
   expiresAt: Date.UTC(2030, 2, 24, 12),
@@ -17,7 +17,7 @@ describe("InvitationJoin", () => {
     render(<InvitationJoin preview={localPreview} onRedeem={redeem} />);
 
     expect(screen.getByRole("heading", { name: "Join Loomarr" })).toBeInTheDocument();
-    expect(screen.getByText("Ada")).toBeInTheDocument();
+    expect(screen.getByText("Adela")).toBeInTheDocument();
     expect(screen.getByText(/administrator access/i)).toBeInTheDocument();
     expect(redeem).not.toHaveBeenCalled();
 
@@ -40,7 +40,7 @@ describe("InvitationJoin", () => {
           ...localPreview,
           kind: "library",
           username: undefined,
-          displayName: "Grace Hopper",
+          displayName: "Greta Finch",
           role: "member",
           credentialPath: "library_password",
         }}
@@ -48,7 +48,7 @@ describe("InvitationJoin", () => {
       />,
     );
 
-    expect(screen.getByText("Grace Hopper")).toBeInTheDocument();
+    expect(screen.getByText("Greta Finch")).toBeInTheDocument();
     expect(screen.getByLabelText("Library username")).toBeInTheDocument();
     expect(screen.getByLabelText("Library password")).toHaveAttribute("autocomplete", "current-password");
     expect(screen.queryByLabelText("Confirm password")).not.toBeInTheDocument();

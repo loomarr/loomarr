@@ -30,8 +30,16 @@ const makeWrapper = () => {
   );
 };
 
-const heat: LineupEntryDTO = { key: "movie:tmdb:949", name: "Heat", year: 1995 };
-const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
+const cartographer: LineupEntryDTO = {
+  key: "movie:tmdb:90000949",
+  name: "The Velvet Cartographer",
+  year: 1995,
+};
+const satelliteChoir: LineupEntryDTO = {
+  key: "movie:tmdb:90009426",
+  name: "The Seventh Satellite Choir",
+  year: 1991,
+};
 
 // GET /v1/search answers the add-a-title palette; PATCH /v1/channels/{id} is the
 // whole-list-replace commit this editor exists to drive. `candidates` is read fresh on every call
@@ -59,14 +67,14 @@ const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
 describe("ChannelLineupEditor", () => {
   it("renders the current lineup with drag handles and remove buttons", () => {
     stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer, satelliteChoir]} />, {
       wrapper: makeWrapper(),
     });
 
-    expect(screen.getByText("Heat")).toBeInTheDocument();
-    expect(screen.getByText("Point Break")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reorder Heat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove Heat" })).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
+    expect(screen.getByText("The Seventh Satellite Choir")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reorder The Velvet Cartographer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove The Velvet Cartographer" })).toBeInTheDocument();
   });
 
   it("keeps a series row's Tab order: grip, seasons, feedback, then remove (#1896)", async () => {
@@ -103,7 +111,7 @@ describe("ChannelLineupEditor", () => {
     const writes: unknown[] = [];
     const household = {
       id: "feedback-household",
-      targetKey: heat.key,
+      targetKey: cartographer.key,
       action: "never",
       scope: "household",
       actorId: "admin",
@@ -136,25 +144,25 @@ describe("ChannelLineupEditor", () => {
       }),
     );
 
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer]} />, {
       wrapper: makeWrapper(),
     });
 
     expect(await screen.findByText(/Inherited household preference: Never/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Keep — Heat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Keep — The Velvet Cartographer" }));
     expect(await screen.findByText(/This Channel: Keep/i)).toBeInTheDocument();
     expect(writes[0]).toEqual({
       scope: "channel",
       scopeId: "ch-1",
-      targetKey: heat.key,
+      targetKey: cartographer.key,
       action: "keep",
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByText(/Inherited household preference: Never/i)).toBeInTheDocument();
-    expect(writes[1]).toEqual({ scope: "channel", scopeId: "ch-1", targetKey: heat.key });
+    expect(writes[1]).toEqual({ scope: "channel", scopeId: "ch-1", targetKey: cartographer.key });
   });
 
   it("shows an empty state when the lineup is empty", () => {
@@ -172,10 +180,10 @@ describe("ChannelLineupEditor", () => {
       <ChannelLineupEditor
         channelId="ch-1"
         lineup={[
-          { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
-          { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "pending" },
-          { key: "movie:tmdb:603", name: "The Matrix", year: 1999, state: "acquiring" },
-          { key: "movie:tmdb:11", name: "Star Wars", year: 1977, state: "unavailable" },
+          { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995, state: "available" },
+          { key: "movie:tmdb:90000106", name: "Marigold Protocol", year: 1987, state: "pending" },
+          { key: "movie:tmdb:90000603", name: "Parallax Garden", year: 1999, state: "acquiring" },
+          { key: "movie:tmdb:90000011", name: "Comet Harbor", year: 1977, state: "unavailable" },
         ]}
       />,
       { wrapper: makeWrapper() },
@@ -185,22 +193,24 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.getByText("Acquiring…")).toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
-    // Heat (available) wears none of them.
+    // The Velvet Cartographer (available) wears none of them.
     expect(screen.queryByText("Available")).not.toBeInTheDocument();
   });
 
   it("add: searching, picking a result appends it and commits the full ordered list", async () => {
     const { patches } = stubEditor({
-      candidates: [{ mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true }],
+      candidates: [
+        { mediaType: "movie", tmdbId: 90000106, name: "Marigold Protocol", year: 1987, inLibrary: true },
+      ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer, satelliteChoir]} />, {
       wrapper: makeWrapper(),
     });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
-    await userEvent.type(screen.getByLabelText("Search"), "predator");
+    await userEvent.type(screen.getByLabelText("Search"), "marigold");
 
-    const result = await screen.findByText("Predator");
+    const result = await screen.findByText("Marigold Protocol");
     await userEvent.click(result);
 
     await waitFor(() => expect(patches).toHaveLength(1));
@@ -208,18 +218,22 @@ describe("ChannelLineupEditor", () => {
     // (here true ⇒ "available"); the backend re-derives the authoritative value on refetch.
     expect(patches[0]).toEqual({
       revision: 1,
-      lineup: [heat, pointBreak, { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "available" }],
+      lineup: [
+        cartographer,
+        satelliteChoir,
+        { key: "movie:tmdb:90000106", name: "Marigold Protocol", year: 1987, state: "available" },
+      ],
     });
   });
 
   it("a not-in-library pick still commits and reads as Pending", async () => {
     const { patches } = stubEditor({
       candidates: [
-        { mediaType: "series", tvdbId: 81189, name: "Breaking Bad", year: 2008, inLibrary: false },
+        { mediaType: "series", tvdbId: 90081189, name: "Copperline Foundry", year: 2008, inLibrary: false },
       ],
     });
     // Like the channel page: the editor's lineup is the channel query's, which the save updates.
-    let saved = channel({ lineup: [heat] });
+    let saved = channel({ lineup: [cartographer] });
     server.use(
       getGetChannelMockHandler(() => saved),
       getUpdateChannelMockHandler(async ({ request }) => {
@@ -236,14 +250,17 @@ describe("ChannelLineupEditor", () => {
     render(<Page />, { wrapper: makeWrapper() });
 
     await userEvent.click(await screen.findByRole("button", { name: /add a title/i }));
-    await userEvent.type(screen.getByLabelText("Search"), "breaking");
-    await userEvent.click(await screen.findByText("Breaking Bad"));
+    await userEvent.type(screen.getByLabelText("Search"), "copperline");
+    await userEvent.click(await screen.findByText("Copperline Foundry"));
 
     await waitFor(() => expect(patches).toHaveLength(1));
     // A candidate the search marked !inLibrary is added with an optimistic state "pending".
     expect(patches[0]).toEqual({
       revision: 1,
-      lineup: [heat, { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008, state: "pending" }],
+      lineup: [
+        cartographer,
+        { key: "series:tvdb:90081189", name: "Copperline Foundry", year: 2008, state: "pending" },
+      ],
     });
     // The add closed the palette and returned to the populated list, where the new
     // pick reads Pending (from its state, which now rides on the entry — durable, not
@@ -253,34 +270,41 @@ describe("ChannelLineupEditor", () => {
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer, satelliteChoir]} />, {
       wrapper: makeWrapper(),
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove Heat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove The Velvet Cartographer" }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ revision: 1, lineup: [pointBreak] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [satelliteChoir] });
   });
 
   it("a candidate whose key is already in the lineup is not offered", async () => {
     stubEditor({
       candidates: [
-        { mediaType: "movie", tmdbId: 949, name: "Heat", year: 1995, inLibrary: true },
-        { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
+        {
+          mediaType: "movie",
+          tmdbId: 90000949,
+          name: "The Velvet Cartographer",
+          year: 1995,
+          inLibrary: true,
+        },
+        { mediaType: "movie", tmdbId: 90000106, name: "Marigold Protocol", year: 1987, inLibrary: true },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
-    await userEvent.type(screen.getByLabelText("Search"), "he");
+    await userEvent.type(screen.getByLabelText("Search"), "ve");
 
-    // Predator (not yet on the lineup) surfaces; Heat (already on it, same tmdbId ⇒
-    // same key) is filtered out of the results entirely rather than merely disabled.
-    await screen.findByText("Predator");
-    expect(screen.queryByText("Heat", { selector: "button *" })).not.toBeInTheDocument();
-    // The lineup's own existing "Heat" row is unaffected (still exactly one).
-    expect(screen.getAllByText("Heat")).toHaveLength(1);
+    // Marigold Protocol (not yet on the lineup) surfaces; The Velvet Cartographer (already on
+    // it, same tmdbId ⇒ same key) is filtered out of the results entirely rather than merely
+    // disabled.
+    await screen.findByText("Marigold Protocol");
+    expect(screen.queryByText("The Velvet Cartographer", { selector: "button *" })).not.toBeInTheDocument();
+    // The lineup's own existing "The Velvet Cartographer" row is unaffected (still exactly one).
+    expect(screen.getAllByText("The Velvet Cartographer")).toHaveLength(1);
   });
 
   // An id-less candidate (no tmdbId/tvdbId) has no provisioning key the backend can
@@ -291,7 +315,7 @@ describe("ChannelLineupEditor", () => {
     const { patches } = stubEditor({
       candidates: [
         { mediaType: "movie", name: "Some Obscure Film", year: 1980, inLibrary: false }, // no tmdbId
-        { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
+        { mediaType: "movie", tmdbId: 90000106, name: "Marigold Protocol", year: 1987, inLibrary: true },
       ],
     });
     render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
@@ -299,8 +323,8 @@ describe("ChannelLineupEditor", () => {
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "film");
 
-    // The id-bearing Predator is offered; the id-less film is not.
-    await screen.findByText("Predator");
+    // The id-bearing Marigold Protocol is offered; the id-less film is not.
+    await screen.findByText("Marigold Protocol");
     expect(screen.queryByText("Some Obscure Film")).not.toBeInTheDocument();
     // And nothing is committed for the unaddable one.
     expect(patches).toHaveLength(0);
@@ -308,7 +332,7 @@ describe("ChannelLineupEditor", () => {
 
   it("cancelling the add palette closes it without committing", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[cartographer]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     expect(screen.getByLabelText("Search")).toBeInTheDocument();

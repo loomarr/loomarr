@@ -7,9 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ImportDialog } from "./import-dialog";
 
 const candidates: ImportCandidate[] = [
-  { id: "ada", name: "Ada Lovelace", imported: false, disabled: false, isAdmin: true },
-  { id: "grace", name: "Grace Hopper", imported: false, disabled: true, isAdmin: false },
-  { id: "margaret", name: "Margaret Hamilton", imported: true, disabled: false, isAdmin: false },
+  { id: "adela", name: "Adela Hale", imported: false, disabled: false, isAdmin: true },
+  { id: "greta", name: "Greta Finch", imported: false, disabled: true, isAdmin: false },
+  { id: "marta", name: "Marta Hollis", imported: true, disabled: false, isAdmin: false },
 ];
 
 const renderDialog = (props: Partial<ComponentProps<typeof ImportDialog>> = {}) => {
@@ -36,25 +36,25 @@ describe("ImportDialog", () => {
     expect(within(dialog).getByText("Disabled on server")).toBeInTheDocument();
     expect(within(dialog).getByText("Server admin")).toBeInTheDocument();
     expect(within(dialog).getByText("Initial Loomarr role: Admin")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/^Margaret Hamilton/)).toBeDisabled();
+    expect(within(dialog).getByLabelText(/^Marta Hollis/)).toBeDisabled();
   });
 
   it("selects only visible importable results and posts only explicit ids", async () => {
     const { onImport } = renderDialog();
-    await userEvent.click(screen.getByLabelText(/^Ada Lovelace/));
-    await userEvent.type(screen.getByLabelText("Search accounts"), "Grace");
+    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
+    await userEvent.type(screen.getByLabelText("Search accounts"), "Greta");
     await userEvent.click(screen.getByRole("button", { name: "Select visible" }));
     expect(screen.getByText("2 selected · 1 importable shown")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Import 2 accounts" }));
-    expect(onImport).toHaveBeenCalledWith(["ada", "grace"]);
+    expect(onImport).toHaveBeenCalledWith(["adela", "greta"]);
     await waitFor(() => expect(screen.getByText("0 selected · 1 importable shown")).toBeInTheDocument());
   });
 
   it("clears only visible selected results", async () => {
     renderDialog();
-    await userEvent.click(screen.getByLabelText(/^Ada Lovelace/));
-    await userEvent.click(screen.getByLabelText(/^Grace Hopper/));
-    await userEvent.type(screen.getByLabelText("Search accounts"), "Grace");
+    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
+    await userEvent.click(screen.getByLabelText(/^Greta Finch/));
+    await userEvent.type(screen.getByLabelText("Search accounts"), "Greta");
     await userEvent.click(screen.getByRole("button", { name: "Clear visible" }));
     expect(screen.getByText("1 selected · 1 importable shown")).toBeInTheDocument();
   });
@@ -64,8 +64,8 @@ describe("ImportDialog", () => {
     renderDialog();
     await user.click(screen.getByRole("combobox", { name: "Show" }));
     await user.click(await screen.findByRole("option", { name: "Already imported" }));
-    expect(screen.getByText("Margaret Hamilton")).toBeInTheDocument();
-    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.getByText("Marta Hollis")).toBeInTheDocument();
+    expect(screen.queryByText("Adela Hale")).not.toBeInTheDocument();
     expect(screen.getByText("0 selected · 0 importable shown")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select visible" })).toBeDisabled();
   });
@@ -73,7 +73,7 @@ describe("ImportDialog", () => {
   it("retains selection when import fails", async () => {
     const onImport = vi.fn().mockRejectedValue(new Error("provider unavailable"));
     renderDialog({ onImport });
-    await userEvent.click(screen.getByLabelText(/^Ada Lovelace/));
+    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
     await userEvent.click(screen.getByRole("button", { name: "Import 1 account" }));
     await waitFor(() => expect(onImport).toHaveBeenCalledOnce());
     expect(screen.getByRole("button", { name: "Import 1 account" })).toBeEnabled();
@@ -89,7 +89,7 @@ describe("ImportDialog", () => {
       onRetry: vi.fn(),
     });
     expect(screen.getByRole("alert")).toHaveTextContent("Media server unavailable");
-    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.queryByText("Adela Hale")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 

@@ -5,7 +5,7 @@ import { ChannelIdent, monogramOf } from "./channel-ident";
 describe("monogramOf", () => {
   it("takes the initials of the first two significant words", () => {
     expect(monogramOf("1980s Action Heroes")).toBe("AH");
-    expect(monogramOf("Springfield Classics")).toBe("SC");
+    expect(monogramOf("Saturday Cartoons")).toBe("SC");
   });
 
   // A leading number reads badly as an initial: "90s Action" is "AC", not "9A".
@@ -27,15 +27,15 @@ describe("monogramOf", () => {
 
 describe("ChannelIdent", () => {
   it("renders a monogram when the channel has no logo", () => {
-    // First two words, not first-and-last: "Star Trek Classics" → ST.
-    render(<ChannelIdent name="Star Trek Classics" number={2} />);
-    expect(screen.getByText("ST")).toBeInTheDocument();
+    // First two words, not first-and-last: "Space Relay Classics" → SR.
+    render(<ChannelIdent name="Space Relay Classics" number={2} />);
+    expect(screen.getByText("SR")).toBeInTheDocument();
   });
 
   it("renders the logo instead when one exists", () => {
-    render(<ChannelIdent name="Star Trek Classics" number={2} logo="/icon.png" />);
-    expect(screen.getByRole("img", { name: /Star Trek Classics logo/ })).toBeInTheDocument();
-    expect(screen.queryByText("ST")).not.toBeInTheDocument();
+    render(<ChannelIdent name="Space Relay Classics" number={2} logo="/icon.png" />);
+    expect(screen.getByRole("img", { name: /Space Relay Classics logo/ })).toBeInTheDocument();
+    expect(screen.queryByText("SR")).not.toBeInTheDocument();
   });
 
   // Colour keys on the NUMBER, so renaming a channel does not change how the rail looks.

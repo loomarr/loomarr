@@ -43,7 +43,7 @@ const RowWithItsOwnControls: Story = {
 const SeveralOpenAtOnce: Story = {
   render: () => (
     <div className="flex flex-col gap-2">
-      {["Coca-Cola 1985", "Pepsi 1984", "Fanta 1991"].map((name) => (
+      {["Fizzbolt 1985", "Gloopers 1984", "Crunchlings 1991"].map((name) => (
         <Disclosure key={name} defaultOpen className="rounded-lg border border-border">
           <div className="flex items-center gap-3 px-4 py-3">
             <Disclosure.Trigger label={`Show what happened to ${name}`} />

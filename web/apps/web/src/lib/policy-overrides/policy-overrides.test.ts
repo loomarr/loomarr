@@ -15,7 +15,7 @@ import {
 const everything: ChannelPolicy = {
   ordering: "sequential",
   audience: { ceiling: "TV-PG", unrated: "exclude" },
-  scope: { dates: eraDates({ from: 1990, to: 1999 }), runtimeMax: 5400, series: ["series:tmdb:1"] },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }), runtimeMax: 5400, series: ["series:tmdb:90000001"] },
   separation: { movieNoRepeat: "168h", episodeNoRepeat: "24h", seriesMinGap: "2h", blockMax: 2 },
   seasonal: { mode: "exclusive", holidays: ["christmas"] },
   autoCurate: { minScorePct: 70, maxTitles: 5 },
@@ -73,7 +73,7 @@ describe("resetField", () => {
   it("drops the dates key but keeps the rest of the scope", () => {
     const scope = resetField(everything, "dates").scope;
     expect(scope).not.toHaveProperty("dates");
-    expect(scope).toEqual({ runtimeMax: 5400, series: ["series:tmdb:1"] });
+    expect(scope).toEqual({ runtimeMax: 5400, series: ["series:tmdb:90000001"] });
   });
 
   it("removes the auto-curate opt-in and its thresholds", () => {

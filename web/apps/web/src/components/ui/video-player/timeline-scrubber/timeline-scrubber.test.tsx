@@ -10,7 +10,7 @@ const airings: GuideAiring[] = [
   {
     kind: "program",
     scheduleBlockId: "block_episode_a",
-    series: "The Simpsons",
+    series: "Kettle Kids",
     title: "Ep A",
     season: 1,
     episode: 1,
@@ -27,7 +27,7 @@ const airings: GuideAiring[] = [
   {
     kind: "program",
     scheduleBlockId: "block_episode_b",
-    series: "The Simpsons",
+    series: "Kettle Kids",
     title: "Ep B",
     season: 1,
     episode: 2,
@@ -80,7 +80,7 @@ describe("TimelineScrubber", () => {
     const movie: GuideAiring = {
       kind: "program",
       scheduleBlockId: "block_movie",
-      title: "Indiana Jones and the Temple of Doom",
+      title: "Atlas Finch and the Lantern of Ash",
       startMs: NOW - min(60),
       stopMs: NOW + min(60),
       thumbUrl: "/movie.jpg",
