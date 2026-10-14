@@ -73,5 +73,9 @@ const DETERMINISM = {
 
 const DESKTOP = { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } };
 const MOBILE = { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } };
+// A touch phone (#1785): MOBILE's size with a coarse pointer and the mobile viewport, so a page
+// renders as a phone shows it (no hover, `pointer: coarse`), not as a narrow desktop window. Same
+// Chromium and scale factor as the others, so the shots stay comparable.
+const PHONE = { ...MOBILE, isMobile: true, hasTouch: true };
 
-export { DESKTOP, DETERMINISM, E2E_WORKERS, MOBILE, VISUAL_WORKERS };
+export { DESKTOP, DETERMINISM, E2E_WORKERS, MOBILE, PHONE, VISUAL_WORKERS };

@@ -1,5 +1,30 @@
+import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
+import { requestFixtures } from "@loomarr/fixtures";
 import type { Page, Route } from "@playwright/test";
 import { outlook } from "../../src/test/fixtures/outlook";
+
+// Invented channel ideas for the built requests (#1785): the fixture's one live journey, renamed.
+const LIVE_REQUEST_IDEAS = [
+  "Lighthouse keepers and their quiet weeks",
+  "Kitchen disasters from a tiny flat",
+  "Robots learning to garden",
+  "Long trains through snowy valleys",
+  "Detectives who solve things by knitting",
+  "Weekend cartoons about inventors",
+  "Harbour towns in the off season",
+  "Space mechanics on the night shift",
+];
+
+const requestJourneys = (liveRequests: number): ProposalJourneyDTO[] => {
+  const { journeys } = requestFixtures;
+  const built = Array.from({ length: liveRequests }, (_, i) => ({
+    ...journeys.live,
+    jobId: `job-live-${i + 1}`,
+    intent: { description: LIVE_REQUEST_IDEAS[i % LIVE_REQUEST_IDEAS.length] ?? "A built channel" },
+    channel: { id: `channel-built-${i + 1}`, status: "live" as const },
+  }));
+  return [...Object.values(journeys), ...built];
+};
 
 // A stateful stand-in for /v1, installed with Playwright route interception. It is
 // deliberately NOT a second API implementation: it answers only what the wizard calls,
@@ -47,6 +72,11 @@ interface MockOptions {
   // window, and the viewer's lists (the first two starred, the third recent), so the Guide lays
   // out rows instead of Dead air.
   guideChannels?: number;
+  // Serve the invented request fixtures, one journey per milestone, and `liveRequests` more
+  // channels already built, so every Requests tab has rows. With the default 6 the Done list is
+  // taller than a 320 × 640 phone's panel: the length that once clipped its last rows (#1785).
+  requests?: boolean;
+  liveRequests?: number;
 }
 
 interface MockBackend {
@@ -275,6 +305,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         number: (previousRevision?.number ?? 0) + 1,
       };
       return json(route, { jobId });
+    }
+    if (opts.requests && path === "/v1/proposal-jobs" && method === "GET") {
+      return json(route, { journeys: requestJourneys(opts.liveRequests ?? 6) });
     }
     if (path.startsWith("/v1/proposal-jobs/") && method === "GET") {
       const jobId = path.split("/").at(-1) ?? "";

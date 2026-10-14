@@ -88,6 +88,7 @@ const withReadiness =
 const meta = {
   title: "Filler/Overview",
   component: FillerOverview,
+  tags: ["route"],
   decorators: [widthFrame(960), withRouter("/filler")],
 } satisfies Meta<typeof FillerOverview>;
 

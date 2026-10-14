@@ -53,8 +53,11 @@ const analyzeWhenFree = async (page: Page) => {
   }
 };
 
+// A story whose meta carries `tags: ["route"]` renders a whole page or shell; the phone project
+// shoots only those (playwright.config.ts).
 for (const story of stories) {
-  test(`${story.title} — ${story.name}`, async ({ page }) => {
+  const tag = story.tags?.includes("route") ? ["@route"] : [];
+  test(`${story.title} — ${story.name}`, { tag }, async ({ page }) => {
     await page.goto(`/iframe.html?id=${story.id}&viewMode=story`);
     // Wait for the story to actually render content (not just the root to attach), then
     // for self-hosted Geist to finish loading — otherwise a screenshot can race a

@@ -85,6 +85,7 @@ const withSettings: Decorator = (Story) => {
 const meta = {
   title: "Filler/Settings",
   component: FillerSettings,
+  tags: ["route"],
   decorators: [widthFrame(760), withSettings],
 } satisfies Meta<typeof FillerSettings>;
 type Story = StoryObj<typeof meta>;

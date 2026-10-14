@@ -139,6 +139,7 @@ const withLibrary =
 const meta = {
   title: "Filler/Library",
   component: FillerPage,
+  tags: ["route"],
   args: { tab: "library" },
   decorators: [withRouter("/filler/library")],
 } satisfies Meta<typeof FillerPage>;
