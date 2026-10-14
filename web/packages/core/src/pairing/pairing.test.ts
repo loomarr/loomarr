@@ -101,11 +101,67 @@ describe("pairing contract", () => {
     expect(store.clear).toHaveBeenCalledOnce();
     expect(session.snapshot()).toEqual({ status: "needs-server" });
   });
-  it("accepts only origin-like http addresses", () => {
-    expect(normalizeServerUrl(" https://loomarr.media/// ")).toBe("https://loomarr.media");
-    expect(normalizeServerUrl("https://user:secret@loomarr.media")).toBeUndefined();
-    expect(normalizeServerUrl("file:///tmp/loomarr")).toBeUndefined();
-    expect(normalizeServerUrl("loomarr.media")).toBeUndefined();
+  it.each([
+    [" https://loomarr.media/// ", "https://loomarr.media"],
+    ["http://loomarr.local:8080", "http://loomarr.local:8080"],
+    ["localhost:18034", "http://localhost:18034"],
+    ["loomarr.local:8080", "http://loomarr.local:8080"],
+    ["192.168.0.4:8080", "http://192.168.0.4:8080"],
+    ["loomarr.media", "http://loomarr.media"],
+    ["  localhost:18034/  ", "http://localhost:18034"],
+    ["[::1]:8080", "http://[::1]:8080"],
+    ["HTTPS://Loomarr.Media", "https://loomarr.media"],
+    ["", undefined],
+    ["   ", undefined],
+    ["https://user:secret@loomarr.media", undefined],
+    ["user:secret@loomarr.media", undefined],
+    ["file:///tmp/loomarr", undefined],
+    ["ftp://loomarr.media", undefined],
+    ["javascript:alert(1)", undefined],
+    ["localhost:abc", undefined],
+    ["localhost:99999", undefined],
+    ["not an address", undefined],
+    ["localhost:8080?x=1", undefined],
+    ["localhost:8080#frag", undefined],
+  ])("normalizes %j to %j", (input, expected) => {
+    expect(normalizeServerUrl(input)).toBe(expected);
+  });
+  it.each(["not an address", "ftp://loomarr.media", "localhost:99999"])(
+    "reports %j as an inline address error, not a network failure",
+    async (typed) => {
+      const createTransport = vi.fn();
+      const session = new PairingSession({
+        createTransport,
+        deviceName: "Living room",
+        store: memoryStore(),
+      });
+      await session.pair(typed);
+      expect(session.snapshot()).toMatchObject({
+        input: typed,
+        kind: "invalid-address",
+        retryable: false,
+        status: "failed",
+      });
+      expect(createTransport).not.toHaveBeenCalled();
+    },
+  );
+  it("pairs against a scheme-less address by inferring http", async () => {
+    const createTransport = vi.fn(
+      (): PairingTransport => ({
+        poll: vi.fn(),
+        start: vi.fn(async () => {
+          throw new Error("unreachable");
+        }),
+      }),
+    );
+    const session = new PairingSession({ createTransport, deviceName: "Living room", store: memoryStore() });
+    await session.pair("localhost:18034");
+    expect(createTransport).toHaveBeenCalledWith("http://localhost:18034");
+    expect(session.snapshot()).toMatchObject({
+      retryable: true,
+      serverUrl: "http://localhost:18034",
+      status: "failed",
+    });
   });
   it("uses the server clock for the countdown and fails to the bounded TTL", () => {
     expect(pairingLifetimeSeconds("2026-08-24T12:10:00Z", "Sun, 24 Aug 2026 12:00:00 GMT")).toBe(600);
