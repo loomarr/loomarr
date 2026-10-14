@@ -207,14 +207,14 @@ func TestOpenAPISpec(t *testing.T) {
 func TestEnqueueTitleAdmin(t *testing.T) {
 	harness := newAPIHarness(t)
 	resp := harness.Do(http.MethodPost, "/v1/titles", adminToken,
-		`{"mediaType":"movie","tmdbId":1111867,"name":"In Flames"}`)
+		`{"mediaType":"movie","tmdbId":91111867,"name":"Ashgrove Anomaly"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("enqueue → %d, want 200", resp.StatusCode)
 	}
 	var body struct{ Key, State string }
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if body.Key != "movie:tmdb:1111867" || body.State != "wanted" {
-		t.Errorf("enqueue body = %+v, want key movie:tmdb:1111867 state wanted", body)
+	if body.Key != "movie:tmdb:91111867" || body.State != "wanted" {
+		t.Errorf("enqueue body = %+v, want key movie:tmdb:91111867 state wanted", body)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestEnqueueTitleAdmin(t *testing.T) {
 func TestEnqueueIdempotent(t *testing.T) {
 	harness := newAPIHarness(t)
 	for i := 0; i < 2; i++ {
-		resp := harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":5}`)
+		resp := harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":90000005}`)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("enqueue %d → %d", i, resp.StatusCode)
 		}
@@ -239,7 +239,7 @@ func TestEnqueueIdempotent(t *testing.T) {
 func TestTitlesMutationRequiresAdmin(t *testing.T) {
 	harness := newAPIHarness(t)
 	for _, tok := range []string{"", "wrong"} {
-		resp := harness.Do(http.MethodPost, "/v1/titles", tok, `{"mediaType":"movie","tmdbId":1}`)
+		resp := harness.Do(http.MethodPost, "/v1/titles", tok, `{"mediaType":"movie","tmdbId":90000001}`)
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("POST with token %q → %d, want 401", tok, resp.StatusCode)
 		}
@@ -258,7 +258,7 @@ func TestListRequiresState(t *testing.T) {
 // GET a missing title → 404.
 func TestGetMissingTitle(t *testing.T) {
 	harness := newAPIHarness(t)
-	resp := harness.Do(http.MethodGet, "/v1/titles/movie:tmdb:404", adminToken, "")
+	resp := harness.Do(http.MethodGet, "/v1/titles/movie:tmdb:90000404", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("get missing → %d, want 404", resp.StatusCode)
 	}
@@ -317,7 +317,7 @@ func TestDocsOffline(t *testing.T) {
 func TestListTitles_ExposesLastErrorOfGivenUpTitle(t *testing.T) {
 	harness := newAPIHarness(t)
 	rec := provision.Record{
-		Key: "movie:tmdb:9", Title: provision.Title{MediaType: provision.Movie, TMDBID: 9, Name: "Gave Up"},
+		Key: "movie:tmdb:90000009", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000009, Name: "Gave Up"},
 		State: provision.Unavailable, LastError: "deadline exceeded", Attempts: 3,
 	}
 	if err := harness.Store.UpsertTitle(context.Background(), rec); err != nil {

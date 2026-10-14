@@ -18,11 +18,11 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 		Result: api.MovieCollectionResolution{
 			Complete: true,
 			Collections: []api.MovieCollection{{
-				TMDBID: 1241,
-				Name:   "Harry Potter Collection",
+				TMDBID: 90001241,
+				Name:   "Wren Halloway Collection",
 				Members: []api.SearchCandidate{
-					{MediaType: "movie", TMDBID: 671, Name: "Harry Potter and the Philosopher's Stone", Year: 2001, InLibrary: true, LibraryItemID: "lib-671"},
-					{MediaType: "movie", TMDBID: 672, Name: "Harry Potter and the Chamber of Secrets", Year: 2002},
+					{MediaType: "movie", TMDBID: 90000671, Name: "Wren Halloway and the Lantern Key", Year: 2001, InLibrary: true, LibraryItemID: "lib-671"},
+					{MediaType: "movie", TMDBID: 90000672, Name: "Wren Halloway and the Sunken Library", Year: 2002},
 				},
 			}},
 		},
@@ -36,7 +36,7 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 	})
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/movie-collections?key=movie:tmdb:671&key=movie:tmdb:673", nil)
+		"/v1/movie-collections?key=movie:tmdb:90000671&key=movie:tmdb:90000673", nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
@@ -45,7 +45,7 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
 	}
 	requests := resolver.Requests()
-	if len(requests) != 1 || len(requests[0].Keys) != 2 || requests[0].Keys[0] != "movie:tmdb:671" || requests[0].Keys[1] != "movie:tmdb:673" {
+	if len(requests) != 1 || len(requests[0].Keys) != 2 || requests[0].Keys[0] != "movie:tmdb:90000671" || requests[0].Keys[1] != "movie:tmdb:90000673" {
 		t.Fatalf("requests = %+v, want one bounded request preserving both Keys", requests)
 	}
 	var body struct {
@@ -55,7 +55,7 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if !body.Complete || len(body.Collections) != 1 || body.Collections[0].Name != "Harry Potter Collection" {
+	if !body.Complete || len(body.Collections) != 1 || body.Collections[0].Name != "Wren Halloway Collection" {
 		t.Fatalf("body = %+v, want one complete authoritative collection", body)
 	}
 	if len(body.Collections[0].Members) != 2 || body.Collections[0].Members[0].LibraryItemID != "lib-671" {
@@ -75,8 +75,8 @@ func TestMovieCollections_RejectsMissingOrInvalidMovieKeysBeforeCallingService(t
 
 	for _, target := range []string{
 		"/v1/movie-collections",
-		"/v1/movie-collections?key=series:tmdb:1399",
-		"/v1/movie-collections?key=movie:tvdb:671",
+		"/v1/movie-collections?key=series:tmdb:90001399",
+		"/v1/movie-collections?key=movie:tvdb:90000671",
 		"/v1/movie-collections?key=not-a-key",
 	} {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
@@ -106,7 +106,7 @@ func TestMovieCollections_DistinguishesUnavailableConfigurationAndUpstreamFailur
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, MovieCollections: tc.service, LiveConfig: tc.liveConfig})
-			req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:671", nil)
+			req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)
 			req.Header.Set("Authorization", "Bearer "+memberToken)
 			resp := httptest.NewRecorder()
 			handler.ServeHTTP(resp, req)
@@ -126,7 +126,7 @@ func TestMovieCollections_NormalizesEmptyCollectionsToJSONArray(t *testing.T) {
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
 		LiveConfig: func(string) string { return "key" },
 	})
-	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:550", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000550", nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
@@ -155,7 +155,7 @@ func TestMovieCollections_BoundsVisibleKeys(t *testing.T) {
 		if i > 1 {
 			target += "&"
 		}
-		target += "key=movie:tmdb:" + strconv.Itoa(i)
+		target += "key=movie:tmdb:" + strconv.Itoa(90000000+i)
 	}
 	req := httptest.NewRequest(http.MethodGet, target, nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
@@ -176,7 +176,7 @@ func TestMovieCollections_RequiresAuthentication(t *testing.T) {
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
 		LiveConfig: func(string) string { return "key" },
 	})
-	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:671", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusUnauthorized {

@@ -12,11 +12,11 @@ import (
 // given job id, mirroring what the suggester + approval gate persist.
 func seedApprovedProposal(t *testing.T, st store.Store, jobID, propID string) {
 	t.Helper()
-	// A minimal grounded proposal: one in-library title (movie:tmdb:603 = The Matrix).
+	// A minimal grounded proposal: one in-library title (movie:tmdb:90000603 = Marigold Protocol).
 	proposalJSON := `{
 		"intent": {"description":"late-night sci-fi"},
 		"lineup": [
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"12345"}
+			{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"12345"}
 		],
 		"acquisitions": null
 	}`
@@ -51,11 +51,11 @@ func TestCreateChannelBindsApprovedLineup(t *testing.T) {
 	if len(ch.Lineup) != 1 {
 		t.Fatalf("channel lineup = %d entries, want 1 (the approved in-library title)", len(ch.Lineup))
 	}
-	if got := string(ch.Lineup[0].Key); got != "movie:tmdb:603" {
-		t.Errorf("lineup key = %q, want canonical movie:tmdb:603", got)
+	if got := string(ch.Lineup[0].Key); got != "movie:tmdb:90000603" {
+		t.Errorf("lineup key = %q, want canonical movie:tmdb:90000603", got)
 	}
-	if ch.Lineup[0].Title != "The Matrix" {
-		t.Errorf("lineup title = %q, want The Matrix", ch.Lineup[0].Title)
+	if ch.Lineup[0].Title != "Marigold Protocol" {
+		t.Errorf("lineup title = %q, want Marigold Protocol", ch.Lineup[0].Title)
 	}
 }
 
@@ -111,16 +111,16 @@ func TestCreateHandMadeChannelNoIntent(t *testing.T) {
 // the suggester emits when an intent needs content acquired to be complete.
 func seedApprovedProposalWithAcquisition(t *testing.T, st store.Store, jobID, propID string) {
 	t.Helper()
-	// lineup: movie:tmdb:603 (The Matrix, owned). acquisitions: movie:tmdb:604
-	// (The Matrix Reloaded, missing — must still become a lineup entry so it's
+	// lineup: movie:tmdb:90000603 (Marigold Protocol, owned). acquisitions: movie:tmdb:90000604
+	// (Marigold Protocol II, missing — must still become a lineup entry so it's
 	// placed once it lands).
 	proposalJSON := `{
-		"intent": {"description":"the matrix marathon"},
+		"intent": {"description":"the marigold protocol marathon"},
 		"lineup": [
-			{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"12345"}
+			{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"12345"}
 		],
 		"acquisitions": [
-			{"mediaType":"movie","tmdbId":604,"name":"The Matrix Reloaded","year":2003,"inLibrary":false}
+			{"mediaType":"movie","tmdbId":90000604,"name":"Marigold Protocol II","year":2003,"inLibrary":false}
 		]
 	}`
 	if err := st.CreateProposal(context.Background(), store.Proposal{
@@ -144,12 +144,12 @@ func TestCreateChannelBindsAcquisitionsAsPendingEntries(t *testing.T) {
 	seedApprovedProposalWithAcquisition(t, st, "job-mtx", "prop-mtx")
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
-		`{"id":"matrix","name":"Matrix Marathon","number":43,"strategy":"sequential","intentRef":"job-mtx"}`)
+		`{"id":"marigold","name":"Marigold Protocol Marathon","number":43,"strategy":"sequential","intentRef":"job-mtx"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create → %d, want 200", resp.StatusCode)
 	}
 
-	ch, err := st.GetChannel(context.Background(), "matrix")
+	ch, err := st.GetChannel(context.Background(), "marigold")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,14 +162,14 @@ func TestCreateChannelBindsAcquisitionsAsPendingEntries(t *testing.T) {
 	for _, e := range ch.Lineup {
 		got[string(e.Key)] = true
 	}
-	if !got["movie:tmdb:603"] {
-		t.Error("in-library pick movie:tmdb:603 missing from lineup")
+	if !got["movie:tmdb:90000603"] {
+		t.Error("in-library pick movie:tmdb:90000603 missing from lineup")
 	}
-	if !got["movie:tmdb:604"] {
-		t.Error("acquisition movie:tmdb:604 missing from lineup — #9 regression (acquisitions never placed)")
+	if !got["movie:tmdb:90000604"] {
+		t.Error("acquisition movie:tmdb:90000604 missing from lineup — #9 regression (acquisitions never placed)")
 	}
 	// Ordering contract: in-library picks precede acquisitions.
-	if string(ch.Lineup[0].Key) != "movie:tmdb:603" {
-		t.Errorf("lineup[0] = %q, want the in-library pick first (movie:tmdb:603)", ch.Lineup[0].Key)
+	if string(ch.Lineup[0].Key) != "movie:tmdb:90000603" {
+		t.Errorf("lineup[0] = %q, want the in-library pick first (movie:tmdb:90000603)", ch.Lineup[0].Key)
 	}
 }

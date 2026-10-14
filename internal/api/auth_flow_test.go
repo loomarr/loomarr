@@ -168,7 +168,7 @@ func TestMemberForbiddenOnAdminRoutes(t *testing.T) {
 	member := login(t, srv, "kid", "pw")
 
 	cases := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":1}`},
+		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":90000001}`},
 		{http.MethodGet, "/v1/users", ""},
 		{http.MethodPatch, "/v1/users/u-boss", `{"role":"member"}`},
 		{http.MethodPut, "/v1/users/u-boss/contact-address", `{"email":"boss@example.com"}`},
@@ -297,7 +297,7 @@ func TestAdminAllowedOnAdminRoutes(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("admin GET /v1/users → %d, want 200", resp.StatusCode)
 	}
-	resp = authed(t, http.MethodPost, srv.URL+"/v1/titles", admin, `{"mediaType":"movie","tmdbId":42}`)
+	resp = authed(t, http.MethodPost, srv.URL+"/v1/titles", admin, `{"mediaType":"movie","tmdbId":90000042}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("admin POST /v1/titles → %d, want 200", resp.StatusCode)
 	}
@@ -331,7 +331,7 @@ func TestCSRFRequiredForCookieMutations(t *testing.T) {
 	srv := newAuthFlowHarness(t).Server
 	admin := login(t, srv, "boss", "pw")
 	// POST with cookie but NO csrf header.
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":9}`))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":90000009}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(admin)
 	resp, err := http.DefaultClient.Do(req)
@@ -401,7 +401,7 @@ func TestLogout(t *testing.T) {
 // The API_TOKEN Bearer still works as admin break-glass, and is CSRF-exempt.
 func TestBreakGlassToken(t *testing.T) {
 	srv := newAuthFlowHarness(t).Server
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":77}`))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/titles", strings.NewReader(`{"mediaType":"movie","tmdbId":90000077}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer break-glass-token")
 	resp, err := http.DefaultClient.Do(req)
@@ -582,7 +582,7 @@ func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string,
 	p.ID, p.CreatedBy, p.Status = id, createdBy, status
 	p.JobID = "job-" + id
 	if p.ProposalJSON == "" {
-		p.ProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
+		p.ProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}]}`
 	}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
@@ -730,7 +730,7 @@ func TestListProposals_CarriesApprovalProvenance(t *testing.T) {
 	seedProposalFor(t, st, "p-edited", "u-kid", "approved", store.Proposal{
 		ApprovedBy: "u-boss",
 		ModSummary: "dropped 2, added 1",
-		Note:       "swapped Con Air for Face/Off — we already have that one",
+		Note:       "swapped Smoke over Calloway for Parallax Garden — we already have that one",
 	})
 
 	kid := login(t, srv, "kid", "pw")

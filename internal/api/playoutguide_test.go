@@ -118,8 +118,8 @@ func TestPlayoutGuide_RequiresTheDeviceToken(t *testing.T) {
 func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
 		"ch1": {
-			nowProgramme("Last Action Hero", -40*time.Minute, 130),
-			nowProgramme("The Transformers: The Movie", 90*time.Minute, 84),
+			nowProgramme("Beacon of the Hollow Moon", -40*time.Minute, 130),
+			nowProgramme("Robo-Rabbits of Zone Nine: The Movie", 90*time.Minute, 84),
 		},
 	}}
 	harness := newPlayoutGuideHarness(t, g)
@@ -154,7 +154,7 @@ func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 	if len(doc.Programmes) != 2 {
 		t.Fatalf("%d programmes, want 2:\n%s", len(doc.Programmes), body)
 	}
-	if doc.Programmes[0].Title != "Last Action Hero" {
+	if doc.Programmes[0].Title != "Beacon of the Hollow Moon" {
 		t.Errorf("first programme = %q", doc.Programmes[0].Title)
 	}
 	if doc.Programmes[0].Channel != "ch1" {
@@ -167,19 +167,19 @@ func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 // comparing, rather than by trusting each in isolation.
 func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
-		"classic-simpsons": {nowProgramme("Bart the Genius", 0, 22)},
+		"classic-kettle-kids": {nowProgramme("Pip and the Sugar Bowl", 0, 22)},
 	}}
 	harness := newPlayoutGuideHarness(t, g)
 	srv, st := harness.Server, harness.Store
-	seedChannel(t, st, "classic-simpsons", "Classic Simpsons", 52, "internal")
+	seedChannel(t, st, "classic-kettle-kids", "Classic Kettle Kids", 52, "internal")
 
 	tuner, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken).Body)
 	guide, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
 
-	if !strings.Contains(string(tuner), `tvg-id="classic-simpsons"`) {
+	if !strings.Contains(string(tuner), `tvg-id="classic-kettle-kids"`) {
 		t.Fatalf("tuner is missing the channel:\n%s", tuner)
 	}
-	if !strings.Contains(string(guide), `<channel id="classic-simpsons">`) {
+	if !strings.Contains(string(guide), `<channel id="classic-kettle-kids">`) {
 		t.Errorf("guide id does not match the tuner's tvg-id — every channel would play with "+
 			"an empty guide:\n%s", guide)
 	}
@@ -189,8 +189,8 @@ func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
 // would advertise listings for a channel Loomarr does not stream.
 func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
 	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
-		"mine":   {nowProgramme("Heat", 0, 60)},
-		"theirs": {nowProgramme("Predator", 0, 60)},
+		"mine":   {nowProgramme("Midnight at the Mapleton", 0, 60)},
+		"theirs": {nowProgramme("Emberfall Canyon", 0, 60)},
 	}}
 	harness := newPlayoutGuideHarness(t, g)
 	srv, st := harness.Server, harness.Store
@@ -239,7 +239,7 @@ func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
 // wholesale, so an error return would empty every channel's listings because one had a problem.
 func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 	g := &fakeXMLTVGuide{
-		byChannel: map[string][]playout.Broadcast{"good": {nowProgramme("Heat", 0, 60)}},
+		byChannel: map[string][]playout.Broadcast{"good": {nowProgramme("Midnight at the Mapleton", 0, 60)}},
 		errFor:    map[string]error{"bad": errors.New("scheduler exploded")},
 	}
 	harness := newPlayoutGuideHarness(t, g)
@@ -252,7 +252,7 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 		t.Fatalf("status %d — one bad channel failed the whole guide", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Heat") {
+	if !strings.Contains(string(body), "Midnight at the Mapleton") {
 		t.Errorf("the healthy channel lost its listings:\n%s", body)
 	}
 	// The failing channel still APPEARS, so the media server keeps it and shows

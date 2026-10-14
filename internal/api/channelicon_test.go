@@ -40,7 +40,7 @@ func newIconUploadServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fa
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 	base := openTestStore(t, t.TempDir()+"/icon-concurrent.db")
 	t.Cleanup(func() { _ = base.Close() })
 	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		winner.Name = "Star Trek: Concurrent Cut"
+		winner.Name = "Late-Night Sci-Fi: Concurrent Cut"
 		_, err = base.SaveChannel(ctx, winner)
 		return err
 	}
@@ -228,7 +228,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Star Trek: Concurrent Cut" {
+	if got.Name != "Late-Night Sci-Fi: Concurrent Cut" {
 		t.Errorf("name = %q, want concurrent winner preserved", got.Name)
 	}
 	if got.Logo == "" {
@@ -245,7 +245,7 @@ func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) 
 	base := openTestStore(t, t.TempDir()+"/icon-delete.db")
 	t.Cleanup(func() { _ = base.Close() })
 	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
