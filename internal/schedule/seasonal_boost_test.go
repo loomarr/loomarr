@@ -44,12 +44,9 @@ func mudpuddlesLike(holiday int) libraryfixture.Availability {
 	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 }
 
-// mudpuddlesChannel pins DealOrigin to the day its id derived before the #1592 rename. The seam
-// spacing guarantee holds for that origin but not for every one (#1960); drop the pin with that fix.
 func mudpuddlesChannel() schedule.Channel {
 	return schedule.Channel{ID: "mudpuddles", Name: "Classics", Number: 7, Strategy: schedule.Shuffle,
-		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour,
-		DealOrigin: time.Date(2025, time.August, 18, 0, 0, 0, 0, time.UTC)}
+		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour}
 }
 
 func seasonalPolicy(s schedule.SeasonalPolicy) schedule.ChannelPolicy {
@@ -226,23 +223,62 @@ func TestHolidayEpisodes_AnytimeSpreadsAcrossTheDay(t *testing.T) {
 
 func TestHolidayEpisodes_OutOfSeasonKeptOutOfTheEvening(t *testing.T) {
 	// Nov 5: Halloween's window is closed, nothing is boosted, and a holiday episode the deck deals
-	// is never benched but airs outside the evening band.
+	// is never benched but airs outside the evening band. In order there is no dealer spacing for
+	// the move to cost, so every one leaves the evening.
+	policy := seasonalPolicy(schedule.SeasonalPolicy{})
+	policy.Ordering = schedule.OrderSequential
+	off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
+	off.Ordering = schedule.OrderSequential
 	seenHoliday := false
 	for d := 2; d <= 9; d++ {
-		all := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), seasonalPolicy(schedule.SeasonalPolicy{}), day(time.November, d, 9))
+		all := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), policy, day(time.November, d, 9))
 		for _, a := range holidayAirings(all) {
 			seenHoliday = true
 			if inEvening(a, nil) {
 				t.Fatalf("Nov %d: out-of-season %s airs at %s, in the evening", d, a.id, a.start.Format(time.Kitchen))
 			}
 		}
-		ignored := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}), day(time.November, d, 9))
+		ignored := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), off, day(time.November, d, 9))
 		if got, dealt := len(holidayAirings(all)), len(holidayAirings(ignored)); got > dealt {
 			t.Fatalf("Nov %d: %d holiday episodes where the deck deals %d, nothing should be boosted", d, got, dealt)
 		}
 	}
 	if !seenHoliday {
 		t.Fatal("no holiday episode aired in a week of November: out of season must not bench them")
+	}
+}
+
+// #1960: a shuffled channel keeps an off-season holiday episode in the evening only where moving it
+// would cost the repeat spacing (TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin holds that
+// side). It is still never benched, and the evening still moves the ones that cost nothing.
+func TestHolidayEpisodes_OutOfSeasonShuffledLeavesTheEveningWhereSpacingAllows(t *testing.T) {
+	evenings := seasonalPolicy(schedule.SeasonalPolicy{})
+	anytime := seasonalPolicy(schedule.SeasonalPolicy{Placement: schedule.HolidayPlacementAnytime})
+	off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
+	var moved, dealtInEvening int
+	for d := 2; d <= 15; d++ { // March: no season's simulation reaches it
+		at := day(time.March, d, 9)
+		all := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), evenings, at)
+		if got, dealt := len(holidayAirings(all)), len(holidayAirings(arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), off, at))); got != dealt {
+			t.Fatalf("Mar %d: %d holiday episodes air where the deck deals %d", d, got, dealt)
+		}
+		inEveningCount := func(as []airing) (n int) {
+			for _, a := range holidayAirings(as) {
+				if inEvening(a, nil) {
+					n++
+				}
+			}
+			return n
+		}
+		dealt := inEveningCount(arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), anytime, at))
+		dealtInEvening += dealt
+		moved += dealt - inEveningCount(all)
+	}
+	if dealtInEvening == 0 {
+		t.Fatal("the deck dealt no holiday episode into an evening in two weeks; the fixture proves nothing")
+	}
+	if moved <= 0 {
+		t.Fatalf("of %d holiday episodes dealt into an evening, none left it", dealtInEvening)
 	}
 }
 

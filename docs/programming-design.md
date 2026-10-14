@@ -373,7 +373,12 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     independently. They are **simulated in order** from the season's *anchor*: its first in-season
     window, found by walking back over in-season windows and gaps no longer than the horizon, at
     most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
-    the dealer's tile (`windowSliceDealt`), untouched.
+    the dealer's tile (`windowSliceDealt`), arranged. In the horizon after the simulation (the
+    *hand-off*, `handOff`), the season's tiles still sit inside the repeat spacing. The dealer
+    repaired each seam against the deal before it, so while any window the spacing reaches back
+    over aired a tile other than its deal, the next window is repaired again against what really
+    aired. That repair reads back over every window the spacing spans, not only the window
+    before: a 12-hour spacing on a 6-hour window reaches two windows back (#1960).
     The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
     features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
     repeat spacing. For each window in turn:
@@ -440,11 +445,27 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
   - **Out of season** a holiday episode of an ordinary series is **never benched**: it stays in
     its window's tile. With `anytime` it is untouched. With `evenings` it is kept out of the
     channel-local evening band. If the clock reaches it inside the band, it is deferred to the
-    first moment outside the band. If the window ends inside the band (a short window), the
-    deferred episodes move, as one run, to just before that band. They go at the latest point
-    where each still starts before 17:00. Whatever does not fit before the band airs in place:
-    this happens in a window wholly inside 17:00–23:00, or one with less time before the band
-    than the run needs. Holidays the channel has deselected are ordinary episodes.
+    first moment outside the band. Holidays the channel has deselected are ordinary episodes.
+    - **Shuffled and Syndication: the repeat spacing wins over the evening (#1960).** Deferring
+      an episode brings every unit behind it, up to the band's end, one slot forward. The dealer
+      releases a held-back unit exactly at its spacing, so that slot re-aired it sooner than the
+      spacing promises, on any evening, at a rate set by the channel's deal origin. So an
+      episode is deferred only when every unit it brings forward still rests the dealer's
+      spacing (in programmes) from its last airing, or no less than its deal gave it, and the
+      episode still rests it before its own next airing. Otherwise it airs in place, in the
+      evening. So does an episode the window cannot carry past the band, because the window
+      closes inside it. The check reads the windows around as dealt, without arranging them.
+      Away from a season that is exact. Arrange moves only a deferred episode later, and that
+      episode leaves a slot of room for each episode its next window could defer from ahead of
+      it. Near a season the simulation and the hand-off check what really aired. The cost,
+      measured for #1960 over 30 deal origins in March: of the holiday episodes dealt into the
+      evening, about a third still air there on a 400-episode deck in a daily window, and most
+      do on an 80-episode deck. A small deck rests most units close to its spacing.
+    - **In order** the dealer promises no spacing, and every episode leaves the band. If the
+      window ends inside the band (a short window), the deferred episodes move, as one run, to
+      just before that band. They go at the latest point where each still starts before 17:00.
+      Whatever does not fit before the band airs at the window's end: a window wholly inside
+      17:00–23:00, or one with less time before the band than the run needs.
   - **Holiday windows are channel-local dates.** Whether a holiday is active, for the title-level
     boost and bench, the `exclusive` pass, this feature and the cycle-cache clock signature, is
     decided by the channel's date on the guide time zone. It is not decided by the UTC instant,
