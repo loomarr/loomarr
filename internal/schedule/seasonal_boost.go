@@ -484,8 +484,7 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 // the pool. The dealer repaired the deal's seam against the window before as it dealt it, but in
 // season that window aired less its pool and plus its features, looped, so its loop stopped on a
 // different unit: the seam is repaired again against the window before as it really aired, and so
-// for the horizon after a season (#1939). Arrange only delays a tile's units behind features, so a
-// unit placed after its release stays after it.
+// for the horizon after a season (#1939), in the order arrange airs it (repairArranged).
 func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
 	pooled := p.pooled(w)
 	var tile []Slot
@@ -495,7 +494,7 @@ func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
 		}
 	}
 	prev := p.arrange(p.tile(w-1, p.ring.tile(w-1)), w-1)
-	return repairSeam(loopedWindow(prev, p.window.Milliseconds()), tile, p.ring.d.spacing)
+	return p.repairArranged(prev, tile, w)
 }
 
 // handOff is window w's tile outside the season simulation, walked from window `from`, which aired
@@ -503,8 +502,9 @@ func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
 // taken to have aired its deal. The dealer repaired each deal's seam against the window before as it
 // dealt it, but a window can air otherwise: the season's tile, or its deal arranged, an off-season
 // holiday episode deferred out of the evening. Its loop then stops on a different unit, so the next
-// window's seam is repaired again against it as it really aired; a window after one that aired its
-// deal keeps the dealer's repair (#1939).
+// window's seam is repaired again against it as it really aired, and so is a window that does not
+// air its own deal as dealt (its evening defers one); a window that airs its deal after one that
+// aired its deal keeps the dealer's repair (#1939).
 func (p *holidayPlanner) handOff(from int64, aired []Slot, w int64, dealt []Slot) []Slot {
 	for v := from + 1; ; v++ {
 		deal := dealt
@@ -512,14 +512,40 @@ func (p *holidayPlanner) handOff(from int64, aired []Slot, w int64, dealt []Slot
 			deal = p.ring.tile(v)
 		}
 		tile := deal
-		if !sameProgrammes(aired, p.ring.tile(v-1)) {
-			tile = repairSeam(loopedWindow(aired, p.window.Milliseconds()), deal, p.ring.d.spacing)
+		if !sameProgrammes(aired, p.ring.tile(v-1)) || !sameProgrammes(p.arrange(deal, v), deal) {
+			tile = p.repairArranged(aired, deal, v)
 		}
 		if v == w {
 			return tile
 		}
 		aired = p.arrange(tile, v)
 	}
+}
+
+// repairArranged is window w's `tile` with its seam repaired against `prev`, the window before as
+// it aired. Arrange does not only delay a tile's units: in an evening it defers an off-season
+// holiday episode past the band, which brings the units behind it forward, and so brought a unit
+// held back from the seam to the window's head, next to where the window before closed on it
+// (#1939). The seam is repaired on the order arrange airs the tile in (its features left out); a
+// unit arrange does not air keeps its place at the end.
+func (p *holidayPlanner) repairArranged(prev, tile []Slot, w int64) []Slot {
+	inTile := map[string]bool{}
+	for _, s := range tile {
+		inTile[unitKey(s)] = true
+	}
+	order := make([]Slot, 0, len(tile))
+	for _, s := range p.arrange(tile, w) {
+		if inTile[unitKey(s)] {
+			order = append(order, s)
+			delete(inTile, unitKey(s))
+		}
+	}
+	for _, s := range tile {
+		if inTile[unitKey(s)] {
+			order = append(order, s)
+		}
+	}
+	return repairSeam(loopedWindow(prev, p.window.Milliseconds()), order, p.ring.d.spacing)
 }
 
 // sameProgrammes reports whether a and b air the same programmes in the same order.

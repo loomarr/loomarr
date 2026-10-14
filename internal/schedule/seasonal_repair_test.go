@@ -545,7 +545,9 @@ func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.
 
 // The same walk with the viewing history fed back, as production always has it after the first
 // day: each window's guard trades out what aired too recently, and that must not bring a unit back
-// to back where the walk without history does not (#1939).
+// to back where the walk without history does not (#1939). On a pool wider than its window the walk
+// opens a day after the channel aired otherwise (its lineup was edited): what that day aired is on
+// record, and the guard must keep it out of the first window.
 func TestHolidayEpisodes_InSeasonWindowsNeverRepeatBackToBackWithHistory(t *testing.T) {
 	walkHolidaySeasons(t, true)
 }
@@ -560,21 +562,21 @@ func walkHolidaySeasons(t *testing.T, withHistory bool) {
 		name     string
 		episodes int // ordinary and holiday, 22 minutes each
 		window   time.Duration
-		// The back-to-backs allowed per order (sequential, shuffle, syndication): main's count for
-		// the same looped walk, measured before #1939. Only five 22-minute episodes in a six-hour
-		// window loop more than three times a window, so its seam repeats whatever the order:
-		// every window in sequence (257 on main), and in a shuffle wherever the window before
-		// looped onto the unit this one opens with (198 on main, 16 here).
-		maxRepeats [3]int
+		// The back-to-backs allowed per order (sequential, shuffle, syndication), without and with
+		// the history. Only five 22-minute episodes in a six-hour window loop more than three times
+		// a window, so in sequence its seam repeats every window (257, as on main).
+		maxRepeats, maxRepeatsWithHistory [3]int
+		// With the history, how many of the first window's ordinary episodes the day before aired.
+		recent int
 	}{
-		{"pool 1.0 windows", 66, 24 * time.Hour, [3]int{}},
-		{"pool 1.05 windows", 69, 24 * time.Hour, [3]int{}},
-		{"pool 1.2 windows", 79, 24 * time.Hour, [3]int{}},
-		{"pool 1.5 windows", 99, 24 * time.Hour, [3]int{}},
-		{"fitting 5", 5, 6 * time.Hour, [3]int{257, 198, 198}},
-		{"fitting 10", 10, 12 * time.Hour, [3]int{}},
-		{"fitting 15", 15, 24 * time.Hour, [3]int{}},
-		{"fitting 10", 10, 6 * time.Hour, [3]int{}},
+		{"pool 1.0 windows", 66, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"pool 1.05 windows", 69, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"pool 1.2 windows", 79, 24 * time.Hour, [3]int{}, [3]int{}, 8},
+		{"pool 1.5 windows", 99, 24 * time.Hour, [3]int{}, [3]int{}, 20},
+		{"fitting 5", 5, 6 * time.Hour, [3]int{257, 0, 0}, [3]int{257, 0, 0}, 0},
+		{"fitting 10", 10, 12 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"fitting 15", 15, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"fitting 10", 10, 6 * time.Hour, [3]int{}, [3]int{}, 0},
 	} {
 		perHoliday := max(1, tc.episodes/25)
 		avail := seriesLike(tc.episodes-3*perHoliday, specials(perHoliday)...)
@@ -583,10 +585,39 @@ func walkHolidaySeasons(t *testing.T, withHistory bool) {
 			policy.Ordering = order
 			t.Run(fmt.Sprintf("%s/%v/%s", tc.name, tc.window, order), func(t *testing.T) {
 				ch := channelWithWindow(tc.window, nil)
+				maxRepeats := tc.maxRepeats[o]
+				recent := map[string]bool{} // aired the day before the walk opens, on record
+				if withHistory {
+					maxRepeats = tc.maxRepeatsWithHistory[o]
+					// The guard trades a shuffled deal's slice; it does not reorder a sequence.
+					if order != schedule.OrderSequential && tc.recent > 0 {
+						ch.WindowOpened = day(time.October, 1, 0)
+						// The guard trades only for a unit on record as aired longer ago: the rest of
+						// the series aired the week before.
+						ch.LastAired = map[string]time.Time{}
+						for i := range tc.episodes - 3*perHoliday {
+							ch.LastAired[fmt.Sprintf("ep-%03d", i)] = ch.WindowOpened.AddDate(0, 0, -7)
+						}
+						at := ch.WindowOpened.Add(-tc.window)
+						for _, a := range arrange(t, ch, avail, policy, ch.WindowOpened) {
+							if len(recent) < tc.recent && !isHoliday(a.id) {
+								recent[a.id], ch.LastAired[a.id] = true, at
+								at = at.Add(episodeMs * time.Millisecond)
+							}
+						}
+					}
+				}
 				var prev, first string
 				repeats := 0
 				for open := day(time.October, 1, 0); open.Before(time.Date(2027, time.January, 10, 0, 0, 0, 0, time.UTC)); open = open.Add(tc.window) {
 					ch.WindowOpened = open
+					if len(recent) > 0 && open.Equal(day(time.October, 1, 0)) {
+						for _, a := range airedLooped(t, ch, avail, policy, open) {
+							if recent[a.id] {
+								t.Fatalf("%s aired the day before and airs again at %s", a.id, a.start.Format(time.Stamp))
+							}
+						}
+					}
 					if got := arrange(t, ch, avail, policy, open); tc.episodes*episodeMs < int(tc.window.Milliseconds()) {
 						// A deck that fits its window airs all of it but the pool every window.
 						if len(got) < 2 {
@@ -617,8 +648,8 @@ func walkHolidaySeasons(t *testing.T, withHistory bool) {
 						ch.LastAired = aired
 					}
 				}
-				if repeats > tc.maxRepeats[o] {
-					t.Fatalf("%d episodes air twice in a row (first %s), want at most %d", repeats, first, tc.maxRepeats[o])
+				if repeats > maxRepeats {
+					t.Fatalf("%d episodes air twice in a row (first %s), want at most %d", repeats, first, maxRepeats)
 				}
 			})
 		}
