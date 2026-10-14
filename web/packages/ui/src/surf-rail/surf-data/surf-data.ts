@@ -127,7 +127,7 @@ const surfGroupsFromGuide = ({
     {
       channels: favorites ? all.filter((channel) => favorites.has(channel.id)) : [],
       kind: "favourites",
-      label: "Favourites",
+      label: "Favorites",
     },
     {
       channels: orderedKnownChannels(recentChannelIds, byId, currentChannelId),

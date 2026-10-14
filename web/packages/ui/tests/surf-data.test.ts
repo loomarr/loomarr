@@ -72,7 +72,7 @@ describe("Surf data", () => {
   it("uses authoritative now/next identity and only playable Channels", () => {
     const result = groups();
 
-    expect(result[0]).toEqual({ channels: [], kind: "favourites", label: "Favourites" });
+    expect(result[0]).toEqual({ channels: [], kind: "favourites", label: "Favorites" });
     expect(result[1]?.channels.map(({ id }) => id)).toEqual(["nine"]);
     expect(result[2]?.channels.map(({ id }) => id)).toEqual(["seven", "nine"]);
     expect(result[2]?.channels[0]).toMatchObject({

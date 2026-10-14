@@ -23,8 +23,8 @@ const renderRail = (serverVersion?: string) =>
 describe("SurfRail", () => {
   it("keeps optional groups visible and renders authoritative now/next identity", () => {
     const output = renderRail("0.2.1");
-    expect(output).toContain("FAVOURITES");
-    expect(output).toContain("No favourites yet");
+    expect(output).toContain("FAVORITES");
+    expect(output).toContain("No favorites yet");
     expect(output).toContain("Cartoon Classics");
     expect(output).toContain("The Seventh Postcard");
     expect(output).toContain("S07E02");
@@ -53,7 +53,7 @@ describe("SurfRail", () => {
       </LoomarrProvider>,
     );
 
-    expect(output).toContain("FAVOURITES · 0");
+    expect(output).toContain("FAVORITES · 0");
     expect(output).toContain("RECENT · 1");
     expect(output).toContain("ALL CHANNELS · 3");
     expect(output).toContain("The Seventh Postcard");

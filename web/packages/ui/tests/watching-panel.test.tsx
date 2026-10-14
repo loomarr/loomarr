@@ -177,4 +177,33 @@ describe("WatchingPanel", () => {
     expect(panelProps.onChannelUp).not.toHaveBeenCalled();
     unmount();
   });
+
+  it("draws no star where the client can't write favourites", () => {
+    const html = markup();
+    expect(html).not.toContain("Add to Favorites");
+    expect(html).not.toContain("★");
+    expect(html).not.toContain("☆");
+  });
+
+  it("offers Add to Favorites beside the channel name, unselected, and toggles on press", () => {
+    const onToggleFavourite = vi.fn();
+    const { button, unmount } = mount(props({ isFavourite: false, onToggleFavourite }));
+    const star = button("Add to Favorites");
+    expect(star.getAttribute("aria-selected")).toBe("false");
+    expect(star.textContent).toBe("☆");
+    act(() => star.click());
+    expect(onToggleFavourite).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("offers Remove from Favorites, selected, once the channel is a favourite", () => {
+    const onToggleFavourite = vi.fn();
+    const { button, unmount } = mount(props({ isFavourite: true, onToggleFavourite }));
+    const star = button("Remove from Favorites");
+    expect(star.getAttribute("aria-selected")).toBe("true");
+    expect(star.textContent).toBe("★");
+    act(() => star.click());
+    expect(onToggleFavourite).toHaveBeenCalledOnce();
+    unmount();
+  });
 });

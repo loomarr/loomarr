@@ -152,7 +152,7 @@ const SurfRail = ({
             </Text>
             {group.channels.length === 0 ? (
               <Text density={density} textRole="body" tone="muted">
-                {group.kind === "favourites" ? "No favourites yet" : "No channels here yet"}
+                {group.kind === "favourites" ? "No favorites yet" : "No channels here yet"}
               </Text>
             ) : (
               group.channels.map((channel) => {

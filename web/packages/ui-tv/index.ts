@@ -3,6 +3,8 @@ export type {
   TvAutoTuneSettingStore,
 } from "./src/auto-tune-setting";
 export { createTvAutoTuneSetting, TV_AUTO_TUNE_CHOICES_MS } from "./src/auto-tune-setting";
+export type { TvFavouriteToggle } from "./src/favourite-navigation";
+export { isTvLongSelect, tvFavouriteToggle, tvPressIsLongSelectRelease } from "./src/favourite-navigation";
 export {
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
@@ -20,6 +22,7 @@ export {
   activateTvGuideFocus,
   moveTvGuideFocus,
   restoreTvGuideFocus,
+  tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./src/guide-navigation";
@@ -32,6 +35,7 @@ export {
   activateTvSurfSelection,
   moveTvSurfSelection,
   restoreTvSurfSelection,
+  tvSurfFavouriteChannel,
 } from "./src/surf-navigation";
 export type {
   TvNumberEntryPresentation,
