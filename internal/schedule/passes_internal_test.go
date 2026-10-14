@@ -59,9 +59,7 @@ func startsOf(deck []Slot) map[string]int64 {
 }
 
 // Across every seam, a unit airs at least `spacing` after it last aired, measured from where it
-// started in the pass before to where it starts in this one. The one exception is the first pass
-// after an anchor of a chained walk (see chainBudget), which is repaired against its predecessor as
-// dealt: it is skipped here, and TestDealChain_AnchorSeamIsTheOnlyRelaxation says why it is the only one.
+// started in the pass before to where it starts in this one, the anchors of a chained walk included.
 func TestRepairSeam_EveryUnitRestsTheSpacing(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -89,9 +87,6 @@ func TestRepairSeam_EveryUnitRestsTheSpacing(t *testing.T) {
 				if len(after) != len(tc.slots) {
 					t.Fatalf("pass %d holds %d units, want %d", p, len(after), len(tc.slots))
 				}
-				if !d.stable && p%d.bound == 0 {
-					continue
-				}
 				for id, s := range after {
 					if gap := total - before[id] + s; gap < spacing {
 						t.Fatalf("pass %d: %s restarts %dms after it started, spacing is %dms", p, id, gap, spacing)
@@ -102,31 +97,50 @@ func TestRepairSeam_EveryUnitRestsTheSpacing(t *testing.T) {
 	}
 }
 
-// Only an anchor's seam may be short: the passes after it are repaired against the real deck.
-func TestDealChain_AnchorSeamIsTheOnlyRelaxation(t *testing.T) {
-	resetDealChains()
-	d := shuffleDealer(dealPool(36, 2*time.Hour, 3), 24*time.Hour)
-	if d.stable || d.bound >= 200 {
-		t.Fatalf("fixture should be chained with a short bound, got stable=%v bound=%d", d.stable, d.bound)
-	}
-	spacing, total := d.spacing.Milliseconds(), programRuntime(d.slots)
-	short, anchors := 0, 0
-	for p := int64(1); p < 6*d.bound; p++ {
-		if p%d.bound == 0 {
-			anchors++
-		}
-		before, after := startsOf(d.deck(p-1)), startsOf(d.deck(p))
-		for id, s := range after {
-			if total-before[id]+s < spacing {
-				if p%d.bound != 0 {
-					t.Fatalf("pass %d (not an anchor, bound %d) came up short for %s", p, d.bound, id)
-				}
-				short++
-				break
+// #1965: a chained walk starts at an anchor, and every pass it deals, the anchor's included, is the
+// deck the walk from pass 0 deals: the warm-up before the anchor forgets where it started before
+// the anchor's seam reads it, and a pinned pool replays pass 0. The anchor used to be repaired
+// against the pass before it as dealt, and on 80 episodes in a 24 h window aired one back to back.
+func TestDealChain_AnchorSeamIsExact(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		slots  []Slot
+		window time.Duration
+	}{
+		{"80 episodes, 24h", equalPool(80, 22*time.Minute), 24 * time.Hour},
+		{"80 episodes, 12h", equalPool(80, 22*time.Minute), 12 * time.Hour},
+		{"9 episodes, 1h", equalPool(9, 22*time.Minute), time.Hour},
+		{"27 one-hour films, 24h", equalPool(27, time.Hour), 24 * time.Hour},
+		{"36 uneven, 24h", dealPool(36, 2*time.Hour, 3), 24 * time.Hour},
+		{"14 uneven, 6h", dealPool(14, 90*time.Minute, 3), 6 * time.Hour},
+		{"several shows, chained", multiPool(3, 20, 44*time.Minute), 24 * time.Hour},
+		{"27 films, 24h", multiPool(27, 1, 110*time.Minute), 24 * time.Hour},
+		{"fits a window", equalPool(5, time.Hour), 12 * time.Hour},
+		{"fits a window, several shows", multiPool(6, 6, 11*time.Minute), 24 * time.Hour},
+		// The slowest to forget: half an hour of slack, then a quarter of one, which pins it.
+		{"68 episodes, 24h", equalPool(68, 22*time.Minute), 24 * time.Hour},
+		{"67 episodes, 24h (pinned)", equalPool(67, 22*time.Minute), 24 * time.Hour},
+		{"66 episodes, 24h (pinned)", equalPool(66, 22*time.Minute), 24 * time.Hour},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := shuffleDealer(tc.slots, tc.window)
+			d.chain = newDealChain()
+			if d.stable {
+				t.Fatal("fixture should be chained")
 			}
-		}
+			ref := shuffleDealer(tc.slots, tc.window)
+			ref.pinned, ref.bound, ref.chain = false, 1<<40, newDealChain() // the full walk, from pass 0
+			// At least three anchors, and ~240 passes: a multi-show deal costs milliseconds, twice over.
+			anchors := max(3, 240/d.bound)
+			for p := int64(1); p <= anchors*d.bound; p++ {
+				if !slices.Equal(idsOf(d.deck(p)), idsOf(ref.deck(p))) {
+					t.Fatalf("pass %d (bound %d, warm-up %d, pinned %v) is not the deck the walk from pass 0 deals",
+						p, d.bound, d.warmUp, d.pinned)
+				}
+			}
+		})
 	}
-	t.Logf("%d of %d anchor seams came up short (bound %d)", short, anchors, d.bound)
 }
 
 // A pass differs from the one before it, and the same channel at the same time deals the same.

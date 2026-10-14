@@ -601,10 +601,13 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   pool/policy/seed/window; a lineup edit is a different pool, so it restarts the walk). A deal costs
   5–22 ms for a multi-series pool, so **the walk is bounded in deals**: at most `2048 / pool size`
   passes (16 to 2048, a multiple of 16), starting at the latest multiple of that bound at or before
-  the wanted pass; a 6-year-old channel with a 60-episode pool walks in ~0.13 s cold, once per
-  process. The pass that starts a walk is repaired against its predecessor *as dealt* rather than as
-  aired. That is the only place the seam guarantee can relax, and only for chained pools (a pool of
-  27 films meets it every 64 passes; measured, the short seam is ~5% under the spacing).
+  the wanted pass; a 6-year-old channel with a 60-episode pool walks in ~0.17 s cold (the warm-up
+  below included), once per process. **The anchor's seam is exact too (#1965):** the walk deals a warm-up of about twice
+  `spacing / slack` passes (slack: the pool's runtime beyond the spacing) ahead of the anchor, and a
+  walk from any start forgets it within that, so the anchor is repaired against the deck that really
+  aired. It used to be repaired against its predecessor *as dealt*, and on 80 episodes in a 24 h
+  window an episode aired back to back on one channel origin in five. A pool whose slack is shorter
+  than its shortest unit is **pinned**: every pass replays pass 0, exactly, with no walk.
   **A catalog that fits inside one window has no ring to wrap**, so it used to air the same deck in
   the same order every window; there the **window is the pass**, dealt afresh and repaired against
   the previous window **as it aired**: playout loops the deck until the window closes
