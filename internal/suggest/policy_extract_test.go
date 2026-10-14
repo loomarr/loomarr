@@ -75,13 +75,13 @@ func TestGroundPolicy_NilIsEmpty(t *testing.T) {
 }
 
 // A model-selected title cannot relax an explicit child-safety boundary. A small model once
-// paired a TV-G ceiling with The Simpsons (TV-PG); the title must be refused later, not allowed
+// paired a TV-G ceiling with a TV-PG cartoon; the title must be refused later, not allowed
 // to raise the policy that protects the channel.
 func TestGroundPolicy_PicksNeverRaiseChildSafetyCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-G" // rank 2 — stricter than the pick
 	lineup := []ProposalItem{
-		{Name: "The Simpsons", OfficialRating: "TV-PG"}, // rank 3
+		{Name: "The Mudpuddles", OfficialRating: "TV-PG"}, // rank 3
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent())
 	if p.Audience.Ceiling != "TV-Y7" {
@@ -125,7 +125,7 @@ func TestGroundPolicy_ChildSafetySurvivesOmittedModelPolicy(t *testing.T) {
 
 // THE CEILING-IS-KIDS-ONLY RULE (§4/§8): with NO kids/teen signal in the intent, a
 // model-proposed ceiling is DROPPED — an unqualified channel is adult-default. This is the
-// "1980s Action Heroes shouldn't be capped at TV-14 and lose Die Hard" fix.
+// "1980s Action Heroes shouldn't be capped at TV-14 and lose its R-rated films" fix.
 func TestGroundPolicy_NoKidsSignalDropsProposedCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-14" // a small model reflexively caps "action"
@@ -141,6 +141,7 @@ func TestGroundPolicy_NoKidsSignalDropsProposedCeiling(t *testing.T) {
 // it to TV-Y7.
 func TestGroundPolicy_YoungAudienceSignalKeepsOrClampsCeiling(t *testing.T) {
 	for _, desc := range []string{
+		// "Bluey" is a kids-signal keyword in the product's own list (intent_policy.go), not a fixture.
 		"family-friendly adventures", "a Bluey channel", "teen dramas",
 	} {
 		raw := &pickPolicy{}
@@ -192,13 +193,13 @@ func movie(tmdbID int, name string) ProposalItem {
 	return ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name}
 }
 
-// THE STAR TREK FIX: a lineup with ≥2 distinct series and NO ordering picked by the model
+// THE MULTI-SERIES FIX: a lineup with ≥2 distinct series and NO ordering picked by the model
 // defaults to syndication, so the shows INTERMIX instead of playing one to completion then
 // the next (programming-design §5). This is what makes a multi-show channel feel like a
 // rerun network rather than a chronological box set.
 func TestGroundPolicy_MultiSeriesDefaultsToSyndication(t *testing.T) {
 	raw := &pickPolicy{} // model omitted ordering
-	lineup := []ProposalItem{series(1, "TNG"), series(2, "DS9"), series(3, "Voyager")}
+	lineup := []ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station"), series(90000003, "Glasshouse Nebula")}
 	p := groundPolicy(raw, lineup, nil, Intent{})
 	if p.Ordering != schedule.OrderSyndication {
 		t.Errorf("ordering = %q, want syndication (multi-series default)", p.Ordering)
@@ -210,7 +211,7 @@ func TestGroundPolicy_MultiSeriesDefaultsToSyndication(t *testing.T) {
 // show to syndication would intermix it with nothing and pointlessly scramble episode order.
 func TestGroundPolicy_SingleSeriesStaysInherit(t *testing.T) {
 	raw := &pickPolicy{}
-	lineup := []ProposalItem{series(1, "The Simpsons"), series(1, "The Simpsons")} // same show twice → 1 distinct
+	lineup := []ProposalItem{series(90000001, "The Mudpuddles"), series(90000001, "The Mudpuddles")} // same show twice → 1 distinct
 	p := groundPolicy(raw, lineup, nil, Intent{})
 	if p.Ordering != schedule.OrderInherit {
 		t.Errorf("ordering = %q, want inherit (single distinct series is not multi-series)", p.Ordering)
@@ -221,7 +222,7 @@ func TestGroundPolicy_SingleSeriesStaysInherit(t *testing.T) {
 // it stays inherit. (Conservative reading of §5 — a one-show-plus-movies channel keeps order.)
 func TestGroundPolicy_OneSeriesPlusMoviesStaysInherit(t *testing.T) {
 	raw := &pickPolicy{}
-	lineup := []ProposalItem{series(1, "MST3K"), movie(10, "B-Movie A"), movie(11, "B-Movie B")}
+	lineup := []ProposalItem{series(90000001, "Quasar Quartet"), movie(90000010, "B-Movie A"), movie(90000011, "B-Movie B")}
 	p := groundPolicy(raw, lineup, nil, Intent{})
 	if p.Ordering != schedule.OrderInherit {
 		t.Errorf("ordering = %q, want inherit (one series + movies is not multi-series)", p.Ordering)
@@ -232,7 +233,7 @@ func TestGroundPolicy_OneSeriesPlusMoviesStaysInherit(t *testing.T) {
 // asks for a chronological multi-show marathon gets sequential, not an override to syndication.
 func TestGroundPolicy_ExplicitOrderingWinsOverMultiSeriesDefault(t *testing.T) {
 	raw := &pickPolicy{Ordering: "sequential"}
-	lineup := []ProposalItem{series(1, "TNG"), series(2, "DS9")}
+	lineup := []ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station")}
 	p := groundPolicy(raw, lineup, nil, Intent{})
 	if p.Ordering != schedule.OrderSequential {
 		t.Errorf("ordering = %q, want sequential (explicit model choice wins)", p.Ordering)
@@ -245,12 +246,12 @@ func TestGroundPolicy_ExplicitOrderingWinsOverMultiSeriesDefault(t *testing.T) {
 // marathon How (sequential + unbounded + no breaks + WindowFull), the series scope
 // intersected with the grounded picks.
 func TestGroundRules_WeekendMarathon(t *testing.T) {
-	tng := series(1, "TNG")
-	key, _ := tng.Key()
+	relay := series(90000001, "Cold Relay")
+	key, _ := relay.Key()
 	raw := &pickPolicy{Rules: []pickRule{
 		{When: "weekend", What: "series:" + string(key), How: "marathon"},
 	}}
-	p := groundPolicy(raw, []ProposalItem{tng, series(2, "DS9")}, nil, Intent{})
+	p := groundPolicy(raw, []ProposalItem{relay, series(90000002, "Ferrocene Station")}, nil, Intent{})
 	if len(p.Rules) != 1 {
 		t.Fatalf("want 1 grounded rule, got %d", len(p.Rules))
 	}
@@ -281,11 +282,11 @@ func TestGroundRules_UnknownWhenDropped(t *testing.T) {
 // A series WHAT that names a series NOT in the grounded picks drops the series scope (the
 // rule keeps its timing but inherits the channel scope) — a rule can't scope to a phantom.
 func TestGroundRules_SeriesScopeIntersectedWithGroundedPicks(t *testing.T) {
-	tng := series(1, "TNG")
+	relay := series(90000001, "Cold Relay")
 	raw := &pickPolicy{Rules: []pickRule{
-		{When: "weekend", What: "series:series:tvdb:99999", How: "marathon"}, // not a grounded pick
+		{When: "weekend", What: "series:series:tvdb:90099999", How: "marathon"}, // not a grounded pick
 	}}
-	p := groundPolicy(raw, []ProposalItem{tng}, nil, Intent{})
+	p := groundPolicy(raw, []ProposalItem{relay}, nil, Intent{})
 	if len(p.Rules) != 1 {
 		t.Fatalf("rule should survive (timing valid), got %d", len(p.Rules))
 	}
@@ -350,7 +351,7 @@ func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 	}{
 		{"Movies capped at PG-13", "PG-13"}, {"Movies capped at R", "R"},
 		{"Movies capped at R, with a PG maximum", "PG"},
-		{"Movies about PG Tips", ""}, {"Movies capped at RPG", ""},
+		{"Movies about PG Biscuits", ""}, {"Movies capped at RPG", ""},
 		{"Movies capped at PG-131", ""},
 		{"Movies capped at PG-13x", ""},
 		{"Movies capped at R; rated G", "G"},

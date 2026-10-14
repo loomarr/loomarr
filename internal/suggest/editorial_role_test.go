@@ -9,17 +9,17 @@ import (
 )
 
 func TestGroundedProposalPersistsEditorialEvidenceButDropsUnsourcedPicks(t *testing.T) {
-	intent := Intent{Description: "action movies", CurrentLineup: []LineupContext{{Key: "movie:tmdb:1", Name: "Retained"}}, Adjacent: []AdjacentContext{{Key: "movie:tmdb:2", Name: "Related", Votes: 3}}}
+	intent := Intent{Description: "action movies", CurrentLineup: []LineupContext{{Key: "movie:tmdb:90000001", Name: "Retained"}}, Adjacent: []AdjacentContext{{Key: "movie:tmdb:90000002", Name: "Related", Votes: 3}}}
 	meaning, err := ValidateDateMeaning(intent, &DateMeaning{Kind: DateMeaningNone})
 	if err != nil {
 		t.Fatal(err)
 	}
 	surfaced := map[provision.Key]catalog.Candidate{
-		"movie:tmdb:1": {MediaType: provision.Movie, TMDBID: 1, Name: "Retained", InLibrary: true, Source: catalog.ScopeLibrary},
-		"movie:tmdb:2": {MediaType: provision.Movie, TMDBID: 2, Name: "Related", InLibrary: true, Source: catalog.ScopeAdjacent},
-		"movie:tmdb:3": {MediaType: provision.Movie, TMDBID: 3, Name: "Discovered", InLibrary: true, Source: catalog.ScopeLibrary},
+		"movie:tmdb:90000001": {MediaType: provision.Movie, TMDBID: 90000001, Name: "Retained", InLibrary: true, Source: catalog.ScopeLibrary},
+		"movie:tmdb:90000002": {MediaType: provision.Movie, TMDBID: 90000002, Name: "Related", InLibrary: true, Source: catalog.ScopeAdjacent},
+		"movie:tmdb:90000003": {MediaType: provision.Movie, TMDBID: 90000003, Name: "Discovered", InLibrary: true, Source: catalog.ScopeLibrary},
 	}
-	out := finalOutput{Picks: []pick{{Key: "movie:tmdb:1"}, {Key: "movie:tmdb:2"}, {Key: "movie:tmdb:3"}, {Key: "movie:tmdb:999"}}}
+	out := finalOutput{Picks: []pick{{Key: "movie:tmdb:90000001"}, {Key: "movie:tmdb:90000002"}, {Key: "movie:tmdb:90000003"}, {Key: "movie:tmdb:90000999"}}}
 	prop, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &DecisionTrace{}, meaning)
 	if err != nil {
 		t.Fatal(err)

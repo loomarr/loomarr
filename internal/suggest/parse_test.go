@@ -22,12 +22,12 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 	}{
 		{
 			name:      "bare json (gpt-4o-mini)",
-			content:   `{"rationale":"r","picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+			content:   `{"rationale":"r","picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "r",
 		},
 		{
 			name:      "markdown-fenced json (claude)",
-			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"key\":\"movie:tmdb:603\",\"name\":\"The Matrix\"}],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\n```",
+			content:   "```json\n{\"rationale\":\"r\",\"picks\":[{\"mediaType\":\"movie\",\"key\":\"movie:tmdb:90000603\",\"name\":\"Marigold Protocol\"}],\"dateMeaning\":{\"kind\":\"none\",\"anchors\":[],\"axes\":[]}}\n```",
 			wantPicks: 1, wantRat: "r",
 		},
 		{
@@ -37,7 +37,7 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 		},
 		{
 			name:      "brace inside a string value is not the object end",
-			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","key":"movie:tmdb:1","name":"Brace } Face"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
+			content:   `{"rationale":"a {weird} title","picks":[{"mediaType":"movie","key":"movie:tmdb:90000001","name":"Brace } Face"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`,
 			wantPicks: 1, wantRat: "a {weird} title",
 		},
 		{
@@ -75,10 +75,10 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 
 func TestToolResultCarriesGroundedDiscoveryEvidence(t *testing.T) {
 	candidates := []catalog.Candidate{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", OriginalLanguage: "en",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", OriginalLanguage: "en",
 		OriginCountries: []string{"US"}, RuntimeMinutes: 136, VoteAverage: 8.2, VoteCount: 26000,
-		Keywords: []string{"artificial reality"}, Networks: []string{"HBO"},
-		Cast: []string{"Keanu Reeves"}, Creators: []string{"Lana Wachowski", "Lilly Wachowski"},
+		Keywords: []string{"artificial reality"}, Networks: []string{"KBX"},
+		Cast: []string{"Calder Rook"}, Creators: []string{"Lena Strand", "Lise Strand"},
 	}}
 
 	got := toolResult(candidates)
@@ -86,9 +86,9 @@ func TestToolResultCarriesGroundedDiscoveryEvidence(t *testing.T) {
 		got[0].VoteAverage != 8.2 || got[0].VoteCount != 26000 ||
 		!reflect.DeepEqual(got[0].OriginCountries, []string{"US"}) ||
 		!reflect.DeepEqual(got[0].Keywords, []string{"artificial reality"}) ||
-		!reflect.DeepEqual(got[0].Networks, []string{"HBO"}) ||
-		!reflect.DeepEqual(got[0].Cast, []string{"Keanu Reeves"}) ||
-		!reflect.DeepEqual(got[0].Creators, []string{"Lana Wachowski", "Lilly Wachowski"}) {
+		!reflect.DeepEqual(got[0].Networks, []string{"KBX"}) ||
+		!reflect.DeepEqual(got[0].Cast, []string{"Calder Rook"}) ||
+		!reflect.DeepEqual(got[0].Creators, []string{"Lena Strand", "Lise Strand"}) {
 		t.Fatalf("tool discovery evidence = %+v", got)
 	}
 }
@@ -104,14 +104,14 @@ func TestUserPrompt_RefineFraming(t *testing.T) {
 
 	refine := userPrompt(Intent{
 		Description:   "90s action",
-		RefineText:    "add more Schwarzenegger",
-		CurrentLineup: []LineupContext{{Name: "The Matrix", Year: 1999}, {Name: "Point Break", Year: 1991}},
+		RefineText:    "add more Juno Castellan",
+		CurrentLineup: []LineupContext{{Name: "Marigold Protocol", Year: 1999}, {Name: "The Seventh Satellite Choir", Year: 1991}},
 	})
 	for _, want := range []string{
 		"already exists",
-		"The Matrix (1999)",
-		"Point Break (1991)",
-		"add more Schwarzenegger",
+		"Marigold Protocol (1999)",
+		"The Seventh Satellite Choir (1991)",
+		"add more Juno Castellan",
 		"catalog tool", // grounding re-asserted for refine picks
 	} {
 		if !strings.Contains(refine, want) {
@@ -127,7 +127,7 @@ func TestUserPrompt_FindMoreRequestsANewBatchWithoutRepeatingTheLineup(t *testin
 	prompt := userPrompt(Intent{
 		Description:   "90s action",
 		RefineText:    "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
-		CurrentLineup: []LineupContext{{Name: "Heat", Year: 1995}, {Name: "Point Break", Year: 1991}},
+		CurrentLineup: []LineupContext{{Name: "The Velvet Cartographer", Year: 1995}, {Name: "The Seventh Satellite Choir", Year: 1991}},
 	})
 
 	for _, want := range []string{
