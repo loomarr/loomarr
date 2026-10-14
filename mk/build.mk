@@ -136,7 +136,7 @@ demo-library: ## serve the demo library's Emby-compatible stand-in (generates it
 
 .PHONY: demo-titles-verify
 demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path)
-	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoNewRealTitles|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented|TestCIRunsTheGuardWheneverAScannedFileChanges'
+	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoRealTitles|TestMigratedFixturesStayInvented|TestMigratedGoTestsStayInvented|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented|TestCIRunsTheGuardWheneverAScannedFileChanges'
 
 .PHONY: demo-seed
 demo-seed: ## point this worktree's backend at the running demo library and create the demo channels (idempotent)
