@@ -90,6 +90,7 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   const saved: FillerSelection | undefined = policy?.filler;
   const savedBreaksPerHour = policy?.breaksPerHour;
   const savedBreakDuration = policy?.breakDuration;
+  const savedCommercialSpacing = policy?.commercialSpacing;
   // The saved selection this draft was seeded from, as a canonical string — its identity,
   // not its reference (the page hands a fresh `ch.policy.filler` object every render). We
   // resync the draft to `saved` only when THIS changes: a genuine server update (an apply
@@ -99,16 +100,18 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   // ⚠ Not while an apply is in flight, for the reason useChannelRulesDraft gives: the page
   // renders the writer's pending policy, so a failed apply would otherwise reset the draft.
   const savedSelectionKey = canonicalize(saved ?? {});
-  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}|duration:${savedBreakDuration ?? "default"}`;
+  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}|duration:${savedBreakDuration ?? "default"}|spacing:${savedCommercialSpacing ?? "default"}`;
   const [draft, setDraft] = useState<FillerDraft>(saved ?? {});
   const [breaksPerHour, setBreaksPerHour] = useState<number | undefined>(savedBreaksPerHour);
   const [breakDuration, setBreakDuration] = useState<string | undefined>(savedBreakDuration);
+  const [commercialSpacing, setCommercialSpacing] = useState<string | undefined>(savedCommercialSpacing);
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
   const [isApplying, setApplying] = useState(false);
   if (savedKey !== adoptedKey && !isApplying) {
     setDraft(saved ?? {});
     setBreaksPerHour(savedBreaksPerHour);
     setBreakDuration(savedBreakDuration);
+    setCommercialSpacing(savedCommercialSpacing);
     setAdoptedKey(savedKey);
   }
 
@@ -146,6 +149,8 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     setBreaksPerHour,
     breakDuration,
     setBreakDuration,
+    commercialSpacing,
+    setCommercialSpacing,
     preview: body,
     isPreviewing: preview.isPending,
     // The transport mutator THROWS an ApiError on non-2xx for mutations (unlike a query,
@@ -156,13 +161,14 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     isDirty:
       draftKey !== savedSelectionKey ||
       breaksPerHour !== savedBreaksPerHour ||
-      breakDuration !== savedBreakDuration,
+      breakDuration !== savedBreakDuration ||
+      commercialSpacing !== savedCommercialSpacing,
     // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
     // rest of it (scope/audience/separation/ordering) alongside the new filler.
     apply: () => {
       setApplying(true);
       void save(
-        { policy: { ...policy, filler: selection, breaksPerHour, breakDuration } },
+        { policy: { ...policy, filler: selection, breaksPerHour, breakDuration, commercialSpacing } },
         { success: "Filler updated" },
       )
         .catch(ignoreFailure)
@@ -173,6 +179,7 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
       setDraft(saved ?? {});
       setBreaksPerHour(savedBreaksPerHour);
       setBreakDuration(savedBreakDuration);
+      setCommercialSpacing(savedCommercialSpacing);
     },
   };
 };

@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	DeterministicProducer        = "deterministic-metadata"
-	DeterministicProducerVersion = "3"
+	DeterministicProducer = "deterministic-metadata"
+	// 4: undeclared sources no longer stamp the household's home country, and US source defaults
+	// yield to British "advert" wording (#1670). The bump re-runs every clip so v3 stamps retract.
+	DeterministicProducerVersion = "4"
 	ControlledTaxonomyVersion    = "seed-v2"
 )
 
@@ -45,6 +47,9 @@ var phraseMappings = []phraseMapping{
 }
 
 var explicitYear = regexp.MustCompile(`\b(19[3-9][0-9]|20[0-3][0-9])\b`)
+
+// britishAdvert is the standalone British word for a commercial ("Puma Advert", "TV adverts").
+var britishAdvert = regexp.MustCompile(`(?i)\badverts?\b`)
 var fiveNetwork = regexp.MustCompile(`(?i)\b(?:broadcast|shown|aired)\b[^.\n]{0,80}\b(?:on\s+(?:channel\s+)?five|on\s+channel\s+5)\b`)
 
 // AnalyzeDeterministic performs the always-available free pass over preserved metadata. It emits
@@ -131,16 +136,34 @@ func AnalyzeDeterministic(signals Signals) []State {
 		evidence.TaxonomyVersion = ControlledTaxonomyVersion
 		appendState(AxisAudienceCue, Value{Tags: []string{"kids-cue"}}, evidence)
 	}
-	if fiveNetwork.MatchString(itemText) {
+	// withdrawGeography records "this pass has no location", as `unsupported` rather than an empty
+	// `complete`, so later passes still look for one. It also retracts this producer's own earlier
+	// answer when its rules change (Apply's withdrawal rule).
+	withdrawGeography := func(evidence Evidence) {
+		byAxis[AxisGeography] = State{ClipHash: signals.ClipHash, Axis: AxisGeography, Status: StatusUnsupported, Evidence: evidence}
+	}
+	sourceReference := "registered_source:" + strings.TrimSpace(signals.SourceID)
+	switch {
+	case fiveNetwork.MatchString(itemText):
 		appendState(AxisGeography, Value{Geography: Geography{Scope: "national", Country: "GB", Network: "Five"}}, Evidence{
 			Kind: EvidenceTrustedMap, Reference: "trusted.network_mapping:five-gb", Confidence: 100,
 			Producer: DeterministicProducer, ProducerVersion: DeterministicProducerVersion, ObservedAt: at,
 		})
-	} else if signals.Source != (Geography{}) {
+	case strings.EqualFold(signals.Source.Country, "US") && britishAdvert.MatchString(itemText):
+		// "Advert" is British usage, so a US source default is contradicted by the item itself.
+		// It is not evidence of GB either; the clip stays unknown for stronger evidence to settle.
+		withdrawGeography(itemEvidence("item.british_wording:advert", 100))
+	case signals.Source != (Geography{}):
 		appendState(AxisGeography, Value{Geography: signals.Source}, Evidence{
-			Kind: EvidenceSourceDefault, Reference: "registered_source:" + strings.TrimSpace(signals.SourceID), Confidence: 100,
+			Kind: EvidenceSourceDefault, Reference: sourceReference, Confidence: 100,
 			Producer: DeterministicProducer, ProducerVersion: DeterministicProducerVersion, ObservedAt: at,
 		})
+	case strings.TrimSpace(signals.SourceID) != "":
+		// The source declares no coverage. Producer version 3 stamped the household's home country
+		// here; this explicit withdrawal is what lets the re-run retract that stamp (see Apply).
+		evidence := itemEvidence(sourceReference, 100)
+		evidence.Kind = EvidenceSourceDefault
+		withdrawGeography(evidence)
 	}
 	out := make([]State, 0, len(byAxis))
 	for _, state := range byAxis {
