@@ -103,6 +103,7 @@ const GrowingTextarea = ({
     field.style.height = "auto";
     field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the value IS the dependency; fit reads its height from the DOM
   React.useLayoutEffect(fit, [fit, props.value]);
   React.useEffect(() => {
     window.addEventListener("resize", fit);

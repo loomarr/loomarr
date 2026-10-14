@@ -42,12 +42,19 @@ describe("NavTabs", () => {
   it("scrolls the active destination into view, sideways only", () => {
     // jsdom has no layout: a 200 px bar whose third tab sits at 260–340 px of its content.
     let scrollLeft = 0;
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      const left =
-        this.tagName === "NAV" ? 0 : this.textContent?.startsWith("History") ? 260 - scrollLeft : 0;
-      const width = this.tagName === "NAV" ? 200 : 80;
-      return { left, width, right: left + width, top: 0, bottom: 30, height: 30, x: left, y: 0 } as DOMRect;
-    });
+    const rect = (left: number, width: number) =>
+      ({ left, width, right: left + width, top: 0, bottom: 30, height: 30, x: left, y: 0 }) as DOMRect;
+    // Every element reads as the bar; the active link gets its own box as it mounts, before the
+    // bar's layout effect measures it.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rect(0, 200));
+    const measuredLink = (props: Parameters<typeof anchorLink>[0]) =>
+      anchorLink({
+        ...props,
+        ref: (link: HTMLAnchorElement | null) => {
+          if (link && props.to === "/queue/history")
+            link.getBoundingClientRect = () => rect(260 - scrollLeft, 80);
+        },
+      });
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(200);
     const scroll = vi
       .spyOn(HTMLElement.prototype, "scrollLeft", "set")
@@ -56,7 +63,7 @@ describe("NavTabs", () => {
       });
     vi.spyOn(HTMLElement.prototype, "scrollLeft", "get").mockImplementation(() => scrollLeft);
 
-    render(<NavTabs tabs={tabs} activeId="history" linkComponent={anchorLink} label="Queue sections" />);
+    render(<NavTabs tabs={tabs} activeId="history" linkComponent={measuredLink} label="Queue sections" />);
 
     expect(scroll).toHaveBeenCalledWith(140);
     vi.restoreAllMocks();
