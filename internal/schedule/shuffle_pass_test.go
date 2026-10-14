@@ -18,8 +18,8 @@ const passEpisodeMin = 30 * time.Minute
 // windows tile the deck, so the concatenation is the airing sequence.
 func airedWindows(t *testing.T, ch schedule.Channel, ordering schedule.OrderingMode, eps, from, to int) []string {
 	t.Helper()
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Show")}
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:100": manyEpisodes(eps)})
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Show")}
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:90000100": manyEpisodes(eps)})
 	policy := schedule.ChannelPolicy{Ordering: ordering}
 	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	var out []string
@@ -118,8 +118,8 @@ func TestShuffle_ACatalogThatFitsOneWindowIsDealtAnewEachWindow(t *testing.T) {
 func TestShuffle_AFittingCatalogIgnoresHistoryAndRestsAcrossWindows(t *testing.T) {
 	const eps = 8        // 30-minute episodes: 4h. A third of the pool less two episodes of slack is 60m,
 	const spacingEps = 2 // so the repeat spacing is 2 of them
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Show")}
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:100": manyEpisodes(eps)})
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Show")}
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:90000100": manyEpisodes(eps)})
 	policy := schedule.ChannelPolicy{Ordering: schedule.OrderSyndication}
 	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 

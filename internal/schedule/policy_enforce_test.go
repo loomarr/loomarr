@@ -54,28 +54,28 @@ func computeWithPolicy(entries []schedule.LineupEntry, avail schedule.Availabili
 
 func TestEnforce_EraBinds(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "In Era", "", 1994),
-		ratedEntry("movie:tmdb:2", "Too Old", "", 1985),
-		ratedEntry("movie:tmdb:3", "Too New", "", 2005),
+		ratedEntry("movie:tmdb:90000001", "In Era", "", 1994),
+		ratedEntry("movie:tmdb:90000002", "Too Old", "", 1985),
+		ratedEntry("movie:tmdb:90000003", "Too New", "", 2005),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2", "movie:tmdb:90000003": "l3"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
-	if !hasKey(keys, "movie:tmdb:1") {
+	if !hasKey(keys, "movie:tmdb:90000001") {
 		t.Error("in-era title should be scheduled")
 	}
-	if hasKey(keys, "movie:tmdb:2") || hasKey(keys, "movie:tmdb:3") {
+	if hasKey(keys, "movie:tmdb:90000002") || hasKey(keys, "movie:tmdb:90000003") {
 		t.Errorf("out-of-era titles must be filtered: got %v", keys)
 	}
 }
 
 func TestEnforce_EraBindsEveryExpandedEpisode(t *testing.T) {
-	series := ratedEntry("series:tmdb:456", "The Simpsons", "TV-PG", 1989, "Animation", "Comedy")
+	series := ratedEntry("series:tmdb:90000456", "The Mudpuddles", "TV-PG", 1989, "Animation", "Comedy")
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tmdb:456": {
-			{LibraryItemID: "classic", Title: "Marge vs. the Monorail", DurationMs: 1_320_000, Season: 4, Episode: 12, Year: 1993},
-			{LibraryItemID: "modern", Title: "Top Goon", DurationMs: 1_320_000, Season: 34, Episode: 11, Year: 2022},
+		"series:tmdb:90000456": {
+			{LibraryItemID: "classic", Title: "Tansy vs. the Tramline", DurationMs: 1_320_000, Season: 4, Episode: 12, Year: 1993},
+			{LibraryItemID: "modern", Title: "Top Puddle", DurationMs: 1_320_000, Season: 34, Episode: 11, Year: 2022},
 		},
 	})
 	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
@@ -92,8 +92,8 @@ func TestEnforce_EraBindsEveryExpandedEpisode(t *testing.T) {
 }
 
 func TestEnforce_DatesKeepPremiereAndAiringAxesIndependent(t *testing.T) {
-	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+	series := ratedEntry("series:tmdb:90000456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:90000456": {
 		{LibraryItemID: "gap", Title: "Gap", DurationMs: 1, Year: 1991},
 		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
 		{LibraryItemID: "new", Title: "New", DurationMs: 1, Year: 2001},
@@ -109,8 +109,8 @@ func TestEnforce_DatesKeepPremiereAndAiringAxesIndependent(t *testing.T) {
 }
 
 func TestEnforce_RuleDatesIntersectEpisodeAiringWithoutChangingEligibleKeys(t *testing.T) {
-	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+	series := ratedEntry("series:tmdb:90000456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:90000456": {
 		{LibraryItemID: "before-rule", Title: "Before rule", DurationMs: 1, Year: 1985},
 		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
 		{LibraryItemID: "after-rule", Title: "After rule", DurationMs: 1, Year: 2000},
@@ -128,14 +128,14 @@ func TestEnforce_RuleDatesIntersectEpisodeAiringWithoutChangingEligibleKeys(t *t
 	if got := programItemIDs(desired); len(got) != 1 || got[0] != "wanted" {
 		t.Fatalf("rule airing window scheduled %v, want only wanted", got)
 	}
-	if !desired.EligibleKeys["series:tmdb:456"] {
+	if !desired.EligibleKeys["series:tmdb:90000456"] {
 		t.Fatalf("EligibleKeys = %v, want rule-rotated series retained", desired.EligibleKeys)
 	}
 }
 
 func TestEnforce_RuleAiringDatesIntersectAndUnknownYearsFailOpen(t *testing.T) {
-	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+	series := ratedEntry("series:tmdb:90000456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:90000456": {
 		{LibraryItemID: "known", Title: "Known", DurationMs: 1, Year: 1995},
 		{LibraryItemID: "unknown", Title: "Unknown", DurationMs: 1, Year: 0},
 	}})
@@ -155,8 +155,8 @@ func TestEnforce_RuleAiringDatesIntersectAndUnknownYearsFailOpen(t *testing.T) {
 }
 
 func TestEnforce_RuleOnlyAiringDatesDoNotFilterSeriesPremiere(t *testing.T) {
-	series := ratedEntry("series:tmdb:456", "Long Runner", "TV-PG", 1989)
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:456": {
+	series := ratedEntry("series:tmdb:90000456", "Long Runner", "TV-PG", 1989)
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tmdb:90000456": {
 		{LibraryItemID: "wanted", Title: "Wanted", DurationMs: 1, Year: 1995},
 	}})
 	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{{
@@ -168,27 +168,27 @@ func TestEnforce_RuleOnlyAiringDatesDoNotFilterSeriesPremiere(t *testing.T) {
 }
 
 func TestEnforce_DatesMovieWindowsAndUnknownYear(t *testing.T) {
-	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:1", "Gap", "", 1995), ratedEntry("movie:tmdb:2", "Window", "", 2001), ratedEntry("movie:tmdb:3", "Unknown", "", 0)}
-	avail := mapAvail{"movie:tmdb:1": "gap", "movie:tmdb:2": "window", "movie:tmdb:3": "unknown"}
+	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:90000001", "Gap", "", 1995), ratedEntry("movie:tmdb:90000002", "Window", "", 2001), ratedEntry("movie:tmdb:90000003", "Unknown", "", 0)}
+	avail := mapAvail{"movie:tmdb:90000001": "gap", "movie:tmdb:90000002": "window", "movie:tmdb:90000003": "unknown"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}, {From: 2000, To: 2002}}}}}}
 	keys := programKeys(computeWithPolicy(entries, avail, p))
-	if hasKey(keys, "movie:tmdb:1") || !hasKey(keys, "movie:tmdb:2") || !hasKey(keys, "movie:tmdb:3") {
+	if hasKey(keys, "movie:tmdb:90000001") || !hasKey(keys, "movie:tmdb:90000002") || !hasKey(keys, "movie:tmdb:90000003") {
 		t.Fatalf("movie date windows = %v", keys)
 	}
 }
 
 func TestEnforce_GenreBinds(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Toon", "", 1994, "Animation"),
-		ratedEntry("movie:tmdb:2", "Doc", "", 1994, "Documentary"),
+		ratedEntry("movie:tmdb:90000001", "Toon", "", 1994, "Animation"),
+		ratedEntry("movie:tmdb:90000002", "Doc", "", 1994, "Documentary"),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
 		Genres: schedule.GenreFilter{Include: []string{"Animation"}, Exclude: []string{"Documentary"}},
 	}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
-	if !hasKey(keys, "movie:tmdb:1") || hasKey(keys, "movie:tmdb:2") {
+	if !hasKey(keys, "movie:tmdb:90000001") || hasKey(keys, "movie:tmdb:90000002") {
 		t.Errorf("genre include/exclude didn't bind: got %v", keys)
 	}
 }
@@ -197,22 +197,22 @@ func TestEnforce_GenreBinds(t *testing.T) {
 
 func TestEnforce_AudienceFailsClosed(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Kids OK", "TV-Y7", 1994),
-		ratedEntry("movie:tmdb:2", "Too Adult", "TV-MA", 1994),
-		ratedEntry("movie:tmdb:3", "No Rating", "", 1994), // unrated
+		ratedEntry("movie:tmdb:90000001", "Kids OK", "TV-Y7", 1994),
+		ratedEntry("movie:tmdb:90000002", "Too Adult", "TV-MA", 1994),
+		ratedEntry("movie:tmdb:90000003", "No Rating", "", 1994), // unrated
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2", "movie:tmdb:90000003": "l3"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}}
 
 	d := computeWithPolicy(entries, avail, p)
 	keys := programKeys(d)
-	if !hasKey(keys, "movie:tmdb:1") {
+	if !hasKey(keys, "movie:tmdb:90000001") {
 		t.Error("a below-ceiling title should air")
 	}
-	if hasKey(keys, "movie:tmdb:2") {
+	if hasKey(keys, "movie:tmdb:90000002") {
 		t.Error("TV-MA must NEVER air under a TV-Y7 ceiling")
 	}
-	if hasKey(keys, "movie:tmdb:3") {
+	if hasKey(keys, "movie:tmdb:90000003") {
 		t.Error("an UNRATED title must fail closed under a kids ceiling (never guessed)")
 	}
 	// The exclusion report explains the drops (for proposal review / UI).
@@ -224,7 +224,7 @@ func TestEnforce_AudienceFailsClosed(t *testing.T) {
 // --- §4 PER-EPISODE AUDIENCE ----------------------------------------------------
 //
 // A series entry's rating is a SUMMARY of its episodes, and enforcing against it alone let
-// above-ceiling episodes air. King of the Hill, from the maintainer's live library: a TV-PG
+// above-ceiling episodes air. A family sitcom in the maintainer's live library: a TV-PG
 // series whose 275 episodes are 253 × TV-PG, 20 × unrated, and 2 × TV-14. The entry gate
 // admitted the show — correctly, it IS a TV-PG show — and both TV-14 episodes then aired on a
 // TV-PG channel because nothing below the entry was ever asked. These pin the episode gate.
@@ -255,13 +255,13 @@ func hasID(ids []string, id string) bool {
 // "rated and under the ceiling", "rated ABOVE it", and "not rated at all" have to reach three
 // different outcomes, and the unrated one has to be shown airing rather than merely not-crashing.
 func TestEnforce_EpisodeRatingBeatsTheSeriesSummary(t *testing.T) {
-	// A TV-PG series — it clears the entry gate, exactly as King of the Hill does.
-	koth := ratedEntry("series:tmdb:2122", "King of the Hill", "TV-PG", 1997)
+	// A TV-PG series — it clears the entry gate, exactly as a family sitcom does.
+	capers := ratedEntry("series:tmdb:90002122", "Cul-de-Sac Capers", "TV-PG", 1997)
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tmdb:2122": {
+		"series:tmdb:90002122": {
 			{LibraryItemID: "ep-pg", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1,
 				OfficialRating: "TV-PG"},
-			{LibraryItemID: "ep-14", Title: "Wings of the Dope", DurationMs: 1_320_000, Season: 4, Episode: 6,
+			{LibraryItemID: "ep-14", Title: "The Lawnmower Derby", DurationMs: 1_320_000, Season: 4, Episode: 6,
 				OfficialRating: "TV-14"},
 			{LibraryItemID: "ep-none", Title: "Unrated Episode", DurationMs: 1_320_000, Season: 5, Episode: 2},
 		},
@@ -270,7 +270,7 @@ func TestEnforce_EpisodeRatingBeatsTheSeriesSummary(t *testing.T) {
 		Audience: schedule.AudiencePolicy{Ceiling: "TV-PG"},
 	}}
 
-	d := computeWithPolicy([]schedule.LineupEntry{koth}, avail, p)
+	d := computeWithPolicy([]schedule.LineupEntry{capers}, avail, p)
 	ids := programItemIDs(d)
 
 	if !hasID(ids, "ep-pg") {
@@ -281,7 +281,7 @@ func TestEnforce_EpisodeRatingBeatsTheSeriesSummary(t *testing.T) {
 	}
 	// The decision recorded on #260: an episode the media server left unrated INHERITS its
 	// parent's rating rather than failing closed. The parent already cleared the ceiling, and
-	// 20 of King of the Hill's 275 episodes carry no rating — dropping them would silently
+	// 20 of that sitcom's 275 episodes carry no rating — dropping them would silently
 	// remove 7% of an approved show over a metadata gap.
 	if !hasID(ids, "ep-none") {
 		t.Error("an unrated episode of a below-ceiling series must inherit its parent's rating and air")
@@ -304,9 +304,9 @@ func TestEnforce_EpisodeRatingBeatsTheSeriesSummary(t *testing.T) {
 // without it, "inherit when unrated" would decay into "trust the series summary".
 func TestEnforce_EpisodeRating_ParentCannotLiftARatedEpisode(t *testing.T) {
 	// An unrated series on an ADULT channel (no kids ceiling ⇒ the entry gate admits it).
-	show := ratedEntry("series:tmdb:1", "Mixed Bag", "", 1997)
+	show := ratedEntry("series:tmdb:90000001", "Mixed Bag", "", 1997)
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tmdb:1": {
+		"series:tmdb:90000001": {
 			{LibraryItemID: "ep-ok", Title: "Fine", DurationMs: 1_320_000, Season: 1, Episode: 1,
 				OfficialRating: "TV-14"},
 			{LibraryItemID: "ep-ma", Title: "Not Fine", DurationMs: 1_320_000, Season: 1, Episode: 2,
@@ -332,9 +332,9 @@ func TestEnforce_EpisodeRating_ParentCannotLiftARatedEpisode(t *testing.T) {
 // means "approved, still acquiring": it advertises the title as coming and, under PodFill, holds
 // airtime for it. A show refused by the ceiling is not late, and promising it is the same leak.
 func TestEnforce_EpisodeRating_FullyRefusedSeriesIsNotPending(t *testing.T) {
-	show := ratedEntry("series:tmdb:2", "All Too Adult", "TV-PG", 1997)
+	show := ratedEntry("series:tmdb:90000002", "All Too Adult", "TV-PG", 1997)
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tmdb:2": {
+		"series:tmdb:90000002": {
 			{LibraryItemID: "e1", Title: "One", DurationMs: 1_320_000, Season: 1, Episode: 1, OfficialRating: "TV-MA"},
 			{LibraryItemID: "e2", Title: "Two", DurationMs: 1_320_000, Season: 1, Episode: 2, OfficialRating: "TV-MA"},
 		},
@@ -362,14 +362,14 @@ func TestEnforce_TVMA_NeverUnderKidsCeiling_EvenAfterRelaxation(t *testing.T) {
 	// One below-ceiling item + one TV-MA item; the tiny below-ceiling pool forces the
 	// relaxation ladder to descend (it can't fill a long no-repeat window from 1 item).
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Kids", "TV-Y", 1994),
-		ratedEntry("movie:tmdb:2", "Adult", "TV-MA", 1994),
+		ratedEntry("movie:tmdb:90000001", "Kids", "TV-Y", 1994),
+		ratedEntry("movie:tmdb:90000002", "Adult", "TV-MA", 1994),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y"}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	d := computeWithPolicy(entries, avail, p)
 	for _, k := range programKeys(d) {
-		if k == "movie:tmdb:2" {
+		if k == "movie:tmdb:90000002" {
 			t.Fatal("TV-MA reached a kids channel — fail-closed audience was violated")
 		}
 	}
@@ -378,10 +378,10 @@ func TestEnforce_TVMA_NeverUnderKidsCeiling_EvenAfterRelaxation(t *testing.T) {
 // A general/adult channel (no ceiling) admits unrated + adult content.
 func TestEnforce_NoCeiling_AdmitsEverything(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Adult", "TV-MA", 2001),
-		ratedEntry("movie:tmdb:2", "Unrated", "", 2001),
+		ratedEntry("movie:tmdb:90000001", "Adult", "TV-MA", 2001),
+		ratedEntry("movie:tmdb:90000002", "Unrated", "", 2001),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	keys := programKeys(computeWithPolicy(entries, avail, schedule.ChannelPolicy{}))
 	if len(keys) != 2 {
 		t.Errorf("no ceiling should admit all: got %v", keys)
@@ -392,12 +392,12 @@ func TestEnforce_NoCeiling_AdmitsEverything(t *testing.T) {
 
 func TestEnforce_Deterministic(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "A", "", 1994),
-		ratedEntry("movie:tmdb:2", "B", "", 1995),
-		ratedEntry("movie:tmdb:3", "C", "", 1996),
-		ratedEntry("movie:tmdb:4", "D", "", 1997),
+		ratedEntry("movie:tmdb:90000001", "A", "", 1994),
+		ratedEntry("movie:tmdb:90000002", "B", "", 1995),
+		ratedEntry("movie:tmdb:90000003", "C", "", 1996),
+		ratedEntry("movie:tmdb:90000004", "D", "", 1997),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3", "movie:tmdb:4": "l4"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2", "movie:tmdb:90000003": "l3", "movie:tmdb:90000004": "l4"}
 	ch := schedule.Channel{ID: "d", Name: "D", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 42}}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}
 
@@ -428,19 +428,19 @@ func boxSetEntry(key, title string, boxSets ...string) schedule.LineupEntry {
 // test's own failure message instructed when the field started binding.
 func TestEnforce_CollectionsBind(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		boxSetEntry("movie:tmdb:1", "In The Collection", "star-trek"),
-		boxSetEntry("movie:tmdb:2", "Outside It", "halloween"),
+		boxSetEntry("movie:tmdb:90000001", "In The Collection", "quiet-machines"),
+		boxSetEntry("movie:tmdb:90000002", "Outside It", "halloween"),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
-		Collections: []string{"star-trek"},
+		Collections: []string{"quiet-machines"},
 	}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
-	if !hasKey(keys, "movie:tmdb:1") {
+	if !hasKey(keys, "movie:tmdb:90000001") {
 		t.Errorf("a stamped member of the scoped collection was excluded; got %v", keys)
 	}
-	if hasKey(keys, "movie:tmdb:2") {
+	if hasKey(keys, "movie:tmdb:90000002") {
 		t.Errorf("a stamped NON-member scheduled anyway — the collections filter is not binding; got %v", keys)
 	}
 }
@@ -452,18 +452,18 @@ func TestEnforce_CollectionsBind(t *testing.T) {
 // and it points the other way. This is the assertion that fails if someone "tidies" boxSetOK
 // into treating unresolved as a non-member.
 func TestEnforce_CollectionsFailOpenWhenUnresolved(t *testing.T) {
-	unresolved := ratedEntry("movie:tmdb:3", "Never Stamped", "", 1994) // BoxSetsResolved stays false
+	unresolved := ratedEntry("movie:tmdb:90000003", "Never Stamped", "", 1994) // BoxSetsResolved stays false
 	entries := []schedule.LineupEntry{
-		boxSetEntry("movie:tmdb:1", "In The Collection", "star-trek"),
+		boxSetEntry("movie:tmdb:90000001", "In The Collection", "quiet-machines"),
 		unresolved,
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:3": "l3"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000003": "l3"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
-		Collections: []string{"star-trek"},
+		Collections: []string{"quiet-machines"},
 	}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
-	if !hasKey(keys, "movie:tmdb:3") {
+	if !hasKey(keys, "movie:tmdb:90000003") {
 		t.Errorf("an UNRESOLVED entry was filtered out — a down media server would empty the "+
 			"lineup. scope.collections must fail open (§2.2); got %v", keys)
 	}
@@ -474,10 +474,10 @@ func TestEnforce_CollectionsFailOpenWhenUnresolved(t *testing.T) {
 // would change behaviour on channels that use no collection scope at all.
 func TestEnforce_CollectionsEmptyScopeAdmitsAll(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		boxSetEntry("movie:tmdb:1", "In Some Collection", "star-trek"),
-		ratedEntry("movie:tmdb:2", "Never Stamped", "", 1994),
+		boxSetEntry("movie:tmdb:90000001", "In Some Collection", "quiet-machines"),
+		ratedEntry("movie:tmdb:90000002", "Never Stamped", "", 1994),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	p := schedule.ChannelPolicy{} // no scope at all
 
 	if keys := programKeys(computeWithPolicy(entries, avail, p)); len(keys) != 2 {
@@ -487,29 +487,29 @@ func TestEnforce_CollectionsEmptyScopeAdmitsAll(t *testing.T) {
 
 func TestEnforce_UnratedExclusionWithoutCeiling(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Rated", "R", 1994),
-		ratedEntry("movie:tmdb:2", "Missing", "", 1994),
-		ratedEntry("movie:tmdb:3", "Unmapped", "unknown", 1994),
+		ratedEntry("movie:tmdb:90000001", "Rated", "R", 1994),
+		ratedEntry("movie:tmdb:90000002", "Missing", "", 1994),
+		ratedEntry("movie:tmdb:90000003", "Unmapped", "unknown", 1994),
 	}
 	a := schedule.AudiencePolicy{Unrated: schedule.UnratedExclude}
 	for _, e := range entries {
 		ok, reason := a.Admits(e.OfficialRating)
-		if want := e.Key == "movie:tmdb:1"; ok != want || (!ok && reason != "unrated") {
+		if want := e.Key == "movie:tmdb:90000001"; ok != want || (!ok && reason != "unrated") {
 			t.Errorf("Admits(%q) = %v, %q", e.Title, ok, reason)
 		}
 	}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: a}}
-	d := computeWithPolicy(entries, mapAvail{"movie:tmdb:1": "rated", "movie:tmdb:2": "missing", "movie:tmdb:3": "unmapped"}, p)
+	d := computeWithPolicy(entries, mapAvail{"movie:tmdb:90000001": "rated", "movie:tmdb:90000002": "missing", "movie:tmdb:90000003": "unmapped"}, p)
 	keys := programKeys(d)
-	if !hasKey(keys, "movie:tmdb:1") || hasKey(keys, "movie:tmdb:2") || hasKey(keys, "movie:tmdb:3") || d.Excluded.Unrated != 2 {
+	if !hasKey(keys, "movie:tmdb:90000001") || hasKey(keys, "movie:tmdb:90000002") || hasKey(keys, "movie:tmdb:90000003") || d.Excluded.Unrated != 2 {
 		t.Fatalf("unrated-only policy: keys=%v exclusions=%+v", keys, d.Excluded)
 	}
 }
 
 func TestEnforce_UnratedOnlyKeepsRatedSeriesAndInheritedEpisodes(t *testing.T) {
-	show := ratedEntry("series:tmdb:1", "Rated series", "TV-MA", 1997)
+	show := ratedEntry("series:tmdb:90000001", "Rated series", "TV-MA", 1997)
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tmdb:1": {
+		"series:tmdb:90000001": {
 			{LibraryItemID: "rated", Title: "Rated", DurationMs: 1320000, Season: 1, Episode: 1, OfficialRating: "TV-MA"},
 			{LibraryItemID: "inherited", Title: "Inherited", DurationMs: 1320000, Season: 1, Episode: 2},
 		},

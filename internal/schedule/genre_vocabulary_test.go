@@ -34,10 +34,10 @@ func genreChannelAvail(keys ...string) schedule.Availability {
 // as out_of_scope: desired `[]`, no pending slot, status `empty`, and a channel that never aired.
 func TestComputeDesired_TVCompoundGenreScopeAdmitsMediaServerGenres(t *testing.T) {
 	lineup := []schedule.LineupEntry{
-		productionGenreEntry("series:tvdb:1", 1987, "Action", "Adventure", "Drama", "Mystery", "Science Fiction"),
-		productionGenreEntry("series:tvdb:2", 1993, "Action", "Adventure", "Drama", "Science Fiction"),
-		productionGenreEntry("series:tvdb:3", 1995, "Action", "Adventure", "Science Fiction"),
-		productionGenreEntry("series:tvdb:4", 2022, "Action", "Adventure", "Drama", "Science Fiction"),
+		productionGenreEntry("series:tvdb:90000001", 1987, "Action", "Adventure", "Drama", "Mystery", "Science Fiction"),
+		productionGenreEntry("series:tvdb:90000002", 1993, "Action", "Adventure", "Drama", "Science Fiction"),
+		productionGenreEntry("series:tvdb:90000003", 1995, "Action", "Adventure", "Science Fiction"),
+		productionGenreEntry("series:tvdb:90000004", 2022, "Action", "Adventure", "Drama", "Science Fiction"),
 	}
 	policy := schedule.ChannelPolicy{
 		Scope: schedule.ScopePolicy{Genres: schedule.GenreFilter{
@@ -45,7 +45,7 @@ func TestComputeDesired_TVCompoundGenreScopeAdmitsMediaServerGenres(t *testing.T
 		}},
 		Ordering: schedule.OrderSyndication,
 	}
-	avail := genreChannelAvail("series:tvdb:1", "series:tvdb:2", "series:tvdb:3", "series:tvdb:4")
+	avail := genreChannelAvail("series:tvdb:90000001", "series:tvdb:90000002", "series:tvdb:90000003", "series:tvdb:90000004")
 
 	got := programKeys(schedule.ComputeDesiredAt(seqChannel(), lineup, avail, schedule.PodFill, policy, time.Time{}))
 	for _, e := range lineup {
@@ -74,10 +74,10 @@ func TestComputeDesired_GenreScopeMatchesTVCompoundsBothWays(t *testing.T) {
 		{"parts never match each other", []string{"Fantasy"}, schedule.GenreFilter{Include: []string{"Science Fiction"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lineup := []schedule.LineupEntry{productionGenreEntry("series:tvdb:9", 2000, tc.genres...)}
+			lineup := []schedule.LineupEntry{productionGenreEntry("series:tvdb:90000009", 2000, tc.genres...)}
 			policy := schedule.ChannelPolicy{Scope: schedule.ScopePolicy{Genres: tc.filter}}
-			got := programKeys(schedule.ComputeDesiredAt(seqChannel(), lineup, genreChannelAvail("series:tvdb:9"), schedule.PodFill, policy, time.Time{}))
-			if airs := hasKey(got, "series:tvdb:9"); airs != tc.airs {
+			got := programKeys(schedule.ComputeDesiredAt(seqChannel(), lineup, genreChannelAvail("series:tvdb:90000009"), schedule.PodFill, policy, time.Time{}))
+			if airs := hasKey(got, "series:tvdb:90000009"); airs != tc.airs {
 				t.Fatalf("entry genres %v under %+v: airs = %v, want %v", tc.genres, tc.filter, airs, tc.airs)
 			}
 		})

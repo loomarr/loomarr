@@ -11,7 +11,7 @@ import (
 //
 //	A 0–10 · break 10–11 · film part 1 11–31 · mid-roll 31–32 · film part 2 32–57 · break 57–58 · B 58–68
 func midRollCycle() []schedule.Slot {
-	film := schedule.Slot{Kind: schedule.SlotProgram, Key: "movie:tmdb:9", LibraryItemID: "film", Title: "Film"}
+	film := schedule.Slot{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000009", LibraryItemID: "film", Title: "Film"}
 	part1, part2 := film, film
 	part1.Segment, part1.DurationMs = 1, (20 * time.Minute).Milliseconds()
 	part2.Segment, part2.SourceOffsetMs, part2.DurationMs = 2, (20 * time.Minute).Milliseconds(), (25 * time.Minute).Milliseconds()
@@ -19,9 +19,9 @@ func midRollCycle() []schedule.Slot {
 	mid := brk
 	mid.MidRoll = true
 	return []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "a", Title: "A", DurationMs: (10 * time.Minute).Milliseconds()},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "a", Title: "A", DurationMs: (10 * time.Minute).Milliseconds()},
 		brk, part1, mid, part2, brk,
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:2", LibraryItemID: "b", Title: "B", DurationMs: (10 * time.Minute).Milliseconds()},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000002", LibraryItemID: "b", Title: "B", DurationMs: (10 * time.Minute).Milliseconds()},
 	}
 }
 
@@ -79,7 +79,7 @@ func TestBroadcastsBetweenShowsASplitProgrammeAsOneEntry(t *testing.T) {
 // split: the pending walk must step over a split programme as one entry.
 func TestBroadcastsWithPendingStepsOverSplitProgrammes(t *testing.T) {
 	slots := midRollCycle()
-	pending := schedule.Slot{Kind: schedule.SlotPending, Key: "movie:tmdb:5", Title: "Soon"}
+	pending := schedule.Slot{Kind: schedule.SlotPending, Key: "movie:tmdb:90000005", Title: "Soon"}
 	slots = append(slots[:6], append([]schedule.Slot{pending}, slots[6:]...)...)
 	bs := BroadcastsWithPending(slots, midRollEpoch, at(0), at(68))
 	for i, b := range bs {

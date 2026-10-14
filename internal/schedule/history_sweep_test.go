@@ -27,8 +27,8 @@ func airWithHistory(n int, durs []time.Duration, window time.Duration, ordering 
 	for i := range eps {
 		eps[i].DurationMs = durs[i%len(durs)].Milliseconds()
 	}
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Show")}
-	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:100": eps})
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Show")}
+	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:90000100": eps})
 	policy := schedule.ChannelPolicy{Ordering: ordering}
 	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	w := window.Milliseconds()
