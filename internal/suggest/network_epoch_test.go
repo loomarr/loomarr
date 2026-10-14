@@ -123,7 +123,7 @@ func TestSuggest_NetworkStyleRejectsTitleLookupBeforeNetworkDiscovery(t *testing
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the history channel from the 90s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the almanac channel from the 90s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestSuggest_NetworkStyleRejectsGenericDiscovery(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the history channel from the 90s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the almanac channel from the 90s"})
 	if err != nil {
 		t.Fatal(err)
 	}
