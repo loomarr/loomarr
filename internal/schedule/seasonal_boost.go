@@ -194,7 +194,8 @@ type dayPlan struct {
 
 // holidayPlanner arranges one channel's windows around its per-day holiday plans.
 type holidayPlanner struct {
-	deck        []Slot
+	deck        []Slot     // pass 0's deal: the pool and day plans read it, so they hold across passes
+	ring        *dealtRing // what the windows air, pass after pass (seasonTile walks it)
 	f           holidayFeature
 	window      time.Duration
 	loc         *time.Location
@@ -208,11 +209,12 @@ type holidayPlanner struct {
 
 // newHolidayPlanner prepares the pass. breakFactor stretches programme runtime by the channel's
 // break density so the estimated start times land where the guide will show them.
-func newHolidayPlanner(deck []Slot, f holidayFeature, window time.Duration, zone *time.Location, breakFactor float64) *holidayPlanner {
+func newHolidayPlanner(ring *dealtRing, f holidayFeature, window time.Duration, zone *time.Location, breakFactor float64) *holidayPlanner {
 	if zone == nil {
 		zone = time.UTC
 	}
-	p := &holidayPlanner{deck: deck, f: f, window: window, loc: zone, breakFactor: breakFactor,
+	deck := ring.d.deck(0)
+	p := &holidayPlanner{deck: deck, ring: ring, f: f, window: window, loc: zone, breakFactor: breakFactor,
 		raw: map[int64]*dayPlan{}, plans: map[int64]*dayPlan{}, base: map[int64][]Slot{}, full: map[int64][]Slot{}}
 	var n int
 	var sum int64
@@ -454,9 +456,9 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 		}
 	}
 	if len(progAt) == 0 || total <= budget {
-		// The deck fits one window: every window airs all of it but the pool.
+		// The deck fits one window: every window airs all of it (that window's deal) but the pool.
 		pooled := p.pooled(w)
-		for _, s := range p.deck {
+		for _, s := range p.ring.tile(w) {
 			if !pooled[unitKey(s)] {
 				tile = append(tile, s)
 			}
@@ -466,14 +468,13 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 	anchor := w
 	for back := int64(seasonLookback / p.window); anchor > w-back && len(p.pooled(anchor-1)) > 0; anchor-- {
 	}
-	stride := int64(max(programsPerWindow(p.deck, budget), 1))
+	stride := p.ring.stride
 	nProg := int64(len(progAt))
-	ring := func(u int64) int { return progAt[(u%nProg+nProg)%nProg] }
-	// u counts programs passed since the deck head, unrolled: windowSlice starts window v at
+	// u counts programs passed along the dealt ring, unrolled: windowSliceDealt starts window v at
 	// v*stride, so a walk that never passes (v+1)*stride never reaches the next window's
 	// out-of-season start, and the season's last seam can only skip.
 	u := anchor * stride
-	prev := windowSlice(p.deck, p.window, anchor-1)
+	prev := p.ring.tile(anchor - 1)
 	for v := anchor; v <= w; v++ {
 		pooled := p.pooled(v)
 		need := budget
@@ -481,20 +482,21 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 			need -= f.unit.DurationMs
 		}
 		tile = tile[:0:0]
+		taken := map[string]bool{} // a walk that crosses into the next pass meets its units again
 		var acc int64
 		lap := u + nProg
-		for pos := ring(u); acc < need && u < min((v+1)*stride, lap); pos = (pos + 1) % len(p.deck) {
-			s := p.deck[pos]
-			if s.IsProgram() {
-				u++
-				if pooled[unitKey(s)] {
-					continue
-				}
-				acc += s.DurationMs
+		for acc < need && u < min((v+1)*stride, lap) {
+			s := p.ring.at(u)
+			u++
+			key := unitKey(s)
+			if pooled[key] || taken[key] {
+				continue
 			}
+			taken[key] = true
+			acc += s.DurationMs
 			tile = append(tile, s)
 		}
-		tile = p.farFill(tile, prev, ring, u, min((v+2)*stride, u+nProg), nProg, need-acc, pooled)
+		tile = p.farFill(tile, prev, u, min((v+2)*stride, u+nProg), nProg, need-acc, pooled)
 		prev = tile
 	}
 	return tile, true
@@ -506,7 +508,7 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 // featured, is as far from both airings as the deck allows. It skips the pool and the tile, and,
 // while anything else is left, the window before (prev) and what the next window's walk can reach
 // (ring positions u up to next), so neighbouring windows share nothing when the deck allows it.
-func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, next, nProg, short int64, pooled map[string]bool) []Slot {
+func (p *holidayPlanner) farFill(tile, prev []Slot, u, next, nProg, short int64, pooled map[string]bool) []Slot {
 	if short <= 0 {
 		return tile
 	}
@@ -518,10 +520,10 @@ func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, nex
 		near[unitKey(s)] = true
 	}
 	for n := u; n < next; n++ {
-		near[unitKey(p.deck[ring(n)])] = true
+		near[unitKey(p.ring.at(n))] = true
 	}
 	for k := int64(0); k < nProg && short > 0; k++ {
-		s := p.deck[ring(u+nProg/2+k)]
+		s := p.ring.at(u + nProg/2 + k)
 		if key := unitKey(s); !pooled[key] && !taken[key] && !near[key] {
 			taken[key] = true
 			short -= s.DurationMs
@@ -534,11 +536,11 @@ func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, nex
 	// next window's walk opens with it.
 	for d := int64(0); d < nProg && short > 0; d++ {
 		ahead := nProg/2 + (d+1)/2*(1-2*(d%2)) // nProg/2, then -1, +1, -2, +2, …
-		s := p.deck[ring(u+ahead)]
+		s := p.ring.at(u + ahead)
 		if key := unitKey(s); !pooled[key] && !taken[key] {
 			taken[key] = true
 			short -= s.DurationMs
-			tile = placeFar(tile, s, p.deck, ring, u, ahead-nProg/2)
+			tile = placeFar(tile, s, p.ring, u, ahead-nProg/2)
 		}
 	}
 	return tile
@@ -547,12 +549,12 @@ func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, nex
 // placeFar inserts s into tile right after the tile's walk episode at ring position u+at (at < 0
 // is behind the walk's end), stepping back past episodes the tile skipped; at its end when at is
 // not behind the walk, and at its start when the walk never reached u+at.
-func placeFar(tile []Slot, s Slot, deck []Slot, ring func(int64) int, u, at int64) []Slot {
+func placeFar(tile []Slot, s Slot, ring *dealtRing, u, at int64) []Slot {
 	if at >= 0 {
 		return append(tile, s)
 	}
 	for b := at; b >= at-int64(len(tile)); b-- {
-		key := unitKey(deck[ring(u+b)])
+		key := unitKey(ring.at(u + b))
 		if i := slices.IndexFunc(tile, func(t Slot) bool { return t.IsProgram() && unitKey(t) == key }); i >= 0 {
 			return slices.Insert(tile, i+1, s)
 		}

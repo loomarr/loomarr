@@ -541,3 +541,60 @@ func windowSliceDealt(d *deckDealer, window time.Duration, index int64) ([]Slot,
 	}
 	return out, pass
 }
+
+// dealtRing is the channel's ring of dealt passes in absolute window coordinates, so the holiday
+// planner (§6) walks in season exactly the ring windowSliceDealt tiles out of season: window w
+// starts at programme w*stride, counted from the channel's DealOrigin window. Without it the
+// planner walked one fixed deck while the windows around the season aired dealt passes, and the
+// season's seams re-aired the window before.
+type dealtRing struct {
+	d      *deckDealer
+	window time.Duration
+	origin int64 // window index of the channel's DealOrigin
+	stride int64 // programmes per window, as windowSliceDealt counts them
+	nProg  int64
+	progs  map[int64][]Slot // pass → its deck's programmes, in order
+}
+
+func newDealtRing(d *deckDealer, window time.Duration, origin int64) *dealtRing {
+	r := &dealtRing{d: d, window: window, origin: origin, progs: map[int64][]Slot{}}
+	first := d.deck(0)
+	for _, s := range first {
+		if s.IsProgram() {
+			r.nProg++
+		}
+	}
+	if window > 0 {
+		r.stride = int64(max(programsPerWindow(first, window.Milliseconds()), 1))
+	}
+	return r
+}
+
+// tile is window w's out-of-season tile.
+func (r *dealtRing) tile(w int64) []Slot {
+	t, _ := windowSliceDealt(r.d, r.window, w-r.origin)
+	return t
+}
+
+// at is programme u of the ring, where window w starts at u = w*stride.
+func (r *dealtRing) at(u int64) Slot {
+	rel := u - r.origin*r.stride
+	pass, k := rel/r.nProg, rel%r.nProg
+	if k < 0 {
+		pass, k = pass-1, k+r.nProg
+	}
+	if !r.d.reshuffle {
+		pass = 0
+	}
+	progs, ok := r.progs[pass]
+	if !ok {
+		// Held here: the chain keeps only checkpoints, so asking it again for an earlier pass walks.
+		for _, s := range r.d.deck(pass) {
+			if s.IsProgram() {
+				progs = append(progs, s)
+			}
+		}
+		r.progs[pass] = progs
+	}
+	return progs[k]
+}

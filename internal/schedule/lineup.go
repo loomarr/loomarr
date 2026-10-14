@@ -418,7 +418,8 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// the deck where the window before stopped; the pass then times each day's featured holiday
 	// episodes into it. Runs on the collapsed deck so a two-part holiday story moves whole, and
 	// never reorders the deck, so every other window's tile is untouched.
-	holidays := newHolidayPlanner(ordered, holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand},
+	ring := newDealtRing(dealer, window, windowIndex(dealOriginOf(ch), window, ch.WindowZone))
+	holidays := newHolidayPlanner(ring, holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand},
 		window, ch.WindowZone, breakFactor(brk))
 	orderedAll := append([]Slot(nil), ordered...)
 	// In season the planner walks the deck of the pass the window starts in; out of season the
