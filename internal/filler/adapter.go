@@ -84,6 +84,9 @@ type Selection struct {
 	Geography  Geography  // zero country inherits Installation geography from Policy
 	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
 	BreakDurationMs int64
+	// Spacing is the per-channel repeat spacing for one commercial. Nil inherits Policy.Cooldown;
+	// a present zero is real ("may repeat in any later break"), hence the pointer.
+	Spacing *time.Duration
 }
 
 // NewPodAdapter builds the scheduler-facing pod assembler.
@@ -100,12 +103,7 @@ func (a *PodAdapter) WithMetrics(observer PodMetrics) *PodAdapter {
 	return a
 }
 
-// poolGapMs is the notional window Assemble fills to size the channel's clip pool.
-// A channel's filler-list is a POOL Tunarr draws from, not a single sized break,
-// so we assemble a generous pool (~one long break's worth); Tunarr picks per gap.
-const poolGapMs int64 = 600_000 // 10 min of clips
-
-const defaultBreakDurationMs int64 = 30_000 // 30s; mirrors filler.break_duration
+const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duration
 
 // BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
 // channel and return the clips' Tunarr program uuids for its filler-list. ok=false
@@ -257,6 +255,9 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 // assemble is the one per-break assembly every preview path runs, over inputs already loaded.
 func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, seed int64, sel Selection, breakStart time.Time, pol Policy) Pod {
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
+	if sel.Spacing != nil && *sel.Spacing >= 0 {
+		pol.Cooldown = *sel.Spacing
+	}
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)
@@ -296,6 +297,11 @@ func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
 // ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
 // holds every candidate). Sizing from the tightest rung let one long exact-era clip set the
 // density for a break filled mostly from the rungs below it.
+//
+// The count is deliberately NOT reduced for the bumpers. They come off the break's time budget
+// in Assemble, so a 2 minute break holding two 6s bumpers fits three 30s ads plus 18s; the slot
+// that leftover needs is the fourth one this ceiling keeps open, so a short whole clip fills it
+// instead of the break ending early. Time, not count, is what bounds the pod.
 func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targetMs int64) int {
 	pools := candidatePools(clips, w, pol)
 	matched := pools[len(pools)-1].clips
@@ -328,15 +334,15 @@ func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targe
 // and duplicating it is how a meter ends up reporting on a slightly different window than the
 // pod it claims to describe — an off-by-one-field bug that no ladder test would catch.
 func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64) Window {
-	gapMs := poolGapMs
-	if breakDurationMs > gapMs {
-		gapMs = breakDurationMs
-	}
 	return Window{
 		ChannelID: channelID, Seed: seed,
 		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography,
 		EraWindows: append([]EraRange(nil), sel.EraWindows...),
-		GapMs:      gapMs, PodMax: podMax, BreakDurationMs: breakDurationMs,
+		// ⚠ The gap IS the break. The scheduler cuts a slot of exactly breakDurationMs and the
+		// playout walks the pod through it by offset, so a pod one second longer loses its tail —
+		// the return bumper and the last ad's end. This was max(10 minutes, break), which let a
+		// 2 minute break hold 132 seconds of pod (4 × 30s ads + two bumpers).
+		GapMs: breakDurationMs, PodMax: podMax, BreakDurationMs: breakDurationMs,
 		Categories: sel.Categories, Kinds: sel.Kinds,
 		Pinned: sel.Pinned, Excluded: sel.Excluded,
 	}

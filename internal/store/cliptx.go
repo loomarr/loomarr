@@ -93,6 +93,16 @@ func (c ClipTx) FillGeography(ctx context.Context, hash string, g ClipGeography,
 	return err
 }
 
+// ClearSourceDefaultGeography returns a clip to unknown geography when its location came only from
+// a registered-source default (geo_evidence `registered_source:<id>`). Locations from item metadata,
+// content, research, or an operator carry other evidence and are left alone.
+func (c ClipTx) ClearSourceDefaultGeography(ctx context.Context, hash string, at time.Time) error {
+	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = 'unknown', country = '', market = '',
+		network = '', station = '', air_date = '', geo_evidence = '', updated_at = ?
+		WHERE hash = ? AND geo_evidence LIKE 'registered_source:%'`), epoch(at), hash)
+	return err
+}
+
 // AddLeafTags adds taxonomy leaves to the clip's asserted leaves and rebuilds its rollups, under
 // the same taxonomy lock as graph edits. Leaves it already has are kept once.
 func (c ClipTx) AddLeafTags(ctx context.Context, hash string, tags []string) error {

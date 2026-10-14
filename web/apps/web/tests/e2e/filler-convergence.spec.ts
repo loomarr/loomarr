@@ -251,6 +251,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
       return reply({
         level: "exact",
         total: readyCommitted ? 1 : 0,
+        geography: { country: "US", market: "" },
         rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
         criteria: [
           { criterion: "era", clips: readyCommitted ? 1 : 0 },
@@ -268,6 +269,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
         coverage: {
           level: "exact",
           total: readyCommitted ? 1 : 0,
+          geography: { country: "US", market: "" },
           rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
           criteria: [],
         },
@@ -334,6 +336,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "What this channel can play" })).toBeVisible();
+  await expect(page.getByText("US commercials only · 0 fit this channel")).toBeVisible();
   await expect(page.getByText(/No clips match these choices yet\. Breaks use the bumper card/)).toBeVisible();
   await expect(page.getByRole("link", { name: "browse your filler library" })).toHaveAttribute(
     "href",

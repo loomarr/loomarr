@@ -136,9 +136,10 @@ func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
 	return filler.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
 }
 
-// EffectiveGeography is the single resolution of a source's coverage: its own assertion, or the
-// installation's home geography when it asserts no country. Fetch eligibility and clip
-// enrichment both call it so they cannot disagree about where a source's clips air.
+// EffectiveGeography resolves where a source may FETCH for: its own assertion, or the
+// installation's home geography when it asserts no country. It answers "may we pull from it",
+// never "where did its clips air": clip enrichment reads only the declared Geography, because
+// copying this inheritance into clips labelled British archive ads as US (#1670).
 func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography {
 	coverage := f.Geography.Normalize()
 	if coverage.Country == "" {

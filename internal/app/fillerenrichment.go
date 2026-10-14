@@ -272,8 +272,6 @@ func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult
 type fillerEnrichmentSignals struct {
 	store fillerstore.FillerSourceStore
 	files fs.FS
-	// home is the installation geography an empty-country source inherits.
-	home func() filler.Geography
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
@@ -299,11 +297,12 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 		if source.ID != signals.SourceID {
 			continue
 		}
-		var home filler.Geography
-		if l.home != nil {
-			home = l.home()
-		}
-		geography := source.EffectiveGeography(home)
+		// ⚠ Only what the source itself DECLARES is evidence about where its clips aired. Fetch
+		// eligibility inherits the household's home country (EffectiveGeography), but copying
+		// that inheritance into a clip labelled British archive ads "US" and let them past the
+		// US-only filter (#1670). An undeclared source contributes nothing; the clip stays
+		// unknown until item, content, or cited evidence says otherwise.
+		geography := source.Geography.Normalize()
 		scope := ""
 		if geography.Market != "" {
 			scope = string(filler.GeographicLocal)

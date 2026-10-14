@@ -242,12 +242,31 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		pod.append(b, used)
 	}
 
+	// Return bumper, chosen NOW so its real length comes off the break before anything is
+	// placed. It used to be picked after the ads and appended only "if it still fits", so a break
+	// the ads filled to the brim lost its return bumper; a constant 12s reserve was a guess at
+	// two bumpers that held only when they happened to be 6s. Reserving the actual clip means the
+	// intro + ads + return bumper always sum to at most the break, and the ads give way — a
+	// shorter whole clip fills the remainder — rather than the bumper or the last ad's tail.
+	// It is only appended below, after the ads; `used` already keeps the ads off it.
+	ret, hasReturn := pickBumper(catalog, w, policy, used, rng)
+	if hasReturn && pod.TotalMs+ret.DurationMs > w.GapMs {
+		hasReturn = false
+	}
+	var returnMs int64
+	if hasReturn {
+		returnMs = ret.DurationMs
+		if ret.Hash != "" { // the same guard append applies: "" is not an identity
+			used[ret.Hash] = true
+		}
+	}
+
 	// PIN: force the channel's pinned clips in first, as a top-priority pool ahead of
 	// the ladder (the one thing the ranking ladder can't express). Pins still respect
 	// the pod budget — a pin can't make an unbounded pod — and skip anything already
 	// `used` (i.e. excluded or a pinned bumper already placed).
 	pinWindow := w
-	pinWindow.GapMs -= pod.TotalMs
+	pinWindow.GapMs -= pod.TotalMs + returnMs
 	pinned := pickPinned(catalog, pinWindow, policy, used)
 	for _, c := range pinned {
 		e := clipToEntry(c, w, policy)
@@ -266,7 +285,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	if remainMax := w.PodMax - len(pinned); remainMax > 0 {
 		remaining := w
 		remaining.PodMax = remainMax
-		remaining.GapMs = w.GapMs - pod.TotalMs
+		remaining.GapMs = w.GapMs - pod.TotalMs - returnMs
 		pools := candidatePools(catalog, remaining, policy)
 		level, commercials = fillCommercials(pools, remaining, policy, used, rng)
 		if level != "" {
@@ -277,9 +296,8 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		}
 	}
 
-	// Return bumper.
-	if b, ok := pickBumper(catalog, w, policy, used, rng); ok && pod.TotalMs+b.DurationMs <= w.GapMs {
-		pod.append(b, used)
+	if hasReturn {
+		pod.append(ret, used)
 	}
 
 	// Bottom of the ladder: if NOTHING content-bearing matched (no pins, no
@@ -319,10 +337,8 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 	for _, c := range catalog {
 		byID[c.ID()] = c
 	}
-	budget := w.GapMs - 12000 // same bumper headroom as fillCommercials
-	if budget < 0 {
-		budget = w.GapMs
-	}
+	// w.GapMs is already net of both bumpers (Assemble reserves them).
+	budget := w.GapMs
 	var out []Clip
 	var totalMs int64
 	for _, id := range w.Pinned {

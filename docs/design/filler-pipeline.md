@@ -67,7 +67,14 @@ first and yields before optional enrichment starts.
   Machine-produced `complete` geography must be non-empty.
 - **Evidence precedence** is closed: operator correction > exact item metadata or content >
   trusted provider or network mapping > registered-source default > weak inference. Confidence only
-  breaks ties within a rank; an upload date is never an era.
+  breaks ties within a rank; an upload date is never an era. The registered-source default is the
+  source's own declared country only. A US source default yields to the British word "advert" in
+  the item text, which leaves the clip unknown rather than labelling it GB.
+- **Withdrawal.** An `unsupported` answer with no value means "this producer has no answer". It
+  retracts the same producer's own earlier answer when the producer's version changes, and nothing
+  else: it never displaces another producer's value or an operator's. That is how a corrected rule
+  un-labels clips it labelled before. Bumping the producer version re-runs every clip, so no
+  migration rewrites state. Withdrawing a geography clears only a `registered_source:` stamp.
 - **Passes, cheapest first:** a free local pass over preserved titles, descriptions, filenames,
   provenance and trusted mappings; then an automatic text pass when a text provider is configured
   (at most eight clips per JSON call, validated per item, brands only when literally present, never

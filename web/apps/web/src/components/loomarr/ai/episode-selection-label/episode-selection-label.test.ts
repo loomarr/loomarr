@@ -3,8 +3,8 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { describe, expect, it } from "vitest";
 import { episodeSelectionLabel } from "./episode-selection-label";
 
-const movie: ProposalItem = { name: "Heat", mediaType: "movie", inLibrary: true };
-const series: ProposalItem = { name: "The Simpsons", mediaType: "series", inLibrary: true };
+const movie: ProposalItem = { name: "The Velvet Cartographer", mediaType: "movie", inLibrary: true };
+const series: ProposalItem = { name: "Kettle Kids", mediaType: "series", inLibrary: true };
 
 describe("episodeSelectionLabel", () => {
   it("leaves movies unlabeled", () => {

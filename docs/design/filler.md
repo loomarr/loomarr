@@ -174,7 +174,11 @@ fetchable and operator-removable.
   live. An explicit country and market is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,
   `needs_location`, `not_configured`, `out_of_area`). Candidate geography stays a hard acquisition
-  constraint, and Installation or inherited geography is never copied into a clip's location.
+  constraint, and Installation or inherited geography is never copied into a clip's location:
+  inheritance answers "may we fetch from it", never "where did its clips air". Only a country the
+  source itself declares is clip evidence (`registered_source:<id>`). An undeclared source
+  contributes nothing, so its clips stay unknown and a household country excludes them (#1670:
+  British archive ads aired as "US" when enrichment copied the inheritance).
 - **Attribution gap.** The folder scan writes `Source = "filler-dir"` for every clip and the
   sidecar does not record which remote source fetched it, so per-source clip counts are sums of
   what children claim. Per-source attribution is an intake change, tracked separately.

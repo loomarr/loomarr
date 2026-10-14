@@ -20,16 +20,18 @@ const proposal: Proposal = {
   rationale: "A high-energy 90s action block.",
   lineup: [
     {
-      name: "Heat",
+      name: "The Velvet Cartographer",
       year: 1995,
       mediaType: "movie",
-      tmdbId: 949,
+      tmdbId: 90000949,
       inLibrary: true,
       rationale: "A grounded match for the requested era and tone.",
     },
   ],
-  acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }],
-  alternates: [{ name: "Face/Off", mediaType: "movie", tmdbId: 754, inLibrary: false }],
+  acquisitions: [
+    { name: "Pelican Point Motel", year: 1997, mediaType: "movie", tmdbId: 90001701, inLibrary: false },
+  ],
+  alternates: [{ name: "Lemon Tree Heist", mediaType: "movie", tmdbId: 90000754, inLibrary: false }],
   scores: {
     version: 1,
     themeFit: 1,
@@ -51,8 +53,8 @@ const proposal: Proposal = {
     truncated: false,
     candidates: [
       {
-        key: "movie:tmdb:949",
-        name: "Heat",
+        key: "movie:tmdb:90000949",
+        name: "The Velvet Cartographer",
         ownership: "library",
         constraints: { request: true, era: true },
         disposition: "selected",
@@ -83,7 +85,9 @@ describe("ProposalReview", () => {
     renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit brief" }));
     expect(screen.getByLabelText("Channel brief")).toHaveValue("90s action movies");
-    expect(within(screen.getByRole("list", { name: "Titles" })).getByText("Heat")).toBeVisible();
+    expect(
+      within(screen.getByRole("list", { name: "Titles" })).getByText("The Velvet Cartographer"),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Update suggestions" })).toBeVisible();
   });
 
@@ -98,9 +102,9 @@ describe("ProposalReview", () => {
             ...proposal.intent,
             era: "1990s",
             runtimeTargetMin: 180,
-            mustInclude: ["Heat"],
+            mustInclude: ["The Velvet Cartographer"],
             refineText: "Find more grounded options that match this brief.",
-            currentLineup: [{ key: "movie:tmdb:1", name: "Stale title", year: 1980 }],
+            currentLineup: [{ key: "movie:tmdb:90000001", name: "Stale title", year: 1980 }],
           },
         }}
         selfService
@@ -113,7 +117,7 @@ describe("ProposalReview", () => {
     await user.click(screen.getByText("Other request details (3)"));
     expect(details).toHaveTextContent("Era1990s");
     expect(details).toHaveTextContent("Target length180 minutes");
-    expect(details).toHaveTextContent("Must includeHeat");
+    expect(details).toHaveTextContent("Must includeThe Velvet Cartographer");
 
     await user.clear(screen.getByLabelText("Channel brief"));
     await user.type(screen.getByLabelText("Channel brief"), "90s action with more comedy");
@@ -122,10 +126,10 @@ describe("ProposalReview", () => {
       description: "90s action with more comedy",
       era: "1990s",
       runtimeTargetMin: 180,
-      mustInclude: ["Heat"],
+      mustInclude: ["The Velvet Cartographer"],
       currentLineup: [
-        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
-        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+        { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995 },
+        { key: "movie:tmdb:90001701", name: "Pelican Point Motel", year: 1997 },
       ],
     });
   });
@@ -137,13 +141,13 @@ describe("ProposalReview", () => {
       <ProposalReview
         proposal={proposal}
         edit={{
-          drop: ["movie:tmdb:949"],
+          drop: ["movie:tmdb:90000949"],
           add: [
             {
-              name: "The Matrix",
+              name: "Parallax Garden",
               year: 1999,
               mediaType: "movie",
-              tmdbId: 603,
+              tmdbId: 90000603,
               inLibrary: false,
             },
           ],
@@ -161,8 +165,8 @@ describe("ProposalReview", () => {
     expect(onRevise).toHaveBeenCalledWith({
       description: "90s action with more science fiction",
       currentLineup: [
-        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
-        { key: "movie:tmdb:603", name: "The Matrix", year: 1999 },
+        { key: "movie:tmdb:90001701", name: "Pelican Point Motel", year: 1997 },
+        { key: "movie:tmdb:90000603", name: "Parallax Garden", year: 1999 },
       ],
     });
   });
@@ -185,11 +189,11 @@ describe("ProposalReview", () => {
     expect(onRevise).toHaveBeenCalledWith({
       description: "90s action movies",
       currentLineup: [
-        { key: "movie:tmdb:949", name: "Heat", year: 1995 },
-        { key: "movie:tmdb:1701", name: "Con Air", year: 1997 },
+        { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995 },
+        { key: "movie:tmdb:90001701", name: "Pelican Point Motel", year: 1997 },
       ],
       refineText:
-        'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off".',
+        'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Lemon Tree Heist".',
     });
 
     view.rerender(
@@ -215,8 +219,14 @@ describe("ProposalReview", () => {
       <ProposalReview
         proposal={proposal}
         optionalSuggestions={[
-          { name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false },
-          { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
+          { name: "Lemon Tree Heist", year: 1997, mediaType: "movie", tmdbId: 90000754, inLibrary: false },
+          {
+            name: "The Seventh Satellite Choir",
+            year: 1991,
+            mediaType: "movie",
+            tmdbId: 90001089,
+            inLibrary: true,
+          },
         ]}
         selfService
         onRevise={onRevise}
@@ -229,7 +239,7 @@ describe("ProposalReview", () => {
     expect(onRevise).toHaveBeenCalledWith(
       expect.objectContaining({
         refineText:
-          'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997); "Point Break" (1991).',
+          'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Lemon Tree Heist" (1997); "The Seventh Satellite Choir" (1991).',
       }),
     );
   });
@@ -239,7 +249,7 @@ describe("ProposalReview", () => {
       name: `Action option ${index + 1}`,
       year: 1990 + index,
       mediaType: "movie" as const,
-      tmdbId: 20_000 + index,
+      tmdbId: 90020000 + index,
       inLibrary: false,
     }));
     renderReview(
@@ -290,15 +300,15 @@ describe("ProposalReview", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
-    expect(onEdit).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:949"] });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
+    expect(onEdit).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:90000949"] });
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
         <ProposalReview
           proposal={proposal}
           status="partially-edited"
           selfService
-          edit={{ drop: ["movie:tmdb:949"] }}
+          edit={{ drop: ["movie:tmdb:90000949"] }}
           onEdit={onEdit}
           onApprove={onApprove}
         />
@@ -318,11 +328,11 @@ describe("ProposalReview", () => {
         edit={{
           add: [
             {
-              name: "Point Break",
+              name: "The Seventh Satellite Choir",
               mediaType: "movie",
-              tmdbId: 1089,
+              tmdbId: 90001089,
               inLibrary: true,
-              libraryItemId: "library-point-break",
+              libraryItemId: "library-satellite-choir",
             },
           ],
         }}
@@ -341,7 +351,7 @@ describe("ProposalReview", () => {
         proposal={proposal}
         status="submitted"
         selfService
-        edit={{ drop: ["movie:tmdb:949", "movie:tmdb:1701"] }}
+        edit={{ drop: ["movie:tmdb:90000949", "movie:tmdb:90001701"] }}
         onEdit={vi.fn()}
         onApprove={vi.fn()}
       />,
@@ -418,12 +428,12 @@ describe("ProposalReview", () => {
             candidates: [
               {
                 ...proposal.trace!.candidates[0]!,
-                name: "The Great Indian Family",
+                name: "The Nightingale Ledger",
                 disposition: "not_selected",
                 reason: "not_selected",
               },
               {
-                key: "series:tmdb:3921",
+                key: "series:tmdb:90003921",
                 ownership: "",
                 name: "",
                 disposition: "validation_dropped",
@@ -435,14 +445,14 @@ describe("ProposalReview", () => {
       />,
     );
     await userEvent.click(screen.getByText("How these suggestions were chosen"));
-    expect(screen.getByText("The Great Indian Family")).not.toBeVisible();
+    expect(screen.getByText("The Nightingale Ledger")).not.toBeVisible();
     await userEvent.click(screen.getByText("Troubleshooting details"));
     expect(screen.getByText("Considered, but not chosen")).toBeVisible();
     expect(screen.getByText("Unidentified title")).toBeVisible();
     expect(screen.queryByText(/matched request/)).not.toBeInTheDocument();
-    expect(screen.getByText(/series:tmdb:3921/)).not.toBeVisible();
+    expect(screen.getByText(/series:tmdb:90003921/)).not.toBeVisible();
     await userEvent.click(screen.getByText("Raw search data"));
-    expect(screen.getByText(/series:tmdb:3921/)).toBeVisible();
+    expect(screen.getByText(/series:tmdb:90003921/)).toBeVisible();
   });
 
   it("hides stale availability details during an edited-lineup assessment", async () => {

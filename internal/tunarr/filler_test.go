@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/tunarr"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -228,7 +229,7 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 	}
 	c := tunarr.New(m.server(t).URL, "cfg")
 
-	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.fillerPOSTs != 1 {
@@ -268,12 +269,12 @@ func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
 
 	cfg := tunarr.Config{BaseURL: srv.URL, FillerWeight: 2, FillerCooldownSeconds: 15}
 	client := tunarr.NewDynamic(func() tunarr.Config { return cfg })
-	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}); err != nil {
+	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	cfg.FillerWeight = 7
 	cfg.FillerCooldownSeconds = 90
-	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}); err != nil {
+	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -285,6 +286,42 @@ func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
 		t.Errorf("same-channel filler policy history = %+v, want %+v", got, want)
 	}
 }
+
+// #1670: the channel's own commercial spacing reaches Tunarr, and a list too small to honour it
+// is clamped rather than left with every clip cooling (which sends Tunarr to flex / dead air).
+func TestEnsureFillerList_ChannelSpacingIsClampedToWhatTheListCanHonour(t *testing.T) {
+	// The fake serves one 30 second program. Half of it rests in 15s of airtime; at 2 breaks an
+	// hour of 2 minutes each (240s of ads per hour) that is 15s * 3600 / 240 = 225s.
+	adsPerHour := 4 * time.Minute
+	cases := []struct {
+		name   string
+		policy tunarr.FillerListPolicy
+		wantMs int64
+	}{
+		{"install default when the channel has none", tunarr.FillerListPolicy{}, 4 * 3600 * 1000},
+		{"channel spacing wins over the install default", tunarr.FillerListPolicy{RepeatCooldown: durationPtr(time.Minute)}, 60_000},
+		{"no spacing stays none", tunarr.FillerListPolicy{RepeatCooldown: durationPtr(0), AdRuntimePerHour: adsPerHour}, 0},
+		{"a spacing the list can honour is kept", tunarr.FillerListPolicy{RepeatCooldown: durationPtr(2 * time.Minute), AdRuntimePerHour: adsPerHour}, 120_000},
+		{"a spacing the list cannot honour is clamped", tunarr.FillerListPolicy{RepeatCooldown: durationPtr(4 * time.Hour), AdRuntimePerHour: adsPerHour}, 225_000},
+		{"the install default is clamped too", tunarr.FillerListPolicy{AdRuntimePerHour: adsPerHour}, 225_000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{FillerProgramID: "clip"})
+			cfg := tunarr.Config{BaseURL: srv.URL, FillerWeight: 1, FillerCooldownSeconds: 4 * 3600}
+			client := tunarr.NewDynamic(func() tunarr.Config { return cfg })
+			if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}, tc.policy); err != nil {
+				t.Fatal(err)
+			}
+			got := srv.FillerPolicies("channel")
+			if len(got) != 1 || got[0].RepeatCooldownMs != tc.wantMs {
+				t.Fatalf("filler policies = %+v, want one write with repeat cooldown %dms", got, tc.wantMs)
+			}
+		})
+	}
+}
+
+func durationPtr(d time.Duration) *time.Duration { return &d }
 
 // Regression: idempotency must compare CONTENTS, not just count. A re-tagged
 // catalog can yield a different but equal-sized pool; a count-only check would
@@ -304,7 +341,7 @@ func TestEnsureFillerList_EqualCountDifferentPoolUpdates(t *testing.T) {
 	c := tunarr.New(m.server(t).URL, "cfg")
 
 	// New desired pool is also size 2 but a different set → must UPDATE, not no-op.
-	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-c"}); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-c"}, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.fillerPUTs == 0 {
@@ -328,7 +365,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 	m.attachedList = "fl-1"
 	c := tunarr.New(m.server(t).URL, "cfg")
 
-	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.fillerPOSTs != 0 || m.fillerPUTs != 0 || m.channelPUTs != 0 {
@@ -342,7 +379,7 @@ func TestEnsureFillerList_EmptyNoOp(t *testing.T) {
 	m.sourceExists = true
 	c := tunarr.New(m.server(t).URL, "cfg")
 
-	if err := c.EnsureFillerList(context.Background(), "ch-1", nil); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "ch-1", nil, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatal(err)
 	}
 	if m.fillerPOSTs != 0 || m.channelPUTs != 0 {

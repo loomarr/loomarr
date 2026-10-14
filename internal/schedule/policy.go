@@ -82,7 +82,12 @@ type OperatorPolicy struct {
 	// BreakDuration overrides the global target length for each commercial break. Nil inherits
 	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
 	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
-	BreakDuration *Duration `json:"breakDuration,omitempty"`
+	BreakDuration *Duration `json:"breakDuration,omitempty" doc:"Length of each commercial break as a Go-duration string, e.g. \"2m\" or \"5m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m). There is no off value: breaksPerHour 0 turns breaks off"`
+	// CommercialSpacing is how long the same commercial should rest before this channel airs it
+	// again (§10 rotation). Nil inherits `filler.cooldown_seconds`; 0 lets a clip repeat in any
+	// later break. A clip inside its spacing is used only after every rung of the ladder, widened
+	// era included, has run out of rested clips; spacing never empties a break.
+	CommercialSpacing *Duration `json:"commercialSpacing,omitempty" doc:"How long the same commercial rests before this channel airs it again, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"`
 	// MidRoll is the per-channel switch for commercial breaks INSIDE long programmes, placed only
 	// at measured scene fades (§10 mid-roll). Nil inherits the default, which is ON (maintainer
 	// decision, #1512); false turns mid-roll off for this channel and keeps its between-programme
@@ -932,6 +937,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
 		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
+	}
+	if p.CommercialSpacing != nil && p.CommercialSpacing.Std() < 0 {
+		return fmt.Errorf("channel policy: commercialSpacing %s must not be negative", p.CommercialSpacing.Std())
 	}
 	if p.AutoCurate != nil {
 		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {

@@ -66,6 +66,10 @@ type RungCoverage struct {
 
 // CoverageReport is what a target's breaks would draw from.
 type CoverageReport struct {
+	// Geography is the hard location boundary this channel's breaks were limited to (the channel's
+	// own, else the installation's). A zero country means no location limit. Reported so the
+	// channel page can say WHICH commercials the pool is limited to without restating a setting.
+	Geography Geography
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder.
 	// Always the same six entries in the same order, so the UI renders a stable list rather
 	// than one that reshuffles as counts change.
@@ -284,15 +288,17 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	fresh.Pinned, fresh.Exposures, fresh.SnapshotAt = nil, nil, time.Time{}
 	assembled := Assemble(catalog, fresh, policy, nil).MatchLevel
 
-	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	geography := effectiveGeography(w.Geography, policy.Geography)
+	catalog = filterGeography(catalog, geography)
 	catalog = filterKinds(catalog, w.Kinds)
 
 	pools := candidatePools(catalog, w, policy)
 
 	report := CoverageReport{
-		Criteria: criteria,
-		Rungs:    make([]RungCoverage, 0, len(pools)),
-		Level:    MatchBumperCard,
+		Geography: geography.Normalize(),
+		Criteria:  criteria,
+		Rungs:     make([]RungCoverage, 0, len(pools)),
+		Level:     MatchBumperCard,
 	}
 	if windows := w.eraWindows(); len(windows) > 0 && !windows[0].Any() {
 		report.EraWindows = NormalizeEraWindows(windows)

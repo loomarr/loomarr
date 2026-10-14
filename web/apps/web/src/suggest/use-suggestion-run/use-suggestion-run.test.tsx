@@ -98,14 +98,22 @@ describe("useSuggestionRun", () => {
     journey.progress = {
       stage: "choosing",
       terms: ["heist"],
-      picks: [{ key: "movie:tmdb:1", mediaType: "movie", name: "Speed", year: 1994, inLibrary: true }],
+      picks: [
+        {
+          key: "movie:tmdb:90000001",
+          mediaType: "movie",
+          name: "Quiet Engines",
+          year: 1994,
+          inLibrary: true,
+        },
+      ],
       target: 8,
       startedAt: "2026-08-22T12:00:00Z",
     };
     await emit("job-1", "reasoning");
 
     // waitFor's default timeout is 1 s: only the frame's invalidation can satisfy this in time.
-    await waitFor(() => expect(result.current.progress?.picks.map((p) => p.name)).toEqual(["Speed"]));
+    await waitFor(() => expect(result.current.progress?.picks.map((p) => p.name)).toEqual(["Quiet Engines"]));
     expect(result.current.progress?.stage).toBe("choosing");
   });
 
@@ -153,7 +161,7 @@ describe("useSuggestionRun", () => {
     journey.intent = {
       description: "90s action movies",
       era: "1990s",
-      mustInclude: ["Heat"],
+      mustInclude: ["The Velvet Cartographer"],
       runtimeTargetMin: 180,
     };
     journey.milestone = "failed";
@@ -184,7 +192,7 @@ describe("useSuggestionRun", () => {
       intent: {
         description: "90s action movies",
         era: "1990s",
-        mustInclude: ["Heat"],
+        mustInclude: ["The Velvet Cartographer"],
         runtimeTargetMin: 180,
       },
       attempts: [
@@ -202,7 +210,15 @@ describe("useSuggestionRun", () => {
         proposal: {
           intent: { description: "90s action movies" },
           channelName: "Friday Night Action",
-          lineup: [{ name: "Heat", mediaType: "movie", tmdbId: 949, year: 1995, inLibrary: true }],
+          lineup: [
+            {
+              name: "The Velvet Cartographer",
+              mediaType: "movie",
+              tmdbId: 90000949,
+              year: 1995,
+              inLibrary: true,
+            },
+          ],
           acquisitions: [],
           alternates: [],
           scores: {
