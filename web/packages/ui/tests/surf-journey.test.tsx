@@ -14,14 +14,14 @@ const sourceGuide = {
           scheduleBlockId: "now-seven",
           startMs: 1_000,
           stopMs: 3_000,
-          title: "Radioactive Man",
+          title: "The Seventh Postcard",
         },
         {
           kind: "program" as const,
           scheduleBlockId: "next-seven",
           startMs: 3_000,
           stopMs: 5_000,
-          title: "Fallout Boy",
+          title: "Comet Cadet",
         },
       ],
       channelId: "seven",
@@ -79,8 +79,8 @@ describe("SurfJourney", () => {
     expect(output).toContain("FAVOURITES");
     expect(output).toContain("RECENT");
     expect(output).toContain("ALL CHANNELS");
-    expect(output).toContain("Radioactive Man");
-    expect(output).toContain("Next 12:00 AM · Fallout Boy");
+    expect(output).toContain("The Seventh Postcard");
+    expect(output).toContain("Next 12:00 AM · Comet Cadet");
     expect(output).toContain("Loomarr TV 0.2.0 · Server 0.2.1");
   });
 

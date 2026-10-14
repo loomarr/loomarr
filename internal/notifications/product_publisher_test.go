@@ -23,8 +23,8 @@ func TestProductPublisherExpandsAcquisitionToRequesterAndOperatorsWithStableIden
 	sink := &commandPublisher{}
 	publisher := notifications.NewProductPublisher(sink)
 	result, err := publisher.Publish(t.Context(), notifications.ProductEvent{
-		Identity: "title:movie:tmdb:603:available", Topic: notifications.TopicAcquisitionAvailable,
-		ReferenceID: "movie:tmdb:603", SubjectName: "The Matrix", Summary: "Ready to schedule.",
+		Identity: "title:movie:tmdb:90000603:available", Topic: notifications.TopicAcquisitionAvailable,
+		ReferenceID: "movie:tmdb:90000603", SubjectName: "Marigold Protocol", Summary: "Ready to schedule.",
 		PersonIDs: []string{"user-2", "user-1", "user-1"},
 	})
 	if err != nil || result.Requested != 3 {
@@ -37,15 +37,15 @@ func TestProductPublisherExpandsAcquisitionToRequesterAndOperatorsWithStableIden
 		recipient notifications.RecipientKind
 		id, key   string
 	}{
-		{notifications.RecipientPerson, "user-1", "notification:title:movie:tmdb:603:available:person:user-1"},
-		{notifications.RecipientPerson, "user-2", "notification:title:movie:tmdb:603:available:person:user-2"},
-		{notifications.RecipientOperators, "operators", "notification:title:movie:tmdb:603:available:operators:operators"},
+		{notifications.RecipientPerson, "user-1", "notification:title:movie:tmdb:90000603:available:person:user-1"},
+		{notifications.RecipientPerson, "user-2", "notification:title:movie:tmdb:90000603:available:person:user-2"},
+		{notifications.RecipientOperators, "operators", "notification:title:movie:tmdb:90000603:available:operators:operators"},
 	}
 	for index, expected := range want {
 		command := sink.commands[index]
 		if command.RecipientKind != expected.recipient || command.RecipientID != expected.id ||
 			command.IdempotencyKey != expected.key || command.ReferenceKind != notifications.ReferenceTitle ||
-			command.ReferenceID != "movie:tmdb:603" || command.Template.SubjectName != "The Matrix" {
+			command.ReferenceID != "movie:tmdb:90000603" || command.Template.SubjectName != "Marigold Protocol" {
 			t.Errorf("command %d = %+v", index, command)
 		}
 	}

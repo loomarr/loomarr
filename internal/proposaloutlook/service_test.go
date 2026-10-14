@@ -32,10 +32,10 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	body := suggest.Proposal{
 		Intent: suggest.Intent{Description: "An action channel"},
 		Lineup: []suggest.ProposalItem{
-			{MediaType: provision.Movie, TMDBID: 1, Name: "One", InLibrary: true, LibraryItemID: "movie-one"},
-			{MediaType: provision.Movie, TMDBID: 2, Name: "Unknown runtime", InLibrary: true, LibraryItemID: "movie-two", RuntimeMinutes: 180},
+			{MediaType: provision.Movie, TMDBID: 90000001, Name: "One", InLibrary: true, LibraryItemID: "movie-one"},
+			{MediaType: provision.Movie, TMDBID: 90000002, Name: "Unknown runtime", InLibrary: true, LibraryItemID: "movie-two", RuntimeMinutes: 180},
 		},
-		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 3, Name: "Missing", RuntimeMinutes: 200}},
+		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200}},
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	if err != nil || len(listed) != 0 {
 		t.Fatalf("outlook must not persist a channel: %+v, %v", listed, err)
 	}
-	for _, key := range []provision.Key{"movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"} {
+	for _, key := range []provision.Key{"movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"} {
 		if _, err := st.GetTitle(ctx, key); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("outlook wrote title %s: %v", key, err)
 		}
@@ -64,7 +64,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	t.Run("owned review addition uses the same resolved placement as approval", func(t *testing.T) {
 		media.Metadata = map[string]library.ItemMetadata{"movie-added": {RuntimeMs: 80 * minute}}
 		addition := suggest.ProposalItem{
-			MediaType: provision.Movie, TMDBID: 4, Name: "Owned addition",
+			MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition",
 			InLibrary: true, LibraryItemID: "movie-added",
 		}
 		resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
@@ -77,7 +77,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		ownedProposal := p
 		ownedProposal.ProposalJSON = `{"intent":{"description":"An owned movie"},"lineup":[]}`
 		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
-			{MediaType: provision.Movie, TMDBID: 4, Name: "Owned addition", InLibrary: false},
+			{MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition", InLibrary: false},
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -94,7 +94,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 			{LibraryItemID: "season-three", DurationMs: 90 * minute, Season: 3, Episode: 1},
 		}}
 		series := suggest.Proposal{Intent: suggest.Intent{Description: "A series channel"}, Lineup: []suggest.ProposalItem{
-			{MediaType: provision.Series, TMDBID: 44, TVDBID: 44, Name: "Show", InLibrary: true, LibraryItemID: "show", SeasonMin: 2, SeasonMax: 2},
+			{MediaType: provision.Series, TMDBID: 90000044, TVDBID: 90000044, Name: "Show", InLibrary: true, LibraryItemID: "show", SeasonMin: 2, SeasonMax: 2},
 		}}
 		raw, err := json.Marshal(series)
 		if err != nil {
@@ -112,7 +112,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	})
 	t.Run("waiting acquisition has no guessed runway", func(t *testing.T) {
 		waiting := p
-		waiting.ProposalJSON = `{"intent":{"description":"A movie channel"},"acquisitions":[{"mediaType":"movie","tmdbId":3,"name":"Missing","runtimeMinutes":200}]}`
+		waiting.ProposalJSON = `{"intent":{"description":"A movie channel"},"acquisitions":[{"mediaType":"movie","tmdbId":90000003,"name":"Missing","runtimeMinutes":200}]}`
 		got, err := svc.Assess(ctx, waiting, nil)
 		if err != nil {
 			t.Fatal(err)

@@ -33,7 +33,7 @@ func TestDownloadPublishesOnlyCompleteDecodedPrivateImage(t *testing.T) {
 	}
 	target := filepath.Join(output, "case.png")
 	item := plannedDownload{candidate: fillercorpus.InventoryCase{
-		CaseID: "metmuseum.org/collection/1", AllowedMediaHosts: []string{"127.0.0.1"},
+		CaseID: "metmuseum.org/collection/90000001", AllowedMediaHosts: []string{"127.0.0.1"},
 		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
 	}, path: target}
 	hashes, size, verified, err := download(context.Background(), server.Client(), item, "Loomarr test", 100, strings.Repeat("b", 64))
@@ -77,7 +77,7 @@ func TestExecuteDownloadsRetriesTransientRepresentationIdentityMismatch(t *testi
 
 	output := filepath.Join(t.TempDir(), "media")
 	item := plannedDownload{candidate: fillercorpus.InventoryCase{
-		CaseID: "metmuseum.org/collection/1", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
+		CaseID: "metmuseum.org/collection/90000001", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
 		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
 	}, path: filepath.Join(output, "case.png")}
 	ledger, err := executeDownloads(context.Background(), server.Client(), []plannedDownload{item}, options{
@@ -105,7 +105,7 @@ func TestExecuteDownloadsRejectsPersistentRepresentationIdentityMismatch(t *test
 	output := filepath.Join(t.TempDir(), "media")
 	target := filepath.Join(output, "case.png")
 	item := plannedDownload{candidate: fillercorpus.InventoryCase{
-		CaseID: "metmuseum.org/collection/1", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
+		CaseID: "metmuseum.org/collection/90000001", Authority: fillercorpus.MetAuthority, AllowedMediaHosts: []string{"127.0.0.1"},
 		Representation: fillercorpus.InventoryRepresentation{URL: server.URL + "/case.png", MIMEType: "image/png", Bytes: int64(len(raw))},
 	}, path: target}
 	_, err := executeDownloads(context.Background(), server.Client(), []plannedDownload{item}, options{

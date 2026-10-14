@@ -224,8 +224,8 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 	m := newFillerMock("/drop")
 	m.sourceExists = true
 	m.programs = []any{
-		localProgramFixture("clip-a", "Frosted Flakes", 30000),
-		localProgramFixture("clip-b", "TMNT figures", 30000),
+		localProgramFixture("clip-a", "Crunchlings", 30000),
+		localProgramFixture("clip-b", "Shell Squad figures", 30000),
 	}
 	c := tunarr.New(m.server(t).URL, "cfg")
 

@@ -33,7 +33,7 @@ func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *test
 }
 
 // TestVerifyCIContainerDownloadsRequiresEveryPostgresSuiteInTheMatrix: the Postgres gate runs one
-// suite per job (#1570), so the matrix is what makes it complete. A suite dropped, duplicated,
+// suite per job (#1570), so its job matrix is what makes it complete. A suite dropped, duplicated,
 // renamed, or cancelled by a sibling's failure must not pass as the whole gate.
 func TestVerifyCIContainerDownloadsRequiresEveryPostgresSuiteInTheMatrix(t *testing.T) {
 	t.Parallel()

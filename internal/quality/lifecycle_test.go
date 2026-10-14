@@ -27,7 +27,7 @@ func TestAcquisitionRecorderMapsTerminalStateWithoutLeakingIdentity(t *testing.T
 			sink := &testkit.QualityRecorder{}
 			recorder := quality.NewAcquisitionRecorder(sink, testkit.Logger())
 			recorder.AcquisitionTerminal(t.Context(), provision.Record{
-				Key:         "movie:tmdb:603",
+				Key:         "movie:tmdb:90000603",
 				State:       tc.state,
 				RequestedAt: start,
 				UpdatedAt:   finished,
@@ -42,7 +42,7 @@ func TestAcquisitionRecorderMapsTerminalStateWithoutLeakingIdentity(t *testing.T
 				got.At != finished || got.Duration != 90*time.Minute {
 				t.Fatalf("observation = %+v", got)
 			}
-			if got.RunSnapshotID != "" || strings.Contains(got.IdempotencyKey, "603") || len(got.IdempotencyKey) != 64 {
+			if got.RunSnapshotID != "" || strings.Contains(got.IdempotencyKey, "90000603") || len(got.IdempotencyKey) != 64 {
 				t.Fatalf("acquisition key leaked identity or attached an invented snapshot: %+v", got)
 			}
 		})
@@ -54,7 +54,7 @@ func TestAcquisitionRecorderKeepsLegacyTerminalOutcomeWithUnknownDuration(t *tes
 	recorder := quality.NewAcquisitionRecorder(sink, testkit.Logger())
 	finished := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
 	recorder.AcquisitionTerminal(t.Context(), provision.Record{
-		Key: "series:tvdb:81189", State: provision.Available, UpdatedAt: finished,
+		Key: "series:tvdb:90081189", State: provision.Available, UpdatedAt: finished,
 	})
 
 	got := sink.Observations()[0]
@@ -67,7 +67,7 @@ func TestAcquisitionRecorderRejectsNonterminalAndCannotFailProvisioning(t *testi
 	sink := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	recorder := quality.NewAcquisitionRecorder(sink, testkit.Logger())
 	recorder.AcquisitionTerminal(t.Context(), provision.Record{
-		Key: "movie:tmdb:603", State: provision.Requested, UpdatedAt: time.Now(),
+		Key: "movie:tmdb:90000603", State: provision.Requested, UpdatedAt: time.Now(),
 	})
 	if got := sink.Observations(); len(got) != 0 {
 		t.Fatalf("nonterminal acquisition recorded: %+v", got)
@@ -76,7 +76,7 @@ func TestAcquisitionRecorderRejectsNonterminalAndCannotFailProvisioning(t *testi
 	// The terminal method intentionally returns no error: observability cannot
 	// revise the already-committed provisioning transition.
 	recorder.AcquisitionTerminal(t.Context(), provision.Record{
-		Key: "movie:tmdb:603", State: provision.Unavailable, UpdatedAt: time.Now(),
+		Key: "movie:tmdb:90000603", State: provision.Unavailable, UpdatedAt: time.Now(),
 	})
 }
 

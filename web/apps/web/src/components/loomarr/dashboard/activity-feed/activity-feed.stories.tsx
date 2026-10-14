@@ -17,7 +17,7 @@ const meta = {
         at: ago(2),
         kind: "title",
         level: "info",
-        text: "Darkwing Duck landed — ready to schedule",
+        text: "Gadget Goats Go! landed — ready to schedule",
       },
       {
         id: "a2",

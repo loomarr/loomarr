@@ -27,7 +27,7 @@ var seasonalVocab = []struct {
 	{"Halloween Spooktacular", true},     // halloween
 	{"A Haunted Ghost Story", false},     // a mood word without a corroborating genre
 	{"Turkey Day Feast", true},           // thanksgiving
-	{"A Christmas Carol", true},          // christmas
+	{"A Christmas Lantern", true},        // christmas
 	{"Santa's Big Night", true},          // christmas
 	{"New Year's Eve Bash", true},        // newyear
 	{"Be My Valentine", true},            // valentines
@@ -44,7 +44,7 @@ func randomEntries(g *rand.Rand, n int) []LineupEntry {
 	entries := make([]LineupEntry, 0, n)
 	for i := 0; i < n; i++ {
 		v := seasonalVocab[g.Intn(len(seasonalVocab))]
-		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", i))
+		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))
 		entries = append(entries, LineupEntry{
 			Key:            key,
 			Title:          v.title,

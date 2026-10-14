@@ -43,12 +43,12 @@ describe("TV focus registry", () => {
     const focus = vi.fn();
     registry.request({
       kind: "airing",
-      selection: { anchorMs: 1, channelId: "springfield", scheduleBlockId: "bart" },
+      selection: { anchorMs: 1, channelId: "cartoons", scheduleBlockId: "teapot" },
     });
     registry.register(
       {
         kind: "airing",
-        selection: { anchorMs: 2, channelId: "springfield", scheduleBlockId: "bart" },
+        selection: { anchorMs: 2, channelId: "cartoons", scheduleBlockId: "teapot" },
       },
       { focus },
     );
@@ -59,9 +59,9 @@ describe("TV focus registry", () => {
     const registry = createTvSurfFocusRegistry();
     const recentFocus = vi.fn();
     const allFocus = vi.fn();
-    registry.register({ channelId: "springfield", group: "recent" }, { focus: recentFocus });
-    registry.register({ channelId: "springfield", group: "all" }, { focus: allFocus });
-    registry.request({ channelId: "springfield", group: "all" });
+    registry.register({ channelId: "cartoons", group: "recent" }, { focus: recentFocus });
+    registry.register({ channelId: "cartoons", group: "all" }, { focus: allFocus });
+    registry.request({ channelId: "cartoons", group: "all" });
     expect(recentFocus).not.toHaveBeenCalled();
     expect(allFocus).toHaveBeenCalledOnce();
   });

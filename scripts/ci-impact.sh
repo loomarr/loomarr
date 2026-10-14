@@ -90,6 +90,13 @@ classify() {
     web/apps/web/tests/e2e/*)
       [[ "$path" != *.spec.ts ]] || select_gate contracts
       ;;
+    web/apps/web/src/components/loomarr/dashboard/activity-feed/*|web/packages/ui/tests/*|web/packages/ui-tv/tests/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    # migratedGo trees whose Go routing below skips the contracts job.
+    internal/releaseverify/*_test.go|research/*_test.go)
+      select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
