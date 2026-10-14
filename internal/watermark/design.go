@@ -327,6 +327,23 @@ func (d Design) draw() (*canvas, error) {
 	return c, nil
 }
 
+// RenderMotif draws the motif alone in a px×px square, with the same shapes and colours a holiday
+// bug carries beside its look (the channel page's picture chips; nothing is redrawn in the web).
+func RenderMotif(m Motif, white bool, px int) (*image.NRGBA, error) {
+	if !slices.Contains(Motifs, m) {
+		return nil, fmt.Errorf("watermark: unknown motif %q", m)
+	}
+	if px <= 0 {
+		return nil, fmt.Errorf("watermark: motif size %d", px)
+	}
+	c := newCanvas(int(100*unit), int(100*unit))
+	Design{Motif: m, White: white}.drawMotif(c, xform{s: unit})
+	fg := c.straight()
+	out := image.NewNRGBA(image.Rect(0, 0, px, px))
+	xdraw.CatmullRom.Scale(out, out.Rect, fg, fg.Rect, xdraw.Src, nil)
+	return out, nil
+}
+
 // drawMotif draws the mock's motif (a 100×100 box) through t. Holes are real alpha holes.
 func (d Design) drawMotif(c *canvas, t xform) {
 	switch d.Motif {

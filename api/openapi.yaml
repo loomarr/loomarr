@@ -12949,6 +12949,13 @@ paths:
               - firework
               - heart
             type: string
+        - description: Draw only the holiday's picture, as a small square PNG; needs holiday
+          explode: false
+          in: query
+          name: motifOnly
+          schema:
+            description: Draw only the holiday's picture, as a small square PNG; needs holiday
+            type: boolean
       responses:
         "200":
           content:

@@ -21,6 +21,9 @@ import (
 // PNG's path, and whether this host can overlay a bug at all right now.
 type WatermarkPreviewer interface {
 	Preview(ctx context.Context, channelID string, change schedule.WatermarkPolicy, holiday string) (path string, drawable bool, err error)
+	// PreviewMotif is the holiday's picture alone, drawn by the same renderer: picture is one of the
+	// holiday's own, or "" for the channel's choice.
+	PreviewMotif(ctx context.Context, channelID, holiday, picture string) (path string, err error)
 	// Options is what the section shows beside the choices at now (WatermarkOptions).
 	Options(ctx context.Context, channelID string, now time.Time) (WatermarkOptions, error)
 }
@@ -32,6 +35,8 @@ type watermarkPreviewInput struct {
 	Holiday string  `query:"holiday" enum:"halloween,thanksgiving,christmas,newyear,valentines" doc:"Holiday version to draw; omitted is the everyday logo"`
 	Size    float64 `query:"size" minimum:"0" maximum:"0.15" doc:"Bug height as a share of the frame height; omitted (0) is the channel's"`
 	Picture string  `query:"picture" enum:"pumpkin,bat,ghost,leaf,holly,snowflake,firework,heart" doc:"The holiday's picture to draw, one of its own; omitted is the channel's"`
+	// MotifOnly is the picture chip beside each holiday: the holiday's picture alone, no look.
+	MotifOnly bool `query:"motifOnly" doc:"Draw only the holiday's picture, as a small square PNG; needs holiday"`
 }
 
 // watermarkDrawableHeader carries the host's overlay state beside the PNG, so the page learns both
@@ -53,14 +58,27 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Preview unavailable", "This server has no logo renderer.")
 			return
 		}
-		change := schedule.WatermarkPolicy{Look: in.Look, Color: in.Color}
-		if in.Size > 0 {
-			change.Size = &in.Size
+		var (
+			path     string
+			drawable bool
+			err      error
+		)
+		if in.MotifOnly {
+			if in.Holiday == "" {
+				s.writeProblem(w, r, http.StatusBadRequest, "Holiday needed", "A picture-only preview names its holiday.")
+				return
+			}
+			path, err = s.watermarkPreview.PreviewMotif(r.Context(), in.ID, in.Holiday, in.Picture)
+		} else {
+			change := schedule.WatermarkPolicy{Look: in.Look, Color: in.Color}
+			if in.Size > 0 {
+				change.Size = &in.Size
+			}
+			if in.Picture != "" && in.Holiday != "" {
+				change.Motifs = map[string]string{in.Holiday: in.Picture}
+			}
+			path, drawable, err = s.watermarkPreview.Preview(r.Context(), in.ID, change, in.Holiday)
 		}
-		if in.Picture != "" && in.Holiday != "" {
-			change.Motifs = map[string]string{in.Holiday: in.Picture}
-		}
-		path, drawable, err := s.watermarkPreview.Preview(r.Context(), in.ID, change, in.Holiday)
 		if errors.Is(err, store.ErrNotFound) {
 			s.writeProblem(w, r, http.StatusNotFound, "Channel not found", "")
 			return
@@ -77,7 +95,9 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 		}
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set(watermarkDrawableHeader, strconv.FormatBool(drawable))
+		if !in.MotifOnly {
+			w.Header().Set(watermarkDrawableHeader, strconv.FormatBool(drawable))
+		}
 		_, _ = w.Write(body)
 	})
 }

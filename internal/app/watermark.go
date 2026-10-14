@@ -222,6 +222,38 @@ func (c *channelWatermarks) Preview(ctx context.Context, channelID string, chang
 	return path, drawable, err
 }
 
+// motifChipPx is the picture-only preview's square: the channel page's 24 px chip icon at 2×.
+const motifChipPx = 48
+
+// PreviewMotif is the holiday's picture alone, as the channel's holiday bug carries it (#1659 W2f,
+// the picture chips beside each honoured holiday): picture is one of the holiday's own, or "" for
+// the channel's choice. White follows the host's coloured self-check, like Preview.
+func (c *channelWatermarks) PreviewMotif(ctx context.Context, channelID, holiday, picture string) (string, error) {
+	ch, err := c.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		return "", err
+	}
+	p := schedule.WatermarkPolicy{}
+	if ch.Policy.Watermark != nil {
+		p = *ch.Policy.Watermark
+	}
+	if picture != "" {
+		p.Motifs = map[string]string{holiday: picture}
+	}
+	motif := schedule.WatermarkMotif(&p, holiday)
+	if motif == "" {
+		return "", fmt.Errorf("watermark: holiday %q has no picture", holiday)
+	}
+	drawable, colour := c.drawable()
+	white := drawable && !colour
+	path, _, _, err := c.cached(fmt.Sprintf("motif|%s|%t|%d|%s", motif, white, motifChipPx, renderVersion),
+		func() (watermark.Bug, error) {
+			img, err := watermark.RenderMotif(watermark.Motif(motif), white, motifChipPx)
+			return watermark.Bug{Straight: img}, err
+		})
+	return path, err
+}
+
 // Options is what the channel page's On-screen logo section shows beside the choices at now (#1659
 // W2c): the derived name, the era and the colours "Match the era" uses, and the holidays the logo
 // follows, each in effect through the scheduler's own ActiveHolidayAt so the page and what airs agree.

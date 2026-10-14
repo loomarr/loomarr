@@ -233,14 +233,20 @@ dates; channel-local dates (#1930) replace `ActiveHolidayAt`'s body and both cal
 calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours (empty
 when its seasonal mode is Ignore holidays; only the chosen ones when limited), each with its date
 window, whether it is in effect today, and its pictures (the first is the default), plus the era label
-and the auto name the logo would carry. The section draws one row per holiday from that list: the
-picture cards sit under the holiday's name and dates, and the chosen picture is written to
+and the auto name the logo would carry. The section draws one bordered row per holiday from that list:
+its name, dates and an "In effect now" badge, then its picture chips (a small picture and its name; a
+holiday with one picture shows it inline, with no choice), and the chosen picture is written to
 `policy.watermark.motifs`. `GET /v1/channels/{id}/watermark/preview` returns the PNG that airs for a
 given look, holiday and picture (query parameters, all optional), and carries the host's overlay state in
-`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. Every
-thumbnail and preview frame is that PNG, never a client-side imitation, so what the section shows is
-what airs. The frame sizes the logo from the PNG's own height over 1080 (`Image.getSize`, which works on
-web and native; `onLoad` carries no source size on web).
+`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. With
+`motifOnly=1` (and a holiday) it returns that holiday's picture alone as a 48 px square, drawn by the
+same renderer in the same colours (white on a host without colour); the chips use it. Every thumbnail,
+chip and preview frame is that PNG, never a client-side imitation, so what the section shows is what
+airs. The preview frames are the mock's bright (sun and dunes), dark (room with a lit window) and old
+4:3 film scenes, drawn as token-coloured shapes behind the PNG; the selected one is large and the other
+two sit beneath it. The frame sizes the logo from the PNG's own height over 1080 (`Image.getSize`,
+which works on web and native; `onLoad` carries no source size on web), anchored with the margin inside
+the active picture, so on the 4:3 film it stays off the bars.
 
 **Colour on the GPU.** A coloured bug needs the right RGB→YUV matrix: the NVENC graph converts the
 bug with `scale=out_color_matrix=bt709:out_range=tv` (as the VAAPI kernel path already did), and

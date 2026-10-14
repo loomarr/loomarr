@@ -473,3 +473,48 @@ func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
 		t.Fatal("a preview must not change the channel's policy")
 	}
 }
+
+// PICTURE CHIPS (#1659 W2f): the picture-only preview is the renderer's own motif — the channel's
+// choice, or the asked-for one — white on a host without colour, and nothing for an unknown holiday.
+func TestChannelWatermarks_PreviewMotifIsTheRenderersMotif(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}
+	same := func(path string, m watermark.Motif, white bool) {
+		t.Helper()
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		got, err := png.Decode(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := watermark.RenderMotif(m, white, motifChipPx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nrgba, ok := got.(*image.NRGBA)
+		if !ok || nrgba.Rect != want.Rect || !bytes.Equal(nrgba.Pix, want.Pix) {
+			t.Fatalf("%s: chip is not the renderer's %s (white %t)", path, m, white)
+		}
+	}
+	c := colour(testWatermarks(t, ch, true))
+	path, err := c.PreviewMotif(t.Context(), "ch", "halloween", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	same(path, watermark.MotifBat, false)
+	if path, err = c.PreviewMotif(t.Context(), "ch", "halloween", "ghost"); err != nil {
+		t.Fatal(err)
+	}
+	same(path, watermark.MotifGhost, false)
+	white := testWatermarks(t, ch, true)
+	if path, err = white.PreviewMotif(t.Context(), "ch", "halloween", ""); err != nil {
+		t.Fatal(err)
+	}
+	same(path, watermark.MotifBat, true)
+	if _, err := c.PreviewMotif(t.Context(), "ch", "arbor-day", ""); err == nil {
+		t.Error("an unknown holiday drew a picture")
+	}
+}

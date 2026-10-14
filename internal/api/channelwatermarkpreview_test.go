@@ -23,6 +23,15 @@ type fakeWatermarks struct {
 	gotChange        schedule.WatermarkPolicy
 	gotHoliday, gotC string
 	gotNow           time.Time
+	gotMotif         [2]string // holiday, picture
+}
+
+func (f *fakeWatermarks) PreviewMotif(_ context.Context, id, holiday, picture string) (string, error) {
+	if id != "ch-1" {
+		return "", store.ErrNotFound
+	}
+	f.gotMotif = [2]string{holiday, picture}
+	return f.png, nil
 }
 
 func (f *fakeWatermarks) Preview(_ context.Context, id string, change schedule.WatermarkPolicy, holiday string) (string, bool, error) {
@@ -93,6 +102,32 @@ func TestWatermarkPreviewRoute(t *testing.T) {
 	}
 	if res := getAs(t, srv, adminToken, "/v1/channels/nope/watermark/preview"); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown channel preview = %d, want 404", res.StatusCode)
+	}
+}
+
+// motifOnly asks the renderer for the holiday's picture alone (the picture chips), not the bug; it
+// needs a holiday and carries no drawable header (the everyday preview owns that).
+func TestWatermarkPreviewRoute_MotifOnly(t *testing.T) {
+	png := filepath.Join(t.TempDir(), "motif.png")
+	if err := os.WriteFile(png, []byte("\x89PNG motif"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wm := &fakeWatermarks{png: png}
+	srv := newWatermarkServer(t, wm, time.Now())
+
+	res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?motifOnly=1&holiday=halloween&picture=ghost&look=tint")
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || string(body) != "\x89PNG motif" || res.Header.Get("X-Loomarr-Watermark-Drawable") != "" {
+		t.Fatalf("motif preview = %d %q drawable %q", res.StatusCode, body, res.Header.Get("X-Loomarr-Watermark-Drawable"))
+	}
+	if wm.gotMotif != [2]string{"halloween", "ghost"} || wm.gotC != "" {
+		t.Fatalf("renderer asked for motif %v, bug channel %q", wm.gotMotif, wm.gotC)
+	}
+	if res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?motifOnly=true"); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("motif without a holiday = %d, want 400", res.StatusCode)
+	}
+	if res := getAs(t, srv, adminToken, "/v1/channels/nope/watermark/preview?motifOnly=1&holiday=halloween"); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown channel motif = %d, want 404", res.StatusCode)
 	}
 }
 

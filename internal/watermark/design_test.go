@@ -169,3 +169,27 @@ func TestRenderDesign_NumberLooksWithoutANumberDrawTheCallsign(t *testing.T) {
 		t.Error("a badge with no channel number should draw the Colour plate")
 	}
 }
+
+// The picture-only chip draws each motif with the bug's own colours (white when asked), as a
+// square of the asked size, and refuses an unknown motif.
+func TestRenderMotif(t *testing.T) {
+	for _, m := range Motifs {
+		img, err := RenderMotif(m, false, 48)
+		if err != nil || img.Rect.Dx() != 48 || img.Rect.Dy() != 48 {
+			t.Fatalf("%s: %v %v", m, img.Rect, err)
+		}
+		if visibleBox(img).Empty() {
+			t.Errorf("%s drew nothing", m)
+		}
+	}
+	white, _ := RenderMotif(MotifPumpkin, true, 48)
+	for i := 0; i < len(white.Pix); i += 4 {
+		// Neutral, not exactly 255: resampling rounds the faint edge pixels.
+		if r, g, b := white.Pix[i], white.Pix[i+1], white.Pix[i+2]; white.Pix[i+3] > 32 && (r != g || g != b) {
+			t.Fatalf("white pumpkin has a coloured pixel %v", white.Pix[i:i+4])
+		}
+	}
+	if _, err := RenderMotif("arbor", false, 48); err == nil {
+		t.Error("an unknown motif drew")
+	}
+}
