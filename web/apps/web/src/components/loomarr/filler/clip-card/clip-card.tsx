@@ -266,7 +266,8 @@ const ClipCard = ({
       className={cn(
         "flex flex-col",
         compact ? "gap-1.5 p-2" : "gap-2.5 p-3",
-        selected && "ring-1 ring-signal",
+        // Selection is neutral (#1909): amber is for focus and the primary action.
+        selected && "ring-1 ring-foreground",
         className,
       )}
     >

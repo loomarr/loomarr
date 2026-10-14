@@ -293,9 +293,10 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                           title={t.parent ? `${t.label}, under ${t.parent}` : `${t.label}, top level`}
                           onClick={() => toggleTag(t.slug)}
                           className={
+                            // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                             on
-                              ? "rounded-full border border-primary bg-primary/15 px-2.5 py-0.5 text-primary text-xs"
-                              : "rounded-full border border-border px-2.5 py-0.5 text-muted-foreground text-xs hover:border-primary/50"
+                              ? "rounded-full border border-foreground bg-static-800 px-2.5 py-0.5 font-semibold text-foreground text-xs"
+                              : "rounded-full border border-border px-2.5 py-0.5 text-muted-foreground text-xs hover:border-static-500"
                           }
                         >
                           {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}

@@ -108,7 +108,8 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         className={cn(
                           "group relative size-full overflow-hidden rounded-md border border-border bg-static-900 text-left",
                           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
-                          activeKey === item.key && "ring-2 ring-signal",
+                          // The current block is neutral (#1909); the amber outline above is focus.
+                          activeKey === item.key && "ring-2 ring-foreground",
                           item.unsplittable && "border-caution/70",
                         )}
                       />

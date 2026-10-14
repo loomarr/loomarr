@@ -53,7 +53,8 @@ const ModelPicker = ({
             key={model.tag}
             className={cn(
               "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
-              isActive && "border-signal-tint-30",
+              // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
+              isActive && "bg-static-800",
             )}
           >
             {/* A model that can't run reads as "here but unavailable" at a glance (§8.1) —

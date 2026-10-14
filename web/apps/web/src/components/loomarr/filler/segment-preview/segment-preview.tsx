@@ -112,7 +112,8 @@ const SegmentPreview = ({
           // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
           "bg-static-900",
-          open && "ring-1 ring-signal",
+          // Open is a pressed state, so it is neutral (#1909); the amber outline above is focus.
+          open && "ring-1 ring-foreground",
         )}
       >
         <span id={verbId} className="sr-only">

@@ -366,7 +366,8 @@ const SegmentSummaryRow = ({
 
   return (
     <li>
-      <Card className={cn(selected && "ring-1 ring-signal-300")}>
+      {/* Selection is neutral (#1909): amber is for focus and the primary action. */}
+      <Card className={cn(selected && "ring-1 ring-foreground")}>
         <button
           type="button"
           aria-label={`Open clip ${n}: ${segment.name || "unnamed"}`}

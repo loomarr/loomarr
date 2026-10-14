@@ -227,7 +227,17 @@ const roleTracking = (textRole: TextRole, size: number) =>
           ? size * 0.04
           : 0;
 
-const Text = ({ as, density = "pointer", halo, shout, strong, textRole, tone, tracking, ...props }: TextProps) => {
+const Text = ({
+  as,
+  density = "pointer",
+  halo,
+  shout,
+  strong,
+  textRole,
+  tone,
+  tracking,
+  ...props
+}: TextProps) => {
   const theme = useTheme();
   const role = typography[density][textRole];
   const value = strong ? { ...role, weight: "600" as const } : role;
@@ -358,7 +368,11 @@ const squareBadgeTone = (theme: ReturnType<typeof useTheme>) =>
     neutral: { backgroundColor: theme.surfaceElevated.val, color: theme.contentSecondary.val },
     // A channel override or Custom value (#1909 Q5): neutral, with a foreground label and a control
     // hairline. The word carries the meaning; amber stays for focus and the primary action.
-    override: { backgroundColor: "$surfaceElevated", borderColor: "$borderControl", color: "$contentPrimary" },
+    override: {
+      backgroundColor: "$surfaceElevated",
+      borderColor: "$borderControl",
+      color: "$contentPrimary",
+    },
     tune: { backgroundColor: withAlpha(theme.stateInfo.val, 0.15), color: theme.stateInfo.val },
     lock: { backgroundColor: withAlpha(theme.stateSuccess.val, 0.15), color: theme.stateSuccess.val },
     caution: { backgroundColor: withAlpha(theme.stateWarning.val, 0.15), color: theme.stateWarning.val },

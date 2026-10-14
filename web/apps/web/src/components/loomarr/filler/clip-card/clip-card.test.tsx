@@ -123,6 +123,14 @@ describe("ClipCard", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: `Select ${base.name}` }));
     expect(onToggleSelect).toHaveBeenCalledTimes(1);
   });
+
+  // Selection is neutral (#1909): a foreground ring, never amber.
+  it("rings a selected card in foreground", () => {
+    const { container } = render(<ClipCard clip={base} selected onToggleSelect={vi.fn()} />);
+    const card = container.querySelector(".ring-1");
+    expect(card).toHaveClass("ring-foreground");
+    expect(container.querySelector('[class*="ring-signal"]')).toBeNull();
+  });
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
   // as a commercial — it arrives with era/audience/category filled in, so it counts as
   // "tagged" while being wrong, and kind drives pod ROLE. Gating the edit on `!tagged`

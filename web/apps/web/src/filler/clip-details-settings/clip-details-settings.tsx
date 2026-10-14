@@ -305,7 +305,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           <div className="space-y-6 p-6">
             <fieldset className="space-y-3">
               <legend className="font-medium text-sm">Choose a provider</legend>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-4 has-[:checked]:border-signal/60 has-[:checked]:bg-signal/5">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-4 has-[:checked]:border-foreground has-[:checked]:bg-static-800">
                 <input
                   type="radio"
                   name="web-search-provider"

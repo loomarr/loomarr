@@ -65,8 +65,9 @@ const DiagnosticsPage = ({
             type="button"
             aria-current={search.view === id ? "page" : undefined}
             className={`inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
+              // The current view is neutral, like a NavTabs pill (#1909 Q1).
               search.view === id
-                ? "bg-signal-tint-15 font-medium text-signal"
+                ? "bg-static-800 font-medium text-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
             onClick={() =>
