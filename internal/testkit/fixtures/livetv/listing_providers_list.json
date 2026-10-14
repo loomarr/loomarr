@@ -1,0 +1,38 @@
+[
+    {
+        "Name": "Emby Guide Data",
+        "SetupUrl": "configurationpage?name=embyguidedata",
+        "Id": "7d5a7ad9661e4358a4606688a8cd28be",
+        "Type": "embygn",
+        "ListingsId": "USA-OTA00000",
+        "ZipCode": "00000",
+        "Country": "USA",
+        "EnabledTuners": [],
+        "EnableAllTuners": true,
+        "NewsCategories": [
+            "news",
+            "journalism",
+            "documentary",
+            "current affairs"
+        ],
+        "SportsCategories": [
+            "sports",
+            "basketball",
+            "baseball",
+            "football"
+        ],
+        "KidsCategories": [
+            "kids",
+            "family",
+            "children",
+            "childrens",
+            "disney"
+        ],
+        "MovieCategories": [
+            "movie"
+        ],
+        "ChannelMappings": [],
+        "TvgShiftTicks": 0,
+        "DataVersion": "1"
+    }
+]

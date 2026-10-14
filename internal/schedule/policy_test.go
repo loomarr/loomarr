@@ -1,0 +1,294 @@
+package schedule
+
+import (
+	"encoding/json"
+	"reflect"
+	"testing"
+	"time"
+)
+
+// The Duration newtype must (un)marshal as a Go-duration STRING ("168h"), not a
+// nanosecond integer — that's what keeps policy_json human/LLM-authorable and
+// matches the programming-design §2 schema.
+func TestDuration_JSONIsAString(t *testing.T) {
+	blob, err := json.Marshal(Duration(168 * time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(blob) != `"168h0m0s"` {
+		t.Errorf("marshal = %s, want a duration string", blob)
+	}
+	var d Duration
+	if err := json.Unmarshal([]byte(`"168h"`), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Std() != 168*time.Hour {
+		t.Errorf("unmarshal(\"168h\") = %v", d.Std())
+	}
+	// A garbage string is a decode error (not silently zero).
+	if err := json.Unmarshal([]byte(`"not-a-duration"`), &d); err == nil {
+		t.Error("expected an error unmarshaling a non-duration string")
+	}
+}
+
+// Resolved fills every default from the built-in constants when the policy is empty.
+func TestResolved_EmptyPolicyUsesBuiltins(t *testing.T) {
+	r := ChannelPolicy{}.Resolved(Sequential, false)
+	if r.Sep.EpisodeNoRepeat != defaultEpisodeNoRepeat {
+		t.Errorf("episodeNoRepeat = %v, want default %v", r.Sep.EpisodeNoRepeat, defaultEpisodeNoRepeat)
+	}
+	if r.Sep.BlockMax != defaultBlockMax {
+		t.Errorf("blockMax = %d, want %d", r.Sep.BlockMax, defaultBlockMax)
+	}
+	if r.Seasonal.Mode != SeasonalAuto {
+		t.Errorf("seasonal mode = %q, want auto", r.Seasonal.Mode)
+	}
+}
+
+// Omitted ordering INHERITS the channel's Strategy (the locked non-breaking
+// default) — a policy-less shuffle channel stays shuffle, not syndication.
+func TestResolved_OrderingInheritsStrategy(t *testing.T) {
+	if got := (ChannelPolicy{}).Resolved(Shuffle, false).Ordering; got != OrderShuffle {
+		t.Errorf("empty policy on a Shuffle channel = %q, want shuffle", got)
+	}
+	if got := (ChannelPolicy{}).Resolved(Sequential, false).Ordering; got != OrderSequential {
+		t.Errorf("empty policy on a Sequential channel = %q, want sequential", got)
+	}
+	// An explicit policy ordering wins over the strategy.
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}
+	if got := p.Resolved(Sequential, false).Ordering; got != OrderSyndication {
+		t.Errorf("explicit syndication = %q, want syndication", got)
+	}
+}
+
+// A single-series channel auto-relaxes series-level separation (separation there
+// is EPISODE spacing, not series spacing) — rule-based, not LLM judgment.
+func TestResolved_SingleSeriesRelaxesSeriesSeparation(t *testing.T) {
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Separation: SeparationPolicy{SeriesMinGap: Duration(2 * time.Hour), BlockMax: 2}}}
+	r := p.Resolved(Sequential, true)
+	if r.Sep.SeriesMinGap != 0 || r.Sep.BlockMax != 0 {
+		t.Errorf("single-series should relax series gap/block: got gap=%v block=%d", r.Sep.SeriesMinGap, r.Sep.BlockMax)
+	}
+	// Episode no-repeat is NOT relaxed — that's the meaningful spacing on a single-series channel.
+	if r.Sep.EpisodeNoRepeat != defaultEpisodeNoRepeat {
+		t.Errorf("episodeNoRepeat should survive single-series relax: %v", r.Sep.EpisodeNoRepeat)
+	}
+}
+
+// Unrated policy fails CLOSED under a kids ceiling and open otherwise (§4).
+func TestResolved_UnratedDefaultsByCeiling(t *testing.T) {
+	cases := []struct {
+		ceiling Rating
+		want    UnratedPolicy
+	}{
+		{"TV-Y", UnratedExclude},
+		{"TV-Y7", UnratedExclude},
+		{"TV-PG", UnratedExclude}, // TV-PG is still a kids ceiling
+		{"TV-14", UnratedAllow},
+		{"TV-MA", UnratedAllow},
+		{"", UnratedAllow}, // no ceiling → adult/general
+	}
+	for _, c := range cases {
+		got := (ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: c.ceiling}}}).Resolved(Sequential, false).Unrated
+		if got != c.want {
+			t.Errorf("ceiling %q → unrated %q, want %q", c.ceiling, got, c.want)
+		}
+	}
+	// An explicit unrated policy overrides the ceiling default.
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedAllow}}}
+	if got := p.Resolved(Sequential, false).Unrated; got != UnratedAllow {
+		t.Errorf("explicit allow under a kids ceiling = %q, want allow", got)
+	}
+}
+
+// The rating ladder orders TV and film systems together; unmappable → unrated.
+func TestRatingLadder(t *testing.T) {
+	if !Rating("TV-Y7").atOrBelow("TV-14") {
+		t.Error("TV-Y7 should be at or below TV-14")
+	}
+	if Rating("TV-MA").atOrBelow("TV-Y7") {
+		t.Error("TV-MA must NOT be at or below TV-Y7")
+	}
+	if !Rating("PG").atOrBelow("PG-13") {
+		t.Error("PG (film) should be at or below PG-13 (film) on the shared ladder")
+	}
+	// Cross-system: G (film) and TV-G share a rank.
+	if !Rating("G").atOrBelow("TV-G") || !Rating("TV-G").atOrBelow("G") {
+		t.Error("G and TV-G should share a ladder rank")
+	}
+	// An unmapped rating is never "at or below" anything — it's unrated, decided by policy.
+	if Rating("XYZ").atOrBelow("TV-MA") {
+		t.Error("an unmapped rating must not compare as at-or-below")
+	}
+}
+
+// normalizeRating folds the common media-server string variants onto the ladder.
+func TestNormalizeRating(t *testing.T) {
+	cases := map[string]Rating{
+		"TV-Y7":   "TV-Y7",
+		"tv-y7":   "TV-Y7",
+		"TV_Y7":   "TV-Y7",
+		"Rated R": "R",
+		" pg-13 ": "PG-13",
+		"NR":      "", // not rated → unrated
+		"Unknown": "",
+	}
+	for raw, want := range cases {
+		if got := normalizeRating(raw); got != want {
+			t.Errorf("normalizeRating(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// Validate rejects unknown enum values and off-ladder ceilings (grounding: the
+// suggester must never emit a ceiling outside the closed ladder).
+func TestValidate(t *testing.T) {
+	if err := (ChannelPolicy{}).Validate(); err != nil {
+		t.Errorf("empty policy should validate: %v", err)
+	}
+	valid := ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{
+			Ordering: OrderSyndication,
+			Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedExclude},
+			Seasonal: SeasonalPolicy{Mode: SeasonalAuto, OffSeason: OffSeasonLoop},
+		},
+		// A fully-specified filler selection with every closed-set value valid.
+		OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{
+			Era: &Range{From: 1990, To: 1999}, Audience: "kids",
+			Categories: []string{"toys", "cereal"}, Kinds: []string{"commercial", "bumper"},
+			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"},
+		}},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Errorf("valid policy rejected: %v", err)
+	}
+	// ⚠ §10 V45a: a category slug this package has never heard of is ACCEPTED — categories are opaque
+	// taxonomy slugs validated at the API boundary, not here (like Pinned/Excluded ids). This pins the
+	// deliberate removal of the fillerCategories enum check so a future edit does not silently re-add it.
+	openSlug := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Categories: []string{"energy-drink", "any-operator-slug"}}}}
+	if err := openSlug.Validate(); err != nil {
+		t.Errorf("an operator category slug was rejected by schedule.Validate — categories must be opaque here (§10 V45a): %v", err)
+	}
+	bad := []ChannelPolicy{
+		{ProposalPolicy: ProposalPolicy{Ordering: "backwards"}},
+		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-BOGUS"}}},
+		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Unrated: "maybe"}}},
+		{ProposalPolicy: ProposalPolicy{Seasonal: SeasonalPolicy{Mode: "sometimes"}}},
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1899, To: 1990}}}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 2000, To: 1990}}}}}},
+		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1995, To: 1999}, {From: 1990, To: 1994}}}}}},
+		{ProposalPolicy: ProposalPolicy{Rules: []SchedulingRule{{What: &ScopePolicy{Dates: &DateScope{}}}}}},
+		{ProposalPolicy: ProposalPolicy{Rules: []SchedulingRule{{What: &ScopePolicy{Dates: &DateScope{SeriesAiring: []Range{{From: 1990, To: 1994}, {From: 1994, To: 1999}}}}}}}},
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{}, EraWindows: []Range{{From: 1990, To: 1999}}}}},
+		// ⚠ NOTE (§10 V45a): an unknown CATEGORY is no longer rejected here. Categories became taxonomy
+		// slugs — an open, operator-editable set this pure domain package cannot know — so they are
+		// opaque like Pinned/Excluded ids (a stale slug matches nothing at assembly). The API layer,
+		// which can read the live graph, rejects an unknown slug on write; that is covered by
+		// TestTaxonomy_ClipPatchRejectsUnknownTag in internal/api. The old `["widgets"]` bad-case was
+		// removed for that reason, not weakened.
+	}
+	for i, p := range bad {
+		if err := p.Validate(); err == nil {
+			t.Errorf("bad policy %d should have been rejected", i)
+		}
+	}
+}
+
+func TestValidate_FillerEraKeepsLegacyScalarSemantics(t *testing.T) {
+	for _, era := range []Range{
+		{From: 1800, To: 1899}, // existing operator policies are not newly year-bounded
+		{From: 1800},
+		{To: 1800},
+		{}, // explicitly any
+	} {
+		policy := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &era}}}
+		if err := policy.Validate(); err != nil {
+			t.Errorf("legacy scalar era %+v was rejected: %v", era, err)
+		}
+	}
+	if err := (ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}).Validate(); err == nil {
+		t.Fatal("inverted legacy scalar era was accepted")
+	}
+}
+
+func TestValidate_FillerEraWindowsRequirePresentNormalizedList(t *testing.T) {
+	var fromJSON ChannelPolicy
+	if err := json.Unmarshal([]byte(`{"filler":{"eraWindows":[]}}`), &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	if err := fromJSON.Validate(); err == nil {
+		t.Fatal("an explicitly empty eraWindows list was accepted")
+	}
+
+	bad := []FillerSelection{
+		{Era: &Range{}, EraWindows: []Range{}},
+		{Era: &Range{}, EraWindows: []Range{{From: 1990, To: 1999}}},
+		{EraWindows: []Range{{From: 1990, To: 1999}, {From: 1970, To: 1979}}},
+		{EraWindows: []Range{{From: 1970, To: 1979}, {From: 1979, To: 1989}}},
+	}
+	for i, f := range bad {
+		if err := (ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &f}}).Validate(); err == nil {
+			t.Errorf("bad eraWindows case %d was accepted", i)
+		}
+	}
+	valid := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{EraWindows: []Range{{From: 1970, To: 1979}, {From: 1990, To: 1999}}}}}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("normalized eraWindows was rejected: %v", err)
+	}
+}
+
+func TestSeedFillerSelectionPreservesDateWindowGaps(t *testing.T) {
+	p := ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1970, To: 1975}}, SeriesAiring: []Range{{From: 1990, To: 1992}}}}}
+	got := SeedFillerSelection(p)
+	if got.Era != nil || !reflect.DeepEqual(got.EraWindows, []Range{{From: 1970, To: 1975}, {From: 1990, To: 1992}}) {
+		t.Fatalf("seed = %+v", got)
+	}
+	got.EraWindows[0].From = 1
+	if p.Scope.Dates.MovieRelease[0].From != 1970 {
+		t.Fatal("seed aliases date windows")
+	}
+}
+
+func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		ceiling  Rating
+		audience string
+	}{
+		{name: "young children", ceiling: "TV-Y", audience: "kids"},
+		{name: "older children", ceiling: "TV-Y7", audience: "kids"},
+		{name: "all ages television", ceiling: "TV-G", audience: "family"},
+		{name: "family television", ceiling: "TV-PG", audience: "family"},
+		{name: "all ages film", ceiling: "G", audience: "family"},
+		{name: "family film", ceiling: "PG", audience: "family"},
+		{name: "teen ceiling", ceiling: "TV-14", audience: "general"},
+		{name: "adult ceiling", ceiling: "TV-MA", audience: "general"},
+		{name: "missing ceiling", audience: "general"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			era := Range{From: 1990, To: 1999}
+			policy := ProposalPolicy{
+				Scope:    ScopePolicy{Dates: EraDates(era), Genres: GenreFilter{Include: []string{"Animation"}}},
+				Audience: AudiencePolicy{Ceiling: tc.ceiling},
+			}
+			got := SeedFillerSelection(policy)
+			if got == nil || got.Audience != tc.audience || got.Era == nil || *got.Era != era {
+				t.Fatalf("seed = %+v, want era %+v and audience %q", got, era, tc.audience)
+			}
+			if len(got.Categories) != 0 || len(got.Kinds) != 0 {
+				t.Fatalf("program genres or missing intent invented filler taxonomy: %+v", got)
+			}
+			got.Era.From = 1980
+			if scoped, _ := policy.Scope.Dates.Era(); scoped.From != 1990 {
+				t.Fatal("seed aliases proposal-owned era instead of handing off an independent value")
+			}
+		})
+	}
+}

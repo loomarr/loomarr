@@ -1,0 +1,22 @@
+{
+  "response": {
+    "numFound": 54,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "saturday-morning-cartoons-v.-110",
+        "title": "Saturday Morning Cartoons V. 110"
+      },
+      {
+        "identifier": "kelloggs-bran-flakes",
+        "title": "Kellogg's Bran Flakes “good luck” TV advert / Commercial 1989, United Kingdom",
+        "year": 1989
+      },
+      {
+        "identifier": "youtube-1t5W5AP27dI",
+        "title": "Body Buddies (Commercial, 1980)",
+        "year": 2014
+      }
+    ]
+  }
+}

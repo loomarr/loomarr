@@ -1,0 +1,42 @@
+extends: substitution
+message: "Use '%s', not '%s'."
+# error, not warning — see the note in Proposal.yml: vale-action only fails on errors, so a
+# warning-level rule would never block a merge.
+level: error
+ignorecase: false
+# ⚠ MISSPELLINGS ONLY — deliberately not case normalisation.
+#
+# The tempting rules ('postgres' → 'Postgres', 'emby' → 'Emby', 'tunarr' → 'Tunarr') are wrong
+# here, because those lowercase forms are CORRECT in the places they appear: `--profile postgres`
+# is a compose flag, `http://emby:8096` is a hostname, `postgres://` is a scheme, and `tunarr` is
+# a settings key. Vale skips fenced code blocks but not every inline context, so such rules would
+# fire on text that is right — and a linter that flags correct prose gets muted, taking the real
+# findings with it.
+#
+# What survives is the set where the flagged spelling is wrong in EVERY context. That is the bar
+# for adding a row: not "we prefer X" but "Y is never correct".
+swap:
+  # Service names contributors reliably drop a letter from.
+  'Tunar\b': Tunarr
+  'Tunnarr': Tunarr
+  'TunArr': Tunarr
+  'Jellyseer\b': Jellyseerr
+  'JellySeerr': Jellyseerr
+  'JellyFin': Jellyfin
+  'Jellfin': Jellyfin
+  'Overseer\b': Overseerr
+  'Sonarr{2,}': Sonarr
+  'Radarr{2,}': Radarr
+  # Tool names with an established canonical casing that is not the obvious one.
+  'FFmpeg': ffmpeg
+  'FFMPEG': ffmpeg
+  'ffmpg': ffmpeg
+  'ffprope': ffprobe
+  'yt-dl\b': yt-dlp
+  'ytdlp': yt-dlp
+  'Sqlite': SQLite
+  'SQlite': SQLite
+  'Javascript': JavaScript
+  'Typescript': TypeScript
+  'Github': GitHub
+  'Docker file': Dockerfile

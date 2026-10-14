@@ -1,0 +1,23 @@
+# NVIDIA GPU overlay for the `ai` profile's Ollama — Linux + nvidia-container-toolkit ONLY.
+# Without it, Ollama runs on CPU: it still works, but inference is slow enough that channel
+# suggestions crawl. With a supported NVIDIA GPU this makes local grounding fast.
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml --profile sqlite --profile ai up -d
+#
+# Do NOT use on a Mac: Apple Silicon has no NVIDIA passthrough, and requesting the `nvidia`
+# device driver makes `docker compose up` fail ("could not select device driver"). The base
+# compose.yaml stays host-agnostic; this overlay is the only GPU-specific piece (mirrors the
+# dev Tunarr overlay, compose.dev.gpu.yaml). `compute,utility` is all Ollama needs — it does
+# CUDA inference, not NVENC, so the `video` cap the Tunarr transcode path needs is omitted.
+services:
+  ollama:
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

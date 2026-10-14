@@ -1,0 +1,13 @@
+# Postgres deployment override. The base compose defaults Loomarr to SQLite; a
+# profile can add a service but cannot conditionally replace another service's
+# environment, so selecting Postgres requires this explicit override.
+services:
+  loomarr:
+    environment:
+      # Override the whole URL when using custom credentials. URL-encode special
+      # characters in usernames/passwords.
+      DATABASE_URL: ${DATABASE_URL:-postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: true

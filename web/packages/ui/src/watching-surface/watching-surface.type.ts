@@ -1,0 +1,65 @@
+import type { Density } from "@loomarr/design-system";
+import type { PlayerSnapshot } from "@loomarr/player";
+import type { ReactNode } from "react";
+
+import type { ProgrammeIdentityData } from "../identity";
+
+interface ChannelNumberEntry {
+  channelName?: string;
+  digits: string;
+  /**
+   * When present, draws a live countdown to the auto-tune ("auto-tunes in 1.2 s", #1659 map 5a).
+   * Absent (e.g. a platform with no digit entry) draws just the typed digits.
+   */
+  expiresAtMs?: number;
+}
+
+interface WatchingProgrammeData extends ProgrammeIdentityData {
+  progressPercent?: number;
+  /** "12m left": shown on the channel switch overlay's surf card. */
+  remainingLabel?: string;
+}
+
+interface WatchingScheduleData {
+  next?: Pick<ProgrammeIdentityData, "timeLabel" | "title">;
+  now?: WatchingProgrammeData;
+}
+
+interface WatchingSurfaceProps {
+  /**
+   * TV: the remote has number keys, so the hint offers "0–9 jump". Defaults to true. An Apple TV's
+   * Siri Remote has none, so tvOS passes false (#1500 audit #3).
+   */
+  channelDigits?: boolean;
+  /** False while another transient journey is drawn over the still-mounted player. */
+  chromeVisible?: boolean;
+  /** Presentation-owned visibility; playback state deliberately does not own UI chrome. */
+  controlsVisible?: boolean;
+  /** Changes only after handled Watching activity, not while live playback presentation updates. */
+  controlsActivityKey?: number;
+  density: Density;
+  /** True only while the authoritative Channel catalog request is unresolved. */
+  loading?: boolean;
+  loadError?: string;
+  numberEntry?: ChannelNumberEntry;
+  onChannelDown: () => void;
+  onChannelUp: () => void;
+  /** Returns to server selection while preserving the current credential as a restart fallback. */
+  onChangeServer?: () => void;
+  onDismissControls: () => void;
+  onGoLive: () => void;
+  onOpenGuide: () => void;
+  onOpenSurf: () => void;
+  onPause: () => void;
+  onPlay: () => void;
+  onPrevious: () => void;
+  onRetry: () => void;
+  onShowControls: () => void;
+  /** Instrumentation (TV): the channel switch overlay showed its readout or its still. */
+  onSwitchShown?: (what: "osd" | "still") => void;
+  player: ReactNode;
+  schedule?: WatchingScheduleData;
+  snapshot: PlayerSnapshot;
+}
+
+export type { ChannelNumberEntry, WatchingProgrammeData, WatchingScheduleData, WatchingSurfaceProps };

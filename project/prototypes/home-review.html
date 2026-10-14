@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr Home — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #e7eaf0; background: #08090b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select { cursor: pointer; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; }
+  #frame { container-type: inline-size; margin: 20px auto; width: 100%; max-width: 1440px; border: 1px solid #2a2e37; }
+  #frame.phone { width: min(390px, 100%); }
+  .shell { display: grid; grid-template-columns: 224px minmax(0,1fr); min-height: 844px; background: #0b0c0e; }
+  nav { padding: 24px 12px; border-right: 1px solid #2a2e37; background: #131519; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; font-size: 13px; letter-spacing: 2px; font-weight: 700; }
+  .mark { width: 20px; height: 6px; background: #ffb020; flex-shrink: 0; border-radius: 2px; }
+  nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 10px 12px; border-radius: 6px; color: #8b93a3; font-size: 14px; }
+  nav a[aria-current] { color: #ffb020; background: #352916; }
+  nav a:hover { background: #1b1e24; }
+  .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
+  main { min-width: 0; }
+  .page-header { padding: 20px 24px; border-bottom: 1px solid #2a2e37; }
+  h1 { font-size: 24px; line-height: 32px; margin: 0; }
+  h2 { font-size: 18px; line-height: 26px; margin: 0; }
+  h3 { font-size: 16px; line-height: 22px; margin: 0; }
+  p { margin: 0; line-height: 1.5; }
+  .content { max-width: 1120px; margin: auto; padding: 24px; display: grid; gap: 32px; }
+  .status { color: #8b93a3; font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .status strong { color: #e7eaf0; font-weight: 500; }
+  .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .text-link { color: #ffb020; font-size: 14px; display: inline-flex; align-items: center; min-height: 44px; }
+  .grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+  .card { min-width: 0; background: #131519; border: 1px solid #2a2e37; border-radius: 8px; overflow: hidden; }
+  a.card { display: block; }
+  a.card:hover { background: #1b1e24; border-color: #666970; }
+  .art { aspect-ratio: 16 / 9; width: 100%; position: relative; display: grid; place-items: center; background: #1b1e24; color: #8b93a3; overflow: hidden; }
+  .art svg { width: 100%; height: 100%; position: absolute; inset: 0; }
+  .art span { font-size: 24px; letter-spacing: 4px; z-index: 1; opacity: .75; }
+  .card-copy { display: grid; gap: 6px; padding: 14px; overflow-wrap: anywhere; }
+  .meta { color: #8b93a3; font-size: 13px; line-height: 18px; }
+  .time { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8b93a3; line-height: 18px; }
+  .channel { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ident { background: #1b1e24; border: 1px solid #2a2e37; border-radius: 6px; min-width: 32px; height: 32px; display: grid; place-items: center; font-size: 10px; color: #8b93a3; }
+  .number { font-family: 'Geist Mono', ui-monospace, monospace; color: #ffb020; }
+  .watch { display: flex; align-items: center; min-height: 44px; color: #ffb020; font-size: 14px; font-weight: 500; }
+  .progress { height: 3px; background: #2a2e37; }
+  .progress::before { content: ''; display: block; width: 46%; height: 3px; background: #8b93a3; }
+  .return, .notice, .channel-row { padding: 16px; border: 1px solid #2a2e37; border-radius: 8px; background: #131519; display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+  .return p, .notice p { margin-top: 4px; }
+  .button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; padding: 10px 16px; background: #ffb020; color: #0b0c0e; border-radius: 6px; font-size: 14px; font-weight: 600; flex-shrink: 0; }
+  .row-copy { min-width: 0; overflow-wrap: anywhere; }
+  .posters { display: grid; grid-template-columns: repeat(auto-fit,minmax(136px,180px)); gap: 12px; margin-top: 12px; }
+  .poster { min-width: 0; }
+  .poster .art { aspect-ratio: 2 / 3; border-radius: 6px; }
+  .poster h3 { font-size: 14px; line-height: 20px; margin: 10px 0 4px; overflow-wrap: anywhere; }
+  .poster .watch { font-size: 13px; }
+  .empty { padding: 40px 0; max-width: 460px; display: grid; justify-items: start; gap: 16px; }
+  .empty h2 { font-size: 24px; line-height: 32px; }
+  .empty p { color: #8b93a3; }
+  .skeleton { background: #1b1e24; border-radius: 8px; aspect-ratio: 16/12; }
+  .rows { display: grid; gap: 12px; }
+  .footer { font-size: 12px; color: #8b93a3; }
+  .footer a { text-decoration: underline; }
+  @container (max-width: 1023px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+  @container (max-width: 767px) {
+    .shell { grid-template-columns: 56px minmax(0,1fr); }
+    nav { padding: 20px 6px; }
+    nav a { padding: 10px 13px; }
+    .nav-label, .brand-name { display: none; }
+    .brand { padding: 4px 12px 24px; }
+    .mark { width: 20px; }
+    .page-header { padding: 16px; }
+    .content { padding: 16px; gap: 24px; }
+    .grid { grid-template-columns: minmax(0,1fr); }
+    .posters { grid-template-columns: repeat(2,minmax(136px,1fr)); }
+    .return, .notice, .channel-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .button { max-width: 100%; white-space: normal; }
+  }
+  @container (max-width: 371px) { .posters { grid-template-columns: minmax(0,180px); } }
+</style>
+<div class="review">
+  <strong>Home · review candidate</strong>
+  <label>State <select id="state"><option value="populated">Populated</option><option value="quiet">Quiet household</option><option value="empty">First channel</option><option value="off">No current programme</option><option value="missing">Missing artwork</option><option value="long">Long titles</option><option value="loading">Loading</option><option value="error">Initial error</option><option value="partial">Partial error</option></select></label>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label>Recent titles <select id="count"><option>5</option><option>0</option><option>1</option><option>2</option><option>14</option></select></label>
+  <label><input id="new-channel" type="checkbox" checked> New channel</label>
+  <button id="size" type="button" aria-pressed="false">390px preview</button>
+</div>
+<p class="review-note">Invented fixtures and abstract artwork. Proposed Home content within the existing navigation. No production actions. Phone navigation remains a separate decision.</p>
+<div id="frame"></div>
+<p class="review-note" id="action" role="status" aria-live="polite">Select a state or role to inspect the proposal.</p>
+<script>
+const $ = (id) => document.getElementById(id);
+const channels = [
+  { n:'07', name:'Night Signal', ident:'NS', title:'The Last Observatory', episode:'An evening above the city', color:'#334954' },
+  { n:'12', name:'Sunday Stories', ident:'SS', title:'The Garden Next Door', episode:'Season 2 · Episode 4', color:'#454737' },
+  { n:'19', name:'Field Notes', ident:'FN', title:'Along the Quiet Coast', episode:'Paths through the dunes', color:'#51403b' }
+];
+const titles = ['A Light in the Window','The Orchard at Dawn','The River Returns','Small Worlds','Before the Morning'];
+const art = (ident,color,missing=false) => `<div class="art" aria-hidden="true"><svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice"><rect width="320" height="180" fill="${missing?'#1b1e24':color}"/><path d="M-40 200 180-20M20 200 240-20M80 200 300-20M140 200 360-20" stroke="#8b93a3" opacity="${missing?'.08':'.16'}" stroke-width="1"/></svg><span>${ident}</span></div>`;
+const channelIdentity = (c) => `<div class="channel"><span class="ident" aria-hidden="true">${c.ident}</span><span class="number">${c.n}</span><span class="meta">${c.name}</span></div>`;
+const sectionHead = (title,link='') => `<div class="section-head"><h2>${title}</h2>${link}</div>`;
+function render() {
+  const state=$('state').value, admin=$('role').value==='admin', count=Number($('count').value), missing=state==='missing';
+  let body='';
+  if(state==='loading') body='<section aria-busy="true"><p class="meta">Loading your channels…</p><div class="grid" style="margin-top:16px"><div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div><div class="skeleton" aria-hidden="true"></div></div></section>';
+  else if(state==='error') body='<section class="empty"><h2>Couldn’t load your channels.</h2><button data-retry="true">Try again</button></section>';
+  else if(state==='empty') body=`<section class="empty"><h2>Your first channel starts here</h2><p>${admin?'Create':'Request'} a channel to start watching.</p><a class="button" href="/guide?new=1">${admin?'Add your first channel':'Request a channel'}</a></section>`;
+  else {
+    body='<div class="status"><strong>3 channels</strong></div>';
+    if(!['quiet','off'].includes(state)) body+=`<section>${sectionHead('Recently tuned')}<div class="return"><div class="row-copy">${channelIdentity(channels[0])}<h3 style="margin-top:10px">The Last Observatory</h3><p class="meta">Join what’s on now.</p></div><a class="button" href="/channels/ch-7/watch">Watch live</a></div></section>`;
+    body+=`<section>${sectionHead(state==='off'?'Your channels':'On now','<a class="text-link" href="/guide">Full guide →</a>')}`;
+    if(state==='off') body+='<div class="rows">'+channels.map((c,i)=>`<div class="channel-row"><div class="row-copy">${channelIdentity(c)}<p class="meta" style="margin-top:8px">${['Paused','Building schedule','No programme scheduled now'][i]}</p></div><a class="text-link" href="/channels/ch-${Number(c.n)}">View channel →</a></div>`).join('')+'</div>';
+    else body+='<div class="grid">'+channels.map((c,i)=>`<a class="card" href="/channels/ch-${Number(c.n)}/watch" aria-label="Watch ${c.name} live">${art(c.ident,c.color,missing)}<div class="progress" role="img" aria-label="Current programme, 8:00 PM to 8:30 PM"></div><div class="card-copy">${channelIdentity(c)}<h3>${state==='long'?'The remarkably long story of a lighthouse keeper and the extraordinary journey home':c.title}</h3><p class="meta">${c.episode}</p><p class="time">8:00–8:30 PM</p><span class="watch">Watch live →</span></div></a>`).join('')+'</div>';
+    body+='</section>';
+    if(!['quiet','off'].includes(state)) {
+      body+=`<section>${sectionHead('Watching now')}<div class="channel-row"><div class="row-copy"><h3>${admin?'Robin · Living room TV':'You · This phone'}</h3><p class="meta">Sunday Stories · The Garden Next Door</p></div><span class="meta">1 device watching</span></div></section>`;
+      body+=`<section>${sectionHead('Tonight')}<a class="channel-row" href="/channels/ch-19/watch"><div class="row-copy"><p class="time">9:00 PM · Premiere</p><h3>The Forest After Dark</h3><p class="meta">Field Notes · Watch joins the channel live.</p></div><span class="watch">Watch live →</span></a></section>`;
+      if(state==='partial') body+='<section>'+sectionHead('New this week')+'<div class="notice"><p>Couldn’t load recent additions.</p><button data-retry="true">Try again</button></div></section>';
+      else if(count || $('new-channel').checked) {
+        body+='<section>'+sectionHead('New this week')+`<p class="meta">${count} ${count===1?'title':'titles'}${$('new-channel').checked?' · 1 new channel':''}</p>`;
+        if($('new-channel').checked) body+='<a class="channel-row" style="margin-top:12px" href="/channels/ch-19/watch"><div class="row-copy">'+channelIdentity(channels[2])+'<p class="meta" style="margin-top:8px">Added this week</p></div><span class="watch">Watch live →</span></a>';
+        body+='<div class="posters">'+titles.slice(0,Math.min(count,5)).map((title,i)=>`<article class="poster">${art('','#33404a',true)}<h3>${state==='long'?title+' and the incredibly unexpected adventures that followed':title}</h3><p class="meta">${i===4?'In your library':'On '+channels[i%3].name}</p>${i===4?'':`<a class="watch" href="/channels/ch-${Number(channels[i%3].n)}/watch">Watch ${channels[i%3].name} live →</a>`}</article>`).join('')+'</div></section>';
+      }
+    }
+    if(state==='populated') body+=admin?'<section>'+sectionHead('On the way')+'<div class="channel-row"><div><h3>The Far Shore</h3><p class="meta">Downloading · 62%</p></div><a class="text-link" href="/requests">View request →</a></div></section>':'<section>'+sectionHead('Your requests')+'<div class="channel-row"><div><h3>A channel for rainy afternoons</h3><p class="meta">Awaiting approval</p></div><a class="text-link" href="/requests">View request →</a></div></section>';
+    if(admin) body+='<p class="footer">Encoder, storage and service details are in <a href="/settings/system">Settings → This server</a>.</p>';
+  }
+  const nav=[['⌂','Home','/dashboard'],['▦','Guide','/guide'],['◇','Requests','/requests'],...(admin?[['▧','Filler','/filler'],['♙','People','/users'],['⚙','Settings','/settings']]:[]),['?','Help','/help']];
+  $('frame').innerHTML=`<div class="shell"><nav aria-label="Main"><div class="brand"><span class="mark"></span><span class="brand-name">LOOMARR</span></div>${nav.map(([icon,label,url],i)=>`<a href="${url}" aria-label="${label}" ${i===0?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></a>`).join('')}</nav><main><header class="page-header"><h1>Home</h1></header><div class="content">${body}</div></main></div>`;
+}
+for(const id of ['state','role','count','new-channel']) $(id).addEventListener('change',render);
+$('size').addEventListener('click',()=>{ const small=$('frame').classList.toggle('phone'); $('size').setAttribute('aria-pressed',String(small)); $('size').textContent=small?'Desktop preview':'390px preview'; });
+document.addEventListener('click',(event)=>{const target=event.target.closest('#frame a, #frame button');if(!target)return;event.preventDefault();$('action').textContent=target.dataset.retry?'Prototype: retry the failed section.':`Prototype action: ${target.getAttribute('aria-label')||target.textContent.trim()} → ${target.getAttribute('href')}`;});
+render();
+</script>
+</html>

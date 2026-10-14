@@ -1,0 +1,123 @@
+{
+  "movie": {
+    "id": 2824,
+    "title": "In Flames",
+    "year": 2023,
+    "releaseDate": "2024-07-11",
+    "folderPath": "/data/movies/In Flames (2023)",
+    "tmdbId": 1111867,
+    "imdbId": "tt27470830",
+    "overview": "After the death of the family patriarch, a mother and daughter’s precarious existence is ripped apart. They must find strength in each other if they are to survive the malevolent forces that threaten to engulf them.",
+    "genres": [
+      "Drama",
+      "Horror"
+    ],
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/2824/poster.jpg?lastWrite=639144363569192620",
+        "remoteUrl": "https://image.tmdb.org/t/p/original/nusvS8bHgIx3L2mHRLGtVjRnQOK.jpg"
+      },
+      {
+        "coverType": "fanart",
+        "url": "/MediaCover/2824/fanart.jpg?lastWrite=639160810887808402",
+        "remoteUrl": "https://image.tmdb.org/t/p/original/zU2jJrUBGcNk24TogUHUpiI9Ew.jpg"
+      }
+    ],
+    "tags": [
+      "1 - matt"
+    ],
+    "originalLanguage": {
+      "id": 54,
+      "name": "Urdu"
+    }
+  },
+  "remoteMovie": {
+    "tmdbId": 1111867,
+    "imdbId": "tt27470830",
+    "title": "In Flames",
+    "year": 2023
+  },
+  "movieFile": {
+    "id": 5583,
+    "relativePath": "In Flames (2023) [imdbid-tt27470830] - [WEBDL-1080p][EAC3 5.1][x264]-RANGA.mkv",
+    "path": "/data/movies/In Flames (2023)/In Flames (2023) [imdbid-tt27470830] - [WEBDL-1080p][EAC3 5.1][x264]-RANGA.mkv",
+    "quality": "WEBDL-1080p",
+    "qualityVersion": 1,
+    "releaseGroup": "RANGA",
+    "sceneName": "In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA",
+    "indexerFlags": "0",
+    "size": 4834155165,
+    "dateAdded": "2026-07-13T20:02:00.2791415Z",
+    "languages": [
+      {
+        "id": 54,
+        "name": "Urdu"
+      }
+    ],
+    "mediaInfo": {
+      "audioChannels": 5.1,
+      "audioCodec": "EAC3",
+      "audioLanguages": [
+        "urd"
+      ],
+      "height": 1080,
+      "width": 1920,
+      "subtitles": [],
+      "videoCodec": "x264",
+      "videoDynamicRange": "",
+      "videoDynamicRangeType": ""
+    },
+    "sourcePath": "/data/downloads/newzbin/complete/In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA/In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA.mkv"
+  },
+  "isUpgrade": true,
+  "downloadClient": "SABnzbd",
+  "downloadClientType": "SABnzbd",
+  "downloadId": "9d5f633f-b733-4542-9a11-d7acbac618ad",
+  "deletedFiles": [
+    {
+      "id": 4546,
+      "relativePath": "In Flames (2023) [imdbid-tt27470830] - [WEBRip-1080p][AAC 5.1][h264]-WORLD.mp4",
+      "path": "/data/movies/In Flames (2023)/In Flames (2023) [imdbid-tt27470830] - [WEBRip-1080p][AAC 5.1][h264]-WORLD.mp4",
+      "quality": "WEBRip-1080p",
+      "qualityVersion": 1,
+      "releaseGroup": "WORLD",
+      "sceneName": "www.Torrenting.com - In Flames (2023) 1080p WEBRip 5.1-WORLD",
+      "indexerFlags": "G_Freeleech",
+      "size": 1938621085,
+      "dateAdded": "2024-10-16T02:50:00.319612Z",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "mediaInfo": {
+        "audioChannels": 5.1,
+        "audioCodec": "AAC",
+        "audioLanguages": [
+          "und"
+        ],
+        "height": 912,
+        "width": 1920,
+        "subtitles": [],
+        "videoCodec": "h264",
+        "videoDynamicRange": "",
+        "videoDynamicRangeType": ""
+      }
+    }
+  ],
+  "customFormatInfo": {
+    "customFormats": [],
+    "customFormatScore": 0
+  },
+  "release": {
+    "releaseTitle": "In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA",
+    "indexer": "NZBgeek (Prowlarr)",
+    "size": 5539484000,
+    "indexerFlags": []
+  },
+  "eventType": "Download",
+  "instanceName": "Radarr",
+  "applicationUrl": ""
+}

@@ -1,0 +1,314 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/tunarr"
+)
+
+type fillerBuild struct {
+	service   api.FillerService
+	decisions *fillerdecision.Service
+	preview   api.PodPreviewer
+	taxonomy  api.TaxonomyEditor
+	research  api.FillerResearchService
+}
+
+// compilationGate reads `filler.acquisition.compilations` against the same single-clip ceiling
+// probe marks compilations by, both live on every call (#1773).
+func compilationGate(set resolved) filler.CompilationGate {
+	return filler.CompilationGate{
+		Take: func() bool { return set.boolv("filler.acquisition.compilations") },
+		Over: func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+	}
+}
+
+func buildFillerSubsystem(
+	st fillerstore.Store,
+	set resolved,
+	layout filler.Layout,
+	log *slog.Logger,
+	libraryClient *library.Client,
+	eventBus *events.Bus,
+	emitter *eventEmitter,
+	jobs *scheduler.Registry,
+	playoutResolver *playoutResolver,
+	channelService api.ChannelService,
+	processDiagnostics *diagnostics.ProcessManager,
+	storageGovernor *storagegovernor.Governor,
+	metricRecorder *metrics.Recorder,
+	imageService *images.Service,
+	playbackHeadroom filler.PlaybackHeadroom,
+	owner *generationLifecycle,
+) fillerBuild {
+	var result fillerBuild
+	if st == nil {
+		return result
+	}
+	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
+	decisionService, err := fillerdecision.New(st)
+	if err != nil {
+		log.Error("could not construct filler decision service", "err", err)
+	} else {
+		result.decisions = decisionService
+	}
+	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
+	// running rows visible before this process accepts requests belonged to the previous process
+	// and can no longer complete; close them instead of promising work that does not exist.
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if n, err := st.RecoverInterruptedAcquisitionRuns(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted filler acquisitions", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted filler acquisitions", "runs", n)
+	}
+	if n, err := st.RecoverInterruptedInteractiveOperations(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted interactive operations", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted interactive operations", "operations", n)
+	}
+	if n, err := st.RecoverInterruptedSpokenSafetyRuns(recoveryCtx, time.Now().UTC()); err != nil {
+		log.Warn("could not recover interrupted spoken-safety runs", "err", err)
+	} else if n > 0 {
+		log.Info("recovered interrupted spoken-safety runs", "runs", n)
+	}
+	recoveryCancel()
+
+	if dir := layout.ClipDir(); dir != "" {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			log.Warn("could not create the filler drop-folder; the catalog scan will report it",
+				"dir", dir, "err", err)
+		}
+		if watch := layout.WatchDir(); watch != "" {
+			if err := os.MkdirAll(watch, 0o750); err != nil {
+				log.Warn("could not create the filler watch folder; incoming clips cannot be accepted",
+					"dir", watch, "err", err)
+			}
+		}
+	}
+	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {
+		log.Warn("could not recover filler acquisition artifacts", "err", err)
+	} else if recovered.Published > 0 || recovered.Repair > 0 || recovered.Pending > 0 {
+		log.Info("recovered filler acquisition artifacts",
+			"published", recovered.Published, "repair", recovered.Repair, "pending", recovered.Pending)
+	}
+	artifactRecoveryCancel()
+
+	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
+	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
+	result.taxonomy = taxonomyEditor{store: st, wake: wake}
+	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
+	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
+	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
+	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
+	adapter := fillerServiceAdapter{
+		syncer: syncer, fetcher: fetcher,
+		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
+		start: owner.startInteractiveOperation, operations: st,
+		sources: st, acquisitions: st, readiness: st, now: time.Now,
+		archiveFinder: clipfetch.NewArchiveSourceFinder(),
+		home: func() filler.Geography {
+			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
+		},
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		storage: storageGovernor, storagePath: layout.ClipDir(),
+		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
+		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
+	}
+	if ytDlpPath != "" {
+		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
+	}
+
+	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
+	result.preview = podPreviewAdapter{store: st, pods: pods}
+	adapter.pool = result.preview.Pool
+	if playoutResolver != nil {
+		playoutResolver.pods = result.preview
+	}
+	if engine, ok := channelService.(*channels.Engine); ok {
+		engine.WithPods(pods)
+		log.Info("filler pod assembler wired into the scheduler")
+	}
+
+	jobs.Add(fillerSyncJob(syncer))
+	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
+		"every", set.dur("filler.sync_every"))
+	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
+		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
+	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS()}
+	enrichment := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		enrichmentSignals.Load,
+		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+	)
+	enrichmentCoordinator := fillerenrichment.NewCoordinator(
+		enrichment, fillerEnrichmentRepository{st: st},
+		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
+		enrichmentSignals.Load,
+		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+	).WithCapabilities(
+		fillerenrichment.NewCapabilityRunner(
+			fillerenrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
+			func() fillerenrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
+			fillerMediaExecutor{store: st, transcript: transcribeStage,
+				kind: fillerenrichment.CapabilityTranscript}.Run,
+			func() int { return set.intv("filler.pipeline.max_whisper") }, time.Now,
+		),
+		fillerenrichment.NewCapabilityRunner(
+			fillerenrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
+			func() fillerenrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
+			fillerMediaExecutor{store: st, vision: visionStage,
+				kind: fillerenrichment.CapabilityVision}.Run,
+			func() int { return set.intv("filler.pipeline.max_vision") }, time.Now,
+		),
+	)
+	selection := activeFillerTextSelection(set, metricRecorder)
+	var researchRunner *fillerresearch.Runner
+	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
+		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
+		structuredClient := httpx.NewNamedObserved("filler_structured_research", httpx.TimeoutReference, metricRecorder)
+		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		wikidata, wikidataErr := fillerresearch.NewWikidata(fillerresearch.WikidataConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		archive, archiveErr := fillerresearch.NewArchive(fillerresearch.ArchiveConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		loc, locErr := fillerresearch.NewLOC(fillerresearch.LOCConfig{
+			Client: structuredClient, UserAgent: researchUserAgent,
+		})
+		wikidataSource, wikidataSwitchErr := fillerresearch.NewSwitchable(wikidata,
+			func() bool { return set.boolOn("filler.research.wikidata_enabled") })
+		wikipediaSource, wikipediaSwitchErr := fillerresearch.NewSwitchable(wiki,
+			func() bool { return set.boolOn("filler.research.wikipedia_enabled") })
+		archiveSource, archiveSwitchErr := fillerresearch.NewSwitchable(archive,
+			func() bool { return set.boolOn("filler.research.archive_enabled") })
+		locSource, locSwitchErr := fillerresearch.NewSwitchable(loc,
+			func() bool { return set.boolOn("filler.research.loc_enabled") })
+		retriever, retrievalErr := fillerresearch.NewFederated(
+			wikidataSource, wikipediaSource, archiveSource, locSource,
+		)
+		if err := errors.Join(wikiErr, wikidataErr, archiveErr, locErr, wikidataSwitchErr,
+			wikipediaSwitchErr, archiveSwitchErr, locSwitchErr, retrievalErr); err != nil {
+			log.Warn("could not construct filler context retrieval", "err", err)
+		} else {
+			web := fillerresearch.NewWeb(func() fillerresearch.WebConfig {
+				return fillerresearch.WebConfig{
+					Provider:     fillerresearch.WebProvider(set.str("filler.research.web_provider")),
+					BraveAPIKey:  set.str("filler.research.brave_api_key"),
+					SearXNGURL:   set.str("filler.research.searxng_url"),
+					MonthlyLimit: set.intv("filler.research.monthly_limit"),
+				}
+			}, st, fillerresearch.WebOptions{
+				Client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, metricRecorder),
+				Now:    time.Now,
+			})
+			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
+				selection.Model, time.Now).WithFallback(web)
+			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
+				fillerResearchSignals{files: layout.FS()}.Load,
+				func() int {
+					structuredEnabled := set.boolOn("filler.research.wikidata_enabled") ||
+						set.boolOn("filler.research.wikipedia_enabled") ||
+						set.boolOn("filler.research.archive_enabled") ||
+						set.boolOn("filler.research.loc_enabled")
+					return fillerResearchRunLimit(set.boolOn("filler.research.enabled"), structuredEnabled,
+						set.str("filler.research.web_provider"), set.intv("filler.pipeline.max_clips"))
+				})
+		}
+	}
+	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}
+	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
+	adapter.pipeline = pipeline
+	if decisionService != nil {
+		decisionService.WithDiagnosticRecovery(adapter)
+	}
+	adapter.afterIngest = func(ctx context.Context) error {
+		if _, err := syncer.Sync(ctx); err != nil {
+			return err
+		}
+		// Enrol only. Running a whole pipeline pass here could make one completed download wait on
+		// an unrelated transcode/Whisper backlog; the scheduled job remains the stage driver.
+		_, err := pipeline.EnrolMissing(ctx)
+		return err
+	}
+	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
+		fillerSweepStoreAdapter{st}, layout.ClipDir(),
+		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
+	)))
+	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
+	// folder there is nothing to download into, and the cache lives in memory only.
+	runtimesPath := ""
+	if dir := layout.ClipDir(); dir != "" {
+		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+	}
+	sourceEnumerator := registeredSourceEnumerator{
+		youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath),
+		archive: cachedArchiveCatalog{archiveCatalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		// The compilation gate can only hold back a runtime it knows (#1773).
+		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
+	}
+	autoFetch := filler.NewFetcher(
+		fetchStoreAdapter{
+			st:         st,
+			fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") },
+			home: func() filler.Geography {
+				return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
+			},
+		},
+		sourceEnumerator, adapter,
+		filler.FetchLimits{
+			MaxPerRun:         func() int { return set.intv("filler.fetch.max_per_run") },
+			MaxProviderPerRun: func() int { return 50 },
+			MaxCatalogClips:   func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
+			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+			Compilations:      compilationGate(set),
+		}, log,
+	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
+		// The same per-channel coverage readiness and the pool strip report (#749).
+		pool, err := result.preview.Pool(ctx)
+		if err != nil {
+			return filler.CoverageGaps{}, err
+		}
+		return filler.CoverageGapsFrom(pool), nil
+	})
+	adapter.autoFetch = autoFetch
+	result.service = adapter
+	jobs.Add(fillerFetchJob(autoFetch))
+	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
+		"max_per_run", set.intv("filler.fetch.max_per_run"))
+	return result
+}
+
+func fillerResearchRunLimit(enabled, structuredEnabled bool, webProvider string, pipelineLimit int) int {
+	provider := strings.TrimSpace(webProvider)
+	if !enabled || (!structuredEnabled && (provider == "" || provider == string(fillerresearch.WebProviderNone))) {
+		return 0
+	}
+	return max(0, pipelineLimit)
+}

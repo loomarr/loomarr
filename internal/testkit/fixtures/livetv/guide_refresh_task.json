@@ -1,0 +1,23 @@
+{
+    "Name": "Refresh Guide",
+    "State": "Idle",
+    "Id": "9492d30c70f7f1bec3757c9d0a4feb45",
+    "LastExecutionResult": {
+        "StartTimeUtc": "2026-07-13T01:09:21.8979561Z",
+        "EndTimeUtc": "2026-07-13T01:09:48.8240430Z",
+        "Status": "Completed",
+        "Name": "Refresh Guide",
+        "Key": "RefreshGuide",
+        "Id": "9492d30c70f7f1bec3757c9d0a4feb45"
+    },
+    "Triggers": [
+        {
+            "Type": "IntervalTrigger",
+            "IntervalTicks": 864000000000
+        }
+    ],
+    "Description": "Downloads channel information from live tv services.",
+    "Category": "Live TV",
+    "IsHidden": false,
+    "Key": "RefreshGuide"
+}

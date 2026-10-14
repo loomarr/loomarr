@@ -1,0 +1,454 @@
+package suggest
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
+)
+
+func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "Mudpuddles", Year: 2020, TMDBID: 90009001},
+		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
+	}}
+	s := New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"mode": "collection", "media_type": "series",
+			"titles": []any{map[string]any{"name": "The Mudpuddles", "year": float64(1989)}}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
+		}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"The Mudpuddles"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
+	), catalog.New(nil, corpus), nil, 10)
+
+	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Mudpuddles"})
+	if !errors.Is(err, ErrNoGroundedTitles) {
+		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
+	}
+	searches := corpus.Searches()
+	if len(searches) < 2 || searches[0].Query != "Mudpuddles" || searches[1].Query != "The Mudpuddles" {
+		t.Fatalf("source searches = %+v, want raw user subject before canonical model query", searches)
+	}
+}
+
+func TestGroundCuratedTitleSubjectTreatsDuplicateKeyRowsAsOneIdentity(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
+		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
+	}}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	intent := Intent{Description: "Classic Mudpuddles", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+
+	candidates, err := s.groundCuratedTitleSubject(context.Background(), &intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || intent.curatedTitleKey != provision.Key("series:tmdb:90000456") || len(intent.membershipKeys) != 1 {
+		t.Fatalf("duplicate-key grounding = candidates %+v intent %+v", candidates, intent)
+	}
+	if searches := corpus.Searches(); len(searches) != 1 || searches[0].Query != "Mudpuddles" {
+		t.Fatalf("source searches = %+v, want one raw-subject lookup", searches)
+	}
+}
+
+func TestParseDiscoveryQueryValidatesAndNormalizesScalarQualifiers(t *testing.T) {
+	got, discovery, err := parseDiscoveryQuery(map[string]any{
+		"genres":            []any{"Drama"},
+		"original_language": " EN ",
+		"origin_country":    "gb",
+		"runtime_min":       float64(20),
+		"runtime_max":       90,
+		"vote_average_min":  7.5,
+		"vote_count_min":    int64(100),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || got.OriginalLanguage != "en" || got.OriginCountry != "GB" ||
+		got.RuntimeMin != 20 || got.RuntimeMax != 90 || got.VoteAverageMin != 7.5 || got.VoteCountMin != 100 {
+		t.Fatalf("normalized discovery query = %+v discovery=%v", got, discovery)
+	}
+}
+
+func TestCollectionTitleAnchorsAcceptsExactNamesAndRemakeYears(t *testing.T) {
+	anchors, err := collectionTitleAnchors([]any{
+		" The Understudies ", map[string]any{"name": "The Understudies", "year": float64(1982)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(anchors) != 2 || anchors[0].name != "The Understudies" || anchors[0].year != 0 ||
+		anchors[1].name != "The Understudies" || anchors[1].year != 1982 {
+		t.Fatalf("anchors = %+v", anchors)
+	}
+}
+
+func TestCollectionTitleAnchorsRejectsMalformedItems(t *testing.T) {
+	tests := []struct {
+		name  string
+		value []any
+		want  string
+	}{
+		{name: "non string", value: []any{12}, want: "strings or"},
+		{name: "missing name", value: []any{map[string]any{"year": float64(1982)}}, want: "requires a string name"},
+		{name: "unknown object member", value: []any{map[string]any{"name": "The Understudies", "edition": "director's cut"}}, want: "only name and year"},
+		{name: "bad year", value: []any{map[string]any{"name": "The Understudies", "year": 1982.5}}, want: "integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := collectionTitleAnchors(tt.value); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunToolRejectsUnknownCollectionModeAndQualifiers(t *testing.T) {
+	s := &Suggester{}
+	for _, arguments := range []map[string]any{
+		{"mode": "unsupported", "query": "The Understudies"},
+		{"mode": 1, "query": "The Understudies"},
+		{"mode": "collection", "media_type": "movie", "titles": []any{"The Understudies"}, "era": "1980s"},
+	} {
+		result, _, _, _ := s.runTool(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{}, nil)
+		if !strings.Contains(result, `"error"`) {
+			t.Fatalf("arguments %v unexpectedly succeeded: %s", arguments, result)
+		}
+	}
+}
+
+func TestCatalogToolCollectionSchemaMatchesParser(t *testing.T) {
+	properties := catalogTool().Parameters["properties"].(map[string]any)
+	titles := properties["titles"].(map[string]any)
+	items := titles["items"].(map[string]any)
+	oneOf := items["oneOf"].([]any)
+	if titles["minItems"] != 1 || titles["maxItems"] != 8 || len(oneOf) != 2 {
+		t.Fatalf("titles schema = %#v", titles)
+	}
+	anchor := oneOf[1].(map[string]any)
+	if anchor["additionalProperties"] != false || anchor["required"].([]string)[0] != "name" {
+		t.Fatalf("anchor schema = %#v", anchor)
+	}
+}
+
+func TestParseDiscoveryQueryValidatesAndNormalizesGroundedEntityQualifiers(t *testing.T) {
+	movie, discovery, err := parseDiscoveryQuery(map[string]any{
+		"media_type": "movie",
+		"cast":       []any{" Rowan Pike ", "Ivy Marchetti"},
+		"creators":   []any{" Odessa Vane "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || movie.MediaType != "movie" || len(movie.Cast) != 2 || movie.Cast[0] != "Rowan Pike" ||
+		len(movie.Creators) != 1 || movie.Creators[0] != "Odessa Vane" {
+		t.Fatalf("movie entity query = %+v discovery=%v", movie, discovery)
+	}
+
+	series, discovery, err := parseDiscoveryQuery(map[string]any{
+		"media_type": "series", "network": " KBX ", "origin_country": "us",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || series.MediaType != "series" || series.Network != "KBX" || series.OriginCountry != "US" {
+		t.Fatalf("series entity query = %+v discovery=%v", series, discovery)
+	}
+}
+
+func TestParseDiscoveryQueryIgnoresProviderEmptyOptionalPlaceholders(t *testing.T) {
+	got, discovery, err := parseDiscoveryQuery(map[string]any{
+		"cast":              []any{""},
+		"creators":          []any{""},
+		"genres":            []any{},
+		"keywords":          []any{},
+		"media_type":        "series",
+		"network":           "ZBN",
+		"origin_country":    "",
+		"original_language": "",
+		"query":             "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery || got.Network != "ZBN" || got.MediaType != "series" {
+		t.Fatalf("normalized provider placeholders = %+v discovery=%v", got, discovery)
+	}
+	if len(got.Cast) != 0 || len(got.Creators) != 0 || got.OriginalLanguage != "" || got.OriginCountry != "" {
+		t.Fatalf("empty optional placeholders survived normalization: %+v", got)
+	}
+}
+
+func TestProjectCatalogArgumentsKeepsAuthoritativeNetworkQualifiers(t *testing.T) {
+	got, ok := projectCatalogArguments(map[string]any{
+		"cast": []any{"Pippa Carrow"}, "creators": []any{"Dale Merriman"},
+		"genres": []any{"Comedy", "Family"}, "keywords": []any{"QFUN"},
+		"media_type": "series", "network": "ZBN", "origin_country": "US",
+		"original_language": "en", "query": "QFUN", "runtime_min": float64(20),
+		"runtime_max": float64(60), "vote_average_min": 6.5, "vote_count_min": float64(100),
+	})
+	if !ok {
+		t.Fatal("valid series/network route was not projected")
+	}
+	query, discovery, err := parseDiscoveryQuery(got)
+	if err != nil || !discovery {
+		t.Fatalf("projected network route = (%+v, %v, %v), want valid discovery", query, discovery, err)
+	}
+	if query.Network != "ZBN" || query.OriginalLanguage != "en" || query.OriginCountry != "US" ||
+		query.RuntimeMin != 20 || query.RuntimeMax != 60 || query.VoteAverageMin != 6.5 || query.VoteCountMin != 100 {
+		t.Fatalf("projected network route lost authoritative qualifiers: %+v", query)
+	}
+}
+
+func TestProjectCatalogArgumentsRejectsMalformedDiscardedFieldsAndOtherRoutes(t *testing.T) {
+	tests := []map[string]any{
+		{"media_type": "series", "network": "ZBN", "genres": []any{"Drama"}, "cast": []any{17}},
+		{"media_type": "series", "network": "ZBN", "genres": []any{"Drama"}, "query": 17},
+		{"media_type": "series", "network": 17, "genres": []any{"Drama"}},
+		{"media_type": "movie", "query": "Marigold Protocol", "cast": []any{"Calder Rook"}},
+		{"media_type": "movie", "cast": []any{"Rowan Pike"}, "genres": []any{"Comedy"}},
+	}
+	for _, args := range tests {
+		if got, ok := projectCatalogArguments(args); ok {
+			t.Fatalf("unsafe or unrelated arguments %#v projected to %#v", args, got)
+		}
+	}
+}
+
+func TestRunToolKeepsAllQualifiersOnAlreadyValidStrictCall(t *testing.T) {
+	corpus := &catalogfixture.Corpus{}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	_, _, _, _ = s.runTool(context.Background(), llm.ToolCall{
+		Name: catalogToolName,
+		Arguments: map[string]any{
+			"media_type": "series", "network": "ZBN", "genres": []any{"Comedy"},
+			"keywords": []any{"QFUN"}, "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}, "origin_country": "US",
+			"original_language": "en", "runtime_min": float64(20), "runtime_max": float64(60),
+			"vote_average_min": 6.5, "vote_count_min": float64(100),
+		},
+	}, Intent{}, nil)
+	discoveries := corpus.Discoveries()
+	if len(discoveries) != 1 {
+		t.Fatalf("catalog discoveries = %d, want one strict call", len(discoveries))
+	}
+	got := discoveries[0].Query
+	if got.OriginalLanguage != "en" || got.RuntimeMin != 20 || got.RuntimeMax != 60 ||
+		got.VoteAverageMin != 6.5 || got.VoteCountMin != 100 {
+		t.Fatalf("strict call lost compatible qualifiers: %+v", got)
+	}
+}
+
+func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
+		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
+	}}
+	intent := Intent{
+		Description:    "90s family comedies like Grand Oak Hotel",
+		membershipKeys: make(map[provision.Key]bool),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	_, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
+		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
+	}, intent, nil)
+	if len(candidates) != 2 || len(corpus.Searches()) != 1 {
+		t.Fatalf("broad search = candidates %+v searches %+v", candidates, corpus.Searches())
+	}
+	if len(intent.membershipKeys) != 0 {
+		t.Fatalf("ordinary example manufactured membership proof: %+v", intent.membershipKeys)
+	}
+}
+
+func TestPrepareToolCallProjectsThematicKeywordToExplicitDiscovery(t *testing.T) {
+	intent := Intent{Description: "British murder mysteries: cozy village cases from the UK."}
+	prepared, result, _, valid := prepareToolCall(llm.ToolCall{
+		Name: catalogToolName,
+		Arguments: map[string]any{
+			"query": "village", "media_type": "series",
+			"dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
+		},
+	}, intent, nil)
+	if !valid || result != "" || !prepared.discoveryMode {
+		t.Fatalf("thematic keyword was not projected to discovery: valid=%v result=%q prepared=%+v", valid, result, prepared)
+	}
+	if prepared.discovery.MediaType != provision.Series || prepared.discovery.OriginCountry != "GB" ||
+		len(prepared.discovery.Genres) != 1 || prepared.discovery.Genres[0] != "mystery" {
+		t.Fatalf("projected discovery = %+v, want series/GB/mystery", prepared.discovery)
+	}
+}
+
+func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
+		{MediaType: "series", Name: "Grand Oak Hotel", TVDBID: 90000762},
+		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
+	}}
+	intent := Intent{
+		Description:    "A named programming block with Grand Oak Hotel and Crumb Street Bakery",
+		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState(),
+	}
+	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}}
+	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
+	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
+	searches := corpus.Searches()
+	if len(searches) != 4 || searches[0].Query != "family night" || searches[1].Query != "Grand Oak Hotel" ||
+		searches[2].Query != "Crumb Street Bakery" || searches[3].Query != "family night" {
+		t.Fatalf("catalog searches = %+v, want two base calls plus one deduplicated exact lookup per source title", searches)
+	}
+	if len(intent.membershipKeys) != 2 {
+		t.Fatalf("membership keys = %+v, want both unambiguous source identities", intent.membershipKeys)
+	}
+}
+
+func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []catalog.Candidate
+		wantKeys   int
+	}{
+		{name: "different canonical identities stay ambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
+			{MediaType: "series", Name: "Grand Oak Hotel", Year: 2020, TVDBID: 90999762},
+		}},
+		{name: "duplicate rows for one key remain unambiguous", candidates: []catalog.Candidate{
+			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
+			{MediaType: "series", Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90000762},
+		}, wantKeys: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
+			intent := Intent{Description: "A named programming block with Grand Oak Hotel", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			_, candidates, _, _ := s.runCollectionTool(context.Background(), map[string]any{
+				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Grand Oak Hotel", "year": float64(1987)}},
+			}, intent, nil)
+			if len(candidates) != 1 || len(intent.membershipKeys) != tt.wantKeys || len(corpus.Searches()) != 1 {
+				t.Fatalf("candidates=%+v membership=%+v searches=%+v", candidates, intent.membershipKeys, corpus.Searches())
+			}
+		})
+	}
+}
+
+func TestMembershipSourcePrefersOneOwnedExactIdentity(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []catalog.Candidate
+		wantKey    provision.Key
+		wantFound  bool
+	}{
+		{
+			name: "one owned identity among unavailable namesakes",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500, InLibrary: true},
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324},
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2009, TMDBID: 90031183},
+			},
+			wantKey: provision.Key("series:tvdb:90070500"), wantFound: true,
+		},
+		{
+			name: "multiple owned identities remain ambiguous",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500, InLibrary: true},
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324, InLibrary: true},
+			},
+		},
+		{
+			name: "unavailable namesakes remain ambiguous",
+			candidates: []catalog.Candidate{
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 1987, TVDBID: 90070500},
+				{MediaType: provision.Series, Name: "Grand Oak Hotel", Year: 2023, TMDBID: 90218324},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate, found := unambiguousMembershipCandidate(tt.candidates, "Grand Oak Hotel")
+			if found != tt.wantFound {
+				t.Fatalf("found = %t, want %t (candidate %+v)", found, tt.wantFound, candidate)
+			}
+			if !found {
+				return
+			}
+			key, err := candidate.Key()
+			if err != nil || key != tt.wantKey {
+				t.Fatalf("key = %q, err = %v, want %q", key, err, tt.wantKey)
+			}
+		})
+	}
+}
+
+func TestRunToolDoesNotProjectMalformedNonEmptyFields(t *testing.T) {
+	tests := []map[string]any{
+		{"media_type": "series", "network": 17, "genres": []any{"Drama"}},
+		{"media_type": "series", "network": "ZBN", "query": 17},
+		{"media_type": "series", "network": "ZBN", "query": "   "},
+		{"media_type": "series", "network": "ZBN", "genres": []any{"Drama"}, "cast": []any{17}},
+		{"media_type": "series", "network": "ZBN", "runtime_min": 20.5},
+		{"media_type": "series", "network": "ZBN", "cast": []any{"Pippa Carrow"}, "genres": []any{17}},
+		{"media_type": "series", "network": "ZBN", "cast": []any{"Pippa Carrow"}, "keywords": []any{17}},
+		{"media_type": "series", "network": "ZBN", "cast": []any{"Pippa Carrow"}, "genres": []any{"   "}},
+		{"media_type": "series", "network": "ZBN", "creators": []any{"Dale Merriman"}, "keywords": []any{"\t"}},
+		{"media_type": "series", "network": "ZBN", "cast": []any{"Pippa Carrow"}, "era": 1990},
+	}
+	for _, arguments := range tests {
+		corpus := &catalogfixture.Corpus{}
+		s := New(nil, catalog.New(nil, corpus), nil, 10)
+		result, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
+			Name: catalogToolName, Arguments: arguments,
+		}, Intent{}, nil)
+		if !strings.Contains(result, `"error"`) || len(candidates) != 0 {
+			t.Fatalf("malformed arguments %#v returned (%s, %+v), want bounded tool error", arguments, result, candidates)
+		}
+		if len(corpus.Searches()) != 0 || len(corpus.Discoveries()) != 0 {
+			t.Fatalf("malformed arguments %#v reached the Catalog", arguments)
+		}
+	}
+}
+
+func TestParseDiscoveryQueryRejectsMalformedOrBroadeningInputs(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{name: "bad language", args: map[string]any{"genres": []any{"Drama"}, "original_language": "english"}, want: "two-letter"},
+		{name: "non-string query", args: map[string]any{"network": "ZBN", "media_type": "series", "query": 17}, want: "query must be"},
+		{name: "blank non-empty query", args: map[string]any{"network": "ZBN", "media_type": "series", "query": "   "}, want: "query must be"},
+		{name: "non-string genre", args: map[string]any{"network": "ZBN", "media_type": "series", "genres": []any{17}}, want: "genres must be"},
+		{name: "blank non-empty genre", args: map[string]any{"network": "ZBN", "media_type": "series", "genres": []any{"   "}}, want: "genres must be"},
+		{name: "non-string keyword", args: map[string]any{"network": "ZBN", "media_type": "series", "keywords": []any{17}}, want: "keywords must be"},
+		{name: "blank non-empty keyword", args: map[string]any{"network": "ZBN", "media_type": "series", "keywords": []any{"\t"}}, want: "keywords must be"},
+		{name: "retired era", args: map[string]any{"era": "whenever"}, want: "era is retired"},
+		{name: "non-string retired era", args: map[string]any{"network": "ZBN", "media_type": "series", "era": 1990}, want: "era is retired"},
+		{name: "non-string country", args: map[string]any{"genres": []any{"Drama"}, "origin_country": 44}, want: "two-letter"},
+		{name: "fractional runtime", args: map[string]any{"genres": []any{"Drama"}, "runtime_min": 20.5}, want: "integer"},
+		{name: "inverted runtime", args: map[string]any{"genres": []any{"Drama"}, "runtime_min": 90, "runtime_max": 20}, want: "must not exceed"},
+		{name: "vote average above scale", args: map[string]any{"genres": []any{"Drama"}, "vote_average_min": 10.1}, want: "at most 10"},
+		{name: "zero vote average", args: map[string]any{"genres": []any{"Drama"}, "vote_average_min": 0}, want: "greater than 0"},
+		{name: "mixed search modes", args: map[string]any{"query": "Ferrocene", "origin_country": "US"}, want: "cannot be combined"},
+		{name: "network without series type", args: map[string]any{"network": "KBX"}, want: "requires media_type series"},
+		{name: "network on movie", args: map[string]any{"media_type": "movie", "network": "KBX"}, want: "requires media_type series"},
+		{name: "cast without movie type", args: map[string]any{"cast": []any{"Rowan Pike"}}, want: "require media_type movie"},
+		{name: "creator on series", args: map[string]any{"media_type": "series", "creators": []any{"Hollis Grange"}}, want: "require media_type movie"},
+		{name: "network and people", args: map[string]any{"media_type": "series", "network": "KBX", "cast": []any{"Tobias Okoro"}}, want: "cannot be combined"},
+		{name: "malformed cast", args: map[string]any{"media_type": "movie", "cast": []any{"Rowan Pike", 31}}, want: "cast must be"},
+		{name: "duplicate creator", args: map[string]any{"media_type": "movie", "creators": []any{"Odessa Vane", " odessa vane "}}, want: "duplicate"},
+		{name: "blank network", args: map[string]any{"media_type": "series", "network": "  "}, want: "network must be"},
+		{name: "empty request", args: map[string]any{}, want: "provide query"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseDiscoveryQuery(tt.args)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("parse error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}

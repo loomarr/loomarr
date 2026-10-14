@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "query-expansion-catalog-v2",
+  "cases": [
+    {
+      "id": "tgif-reviewed",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 2685,
+              "name": "Family Matters",
+              "year": 1989,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-2685",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 2617,
+              "name": "Step by Step",
+              "year": 1991,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-2617",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 1777,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 605,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC",
+                "The WB"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-G",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 31183,
+              "name": "Full House",
+              "year": 2009,
+              "genres": [
+                "Comedy"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-31183",
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mcu-reviewed",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 1726,
+              "name": "Iron Man",
+              "year": 2008,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-1726",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 1724,
+              "name": "The Incredible Hulk",
+              "year": 2008,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 10138,
+              "name": "Iron Man 2",
+              "year": 2010,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-10138",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 10195,
+              "name": "Thor",
+              "year": 2011,
+              "genres": [
+                "Action",
+                "Fantasy",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-10195",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 1771,
+              "name": "Captain America: The First Avenger",
+              "year": 2011,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 24428,
+              "name": "Avengers Assemble",
+              "year": 2012,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 68721,
+              "name": "Iron Man 3",
+              "year": 2013,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 76338,
+              "name": "Thor: The Dark World",
+              "year": 2013,
+              "genres": [
+                "Action",
+                "Fantasy",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 448368,
+              "name": "The Avengers: A Visual Journey",
+              "year": 2012,
+              "genres": [
+                "Documentary"
+              ],
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 63736,
+              "name": "Almighty Thor",
+              "year": 2011,
+              "genres": [
+                "Adventure",
+                "Fantasy"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG",
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

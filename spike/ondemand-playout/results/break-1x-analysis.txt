@@ -1,0 +1,27 @@
+== decode errors hls:
+      4 
+      2 Enter command: <target>|all <time>|-1 <command>[ <argument>]
+      1 Parse error, at least 3 arguments were expected, only 1 given in string 'ho "== slate fallback test (paced, clip encoder delayed 20 s)"'
+== decode errors ts:
+== loudness per item (channel.ts, integrated LUFS)
+progA-h264 start=0 dur=40.00663333333333 I=-25.9
+clip1-360p23.976 start=40.00663333333333 dur=29.496133333333333 I=-23.0
+clip2-480p29.97 start=69.50276666666667 dur=29.496133333333333 I=-23.1
+clip3-480p50 start=98.9989 dur=29.496133333333333 I=-23.0
+clip4-720p29.97-44k start=128.49503333333334 dur=29.496133333333333 I=-23.1
+progB-4khdr start=157.99116666666666 dur=40.00663333333333 I=-27.5
+== timestamp continuity
+TS stream 0: pkts=5934 off-grid-deltas=0 minDelta= maxDelta= (frame=3003 ticks) first=2.0000s
+TS stream 1: pkts=9281 off-grid-deltas=0 minDelta= maxDelta= (frame=1920 ticks) first=2.0000s
+TS end: video_end=199.9978s audio_end=199.9947s A/V drift=-3.13 ms
+HLS stream 0: pkts=5934 off-grid-deltas=0 minDelta= maxDelta= (frame=3003 ticks) first=2.0000s
+HLS stream 1: pkts=9281 off-grid-deltas=0 minDelta= maxDelta= (frame=1024 ticks) first=2.0000s
+HLS end: video_end=199.9978s audio_end=199.9947s A/V drift=-3.13 ms
+== per-item (packager)
+"av_drift_end_ms":-6.625 "first_video_ms":161.913 "item":"progA-h264" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+"av_drift_end_ms":1.25 "first_video_ms":52.263 "item":"clip1-360p23.976" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+"av_drift_end_ms":9.104166666666666 "first_video_ms":50.14 "item":"clip2-480p29.97" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+"av_drift_end_ms":-4.354166666666667 "first_video_ms":52.485 "item":"clip3-480p50" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+"av_drift_end_ms":3.5 "first_video_ms":52.278 "item":"clip4-720p29.97-44k" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+"av_drift_end_ms":-3.125 "first_video_ms":289.857 "item":"progB-4khdr" "pps_identical":true "slate":false "sps_identical":true "src_pts_gaps":0
+/bin/bash: line 6: unexpected EOF while looking for matching `''

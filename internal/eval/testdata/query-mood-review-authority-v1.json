@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "status": "model-attested-development",
+  "completeness": "partial-uncertain",
+  "packetSha256": "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+  "privateMapSha256": "8ff878e16a3cbbb1b22c949feef50df59c7c561b738a8b44b857ab4d6346b433",
+  "submissionSha256": [
+    "f506ba3ac2dff8e93565089b4cf173261e2a9c09b1f322299febba28995224a8",
+    "4d34cfa7c0286c0deaa43ca57d858060acf860c5bc3b682ff0316f1ed092e033",
+    "56165d31201da5f0ce04296b02299dd77b096a131316dc00de749f962085c4b2"
+  ],
+  "decisions": [
+    {
+      "key": "movie:tmdb:496243",
+      "scores": {
+        "valence": 1,
+        "arousal": 2,
+        "threatFear": 2,
+        "comedicWarmth": 1,
+        "attentionalDemand": 0
+      },
+      "uncertainAxes": [
+        "attentionalDemand"
+      ]
+    },
+    {
+      "key": "movie:tmdb:346648",
+      "scores": {
+        "valence": 3,
+        "arousal": 1,
+        "threatFear": 0,
+        "comedicWarmth": 3,
+        "attentionalDemand": 0
+      },
+      "uncertainAxes": [
+        "attentionalDemand"
+      ]
+    },
+    {
+      "key": "movie:tmdb:578",
+      "scores": {
+        "valence": 1,
+        "arousal": 3,
+        "threatFear": 3,
+        "comedicWarmth": 0,
+        "attentionalDemand": 0
+      },
+      "uncertainAxes": [
+        "attentionalDemand"
+      ]
+    }
+  ],
+  "limitations": [
+    "reviewers saw display titles because the evidence is title-specific",
+    "model attestation is exposed development evidence, not human review, certification, qualification, or a sealed holdout",
+    "an explicitly authorized OpenRouter reviewer used a non-ZDR route for this public-only evidence packet; provider data collection was denied but temporary retention may occur"
+  ]
+}

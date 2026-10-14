@@ -1,0 +1,19 @@
+mode,args,window_pct,mbps,vmaf_mean,vmaf_p5,vmaf_min,frames_enc,frames_ref,psnr_y_off0,psnr_y_off1
+cbr5,-rc_mode CBR -b:v 5M,25,5.03,79.99,55.15,48.52,359,359,30.411504,20.621373
+cbr5,-rc_mode CBR -b:v 5M,50,5.09,96.54,92.29,88.86,359,359,38.616859,25.377017
+cbr5,-rc_mode CBR -b:v 5M,80,5.06,92.68,89.69,88.26,360,360,40.878572,31.402417
+vbr5,-rc_mode VBR -b:v 5M -maxrate 10M,25,5.24,80.72,60.90,48.86,359,359,30.731995,20.625563
+vbr5,-rc_mode VBR -b:v 5M -maxrate 10M,50,5.12,96.39,92.20,84.85,359,359,38.573748,25.376925
+vbr5,-rc_mode VBR -b:v 5M -maxrate 10M,80,5.13,92.50,88.17,81.53,360,360,40.844122,31.399799
+qvbr5,-rc_mode QVBR -b:v 5M -maxrate 10M -global_quality 22,25,5.18,79.13,58.64,46.18,359,359,30.474373,20.623939
+qvbr5,-rc_mode QVBR -b:v 5M -maxrate 10M -global_quality 22,50,5.11,96.54,92.38,90.67,359,359,38.568739,25.376364
+qvbr5,-rc_mode QVBR -b:v 5M -maxrate 10M -global_quality 22,80,5.13,92.50,89.38,88.05,360,360,40.780921,31.393059
+cbr8,-rc_mode CBR -b:v 8M,25,7.96,86.80,64.38,51.79,359,359,31.789552,20.583930
+cbr8,-rc_mode CBR -b:v 8M,50,8.08,97.58,93.59,91.90,359,359,38.887704,25.375450
+cbr8,-rc_mode CBR -b:v 8M,80,8.09,93.63,91.02,90.32,360,360,41.202967,31.396895
+vbr8,-rc_mode VBR -b:v 8M -maxrate 12M,25,8.17,87.66,69.04,60.13,359,359,32.069859,20.593164
+vbr8,-rc_mode VBR -b:v 8M -maxrate 12M,50,8.12,97.43,92.63,86.59,359,359,38.852902,25.375017
+vbr8,-rc_mode VBR -b:v 8M -maxrate 12M,80,8.09,93.61,90.97,88.55,360,360,41.203970,31.395799
+qvbr8,-rc_mode QVBR -b:v 8M -maxrate 12M -global_quality 22,25,8.29,87.06,71.99,59.67,359,359,32.139545,20.589628
+qvbr8,-rc_mode QVBR -b:v 8M -maxrate 12M -global_quality 22,50,8.03,97.47,94.09,92.69,359,359,38.833740,25.375593
+qvbr8,-rc_mode QVBR -b:v 8M -maxrate 12M -global_quality 22,80,7.84,93.47,90.85,89.52,360,360,41.158034,31.398924

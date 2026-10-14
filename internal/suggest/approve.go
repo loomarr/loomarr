@@ -1,0 +1,566 @@
+package suggest
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store"
+)
+
+// ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
+var ErrNotSubmitted = store.ErrProposalNotSubmitted
+
+// ErrSuperseded reports an older proposal for a job whose same-time-or-newer proposal has already
+// been approved. Spending the stale acquisitions and rolling the channel backward is not a valid
+// approval; equal persisted timestamps fail closed because their order is unknowable. The older
+// row remains submitted for an explicit deny/audit decision.
+var ErrSuperseded = store.ErrProposalSuperseded
+
+// ErrRevisionActive reports a proposal whose replacement generation currently
+// owns its stable Job. Approval resumes only if that revision fails; success
+// atomically publishes a new submitted proposal instead.
+var ErrRevisionActive = store.ErrProposalRevisionActive
+
+// ErrEmptyApproval reports an edit that removes every effective title. Alternates are backups,
+// not a playable starting lineup, so they cannot make an otherwise empty edited approval valid.
+var ErrEmptyApproval = errors.New("approve: choose at least one title")
+
+// ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
+//
+// ⚠ THE EDIT IS A PARAMETER TO Approve, not something a caller applies first, and that is the
+// whole design. Approving decides what gets acquired; if a handler pre-modified the proposal
+// and passed the result, the decision would live outside the gate and the auto-approve path
+// would not share it — the two would drift on what approving means, which is exactly what §8's
+// one-implementation rule exists to prevent. Auto-approve passes nil and runs identical code.
+type ApprovalEdit struct {
+	// DropKeys are provisioning keys the approver removed. Applied to lineup, acquisitions,
+	// and alternates: a dropped title should not be acquired, scheduled, or restored as a backup.
+	DropKeys []provision.Key
+	// Add are titles the approver added via search or a grounded collection.
+	// ResolveApprovalEdit rechecks current Library presence before applyEdit places
+	// each one in the Lineup or acquisitions; client presence fields are not authority.
+	Add []ProposalItem
+	// Note is the approver's message to the requester, persisted for the audit trail.
+	Note string
+	// ownedAddKeys is server-resolved authority, never populated from the wire.
+	// It lets applyEdit place an owned addition without trusting a client-supplied
+	// InLibrary flag or LibraryItemID.
+	ownedAddKeys map[provision.Key]bool
+}
+
+// ApprovalAdditionResolver re-resolves a human-added title at the approval
+// boundary. Production uses the current Library snapshot; clients cannot grant
+// themselves ownership or choose the Library item that will be scheduled.
+type ApprovalAdditionResolver interface {
+	ResolveApprovalAddition(context.Context, ProposalItem) (ProposalItem, bool, error)
+}
+
+// ResolveApprovalEdit returns a detached edit whose additions carry current,
+// server-owned Library presence. A nil resolver fails safe: additions remain
+// acquisitions even if the client claimed they were already owned.
+func ResolveApprovalEdit(
+	ctx context.Context,
+	edit *ApprovalEdit,
+	resolver ApprovalAdditionResolver,
+) (*ApprovalEdit, error) {
+	if edit == nil {
+		return nil, nil
+	}
+	resolved := &ApprovalEdit{
+		DropKeys:     append([]provision.Key(nil), edit.DropKeys...),
+		Add:          make([]ProposalItem, 0, len(edit.Add)),
+		Note:         edit.Note,
+		ownedAddKeys: make(map[provision.Key]bool),
+	}
+	seen := make(map[provision.Key]bool, len(edit.Add))
+	for _, addition := range edit.Add {
+		requestedKey, err := acquisitionKey(addition)
+		if err != nil {
+			return nil, fmt.Errorf("approve: added title %q is not identifiable: %w", addition.Name, err)
+		}
+		if seen[requestedKey] {
+			continue
+		}
+		canonical := addition
+		owned := false
+		if resolver != nil {
+			var err error
+			canonical, owned, err = resolver.ResolveApprovalAddition(ctx, addition)
+			if err != nil {
+				return nil, fmt.Errorf("approve: resolve added title %q: %w", addition.Name, err)
+			}
+		}
+		key, err := acquisitionKey(canonical)
+		if err != nil {
+			return nil, fmt.Errorf("approve: added title %q is not identifiable: %w", canonical.Name, err)
+		}
+		if key != requestedKey {
+			return nil, fmt.Errorf("approve: resolved added title %q changed identity from %s to %s", canonical.Name, requestedKey, key)
+		}
+		seen[key] = true
+		canonical.InLibrary = owned
+		// An unowned addition has no library file, so no size survives from the client.
+		canonical = canonical.WithLibrarySize(canonical.SizeBytes)
+		if owned {
+			if strings.TrimSpace(canonical.LibraryItemID) == "" {
+				return nil, fmt.Errorf("approve: owned added title %q has no library item id", canonical.Name)
+			}
+			resolved.ownedAddKeys[key] = true
+		} else {
+			canonical.LibraryItemID = ""
+		}
+		resolved.Add = append(resolved.Add, canonical)
+	}
+	return resolved, nil
+}
+
+// isEmpty reports whether this edit changes nothing, so an unmodified approval records an
+// empty ModSummary rather than a misleading "dropped 0, added 0".
+func (e *ApprovalEdit) isEmpty() bool {
+	return e == nil || (len(e.DropKeys) == 0 && len(e.Add) == 0)
+}
+
+// ResolveManualLineup re-resolves a hand-picked lineup (the manual/AI-off channel builder,
+// #1817 G2) against current Library presence, splitting it into in-library picks (Lineup) and
+// missing titles (Acquisitions).
+//
+// It runs the SAME check ResolveApprovalEdit already applies to an approver's additions —
+// "client presence fields are not authority" — reused here rather than duplicated, because a
+// manually built proposal reaches this server exactly the way an edited approval's Add does:
+// as a client-supplied []ProposalItem, with an InLibrary flag and a LibraryItemID the caller
+// could type by hand. Without this, a fabricated InLibrary:true would schedule a title the
+// household never actually owns.
+func (a *Approver) ResolveManualLineup(ctx context.Context, items []ProposalItem) (lineup, acquisitions []ProposalItem, err error) {
+	resolved, err := ResolveApprovalEdit(ctx, &ApprovalEdit{Add: items}, a.additions)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, item := range resolved.Add {
+		if item.InLibrary {
+			lineup = append(lineup, item)
+		} else {
+			acquisitions = append(acquisitions, item)
+		}
+	}
+	return lineup, acquisitions, nil
+}
+
+// TitleReader is the read-only title lookup shared by approval quota checks.
+type TitleReader interface {
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
+// ApproveStore is the slice of the store the approval transaction needs.
+type ApproveStore interface {
+	TitleReader
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
+	CommitProposalApproval(ctx context.Context, commit store.ProposalApproval) (int, error)
+}
+
+type approvalCommit func(context.Context, store.ProposalApproval) (int, error)
+
+// ChannelBinder plans the local channel mutation that approval commits, then runs the
+// best-effort work that is only legal after that commit. *binder.Binder implements this
+// structurally; suggest declares the seam so it never imports binder back.
+type ChannelBinder interface {
+	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is
+	// about to commit, including edits and its approvedBy stamp, so it never has to discover
+	// the decision through a stale or not-yet-visible store read.
+	PlanApprovedChannel(ctx context.Context, p store.Proposal) (store.Channel, error)
+	// AfterApprovalCommitted may probe codecs and reconcile with Tunarr. Those are remote or
+	// derived consequences, not part of the local transaction; failures are recorded and
+	// retried by the channel sweep rather than unwinding an approval that already committed.
+	AfterApprovalCommitted(ctx context.Context, channelID string)
+}
+
+// ApprovalResult is the complete observable result of the approval gate.
+type ApprovalResult struct {
+	Enqueued  int
+	ChannelID string
+}
+
+// Approver owns the one proposal-approval gate. Its interface is deliberately one operation;
+// the plan -> local transaction -> post-commit ordering is implementation detail that callers
+// cannot accidentally duplicate or rearrange.
+type Approver struct {
+	store     ApproveStore
+	channels  ChannelBinder
+	now       func() time.Time
+	notify    ProposalNotifier
+	quality   ProposalApprovalQuality
+	additions ApprovalAdditionResolver
+}
+
+func (a *Approver) WithApprovalAdditionResolver(resolver ApprovalAdditionResolver) *Approver {
+	a.additions = resolver
+	return a
+}
+
+// ProposalApprovalQuality receives only the authoritative identity and time of
+// a committed approval. The implementation owns privacy and best-effort writes.
+type ProposalApprovalQuality interface {
+	ProposalApproved(context.Context, string, time.Time)
+}
+
+func (a *Approver) WithProposalNotifier(notifier ProposalNotifier) *Approver {
+	a.notify = notifier
+	return a
+}
+
+func (a *Approver) WithDecisionQuality(recorder ProposalApprovalQuality) *Approver {
+	a.quality = recorder
+	return a
+}
+
+// NewApprover constructs the shared approval gate used by manual approval, the per-user grant,
+// and auto-curate. A nil channel binder is rejected by Approve: approval is not allowed to
+// create acquisitions without creating or patching their local channel in the same commit.
+func NewApprover(st ApproveStore, channels ChannelBinder, now func() time.Time) *Approver {
+	if now == nil {
+		now = time.Now
+	}
+	return &Approver{store: st, channels: channels, now: now}
+}
+
+// Approve turns a submitted proposal into real state: in-library picks become `available`
+// records so the scheduler can place them, missing titles become `wanted` ones the provisioner
+// will acquire, and the proposal's local channel is created or patched in the same transaction.
+//
+// THE APPROVAL GATE HAS ONE IMPLEMENTATION. Both the admin's manual approval (§7) and
+// the auto-approve grant (§8, §11) call this, so the two paths cannot drift on what
+// approving means — a second copy would be a second place for the gate to be wrong.
+//
+// `approvedBy` is the audit record (§11): an admin's user id, or "auto" for the grant,
+// so the trail distinguishes a machine decision from a human one.
+func (a *Approver) Approve(
+	ctx context.Context,
+	p store.Proposal,
+	edit *ApprovalEdit,
+	approvedBy string,
+) (ApprovalResult, error) {
+	result, err := a.approveDurably(ctx, p, edit, approvedBy, a.store.CommitProposalApproval)
+	if err != nil {
+		return ApprovalResult{}, err
+	}
+	a.afterApprovalCommitted(ctx, result.ChannelID)
+	return result, nil
+}
+
+// approveDurably owns planning plus the one local commit but deliberately stops
+// before remote/post-commit work. Auto-approval injects the transaction-guarded
+// commit; both paths return only after requester ordering has been released.
+func (a *Approver) approveDurably(
+	ctx context.Context,
+	p store.Proposal,
+	edit *ApprovalEdit,
+	approvedBy string,
+	commit approvalCommit,
+) (ApprovalResult, error) {
+	if p.Status != "submitted" {
+		return ApprovalResult{}, ErrNotSubmitted
+	}
+	if a == nil || a.store == nil {
+		return ApprovalResult{}, errors.New("approve: store is not configured")
+	}
+	if a.channels == nil {
+		return ApprovalResult{}, errors.New("approve: channel binder is not configured")
+	}
+	resolvedEdit, err := ResolveApprovalEdit(ctx, edit, a.additions)
+	if err != nil {
+		return ApprovalResult{}, err
+	}
+	p, body, err := PrepareApproval(p, resolvedEdit)
+	if err != nil {
+		return ApprovalResult{}, err
+	}
+
+	// Prepare every candidate before entering the store transaction. In-library picks become
+	// `available` records so the scheduler can place them (§8:
+	// "the approved lineup feeds the scheduler"). Without this, an in-library pick is
+	// unresolvable and never becomes a program.
+	titles := make([]provision.Record, 0, len(body.Lineup))
+	for _, l := range body.Lineup {
+		if !l.InLibrary || l.LibraryItemID == "" {
+			continue // a not-in-library lineup item is covered by acquisitions
+		}
+		title := provision.Title{
+			MediaType: provision.MediaType(l.MediaType),
+			TMDBID:    l.TMDBID, TVDBID: l.TVDBID, Name: l.Name, Year: l.Year, Seasons: l.Seasons,
+		}
+		key, kerr := title.Key()
+		if kerr != nil {
+			continue // grounded proposals are always keyable; skip defensively
+		}
+		titles = append(titles, provision.Record{
+			Key: key, Title: title,
+			State: provision.Available, LibraryID: l.LibraryItemID,
+		})
+	}
+
+	decisionAt := a.now()
+	for _, a := range body.Acquisitions {
+		key, kerr := acquisitionKey(a)
+		if kerr != nil {
+			continue // a grounded proposal never has an unkeyable acquisition
+		}
+		title := provision.Title{
+			MediaType: provision.MediaType(a.MediaType),
+			TMDBID:    a.TMDBID, TVDBID: a.TVDBID, Name: a.Name, Year: a.Year, Seasons: a.Seasons,
+		}
+		// Deadline = now so the acquisition is DUE IMMEDIATELY: ClaimDueTitles only takes
+		// rows with `deadline <= now AND deadline > 0`, so a zero-deadline wanted title is
+		// never claimed and never submitted to Seerr. (Caught by the live smoke: approved
+		// acquisitions sat in `wanted` forever because the deadline was unset.)
+		titles = append(titles, provision.Record{Key: key, Title: title, State: provision.Wanted, Deadline: decisionAt})
+	}
+
+	p.Status = "approved"
+	p.ApprovedBy = approvedBy
+	// Stamped HERE, at the one chokepoint, for the same reason `approvedBy` is: every path that
+	// approves — a human admin, the per-user auto-approve grant, auto-curate, and V27's bulk
+	// approve — goes through this function, so none of them can record a decision without a
+	// time. `now` is injected, so the stamp is deterministic under test rather than wall-clock.
+	p.ApprovedAt = decisionAt
+	p.UpdatedAt = decisionAt
+
+	// Plan before beginning the store transaction. Planning is read-only and may fail; if it
+	// does, the proposal stays submitted and no acquisition is visible. A concurrent first
+	// approval can claim the same lowest-free number (or intent binding) between plan and commit.
+	// The unique indexes arbitrate that race; because the whole transaction rolled back, reload +
+	// replan is safe and keeps a transient household-scale collision out of the HTTP contract.
+	const maxChannelPlanAttempts = 4
+	var ch store.Channel
+	var enqueued int
+	for attempt := 0; attempt < maxChannelPlanAttempts; attempt++ {
+		// This check belongs inside the retry loop. A newer approval can commit after an
+		// older candidate's first check and force its channel CAS to fail. Rechecking before
+		// every replan prevents that older candidate from then serialising after the newer
+		// decision and rolling the channel back.
+		latest, err := a.store.NewestProposalByStatusForJob(ctx, p.JobID, "approved")
+		if err == nil && !latest.CreatedAt.Before(p.CreatedAt) {
+			return ApprovalResult{}, ErrSuperseded
+		}
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return ApprovalResult{}, fmt.Errorf("approve: read latest decision: %w", err)
+		}
+
+		ch, err = a.channels.PlanApprovedChannel(ctx, p)
+		if err != nil {
+			return ApprovalResult{}, fmt.Errorf("approve: plan channel: %w", err)
+		}
+		enqueued, err = commit(ctx, store.ProposalApproval{
+			Proposal: p,
+			Titles:   titles,
+			Channel:  ch,
+		})
+		if err == nil {
+			break
+		}
+		if (!errors.Is(err, store.ErrChannelConflict) && !errors.Is(err, store.ErrChannelStale)) || attempt == maxChannelPlanAttempts-1 {
+			return ApprovalResult{}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return ApprovalResult{}, err
+		}
+	}
+	if a.quality != nil {
+		a.quality.ProposalApproved(ctx, p.ID, p.ApprovedAt)
+	}
+
+	if a.notify != nil {
+		a.notify.ProposalApproved(ctx, p, ch.ID)
+	}
+	return ApprovalResult{Enqueued: enqueued, ChannelID: ch.ID}, nil
+}
+
+func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string) {
+	// Codec probing and the immediate Tunarr push are explicitly post-commit. The planned channel
+	// is already due for the durable sweep, so this best-effort continuation can never turn a
+	// successful local approval into an error or strand an approved proposal without a channel.
+	a.channels.AfterApprovalCommitted(ctx, channelID)
+}
+
+// PrepareApproval derives the exact proposed decision content without recording an
+// approval, changing status, or touching the store. The coordinator and pre-approval
+// outlook share this edit and trusted episode-selector boundary.
+func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Proposal, error) {
+	if p.Status != "submitted" {
+		return store.Proposal{}, Proposal{}, ErrNotSubmitted
+	}
+	var body Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
+		return store.Proposal{}, Proposal{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
+	}
+
+	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
+	// in one place for both callers. `applyEdit` also re-serialises the body back onto the
+	// proposal: the stored record must show what was actually approved, not what the model
+	// originally proposed — otherwise the audit trail describes a lineup that never existed.
+	summary, editedJSON, aerr := applyEdit(&body, edit)
+	if aerr != nil {
+		return store.Proposal{}, Proposal{}, aerr
+	}
+	// This guards the human edit boundary, where every title in an otherwise valid draft can
+	// be deliberately unchecked. A nil edit is also used by automatic re-curation, whose empty
+	// incoming delta is valid: it means "keep the existing channel" after its quality/cap filter
+	// admitted nothing new.
+	if edit != nil && len(body.Lineup) == 0 && len(body.Acquisitions) == 0 {
+		return store.Proposal{}, Proposal{}, ErrEmptyApproval
+	}
+	// The edit surface controls title membership, not scheduler semantics. Re-ground every
+	// series from the Proposal's original Intent after additions/drops, at this one approval
+	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
+	// crafted selector before either the durable approved JSON or the binder can observe it.
+	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent)
+	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent) || selectionChanged
+	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent) || selectionChanged
+	if selectionChanged {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return store.Proposal{}, Proposal{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
+		}
+		editedJSON = string(raw)
+	}
+	if summary != "" {
+		p.ModSummary = summary
+	}
+	if editedJSON != "" {
+		p.ProposalJSON = editedJSON
+	}
+	if edit != nil && edit.Note != "" {
+		p.Note = edit.Note
+	}
+
+	return p, body, nil
+}
+
+// applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
+// proposal. Returns a server-generated summary of what changed.
+//
+// The summary is GENERATED, never taken from the caller: "dropped 2, added 1" written by the
+// code is a record of what happened, while the same string typed by an approver is a claim
+// about it. The audit trail is only worth keeping if it cannot be authored.
+//
+// Dropping applies to lineup, acquisitions, AND alternates. A dropped title must not be acquired,
+// scheduled, or return later as a backup. A proposal can carry the same title in any of those
+// lists, so filtering only the visible starting list would make an explicit exclusion temporary.
+// Returns the summary and the re-serialised proposal JSON; an empty JSON string means the
+// stored bytes should be left exactly as they were.
+func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
+	if edit.isEmpty() {
+		// An unmodified approval leaves ProposalJSON untouched here. The enclosing
+		// approval gate may still re-serialise it if a series selector is missing or
+		// conflicts with the original Intent; already-grounded proposals keep their bytes.
+		return "", "", nil
+	}
+
+	drop := make(map[provision.Key]bool, len(edit.DropKeys))
+	for _, k := range edit.DropKeys {
+		drop[k] = true
+	}
+
+	keep := func(items []ProposalItem) ([]ProposalItem, int) {
+		out := make([]ProposalItem, 0, len(items))
+		dropped := 0
+		for _, it := range items {
+			k, err := acquisitionKey(it)
+			// An unkeyable item cannot have been named in DropKeys, so it survives. Dropping
+			// it "just in case" would silently remove something the approver never chose to.
+			if err == nil && drop[k] {
+				dropped++
+				continue
+			}
+			out = append(out, it)
+		}
+		return out, dropped
+	}
+
+	var droppedTotal int
+	var n int
+	body.Lineup, n = keep(body.Lineup)
+	droppedTotal += n
+	body.Acquisitions, n = keep(body.Acquisitions)
+	droppedTotal += n
+	body.Alternates, n = keep(body.Alternates)
+	droppedTotal += n
+
+	existing := make(map[provision.Key]bool)
+	for _, items := range [][]ProposalItem{body.Lineup, body.Acquisitions, body.Alternates} {
+		for _, item := range items {
+			if key, keyErr := acquisitionKey(item); keyErr == nil {
+				existing[key] = true
+			}
+		}
+	}
+	addedTotal := 0
+	for _, added := range edit.Add {
+		// A review addition has no evidence from this proposal's original run.
+		// The caller cannot grant itself a grounded editorial role.
+		added.EditorialRole = ""
+		key, keyErr := acquisitionKey(added)
+		if keyErr == nil && existing[key] {
+			continue
+		}
+		if keyErr == nil && edit.ownedAddKeys[key] {
+			body.Lineup = append(body.Lineup, added)
+		} else {
+			body.Acquisitions = append(body.Acquisitions, added)
+		}
+		if keyErr == nil {
+			existing[key] = true
+		}
+		addedTotal++
+	}
+
+	raw, merr := json.Marshal(body)
+	if merr != nil {
+		return "", "", fmt.Errorf("approve: re-serialising the edited proposal: %w", merr)
+	}
+
+	parts := make([]string, 0, 2)
+	if droppedTotal > 0 {
+		parts = append(parts, fmt.Sprintf("dropped %d", droppedTotal))
+	}
+	if addedTotal > 0 {
+		parts = append(parts, fmt.Sprintf("added %d", addedTotal))
+	}
+	return strings.Join(parts, ", "), string(raw), nil
+}
+
+// NewAcquisitions counts the acquisitions in a proposal that do NOT already exist as
+// titles — the number that would actually be spent by approving it. Used by the quota
+// gate, which must not charge a user for a title someone else already caused.
+func NewAcquisitions(ctx context.Context, st TitleReader, p store.Proposal) (int, error) {
+	var body Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
+		return 0, fmt.Errorf("quota: stored proposal is malformed: %w", err)
+	}
+	count := 0
+	seen := map[string]bool{}
+	for _, a := range body.Acquisitions {
+		key, kerr := acquisitionKey(a)
+		if kerr != nil || seen[string(key)] {
+			continue
+		}
+		seen[string(key)] = true
+		if _, gerr := st.GetTitle(ctx, key); errors.Is(gerr, store.ErrNotFound) {
+			count++
+		} else if gerr != nil {
+			return 0, fmt.Errorf("quota: read title %s: %w", key, gerr)
+		}
+	}
+	return count, nil
+}
+
+// The real store must satisfy these slices. Asserted here so a signature change fails the
+// BUILD rather than at the one call site that happens to wire it.
+var (
+	_ ApproveStore         = (store.Store)(nil)
+	_ QuotaStore           = (store.Store)(nil)
+	_ guardedApprovalStore = (store.Store)(nil)
+)

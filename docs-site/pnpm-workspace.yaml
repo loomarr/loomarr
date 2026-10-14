@@ -1,0 +1,22 @@
+# Dependency build-script policy, matching web/pnpm-workspace.yaml's shape.
+#
+# ⚠ pnpm treats an UNANSWERED build script as an install ERROR, not a warning, so every entry
+# here must be an explicit true or false. Leaving one undecided fails the install outright.
+allowBuilds:
+  # esbuild ships per-platform binaries and cannot work without its postinstall.
+  esbuild: true
+  # sharp is astro's image optimiser. Answered true rather than removed because it is a
+  # TRANSITIVE dependency — dropping it from package.json (which this project did) does not
+  # drop it from the tree, so it still needs a decision.
+  sharp: true
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+
+# ⚠ THIS FILE CAN ONLY BE VALIDATED BY A COLD INSTALL. With node_modules already present pnpm
+# does not re-evaluate build scripts, so a warm local run reports success over a policy that
+# fails in CI — which is exactly how this shipped broken once, passing here and failing the
+# docs job on a fresh runner. Verify changes with:
+#
+#     rm -rf node_modules && pnpm install --frozen-lockfile

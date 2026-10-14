@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+build="$script_dir/build-shield-play.sh"
+client_build="$script_dir/build-android-client.sh"
+ccache_env="$script_dir/android-ccache-env.sh"
+verifier="$script_dir/verify-android-ccache-evidence.sh"
+tv_package="$script_dir/../apps/tv/package.json"
+
+temp_dir=$(mktemp -d)
+trap 'rm -rf -- "$temp_dir"' EXIT
+launcher="$temp_dir/ccache"
+# The generated fixture expands this at execution time.
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${FAKE_CCACHE_STATS:?}"\n' > "$launcher"
+chmod +x "$launcher"
+actual_rule="$temp_dir/web/apps/tv/android/app/.cxx/Release/hash/arm64-v8a/CMakeFiles/rules.ninja"
+lto_probe="$temp_dir/web/apps/tv/android/app/.cxx/Release/hash/arm64-v8a/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rules.ninja"
+mkdir -p "$(dirname "$actual_rule")" "$(dirname "$lto_probe")"
+printf 'command = %s clang++\n' "$launcher" > "$actual_rule"
+printf 'command = clang++\n' > "$lto_probe"
+
+FAKE_CCACHE_STATS='{"cache_miss":1,"direct_cache_hit":0,"preprocessed_cache_hit":0}' \
+  "$verifier" "$launcher" "$temp_dir/web" "$temp_dir/launchers.txt"
+grep -Fxq "$actual_rule" "$temp_dir/launchers.txt"
+if grep -Fq '_CMakeLTOTest' "$temp_dir/launchers.txt"; then
+  echo 'ccache evidence included a CMake internal compiler probe' >&2
+  exit 1
+fi
+
+missing_rule="$temp_dir/web/node_modules/example/android/.cxx/Release/hash/x86/CMakeFiles/rules.ninja"
+mkdir -p "$(dirname "$missing_rule")"
+printf 'command = clang++\n' > "$missing_rule"
+if FAKE_CCACHE_STATS='{"cache_miss":1,"direct_cache_hit":0,"preprocessed_cache_hit":0}' \
+  "$verifier" "$launcher" "$temp_dir/web" >/dev/null 2>&1; then
+  echo 'ccache evidence accepted a primary Ninja rule without the launcher' >&2
+  exit 1
+fi
+printf 'command = %s clang++\n' "$launcher" > "$missing_rule"
+
+if FAKE_CCACHE_STATS='{"cache_miss":0,"direct_cache_hit":0,"preprocessed_cache_hit":0}' \
+  "$verifier" "$launcher" "$temp_dir/web" >/dev/null 2>&1; then
+  echo 'ccache evidence accepted a build with no cacheable compiler calls' >&2
+  exit 1
+fi
+
+for needle in \
+  'CCACHE_BASEDIR' \
+  'CCACHE_COMPILERCHECK=content' \
+  'CCACHE_MAXSIZE' \
+  'CCACHE_SLOPPINESS' \
+  'LOOMARR_ANDROID_GRADLE_WORKERS' \
+  '--parallel' \
+  'must be an absolute path' \
+  '--zero-stats' \
+  '--print-stats --format=json' \
+  'ccache-ninja-launchers.txt' \
+  'verify-android-ccache-evidence.sh' \
+  'LOOMARR_ANDROID_CCACHE_LAUNCHER'; do
+  cat "$build" "$ccache_env" | grep -Fq -- "$needle"
+done
+# Both wrappers must source the one shared ccache contract literally.
+# shellcheck disable=SC2016
+for build_script in "$build" "$client_build"; do
+  grep -Fq 'source "${WEB_ROOT}/scripts/android-ccache-env.sh"' "$build_script"
+  grep -Fq 'configure_android_ccache "${REPO_ROOT}"' "$build_script"
+done
+grep -Fq 'verify-android-ccache-evidence.sh' "$client_build"
+
+# The shared ccache source must retain this literal optional-environment guard.
+# shellcheck disable=SC2016
+grep -Fq 'if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]' "$ccache_env"
+for workers in 0 3; do
+  if LOOMARR_ANDROID_GRADLE_WORKERS=$workers "$client_build" mobile >/dev/null 2>"$temp_dir/client-workers.err"; then
+    printf 'client build wrapper accepted %s Gradle workers\n' "$workers" >&2
+    exit 1
+  fi
+  grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/client-workers.err"
+done
+if LOOMARR_ANDROID_METRO_WORKERS=0 "$client_build" mobile >/dev/null 2>"$temp_dir/client-metro.err"; then
+  echo 'client build wrapper accepted zero Metro workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_METRO_WORKERS must be a positive integer' "$temp_dir/client-metro.err"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=0 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-zero.err"; then
+  echo 'build wrapper accepted zero Gradle workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-zero.err"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=3 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-three.err"; then
+  echo 'build wrapper accepted more than two Gradle workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-three.err"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_CCACHE_LAUNCHER=relative-ccache "$build" 1.0.0 >/dev/null 2>&1; then
+  echo 'build wrapper accepted a relative ccache launcher' >&2
+  exit 1
+fi
+
+for unused_native_dependency in react-native-reanimated react-native-worklets; do
+  if node -e '
+    const manifest = require(process.argv[1]);
+    process.exit(Object.hasOwn(manifest.dependencies ?? {}, process.argv[2]) ? 0 : 1);
+  ' "$tv_package" "$unused_native_dependency"; then
+    printf 'TV manifest directly declares unused native dependency %s\n' "$unused_native_dependency" >&2
+    exit 1
+  fi
+done

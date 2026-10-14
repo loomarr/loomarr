@@ -1,0 +1,24 @@
+diff --git a/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt b/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+index 9933aca8a8440fdbd6b2d5af23a028352fcb8aa5..f622ce3acdc487dcaff2899870fc735cef41f0e7 100644
+--- a/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
++++ b/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt
+@@ -37,13 +37,18 @@ fun buildBaseDataSourceFactory(
+   }
+ }
+ 
++// One client for the process. Every source's client derives from it with newBuilder(), which shares
++// its connection pool and dispatcher, so replacing a source reuses the warm connection (and TLS
++// session) instead of opening a new one per source.
++private val sharedOkHttpClient: OkHttpClient by lazy { OkHttpClient() }
++
+ @OptIn(UnstableApi::class)
+ fun buildOkHttpDataSourceFactory(
+   context: Context,
+   videoSource: VideoSource,
+   cacheStorageKey: String? = null
+ ): OkHttpDataSource.Factory {
+-  val clientBuilder = OkHttpClient.Builder()
++  val clientBuilder = sharedOkHttpClient.newBuilder()
+   if (videoSource.useCaching) {
+     clientBuilder.addNetworkInterceptor(buildCacheVariantRecorder(context, videoSource, cacheStorageKey))
+   }

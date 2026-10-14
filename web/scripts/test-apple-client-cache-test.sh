@@ -1,0 +1,496 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+web_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+verifier="$web_root/scripts/test-apple-client.sh"
+test_root="$(mktemp -d /tmp/apple-client-cache-test.XXXXXX)"
+cleanup() {
+  if [[ -f "$test_root/generated-ios-created" ]]; then
+    find "$web_root/apps/mobile/ios" -mindepth 1 -depth -delete
+    rmdir "$web_root/apps/mobile/ios"
+  fi
+  find "$test_root" -mindepth 1 -depth -delete
+  rmdir "$test_root"
+}
+trap cleanup EXIT
+mkdir -p "$test_root/bin" "$test_root/store" "$test_root/artifacts" "$test_root/build" "$test_root/expo"
+printf 'CAS object\n' > "$test_root/store/object"
+printf 'template fixture\n' > "$test_root/expo/template.tgz"
+
+# This suite tests shell orchestration with no installed frontend dependencies.
+# Native runs execute the real consumer regressions; here only their invocation is observed.
+cat > "$test_root/bin/ruby" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -eq 1 ]] || exit 64
+case "${1##*/}" in
+  hermes-download-test.rb|native-release-selection-test.rb|native-artifact-download-test.rb)
+    printf 'native_contract_%s\n' "${1##*/}" >> "$APPLE_CACHE_TEST_ROOT/command-order"
+    ;;
+  *) printf 'unexpected Ruby invocation: %s\n' "$*" >&2; exit 64 ;;
+esac
+STUB
+
+cat > "$test_root/bin/node" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" != "-p require.resolve('expo/package.json')" ]]; then
+  printf 'unexpected node invocation: %s\n' "$*" >&2
+  exit 64
+fi
+printf '%s/expo/package.json\n' "$APPLE_CACHE_TEST_ROOT"
+STUB
+
+cat > "$test_root/bin/uname" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  -s) printf 'Darwin\n' ;;
+  -m) printf 'arm64\n' ;;
+  *) exit 64 ;;
+esac
+STUB
+
+cat > "$test_root/bin/xcodebuild" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == -version ]]; then
+  printf 'Xcode 27.0\nBuild version 27A5252f\n'
+  exit 0
+fi
+result_bundle=''
+host_arch_selected=false
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == ARCHS=arm64 ]]; then
+    host_arch_selected=true
+  fi
+  if [[ "$1" == -resultBundlePath ]]; then
+    result_bundle="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+[[ "$host_arch_selected" == true ]] || exit 64
+if [[ -z "$result_bundle" ]]; then
+  printf 'main xcodebuild did not receive -resultBundlePath\n' >&2
+  exit 64
+fi
+if [[ -e "$result_bundle" ]]; then
+  printf 'main xcodebuild received an existing result bundle\n' >&2
+  exit 64
+fi
+mkdir -p "$result_bundle"
+printf 'result bundle fixture\n' > "$result_bundle/build-log"
+printf 'xcodebuild fixture\n'
+STUB
+
+cat > "$test_root/bin/llvm-cas" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -ne 5 || "$1" != --cas || ! -f "$2/object" || "$3" != --validate \
+  || "$4" != --check-hash || "$5" != --force ]]; then
+  exit 64
+fi
+printf 'validated successfully\n'
+STUB
+
+cat > "$test_root/bin/xcrun" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  swift)
+    printf 'Apple Swift version 6.3.3\n'
+    ;;
+  --find)
+    [[ "$2" == llvm-cas ]]
+    printf '%s/bin/llvm-cas\n' "$APPLE_CACHE_TEST_ROOT"
+    ;;
+  simctl)
+    case "$2" in
+      list)
+        printf 'simulator_list\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-27-0":[{"udid":"SIM-1","isAvailable":true,"state":"Shutdown"}]}}\n'
+        ;;
+      boot)
+        printf 'simulator_boot\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        ;;
+      bootstatus)
+        printf 'simulator_ready\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        ;;
+      shutdown)
+        ;;
+      install)
+        [[ "$3" == SIM-1 ]]
+        [[ "$4" == "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app" ]]
+        [[ -f "$4/LoomarrMobilePrototype" ]]
+        printf 'simulator_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        ;;
+      launch)
+        if [[ "${APPLE_CACHE_TEST_LAUNCH_EXIT:-0}" != 0 ]]; then
+          printf 'fixture launch stdout\n'
+          printf 'fixture launch failed\n' >&2
+          exit "$APPLE_CACHE_TEST_LAUNCH_EXIT"
+        fi
+        [[ "$*" == *"--stdout=$LOOMARR_APPLE_ARTIFACTS_DIR/launch.stdout.log"* ]]
+        [[ "$*" == *"--stderr=$LOOMARR_APPLE_ARTIFACTS_DIR/launch.stderr.log"* ]]
+        printf 'media.loomarr.mobile.prototype: %s\n' "$APPLE_CACHE_TEST_LIVE_PID"
+        ;;
+      io)
+        if [[ ! -e "$5.attempted" ]]; then
+          : > "$5.attempted"
+          printf 'Timeout waiting for screen surfaces\n' >&2
+          exit 60
+        fi
+        printf 'PNG fixture\n' > "$5"
+        ;;
+      *)
+        printf 'unexpected simctl invocation: %s\n' "$*" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  lipo)
+    printf 'arm64\n'
+    ;;
+  xcresulttool)
+    if [[ "$*" != "xcresulttool get log --path $APPLE_CACHE_TEST_ROOT/artifacts/build-warm.xcresult --type build" ]]; then
+      printf 'unexpected xcresulttool invocation: %s\n' "$*" >&2
+      exit 64
+    fi
+    hits=1
+    misses=0
+    if [[ -n "${LOOMARR_APPLE_CACHE_SOURCE_PROBE:-}" ]]; then
+      misses=1
+    fi
+    printf '{"attachments":[{"data":"{\\"counters\\":{\\"clangCacheHits\\":%s,\\"clangCacheMisses\\":%s}}"}]}' \
+      "$hits" "$misses"
+    ;;
+  *)
+    printf 'unexpected xcrun invocation: %s\n' "$*" >&2
+    exit 64
+    ;;
+esac
+STUB
+
+cat > "$test_root/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *'expo prebuild'* ]]; then
+  [[ "$*" == *"--template $APPLE_CACHE_TEST_ROOT/expo/template.tgz"* ]]
+  if [[ ! -d "$PWD/apps/mobile/ios" ]]; then
+    mkdir -p "$PWD/apps/mobile/ios"
+    : > "$APPLE_CACHE_TEST_ROOT/generated-ios-created"
+  fi
+  printf 'clean_prebuild\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+  printf 'prebuild fixture\n'
+  exit 0
+fi
+if [[ "$*" != *'expo run:ios'* ]]; then
+  printf 'unexpected pnpm invocation: %s\n' "$*" >&2
+  exit 64
+fi
+if [[ "$*" != *'--no-install'* ]]; then
+  printf 'expo run:ios did not skip the explicit CocoaPods install: %s\n' "$*" >&2
+  exit 64
+fi
+if [[ "$*" != *'--device generic'* ]]; then
+  printf 'simulator build invoked physical-device enumeration: %s\n' "$*" >&2
+  exit 64
+fi
+printf 'expo_run\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+count=0
+if [[ -f "$APPLE_CACHE_TEST_ROOT/build-count" ]]; then
+  count="$(cat "$APPLE_CACHE_TEST_ROOT/build-count")"
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$APPLE_CACHE_TEST_ROOT/build-count"
+case "$count" in
+  1)
+    [[ "$XCODE_XCCONFIG_FILE" == */apple-compilation-cache.xcconfig ]]
+    [[ "$LOOMARR_APPLE_CACHE_STORE" == "$APPLE_CACHE_TEST_ROOT/store" ]]
+    xcodebuild -workspace Fixture.xcworkspace -scheme Fixture build
+    if [[ "${APPLE_CACHE_TEST_WARM_RESULT:-fail}" == pass ]]; then
+      if [[ "${LOOMARR_APPLE_CACHE_POPULATE:-0}" == 1 ]]; then
+        printf 'CAS object\n' > "$LOOMARR_APPLE_CACHE_STORE/object"
+      fi
+      mkdir -p "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app"
+      printf 'arm64 fixture\n' > "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app/LoomarrMobilePrototype"
+      printf 'warm compile fixture passed\n'
+      exit 0
+    fi
+    printf 'warm compile fixture failed\n'
+    exit 42
+    ;;
+  2)
+    [[ "$XCODE_XCCONFIG_FILE" == */apple-simulator.xcconfig ]]
+    [[ "$*" == *'--no-build-cache'* ]]
+    printf 'remark: cold compile job\n' >> "$LOOMARR_APPLE_RAW_XCODE_LOG"
+    mkdir -p "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app"
+    printf 'arm64 fixture\n' > "$LOOMARR_APPLE_BUILD_DIR/LoomarrMobilePrototype.app/LoomarrMobilePrototype"
+    printf 'cold compile fixture passed\n'
+    ;;
+  *)
+    printf 'unexpected build count: %s\n' "$count" >&2
+    exit 64
+    ;;
+esac
+STUB
+
+cat > "$test_root/bin/pod" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == install ]]
+[[ "$PWD" == */apps/mobile/ios ]]
+[[ "$NODE_ENV" == production ]]
+[[ "$RCT_NO_LAUNCH_PACKAGER" == 1 ]]
+[[ "$REACT_NATIVE_NODE_MODULES_DIR" == */apps/mobile/node_modules ]]
+# A real install vendors React Native's prebuilt core; the binaries guard reads this tree.
+mkdir -p Pods/React-Core-prebuilt/React.xcframework
+printf 'pod_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+STUB
+
+cat > "$test_root/bin/python3" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == */apple-launch-diagnostics.py ]]
+printf 'diagnostics attempted\n' > "$APPLE_CACHE_TEST_ROOT/diagnostics-attempted"
+# A diagnostics failure must never mask the original verifier exit status.
+exit 77
+STUB
+
+cat > "$test_root/bin/sleep" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+cat > "$test_root/bin/date" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == +%s ]]
+counter_file="$APPLE_CACHE_TEST_ROOT/clock"
+now=0
+if [[ -f "$counter_file" ]]; then
+  now="$(cat "$counter_file")"
+fi
+now=$((now + 10))
+printf '%s\n' "$now" > "$counter_file"
+printf '%s\n' "$now"
+STUB
+chmod +x "$test_root/bin/"*
+
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    LOOMARR_APPLE_SIMULATOR_ID=SIM-1 \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  printf 'test-apple-client-cache-test: warm fallback failed with %s:\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/build-count")" != 2 ]]; then
+  printf 'test-apple-client-cache-test: verifier did not make exactly two build attempts\n' >&2
+  exit 1
+fi
+if [[ -e "$test_root/store" || ! -f "$test_root/artifacts/quarantine/store/object" ]]; then
+  printf 'test-apple-client-cache-test: failed warm store was not quarantined\n' >&2
+  exit 1
+fi
+for log in build-warm.log build-cold.log xcodebuild-warm.log xcodebuild-cold.log; do
+  if [[ ! -s "$test_root/artifacts/$log" ]]; then
+    printf 'test-apple-client-cache-test: missing raw %s\n' "$log" >&2
+    exit 1
+  fi
+done
+if [[ ! -s "$test_root/artifacts/build-warm.xcresult.json" ]]; then
+  printf 'test-apple-client-cache-test: structured cache diagnostics were not preserved\n' >&2
+  exit 1
+fi
+for evidence in \
+  'apple-client: warm build failed; quarantined compilation cache and retrying cold' \
+  'apple-client: mobile simulator executable contains only arm64' \
+  'apple-client: mobile built, installed, launched, and remained alive on SIM-1'; do
+  if [[ "$output" != *"$evidence"* ]]; then
+    printf 'test-apple-client-cache-test: missing evidence: %s\n' "$evidence" >&2
+    exit 1
+  fi
+done
+
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+find "$test_root/build" -mindepth 1 -depth -delete
+mkdir "$test_root/store"
+printf 'CAS object\n' > "$test_root/store/object"
+unlink "$test_root/build-count"
+: > "$test_root/command-order"
+mkdir -p "$test_root/artifacts/build-warm.xcresult"
+printf 'stale result bundle\n' > "$test_root/artifacts/build-warm.xcresult/stale"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    LOOMARR_APPLE_CACHE_DIAGNOSTIC_REQUIREMENT=hits \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  printf 'test-apple-client-cache-test: successful warm build failed with %s:\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/build-count")" != 1 ]] \
+  || [[ -e "$test_root/artifacts/build-cold.log" ]] \
+  || [[ -e "$test_root/artifacts/quarantine" ]]; then
+  printf 'test-apple-client-cache-test: successful warm build entered fallback\n' >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/artifacts/cache-diagnostics.env")" != $'hits=1\nmisses=0\nskipped=0' ]]; then
+  printf 'test-apple-client-cache-test: warm diagnostics were not verified\n' >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
+  $'phase\tduration_seconds\nclean_prebuild\t10\ncocoapods_install\t10\nsimulator_readiness\t50\nnative_build_install\t10\nartifact_runtime_assertions\t10' ]]; then
+  printf 'test-apple-client-cache-test: phase timing artifact got:\n%s\n' \
+    "$(cat "$test_root/artifacts/phase-timings.tsv" 2>/dev/null || true)" >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/command-order")" != \
+  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_install' ]]; then
+  printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
+    "$(cat "$test_root/command-order")" >&2
+  exit 1
+fi
+
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+find "$test_root/build" -mindepth 1 -depth -delete
+find "$test_root/store" -mindepth 1 -depth -delete
+unlink "$test_root/build-count"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_POPULATE=1 \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  printf 'test-apple-client-cache-test: empty-store population failed with %s:\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+if [[ "$(cat "$test_root/build-count")" != 1 ]] \
+  || [[ ! -f "$test_root/store/object" ]] \
+  || [[ "$output" != *'apple-client: populated and validated compilation cache'* ]]; then
+  printf 'test-apple-client-cache-test: writer did not validate its populated CAS\n' >&2
+  exit 1
+fi
+
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+find "$test_root/build" -mindepth 1 -depth -delete
+unlink "$test_root/build-count"
+printf 'int fixture;\n' > "$test_root/native.mm"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    LOOMARR_APPLE_CACHE_SOURCE_PROBE=source-change \
+    LOOMARR_APPLE_CACHE_SOURCE_PROBE_FILE="$test_root/native.mm" \
+    LOOMARR_APPLE_CACHE_DIAGNOSTIC_REQUIREMENT=hits-and-misses \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  printf 'test-apple-client-cache-test: source invalidation probe failed with %s:\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+if ! grep -F '// Loomarr cache invalidation probe: source-change' "$test_root/native.mm" >/dev/null \
+  || [[ "$(cat "$test_root/artifacts/cache-diagnostics.env")" != $'hits=1\nmisses=1\nskipped=0' ]]; then
+  printf 'test-apple-client-cache-test: source change did not prove cache hits and misses\n' >&2
+  exit 1
+fi
+
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+unlink "$test_root/build-count"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    APPLE_CACHE_TEST_LAUNCH_EXIT=86 \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 86 || ! -f "$test_root/diagnostics-attempted" ]] \
+  || [[ "$(cat "$test_root/artifacts/launch-command.stderr.log")" != 'fixture launch failed' ]] \
+  || [[ "$(cat "$test_root/artifacts/launch-command.stdout.log")" != 'fixture launch stdout' ]]; then
+  printf 'test-apple-client-cache-test: launch evidence or original failure was lost (%s):\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+
+for native_override in REACT_NATIVE_OVERRIDE_HERMES_DIR HERMES_ENGINE_TARBALL_PATH \
+  HERMES_COMMIT RCT_BUILD_HERMES_FROM_SOURCE RCT_HERMES_V1_ENABLED ENTERPRISE_REPOSITORY \
+  RCT_USE_RN_DEP RCT_USE_LOCAL_RN_DEP RCT_DEPS_VERSION \
+  RCT_USE_PREBUILT_RNCORE RCT_TESTONLY_RNCORE_VERSION RCT_TESTONLY_RNCORE_TARBALL_PATH \
+  REACT_NATIVE_OVERRIDE_NIGHTLY_BUILD_VERSION RNTV_TESTONLY_LOCAL_RNCORE_REPOSITORY; do
+  # Even an exported empty override changes ENV.has_key? in the upstream helper.
+  # Rejection must precede prebuild, installation, or any native work.
+  unlink "$test_root/build-count"
+  set +e
+  output="$(env "$native_override=" PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" "$verifier" mobile 2>&1)"
+  status=$?
+  set -e
+  if [[ $status -ne 2 || -f "$test_root/build-count" ]] \
+    || [[ "$output" != *"$native_override overrides the qualified dependency selection"* ]]; then
+    printf 'override %s reached native work or escaped rejection (%s): %s\n' "$native_override" "$status" "$output" >&2
+    exit 1
+  fi
+  printf '0\n' > "$test_root/build-count"
+done
+
+unlink "$test_root/build-count"
+set +e
+output="$(PATH="$test_root/bin:$PATH" APPLE_CACHE_TEST_ROOT="$test_root" \
+  LOOMARR_APPLE_SIMULATOR_ID=UNAVAILABLE-OR-WRONG-PLATFORM "$verifier" mobile 2>&1)"
+status=$?
+set -e
+if [[ $status -ne 1 || -f "$test_root/build-count" ]] \
+  || [[ "$output" != *'no available iOS simulator matches the requested selection'* ]]; then
+  printf 'test-apple-client-cache-test: unavailable device selection did not fail closed (%s): %s\n' "$status" "$output" >&2
+  exit 1
+fi
+
+echo 'test-apple-client-cache-test: ok'

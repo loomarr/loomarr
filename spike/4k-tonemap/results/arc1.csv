@@ -1,0 +1,15 @@
+graph,src,run,first1s_ms,real_s,user_s,sys_s
+hdr10_4k,h1,1,5380,5.381,1.883,0.408
+hdr10_4k,h1,2,5279,5.279,1.815,0.367
+hdr10_4k,h2,1,[hevc,@,0x562e87c43d40],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x562e87c583c0],PPS,changed,between,slices.,Last,message,repeated,6,times,5254,5.254,1.709,0.445
+hdr10_4k,h2,2,[hevc,@,0x5582b0e14d40],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x5582b0e293c0],PPS,changed,between,slices.,Last,message,repeated,6,times,5262,5.262,1.770,0.475
+sdr4k_hevc,s4,1,5265,5.266,1.985,0.410
+sdr4k_hevc,s4,2,5261,5.262,1.775,0.422
+hdr_to_sdr4k,h1,1,26538,39.239,2.540,0.537
+hdr_to_sdr4k,h1,2,26569,38.429,2.549,0.596
+hdr_to_sdr4k,h2,1,[hevc,@,0x55d4312b07c0],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x55d4312c4f00],PPS,changed,between,slices.,Last,message,repeated,6,times,26499,37.941,2.374,0.601
+hdr_to_sdr4k,h2,2,[hevc,@,0x56049d99e7c0],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x56049d9b2f00],PPS,changed,between,slices.,Last,message,repeated,6,times,26503,37.993,2.409,0.613
+hdr_to_1080,h1,1,12424,12.425,2.871,0.624
+hdr_to_1080,h1,2,12401,12.402,2.579,0.505
+hdr_to_1080,h2,1,[hevc,@,0x55fad3b8cb40],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x55fad3ba1280],PPS,changed,between,slices.,Last,message,repeated,6,times,11909,11.910,2.442,0.622
+hdr_to_1080,h2,2,[hevc,@,0x5614d56b6b40],PPS,changed,between,slices.,Last,message,repeated,6,times,[hevc,@,0x5614d56cb280],PPS,changed,between,slices.,Last,message,repeated,6,times,11909,11.909,2.431,0.597

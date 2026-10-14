@@ -1,0 +1,187 @@
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
+import { unwrap } from "@loomarr/api/unwrap";
+import { useEffect, useState } from "react";
+import { ignoreFailure, useChannelSave } from "@/channels/use-channel-save";
+import type { ChannelFillerDraft, FillerDraft } from "./use-channel-filler-draft.type";
+
+// How long we let the criteria settle before re-assembling. The controls are commit-on-
+// blur (era) and instant (selects/checkboxes/chips), so a few hundred ms coalesces a
+// burst of toggles into one preview POST rather than one-per-click — cheap, and it keeps
+// the timeline from flickering as you tick several categories in a row.
+const PREVIEW_DEBOUNCE_MS = 300;
+
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2099;
+
+const isValidWindow = (window: NonNullable<FillerSelection["eraWindows"]>[number]): boolean =>
+  Number.isInteger(window.from) &&
+  Number.isInteger(window.to) &&
+  window.from !== undefined &&
+  window.to !== undefined &&
+  window.from >= YEAR_MIN &&
+  window.from <= YEAR_MAX &&
+  window.to >= YEAR_MIN &&
+  window.to <= YEAR_MAX &&
+  window.from <= window.to;
+
+// Invalid wire data must remain visible to the backend validator. Filtering it here would turn
+// a malformed restricted selection into a broader valid one without the operator's consent.
+const canonicalWindows = (windows: FillerSelection["eraWindows"]): FillerSelection["eraWindows"] => {
+  if (windows === undefined) return undefined;
+  if (!windows.every(isValidWindow)) return windows.map((window) => ({ ...window }));
+  return [...windows]
+    .sort((a, b) => a.from! - b.from! || a.to! - b.to!)
+    .reduce<NonNullable<FillerSelection["eraWindows"]>>((merged, window) => {
+      const previous = merged.at(-1);
+      if (previous && window.from! <= previous.to! + 1) previous.to = Math.max(previous.to!, window.to!);
+      else merged.push({ from: window.from, to: window.to });
+      return merged;
+    }, []);
+};
+
+const previewSelection = (selection: FillerDraft): FillerSelection => ({
+  ...selection,
+  categories: selection.categories?.length ? [...selection.categories] : undefined,
+  kinds: selection.kinds?.length ? [...selection.kinds] : undefined,
+  pinned: selection.pinned?.length ? [...selection.pinned] : undefined,
+  excluded: selection.excluded?.length ? [...selection.excluded] : undefined,
+  eraWindows: canonicalWindows(selection.eraWindows),
+});
+
+// canonicalize — a stable string identity for a selection, used for BOTH the dirty check
+// and the debounce key. It folds the "empty means any" equivalences so clearing a list to
+// [] reads identical to never having set it (undefined), and sorts the id/tag arrays so a
+// reorder that doesn't change membership isn't mistaken for an edit. Order of the six keys
+// is fixed here, not by object-key order, so the output is deterministic.
+const canonicalize = (s: FillerDraft): string => {
+  const list = (v?: string[] | null): string[] => [...(v ?? [])].sort();
+  const era = s.era === undefined ? undefined : { from: s.era.from ?? null, to: s.era.to ?? null };
+  const eraWindows = canonicalWindows(s.eraWindows);
+  return JSON.stringify({
+    era: era ?? null,
+    eraWindows: eraWindows ?? null,
+    audience: s.audience || null,
+    categories: list(s.categories),
+    kinds: list(s.kinds),
+    pinned: list(s.pinned),
+    excluded: list(s.excluded),
+    geography: s.geography ? { country: s.geography.country, market: s.geography.market ?? null } : null,
+  });
+};
+
+// useChannelFillerDraft — the live filler sandbox (§10, §12) for one channel. It holds a
+// DRAFT filler selection, break frequency and break length in local state (seeded from the saved policy)
+// and, on every settled change, re-assembles the actual break through POST …/pods/preview
+// — the SAME assembler + seed reconcile uses — so what you see is exactly what will air.
+// Nothing is saved until `apply`, which saves both choices onto the policy through the
+// channel's one writer; its refresh → SSE loop reconciles from there (seamless for the
+// effect, draft/apply for the authoring — the one deliberate exception, §10).
+//
+// This is a MUTATION rendered like a query: a draft has no URL identity to cache on (it
+// isn't saved), so preview rides a POST whose response is the preview. Contrast
+// usePreviewChannelPods, which reads the SAVED selection via GET.
+//
+// It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
+// policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
+// must merge onto the policy or it would wipe scope/audience/separation/ordering.
+const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
+  const saved: FillerSelection | undefined = policy?.filler;
+  const savedBreaksPerHour = policy?.breaksPerHour;
+  const savedBreakDuration = policy?.breakDuration;
+  const savedCommercialSpacing = policy?.commercialSpacing;
+  // The saved selection this draft was seeded from, as a canonical string — its identity,
+  // not its reference (the page hands a fresh `ch.policy.filler` object every render). We
+  // resync the draft to `saved` only when THIS changes: a genuine server update (an apply
+  // landing, a re-approval reseeding the era) adopts, an incidental re-render does not —
+  // the render-time "adjust state" pattern, no effect/flash.
+  //
+  // ⚠ Not while an apply is in flight, for the reason useChannelRulesDraft gives: the page
+  // renders the writer's pending policy, so a failed apply would otherwise reset the draft.
+  const savedSelectionKey = canonicalize(saved ?? {});
+  const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}|duration:${savedBreakDuration ?? "default"}|spacing:${savedCommercialSpacing ?? "default"}`;
+  const [draft, setDraft] = useState<FillerDraft>(saved ?? {});
+  const [breaksPerHour, setBreaksPerHour] = useState<number | undefined>(savedBreaksPerHour);
+  const [breakDuration, setBreakDuration] = useState<string | undefined>(savedBreakDuration);
+  const [commercialSpacing, setCommercialSpacing] = useState<string | undefined>(savedCommercialSpacing);
+  const [adoptedKey, setAdoptedKey] = useState(savedKey);
+  const [isApplying, setApplying] = useState(false);
+  if (savedKey !== adoptedKey && !isApplying) {
+    setDraft(saved ?? {});
+    setBreaksPerHour(savedBreaksPerHour);
+    setBreakDuration(savedBreakDuration);
+    setCommercialSpacing(savedCommercialSpacing);
+    setAdoptedKey(savedKey);
+  }
+
+  const preview = channelsApi.usePreviewDraftChannelPods();
+  const draftKey = canonicalize(draft);
+  const selection = previewSelection(draft);
+
+  // Debounced re-assemble: fire a preview whenever the canonical draft settles. Keying the
+  // effect on `draftKey` (not the object) means editing a field to the same value, or a
+  // parent re-render, doesn't re-POST. The timer is cleared on the next change so only the
+  // settled draft is sent. preview.mutate is stable across renders (react-query); depending
+  // on the canonical draft + channel is the whole intent — re-preview exactly when the
+  // selection changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey IS the dependency
+  useEffect(() => {
+    const t = setTimeout(() => {
+      preview.mutate({
+        id: channelId,
+        data: { filler: selection, breakDuration },
+      });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [channelId, draftKey, breakDuration]);
+
+  // Apply saves through the channel's one writer, which also refreshes the SAVED break preview
+  // (GET …/pods, its own query key) once the save lands.
+  const { save } = useChannelSave(channelId);
+
+  const body = unwrap(preview.data);
+
+  return {
+    draft,
+    setDraft,
+    breaksPerHour,
+    setBreaksPerHour,
+    breakDuration,
+    setBreakDuration,
+    commercialSpacing,
+    setCommercialSpacing,
+    preview: body,
+    isPreviewing: preview.isPending,
+    // The transport mutator THROWS an ApiError on non-2xx for mutations (unlike a query,
+    // which would carry the non-200 in data.status) — so a failed preview lands in
+    // `preview.error`, not `preview.data`. Surfaced so a broken draft reads as an error,
+    // not an empty pool.
+    previewError: preview.error,
+    isDirty:
+      draftKey !== savedSelectionKey ||
+      breaksPerHour !== savedBreaksPerHour ||
+      breakDuration !== savedBreakDuration ||
+      commercialSpacing !== savedCommercialSpacing,
+    // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
+    // rest of it (scope/audience/separation/ordering) alongside the new filler.
+    apply: () => {
+      setApplying(true);
+      void save(
+        { policy: { ...policy, filler: selection, breaksPerHour, breakDuration, commercialSpacing } },
+        { success: "Filler updated" },
+      )
+        .catch(ignoreFailure)
+        .finally(() => setApplying(false));
+    },
+    isApplying,
+    discard: () => {
+      setDraft(saved ?? {});
+      setBreaksPerHour(savedBreaksPerHour);
+      setBreakDuration(savedBreakDuration);
+      setCommercialSpacing(savedCommercialSpacing);
+    },
+  };
+};
+
+export { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft };

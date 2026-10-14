@@ -1,0 +1,9 @@
+{
+  "Items": [
+    {"Id": "clip-100", "Name": "Kellogg's Frosted Flakes 1992", "RunTimeTicks": 300000000, "Path": "/filler/commercials/kelloggs_1992.mp4"},
+    {"Id": "clip-101", "Name": "TMNT figures 1994", "RunTimeTicks": 300000000, "Path": "/filler/commercials/tmnt_1994.mp4"},
+    {"Id": "clip-200", "Name": "Saturday bumper - we'll be right back", "RunTimeTicks": 50000000, "Path": "/filler/bumpers/brb.mp4"},
+    {"Id": "clip-300", "Name": "Station ID WLMR 42", "RunTimeTicks": 100000000, "Path": "/filler/idents/wlmr42.mp4"}
+  ],
+  "TotalRecordCount": 4
+}

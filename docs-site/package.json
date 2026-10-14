@@ -1,0 +1,23 @@
+{
+  "name": "@loomarr/docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "test": "node --test src/*.test.mjs",
+    "build": "pnpm test && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.2.4",
+    "@astrojs/starlight": "0.41.9",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "astro": "7.2.9"
+  }
+}

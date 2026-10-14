@@ -1,0 +1,752 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "query-expansion-catalog-v4",
+  "cases": [
+    {
+      "id": "tgif-reviewed",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 2685,
+              "name": "Family Matters",
+              "year": 1989,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-2685",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 2617,
+              "name": "Step by Step",
+              "year": 1991,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-2617",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 1777,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 605,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC",
+                "The WB"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-G",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 31183,
+              "name": "Full House",
+              "year": 2009,
+              "genres": [
+                "Comedy"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-31183",
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mcu-reviewed",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 1726,
+              "name": "Iron Man",
+              "year": 2008,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-1726",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 1724,
+              "name": "The Incredible Hulk",
+              "year": 2008,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 10138,
+              "name": "Iron Man 2",
+              "year": 2010,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-10138",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 10195,
+              "name": "Thor",
+              "year": 2011,
+              "genres": [
+                "Action",
+                "Fantasy",
+                "Adventure"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-10195",
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 1771,
+              "name": "Captain America: The First Avenger",
+              "year": 2011,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 24428,
+              "name": "Avengers Assemble",
+              "year": 2012,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 68721,
+              "name": "Iron Man 3",
+              "year": 2013,
+              "genres": [
+                "Action",
+                "Science Fiction",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 76338,
+              "name": "Thor: The Dark World",
+              "year": 2013,
+              "genres": [
+                "Action",
+                "Fantasy",
+                "Adventure"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG-13",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 448368,
+              "name": "The Avengers: A Visual Journey",
+              "year": 2012,
+              "genres": [
+                "Documentary"
+              ],
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 63736,
+              "name": "Almighty Thor",
+              "year": 2011,
+              "genres": [
+                "Adventure",
+                "Fantasy"
+              ],
+              "inLibrary": false,
+              "officialRating": "PG",
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "history-era-reviewed",
+      "responses": [
+        {
+          "operation": "network",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 6145,
+              "name": "Modern Marvels",
+              "year": 1993,
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "overview": "The history of technology, inventions, machines, construction, and infrastructure.",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-6145",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 32608,
+              "name": "Ancient Aliens",
+              "year": 2010,
+              "genres": [
+                "Documentary",
+                "Mystery"
+              ],
+              "networks": [
+                "History"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-32608",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 60603,
+              "name": "The Curse of Oak Island",
+              "year": 2014,
+              "genres": [
+                "Documentary",
+                "Reality"
+              ],
+              "networks": [
+                "History"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "history-era-reviewed-missing",
+      "responses": [
+        {
+          "operation": "network",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 6145,
+              "name": "Modern Marvels",
+              "year": 1993,
+              "genres": [
+                "Documentary"
+              ],
+              "networks": [
+                "History"
+              ],
+              "overview": "The history of technology, inventions, machines, construction, and infrastructure.",
+              "inLibrary": false,
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 32608,
+              "name": "Ancient Aliens",
+              "year": 2010,
+              "genres": [
+                "Documentary",
+                "Mystery"
+              ],
+              "networks": [
+                "History"
+              ],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-32608",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 60603,
+              "name": "The Curse of Oak Island",
+              "year": 2014,
+              "genres": [
+                "Documentary",
+                "Reality"
+              ],
+              "networks": [
+                "History"
+              ],
+              "inLibrary": false,
+              "officialRating": "TV-PG",
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "movie-reviewed",
+      "dateQuerySensitive": true,
+      "responses": [
+        {
+          "operation": "genre",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 289,
+              "name": "Casablanca",
+              "year": 1942,
+              "genres": ["Drama", "Romance"],
+              "creators": ["Michael Curtiz"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-289",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 872,
+              "name": "Singin' in the Rain",
+              "year": 1952,
+              "genres": ["Comedy", "Music", "Romance"],
+              "creators": ["Gene Kelly", "Stanley Donen"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-872",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 62,
+              "name": "2001: A Space Odyssey",
+              "year": 1968,
+              "genres": ["Adventure", "Science Fiction"],
+              "creators": ["Stanley Kubrick"],
+              "originalLanguage": "en",
+              "originCountries": ["GB", "US"],
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 578,
+              "name": "Jaws",
+              "year": 1975,
+              "genres": ["Adventure", "Horror", "Thriller"],
+              "creators": ["Steven Spielberg"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-578",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 601,
+              "name": "E.T. the Extra-Terrestrial",
+              "year": 1982,
+              "genres": ["Adventure", "Family", "Science Fiction"],
+              "creators": ["Steven Spielberg"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-601",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 105,
+              "name": "Back to the Future",
+              "year": 1985,
+              "genres": ["Adventure", "Comedy", "Science Fiction"],
+              "creators": ["Robert Zemeckis"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-105",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 329,
+              "name": "Jurassic Park",
+              "year": 1993,
+              "genres": ["Adventure", "Science Fiction"],
+              "creators": ["Steven Spielberg"],
+              "officialRating": "PG-13",
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 13,
+              "name": "Forrest Gump",
+              "year": 1994,
+              "genres": ["Comedy", "Drama", "Romance"],
+              "cast": ["Tom Hanks"],
+              "creators": ["Robert Zemeckis"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "officialRating": "PG-13",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 862,
+              "name": "Toy Story",
+              "year": 1995,
+              "genres": ["Animation", "Comedy", "Family"],
+              "cast": ["Tom Hanks"],
+              "creators": ["John Lasseter"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "officialRating": "G",
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 194,
+              "name": "Amélie",
+              "year": 2001,
+              "genres": ["Comedy", "Romance"],
+              "creators": ["Jean-Pierre Jeunet"],
+              "originalLanguage": "fr",
+              "originCountries": ["FR", "DE"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-194",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 129,
+              "name": "Spirited Away",
+              "year": 2001,
+              "genres": ["Animation", "Family", "Fantasy"],
+              "creators": ["Hayao Miyazaki"],
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 346648,
+              "name": "Paddington 2",
+              "year": 2017,
+              "genres": ["Adventure", "Comedy", "Family"],
+              "keywords": ["comforting", "kind", "low threat", "warm"],
+              "overview": "A kind family comedy adventure with mild threat and reassuring outcomes.",
+              "creators": ["Paul King"],
+              "originalLanguage": "en",
+              "originCountries": ["FR", "GB", "LU"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-346648",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 496243,
+              "name": "Parasite",
+              "year": 2019,
+              "genres": ["Comedy", "Drama", "Thriller"],
+              "keywords": ["dark", "satirical", "tense"],
+              "overview": "A darkly satirical South Korean thriller.",
+              "creators": ["Bong Joon-ho"],
+              "originCountries": ["KR"],
+              "inLibrary": false,
+              "source": "tmdb"
+            }
+          ]
+        },
+        {
+          "operation": "keyword",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 346648,
+              "name": "Paddington 2",
+              "year": 2017,
+              "genres": ["Adventure", "Comedy", "Family"],
+              "keywords": ["comforting", "kind", "low threat", "warm"],
+              "overview": "A kind family comedy adventure with mild threat and reassuring outcomes.",
+              "creators": ["Paul King"],
+              "originalLanguage": "en",
+              "originCountries": ["FR", "GB", "LU"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-346648",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 578,
+              "name": "Jaws",
+              "year": 1975,
+              "genres": ["Adventure", "Horror", "Thriller"],
+              "keywords": ["frightening", "tense", "threat"],
+              "overview": "A police chief hunts a shark terrorizing a beach community.",
+              "creators": ["Steven Spielberg"],
+              "originalLanguage": "en",
+              "originCountries": ["US"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-578",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 496243,
+              "name": "Parasite",
+              "year": 2019,
+              "genres": ["Comedy", "Drama", "Thriller"],
+              "keywords": ["dark", "satirical", "tense"],
+              "overview": "A darkly satirical South Korean thriller.",
+              "creators": ["Bong Joon-ho"],
+              "originCountries": ["KR"],
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 872,
+              "name": "Singin' in the Rain",
+              "year": 1952,
+              "genres": ["Comedy", "Music", "Romance"],
+              "keywords": ["bright", "musical", "warm"],
+              "creators": ["Gene Kelly", "Stanley Donen"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-872",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 62,
+              "name": "2001: A Space Odyssey",
+              "year": 1968,
+              "genres": ["Adventure", "Science Fiction"],
+              "keywords": ["cerebral", "slow", "high attention"],
+              "creators": ["Stanley Kubrick"],
+              "originalLanguage": "en",
+              "originCountries": ["GB", "US"],
+              "inLibrary": false,
+              "source": "tmdb"
+            }
+          ]
+        },
+        {
+          "operation": "creator",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 578,
+              "name": "Jaws",
+              "year": 1975,
+              "genres": ["Adventure", "Horror", "Thriller"],
+              "creators": ["Steven Spielberg"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-578",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 601,
+              "name": "E.T. the Extra-Terrestrial",
+              "year": 1982,
+              "genres": ["Adventure", "Family", "Science Fiction"],
+              "creators": ["Steven Spielberg"],
+              "officialRating": "PG",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-601",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 329,
+              "name": "Jurassic Park",
+              "year": 1993,
+              "genres": ["Adventure", "Science Fiction"],
+              "creators": ["Steven Spielberg"],
+              "officialRating": "PG-13",
+              "inLibrary": false,
+              "source": "tmdb"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 105,
+              "name": "Back to the Future",
+              "year": 1985,
+              "genres": ["Adventure", "Comedy", "Science Fiction"],
+              "creators": ["Robert Zemeckis"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-105",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 13,
+              "name": "Forrest Gump",
+              "year": 1994,
+              "genres": ["Comedy", "Drama", "Romance"],
+              "cast": ["Tom Hanks"],
+              "creators": ["Robert Zemeckis"],
+              "officialRating": "PG-13",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-13",
+              "source": "library"
+            }
+          ]
+        },
+        {
+          "operation": "cast",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 13,
+              "name": "Forrest Gump",
+              "year": 1994,
+              "genres": ["Comedy", "Drama", "Romance"],
+              "cast": ["Tom Hanks"],
+              "creators": ["Robert Zemeckis"],
+              "officialRating": "PG-13",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 862,
+              "name": "Toy Story",
+              "year": 1995,
+              "genres": ["Animation", "Comedy", "Family"],
+              "cast": ["Tom Hanks"],
+              "creators": ["John Lasseter"],
+              "officialRating": "G",
+              "inLibrary": false,
+              "source": "tmdb"
+            }
+          ]
+        },
+        {
+          "operation": "people",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 13,
+              "name": "Forrest Gump",
+              "year": 1994,
+              "genres": ["Comedy", "Drama", "Romance"],
+              "cast": ["Tom Hanks"],
+              "creators": ["Robert Zemeckis"],
+              "officialRating": "PG-13",
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 105,
+              "name": "Back to the Future",
+              "year": 1985,
+              "genres": ["Adventure", "Comedy", "Science Fiction"],
+              "creators": ["Robert Zemeckis"],
+              "inLibrary": true,
+              "libraryItemId": "simulated-expansion-105",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 862,
+              "name": "Toy Story",
+              "year": 1995,
+              "genres": ["Animation", "Comedy", "Family"],
+              "cast": ["Tom Hanks"],
+              "creators": ["John Lasseter"],
+              "officialRating": "G",
+              "inLibrary": false,
+              "source": "tmdb"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

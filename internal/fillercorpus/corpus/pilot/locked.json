@@ -1,0 +1,1279 @@
+{
+  "schemaVersion": 1,
+  "snapshotAt": "2026-08-26T14:05:09Z",
+  "lockedAt": "2026-08-26T14:05:10Z",
+  "lanes": [
+    {
+      "authority": "archive.org/prelinger",
+      "maxRequests": 40,
+      "requestsUsed": 11,
+      "maxResponseBytes": 662700032,
+      "responseBytes": 577187,
+      "maxPredictedMediaBytes": 3221225472,
+      "predictedMediaBytes": 109927824,
+      "maxWallTimeMs": 60000,
+      "wallTimeMs": 11805,
+      "cases": [
+        {
+          "itemId": "aurora_drag_race_set",
+          "title": "Aurora Stunt and Drag Race Set Commercial",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/aurora_drag_race_set",
+          "metadataUrl": "https://archive.org/metadata/aurora_drag_race_set",
+          "metadataRetrievedAt": "2026-08-26T12:05:22.982363889Z",
+          "metadataSha256": "ab54b09e691d6b83c4fe338ffad10e8d97648923d022a383387b7507d9eb77b2",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "aurora_drag_race_set_512kb.mp4",
+            "url": "https://archive.org/download/aurora_drag_race_set/aurora_drag_race_set_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4304452,
+            "sha1": "7d91d097d6962bb8066992bcb53535ffcec7329b",
+            "md5": "91a45f2ee1f6f4e8411b738afd7dce77"
+          }
+        },
+        {
+          "itemId": "folgers_13",
+          "title": "Folgers Coffee Commercial #13",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/folgers_13",
+          "metadataUrl": "https://archive.org/metadata/folgers_13",
+          "metadataRetrievedAt": "2026-08-26T12:05:24.070363942Z",
+          "metadataSha256": "f1fe67d78fec7083e053192ae1d8332f3bd7957fc69bf14db1a2919b4a3a550b",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "folgers_13_512kb.mp4",
+            "url": "https://archive.org/download/folgers_13/folgers_13_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4468080,
+            "sha1": "1f6631bce3bcd3af27fcafb734b53cf91d2fd0b1",
+            "md5": "bbaae071cc8a9bd0c8e1f1d291b25e98"
+          }
+        },
+        {
+          "itemId": "CrestToothpa_2",
+          "title": "Crest Toothpaste Commercial 2",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/CrestToothpa_2",
+          "metadataUrl": "https://archive.org/metadata/CrestToothpa_2",
+          "metadataRetrievedAt": "2026-08-26T12:05:25.180363997Z",
+          "metadataSha256": "7baa46a0f18b6cf4f2bba172002e2c3dbc1f8913a7fc760b92a50984eb518be5",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "CrestToothpa_2_512kb.mp4",
+            "url": "https://archive.org/download/CrestToothpa_2/CrestToothpa_2_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 3021103,
+            "sha1": "756e2f53f2daf5a09faa03d202abc9083363239d",
+            "md5": "dae5238fd2b9b777463bd975305bca5c"
+          }
+        },
+        {
+          "itemId": "Dentu-CremeA",
+          "title": "Dentu-Creme Commercial",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/Dentu-CremeA",
+          "metadataUrl": "https://archive.org/metadata/Dentu-CremeA",
+          "metadataRetrievedAt": "2026-08-26T12:05:26.285364051Z",
+          "metadataSha256": "c0e3dcc2bce4db68418ad0542223bc6d8bced20b1dac7b15fe4f1a64874e61a9",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "Dentu-CremeA_512kb.mp4",
+            "url": "https://archive.org/download/Dentu-CremeA/Dentu-CremeA_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4344129,
+            "sha1": "520b6c4b574717e807fa2af5225ae27f3e8884f2",
+            "md5": "61f75f9daa548c8d88cba6cab6d61f23"
+          }
+        },
+        {
+          "itemId": "letter_from_an_airline_pilot_1",
+          "title": "Letter From an Airline Pilot  (Part I)",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/letter_from_an_airline_pilot_1",
+          "metadataUrl": "https://archive.org/metadata/letter_from_an_airline_pilot_1",
+          "metadataRetrievedAt": "2026-08-26T12:05:27.516364111Z",
+          "metadataSha256": "fc8d02ce77789f907c523389b859b5e9193648d0020f26d72340f1c1debf4851",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "letter_from_an_airline_pilot_1_512kb.mp4",
+            "url": "https://archive.org/download/letter_from_an_airline_pilot_1/letter_from_an_airline_pilot_1_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 74099402,
+            "sha1": "995b87b4ef4a99d057cb3fa0ffa4af2c63bc68de",
+            "md5": "02461c46899e23d748a90f18cb79f2e2"
+          }
+        },
+        {
+          "itemId": "LuckyStr1948_2",
+          "title": "Lucky Strike Cigarette Commercial: Square Dance",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/LuckyStr1948_2",
+          "metadataUrl": "https://archive.org/metadata/LuckyStr1948_2",
+          "metadataRetrievedAt": "2026-08-26T12:05:28.702364169Z",
+          "metadataSha256": "f39ede17e99bf416ed41e365a57402e0007f192460ace9609941e35d92e77932",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "LuckyStr1948_2_512kb.mp4",
+            "url": "https://archive.org/download/LuckyStr1948_2/LuckyStr1948_2_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4292486,
+            "sha1": "31def2f5b00a1aa211dae513cae686807a401bcc",
+            "md5": "fc4dbaa0ea39b97be6be077f4c38ed91"
+          }
+        },
+        {
+          "itemId": "alexis_lichine_wine",
+          "title": "Alexis Lichine Wine Commercial",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/alexis_lichine_wine",
+          "metadataUrl": "https://archive.org/metadata/alexis_lichine_wine",
+          "metadataRetrievedAt": "2026-08-26T12:05:29.791364222Z",
+          "metadataSha256": "b14b830f13aafff92dfacd3b2f4eaae4ebe50229ab49c9755263e3b6694de00c",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "alexis_lichine_wine_512kb.mp4",
+            "url": "https://archive.org/download/alexis_lichine_wine/alexis_lichine_wine_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 2175658,
+            "sha1": "f91cbf0b30f3a205ecf2c1a078b915e087ad418e",
+            "md5": "5b53c5612d23c7b07a56ccb2cb596ba8"
+          }
+        },
+        {
+          "itemId": "folgers_6",
+          "title": "Folgers Coffee Commercial #6",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/folgers_6",
+          "metadataUrl": "https://archive.org/metadata/folgers_6",
+          "metadataRetrievedAt": "2026-08-26T12:05:30.947364278Z",
+          "metadataSha256": "856932afdf4828bfaa251f2fe3a18a70f58eec7e1a3e0bdb7ce7d3754ae782db",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "folgers_6_512kb.mp4",
+            "url": "https://archive.org/download/folgers_6/folgers_6_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4488626,
+            "sha1": "220b17248d4b4935f48cb56441814885425396d1",
+            "md5": "94105540beb352449740c707d5f4012d"
+          }
+        },
+        {
+          "itemId": "monkeys_uncle",
+          "title": "Monkeys Uncle Toy Commercial",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/monkeys_uncle",
+          "metadataUrl": "https://archive.org/metadata/monkeys_uncle",
+          "metadataRetrievedAt": "2026-08-26T12:05:32.113364335Z",
+          "metadataSha256": "9415a036e0af1b0e06da6a1482c3e5560f934842ac477e74cfd4825498796cd9",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "monkeys_uncle_512kb.mp4",
+            "url": "https://archive.org/download/monkeys_uncle/monkeys_uncle_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4391668,
+            "sha1": "9f9406bac2b3fe4de793e1e2f68742ab81e4503e",
+            "md5": "ba24bf5dd5a5931ec31230054b9026bd"
+          }
+        },
+        {
+          "itemId": "ideal_dolls_3",
+          "title": "Ideal Doll Commercial #3",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://archive.org/details/ideal_dolls_3",
+          "metadataUrl": "https://archive.org/metadata/ideal_dolls_3",
+          "metadataRetrievedAt": "2026-08-26T12:05:33.200364388Z",
+          "metadataSha256": "0c8675aad91898df746a2b14ac3bc3c894cedb0a53c1f4b8fbdca0e63b8499e2",
+          "rightsAssertions": [
+            "Archive license assertion: http://creativecommons.org/licenses/publicdomain/"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/publicdomain/",
+          "representation": {
+            "name": "ideal_dolls_3_512kb.mp4",
+            "url": "https://archive.org/download/ideal_dolls_3/ideal_dolls_3_512kb.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 4342220,
+            "sha1": "262af5a383298dd63af2cbfb97c5636a740a2f5b",
+            "md5": "bf401bb902f5346d172d82fad31c4e42"
+          }
+        }
+      ]
+    },
+    {
+      "authority": "loc.gov/national-screening-room",
+      "maxRequests": 25,
+      "requestsUsed": 12,
+      "maxResponseBytes": 33554432,
+      "responseBytes": 745876,
+      "maxPredictedMediaBytes": 3221225472,
+      "predictedMediaBytes": 1103177444,
+      "maxWallTimeMs": 180000,
+      "wallTimeMs": 60833,
+      "cases": [
+        {
+          "itemId": "97516784",
+          "title": "[Theater commercial--electric refrigerators]. Buy an electric refrigerator",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/97516784/",
+          "metadataUrl": "https://www.loc.gov/item/97516784/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:18:51.213846183Z",
+          "metadataSha256": "b34773cb4f00ce9735c48ac76204c25aa951867c41cf6ef13e847f5d92e862df",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00007341.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00007341/00007341.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 16028110
+          }
+        },
+        {
+          "itemId": "00694428",
+          "title": "Scenes in San Francisco. [No. 2]",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/00694428/",
+          "metadataUrl": "https://www.loc.gov/item/00694428/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:18:54.330680202Z",
+          "metadataSha256": "4b7ffc431e5f00570e89121a0f99eb12b2c19fbc3bdf137b6de2fa6f4532316c",
+          "rightsAssertions": [
+            "<p>The contents of the Library of Congress Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection are in the public domain and are free to use and reuse.</p>\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division, Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection. </p>\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a> </p>\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00045702.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00045702/00045702.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 178678251
+          }
+        },
+        {
+          "itemId": "2011600508",
+          "title": "Buster makes room for his mama at the bargain counter",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/2011600508/",
+          "metadataUrl": "https://www.loc.gov/item/2011600508/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:18:57.449461275Z",
+          "metadataSha256": "6de8547fd00bd7e6e84cd0898a0df9cd35ba9552d72e355875ee1598995099cc",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00047652.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047652/00047652.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 81371216
+          }
+        },
+        {
+          "itemId": "00694288",
+          "title": "A romance of the rail",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/00694288/",
+          "metadataUrl": "https://www.loc.gov/item/00694288/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:00.566406863Z",
+          "metadataSha256": "629e59fe97ebf765f73091743543db117061ef169bd33828c60af4fdef0d19c4",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00064191.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00064191/00064191.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 181889920
+          }
+        },
+        {
+          "itemId": "00694431",
+          "title": "San Francisco's future",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/00694431/",
+          "metadataUrl": "https://www.loc.gov/item/00694431/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:03.683508766Z",
+          "metadataSha256": "d52ac0304ebd59e55545a75494b9f526d926665db35dbe565a0b23d3836741c9",
+          "rightsAssertions": [
+            "<p>The contents of the Library of Congress Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection are in the public domain and are free to use and reuse.</p>\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division, Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection. </p>\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a> </p>\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "02086684.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/02086684/02086684.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 224668153
+          }
+        },
+        {
+          "itemId": "2011600511",
+          "title": "Buster's joke on Papa",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/2011600511/",
+          "metadataUrl": "https://www.loc.gov/item/2011600511/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:12.835803417Z",
+          "metadataSha256": "7b8f6d5958bfdc54e79f59be5e138088170527c6c8826bb7d8e96ab8fdb8b7d0",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "01844276.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01844276/01844276.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 109913905
+          }
+        },
+        {
+          "itemId": "2011600510",
+          "title": "Buster and the dude",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/2011600510/",
+          "metadataUrl": "https://www.loc.gov/item/2011600510/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:21.383080514Z",
+          "metadataSha256": "a36503e6ecce058d13596bbbd7710270e0317956eaed197ac7d1b3be76658c9a",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00047651.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047651/00047651.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 82693288
+          }
+        },
+        {
+          "itemId": "97516796",
+          "title": "[Theater commercial--Onward flour]",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/97516796/",
+          "metadataUrl": "https://www.loc.gov/item/97516796/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:25.551589311Z",
+          "metadataSha256": "57c286119f02a511e403b45a6b8eacc528a374e55779851143a15231732c73b6",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "01864522.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01864522/01864522.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 15344634
+          }
+        },
+        {
+          "itemId": "2011600509",
+          "title": "[Buster's dog to the rescue]",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/2011600509/",
+          "metadataUrl": "https://www.loc.gov/item/2011600509/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:35.621664843Z",
+          "metadataSha256": "049130e95a021f97f3fc4d642fa5b27995da8dd1e900d21a92b13f446bd54741",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "00047655.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047655/00047655.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 106287280
+          }
+        },
+        {
+          "itemId": "00694364",
+          "title": "Panorama water front and Brooklyn Bridge from East River",
+          "roleHints": [
+            "commercial"
+          ],
+          "itemUrl": "https://www.loc.gov/item/00694364/",
+          "metadataUrl": "https://www.loc.gov/item/00694364/?fo=json",
+          "metadataRetrievedAt": "2026-08-26T12:19:45.752395044Z",
+          "metadataSha256": "d19fc9d520cda0e1e45c2f9c71b743a0de423552650cacdf041428ec43c1bbf3",
+          "rightsAssertions": [
+            "<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.</p>\r\n<p>In rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.</p>\r\n<p>Whenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.</p>\r\n<p>Credit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.</p>\r\n<p>More about <a href=\"/legal/\">Copyright and other Restrictions</a>.</p>\r\n<p>For guidance about compiling full citations consult <a href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\">Citing Primary Sources</a>.</p>"
+          ],
+          "representation": {
+            "name": "01194386.mp4",
+            "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01194386/01194386.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 106302687
+          }
+        }
+      ]
+    },
+    {
+      "authority": "images.nasa.gov",
+      "maxRequests": 80,
+      "requestsUsed": 21,
+      "maxResponseBytes": 33554432,
+      "responseBytes": 146646,
+      "maxPredictedMediaBytes": 3221225472,
+      "predictedMediaBytes": 213923150,
+      "maxWallTimeMs": 120000,
+      "wallTimeMs": 5783,
+      "cases": [
+        {
+          "itemId": "Planetary Defenders (Official NASA Trailer)",
+          "title": "Planetary Defenders (Official NASA Trailer)",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29",
+          "metadataUrl": "https://images-assets.nasa.gov/video/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:41.867044284Z",
+          "metadataSha256": "e8b96351200d2182c232839422387fb2da92797a62b8e727116a46f0f2e43500",
+          "rightsAssertions": [
+            "NASA center assertion: LaRC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "Planetary Defenders (Official NASA Trailer)~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 36167913
+          }
+        },
+        {
+          "itemId": "ksc_041505_dart_harding",
+          "title": "KSC-05-S-00084",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/ksc_041505_dart_harding",
+          "metadataUrl": "https://images-assets.nasa.gov/video/ksc_041505_dart_harding/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:42.436103217Z",
+          "metadataSha256": "16af3fc5deab74a78281b70b56f6c55353f97faea52861bbce0e965bfa552cfe",
+          "rightsAssertions": [
+            "NASA center assertion: KSC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+            "NASA creator assertion: NASA or National Aeronautics and Space Administration"
+          ],
+          "representation": {
+            "name": "ksc_041505_dart_harding~mobile.mp4",
+            "url": "https://images-assets.nasa.gov/video/ksc_041505_dart_harding/ksc_041505_dart_harding~mobile.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 18270844
+          }
+        },
+        {
+          "itemId": "Gravity Assist Podcast Season 5 Trailer",
+          "title": "Gravity Assist Podcast Season 5 Trailer",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/Gravity%20Assist%20Podcast%20Season%205%20Trailer",
+          "metadataUrl": "https://images-assets.nasa.gov/video/Gravity%20Assist%20Podcast%20Season%205%20Trailer/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:43.01419657Z",
+          "metadataSha256": "b860ce2ce825440177ad5bf7f27d2d799a868301e09e5fc957cfcf44163e5386",
+          "rightsAssertions": [
+            "NASA center assertion: HQ",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "Gravity Assist Podcast Season 5 Trailer~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/Gravity%20Assist%20Podcast%20Season%205%20Trailer/Gravity%20Assist%20Podcast%20Season%205%20Trailer~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 43684814
+          }
+        },
+        {
+          "itemId": "jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K",
+          "title": "Gateway - Lunar Space Station Trailer",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K",
+          "metadataUrl": "https://images-assets.nasa.gov/video/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:43.56035377Z",
+          "metadataSha256": "61d8b11b82bbc221f37baa494b3bc32800afff218a34cc8d358cbc4eda6064b7",
+          "rightsAssertions": [
+            "NASA center assertion: JSC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 10041067
+          }
+        },
+        {
+          "itemId": "ksc_032105_final_stop",
+          "title": "KSC-05-S-00069",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/ksc_032105_final_stop",
+          "metadataUrl": "https://images-assets.nasa.gov/video/ksc_032105_final_stop/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:44.138754747Z",
+          "metadataSha256": "0ae9ff18d1b3c8bb6d6feb053628a4c07ee1763327d127a65a5e361e93f59ea4",
+          "rightsAssertions": [
+            "NASA center assertion: KSC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+            "NASA creator assertion: NASA or National Aeronautics and Space Administration"
+          ],
+          "representation": {
+            "name": "ksc_032105_final_stop~mobile.mp4",
+            "url": "https://images-assets.nasa.gov/video/ksc_032105_final_stop/ksc_032105_final_stop~mobile.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 2744729
+          }
+        },
+        {
+          "itemId": "JPL-20221117-MSRf-0001-MSR Animation Trailer",
+          "title": "Mars Sample Return: Bringing Mars Rock Samples Back to Earth",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer",
+          "metadataUrl": "https://images-assets.nasa.gov/video/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:44.70160767Z",
+          "metadataSha256": "c3379fb7d47c8addfa73fa85e2a08f029e9f7da79037550477a6e2cc4d1cdbf7",
+          "rightsAssertions": [
+            "NASA center assertion: JPL",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "JPL-20221117-MSRf-0001-MSR Animation Trailer~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 28535344
+          }
+        },
+        {
+          "itemId": "jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4",
+          "title": "Spacesuits for the Next Explorers- Preview Trailer 1- What is an EVA?",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4",
+          "metadataUrl": "https://images-assets.nasa.gov/video/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:45.276570162Z",
+          "metadataSha256": "f6f6fe565b1652e1a9f581335a4e5ba2474d10bffd152af74634c45c07c38f04",
+          "rightsAssertions": [
+            "NASA center assertion: JSC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 11655480
+          }
+        },
+        {
+          "itemId": "KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650",
+          "title": "SWOT Spacecraft Transport Container Move to Trailer",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650",
+          "metadataUrl": "https://images-assets.nasa.gov/video/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:45.853875543Z",
+          "metadataSha256": "55d98352a02a53863a8736ec3af184feb3fc65d7146233cc146ffb357b3fc047",
+          "rightsAssertions": [
+            "NASA center assertion: KSC",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+            "NASA creator assertion: USSF 30th Space Wing/David Holman"
+          ],
+          "representation": {
+            "name": "KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 38101388
+          }
+        },
+        {
+          "itemId": "NASA’s Artemis III Announcement (Official NASA Trailer)",
+          "title": "NASA’s Artemis III Announcement (Official NASA Trailer)",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29",
+          "metadataUrl": "https://images-assets.nasa.gov/video/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:46.423370419Z",
+          "metadataSha256": "87482959f594e8c471c5aa3f6bf1bb392be4935ca4c2fd73cd501a470a2c0b2d",
+          "rightsAssertions": [
+            "NASA center assertion: HQ",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "NASA’s Artemis III Announcement (Official NASA Trailer)~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 13517431
+          }
+        },
+        {
+          "itemId": "OSIRIS-REx 1st US Asteroid Sample Lands Soon (Official NASA Trailer)",
+          "title": "OSIRIS-REx:1st US Asteroid Sample Lands Soon (Official NASA Trailer)",
+          "roleHints": [
+            "trailer"
+          ],
+          "itemUrl": "https://images.nasa.gov/details/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29",
+          "metadataUrl": "https://images-assets.nasa.gov/video/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29/collection.json",
+          "metadataRetrievedAt": "2026-08-26T12:38:46.997882796Z",
+          "metadataSha256": "9bb7a612ca383bc79168543a2ecb3a6ee3b81d4c494d1ef0c04d31ae95e736e6",
+          "rightsAssertions": [
+            "NASA center assertion: HQ",
+            "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+          ],
+          "representation": {
+            "name": "OSIRIS-REx 1st US Asteroid Sample Lands Soon (Official NASA Trailer)~medium.mp4",
+            "url": "https://images-assets.nasa.gov/video/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29~medium.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 11204140
+          }
+        }
+      ]
+    },
+    {
+      "authority": "cdc.gov",
+      "maxRequests": 20,
+      "requestsUsed": 20,
+      "maxResponseBytes": 16777216,
+      "responseBytes": 462813,
+      "maxPredictedMediaBytes": 1073741824,
+      "predictedMediaBytes": 3974465,
+      "maxWallTimeMs": 120000,
+      "wallTimeMs": 5168,
+      "cases": [
+        {
+          "itemId": "charge-your-phone",
+          "title": "Charge Your Phone",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/charge-your-phone.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/charge-your-phone.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:11.940612463Z",
+          "metadataSha256": "364948259452f31738136d999d1197cc1a04dee383019f47aaaedd546e93f092",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "378637863-ATSDR-PSAs-Charge-your-Phone-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/378637863-ATSDR-PSAs-Charge-your-Phone-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 352384
+          }
+        },
+        {
+          "itemId": "know-what-to-do-during-a-natural-disaster",
+          "title": "Know How to Find Information During a Natural Disaster",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/know-what-to-do-during-a-natural-disaster.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/know-what-to-do-during-a-natural-disaster.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:12.473627334Z",
+          "metadataSha256": "14f581b23b9b8326ee3009552d323aa8540d0183b7d70381bdac48a4d5b53db3",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "21222122Hurricane-alerts-1200x645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/21222122Hurricane-alerts-1200x645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 465267
+          }
+        },
+        {
+          "itemId": "clean-up-safely-after-a-natural-disaster",
+          "title": "Clean Up Safely After a Natural Disaster",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/clean-up-safely-after-a-natural-disaster.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/clean-up-safely-after-a-natural-disaster.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:13.011403165Z",
+          "metadataSha256": "4b77462450a49cc678d69f8a1789d68c785ae2b3d8389ec12eff924089c7ac95",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "1155011550Clean-up-safely-1200x645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/1155011550Clean-up-safely-1200x645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 446598
+          }
+        },
+        {
+          "itemId": "use-a-generator-safely",
+          "title": "Use a Generator Safely",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-generator-safely.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-generator-safely.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:13.539392247Z",
+          "metadataSha256": "e6b0f75933367c37f5a8d4c759ee93e9cadfdd00644fe96033730915210e276f",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "7640764019-ATSDR-PSAs-Use-a-Generator-Safely-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/7640764019-ATSDR-PSAs-Use-a-Generator-Safely-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 335456
+          }
+        },
+        {
+          "itemId": "during-hot-weather",
+          "title": "During Hot Weather, Watch for Heat Illness",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/during-hot-weather.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/during-hot-weather.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:14.068006979Z",
+          "metadataSha256": "4d0751c4492c1910f3f2daa0699d943f5cae210ad1b96a1872725b1c84d68425",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "170641706415-ATSDR-PSAs-During-Hot-Weather-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/170641706415-ATSDR-PSAs-During-Hot-Weather-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 549111
+          }
+        },
+        {
+          "itemId": "stay-safe-during-a-tornado",
+          "title": "Stay Safe During a Tornado",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/stay-safe-during-a-tornado.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/stay-safe-during-a-tornado.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:14.600850154Z",
+          "metadataSha256": "3e7b9a1d9dc53a6b042c29903424dc96fa1d2c058827b10e55d265c76e8dc6b1",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "1709117091tornado-1200x645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/1709117091tornado-1200x645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 362706
+          }
+        },
+        {
+          "itemId": "keep-track-of-nearby-wildfire",
+          "title": "Keep Track of Nearby Wildfire",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/keep-track-of-nearby-wildfire.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/keep-track-of-nearby-wildfire.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:15.132072672Z",
+          "metadataSha256": "65b30687a2b908ddf4221035bcbef43482f853278cc6ee2fd2c6f9b5a156ba3b",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "107210725-ATSDR-PSAs-Keep-Track-of-Wildfires-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/107210725-ATSDR-PSAs-Keep-Track-of-Wildfires-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 355704
+          }
+        },
+        {
+          "itemId": "prevent-sweat-in-cold-weather",
+          "title": "Prevent Sweat in Cold Weather",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/prevent-sweat-in-cold-weather.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/prevent-sweat-in-cold-weather.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:15.660002329Z",
+          "metadataSha256": "d01deadd858f66135e5e08d5c0b97de298a49abf152fd0f85b9481425f4852d1",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "5517551712-ATSDR-PSAs-Prevent-sweat-in-cold-weather-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/5517551712-ATSDR-PSAs-Prevent-sweat-in-cold-weather-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 376442
+          }
+        },
+        {
+          "itemId": "talk-to-someone-after-a-disaster",
+          "title": "Talk to Someone After a Disaster",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/talk-to-someone-after-a-disaster.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/talk-to-someone-after-a-disaster.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:16.221358404Z",
+          "metadataSha256": "7ba84d75d2a04ccb432153252bce68a68ca445ba6171d69c5cc9cab97589f82f",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "7605760522-ATSDR-PSAs-Talk-to-Someone-After-a-Disaster-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/7605760522-ATSDR-PSAs-Talk-to-Someone-After-a-Disaster-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 378588
+          }
+        },
+        {
+          "itemId": "use-a-space-heater-safely",
+          "title": "Use a Space Heater Safely",
+          "roleHints": [
+            "PSA"
+          ],
+          "itemUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-space-heater-safely.html",
+          "metadataUrl": "https://www.cdc.gov/natural-disasters/psa-toolkit/use-a-space-heater-safely.html",
+          "metadataRetrievedAt": "2026-08-26T12:53:16.758097838Z",
+          "metadataSha256": "b9bae33d289119191866d366fde1485cabd2d90f4535c41bf6a0b663042b1c68",
+          "rightsAssertions": [
+            "CDC page content-source assertion: National Center for Environmental Health",
+            "CDC agency-material rules require item-level contractor, grantee, third-party, attribution, and non-endorsement review."
+          ],
+          "representation": {
+            "name": "2798279813-ATSDR-PSAs-Use-a-space-heater-safely-1200-by-645.mp4",
+            "url": "https://www.cdc.gov/wcms/video/low-res/disasters/2023/2798279813-ATSDR-PSAs-Use-a-space-heater-safely-1200-by-645.mp4",
+            "mimeType": "video/mp4",
+            "bytes": 352209
+          }
+        }
+      ]
+    },
+    {
+      "authority": "commons.wikimedia.org",
+      "maxRequests": 10,
+      "requestsUsed": 3,
+      "maxResponseBytes": 33554432,
+      "responseBytes": 162981,
+      "maxPredictedMediaBytes": 3221225472,
+      "predictedMediaBytes": 448607902,
+      "maxWallTimeMs": 120000,
+      "wallTimeMs": 988,
+      "cases": [
+        {
+          "itemId": "24619437",
+          "title": "Around the Corner (1937) 24fps selection.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Around_the_Corner_(1937)_24fps_selection.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "94a78c68ffae74a05811e051f0d24ab1d6bdab2e65d2c7297de3861a3d1694fe",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): Public domain",
+            "Commons extmetadata UsageTerms (commons-desc-page): Public domain",
+            "Commons extmetadata Credit (commons-desc-page): <a rel=\"nofollow\" class=\"external free\" href=\"https://archive.org/details/Aroundth1937\">https://archive.org/details/Aroundth1937</a>",
+            "Commons extmetadata Artist (commons-desc-page): <a href=\"https://en.wikipedia.org/wiki/Jam_Handy\" class=\"extiw\" title=\"en:Jam Handy\">Handy (Jam) Organization</a> (for Chevrolet)",
+            "Commons extmetadata Copyrighted (commons-desc-page): False",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): WebM videos|PD US not renewed|Featured media|Media of the day|Advertising videos|Files with closed captioning in English|Video display resolution 640 x 480|Black and white videos|Featured media uploaded by The RedBurn|Documentary films videos|Files with closed captioning in German|Differential gear systems|Automobile final drive crownwheels and differentials|Files with closed captioning in Vietnamese|Files with closed captioning in French|Files with closed captioning in Danish|Featured media of educational videos|Videos of short films from 1937",
+            "Commons MediaInfo P275: null",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"f69dc45ce9c48664155022498b34100d801bd549\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":19652,\"id\":\"Q19652\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"qualifiers\":{\"P459\":[{\"snaktype\":\"value\",\"property\":\"P459\",\"hash\":\"35eca28d1e724d57dc3ec7473729d5f52ed962e9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":29941035,\"id\":\"Q29941035\"},\"type\":\"wikibase-entityid\"}}]},\"qualifiers-order\":[\"P459\"],\"id\":\"M24619437$74C59837-034F-4EAA-9E5A-43CE5AE2B628\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "representation": {
+            "name": "Around_the_Corner_(1937)_24fps_selection.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/3/3e/Around_the_Corner_%281937%29_24fps_selection.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 50976088,
+            "sha1": "7c7c8dd570518bd6117518ada34a3de2d31e8d10"
+          }
+        },
+        {
+          "itemId": "102608577",
+          "title": "McDonald's commercial (1963).webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:McDonald%27s_commercial_(1963).webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "f8d4a077f8d2de94ef01683f0d31a3919e3ce9e0118e652c39d021690a7c4be6",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): Public domain",
+            "Commons extmetadata UsageTerms (commons-desc-page): Public domain",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=HMzSjBcWJ7g\"><bdi lang=\"\">https://www.youtube.com/watch?v=HMzSjBcWJ7g</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=HMzSjBcWJ7g\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): McDonald's",
+            "Commons extmetadata Copyrighted (commons-desc-page): False",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Willard Scott|Media from YouTube|Ronald McDonald|PD US no notice|Advertising videos|Files with closed captioning in English|1963 Ronald McDonald commercial|Files with closed captioning in Spanish|McDonald's advertisements|Videos of television broadcasts",
+            "Commons MediaInfo P275: null",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"f69dc45ce9c48664155022498b34100d801bd549\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":19652,\"id\":\"Q19652\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"qualifiers\":{\"P459\":[{\"snaktype\":\"value\",\"property\":\"P459\",\"hash\":\"2c008f2cbd9dd3c1063361b03b7a68f8ee577fad\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":47012574,\"id\":\"Q47012574\"},\"type\":\"wikibase-entityid\"}}]},\"qualifiers-order\":[\"P459\"],\"id\":\"M102608577$5E01B9C9-5F67-49CF-B9F1-4F61A74FC862\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "representation": {
+            "name": "McDonald's_commercial_(1963).webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/13/McDonald%27s_commercial_%281963%29.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 13948895,
+            "sha1": "fbc88202492e97904477e992237560a6d3e87832"
+          }
+        },
+        {
+          "itemId": "86836478",
+          "title": "Ad - Canal - - The Bear.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Ad_-_Canal_-_-_The_Bear.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "c28e16975eb88e0be31a2b3fd8a2e46ae58a52666a4657ef3b622cb80a267037",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <a href=\"//commons.wikimedia.org/wiki/Category:Vimeo\" title=\"Category:Vimeo\">Vimeo</a>: <a rel=\"nofollow\" class=\"external text\" data-mw-original-href=\"//vimeo.com/119441629\" href=\"https://vimeo.com/119441629\">Ad | Canal + - The Bear</a> (<a rel=\"nofollow\" class=\"external text\" href=\"//web.archive.org/web/*/https://vimeo.com/119441629\"><span style=\"color:#9602fc\">view archived source</span></a>)",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://vimeo.com/mikrosimage\">Mikros</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Advertising videos|Videos of 2015|Uploaded with video2commons|Videos from Vimeo|Video display resolution 1280 x 720|License reviewed by YouTubeReviewBot|Videos uploaded by Eatcha",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M86836478$FFD51D19-08E5-442C-9407-69716423A406\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M86836478$86BCA403-C15C-4C19-9B79-B9B33BDCEBDD\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "Ad_-_Canal_-_-_The_Bear.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/f/f2/Ad_-_Canal_-_-_The_Bear.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 19209641,
+            "sha1": "e0a1b80930ae648c2d22a664d4cafb591fcb2f5a"
+          }
+        },
+        {
+          "itemId": "85093083",
+          "title": "Lavazza - Drops of Sustainability.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Lavazza_-_Drops_of_Sustainability.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "d28281992787429a8d76555fb6affafb22304c1998fca0ccf21b10dc4275aa61",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY-SA 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by-sa/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution-Share Alike 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <a href=\"//commons.wikimedia.org/wiki/Category:Vimeo\" title=\"Category:Vimeo\">Vimeo</a>: <a rel=\"nofollow\" class=\"external text\" data-mw-original-href=\"//vimeo.com/260920260\" href=\"https://vimeo.com/260920260\">Lavazza - Drops of Sustainability</a> (<a rel=\"nofollow\" class=\"external text\" href=\"//web.archive.org/web/*/https://vimeo.com/260920260\"><span style=\"color:#9602fc\">view archived source</span></a>)",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://vimeo.com/studioianus\">Studio Ianus</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Advertising videos|Videos of 2018|Uploaded with video2commons|Videos from Vimeo|License reviewed by YouTubeReviewBot",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"a35b4558d66c92eacbe2f569697ffb1934e0316e\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14946043,\"id\":\"Q14946043\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M85093083$73FC6384-1063-4507-8F61-8EC622E62FF7\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M85093083$6E80E986-70CD-48E3-B75D-7B58F3ED4D90\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+          "representation": {
+            "name": "Lavazza_-_Drops_of_Sustainability.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1c/Lavazza_-_Drops_of_Sustainability.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 24129581,
+            "sha1": "026da14103affa0b7ffc8c0cf8a5f00a8224b418"
+          }
+        },
+        {
+          "itemId": "161059441",
+          "title": "【完全版pv】累計15万部突破！ 『組長娘と世話係』第２巻記念pv！.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:%E3%80%90%E5%AE%8C%E5%85%A8%E7%89%88pv%E3%80%91%E7%B4%AF%E8%A8%8815%E4%B8%87%E9%83%A8%E7%AA%81%E7%A0%B4%EF%BC%81_%E3%80%8E%E7%B5%84%E9%95%B7%E5%A8%98%E3%81%A8%E4%B8%96%E8%A9%B1%E4%BF%82%E3%80%8F%E7%AC%AC%EF%BC%92%E5%B7%BB%E8%A8%98%E5%BF%B5pv%EF%BC%81.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "12f902b50c57e2793ae2947ec7a6ebf8755f2abe6072bc96cab79750aef045b8",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=hpbgJk-taGc\"><bdi lang=\"\">【完全版PV】累計15万部突破！ 『組長娘と世話係』第２巻記念PV！</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=hpbgJk-taGc\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): [マイクロマガジン社MICRO MAGAZINE, INC. <a rel=\"nofollow\" class=\"external free\" href=\"https://www.youtube.com/@micromagazineinc.9547\">https://www.youtube.com/@micromagazineinc.9547</a>]",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Media from YouTube|Manga|License review needed (video)|Advertising videos|Videos about the culture of Japan|Videos in Japanese",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M161059441$880DB943-307E-47DA-9376-4497F6037F50\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M161059441$B653C2AD-2C18-4932-92FD-4CE0F3A86893\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "【完全版pv】累計15万部突破！_『組長娘と世話係』第２巻記念pv！.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/53/%E3%80%90%E5%AE%8C%E5%85%A8%E7%89%88pv%E3%80%91%E7%B4%AF%E8%A8%8815%E4%B8%87%E9%83%A8%E7%AA%81%E7%A0%B4%EF%BC%81_%E3%80%8E%E7%B5%84%E9%95%B7%E5%A8%98%E3%81%A8%E4%B8%96%E8%A9%B1%E4%BF%82%E3%80%8F%E7%AC%AC%EF%BC%92%E5%B7%BB%E8%A8%98%E5%BF%B5pv%EF%BC%81.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 142832973,
+            "sha1": "05809957cf0a5d407c4fba17b14f050e7c755009"
+          }
+        },
+        {
+          "itemId": "103260817",
+          "title": "Softsoap commercial 2 (1980).webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Softsoap_commercial_2_(1980).webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "29bc958e7d5dfb1397c0d914e1de4a41050bb0abcd1266970f7877705fd9ebba",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): Public domain",
+            "Commons extmetadata UsageTerms (commons-desc-page): Public domain",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=GlGoskgGZ8s\"><bdi lang=\"\">https://www.youtube.com/watch?v=GlGoskgGZ8s</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=GlGoskgGZ8s\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): Colgate-Palmolive",
+            "Commons extmetadata Copyrighted (commons-desc-page): False",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Media from YouTube|Softsoap|PD US no notice 1989|Advertising videos|PD-US missing SDC copyright status|Television advertisements of the United States",
+            "Commons MediaInfo P275: null",
+            "Commons MediaInfo P6216: null",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "representation": {
+            "name": "Softsoap_commercial_2_(1980).webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/6/6f/Softsoap_commercial_2_%281980%29.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 1797026,
+            "sha1": "0204012206385778964785c927064eef73516bf0"
+          }
+        },
+        {
+          "itemId": "150623463",
+          "title": "4D Lotto Australia Launch Video BBQ.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:4D_Lotto_Australia_Launch_Video_BBQ.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "182abc34f636523cfc7812d647fbe207e03ad15095bfc4cb40eaecb526711246",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=ZPFYegP_fUs\"><bdi lang=\"\">[4D Lotto Australia] Launch Video – BBQ | 30 sec ver</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=ZPFYegP_fUs\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/@4dlotto_au\">4D Lotto Australia</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Media from YouTube|License review needed (video)|Advertising videos|Lotteries in Austria|Lottery advertising",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M150623463$EE756C15-1A66-4D4A-ADE9-A50CB35BF613\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M150623463$36C2ECFD-D9E2-4AAB-9432-2B439D060F82\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P7482\",\"hash\":\"b82dd47222a210c6dc1f428b693c2fbf7b0e0d6e\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":74228490,\"id\":\"Q74228490\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"qualifiers\":{\"P973\":[{\"snaktype\":\"value\",\"property\":\"P973\",\"hash\":\"f9fafc1a50d3c95af2d23b39e6c13effbe8aa358\",\"datavalue\":{\"value\":\"https://www.youtube.com/watch?v=ZPFYegP_fUs\",\"type\":\"string\"}}],\"P3274\":[{\"snaktype\":\"value\",\"property\":\"P3274\",\"hash\":\"e15c144c07b1b4319b9f79bfc6f15964d9347b03\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":866,\"id\":\"Q866\"},\"type\":\"wikibase-entityid\"}}]},\"qualifiers-order\":[\"P973\",\"P3274\"],\"id\":\"M150623463$99A9560B-D94F-489C-95D4-C7D7A49E2577\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P170: [{\"mainsnak\":{\"snaktype\":\"somevalue\",\"property\":\"P170\",\"hash\":\"d3550e860f988c6675fff913440993f58f5c40c5\"},\"type\":\"statement\",\"qualifiers\":{\"P2093\":[{\"snaktype\":\"value\",\"property\":\"P2093\",\"hash\":\"eec01650dd542b573555115afb2648f83e0ac6c7\",\"datavalue\":{\"value\":\"4D Lotto Australia\",\"type\":\"string\"}}],\"P11245\":[{\"snaktype\":\"value\",\"property\":\"P11245\",\"hash\":\"dc7296a810a6c37fd01bf3902c7f08c92615d2dd\",\"datavalue\":{\"value\":\"4dlotto_au\",\"type\":\"string\"}}],\"P2397\":[{\"snaktype\":\"value\",\"property\":\"P2397\",\"hash\":\"d406d75bbae1cfacfd3ffec3eaf98230350f03b6\",\"datavalue\":{\"value\":\"UC6ZWr0niG_pvL3goy1yA28w\",\"type\":\"string\"}}]},\"qualifiers-order\":[\"P2093\",\"P11245\",\"P2397\"],\"id\":\"M150623463$DB6FDF9A-7785-4223-8CDA-0075E867136A\",\"rank\":\"normal\"}]"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "4D_Lotto_Australia_Launch_Video_BBQ.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/d/dc/4D_Lotto_Australia_Launch_Video_BBQ.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 32860737,
+            "sha1": "a4d1a5b74258b035a71f1877b0a19429ff32697f"
+          }
+        },
+        {
+          "itemId": "144141779",
+          "title": "Film in 8K, watch in 8K- Show what you cherish Ep 1 - Samsung.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Film_in_8K,_watch_in_8K-_Show_what_you_cherish_Ep_1_-_Samsung.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "0c7d4afa9ebae74a54c405d3919e57e5c38c4bcf089c0af71820262c90f7d5fd",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=Gml1zoCGev8\"><bdi lang=\"\">Film in 8K, watch in 8K: Show what you cherish Ep 1 | Samsung</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=Gml1zoCGev8\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/@Samsung\">Samsung</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Media from YouTube|Videos from YouTube|License review needed (video)|Advertising videos|Uploaded with video2commons|Taken with Samsung Galaxy S23 Ultra",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M144141779$A61D79B4-2056-4B43-B5AA-EBEA95828775\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M144141779$82EAF015-911A-4B97-AB2E-18BACA8E5172\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "Film_in_8K,_watch_in_8K-_Show_what_you_cherish_Ep_1_-_Samsung.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/5/50/Film_in_8K%2C_watch_in_8K-_Show_what_you_cherish_Ep_1_-_Samsung.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 106886302,
+            "sha1": "aa447937878f547b0a2bd974866fc344d370ed86"
+          }
+        },
+        {
+          "itemId": "152142713",
+          "title": "Саша Спилберг. Бьюти-мания на Lamoda.webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:%D0%A1%D0%B0%D1%88%D0%B0_%D0%A1%D0%BF%D0%B8%D0%BB%D0%B1%D0%B5%D1%80%D0%B3._%D0%91%D1%8C%D1%8E%D1%82%D0%B8-%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F_%D0%BD%D0%B0_Lamoda.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "fcde254dc7be9e3cd78560aabfa7b264e805da1bec52dcf362cdbcaf50e35166",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <bdi lang=\"en\" dir=\"ltr\"><a href=\"//commons.wikimedia.org/wiki/Commons:YouTube_files\" title=\"Commons:YouTube files\">YouTube</a>: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=Yl5sJnTxFao\"><bdi lang=\"\">Саша Спилберг. Бьюти-мания на Lamoda</bdi></a> – View/save archived versions on <a rel=\"nofollow\" class=\"external text\" href=\"https://web.archive.org/web/*/https://www.youtube.com/watch?v=Yl5sJnTxFao\">archive.org</a></bdi>",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/@lamoda\">Lamoda.ru</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Media from YouTube|Alexandra Balkovskaya|License review needed (video)|Advertising videos|Uploaded with video2commons|Videos in Russian",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M152142713$DE4D68BD-EF6F-4BFE-8659-43861FC64ED4\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M152142713$1A2F5766-1930-46D8-A832-FE92C5E44287\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P7482\",\"hash\":\"b82dd47222a210c6dc1f428b693c2fbf7b0e0d6e\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":74228490,\"id\":\"Q74228490\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"qualifiers\":{\"P973\":[{\"snaktype\":\"value\",\"property\":\"P973\",\"hash\":\"366cce1bfde229ae1ce04b838bf09b4de54a3106\",\"datavalue\":{\"value\":\"https://www.youtube.com/watch?v=Yl5sJnTxFao\",\"type\":\"string\"}}],\"P3274\":[{\"snaktype\":\"value\",\"property\":\"P3274\",\"hash\":\"e15c144c07b1b4319b9f79bfc6f15964d9347b03\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":866,\"id\":\"Q866\"},\"type\":\"wikibase-entityid\"}}]},\"qualifiers-order\":[\"P973\",\"P3274\"],\"id\":\"M152142713$0AE33B05-B564-4CB0-9B20-9E9061A7AF15\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P170: [{\"mainsnak\":{\"snaktype\":\"somevalue\",\"property\":\"P170\",\"hash\":\"d3550e860f988c6675fff913440993f58f5c40c5\"},\"type\":\"statement\",\"qualifiers\":{\"P2093\":[{\"snaktype\":\"value\",\"property\":\"P2093\",\"hash\":\"9c06374bcd0a0a8f87ce7c64e70f73c7ff33c3ff\",\"datavalue\":{\"value\":\"Lamoda.ru\",\"type\":\"string\"}}],\"P11245\":[{\"snaktype\":\"value\",\"property\":\"P11245\",\"hash\":\"f9254384d14652f535b52108a7ec74fbddf0b47f\",\"datavalue\":{\"value\":\"lamoda\",\"type\":\"string\"}}],\"P2397\":[{\"snaktype\":\"value\",\"property\":\"P2397\",\"hash\":\"2c26ba26e5af73d2595f7f149af2b3109ddb754f\",\"datavalue\":{\"value\":\"UCTWIqhYGbEhPvIfpdqeOLSw\",\"type\":\"string\"}}]},\"qualifiers-order\":[\"P2093\",\"P11245\",\"P2397\"],\"id\":\"M152142713$CBFA12AF-B60F-438E-8BA3-D216B628FB45\",\"rank\":\"normal\"}]"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "Саша_Спилберг._Бьюти-мания_на_Lamoda.webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/8/85/%D0%A1%D0%B0%D1%88%D0%B0_%D0%A1%D0%BF%D0%B8%D0%BB%D0%B1%D0%B5%D1%80%D0%B3._%D0%91%D1%8C%D1%8E%D1%82%D0%B8-%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F_%D0%BD%D0%B0_Lamoda.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 51148730,
+            "sha1": "8ed67931846153fad0d4823f5452ef524b7bad7d"
+          }
+        },
+        {
+          "itemId": "106393643",
+          "title": "Lacrosse Unlimited \"Treat Your Feet\".webm",
+          "roleHints": [
+            "commercial"
+          ],
+          "discoveryPath": [
+            "Category:Advertising videos"
+          ],
+          "itemUrl": "https://commons.wikimedia.org/wiki/File:Lacrosse_Unlimited_%22Treat_Your_Feet%22.webm",
+          "metadataUrl": "https://commons.wikimedia.org/w/api.php?action=wbgetentities&format=json&formatversion=2&ids=M24619437%7CM102608577%7CM86836478%7CM85093083%7CM161059441%7CM103260817%7CM150623463%7CM144141779%7CM152142713%7CM106393643&maxlag=5&props=claims%7Cinfo",
+          "metadataRetrievedAt": "2026-08-26T14:05:08.792089709Z",
+          "metadataSha256": "58b0c6c88cd2eda4264dc442bca65997fe0963a3fa4b3e46b1e0cf235ed2cb9e",
+          "rightsAssertions": [
+            "Commons extmetadata LicenseShortName (commons-desc-page): CC BY 3.0",
+            "Commons extmetadata LicenseUrl (commons-desc-page): https://creativecommons.org/licenses/by/3.0",
+            "Commons extmetadata UsageTerms (commons-desc-page): Creative Commons Attribution 3.0",
+            "Commons extmetadata Credit (commons-desc-page): <a href=\"//commons.wikimedia.org/wiki/Category:Vimeo\" title=\"Category:Vimeo\">Vimeo</a>: <a rel=\"nofollow\" class=\"external text\" data-mw-original-href=\"//vimeo.com/233847275\" href=\"https://vimeo.com/233847275\">Lacrosse Unlimited \"Treat Your Feet\"</a> (<a rel=\"nofollow\" class=\"external text\" href=\"//web.archive.org/web/*/https://vimeo.com/233847275\"><span style=\"color:#9602fc\">view archived source</span></a>)",
+            "Commons extmetadata Artist (commons-desc-page): <a rel=\"nofollow\" class=\"external text\" href=\"https://vimeo.com/peterfrederickfilms\">Peter Frederick</a>",
+            "Commons extmetadata Copyrighted (commons-desc-page): True",
+            "Commons extmetadata Restrictions (commons-desc-page): ",
+            "Commons extmetadata Categories (commons-categories): Advertising videos|Uploaded with video2commons|Videos from Vimeo|License reviewed by YouTubeReviewBot|Stop motion videos",
+            "Commons MediaInfo P275: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P275\",\"hash\":\"079171cc72edf939cc43c28db72cff68862260f9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":14947546,\"id\":\"Q14947546\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M106393643$2B5C06E2-18F2-400B-A89C-D483F6C5BA5B\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P6216: [{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6216\",\"hash\":\"5570347fdc76d2a80732f51ea10ee4b144a084e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":50423863,\"id\":\"Q50423863\"},\"type\":\"wikibase-entityid\"}},\"type\":\"statement\",\"id\":\"M106393643$58A2266F-8AD3-454B-9507-122A517630FF\",\"rank\":\"normal\"}]",
+            "Commons MediaInfo P7482: null",
+            "Commons MediaInfo P170: null"
+          ],
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+          "representation": {
+            "name": "Lacrosse_Unlimited_\"Treat_Your_Feet\".webm",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/9/96/Lacrosse_Unlimited_%22Treat_Your_Feet%22.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+            "mimeType": "video/webm",
+            "bytes": 4817929,
+            "sha1": "0fb2bb21513ed3ed925fd84730f8aec9706c2ad2"
+          }
+        }
+      ]
+    }
+  ]
+}

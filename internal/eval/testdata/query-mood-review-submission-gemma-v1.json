@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "packetSha256": "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+  "reviewer": {
+    "id": "gemma-local-a",
+    "provider": "ollama",
+    "route": "loopback",
+    "model": "gemma4:12b",
+    "resolvedModel": "gemma4:12b",
+    "modelFamily": "gemma4",
+    "identityKind": "ollama-model-digest",
+    "identitySha256": "4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c",
+    "zeroDataRetention": false,
+    "promptVersion": "query-mood-blind-review-v1"
+  },
+  "output": "{\"assessments\":[{\"alias\":\"candidate-e492\",\"scores\":{\"valence\":1,\"arousal\":2,\"threatFear\":1,\"comedicWarmth\":2,\"attentionalDemand\":2},\"uncertainAxes\":[],\"evidenceIds\":[\"mood-e04\"],\"rationale\":\"The evidence describes the film as a 'darkly satirical thriller' with 'wickedly comic' elements. This suggests a lower valence than a pure comedy but higher arousal than a standard drama. The 'dark' and 'thriller' aspects imply some threat/tension, while 'wickedly comic' provides a level of comedic warmth.\"},{\"alias\":\"candidate-7f3a\",\"scores\":{\"valence\":3,\"arousal\":1,\"threatFear\":0,\"comedicWarmth\":3,\"attentionalDemand\":1},\"uncertainAxes\":[],\"evidenceIds\":[\"mood-e01\",\"mood-e02\"],\"rationale\":\"The evidence explicitly mentions 'reassuring outcomes', 'family-fun', and 'kindness'. These descriptors point to high positive valence and high comedic warmth, with low threat and low arousal.\"},{\"alias\":\"candidate-b1c8\",\"scores\":{\"valence\":1,\"arousal\":3,\"threatFear\":3,\"comedicWarmth\":0,\"attentionalDemand\":3},\"uncertainAxes\":[],\"evidenceIds\":[\"mood-e03\"],\"rationale\":\"The evidence describes a 'threatening shark' and 'sustained suspense' during a 'hunt'. This indicates high arousal, high threat/fear, and a lack of comedic warmth. The 'sustained' nature of the suspense suggests high attentional demand.\"}]}",
+  "outputSha256": "d3ffefe6f288f614b775aa2261de552d8b1ebe76aeacc7db8ee4672dcff89d83",
+  "inference": {
+    "completedAt": "2026-09-17T02:03:15.668427Z",
+    "attempts": 1,
+    "promptTokens": 1359,
+    "completionTokens": 336,
+    "latencyMs": 18116,
+    "costBasis": "local-unmetered"
+  }
+}

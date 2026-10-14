@@ -1,0 +1,15 @@
+# Live docs that name a missing repo path on purpose. scripts/check-doc-paths.sh reads this.
+# One entry per line: <doc> <path>  # why the path is named although it does not exist.
+
+# #1648 decides where phase gates live now that the v2 build plan is archived out of docs/.
+.agents/workflows/gate-review.md docs/engineering/archive/v2-build-plan.md  # #1648
+.agents/workflows/register-check.md docs/engineering/archive/v2-build-plan.md  # #1648
+
+# States that the directory does not exist.
+docs/agents/domain.md docs/adr  # "There is no `docs/adr/` directory."
+
+# The bench's CI baseline directory; the bench README documents that none is committed yet.
+docs/contributing/playout-bench.md docs/engineering/playout-bench/ci  # future baseline
+
+# A retirement note: the package was deleted with the chain.
+docs/design/playout.md internal/playoutcert  # retired

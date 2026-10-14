@@ -1,0 +1,157 @@
+## ---- build / run ---------------------------------------------------------
+
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus
+build: rust-build ## build the cgo-free Go server and required Rust image worker
+	release="$${LOOMARR_RELEASE:-dev}"; \
+	  CGO_ENABLED=0 $(GO) build \
+	    -ldflags="-X github.com/loomarr/loomarr/internal/buildinfo.version=$$release" \
+	    -o $(BIN_DIR)/loomarr ./cmd/loomarr; \
+	  $(BIN_DIR)/loomarr-image capabilities --protocol 1 --self-test | grep -q "\"release\":\"$$release\""
+
+rust-build: ## build the required Rust image worker
+	LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(CARGO) build --release --locked -p loomarr-image
+	install -d $(BIN_DIR)
+	install -m 0755 target/release/loomarr-image $(BIN_DIR)/loomarr-image
+
+image-cert: rust-build ## certify the Rust image worker; optional IMAGE_CERT_CORPUS=/absolute/path
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_CERT_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-certification.json}"; \
+	  if [ -n "$${IMAGE_CERT_CORPUS:-}" ]; then \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report" --corpus "$$IMAGE_CERT_CORPUS"; \
+	  else \
+	    LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-cert \
+	      --worker "$(BIN_DIR)/loomarr-image" --report "$$report"; \
+	  fi
+
+image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${IMAGE_BENCH_REPORT:-$$LOOMARR_ARTIFACT_DIR/image-benchmark.json}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" $(GO) run ./cmd/image-bench \
+	    --worker "$(BIN_DIR)/loomarr-image" --report "$$report" \
+	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}" \
+	    --workers "$${IMAGE_BENCH_WORKERS:-1}" \
+	    --avif-threads "$${IMAGE_BENCH_AVIF_THREADS:-1}"
+
+playout-bench-corpus: ## generate the playout-bench corpus cache (keyed by recipe hash); run OUTSIDE any shared lock, then make playout-bench
+	$(GO) run ./cmd/playout-bench --corpus-only --ffmpeg "$${PLAYOUT_BENCH_FFMPEG:-ffmpeg}"
+
+playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/contributing/playout-bench.md)
+	$(GO) run ./cmd/playout-bench \
+	  --ffmpeg "$${PLAYOUT_BENCH_FFMPEG:-ffmpeg}" \
+	  --family "$${PLAYOUT_BENCH_FAMILY:-}" \
+	  --thresholds "$${PLAYOUT_BENCH_THRESHOLDS:-full}" \
+	  --height "$${PLAYOUT_BENCH_HEIGHT:-1080}" \
+	  --start-runs "$${PLAYOUT_BENCH_START_RUNS:-20}" \
+	  --max-streams "$${PLAYOUT_BENCH_MAX_STREAMS:-16}" \
+	  --films "$${PLAYOUT_BENCH_FILMS:-}" \
+	  --baseline-dir "$${PLAYOUT_BENCH_BASELINE_DIR:-docs/engineering/playout-bench}" \
+	  --tolerance "$${PLAYOUT_BENCH_TOLERANCE:-0.15}" \
+	  $${PLAYOUT_BENCH_ACCEPT:+--accept}
+
+image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  report_dir="$${IMAGE_BENCH_REPORT_DIR:-$$LOOMARR_ARTIFACT_DIR/image-parallelism}"; \
+	  LOOMARR_RELEASE="$${LOOMARR_RELEASE:-dev}" GO="$(GO)" \
+	    ./scripts/image-parallelism-bench.sh "$(BIN_DIR)/loomarr-image" "$$report_dir"
+
+.PHONY: dev
+dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev: $$COMPOSE_PROJECT_NAME — Tunarr http://localhost:$$TUNARR_DEV_PORT"; \
+	  docker compose -p "$$COMPOSE_PROJECT_NAME" -f docker/compose.dev.yaml up -d
+
+.PHONY: observability-dev observability-dev-down observability-dev-test
+observability-dev: ## seed SQLite if needed, then start isolated local Prometheus + Grafana
+	@./scripts/observability-dev.sh up
+
+observability-dev-down: ## stop this worktree's local observability stack (preserves its data)
+	@./scripts/observability-dev.sh down
+
+observability-dev-test: ## prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP
+	@./scripts/observability-dev-runtime-test.sh
+
+.PHONY: test-sso
+test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
+	@# Not in comprehensive verification: §19 keeps the default suite Docker-free, like test-pg.
+	@#
+	@# TWO providers, because each found a bug the other could not. Authelia: profile claims
+	@# live at userinfo, not in the id_token, so every login against a default install was
+	@# refused. Authentik: its issuer is path-based WITH a trailing slash, which our
+	@# normalisation stripped — discovery failed outright. A hand-written stub IdP showed
+	@# neither, because it was our own reading of the spec on both sides of the wire.
+	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
+
+.PHONY: dev-be
+dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
+	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
+	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
+	@# is how this box spent a session serving a stale binary.
+	@#
+	@# ⚠ SINGLE-INSTANCE GUARD (scripts/dev-be-guard.sh). Air itself has no "am I already
+	@# running?" check, so a SECOND `make dev-be` used to start a second Air + binary that lost
+	@# the :8080 bind and exited — while the stale one kept serving OLD code. That zombie cost
+	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
+	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  mkdir -p .agent-data "$$LOOMARR_ARTIFACT_DIR" "$${LOOMARR_AGENT_FILLER_DIR:-.filler-drop}" "$${LOOMARR_AGENT_IMAGES_DIR:-.agent-data/images}"; \
+	  echo "dev-be: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_DEV_PORT"; \
+	  sh scripts/dev-be-guard.sh; \
+	  sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
+	      sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
+	    exec $(GO) run github.com/air-verse/air@v1.67.4'
+	@# ⚠ STALE-BINARY WATCHDOG (scripts/dev-be-watchdog.sh). Even with `.air.toml`'s
+	@# stop_on_error=false + poll=true, Air can still end up ALIVE but not rebuilding (poll loop
+	@# stalled) — serving a frozen binary while your saves do nothing. Config can't detect its own
+	@# watcher dying; this out-of-band watchdog does. It runs beside Air, notices when the running
+	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
+	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
+	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
+
+.PHONY: rust-dev-build
+rust-dev-build: ## build the required Rust worker for local development
+	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
+.PHONY: dev-gpu
+dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev-gpu: $$COMPOSE_PROJECT_NAME — Tunarr http://localhost:$$TUNARR_DEV_PORT"; \
+	  docker compose -p "$$COMPOSE_PROJECT_NAME" -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d
+
+.PHONY: dev-fe
+dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its backend
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  echo "dev-fe: $$LOOMARR_INSTANCE — http://localhost:$$LOOMARR_FE_PORT -> $$LOOMARR_API"; \
+	  cd $(WEB) && pnpm --filter @loomarr/web dev
+
+.PHONY: seed
+seed: ## populate a dev store via the real domain paths (approval gate honored — AGENTS.md)
+	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed
+
+# The demo library (#1587): invented titles, generated art and video, no real media anywhere.
+# Its stand-in media server listens on 22000 + this worktree's slot (LOOMARR_AGENT_SLOT from
+# dev-env.sh), beside the other dev ports; DEMO_LIBRARY_ADDR overrides it.
+.PHONY: demo-library
+demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
+	@eval "$$(./scripts/dev-env.sh export)"; go run ./cmd/demo-library serve
+
+.PHONY: demo-titles-verify
+demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path)
+	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoRealTitles|TestMigratedFixturesStayInvented|TestMigratedGoTestsStayInvented|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented|TestCIRunsTheGuardWheneverAScannedFileChanges'
+
+.PHONY: demo-seed
+demo-seed: ## point this worktree's backend at the running demo library and create the demo channels (idempotent)
+	@eval "$$(./scripts/dev-env.sh export)"; \
+	  BASE=$${BASE:-$$LOOMARR_API} DEMO_WEB_URL=$${DEMO_WEB_URL:-http://localhost:$$LOOMARR_FE_PORT} \
+	  DATABASE_URL=$${DATABASE_URL:-$$LOOMARR_AGENT_DATABASE_URL} go run ./cmd/demo-library seed
+
+# The docs screenshots (#1572), from the demo seed above. Needs this worktree's backend and
+# frontend running (make dev-be, make dev-fe); the watch shot plays a stream, so it takes the
+# GPU lock. Rewrites docs/images/screenshots/; see docs/contributing/docs.md.
+DOCS_CAPTURE_RAW ?= .artifacts/docs-capture
+.PHONY: docs-capture
+docs-capture: ## regenerate the docs screenshots from the demo seed (needs dev-be, dev-fe, demo-library, demo-seed)
+	PLAYWRIGHT_DIR=$(CURDIR)/$(WEB)/node_modules/.pnpm/node_modules/playwright/ \
+	  flock /tmp/loomarr-gpu.lock node scripts/docs-capture/capture.mjs \
+	  $${DEMO_DIR:-.agent-data/demo-library}/seed.json $(DOCS_CAPTURE_RAW)
+	PLAYWRIGHT_DIR=$(CURDIR)/$(WEB)/node_modules/.pnpm/node_modules/playwright/ \
+	  node scripts/docs-capture/frame.mjs $(DOCS_CAPTURE_RAW) docs/images/screenshots

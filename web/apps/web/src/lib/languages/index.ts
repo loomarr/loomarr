@@ -1,0 +1,1 @@
+export { languageName } from "./languages";

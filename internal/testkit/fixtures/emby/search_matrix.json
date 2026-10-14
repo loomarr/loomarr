@@ -1,0 +1,44 @@
+{
+  "Items": [
+    {
+      "Name": "The Matrix",
+      "Id": "1000",
+      "ProductionYear": 1999,
+      "ProviderIds": {
+        "Tmdb": "603",
+        "Tvdb": "169",
+        "Imdb": "tt0133093"
+      },
+      "IsFolder": false,
+      "Type": "Movie",
+      "MediaType": "Video"
+    },
+    {
+      "Name": "The Matrix Revolutions",
+      "Id": "1001",
+      "ProductionYear": 2003,
+      "ProviderIds": {
+        "Tmdb": "605",
+        "Tvdb": "687",
+        "Imdb": "tt0242653"
+      },
+      "IsFolder": false,
+      "Type": "Movie",
+      "MediaType": "Video"
+    },
+    {
+      "Name": "The Matrix Resurrections",
+      "Id": "1002",
+      "ProductionYear": 2021,
+      "ProviderIds": {
+        "Tmdb": "624860",
+        "Tvdb": "131590",
+        "Imdb": "tt10838180"
+      },
+      "IsFolder": false,
+      "Type": "Movie",
+      "MediaType": "Video"
+    }
+  ],
+  "TotalRecordCount": 4
+}

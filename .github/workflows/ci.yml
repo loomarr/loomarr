@@ -1,0 +1,512 @@
+# CI admission and aggregation (AGENTS.md / design §19). Product implementations live in
+# family-named reusable workflows; every gate still enters through a repository Make target.
+name: CI
+
+on:
+  pull_request:
+  # The merge queue dispatches batches as `merge_group`, NOT `pull_request`. Without this
+  # trigger the required `CI` check never runs for a queued PR and the queue stalls forever
+  # waiting on a status that cannot arrive.
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Manual CI assurance scope"
+        required: true
+        default: release-candidate
+        type: choice
+        options:
+          - release-candidate
+          - full
+          - apple-cache-validation
+          - tuner
+      # Only read by the `tuner` scope: rerun the tuner matrix in one Playwright project N times to
+      # measure an engine-specific flake without paying for the rest of the matrix (#1443). Retries
+      # stay 0 and no budget moves; other scopes ignore both inputs.
+      project:
+        description: "tuner scope only: Playwright project (all, chromium, firefox, webkit)"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - chromium
+          - firefox
+          - webkit
+      repeat_each:
+        description: "tuner scope only: repetitions per project (1-100)"
+        required: false
+        default: "1"
+        type: string
+
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# A newer push to the same ref cancels the older in-flight run.
+#
+# ⚠ NEVER cancel a merge-queue run. `merge_group` refs are unique per batch so collisions are
+# unlikely, but a cancelled queue run reports a non-success conclusion, which ejects the whole
+# batch from the queue — turning a harmless double-push into a merge that silently does not
+# happen. Only PR and branch runs are cancellable.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  # Which trees moved. Everything else gates on this, so a docs-only PR costs one ~5s job
+  # instead of ~14 runner-minutes verifying code nobody touched.
+  #
+  # ⚠ Filtering happens PER JOB, never with a workflow-level `paths:`. A workflow that does
+  # not trigger reports no checks at all, so a required check sits "expected" forever and the
+  # PR cannot merge. This way the run always happens; individual jobs skip.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      lane: ${{ steps.filter.outputs.lane }}
+      go: ${{ steps.filter.outputs.go }}
+      web: ${{ steps.filter.outputs.web }}
+      clients: ${{ steps.filter.outputs.clients }}
+      image: ${{ steps.filter.outputs.image }}
+      docs: ${{ steps.filter.outputs.docs }}
+      agent: ${{ steps.filter.outputs.agent }}
+      android: ${{ steps.filter.outputs.android }}
+      impact_contracts: ${{ steps.impact.outputs.contracts }}
+      impact_go: ${{ steps.impact.outputs.go }}
+      impact_go_full: ${{ steps.impact.outputs.go_full }}
+      impact_rust: ${{ steps.impact.outputs.rust }}
+      impact_postgres: ${{ steps.impact.outputs.postgres }}
+      impact_web: ${{ steps.impact.outputs.web }}
+      impact_clients: ${{ steps.impact.outputs.clients }}
+      impact_apple_mobile: ${{ steps.impact.outputs.apple_mobile }}
+      impact_apple_tv: ${{ steps.impact.outputs.apple_tv }}
+      impact_expo_android_mobile: ${{ steps.impact.outputs.expo_android_mobile }}
+      impact_expo_android_tv: ${{ steps.impact.outputs.expo_android_tv }}
+      impact_visual: ${{ steps.impact.outputs.visual }}
+      impact_e2e: ${{ steps.impact.outputs.e2e }}
+      impact_tuner: ${{ steps.impact.outputs.tuner }}
+      impact_image: ${{ steps.impact.outputs.image }}
+      impact_docs: ${{ steps.impact.outputs.docs }}
+      impact_agent: ${{ steps.impact.outputs.agent }}
+      impact_android: ${{ steps.impact.outputs.android }}
+      impact_playout_bench: ${{ steps.impact.outputs.playout_bench }}
+      impact_policy: ${{ steps.impact.outputs.policy }}
+      release_candidate: ${{ steps.filter.outputs.release_candidate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # need the merge base to diff against
+      # Plain git rather than a third-party action: this is ~15 lines of shell, and a
+      # marketplace action here would be a new dependency (AGENTS.md) whose whole job is
+      # `git diff --name-only`. It also fails SAFE — any error, or an unresolvable base,
+      # falls through to running everything.
+      - name: Which trees moved
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SCOPE: ${{ inputs.scope || '' }}
+        run: |
+          set -uo pipefail
+          ./scripts/ci-lane.sh "$EVENT_NAME" "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            ./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The merge queue diffs against the batch's main base, so it selects the same gates as
+          # the PR it carries (scripts/ci-diff-base-test.sh). No usable base (first push,
+          # force-push, a new branch): run everything. Skipping because we could not work out
+          # what changed would be the wrong failure direction.
+          BASE="$(./scripts/ci-diff-base.sh "$EVENT_NAME" "$GITHUB_EVENT_PATH")"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "no usable base ($BASE) — running every job"
+            { echo "go=true"; echo "web=true"; echo "clients=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; echo "android=true"; echo "release_candidate=false"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "changed files:"; echo "$changed"
+
+          # This is the legacy broad-family comparison retained in the run summary while the
+          # specialized classifier owns every job. Its values never activate a product build.
+          #
+          # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make retired-verify`
+          # is `./scripts/check-retired.sh`, and `make tags-verify` is `./scripts/check-tags.sh`.
+          # Without it a PR that edited only a guard script skipped the one job that executes
+          # it, so a broken guard merged unproven. The help set was already listed for being
+          # retired-verify's INPUT; the script itself was the gap — the guard was covered
+          # against the thing it reads but not against itself.
+          #
+          # ⚠ `docs/design.md` is here because the Go job ASSERTS ON IT. Two tests read it:
+          # `TestPackageMapListsEveryPackage` (§14.2 lists every package) and
+          # `TestArchDocs_NoDrift` (§2's generated package map matches the code). It was a
+          # pre-existing gap for the first of those — a PR that hand-edited design.md could
+          # break the §14.2 gate while skipping the only job that runs it. Same class as the
+          # `scripts/` omission above: the guard was covered against its code input but not
+          # against the document it reads.
+          #
+          # ⚠ `docs/reference/` is here for the same reason, one generator over: its pages
+          # are GENERATED and the Go job verifies them (`make dev-docs-verify`,
+          # `make config-docs-verify`). Their inputs already trigger the job, but a hand-edit
+          # to a generated file would otherwise sail past the only check that reads it.
+          #
+          # The embedded help set (`docs/get-started.md`, `docs/guides/`, `docs/explanation/`,
+          # frozen links in `docs/testdata/`) was `docs/help/` until #1572.
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Prose. Cheap and fast, so it gates on the whole documentation set rather than
+          # trying to be clever about which page changed.
+          # `ci\.yml$`, not the whole workflows tree: the docs job lints prose and links (its
+          # DOC_GLOBS/LINK_GLOBS never include .github/workflows), so only a ci.yml edit that
+          # changes how the docs job itself runs needs to re-trigger it. release.yml / pages.yml
+          # carry no prose this job checks. (Go keeps the broad glob — it actionlints every one.)
+          if echo "$changed" | grep -qE '^docs/|^README\.md$|^CONTRIBUTING\.md$|^CLAUDE\.md$|^AGENTS\.md$|^CONTEXT\.md$|^PROGRESS\.md$|^design/.*\.md$|^\.agents/|^\.claude/|^docs-site/|^\.graphifyignore$|^\.vale|^lychee\.toml$|^\.markdownlint|^\.github/workflows/ci\.yml$'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The tool-neutral harness has a small macOS contract test below. Linux is already
+          # exercised by comprehensive verification; this output prevents unrelated product changes from
+          # spending a macOS runner while keeping every harness input covered.
+          if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/agents/'; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "agent=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The React Native Android TV client (§11, Shield). Schema-only OpenAPI changes regenerate,
+          # typecheck, test, and bundle every TypeScript consumer in the shared-client gate; they do
+          # not change a native product binary unless an app or shared native/runtime input changes too.
+          # `ci-android.yml` is the product gate implementation. Root admission (`ci.yml`) and
+          # beta publication (`android-beta.yml`) are control-plane policy; neither builds the
+          # bundle, so changing them must not spend an Android runner.
+          # Control-plane classifiers and release admission validators are policy inputs, not
+          # bundle inputs. The always-on policy job validates them independently.
+          if echo "$changed" | grep -qE '^store-listing/android-tv/|^web/(apps/tv/|packages/(api|core|design-system|ui|ui-tv|player)/|packages/fixtures/src/(channel-policy|client-platform|people|rule-vocabulary)/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.gitignore$|biome\.json$|tsconfig\.base\.json$)|^scripts/(android-version-code|build-android-beta|check-android-release-env|generate-android-tv-brand|publish-android-beta|test-android-release)\.sh$|^Makefile$|^mk/android\.mk$|^\.github/workflows/ci-android\.yml$'; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+          # ⚠ `ci\.yml$`, not the whole `.github/workflows/` tree. The web family (frontend +
+          # tuner + playwright x4) is defined ONLY in ci.yml, and nothing in it consumes another
+          # workflow file — so an edit to release.yml / pages.yml / release-notes.yml has no way to
+          # affect a web job and must not spend six runners rebuilding + re-Playwrighting the SPA.
+          # The Go filter keeps the broad glob on purpose: `make ci-lint` actionlints EVERY workflow
+          # and `cmd/releaseverify` reads release.yml, so those genuinely need any-workflow coverage.
+          if echo "$changed" | grep -qE '^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^Makefile$|^\.github/workflows/ci\.yml$'; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The candidate Expo clients and Loomarr-owned universal packages have their own
+          # gate. A native-only edit must not wake the legacy SPA, Playwright, tuner, or image
+          # jobs. Both Expo apps use the named shared fixture families in their native Storybook
+          # graph; browser-only test-card fixtures do not enter either native graph. Core, API,
+          # and player remain real client inputs even before a production screen imports a
+          # particular shared module. Workspace-root dependency and tooling inputs still gate both
+          # families because they can change how either graph resolves or builds.
+          if echo "$changed" | grep -qE '^brand-assets\.lock\.json$|^scripts/(generate-brand-assets|check-brand-assets)\.mjs$|^web/(apps/(mobile|tv)/|packages/(api|core|design-system|player|ui)/|packages/fixtures/src/(channel-policy|client-platform|people|rule-vocabulary)/|turbo\.json$)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^web/scripts/|^Makefile$|^\.github/workflows/ci\.yml$'; then
+            echo "clients=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clients=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The IMAGE. Added after a Dockerfile change that could never have built for
+          # arm64 sat undetected: `intel-media-va-driver` has no arm64 candidate, so apt
+          # exited 100 — and release.yml builds linux/amd64,linux/arm64. Nothing caught it
+          # because the image was built ONLY at release time, on a v* tag, which is the
+          # worst moment to discover the build is broken.
+          #
+          # ⚠ On a PR this diffs against the MERGE BASE, not the previous push, so the
+          # question is "did this PR touch the Dockerfile", not "did the last commit".
+          # A PR that changed it in commit 1 keeps building the image for every later
+          # push, which is correct — skipping would leave the PR's own change unproven.
+          #
+          # Match every source family the Dockerfile consumes. The Go stage copies the
+          # repository and embeds the help pages; the frontend stage copies web, OpenAPI, and
+          # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
+          # frontend, or embedded-help change to reach a tag before the production image
+          # containing it had ever been built.
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "release_candidate=false" >> "$GITHUB_OUTPUT"
+
+      # Every product job consumes this classifier directly. CI-policy changes have their own
+      # lightweight gate; they never borrow a product family merely to validate workflow YAML.
+      - name: Classify specialized gates
+        id: impact
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SCOPE: ${{ inputs.scope || '' }}
+          LEGACY_GO: ${{ steps.filter.outputs.go }}
+          LEGACY_WEB: ${{ steps.filter.outputs.web }}
+          LEGACY_CLIENTS: ${{ steps.filter.outputs.clients }}
+          LEGACY_IMAGE: ${{ steps.filter.outputs.image }}
+          LEGACY_DOCS: ${{ steps.filter.outputs.docs }}
+          LEGACY_AGENT: ${{ steps.filter.outputs.agent }}
+          LEGACY_ANDROID: ${{ steps.filter.outputs.android }}
+        run: |
+          set -uo pipefail
+          reason="classified the merge-base diff"
+          BASE="$(./scripts/ci-diff-base.sh "$EVENT_NAME" "$GITHUB_EVENT_PATH")"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            reason="explicit $DISPATCH_SCOPE manual scope"
+            impact="$(./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" impact)"
+          elif [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            reason="no usable diff base; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          elif ! impact="$(git diff --name-only "$BASE" HEAD | ./scripts/ci-impact.sh)"; then
+            echo "::warning::CI impact classification failed; specialized decisions defaulted to all gates"
+            reason="classifier error; failed closed"
+            impact="$(./scripts/ci-impact.sh --all)"
+          fi
+          printf '%s\n' "$impact" >> "$GITHUB_OUTPUT"
+
+          impact_value() {
+            printf '%s\n' "$impact" | sed -n "s/^$1=//p"
+          }
+          {
+            echo "### Specialized CI gate decisions"
+            echo
+            echo "Every CI job consumes its fail-closed specialized decision; unknown inputs select all gates."
+            echo
+            echo "Reason: $reason."
+            echo
+            echo "| Proposed gate | Run? |"
+            echo "| --- | --- |"
+            while IFS='=' read -r gate decision; do
+              printf '| %s | %s |\n' "$gate" "$decision"
+            done <<< "$impact"
+            echo
+            echo "| Current family | Run? | Proposed components |"
+            echo "| --- | --- | --- |"
+            printf '| Go | %s | contracts=%s, go=%s, full=%s, rust=%s, postgres=%s |\n' \
+              "$LEGACY_GO" "$(impact_value contracts)" "$(impact_value go)" \
+              "$(impact_value go_full)" "$(impact_value rust)" \
+              "$(impact_value postgres)"
+            printf '| Web | %s | web=%s, visual=%s, e2e=%s, tuner=%s |\n' \
+              "$LEGACY_WEB" "$(impact_value web)" "$(impact_value visual)" \
+              "$(impact_value e2e)" "$(impact_value tuner)"
+            printf '| Clients | %s | shared=%s, iOS=%s, tvOS=%s, Expo Android=%s, Expo Android TV=%s |\n' \
+              "$LEGACY_CLIENTS" "$(impact_value clients)" "$(impact_value apple_mobile)" \
+              "$(impact_value apple_tv)" "$(impact_value expo_android_mobile)" \
+              "$(impact_value expo_android_tv)"
+            printf '| Image | %s | image=%s |\n' "$LEGACY_IMAGE" "$(impact_value image)"
+            printf '| Docs | %s | docs=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)"
+            printf '| Agent | %s | agent=%s |\n' "$LEGACY_AGENT" "$(impact_value agent)"
+            printf '| Android TV | %s | React Native bundle=%s |\n' "$LEGACY_ANDROID" "$(impact_value android)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  agent-harness-macos:
+    name: Agent harness (macOS)
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_agent == 'true'
+    uses: ./.github/workflows/ci-agent.yml
+
+  release-candidate-scope:
+    name: Release candidate — exact main scope
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'release-candidate'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the current main branch
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: test "$RELEASE_REF" = refs/heads/main
+
+  full-manual-scope:
+    name: Manual CI — full scope
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'full'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Running the deliberately requested full CI matrix.'
+
+  ci-policy:
+    name: CI policy — workflow, harness, and docs contracts
+    needs: changes
+    # This is the independent bootstrap for the classifier itself. A broken classifier must not
+    # be able to skip the job that verifies its routing, workflow, and release-policy contracts.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Repository policy bootstrap outside Make
+        run: go run ./cmd/releaseverify -root .
+      - name: Workflow and publication policy
+        run: make ci-lint release-verify
+      - name: Agent harness and shell policy
+        run: make agent-harness-test shellcheck
+      - name: Documentation contracts read by Go
+        run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
+  rust-contracts:
+    name: Rust — repository contracts
+    needs: changes
+    if: needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true'
+    uses: ./.github/workflows/ci-rust-contracts.yml
+
+  go-contracts:
+    name: Go — repository contracts
+    needs: changes
+    if: needs.changes.outputs.impact_contracts == 'true' || needs.changes.outputs.release_candidate == 'true'
+    uses: ./.github/workflows/ci-go-contracts.yml
+
+  image-certification:
+    name: Rust image — runtime certification
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_rust == 'true' || needs.changes.outputs.release_candidate == 'true')
+    uses: ./.github/workflows/ci-image-certification.yml
+
+  go:
+    name: Go — race-policy tests
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_go == 'true'
+    uses: ./.github/workflows/ci-go.yml
+
+  store-postgres:
+    name: Store conformance (Postgres)
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_postgres == 'true'
+    uses: ./.github/workflows/ci-postgres.yml
+
+  frontend:
+    name: Frontend — biome + typecheck + unit + build
+    needs: changes
+    if: needs.changes.outputs.impact_web == 'true'
+    uses: ./.github/workflows/ci-frontend.yml
+
+  clients:
+    name: Shared clients — lint + test + browser/iOS/Android/TV bundles
+    needs: changes
+    if: needs.changes.outputs.impact_clients == 'true'
+    uses: ./.github/workflows/ci-clients.yml
+
+  apple-mobile:
+    name: Apple mobile — native build + launch
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'
+    uses: ./.github/workflows/ci-apple-mobile.yml
+
+  # tvOS is independently selected so TV-local changes do not spend the mobile native runner.
+  apple-tv:
+    name: Apple TV — native build + launch
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'
+    uses: ./.github/workflows/ci-apple-tv.yml
+
+  # Manual, isolated proof that an LLVM CAS produced on one supported Apple runner remains
+  # valid and useful on a second runner. Product PR and merge-queue jobs never enter this job.
+  apple-cache-validation:
+    name: Apple compilation cache — supported-toolchain validation
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'
+    uses: ./.github/workflows/ci-apple-cache-validation.yml
+
+  # Android mobile is independently selected; TV retains its own native and release path.
+  expo-android-mobile:
+    name: Expo Android mobile — native build
+    needs: changes
+    if: needs.changes.outputs.impact_expo_android_mobile == 'true'
+    uses: ./.github/workflows/ci-expo-android-mobile.yml
+
+  playwright:
+    name: Playwright — visual + a11y + e2e
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')
+    uses: ./.github/workflows/ci-playwright.yml
+  tuner:
+    name: Tuner — Chromium + Firefox + WebKit
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
+    uses: ./.github/workflows/ci-tuner.yml
+    # issues: read lets the flake quarantine see which tracking issues are still open.
+    permissions:
+      contents: read
+      issues: read
+    with:
+      project: ${{ inputs.project || 'all' }}
+      repeat_each: ${{ inputs.repeat_each || '1' }}
+      quarantine: ${{ needs.changes.outputs.lane == 'manual-tuner' && 'off' || 'exclude' }}
+  image:
+    name: Image — release build
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'
+    uses: ./.github/workflows/ci-image.yml
+
+  docs:
+    name: Docs — links + structure + prose
+    needs: changes
+    if: needs.changes.outputs.impact_docs == 'true'
+    uses: ./.github/workflows/ci-docs.yml
+
+  playout-bench:
+    name: Playout bench — software-only pipeline
+    needs: changes
+    if: needs.changes.outputs.impact_playout_bench == 'true'
+    uses: ./.github/workflows/ci-playout-bench.yml
+
+  android:
+    name: Android TV — React Native Play bundle
+    needs: changes
+    if: needs.changes.outputs.impact_android == 'true'
+    uses: ./.github/workflows/ci-android.yml
+
+  # The single required check. ALWAYS runs, so branch protection has one status that is
+  # reliably present whether the jobs above ran or skipped.
+  #
+  # ⚠ It must inspect `needs.*.result` explicitly. A skipped dependency does NOT fail a job by
+  # default, but neither does a FAILED one when `if: always()` is set — so a naive aggregate
+  # would report success while a real job was red. `success` and `skipped` pass; `cancelled` is
+  # tolerated (a superseded run or fail-fast collateral — the real failure still reports
+  # `failure`); anything else (notably `failure`) fails the gate.
+  ci-ok:
+    name: CI
+    if: always()
+    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Every job that ran must have passed
+        run: |
+          echo "assurance lane: ${{ needs.changes.outputs.lane }}"
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: $results"
+          for r in $results; do
+            case "$r" in
+              success|skipped) ;;
+              # `cancelled` is NOT a failure. It means one of two things, and neither is a defect
+              # in this commit: (1) a newer push/merge superseded this run via `cancel-in-progress`
+              # (the newer run is authoritative), or (2) a sibling job genuinely FAILED and
+              # fail-fast cancelled the rest — but that real failure surfaces as `failure` on the
+              # actual job, which the wildcard below still catches. Treating `cancelled` as red is
+              # what left main showing a false red on every rapid merge (see the concurrency note
+              # at the top of this file). A real regression always reports `failure`, never
+              # `cancelled`, so accepting it here loses no coverage.
+              cancelled) echo "note: a job was cancelled (superseded or fail-fast collateral) — not a failure" ;;
+              *) echo "::error::a required job reported '$r'"; exit 1 ;;
+            esac
+          done
+      - name: Check out the timing reporter
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Summarize queue, execution, critical path, and runner use
+        if: always()
+        env:
+          CI_ASSURANCE_LANE: ${{ needs.changes.outputs.lane }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then
+            echo "::warning::CI timing summary was unavailable; verification results are unchanged"
+          fi

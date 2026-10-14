@@ -1,0 +1,519 @@
+package api_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/ideas"
+	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/testkit"
+)
+
+type fakeIdeaLibrary struct {
+	items []ideas.Item
+	calls int
+}
+
+func (f *fakeIdeaLibrary) IdeaItems(context.Context) ([]ideas.Item, error) {
+	f.calls++
+	return f.items, nil
+}
+
+type ideasWire struct {
+	Ideas []struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Pitch        string `json:"pitch"`
+		Requested    bool   `json:"requested"`
+		RequestJobID string `json:"requestJobId"`
+		Facet        string `json:"facet"`
+		Value        string `json:"value"`
+		Reason       struct {
+			Kind         string `json:"kind"`
+			Count        int    `json:"count"`
+			HolidayID    string `json:"holidayId"`
+			HolidayLabel string `json:"holidayLabel"`
+			StartsAtMs   int64  `json:"startsAtMs"`
+		} `json:"reason"`
+		Keys   []string `json:"keys"`
+		Titles []struct {
+			Name      string `json:"name"`
+			TMDBID    int    `json:"tmdbId"`
+			InLibrary bool   `json:"inLibrary"`
+		} `json:"titles"`
+		Movies     int `json:"movies"`
+		Series     int `json:"series"`
+		InLibrary  int `json:"inLibrary"`
+		ToDownload int `json:"toDownload"`
+	} `json:"ideas"`
+}
+
+func (w ideasWire) ids() []string {
+	out := make([]string, 0, len(w.Ideas))
+	for _, i := range w.Ideas {
+		out = append(out, i.ID)
+	}
+	return out
+}
+
+// recordingNotifier counts the "a request is waiting" notices admins get.
+type recordingNotifier struct {
+	mu        sync.Mutex
+	submitted []store.Proposal
+}
+
+func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p store.Proposal) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.submitted = append(n.submitted, p)
+}
+func (n *recordingNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
+func (n *recordingNotifier) ProposalDeclined(context.Context, store.Proposal)         {}
+
+func (n *recordingNotifier) count() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.submitted)
+}
+
+func newIdeasHarness(t *testing.T, lib *fakeIdeaLibrary, now time.Time) *apiHarness {
+	t.Helper()
+	return newIdeasHarnessNotifying(t, lib, now, &recordingNotifier{})
+}
+
+// newIdeasHarnessNotifying wires the REAL suggest service and durable workflow, with no LLM
+// (nil suggester): an idea request must reach the real approval queue without the model.
+func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time, notify *recordingNotifier) *apiHarness {
+	t.Helper()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{
+		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
+		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
+	}
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		var next atomic.Int64
+		newID := func() string { return fmt.Sprintf("idea-req-%d", next.Add(1)) }
+		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
+		service := suggest.NewService(defaults.Store, nil, suggest.Config{}, newID, func() time.Time { return now }, defaults.Log).
+			WithDurableWorkflow(workflow).
+			WithProposalNotifier(notify)
+		return api.Router(defaults.Log, api.Options{
+			Suggest:          service,
+			ProposalWorkflow: workflow,
+			Store:            defaults.Store,
+			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Log:              defaults.Log,
+			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
+			Sessions:         mgr,
+			CookieSecure:     "false",
+			IdeaLibrary:      lib,
+			Now:              func() time.Time { return now },
+		})
+	})
+}
+
+func ideasCall(t *testing.T, srv *httptest.Server, method, path string, session *http.Cookie) (int, ideasWire) {
+	t.Helper()
+	req, _ := http.NewRequest(method, srv.URL+path, nil)
+	if session != nil {
+		req.AddCookie(session)
+		req.Header.Set("X-Loomarr-Csrf", "1")
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out ideasWire
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
+}
+
+// Home's Channel ideas (#1665) over HTTP, with no LLM anywhere: library facets that no channel
+// plays and a holiday ahead, each with a typed reason and its numbers. A hide is the person's own
+// and undoable.
+func TestChannelIdeasFromLibraryAndCalendar(t *testing.T) {
+	t.Parallel()
+	lib := &fakeIdeaLibrary{}
+	for i := 1; i <= 7; i++ {
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
+			MediaType: provision.Movie, Name: fmt.Sprintf("Film %d", i), Genres: []string{"Comedy"}})
+	}
+	for i := 20; i <= 22; i++ {
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
+			MediaType: provision.Movie, Name: fmt.Sprintf("Haunted night %d", i), Genres: []string{"Horror"}})
+	}
+	now := time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
+	h := newIdeasHarness(t, lib, now)
+	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
+	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
+		t.Fatal(err)
+	}
+	kid := login(t, h.Server, "kid", "pw")
+	boss := login(t, h.Server, "boss", "pw")
+
+	code, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid)
+	if code != http.StatusOK || fmt.Sprint(got.ids()) != "[holiday:halloween genre:comedy]" {
+		t.Fatalf("member ideas = %d %v, want the holiday then comedy", code, got.ids())
+	}
+	holiday, comedy := got.Ideas[0], got.Ideas[1]
+	if holiday.Reason.Kind != "holiday" || holiday.Reason.HolidayID != "halloween" || holiday.Reason.HolidayLabel != "Halloween" ||
+		holiday.Reason.Count != 3 || holiday.Reason.StartsAtMs != time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC).UnixMilli() {
+		t.Errorf("holiday reason = %+v", holiday.Reason)
+	}
+	if comedy.Reason.Kind != "unaired" || comedy.Reason.Count != 6 || len(comedy.Keys) != 6 ||
+		comedy.Movies != 6 || comedy.InLibrary != 6 || comedy.ToDownload != 0 || comedy.Value != "Comedy" {
+		t.Errorf("comedy idea = %+v, want 6 unaired films, all in the library", comedy)
+	}
+	// Titles carries the same keys with display fields (#1817, G2's builder shows each one by
+	// name), every one already owned — real ideas never need a download.
+	if len(comedy.Titles) != 6 || comedy.Titles[0].Name == "" || !comedy.Titles[0].InLibrary {
+		t.Errorf("comedy titles = %+v, want 6 named, in-library entries", comedy.Titles)
+	}
+
+	if code, _ := ideasCall(t, h.Server, http.MethodPut, "/v1/me/hidden-ideas/genre:comedy", kid); code != http.StatusNoContent {
+		t.Fatalf("hide = %d, want 204", code)
+	}
+	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid); fmt.Sprint(got.ids()) != "[holiday:halloween]" {
+		t.Errorf("after hide the member sees %v, want only the holiday", got.ids())
+	}
+	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", boss); fmt.Sprint(got.ids()) != "[holiday:halloween genre:comedy]" {
+		t.Errorf("another person sees %v, want their own unhidden ideas", got.ids())
+	}
+	if code, _ := ideasCall(t, h.Server, http.MethodDelete, "/v1/me/hidden-ideas/genre:comedy", kid); code != http.StatusNoContent {
+		t.Fatalf("undo = %d, want 204", code)
+	}
+	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid); fmt.Sprint(got.ids()) != "[holiday:halloween genre:comedy]" {
+		t.Errorf("after undo the member sees %v", got.ids())
+	}
+}
+
+func requestIdea(t *testing.T, srv *httptest.Server, ideaID string, session *http.Cookie) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/discovery/ideas/"+ideaID+"/request", nil)
+	if session != nil {
+		req.AddCookie(session)
+		req.Header.Set("X-Loomarr-Csrf", "1")
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		JobID string `json:"jobId"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out.JobID
+}
+
+// queuedProposalArrays reads the one submitted proposal from the admin's approval queue and
+// returns its acquisitions and alternates exactly as the wire carried them.
+func queuedProposalArrays(t *testing.T, srv *httptest.Server, session *http.Cookie) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/proposals?status=submitted", nil)
+	req.AddCookie(session)
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		Proposals []struct {
+			Proposal struct {
+				Acquisitions json.RawMessage `json:"acquisitions"`
+				Alternates   json.RawMessage `json:"alternates"`
+			} `json:"proposal"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK || len(out.Proposals) != 1 {
+		t.Fatalf("approval queue = %d %+v, %v", res.StatusCode, out, err)
+	}
+	p := out.Proposals[0].Proposal
+	return fmt.Sprintf(`{"acquisitions":%s,"alternates":%s}`, p.Acquisitions, p.Alternates)
+}
+
+// A member turns an idea into a channel request (#1720) with the LLM nowhere in the harness: the
+// idea's name, pitch and library titles become a submitted proposal in the real approval queue,
+// admins hear about it, and the idea then reads as requested. Asking again returns the same
+// request. Admins don't request ideas (H4).
+func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
+	t.Parallel()
+	lib := &fakeIdeaLibrary{}
+	for i := 1; i <= 7; i++ {
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
+			// One per decade, so no decade idea competes; the newest is Film 7.
+			MediaType: provision.Movie, Name: fmt.Sprintf("Film %d", i), Year: 1950 + 10*i, Genres: []string{"Comedy"}})
+	}
+	// Late spring: no holiday within six weeks, so comedy is the only idea.
+	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
+	notify := &recordingNotifier{}
+	h := newIdeasHarnessNotifying(t, lib, now, notify)
+	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
+		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
+	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
+		t.Fatal(err)
+	}
+	kid := login(t, h.Server, "kid", "pw")
+	boss := login(t, h.Server, "boss", "pw")
+
+	code, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid)
+	if code != http.StatusOK || fmt.Sprint(got.ids()) != "[genre:comedy]" {
+		t.Fatalf("ideas = %d %v", code, got.ids())
+	}
+	comedy := got.Ideas[0]
+	if comedy.Name != "Comedy Movies" || comedy.Pitch != "Every comedy title in your library that no channel plays yet, on one channel." ||
+		comedy.Requested || comedy.RequestJobID != "" {
+		t.Fatalf("comedy card = %+v", comedy)
+	}
+
+	if code, _ := requestIdea(t, h.Server, "genre:comedy", boss); code != http.StatusForbidden {
+		t.Fatalf("admin request = %d, want 403 (ideas are members-only, H4)", code)
+	}
+	code, jobID := requestIdea(t, h.Server, "genre:comedy", kid)
+	if code != http.StatusAccepted || jobID == "" {
+		t.Fatalf("member request = %d %q, want 202 with a job", code, jobID)
+	}
+
+	queue, err := h.Store.ListProposalsByStatus(context.Background(), "submitted")
+	if err != nil || len(queue) != 1 {
+		t.Fatalf("approval queue = %+v, %v", queue, err)
+	}
+	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
+		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
+	}
+	var payload suggest.Proposal
+	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.ChannelName != "Comedy Movies" || payload.FromIdea != "genre:comedy" ||
+		payload.Intent.Description != comedy.Name || payload.Rationale != comedy.Pitch ||
+		len(payload.Lineup) != 6 || len(payload.Acquisitions) != 0 {
+		t.Fatalf("queued proposal = %+v", payload)
+	}
+	// Newest first, grounded by the key's own id, every title already in the library; the title on
+	// a channel stays off.
+	if first := payload.Lineup[0]; first.TMDBID != 90000007 || first.Name != "Film 7" || !first.InLibrary {
+		t.Fatalf("first lineup item = %+v", first)
+	}
+	for _, item := range payload.Lineup {
+		if item.TMDBID == 90000001 {
+			t.Fatalf("the lineup carries a title a channel already plays: %+v", item)
+		}
+	}
+	if notify.count() != 1 {
+		t.Fatalf("admins were told about %d requests, want 1", notify.count())
+	}
+	// ⚠ On the WIRE, not the stored Go value: len() of a nil slice is 0, so the check above passed
+	// while the admin queue sent `"acquisitions": null` and the phone's Needs-you tab crashed
+	// calling .length on it. An idea request has nothing to acquire and no alternates; both must
+	// still arrive as the arrays the spec promises.
+	if got := queuedProposalArrays(t, h.Server, boss); got != `{"acquisitions":[],"alternates":[]}` {
+		t.Fatalf("admin queue sent the idea request's arrays as %s, want empty arrays", got)
+	}
+
+	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid); len(got.Ideas) != 1 ||
+		!got.Ideas[0].Requested || got.Ideas[0].RequestJobID != jobID {
+		t.Fatalf("after requesting, the card = %+v, want requested on job %s", got.Ideas, jobID)
+	}
+	if code, again := requestIdea(t, h.Server, "genre:comedy", kid); code != http.StatusAccepted || again != jobID {
+		t.Fatalf("second request = %d %q, want the same job %s", code, again, jobID)
+	}
+	if queue, _ := h.Store.ListProposalsByStatus(context.Background(), "submitted"); len(queue) != 1 || notify.count() != 1 {
+		t.Fatalf("asking again queued %d requests and sent %d notices, want 1 and 1", len(queue), notify.count())
+	}
+	if code, _ := requestIdea(t, h.Server, "genre:western", kid); code != http.StatusNotFound {
+		t.Fatalf("unknown idea = %d, want 404", code)
+	}
+}
+
+// newManualChannelHarness wires the real suggest service, durable workflow AND a real
+// Approver (with an ordered resolver double for Library presence) — the manual builder's
+// grounding guarantee is the thing under test, so a fake approver would test nothing.
+func newManualChannelHarness(
+	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[suggest.ProposalItem],
+) *apiHarness {
+	t.Helper()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{
+		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
+		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
+	}
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		var next atomic.Int64
+		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
+		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
+		service := suggest.NewService(defaults.Store, nil, suggest.Config{}, newID, func() time.Time { return now }, defaults.Log).
+			WithDurableWorkflow(workflow)
+		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
+		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
+			WithApprovalAdditionResolver(resolver)
+		return api.Router(defaults.Log, api.Options{
+			Suggest:          service,
+			Approver:         approver,
+			Binder:           chBinder,
+			ProposalWorkflow: workflow,
+			Store:            defaults.Store,
+			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Log:              defaults.Log,
+			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
+			Sessions:         mgr,
+			CookieSecure:     "false",
+			IdeaLibrary:      &fakeIdeaLibrary{},
+			Now:              func() time.Time { return now },
+		})
+	})
+}
+
+func submitManualChannel(
+	t *testing.T, srv *httptest.Server, body map[string]any, session *http.Cookie,
+) (int, string, string) {
+	t.Helper()
+	blob, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/discovery/manual-channel", bytes.NewReader(blob))
+	req.Header.Set("Content-Type", "application/json")
+	if session != nil {
+		req.AddCookie(session)
+		req.Header.Set("X-Loomarr-Csrf", "1")
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		JobID string `json:"jobId"`
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out.JobID, out.Title
+}
+
+// A hand-picked lineup (#1817, G2) re-checks every title against the library the same way an
+// approver's edit does: a client claiming a title is already owned does not make it so. One
+// claimed-owned title the resolver actually confirms lands in Lineup; one claimed-owned title
+// the resolver refuses lands in Acquisitions instead — exactly the "client presence fields are
+// not authority" guarantee ResolveApprovalEdit already gives edit.Add.
+func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
+	}}
+	h := newManualChannelHarness(t, now, resolver)
+	kid := login(t, h.Server, "kid", "pw")
+
+	code, jobID, _ := submitManualChannel(t, h.Server, map[string]any{
+		"name":        "My Hand-Built Channel",
+		"description": "Built by hand, title by title.",
+		"lineup": []map[string]any{
+			// The client CLAIMS both are already owned; only the first really is.
+			{"mediaType": "movie", "tmdbId": 90000001, "name": "Owned Already", "inLibrary": true, "libraryItemId": "lib-1"},
+			{"mediaType": "movie", "tmdbId": 90000002, "name": "Not Actually Owned", "inLibrary": true, "libraryItemId": "forged"},
+		},
+	}, kid)
+	if code != http.StatusAccepted || jobID == "" {
+		t.Fatalf("submit = %d %q, want 202 with a job", code, jobID)
+	}
+
+	queue, err := h.Store.ListProposalsByStatus(context.Background(), "submitted")
+	if err != nil || len(queue) != 1 {
+		t.Fatalf("approval queue = %+v, %v", queue, err)
+	}
+	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
+		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
+	}
+	var payload suggest.Proposal
+	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Manual || payload.ChannelName != "My Hand-Built Channel" || payload.Rationale != "Built by hand, title by title." {
+		t.Fatalf("queued proposal = %+v, want a manual proposal carrying the name and description", payload)
+	}
+	if len(payload.Lineup) != 1 || payload.Lineup[0].TMDBID != 90000001 || !payload.Lineup[0].InLibrary || payload.Lineup[0].LibraryItemID != "lib-1" {
+		t.Fatalf("lineup = %+v, want only the resolver-confirmed owned title", payload.Lineup)
+	}
+	if len(payload.Acquisitions) != 1 || payload.Acquisitions[0].TMDBID != 90000002 || payload.Acquisitions[0].InLibrary {
+		t.Fatalf("acquisitions = %+v, want the unconfirmed title moved here, not trusted as owned", payload.Acquisitions)
+	}
+}
+
+// Both an admin and a member can reach the manual builder (unlike channel ideas, H4 does not
+// gate this path — "an admin makes channels directly" from the SAME panel, same call).
+func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
+	}}
+	h := newManualChannelHarness(t, now, resolver)
+	boss := login(t, h.Server, "boss", "pw")
+	if code, jobID, _ := submitManualChannel(t, h.Server, map[string]any{
+		"name":   "Admin's Channel",
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 90000009, "name": "A Title", "inLibrary": false}},
+	}, boss); code != http.StatusAccepted || jobID == "" {
+		t.Fatalf("admin submit = %d %q, want 202 with a job", code, jobID)
+	}
+}
+
+// An empty name or an empty lineup never reaches the gate — the mock's "Continue to review"
+// is always disabled until at least one title is picked, but the API enforces it too.
+func TestSubmitManualChannelRejectsEmptyInput(t *testing.T) {
+	t.Parallel()
+	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{})
+	kid := login(t, h.Server, "kid", "pw")
+	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
+		"name":   "",
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 90000009, "name": "A Title", "inLibrary": false}},
+	}, kid); code != http.StatusBadRequest {
+		t.Fatalf("empty name = %d %q, want 400", code, title)
+	}
+	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
+		"name": "No Titles Yet", "lineup": []map[string]any{},
+	}, kid); code != http.StatusBadRequest {
+		t.Fatalf("empty lineup = %d %q, want 400", code, title)
+	}
+}
+
+// Signed out is refused; ideas belong to a person because hides do.
+func TestChannelIdeasRequireSignIn(t *testing.T) {
+	t.Parallel()
+	h := newIdeasHarness(t, &fakeIdeaLibrary{}, time.Now())
+	if code, _ := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", nil); code != http.StatusUnauthorized {
+		t.Errorf("anonymous ideas = %d, want 401", code)
+	}
+	if code, _ := ideasCall(t, h.Server, http.MethodPut, "/v1/me/hidden-ideas/genre:comedy", nil); code != http.StatusUnauthorized {
+		t.Errorf("anonymous hide = %d, want 401", code)
+	}
+}

@@ -1,0 +1,213 @@
+{
+  "authority": "loc.gov/national-screening-room",
+  "maxRequests": 25,
+  "requestsUsed": 12,
+  "maxResponseBytes": 33554432,
+  "responseBytes": 745876,
+  "maxPredictedMediaBytes": 3221225472,
+  "predictedMediaBytes": 1103177444,
+  "maxWallTimeMs": 180000,
+  "wallTimeMs": 60833,
+  "cases": [
+    {
+      "itemId": "97516784",
+      "title": "[Theater commercial--electric refrigerators]. Buy an electric refrigerator",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/97516784/",
+      "metadataUrl": "https://www.loc.gov/item/97516784/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:18:51.213846183Z",
+      "metadataSha256": "b34773cb4f00ce9735c48ac76204c25aa951867c41cf6ef13e847f5d92e862df",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00007341.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00007341/00007341.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 16028110
+      }
+    },
+    {
+      "itemId": "00694428",
+      "title": "Scenes in San Francisco. [No. 2]",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/00694428/",
+      "metadataUrl": "https://www.loc.gov/item/00694428/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:18:54.330680202Z",
+      "metadataSha256": "4b7ffc431e5f00570e89121a0f99eb12b2c19fbc3bdf137b6de2fa6f4532316c",
+      "rightsAssertions": [
+        "\u003cp\u003eThe contents of the Library of Congress Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection are in the public domain and are free to use and reuse.\u003c/p\u003e\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division, Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection. \u003c/p\u003e\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e \u003c/p\u003e\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00045702.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00045702/00045702.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 178678251
+      }
+    },
+    {
+      "itemId": "2011600508",
+      "title": "Buster makes room for his mama at the bargain counter",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/2011600508/",
+      "metadataUrl": "https://www.loc.gov/item/2011600508/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:18:57.449461275Z",
+      "metadataSha256": "6de8547fd00bd7e6e84cd0898a0df9cd35ba9552d72e355875ee1598995099cc",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00047652.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047652/00047652.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 81371216
+      }
+    },
+    {
+      "itemId": "00694288",
+      "title": "A romance of the rail",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/00694288/",
+      "metadataUrl": "https://www.loc.gov/item/00694288/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:00.566406863Z",
+      "metadataSha256": "629e59fe97ebf765f73091743543db117061ef169bd33828c60af4fdef0d19c4",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00064191.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00064191/00064191.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 181889920
+      }
+    },
+    {
+      "itemId": "00694431",
+      "title": "San Francisco's future",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/00694431/",
+      "metadataUrl": "https://www.loc.gov/item/00694431/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:03.683508766Z",
+      "metadataSha256": "d52ac0304ebd59e55545a75494b9f526d926665db35dbe565a0b23d3836741c9",
+      "rightsAssertions": [
+        "\u003cp\u003eThe contents of the Library of Congress Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection are in the public domain and are free to use and reuse.\u003c/p\u003e\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division, Before and After the Great Earthquake and Fire: Early Films of San Francisco, 1897 to 1916 Collection. \u003c/p\u003e\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e \u003c/p\u003e\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "02086684.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/02086684/02086684.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 224668153
+      }
+    },
+    {
+      "itemId": "2011600511",
+      "title": "Buster's joke on Papa",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/2011600511/",
+      "metadataUrl": "https://www.loc.gov/item/2011600511/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:12.835803417Z",
+      "metadataSha256": "7b8f6d5958bfdc54e79f59be5e138088170527c6c8826bb7d8e96ab8fdb8b7d0",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "01844276.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01844276/01844276.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 109913905
+      }
+    },
+    {
+      "itemId": "2011600510",
+      "title": "Buster and the dude",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/2011600510/",
+      "metadataUrl": "https://www.loc.gov/item/2011600510/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:21.383080514Z",
+      "metadataSha256": "a36503e6ecce058d13596bbbd7710270e0317956eaed197ac7d1b3be76658c9a",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00047651.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047651/00047651.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 82693288
+      }
+    },
+    {
+      "itemId": "97516796",
+      "title": "[Theater commercial--Onward flour]",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/97516796/",
+      "metadataUrl": "https://www.loc.gov/item/97516796/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:25.551589311Z",
+      "metadataSha256": "57c286119f02a511e403b45a6b8eacc528a374e55779851143a15231732c73b6",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "01864522.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01864522/01864522.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 15344634
+      }
+    },
+    {
+      "itemId": "2011600509",
+      "title": "[Buster's dog to the rescue]",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/2011600509/",
+      "metadataUrl": "https://www.loc.gov/item/2011600509/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:35.621664843Z",
+      "metadataSha256": "049130e95a021f97f3fc4d642fa5b27995da8dd1e900d21a92b13f446bd54741",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "00047655.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/00047655/00047655.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 106287280
+      }
+    },
+    {
+      "itemId": "00694364",
+      "title": "Panorama water front and Brooklyn Bridge from East River",
+      "roleHints": [
+        "commercial"
+      ],
+      "itemUrl": "https://www.loc.gov/item/00694364/",
+      "metadataUrl": "https://www.loc.gov/item/00694364/?fo=json",
+      "metadataRetrievedAt": "2026-08-26T12:19:45.752395044Z",
+      "metadataSha256": "d19fc9d520cda0e1e45c2f9c71b743a0de423552650cacdf041428ec43c1bbf3",
+      "rightsAssertions": [
+        "\u003cp\u003eThe Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections. Absent any such restrictions, these materials are free to use and reuse.\u003c/p\u003e\r\n\u003cp\u003eIn rare cases, copyrighted motion pictures are made available by special permission to the Library and may be used only for educational purposes. For example, the Gershwin home movies fall within this category. Rights assessment is your responsibility. No registration information exists for some titles, and reproduction of some titles may be restricted by privacy rights, publicity rights, licensing and trademarks. Additionally, some works may still be protected by copyright in the United States or some foreign countries. The written permission of the copyright owners in materials not in the public domain is required for distribution, reproduction, or other use of protected items beyond that allowed by fair use or other statutory exemptions.\u003c/p\u003e\r\n\u003cp\u003eWhenever possible, we provide information that we have about copyright owners and related matters in the catalog records, finding aids and other texts that accompany collections. You should consult the catalog information that accompanies each item for specific information. This catalog data provides the details known to the Library of Congress regarding the corresponding item and may assist you in making independent assessments of the legal status of these items for their desired uses. You should also consult restrictions associated with donations to the Library.\u003c/p\u003e\r\n\u003cp\u003eCredit Line: Library of Congress, Motion Picture, Broadcasting, and Recorded Sound Division.\u003c/p\u003e\r\n\u003cp\u003eMore about \u003ca href=\"/legal/\"\u003eCopyright and other Restrictions\u003c/a\u003e.\u003c/p\u003e\r\n\u003cp\u003eFor guidance about compiling full citations consult \u003ca href=\"https://www.loc.gov/teachers/usingprimarysources/citing.html\"\u003eCiting Primary Sources\u003c/a\u003e.\u003c/p\u003e"
+      ],
+      "representation": {
+        "name": "01194386.mp4",
+        "url": "https://tile.loc.gov/storage-services/service/mbrs/ntscrm/01194386/01194386.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 106302687
+      }
+    }
+  ]
+}

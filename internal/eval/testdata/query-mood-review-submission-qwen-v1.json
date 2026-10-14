@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "packetSha256": "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+  "reviewer": {
+    "id": "qwen-local-a",
+    "provider": "ollama",
+    "route": "loopback",
+    "model": "qwen3.5:9b",
+    "resolvedModel": "qwen3.5:9b",
+    "modelFamily": "qwen3.5",
+    "identityKind": "ollama-model-digest",
+    "identitySha256": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+    "promptVersion": "query-mood-blind-review-v1"
+  },
+  "output": "{\n  \"assessments\": [\n    {\n      \"alias\": \"candidate-e492\",\n      \"scores\": {\n        \"valence\": 1,\n        \"arousal\": 2,\n        \"threatFear\": 2,\n        \"comedicWarmth\": 1,\n        \"attentionalDemand\": 1\n      },\n      \"uncertainAxes\": [],\n      \"evidenceIds\": [\n        \"mood-e04\"\n      ],\n      \"rationale\": \"Evidence mood-e04 describes Parasite as a 'darkly satirical thriller' with 'wickedly comic elements'. The term 'darkly' and 'thriller' suggest somewhat negative valence (1) and substantial threat/fear (2). 'Satirical' and 'comic elements' indicate slight comedic warmth (1). The nature of a thriller implies elevated arousal (2) and requires moderate attentional demand (1).\"\n    },\n    {\n      \"alias\": \"candidate-7f3a\",\n      \"scores\": {\n        \"valence\": 3,\n        \"arousal\": 1,\n        \"threatFear\": 0,\n        \"comedicWarmth\": 2,\n        \"attentionalDemand\": 0\n      },\n      \"uncertainAxes\": [],\n      \"evidenceIds\": [\n        \"mood-e01\",\n        \"mood-e02\"\n      ],\n      \"rationale\": \"Evidence mood-e01 (BBFC) explicitly notes 'reassuring outcomes' and 'mild threat', while mood-e02 (BFI) uses 'family-fun and kindness language'. These descriptors strongly support a positive valence (3), low arousal (1), and absence of severe threat (0). The combination of 'fun', 'kindness', and 'comedy' genre tag supports clear comedic warmth (2). As a children's film with reassuring outcomes, it is background-friendly (0 attentional demand).\"\n    },\n    {\n      \"alias\": \"candidate-b1c8\",\n      \"scores\": {\n        \"valence\": 0,\n        \"arousal\": 3,\n        \"threatFear\": 3,\n        \"comedicWarmth\": 0,\n        \"attentionalDemand\": 2\n      },\n      \"uncertainAxes\": [],\n      \"evidenceIds\": [\n        \"mood-e03\"\n      ],\n      \"rationale\": \"Evidence mood-e03 describes Jaws with a 'threatening shark' and 'sustained suspense'. This indicates strongly negative valence (0), intense arousal (3), and severe/sustained threat/fear (3). The synopsis focuses on danger and suspense, implying no comedic warmth (0) and requiring close attentional demand (2) due to the high stakes described.\"\n    }\n  ]\n}",
+  "outputSha256": "ba7479a209aeb2679c89d55cc5d03a83330d98c22b0fe79559fcac20abd274df",
+  "inference": {
+    "completedAt": "2026-09-17T01:08:26.083026Z",
+    "attempts": 1,
+    "promptTokens": 1348,
+    "completionTokens": 629,
+    "latencyMs": 20977,
+    "costBasis": "local-unmetered"
+  }
+}

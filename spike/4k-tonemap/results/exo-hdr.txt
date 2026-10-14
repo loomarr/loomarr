@@ -1,0 +1,8 @@
+SPK     : t_ms=44 start url=http://10.0.2.2:8765/hdr/index.m3u8 bufferForPlaybackMs=1000
+SPK     : t_ms=47 state=2 rebuffers=0 pos_ms=0
+SPK     : t_ms=257 vdec_init OMX.google.hevc.decoder init_ms=24
+SPK     : t_ms=257 vformat 3840x2160 hvc1.2.4.L150.B0 reuse=none pos_ms=0
+SPK     : t_ms=284 adec_init OMX.google.aac.decoder
+SPK     : t_ms=284 aformat 48000 mp4a.40.2 reuse=none
+SPK     : t_ms=302 error ERROR_CODE_DECODING_FAILED MediaCodecVideoRenderer error, index=0, format=Format(0, null, video/mp4, video/hevc, hvc1.2.4.L150.B0, 3108534, und, [3840, 2160, -1.0
+SPK     : t_ms=302 state=1 rebuffers=0 pos_ms=0

@@ -1,0 +1,24 @@
+// Convention (fe-code-conventions): exports go in a single block at the END of
+// the file — declare locally, then `export { … }`. This flags inline `export`
+// declarations.
+//
+// Covered: `export const|let|var` and `export type X = …` (the common cases).
+// `export function` is caught by no-function-declaration. Re-exports
+// (`export * / export { } from`) and end-of-file `export { }` blocks are allowed.
+//
+// Known gap: Biome 2.5 GritQL doesn't match TS `export interface|class|enum`
+// declaration nodes, so those slip through — but the folder/`*.type.ts` convention
+// already routes every type into an `export type { }` block, so an inline
+// `export interface` shouldn't arise; review + [[fe-code-conventions]] backstop it.
+or {
+  `export const $x = $y`,
+  `export let $x = $y`,
+  `export var $x = $y`,
+  `export type $name = $t`
+} as $exp where {
+  register_diagnostic(
+    span = $exp,
+    message = "Declare locally, then export in one block at the end of the file — no inline `export`.",
+    severity = "error"
+  )
+}

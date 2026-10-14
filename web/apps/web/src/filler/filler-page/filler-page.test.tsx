@@ -1,0 +1,433 @@
+import type { ClipDTO } from "@loomarr/api";
+import {
+  getFillerPoolMockHandler,
+  getFillerReadinessMockHandler,
+  getFillerWatchMockHandler,
+  getListFillerMockHandler,
+  getListFillerSourcesMockHandler,
+  getMeMockHandler,
+  getSettingsListMockHandler,
+} from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
+import type { ReactNode } from "react";
+import { describe, expect, it } from "vitest";
+import { me } from "@/test/fixtures/users";
+import { server } from "@/test/msw/server";
+import { RouterHarness } from "@/test/story-utils";
+import { FillerPage } from "./filler-page";
+import type { FillerPageProps } from "./filler-page.type";
+
+// The SHELL's own contract, as distinct from the tabs it hosts.
+//
+// ⚠ `src/test/filler.test.tsx` already drives this page hard (18 tests: search, the bulk bar,
+// split, tag cycling, member gating) and it stays the suite for the Catalog tab's BEHAVIOUR.
+// What it does not pin is what the shell owes every tab regardless of which one is showing —
+// the two badges and the pool strip — which is exactly what a tab-by-tab extraction can break
+// without moving a single snapshot. That gap is what this file covers; duplicating the header
+// assertions here would only make two places to update.
+//
+// ⚠ The counts in the fixtures deliberately DISAGREE: the clip list has 2 items while the watch
+// endpoint reports 200. The stable Library badge must follow that server-owned catalog count,
+// not the route-local result page — equal fixtures could not tell those two rules apart, the same
+// collapsed-fixture trap that hid the clip-identity bug in the store.
+
+const clip = (hash: string, name: string): ClipDTO => ({
+  hash,
+  name,
+  kind: "commercial",
+  era: 1990,
+  audience: "kids",
+  category: "toys",
+  durationMs: 30_000,
+  source: "folder",
+  playCount: 0,
+  playsCounted: true,
+  aiTagged: false,
+  tagged: true,
+  needsDetails: false,
+  suggestedEra: 0,
+});
+
+// ⚠ `catalogQueries` records the URL of every `GET /v1/filler` and ONLY those. The old `calls`
+// array recorded EVERY request at any path, and the paging assertions then filtered it with
+// `u.includes("offset=60")` — a query param that could have arrived on any endpoint — or with
+// `u.includes("/v1/filler?")`, which is a substring of every other filler route's URL too.
+//
+// ⚠ The `/v1/filler/pool` branch sent `{ total, untagged, channels }`. `FillerPoolOutputBody` has
+// no `total` at all, and REQUIRES `clips`, `breakBody` and `eligible` — so the pool response was
+// simultaneously carrying a field the API never sends and missing three it always does.
+//
+// ⚠ The `me` fixture omitted `local`, which MeBody requires.
+const stubFillerPage = (over: { clips?: ClipDTO[]; total?: number } = {}) => {
+  const catalogQueries: string[] = [];
+  const defaultClips = [clip("hash-a1", "One"), clip("hash-a2", "Two")];
+
+  server.use(
+    getMeMockHandler(me({ name: "Admin" })),
+    getFillerWatchMockHandler({
+      sourcesOn: 4,
+      sourcesReady: 4,
+      sourcesTotal: 5,
+      clips: 200,
+      held: 0,
+      health: "healthy",
+    }),
+    http.get("*/v1/filler/incoming", () =>
+      HttpResponse.json({
+        preparing: { rows: [], total: 0 },
+        needsHelp: { rows: [], total: 0 },
+        recentlyReady: { rows: [], total: 0 },
+      }),
+    ),
+    getFillerPoolMockHandler({ clips: 200, breakBody: 200, eligible: 200, untagged: 0, channels: [] }),
+    getFillerReadinessMockHandler({
+      ready: true,
+      nextAction: "none",
+      repairs: { count: 0 },
+      fetch: { enabled: true, catalogClips: 200 },
+      storage: {
+        automatic: true,
+        state: "healthy",
+        totalBytes: 500 * 1024 ** 3,
+        freeBytes: 200 * 1024 ** 3,
+        managedBytes: 2 * 1024 ** 3,
+        reservedBytes: 0,
+        filesystemReservedBytes: 0,
+        softBudgetBytes: 20 * 1024 ** 3,
+        hardReserveBytes: 10 * 1024 ** 3,
+        availableBytes: 18 * 1024 ** 3,
+      },
+      pipeline: {
+        runnable: 0,
+        scheduled: 0,
+        inProgress: 0,
+        needsDecision: 0,
+        recoverable: 0,
+        ready: 200,
+        complete: 0,
+        rejected: 0,
+        dismissed: 0,
+      },
+      pool: { clips: 200, breakBody: 200, eligible: 200, untagged: 0, channels: [] },
+      acquisitions: [],
+    }),
+    getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+    getSettingsListMockHandler({ settings: [], features: { filler: true } }),
+    // ⚠ `total` rides every listing response since §10 V51d — it is how many clips MATCH
+    // THE FILTER, counted server-side, while `clips` is one page of them. A mock that
+    // omitted it would let a component reading the page length pass.
+    getListFillerMockHandler(({ request }) => {
+      catalogQueries.push(request.url);
+      const clips = over.clips ?? defaultClips;
+      return { clips, total: over.total ?? clips.length };
+    }),
+  );
+
+  return catalogQueries;
+};
+
+const makeWrapper = () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  // LoomarrProvider as main.tsx mounts it: the clip select box and chip are @loomarr/ui.
+  return ({ children }: { children: ReactNode }) => (
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    </LoomarrProvider>
+  );
+};
+
+const renderPage = (tab: FillerPageProps["tab"], initialPath = "/filler/library") =>
+  render(<RouterHarness content={<FillerPage tab={tab} />} initialPath={initialPath} />, {
+    wrapper: makeWrapper(),
+  });
+
+describe("FillerPage shell", () => {
+  it("uses the member-readable watch state without requesting admin settings", async () => {
+    stubFillerPage();
+    let settingsReads = 0;
+    server.use(
+      getMeMockHandler(me({ id: "member-1", name: "Member", role: "member", autoApprove: false })),
+      http.get("*/v1/settings", () => {
+        settingsReads += 1;
+        return HttpResponse.json({ settings: [], features: { filler: true } });
+      }),
+    );
+
+    renderPage("library");
+
+    expect(await screen.findByText("One")).toBeInTheDocument();
+    expect(settingsReads).toBe(0);
+  });
+
+  // The Library badge is shell-owned and intentionally stable: it reports the server-owned watch
+  // count, while the extracted catalog module owns its filtered result count and paging details.
+  it("keeps the Library badge stable from the server-owned catalog count", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    const catalogTab = await screen.findByRole("link", { name: /library/i });
+    expect(within(catalogTab).getByText("200")).toBeInTheDocument();
+  });
+
+  it("does not fetch Incoming for an inactive destination", async () => {
+    stubFillerPage();
+    let incomingReads = 0;
+    server.use(
+      http.get("*/v1/filler/incoming", () => {
+        incomingReads += 1;
+        return HttpResponse.json({
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
+        });
+      }),
+    );
+    renderPage("library");
+
+    await screen.findByRole("link", { name: /^library/i });
+    expect(incomingReads).toBe(0);
+  });
+
+  it("renders the hands-off Incoming projection", async () => {
+    stubFillerPage();
+    let incomingReads = 0;
+    server.use(
+      http.get("*/v1/filler/incoming", () => {
+        incomingReads += 1;
+        return HttpResponse.json({
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
+        });
+      }),
+    );
+    renderPage("incoming", "/filler/incoming");
+
+    expect(await screen.findByText("Nothing on the way")).toBeInTheDocument();
+    expect(incomingReads).toBe(1);
+  });
+
+  // The web mock's three sections (#1659). Sources and Incoming open from the Manage hub, and
+  // their pages light Manage.
+  it("keeps the web mock's three sections, with Sources and Incoming under Manage", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(
+      within(sections)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Overview", expect.stringMatching(/^Library/), "Manage"]);
+  });
+
+  it.each(["sources", "incoming"] as const)("lights Manage on %s", async (tab) => {
+    stubFillerPage();
+    renderPage(tab);
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(await within(sections).findByRole("link", { name: /^manage$/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  // Manage's children name their way back, as the Settings index does (#1908): on a phone the lit
+  // tab scrolls away with the page.
+  it.each(["sources", "incoming"] as const)("returns from %s to Manage", async (tab) => {
+    stubFillerPage();
+    renderPage(tab);
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    const back = screen
+      .getAllByRole("link", { name: /^manage$/i })
+      .filter((link) => !sections.contains(link));
+    expect(back).toHaveLength(1);
+    expect(back[0]).toHaveAttribute("href", "/filler/manage");
+  });
+
+  it("adds no return link on a top-level section", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(
+      screen.getAllByRole("link", { name: /^manage$/i }).filter((link) => !sections.contains(link)),
+    ).toHaveLength(0);
+  });
+
+  it("treats section links as navigation without an orphan tabpanel role", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+  });
+
+  // ⚠ The pool strip is hidden on Sources (the mock's `showPool: fillerTab !== 'sources'`): it
+  // answers "can my catalog fill a break", which is context for reading CLIPS. Above the source
+  // list it invites the reading that a source is at fault for weak coverage.
+  it("shows the pool strip on Catalog", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    expect(await screen.findByLabelText("Catalog health")).toBeInTheDocument();
+  });
+
+  it("keeps section navigation before Library summaries and intake out of the health strip", async () => {
+    stubFillerPage();
+    renderPage("library");
+    const health = await screen.findByLabelText("Catalog health");
+    const navigation = screen.getByRole("navigation", { name: "Filler sections" });
+    expect(navigation.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(health).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("takes an empty Library back to Sources rather than requesting an acquisition", async () => {
+    stubFillerPage({ clips: [], total: 0 });
+    // The harness pins the page's tab, so the probe reports where the button actually went.
+    const LocationProbe = () => <output aria-label="Location">{useLocation().pathname}</output>;
+    render(
+      <RouterHarness
+        content={
+          <>
+            <FillerPage tab="library" />
+            <LocationProbe />
+          </>
+        }
+        initialPath="/filler/library"
+      />,
+      { wrapper: makeWrapper() },
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Open sources" }));
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveTextContent("/filler/sources"));
+  });
+
+  it("hides the pool strip on Sources", async () => {
+    stubFillerPage();
+    renderPage("sources");
+
+    // Wait for the page to be up, so this cannot pass merely by asserting before the render.
+    await screen.findByRole("link", { name: /^manage$/i, current: "page" });
+    expect(screen.queryByLabelText("Catalog health")).not.toBeInTheDocument();
+  });
+
+  it("moves and selects the clip view with radio-group arrow keys", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    const grid = await screen.findByRole("radio", { name: "Grid" });
+    const list = screen.getByRole("radio", { name: "List" });
+    grid.focus();
+    await userEvent.keyboard("{ArrowRight}");
+
+    await waitFor(() => expect(list).toHaveAttribute("aria-checked", "true"));
+    expect(list).toHaveFocus();
+    expect(list).toHaveAttribute("tabindex", "0");
+    expect(grid).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("renders compilations as expandable containers and opens their airable segments", async () => {
+    stubFillerPage();
+    const requests: URL[] = [];
+    const composite = { ...clip("parent-hash", "Saturday Morning Reel"), isComposite: true };
+    const children = [
+      { ...clip("child-a", "Cereal ad"), parentHash: composite.hash },
+      { ...clip("child-b", "Toy ad"), parentHash: composite.hash },
+    ];
+    server.use(
+      getListFillerMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        if (url.searchParams.has("parentHash")) return { clips: children, total: children.length };
+        if (url.searchParams.has("hashes")) return { clips: [composite], total: 1 };
+        return { clips: [composite], total: 1 };
+      }),
+    );
+
+    renderPage("library");
+    await waitFor(() => {
+      const top = requests.find(
+        (url) => !url.searchParams.has("parentHash") && !url.searchParams.has("hashes"),
+      );
+      expect(top?.searchParams.get("includeComposites")).toBe("true");
+      expect(top?.searchParams.get("topLevel")).toBe("true");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /show segments from saturday morning reel/i }));
+    expect(await screen.findByText("Cereal ad")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage 2 segments" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /use in a channel/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage 2 segments" }));
+    expect(await screen.findByText("Airable clips filed from this compilation.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /back to top-level catalog/i })).toBeInTheDocument();
+  });
+});
+
+// Route-level integration regressions for the extracted catalog: the module owns paging, while
+// these tests prove `/filler/library` still passes URL state through the page composition boundary.
+describe("FillerPage catalog paging", () => {
+  const page = (n: number) => Array.from({ length: n }, (_, i) => clip(`hash-${i}`, `Clip ${i}`));
+
+  it("asks for the requested page and says where you are", async () => {
+    const catalogQueries = stubFillerPage({ clips: page(60), total: 130 });
+    renderPage("library", "/filler/library?page=2");
+
+    // ⚠ Asserting on the REQUEST, not just the rendering: an offset the component computed but
+    // never sent would still render a plausible "Page 2 of 3" over page one's clips.
+    await waitFor(() => {
+      expect(
+        catalogQueries.some((u) => {
+          const q = new URL(u).searchParams;
+          return q.get("offset") === "60" && q.get("limit") === "60";
+        }),
+      ).toBe(true);
+    });
+    expect(await screen.findByText("Page 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Showing 61–120 of 130")).toBeInTheDocument();
+  });
+
+  // ⚠ **The highest-risk rule on the page.** Without it, typing in the search box on page 7 lands
+  // on an empty page 7 of a two-page result and renders "No clips match" over a catalog that
+  // matches plenty — a filter that appears to have found nothing.
+  it("resets to page one when a filter changes", async () => {
+    // A small page with a large total: the pager only needs `total` to believe there are three
+    // pages, and 60 rendered cards per keystroke is what made this test time out.
+    const catalogQueries = stubFillerPage({ clips: page(3), total: 130 });
+    renderPage("library", "/filler/library?page=2");
+    // ⚠ Wait for the CONTROLS, not just the request. The first listing fires before
+    // `/v1/settings` resolves, so the page is still showing its unconfigured state at that
+    // point and the filter bar does not exist yet.
+    const search = await screen.findByLabelText("Search");
+    await waitFor(() =>
+      expect(catalogQueries.some((u) => new URL(u).searchParams.get("offset") === "60")).toBe(true),
+    );
+
+    await userEvent.type(search, "ce");
+
+    await waitFor(() => {
+      // Params are read off the recorded REQUEST url rather than substring-matched, so
+      // `offset=` cannot be missed by a differently-spelled query string.
+      const listings = catalogQueries.filter((u) => new URL(u).searchParams.get("q") === "ce");
+      expect(listings.length).toBeGreaterThan(0);
+      expect(listings.every((u) => !new URL(u).searchParams.has("offset"))).toBe(true);
+    });
+  });
+
+  // A single page must not grow a control it does not need — and, more importantly, a catalog
+  // LARGER than one page must never be silently truncated to it.
+  it("shows no pager on a single page", async () => {
+    stubFillerPage({ clips: page(2), total: 2 });
+    renderPage("library");
+    expect(await screen.findByText("2 clips")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: /catalog pages/i })).not.toBeInTheDocument();
+  });
+});

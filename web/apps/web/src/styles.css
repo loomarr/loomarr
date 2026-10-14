@@ -1,0 +1,368 @@
+@import "tailwindcss";
+@import "@loomarr/tokens/theme.css";
+
+/* Self-hosted Geist + Geist Mono (§2.2) land in 13.2 with the visual harness (they
+   only matter for deterministic screenshots); the token font-stack falls back to
+   ui-sans-serif/ui-monospace until then. */
+
+/* Dark class drives the (v1 dark-only) theme; a light token-set slots in later. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The shadcn semantic layer, mapped onto the Test Card tokens (§2.1). The raw
+   palette lives in theme.css; these names are what shadcn/ui primitives consume,
+   so primitives restyle via tokens without edits. */
+:root {
+  --background: var(--color-static-950);
+  --foreground: var(--color-static-100);
+  --card: var(--color-static-900);
+  --card-foreground: var(--color-static-100);
+  --popover: var(--color-static-900);
+  --popover-foreground: var(--color-static-100);
+  --primary: var(--color-signal);
+  --primary-foreground: var(--color-static-950);
+  --secondary: var(--color-static-800);
+  --secondary-foreground: var(--color-static-100);
+  --muted: var(--color-static-800);
+  --muted-foreground: var(--color-static-400);
+  --accent: var(--color-static-800);
+  --accent-foreground: var(--color-static-100);
+  --destructive: var(--color-onair);
+  --destructive-foreground: var(--color-static-0);
+  --border: var(--color-static-700);
+  --input: var(--color-border-control);
+  --ring: var(--color-signal);
+  --radius: 8px;
+}
+
+/* Expose the semantic layer to Tailwind so bg-card / text-muted-foreground / etc.
+   resolve (Tailwind v4 @theme inline convention). */
+@theme inline {
+  /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
+     keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
+  --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
+  --animate-bar-breathe: bar-breathe 4s ease-in-out infinite;
+  /* Signal-lock — the tuner loader's bars jitter as snow (grey, stepped) then RESOLVE to a
+     steady phosphor-amber level: static becoming signal. Each bar carries this with a per-index
+     delay (set inline in TunerLoader) so the lock travels across the strip rather than snapping
+     as one block. `steps(4)` in the first half keeps the snow phase discrete (real static jumps);
+     the tail eases so the amber settles rather than pings. Off under reduced-motion. */
+  --animate-signal-lock: signal-lock 1.6s steps(4, end) infinite;
+  /* Held-frame drain — a channel switch's outgoing picture greys, flattens and fades into the
+     tuner's snow (#1620 B4). One shot, not a loop: it runs once as the switch starts. */
+  --animate-held-drain: held-drain 448ms ease-in both;
+  /* The switch wash thickening over the draining frame: the snow comes up as the picture goes. */
+  --animate-wash-thicken: wash-thicken 260ms ease-in both;
+  --animate-select-in: select-in 120ms ease-out;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-DEFAULT: var(--radius);
+}
+
+/* The six content-width tiers (frontend-design.md, "One page-edge contract"; #1817 Q10). A route
+   picks the tier its task needs — `max-w-reading`, `max-w-form` — and centres it with `mx-auto`;
+   it never types a pixel width. All six were widths the app already used; this only names them.
+   `browse` is the time grid you scan across (the Guide), so it is uncapped. */
+@theme {
+  --container-browse: none;
+  --container-overview: 1120px;
+  --container-detail: 896px;
+  --container-reading: 768px;
+  --container-form: 672px;
+  --container-focused: 512px;
+}
+
+/* The default border colour, so a bare `border` needs no colour class.
+ *
+ * ⚠ **It MUST live in `@layer base`.** Tailwind v4 emits every utility inside
+ * `@layer utilities`, and the cascade sorts by LAYER before specificity — so an UNLAYERED `*`
+ * rule beats `.border-signal` despite having specificity 0. Unlayered, this one line silently
+ * disabled every border-colour utility in the app: the active tab's amber underline rendered
+ * grey, and so did every other accent border. The class names were all present in the HTML and
+ * in the compiled CSS; they were simply always losing.
+ *
+ * Found by measuring the running app against the mock — the computed border came back
+ * `#2A2E37` where the mock has `#FFB020`, with `data-[status=active]:border-signal` sitting
+ * right there on the element. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  /* Base UI portal requirement: iOS 26+ Safari mispositions a fixed backdrop after the page has
+     been scrolled unless the body establishes a containing block. Costs nothing elsewhere. */
+  position: relative;
+}
+
+/* Base UI portal requirement: popups (Dialog, Menu, Select, Tooltip) render into a portal at the
+   end of <body>, so the app root must not be able to paint over them. `isolation` gives the root
+   its own stacking context, which keeps a stray `z-index` inside the app from surfacing above an
+   open dialog. ⚠ Not a cosmetic line — without it a high-z element in a page can eclipse a modal,
+   and nothing in the test suite would show it. */
+#root {
+  isolation: isolate;
+}
+
+/* The onair pulse — the one live-motion signature (§2.4); off under reduced-motion. */
+@keyframes onair-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Select/popover entrance — a small fade + rise on open (this repo doesn't use
+   tailwindcss-animate, so the Select recipe's animate-in classes are provided here as a
+   project-native keyframe). Applied via `motion-safe:animate-select-in`, so it's off under
+   reduced-motion and frozen in the visual suite by the killswitch below. */
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* TV snow — the CRT flicker on idle surfaces (§1). The noise layer is oversized (200%),
+   and this steps its transform between offsets so the grain JUMPS a few times a second
+   (real static flickers; it doesn't drift). Applied only via `motion-safe:animate-tv-snow`,
+   and the reduced-motion killswitch below neutralizes it as a second guard. */
+@keyframes tv-snow {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-8%, 5%);
+  }
+  50% {
+    transform: translate(4%, -6%);
+  }
+  75% {
+    transform: translate(-5%, -3%);
+  }
+  100% {
+    transform: translate(6%, 4%);
+  }
+}
+/* Bar breathe — the idle test card's sign of life (§1). Each colour segment dips out of
+   phase, so the strip SHIMMERS across its width like a signal holding steady rather than
+   pulsing as one block (which reads as a loading spinner).
+
+   Opacity-only, so it composites without re-rastering the bars. 4s and eased at both ends,
+   with the trough at 62%: deep enough to notice on a glance back at the screen, shallow
+   enough that it never pulls the eye away from the one button beside it. The per-segment
+   delays live in ColorBars, which is the only thing that knows how many segments there are.
+
+   Applied via `motion-safe:` at the call site, with the reduced-motion killswitch below as
+   the second guard — the visual suite pins `reducedMotion: reduce`, so baselines freeze it
+   at full opacity and never diff on a mid-cycle frame. */
+@keyframes bar-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* Signal-lock — the tuner loader (§9.1 Watch). A bar starts as grey snow at a jittering height,
+   then locks to phosphor-amber at a settled height with a bloom. `height` carries the snow jitter;
+   `background-color` and the amber `box-shadow` carry the static→signal transition. Animated via
+   `motion-safe:animate-signal-lock` so it's off under reduced-motion, and the visual suite's
+   `reducedMotion: reduce` freezes it at the locked (amber) frame — a deterministic baseline, not a
+   mid-flicker one. Colours are the raw token values (Tailwind can't interpolate a class per frame). */
+@keyframes signal-lock {
+  0% {
+    height: 22%;
+    background-color: var(--color-static-500);
+    box-shadow: none;
+  }
+  25% {
+    height: 88%;
+    background-color: var(--color-static-400);
+    box-shadow: none;
+  }
+  45% {
+    height: 40%;
+    background-color: var(--color-static-500);
+    box-shadow: none;
+  }
+  65% {
+    height: 74%;
+    background-color: var(--color-signal);
+    box-shadow: 0 0 6px 0 var(--color-signal);
+  }
+  100% {
+    height: 64%;
+    background-color: var(--color-signal-400);
+    box-shadow: 0 0 8px 0 var(--color-signal-400);
+  }
+}
+
+/* Held-frame drain — the tuner's wash over the previous channel's held frame (#1620 B4). The wash is
+   a layer ABOVE the picture, so it drains it through `backdrop-filter` (grey, flatter) while its own
+   ground darkens: a static-950 layer at 88% leaves the picture at the mock's 12%. Most of the drain
+   lands in the first ~260 ms (the picture at 55%), the rest settles by 448 ms, so the readout always
+   lands on snow. The wash's resting style is this 100% frame, which is what reduced motion (and a
+   cold start, with nothing to drain) shows. */
+/* The switch wash (snow + its dark layer) thickening in over the draining held frame (#1620). Its
+   resting opacity is 1, which is what a cold start and reduced motion show. */
+@keyframes wash-thicken {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes held-drain {
+  0% {
+    backdrop-filter: none;
+    background-color: transparent;
+  }
+  57% {
+    backdrop-filter: grayscale(1) contrast(0.7);
+    background-color: color-mix(in srgb, var(--color-static-950) 45%, transparent);
+  }
+  100% {
+    backdrop-filter: grayscale(1) contrast(0.6);
+    background-color: color-mix(in srgb, var(--color-static-950) 88%, transparent);
+  }
+}
+
+/* Reveal — animate a collapsible section open/closed WITHOUT knowing its height, via the
+   grid 0fr→1fr trick (the modern height:auto transition). The wizard's connection blocks
+   use it so a section slides open delightfully when picked from the rail (§13). The inner
+   child must be min-h-0 + overflow-hidden so it clips while closed. Frozen to instant under
+   the reduced-motion killswitch below. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* ⚠ TWO selectors for two attribute SHAPES, and the omission is the load-bearing part.
+   `[data-open="true"]` is a React boolean (connection-block passes `data-open={open}`);
+   `[data-open=""]` is Base UI's Collapsible.Panel, which emits `data-open` valueless when
+   open and swaps to `data-closed` when shut (CollapsibleSection, since V50c).
+   Do NOT collapse these into a bare `.reveal[data-open]`. React renders `data-open={false}`
+   as the STRING "false", not as an absent attribute, so presence-matching would hold
+   connection-block permanently open — and nothing here would catch it: jsdom does not apply
+   this stylesheet, and connection-block has no story for the visual suite to snapshot. */
+.reveal[data-open="true"],
+.reveal[data-open=""] {
+  grid-template-rows: 1fr;
+}
+.reveal > .reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* scroll-thin — a token-keyed slim scrollbar for inner-scroll regions (e.g. the cycle
+   preview's slot list when a marathon resolves to many rows). Standard properties drive
+   Firefox + modern Chromium; the ::-webkit fallback covers older WebKit. The thumb rides
+   the same static scale as --border, so it tracks any palette/theme change; the track is
+   transparent so the thumb floats over the card rather than sitting in a gutter. No
+   `scrollbar-gutter: stable` — it would reserve the track width even on short lists that
+   never scroll, shifting their content; the accepted cost is a one-time ~8px reflow the
+   moment a list actually grows past the cap (imperceptible for an overlay scrollbar). */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-static-700) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-static-700);
+  border-radius: 9999px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-static-600);
+}
+
+/* guide-scroll — the guide grid's own scrollbars, and a deliberate variant of .scroll-thin
+   rather than a reuse of it.
+
+   The distinction is what the bar IS on each surface. On an inner list the scrollbar is an
+   incidental overflow indicator, so .scroll-thin keeps it faint and refuses a stable gutter.
+   On the guide the HORIZONTAL bar is a primary control — it is how you move forward and back
+   in time once zoomed in — so it is a little chunkier, rides the same rounded token thumb,
+   and brightens on hover to read as grabbable. It also sits at the bottom of a surface that
+   is always scrollable at zoom > 1, so there is no "reserved gutter on content that never
+   scrolls" cost to avoid here.
+
+   The vertical bar stays slim: scrolling CHANNELS is ordinary overflow, and two heavy bars
+   would frame the grid in chrome. */
+.guide-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-static-600) transparent;
+}
+.guide-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 11px;
+}
+.guide-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.guide-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-static-600);
+  border-radius: 9999px;
+  /* A transparent border painted over the content box keeps the thumb visually inset from the
+     grid's edge, so the bar floats rather than butting against the last row. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.guide-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-static-400);
+}
+/* The corner where the two bars meet — left unstyled it renders as a pale system square that
+   reads as a rendering artefact against a dark grid. */
+.guide-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

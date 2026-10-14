@@ -1,0 +1,35 @@
+groups:
+  - name: loomarr.alerts
+    rules:
+      - alert: LoomarrMetricsScrapeErrors
+        expr: increase(loomarr_metrics_scrape_errors_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Loomarr could not collect live store metrics
+          description: Inspect Loomarr logs and database health; one or more scrape-time store queries failed.
+      - alert: LoomarrSchedulerJobFailing
+        expr: sum by (job) (increase(loomarr_scheduler_job_executions_total{result=~"error|timeout|panic"}[15m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Loomarr scheduled Job is failing
+          description: Job {{ $labels.job }} has failed, timed out, or panicked in the last 15 minutes.
+      - alert: LoomarrDatabasePoolSaturated
+        expr: loomarr:database_pool_utilization:ratio > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Loomarr database pool is saturated
+          description: More than 90% of configured database connections have been in use for 10 minutes.
+      - alert: LoomarrPlayoutSpawnFailures
+        expr: increase(loomarr_playout_process_failures_total{stage="parent"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Loomarr could not start an internal Playout encoder
+          description: Inspect the Playout process diagnostics and ffmpeg configuration.

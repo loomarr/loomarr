@@ -1,0 +1,44 @@
+{
+  "name": "@loomarr/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Loomarr-owned semantic themes and universal primitives, implemented behind Tamagui Core.",
+  "exports": {
+    ".": "./index.ts",
+    "./qr-code-web": "./qr-code-web.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tamagui/core": "2.7.7",
+    "lucide-react-native": "1.35.0",
+    "qrcode": "1.5.4",
+    "react-native-svg": "15.15.5"
+  },
+  "peerDependencies": {
+    "react-dom": ">=19 <20",
+    "react": ">=19 <20",
+    "react-native": ">=0.86 <0.87"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "jsdom": "30.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "npm:react-native-tvos@0.86.2-0",
+    "react-native-web": "0.21.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

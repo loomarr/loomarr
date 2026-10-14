@@ -1,0 +1,278 @@
+import * as invitationsApi from "@loomarr/api/endpoints/invitations";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
+import * as usersApi from "@loomarr/api/endpoints/users";
+import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvitationInputBody";
+import type { InvitationBody } from "@loomarr/api/models/invitationBody";
+import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
+import { unwrap } from "@loomarr/api/unwrap";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useAuth } from "@/auth/use-auth";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { CreateLocalDialog } from "@/components/loomarr/people/create-local-dialog";
+import { ImportDialog } from "@/components/loomarr/people/import-dialog";
+import { InvitationDialog } from "@/components/loomarr/people/invitation-dialog";
+import { InvitationRoster } from "@/components/loomarr/people/invitation-roster";
+import { PeopleRoster } from "@/components/loomarr/people/people-roster";
+import { PersonDetail } from "@/components/loomarr/people/person-detail";
+import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+
+// UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
+// is the access-control surface: import who may sign in, set what they may spend, and end
+// their sessions.
+//
+// Admin-only, enforced server-side (every route 403s for members). The route guard here
+// is a courtesy so a member sees an explanation rather than a wall of failed requests.
+const UsersPage = () => {
+  const queryClient = useQueryClient();
+  const { user: me } = useAuth();
+  const [busyUser, setBusyUser] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string>();
+  const [revoking, setRevoking] = useState<string>();
+  const [sendingInvitation, setSendingInvitation] = useState<string>();
+  const [sharingInvitation, setSharingInvitation] = useState<InvitationBody>();
+
+  const users = usersApi.useListUsers();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: usersApi.getListUsersQueryKey() });
+  const settings = settingsApi.useSettingsList();
+  const importAvailable =
+    settings.data?.status === 200 ? Boolean(settings.data.data.features?.user_sync) : false;
+  const candidates = usersApi.useImportCandidates({ query: { enabled: importAvailable } });
+  const importUsers = usersApi.useImportUsers();
+  const syncUsers = usersApi.useSyncUsers();
+  const createLocal = usersApi.useCreateLocalUser();
+  const invitations = invitationsApi.useListInvitations({ query: { refetchInterval: 5_000 } });
+  const invalidateInvitations = () =>
+    queryClient.invalidateQueries({ queryKey: invitationsApi.getListInvitationsQueryKey() });
+  const sendInvitationEmail = invitationsApi.useSendInvitationEmail({
+    mutation: {
+      onSettled: () => {
+        setSendingInvitation(undefined);
+        void invalidateInvitations();
+      },
+    },
+  });
+  const createInvitation = invitationsApi.useCreateInvitation();
+  const issueInvitationGrant = invitationsApi.useIssueInvitationGrant();
+  const revokeInvitation = invitationsApi.useRevokeInvitation();
+
+  const createInvitationAction = async (data: CreateInvitationInputBody) => {
+    const response = await createInvitation.mutateAsync({ data });
+    if (response.status !== 201) throw response.data;
+    await invalidateInvitations();
+    return response.data;
+  };
+  const issueInvitationGrantAction = async (
+    id: string,
+    conveyance: IssueInvitationGrantInputBodyConveyance,
+  ) => {
+    const response = await issueInvitationGrant.mutateAsync({ id, data: { conveyance } });
+    if (response.status !== 200) throw response.data;
+    return response.data;
+  };
+  const revokeInvitationAction = async (id: string) => {
+    const response = await revokeInvitation.mutateAsync({ id });
+    if (response.status !== 204) throw response.data;
+    await invalidateInvitations();
+  };
+  const sendInvitationEmailAction = async (id: string) => {
+    const response = await sendInvitationEmail.mutateAsync({
+      id,
+      data: { requestId: globalThis.crypto.randomUUID() },
+    });
+    if (response.status !== 202) throw response.data;
+    await invalidateInvitations();
+  };
+
+  const patch = usersApi.usePatchUser({
+    mutation: {
+      onSettled: () => {
+        setBusyUser(undefined);
+        void invalidate();
+      },
+    },
+  });
+
+  const sessions = usersApi.useListUserSessions(selectedId ?? "", {
+    query: { enabled: Boolean(selectedId) },
+  });
+  const invalidateSessions = () => {
+    if (selectedId) {
+      void queryClient.invalidateQueries({
+        queryKey: usersApi.getListUserSessionsQueryKey(selectedId),
+      });
+    }
+  };
+  const revoke = usersApi.useRevokeSession({
+    mutation: {
+      onSettled: () => {
+        setRevoking(undefined);
+        invalidateSessions();
+      },
+    },
+  });
+
+  const resetPassword = usersApi.useResetUserPassword();
+  const putContactAddress = usersApi.usePutUserContactAddress();
+  const deleteContactAddress = usersApi.useDeleteUserContactAddress();
+  const deleteContactReplacement = usersApi.useDeleteUserContactReplacement();
+
+  const edit = (id: string, body: Record<string, unknown>) => {
+    setBusyUser(id);
+    patch.mutate({ id, data: body });
+  };
+
+  if (users.error) return <ErrorState error={users.error} onRetry={() => users.refetch()} />;
+  const rows = users.data?.status === 200 ? (users.data.data.users ?? []) : undefined;
+  const selected = rows?.find((user) => user.id === selectedId);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        title="People"
+        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <InvitationDialog
+              libraryAvailable={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              onCreate={createInvitationAction}
+              onIssueGrant={issueInvitationGrantAction}
+              onRevoke={revokeInvitationAction}
+              onSendEmail={sendInvitationEmailAction}
+            />
+            <CreateLocalDialog
+              error={createLocal.error}
+              creating={createLocal.isPending}
+              onCreate={async (data) => {
+                await createLocal.mutateAsync({ data });
+                await invalidate();
+              }}
+            />
+            <ImportDialog
+              available={importAvailable}
+              candidates={
+                importAvailable && !candidates.isLoading
+                  ? (unwrap(candidates.data, (body) => body.candidates) ?? [])
+                  : undefined
+              }
+              candidateError={candidates.error}
+              mutationError={importUsers.error ?? syncUsers.error}
+              importing={importUsers.isPending}
+              syncing={syncUsers.isPending}
+              onRetry={() => candidates.refetch()}
+              onImport={async (ids) => {
+                await importUsers.mutateAsync({ data: { ids } });
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+              onSync={async () => {
+                await syncUsers.mutateAsync();
+                await Promise.all([invalidate(), candidates.refetch()]);
+              }}
+            />
+          </div>
+        }
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+        {patch.error != null && <ErrorState error={patch.error} />}
+        {revoke.error != null && <ErrorState error={revoke.error} />}
+        {invitations.error != null && (
+          <ErrorState error={invitations.error} onRetry={() => invitations.refetch()} />
+        )}
+        {sendInvitationEmail.error != null && <ErrorState error={sendInvitationEmail.error} />}
+
+        <InvitationRoster
+          invitations={unwrap(invitations.data, (body) => body.invitations)}
+          sendingId={sendingInvitation}
+          onSendEmail={(id) => {
+            setSendingInvitation(id);
+            sendInvitationEmail.mutate({ id, data: { requestId: globalThis.crypto.randomUUID() } });
+          }}
+          onShare={setSharingInvitation}
+        />
+
+        {sharingInvitation && (
+          <InvitationDialog
+            open
+            existing={sharingInvitation}
+            libraryAvailable={importAvailable}
+            candidates={[]}
+            onOpenChange={(next) => !next && setSharingInvitation(undefined)}
+            onCreate={createInvitationAction}
+            onIssueGrant={issueInvitationGrantAction}
+            onRevoke={revokeInvitationAction}
+            onSendEmail={sendInvitationEmailAction}
+          />
+        )}
+
+        <PeopleRoster
+          users={rows}
+          selectedId={selectedId}
+          selfId={me?.id}
+          onSelect={(user) => setSelectedId(user.id)}
+        />
+
+        <Sheet
+          open={Boolean(selected)}
+          onOpenChange={(open) => !open && setSelectedId(undefined)}
+          swipeDirection="right"
+        >
+          {selected && (
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>{selected.name}</SheetTitle>
+                <SheetDescription>
+                  Manage this person's access, request policy, credentials, and sessions.
+                </SheetDescription>
+              </SheetHeader>
+              <PersonDetail
+                user={selected}
+                busy={busyUser === selected.id}
+                isSelf={selected.id === me?.id}
+                sessionsLoading={sessions.isLoading}
+                sessions={unwrap(sessions.data, (body) => body.sessions) ?? []}
+                revoking={revoking}
+                onRoleChange={(role) => edit(selected.id, { role })}
+                onQuotaChange={(quota) => edit(selected.id, { quota })}
+                onToggleAutoApprove={(autoApprove) => edit(selected.id, { autoApprove })}
+                onToggleDisabled={(disabled) => edit(selected.id, { disabled })}
+                onRevokeSession={(id) => {
+                  setRevoking(id);
+                  revoke.mutate({ hash: id });
+                }}
+                onResetPassword={
+                  selected.local
+                    ? async (next) => {
+                        await resetPassword.mutateAsync({ id: selected.id, data: { next } });
+                        invalidateSessions();
+                      }
+                    : undefined
+                }
+                onSetContactAddress={async (email) => {
+                  await putContactAddress.mutateAsync({ id: selected.id, data: { email } });
+                  await invalidate();
+                }}
+                onRemoveContactAddress={async () => {
+                  await deleteContactAddress.mutateAsync({ id: selected.id });
+                  await invalidate();
+                }}
+                onCancelContactReplacement={async () => {
+                  await deleteContactReplacement.mutateAsync({ id: selected.id });
+                  await invalidate();
+                }}
+              />
+            </SheetContent>
+          )}
+        </Sheet>
+      </div>
+    </div>
+  );
+};
+
+export { UsersPage };

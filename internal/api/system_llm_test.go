@@ -1,0 +1,348 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/store"
+)
+
+// fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
+type fakeSystemLLM struct {
+	status      api.SystemLLMStatus
+	selectErr   error
+	testErr     error
+	selected    api.SelectRequest
+	tested      string
+	pulled      string
+	discoverHit bool
+	discoverOut []api.DiscoverModelView
+	discoverErr error
+}
+
+func (f *fakeSystemLLM) Status(context.Context) (api.SystemLLMStatus, error) {
+	return f.status, nil
+}
+func (f *fakeSystemLLM) Select(_ context.Context, req api.SelectRequest) error {
+	if f.selectErr != nil {
+		return f.selectErr
+	}
+	f.selected = req
+	f.status.Model = req.Model
+	if req.Provider != "" {
+		f.status.Provider = req.Provider
+	}
+	return nil
+}
+func (f *fakeSystemLLM) Test(_ context.Context, provider, _, _ string) error {
+	f.tested = provider
+	return f.testErr
+}
+func (f *fakeSystemLLM) Pull(_ context.Context, m string) (string, error) {
+	f.pulled = m
+	return "job-1", nil
+}
+func (f *fakeSystemLLM) Discover(_ context.Context) ([]api.DiscoverModelView, error) {
+	f.discoverHit = true
+	return f.discoverOut, f.discoverErr
+}
+
+// newSystemLLMHarness hides the fixed model-management route assembly behind
+// the common API lifecycle. Tests vary only system-LLM behavior.
+func newSystemLLMHarness(t *testing.T, svc api.SystemLLMService) *apiHarness {
+	t.Helper()
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(defaults.Log, api.Options{
+			Store:     defaults.Store,
+			Auth:      defaults.Auth,
+			Log:       defaults.Log,
+			SystemLLM: svc,
+		})
+	})
+}
+
+// All /v1/system/llm* routes require admin (§8.1: model selection can trigger a
+// multi-GB download + change what runs on the box).
+func TestSystemLLM_RequiresAdmin(t *testing.T) {
+	srv := newSystemLLMHarness(t, &fakeSystemLLM{}).Server
+	for _, tc := range []struct {
+		method, path, body string
+	}{
+		{http.MethodGet, "/v1/system/llm", ""},
+		{http.MethodPost, "/v1/system/llm/select", `{"model":"qwen3:8b"}`},
+		{http.MethodPost, "/v1/system/llm/test", `{"provider":"openrouter"}`},
+		{http.MethodPost, "/v1/system/llm/pull", `{"model":"qwen3:8b"}`},
+		{http.MethodGet, "/v1/system/llm/pull-operations/job-1", ""},
+	} {
+		resp := do(t, srv, tc.method, tc.path, "", tc.body) // no token
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
+		}
+	}
+}
+
+// When no SystemLLMService is configured (e.g. hosted provider), the routes 501.
+func TestSystemLLM_NotConfigured501(t *testing.T) {
+	srv := newSystemLLMHarness(t, nil).Server
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm", adminToken, "")
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Errorf("status with no service → %d, want 501", resp.StatusCode)
+	}
+}
+
+// Status returns the probe + catalog + recommendation as admin.
+func TestSystemLLM_Status(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{
+		Provider: "ollama", Model: "qwen3:8b", Local: true, Reachable: true,
+		VRAMGiB: 12, Recommended: "qwen3:8b",
+		Catalog: []api.LLMModelView{{Tag: "qwen3:8b", Fit: "fits", Pulled: true, Recommended: true}},
+	}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status → %d", resp.StatusCode)
+	}
+	var body api.SystemLLMStatus
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Recommended != "qwen3:8b" || len(body.Catalog) != 1 || !body.Local {
+		t.Errorf("unexpected status body: %+v", body)
+	}
+}
+
+// Select maps the not-pulled sentinel to 409 (not a 500).
+func TestSystemLLM_SelectNotPulled409(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrModelNotPulled}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken, `{"model":"qwen3.5:9b"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("select un-pulled model → %d, want 409", resp.StatusCode)
+	}
+}
+
+// Select happy path applies the model and echoes the fresh status.
+func TestSystemLLM_SelectOK(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama", Local: true}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken, `{"model":"llama3.1:8b"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("select → %d, want 200", resp.StatusCode)
+	}
+	if svc.selected.Model != "llama3.1:8b" {
+		t.Errorf("service saw model %q, want llama3.1:8b", svc.selected.Model)
+	}
+	var body api.SystemLLMStatus
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Model != "llama3.1:8b" {
+		t.Errorf("select response model = %q, want llama3.1:8b", body.Model)
+	}
+}
+
+// Hosted select passes provider + key through and maps a bad key to 401.
+func TestSystemLLM_SelectHosted(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"openai/gpt-4o-mini","apiKey":"sk-or-x"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("hosted select → %d, want 200", resp.StatusCode)
+	}
+	if svc.selected.Provider != "openrouter" || svc.selected.APIKey != "sk-or-x" {
+		t.Errorf("service saw %+v, want provider=openrouter key=sk-or-x", svc.selected)
+	}
+}
+
+func TestSystemLLM_SelectBadKey401(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrKeyInvalid}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"x","apiKey":"bad"}`)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("bad hosted key → %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestSystemLLM_SelectInvalidHostedModel422(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrInvalidHostedModel}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"qwen3:8b"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("Ollama tag for OpenRouter → %d, want 422", resp.StatusCode)
+	}
+}
+
+// A custom endpoint threads its baseUrl through to the service.
+func TestSystemLLM_SelectCustomPassesBaseURL(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"custom","model":"my-model","apiKey":"k","baseUrl":"http://localhost:8000/v1"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("custom select → %d, want 200", resp.StatusCode)
+	}
+	if svc.selected.Provider != "custom" || svc.selected.BaseURL != "http://localhost:8000/v1" {
+		t.Errorf("service saw %+v, want provider=custom baseUrl=http://localhost:8000/v1", svc.selected)
+	}
+}
+
+// A custom select with no baseUrl is rejected at the boundary (422) before the service.
+func TestSystemLLM_SelectCustomWithoutBaseURL422(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"custom","model":"my-model","apiKey":"k"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("custom select w/o baseUrl → %d, want 422", resp.StatusCode)
+	}
+	if svc.selected.Provider != "" {
+		t.Errorf("service should NOT have been called, but saw %+v", svc.selected)
+	}
+}
+
+func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrUnknownProvider}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"nope","model":"x"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("unknown provider → %d, want 422", resp.StatusCode)
+	}
+}
+
+// Test endpoint: a bad key is ok=false (200), NOT a 5xx — the UI shows it inline.
+func TestSystemLLM_TestReportsInline(t *testing.T) {
+	svc := &fakeSystemLLM{testErr: api.ErrKeyInvalid}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken,
+		`{"provider":"openrouter","apiKey":"bad"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test with bad key → %d, want 200 (inline result)", resp.StatusCode)
+	}
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.OK || body.Error == "" {
+		t.Errorf("bad-key test = %+v, want ok=false with an error", body)
+	}
+	if svc.tested != "openrouter" {
+		t.Errorf("service tested %q, want openrouter", svc.tested)
+	}
+}
+
+func TestSystemLLM_TestOK(t *testing.T) {
+	svc := &fakeSystemLLM{} // testErr nil → success
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken, `{"provider":"openrouter"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test → %d", resp.StatusCode)
+	}
+	var body struct {
+		OK bool `json:"ok"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if !body.OK {
+		t.Error("valid key test should report ok=true")
+	}
+}
+
+// Pull starts the job and returns its id.
+func TestSystemLLM_Pull(t *testing.T) {
+	svc := &fakeSystemLLM{}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/pull", adminToken, `{"model":"qwen3.5:9b"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pull → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		JobID string `json:"jobId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.JobID == "" || svc.pulled != "qwen3.5:9b" {
+		t.Errorf("pull jobID=%q pulled=%q", body.JobID, svc.pulled)
+	}
+}
+
+func TestSystemLLM_PullOperationRecoversProgressWithoutEvents(t *testing.T) {
+	harness := newSystemLLMHarness(t, &fakeSystemLLM{})
+	srv, st := harness.Server, harness.Store
+	now := time.Now().UTC()
+	operation := store.InteractiveOperation{
+		ID: "pull-1", Kind: store.InteractiveOperationLLMPull, Subject: "qwen3:8b",
+		Status: store.InteractiveOperationRunning, Percent: 42, Completed: 420, Total: 1000,
+		StartedAt: now.Add(-time.Minute), UpdatedAt: now,
+	}
+	if err := st.UpsertInteractiveOperation(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/pull-operations/pull-1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get pull operation -> %d", resp.StatusCode)
+	}
+	var got struct {
+		JobID     string `json:"jobId"`
+		Model     string `json:"model"`
+		Status    string `json:"status"`
+		Percent   int    `json:"percent"`
+		Completed int64  `json:"completed"`
+		Total     int64  `json:"total"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.JobID != operation.ID || got.Model != operation.Subject || got.Status != string(operation.Status) || got.Percent != 42 || got.Completed != 420 || got.Total != 1000 {
+		t.Fatalf("pull operation = %+v, want durable progress", got)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/system/llm/pull-operations/missing", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing pull operation -> %d, want 404", resp.StatusCode)
+	}
+}
+
+// Discover returns the machine-compatible candidates with quant-targeted pull refs.
+func TestSystemLLM_Discover(t *testing.T) {
+	svc := &fakeSystemLLM{discoverOut: []api.DiscoverModelView{
+		{ID: "unsloth/Qwen3.5-4B-GGUF", Quant: "Q4_K_M", PullRef: "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M", SizeGiB: 2.7, Fit: "fits", Downloads: 1089613},
+	}}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/discover", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover → %d, want 200", resp.StatusCode)
+	}
+	if !svc.discoverHit {
+		t.Error("service Discover was not called")
+	}
+	var body struct {
+		Models []api.DiscoverModelView `json:"models"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Models) != 1 || body.Models[0].PullRef != "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M" {
+		t.Errorf("discover body = %+v", body.Models)
+	}
+}
+
+// A discovery source outage degrades to an empty list (200), never a 5xx — the UI
+// falls back to a "browse on huggingface.co" link (§8.1 best-effort).
+func TestSystemLLM_DiscoverDegradesOnError(t *testing.T) {
+	svc := &fakeSystemLLM{discoverErr: errors.New("hugging face unreachable")}
+	srv := newSystemLLMHarness(t, svc).Server
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/discover", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover on source error → %d, want 200 (degrade, not 5xx)", resp.StatusCode)
+	}
+	var body struct {
+		Models []api.DiscoverModelView `json:"models"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Models) != 0 {
+		t.Errorf("expected empty models on source error, got %+v", body.Models)
+	}
+}

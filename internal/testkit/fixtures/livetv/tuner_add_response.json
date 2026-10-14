@@ -1,0 +1,15 @@
+{
+    "Id": "<server-assigned>",
+    "Url": "http://TUNARR_HOST:8000/api/channels.m3u",
+    "Type": "m3u",
+    "FriendlyName": "loomarr-phase10-capture",
+    "SetupUrl": "configurationpage?name=m3utuner",
+    "ImportFavoritesOnly": false,
+    "PreferEpgChannelImages": true,
+    "PreferEpgChannelNumbers": false,
+    "AllowHWTranscoding": true,
+    "AllowMappingByNumber": true,
+    "ImportGuideData": true,
+    "TunerCount": 0,
+    "DataVersion": 2
+}

@@ -1,0 +1,499 @@
+# Loomarr's single release image (design §16): a cgo-free Go server, the mandatory
+# release-matched Rust image worker, and the media tooling required by playout/ingest.
+#
+# Stages: fe (SPA) → build (Go) + image-worker (Rust) → runtime (one Debian image).
+
+# ---- frontend ----
+# Build the Vite/React SPA so the Go stage can embed it (internal/web/embed.go's
+# `//go:embed all:dist`). WITHOUT this stage the image embeds only the .gitkeep
+# placeholder and serves a "not built" notice — the UI would be missing. Runs on
+# the BUILD platform (native), never emulated: the output is portable static assets.
+# codegen reads the committed api/openapi.yaml (orval) — no running server needed.
+# Node 22.23.2 satisfies the repository's >=22.5 <23 contract and includes the
+# built-in `node:sqlite` pnpm 11.13 uses for its store index. Keep the image on the
+# same major CI and contributors certify; a release build is not the place to trial
+# the next Node line. Corepack is separately pinned because it is no longer bundled
+# in newer official Node images.
+FROM --platform=$BUILDPLATFORM node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS fe
+RUN npm install -g corepack@0.36.0 && corepack enable
+WORKDIR /src
+COPY web ./web
+COPY api/openapi.yaml ./api/openapi.yaml
+COPY scripts/check-fe-bundle.mjs ./scripts/check-fe-bundle.mjs
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    cd web && pnpm install --frozen-lockfile \
+    && pnpm codegen \
+    && pnpm --filter @loomarr/web build
+# vite outDir is ../../../internal/web/dist ⇒ /src/internal/web/dist
+
+# ---- build ----
+# Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
+# far faster than compiling under QEMU emulation, and correct because the static
+# pure-Go build has no arch-specific C toolchain to satisfy.
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
+ARG TARGETARCH
+WORKDIR /src
+# Cache modules first.
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Overlay the built SPA over the committed .gitkeep placeholder so `go build`'s
+# embed bakes the real UI into the binary.
+COPY --from=fe /src/internal/web/dist ./internal/web/dist
+# Stamped so the running instance can say what it is (§13 Help/About, §16 upgrades).
+# Unset ARGs are fine: buildinfo falls back to Go's embedded VCS stamps, then to "dev".
+ARG VERSION=""
+ARG COMMIT=""
+ARG BUILT_AT=""
+# Static, stripped, reproducible-ish.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w \
+      -X github.com/loomarr/loomarr/internal/buildinfo.version=${VERSION} \
+      -X github.com/loomarr/loomarr/internal/buildinfo.commit=${COMMIT} \
+      -X github.com/loomarr/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
+    -o /out/loomarr ./cmd/loomarr
+
+# Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
+# libwebp and Rust standard library always match the runtime architecture.
+FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS image-worker
+WORKDIR /src
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY rust ./rust
+ARG VERSION=""
+RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-image
+
+# ---- runtime ----------------------------------------------------------------
+# THE image. One tag, one release unit, all required binaries and tooling (§16 — revised).
+#
+# Loomarr previously published two tags: a 31MB distroless `loomarr:latest` with no
+# media tooling, and a retired 549MB `loomarr:filler` that added it for the §10 ingest job.
+# That split existed to keep media tooling out of the default image — the same goal
+# that had earlier motivated a separate ingest sidecar, itself already reversed in
+# favour of the opt-in tag.
+#
+# §9.1 makes `ffmpeg` load-bearing for PLAYOUT, not just ingest. A tag without an
+# encoder can no longer serve a channel, so the "slim" variant would not be a smaller
+# Loomarr — it would be a Loomarr that cannot do the main thing. Two tags where one is
+# functionally incomplete is a support burden, not a choice, so the split collapses.
+#
+# The cost, stated plainly: the default download grows ~18x (31MB → 549MB) and every
+# install carries an encoder whether or not it uses internal playout. This is the THIRD
+# time this packaging question has been decided (sidecar → opt-in tag → single image);
+# each reversal followed a change in what the tooling was FOR. If a future change makes
+# the encoder optional again, revisit it with that history in view.
+#
+# Ported from the removed Dockerfile.ingest: the sidecar is gone, but its hard-won
+# base-image findings are not.
+#
+# debian:stable-slim (glibc), NOT Alpine: the upstream yt-dlp + ffmpeg binaries are
+# built against glibc and fail on musl with "exec: no such file or directory"
+# (missing loader). This is what costs us distroless — the static base cannot run
+# them, and §9.1 means we can no longer do without them.
+#
+# §14 tooling policy — bundle the LATEST upstream binaries, not distro packages:
+# distros ship yt-dlp months behind, and a stale yt-dlp is a real failure mode
+# (YouTube changes player/signature extraction constantly; old versions get
+# throttled or cannot extract at all).
+#   - yt-dlp: official self-contained `yt-dlp_linux` (bundles its own Python via
+#     PyInstaller — no system Python, so §14's all-Go rule holds).
+#   - ffmpeg: BtbN static GPL build. Needed so yt-dlp can merge separate
+#     video/audio streams; without it high-res sources fail or silently downgrade.
+#   - deno: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
+#     YouTube extraction without one ("No supported JavaScript runtime"), so the
+#     YouTube leg fails without it. Auto-detected on PATH. (Found the hard way by
+#     a live smoke: the YouTube fetch errored until deno was present.)
+# All three are version-pinned so a build cannot silently pull a changed binary.
+#
+# ARCHITECTURE: all three are fetched per TARGETARCH. The removed Dockerfile.ingest
+# hardcoded x86_64 URLs, so on an arm64 host it BUILT FINE and then failed at run
+# time with "rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2" —
+# a broken image that looks healthy until someone actually ingests. Keep these
+# arch-aware, and never assume the build host is amd64.
+#
+# ⚠ Digest-pinned. The `@sha256:` is the real pin; the human-readable tag is a hint, and for
+# `stable-slim` a ROLLING one that moves on every Debian point release — a reproducible beta
+# image cannot ride a tag whose contents change under it (the archived first-beta-readiness plan,
+# integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
+# `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
+# image-worker bases above.
+FROM debian:stable-slim@sha256:04634311a8d5fc442b6eb06d792293c4f3e2268652ca7634e00ce8ef5cc0a28a AS runtime
+ARG TARGETARCH
+# The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
+# resolves the SAME package versions on every build — the digest-pinned base above fixes the root
+# filesystem, and this fixes what gets layered onto it. This is the value the pinned base's OWN
+# `debian.sources` records in a comment (`# http://snapshot.debian.org/archive/debian/<ts>`); keep
+# the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
+# pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
+# digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
+ARG DEBIAN_SNAPSHOT=20260824T000000Z
+ARG YTDLP_VERSION=2026.08.19
+ARG DENO_VERSION=v2.9.6
+# Release-asset digests were copied from the upstream GitHub release records. Some
+# upstream records are mutable, so the committed checksums — not the record itself —
+# are the fail-closed identity. Keep both architectures explicit: a version tag alone
+# does not stop an asset from being replaced, and one architecture must never inherit
+# the other's checksum.
+ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
+ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
+ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
+# ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AND THE PICTURE CHECKS AGAINST THE NEW BUILD.
+#
+# A GPU filter that silently produces nothing is fast and exits 0 (#1516: tonemap_vaapi aired black;
+# #1532: overlay_cuda on n8.1.2 aired all-green under NVDEC). A bump is verified by picture content
+# (the watermark self-check, the tone-map luma checks, scripts/watermark-overlay-matrix.sh on Intel),
+# never by speed or exit status.
+#
+# The n8.1 ceiling is gone. ffmpeg >= 9 could not advance a concat demuxer past a chunked HTTP entry,
+# which the per-programme chain relied on; #1542 removed that chain (the channel packager feeds files
+# and pipes, never a concat of HTTP entries), so nothing in playout depends on that behaviour now.
+# n9 is also what fixes overlay_cuda after NVDEC, so the NVENC watermark self-check passes (#1549).
+#
+# ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
+# and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
+# must identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
+# BtbN prunes all but the latest 14 ordinary autobuilds; only one release per month is retained for
+# 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
+# pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
+#
+# This pin is `n9.0.1-11-ge47273f4d9`, the n9.0 GPL build in the retained monthly release below (the
+# same release that carried the previous n8.1 pin). To bump: choose BtbN's retained monthly release
+# for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
+# still keeps it, take its exact GPL asset filename for the series, download both architecture
+# archives, and update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence
+# together — never choose an ordinary daily archive or point any value at `latest`.
+ARG FFMPEG_RELEASE=autobuild-2026-08-31-13-27
+ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9
+ARG FFMPEG_AMD64_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
+ARG FFMPEG_ARM64_SHA256=e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1
+ARG WHISPER_VERSION=v1.9.1
+ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
+ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
+# The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
+# that silently changes content changes transcription, and transcription decides where
+# clips get cut. Same reasoning as the version pins above, higher stakes.
+ARG WHISPER_MODEL_REV=5359861c739e955e79d9a303bcbc70fb988958b1
+ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d
+# ⚠ A SECOND model, for language identification only (§10 V40) — and the `.en` suffix is
+# exactly why it is needed. `ggml-small.en.bin` above is an ENGLISH-ONLY build: it does not
+# perform language identification at all, it assumes English and transcribes accordingly.
+# Asked "what language is this?" about a Spanish advert it answers `en`, so the language
+# gate would silently never reject anything — a feature that looks shipped and does nothing.
+#
+# `tiny` (multilingual, ~74MB) is adequate here in a way it was NOT for splitting: language
+# ID is CLASSIFICATION over the first seconds, not transcription. The gate that ruled out
+# `tiny.en` for splitting was "does it drop audible speech", which this task never asks.
+# Measured 2026-08-03: 77,691,713 bytes, sha256 be07e048… (verified by download, not
+# copied from a listing).
+ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+# INTEL'S OpenCL RUNTIME, for HDR tone-mapping on Intel GPUs (#1516, G11). amd64 only.
+#
+# The playout builder tone-maps Intel HDR with `tonemap_opencl`, mapping the VAAPI surface into
+# OpenCL and back without a copy. `tonemap_vaapi` is NOT an option: on the household Arc it outputs
+# an all-black picture at normal speed with no error. Measured there (spike 0b): 8.6x at 1080p and
+# 0.11 cores per stream with this runtime. Without it the OpenCL device cannot be created, the
+# encode fails before any output, and the live ladder falls back to the CPU tone-map (0.4+ cores).
+#
+# `intel-opencl-icd` is not in Debian trixie, and Mesa's rusticl (`mesa-opencl-icd`) cannot share
+# surfaces with VAAPI (measured: `opencl@va` derivation fails), so these are Intel's own release
+# packages, version- and SHA256-pinned like every other download here. The four are the minimal
+# OpenCL set from Intel's install notes (no Level Zero, no ocloc). The regular packages cover Gen12
+# and newer: Tiger Lake/Alder Lake (incl. N100) iGPUs, Arc (DG2), Meteor Lake and later. Gen8-11
+# iGPUs need Intel's separate `legacy1` packages, which bring their own IGC 1.x (measured for
+# 24.35.30872.36: ~546 MB installed), so they are not shipped and those hosts take the CPU tone-map.
+# To bump: take a newer compute-runtime release, its matching IGC and gmmlib from the release
+# notes, and the SHA256s from `wwNN.sum` and the IGC release body; rerun the Arc tone-map check.
+ARG INTEL_COMPUTE_RUNTIME_VERSION=26.35.39758.10
+ARG INTEL_IGC_VERSION=2.41.5
+ARG INTEL_IGC_BUILD=22716
+ARG INTEL_GMMLIB_VERSION=22.10.0
+ARG INTEL_IGC_CORE_SHA256=0a6e64a663ae65a0fa02d6912ae3b6b37cf85b90c21cc423fd9fef70aaf4f628
+ARG INTEL_IGC_OPENCL_SHA256=779e1b9e88098eb25711e9a8f67c2752665bad22f134aa40ed5649f6e1b87058
+ARG INTEL_OPENCL_ICD_SHA256=61712caaddeba3d38e4f79e2a0fb23fea25596ca2d72c3144c6eea2331ec4301
+ARG INTEL_GMMLIB_SHA256=6031a63d6e8a12ce61c14efc15f2c8e727061286e3820b8594e6d00615e04d54
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
+    # (ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz — build id `n9.0.1-11-ge47273f4d9`,
+    # suffix `9.0`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
+    # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
+    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0).
+    FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
+    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
+    FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
+    # Repoint apt at the pinned snapshot (see the DEBIAN_SNAPSHOT note above) so every install below
+    # is reproducible. deb822 `debian.sources`; both the archive and security suites. `http://`, not
+    # https, is deliberate and matches the base image's own recorded snapshot comment: this stage runs
+    # BEFORE `ca-certificates` is installed (it is one of the packages being fetched), so TLS would
+    # fail its own cert check — and repo integrity comes from the GPG `Signed-By` keyring, not the
+    # transport. Snapshots carry an old `Valid-Until`, so updates use `Check-Valid-Until=false`.
+    printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
+      "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
+    apt-get -o Acquire::Check-Valid-Until=false update; \
+    apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
+    # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
+    # without them EVERY hardware family fails the capability probe on EVERY host —
+    # measured, not assumed: the probe reported "Unable to open the libvulkan library",
+    # "libva-drm.so.2 ... No such file", "libX11.so.6 ... No such file", "DLL
+    # libamfrt64.so.1 failed to open". The ffmpeg build supported all of them; the image
+    # simply could not load any.
+    #
+    # Deliberately VENDOR-NEUTRAL — one package set, every GPU:
+    #   libva2 / libva-drm2   VAAPI  → Intel AND AMD on Linux
+    #   mesa-va-drivers       the open VAAPI drivers (AMD radeonsi, Intel i965/iHD era)
+    #   intel-media-va-driver Intel iHD — QSV and modern Intel VAAPI (amd64 only; see below)
+    #   libvulkan1 + mesa-vulkan-drivers  Vulkan → cross-vendor
+    #   libx11-6 / libxext6   VAAPI's X11 display backend (h264_vaapi dlopens it even
+    #                         headless; its absence is what broke vaapi above)
+    #   libdrm2               the common KMS/DRM layer under all of them
+    #
+    # ⚠ NVENC needs NOTHING here: libcuda.so.1 is INJECTED by the nvidia-container-toolkit
+    # at run time (`--gpus all` / the `nvidia` runtime), never installed into the image.
+    # Baking a CUDA runtime in would bloat the image by ~1GB and still be wrong, because
+    # the injected driver must match the host kernel module.
+    #
+    # Cost is ~120MB. Accepted: §9.1 makes playout a core capability, and an image that
+    # can only ever encode in software is not a smaller Loomarr but a slower one.
+    #
+    # ⚠ intel-media-va-driver is amd64-ONLY and must stay out of the arm64 install list.
+    # It is the Intel iHD/QSV driver, so there is nothing for it to drive on ARM, and
+    # Debian ships no arm64 candidate: including it unconditionally made `apt-get`
+    # exit 100 with "Package 'intel-media-va-driver' has no installation candidate",
+    # which broke the arm64 half of the release build (release.yml builds
+    # linux/amd64,linux/arm64) AND every local build on an Apple-Silicon Mac. Everything
+    # else in this list is arch-neutral and stays shared — the VAAPI/Vulkan stack is
+    # what an ARM SBC with a Mali/V3D GPU actually uses.
+    # A FONT IS A FUNCTIONAL DEPENDENCY OF PLAYOUT, not a nicety (§16, §9.1).
+    #
+    # The offline/test card labels itself with ffmpeg's `drawtext`, which fails at filter
+    # INIT on a missing fontfile — so playout.FindFont stats real paths and, finding none,
+    # emits no `-vf` at all rather than killing the encode. That fail-safe is correct, but
+    # in an image with zero fonts the degradation is TOTAL: the card's source is
+    # `color=c=black` plus `anullsrc`, so it renders as an unlabelled black frame with
+    # silent audio — indistinguishable from the dead channel the card exists to replace.
+    #
+    # This was live: the base is debian:stable-slim, which ships no /usr/share/fonts at
+    # all, and nothing above pulls a font in transitively. `font.go` asserted the opposite
+    # ("The image installs fonts-dejavu-core (§16)") and §16 had never said so — a comment
+    # claiming a dependency exists is not the dependency existing. §16 now records it.
+    #
+    # `fonts-dejavu-core` (not `fonts-dejavu`) is the ~1.5MB subset carrying DejaVuSans.ttf
+    # — the first entry in fontCandidates — and it is arch-neutral, so unlike
+    # intel-media-va-driver below it stays in the shared list.
+    apt-get install -y --no-install-recommends \
+      libva2 libva-drm2 libvulkan1 libdrm2 libx11-6 libxext6 \
+      mesa-va-drivers mesa-vulkan-drivers \
+      fonts-dejavu-core \
+      libgomp1; \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      apt-get install -y --no-install-recommends intel-media-va-driver; \
+      install -d /tmp/intel-opencl; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-igc-core-2.deb \
+        "https://github.com/intel/intel-graphics-compiler/releases/download/v${INTEL_IGC_VERSION}/intel-igc-core-2_${INTEL_IGC_VERSION}+${INTEL_IGC_BUILD}_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-igc-opencl-2.deb \
+        "https://github.com/intel/intel-graphics-compiler/releases/download/v${INTEL_IGC_VERSION}/intel-igc-opencl-2_${INTEL_IGC_VERSION}+${INTEL_IGC_BUILD}_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-opencl-icd.deb \
+        "https://github.com/intel/compute-runtime/releases/download/${INTEL_COMPUTE_RUNTIME_VERSION}/intel-opencl-icd_${INTEL_COMPUTE_RUNTIME_VERSION}-0_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/libigdgmm12.deb \
+        "https://github.com/intel/compute-runtime/releases/download/${INTEL_COMPUTE_RUNTIME_VERSION}/libigdgmm12_${INTEL_GMMLIB_VERSION}_amd64.deb"; \
+      printf '%s  %s\n' \
+        "$INTEL_IGC_CORE_SHA256" /tmp/intel-opencl/intel-igc-core-2.deb \
+        "$INTEL_IGC_OPENCL_SHA256" /tmp/intel-opencl/intel-igc-opencl-2.deb \
+        "$INTEL_OPENCL_ICD_SHA256" /tmp/intel-opencl/intel-opencl-icd.deb \
+        "$INTEL_GMMLIB_SHA256" /tmp/intel-opencl/libigdgmm12.deb | sha256sum -c -; \
+      apt-get install -y --no-install-recommends /tmp/intel-opencl/*.deb; \
+      rm -rf /tmp/intel-opencl; \
+    fi; \
+    # NVIDIA's OpenCL ICD entry. The NVIDIA container runtime injects libnvidia-opencl.so.1 (with
+    # the `compute` driver capability) but not the ICD file that tells the OpenCL loader to use
+    # it, so NVENC's first-choice tone-map (tonemap_opencl) needs this one line. Harmless on
+    # other hosts: the loader skips a vendor whose library is absent. Architecture-neutral.
+    install -d /etc/OpenCL/vendors; \
+    echo libnvidia-opencl.so.1 > /etc/OpenCL/vendors/nvidia.icd; \
+    useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/bin/yt-dlp \
+      "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
+    echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
+    chmod +x /usr/local/bin/yt-dlp; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/deno.zip \
+      "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
+    echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
+    unzip -q /tmp/deno.zip -d /usr/local/bin; \
+    chmod +x /usr/local/bin/deno; \
+    rm -f /tmp/deno.zip; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/ffmpeg.tar.xz \
+      "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
+    echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
+    # ffmpeg AND ffprobe (revised, §9.1). ffprobe was excluded to save ~99MB on the
+    # grounds that "Loomarr never probes media — Tunarr assigns duration during its
+    # `local`-source scan". Internal playout owns the encoder, so it owns duration and
+    # cut points too, and that premise is gone. ffmpeg now serves two callers: yt-dlp's
+    # stream merging (§10) and the playout encoder (§9.1).
+    cp "/tmp/${FFMPEG_BUILD}/bin/ffmpeg" "/tmp/${FFMPEG_BUILD}/bin/ffprobe" /usr/local/bin/; \
+    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe; \
+    rm -rf /tmp/ffmpeg.tar.xz "/tmp/${FFMPEG_BUILD}"; \
+    # whisper-cli (§14, V34) — the fifth vendored binary, for compilation splitting.
+    #
+    # ⚠ UNLIKE yt-dlp, THIS ONE IS NOT SELF-CONTAINED. It links libwhisper + libggml,
+    # so the shared objects ship beside it in /usr/local/lib/whisper. Copying only the
+    # executable produces the failure this file already warns about in another form: a
+    # build that succeeds and a binary that dies at run time with "error while loading
+    # shared libraries". There are TWO distinct lookups here and they resolve
+    # differently — the linked libs via ldconfig, the compute BACKEND via a directory
+    # scan (see the layout warning further down); satisfying only the first is what
+    # makes `--help` work and transcription abort.
+    #
+    # ⚠ COPY THE WHOLE libggml SET, never a chosen subset. On amd64 upstream ships 15
+    # libggml-cpu-*.so microarchitecture variants (alderlake, zen4, sse42, …) and picks
+    # one AT RUN TIME from the host CPU; arm64 ships a single libggml-cpu.so. Pruning to
+    # "the one that works here" is the same class of bug as the hardcoded x86_64 URLs —
+    # it builds fine and then fails only on the hosts you did not test.
+    #
+    # libgomp1 is an apt dependency, NOT bundled: whisper-cli is OpenMP-threaded and
+    # debian:stable-slim does not ship libgomp. Measured — without it the binary aborts
+    # at load with "libgomp.so.1: cannot open shared object file".
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /tmp/whisper.tar.gz \
+      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
+    echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/whisper.tar.gz -C /tmp; \
+    install -d /usr/local/lib/whisper; \
+    cp "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"/libwhisper.so* \
+       "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"/libggml*.so* /usr/local/lib/whisper/; \
+    # ⚠ whisper-cli LIVES BESIDE ITS LIBRARIES, and /usr/local/bin gets a symlink.
+    # ggml's compute backends are dlopen()ed at run time, and it searches the
+    # EXECUTABLE'S OWN DIRECTORY — not ld.so.conf, and not a directory in an env var.
+    # So the obvious layout (binary in /usr/local/bin, libs in /usr/local/lib/whisper +
+    # ldconfig) links fine and then aborts on first real use with
+    # "GGML_ASSERT(device) failed" — no backend found. Measured on arm64: `--help`
+    # SUCCEEDS in that layout because it never initialises a backend, which is exactly
+    # why the build-time proof below transcribes real audio instead.
+    # (GGML_BACKEND_PATH is not an escape hatch — it wants a FILE, not a directory.)
+    cp "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}/whisper-cli" /usr/local/lib/whisper/whisper-cli; \
+    chmod +x /usr/local/lib/whisper/whisper-cli; \
+    ln -s /usr/local/lib/whisper/whisper-cli /usr/local/bin/whisper-cli; \
+    echo /usr/local/lib/whisper > /etc/ld.so.conf.d/whisper.conf; \
+    ldconfig; \
+    rm -rf /tmp/whisper.tar.gz "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"; \
+    # The model. ⚠ `small.en` is a CORRECTNESS floor, not a quality preference, and at
+    # 466MB it is the single largest thing in this image (rootfs ~821MB → ~1.3GB, of
+    # which the binary + libs are only ~20MB). Measured against THIS binary on a real 244s
+    # 1990 commercial break (archive.org witi-6-commercial-breaks-10-24-1990): `tiny.en`
+    # silently dropped a whole 20s advert whose audio sits at the file's average
+    # loudness, and `base.en` dropped 7s of equally audible speech; `small.en` was the
+    # smallest with NO gap over audible content (its one 5s gap is true near-silence at
+    # -54dB, i.e. correctly transcribing nothing). §6.4's finding, reproduced against the
+    # vendored binary rather than the Python package — which is what the gate demanded,
+    # and it also rules out `base.en`, a size the plan never measured.
+    install -d /usr/local/share/whisper; \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-small.en.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-small.en.bin"; \
+    echo "${WHISPER_MODEL_SHA256}  /usr/local/share/whisper/ggml-small.en.bin" | sha256sum -c -; \
+    # The language-ID model (§10 V40) — see the ARG comment for why `small.en` cannot do this job.
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+      -o /usr/local/share/whisper/ggml-tiny.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
+    echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
+    apt-get purge -y curl xz-utils unzip; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*; \
+    # Prove the tooling actually runs on THIS arch, at build time. Without this the
+    # x86_64-on-arm64 mistake ships silently.
+    /usr/local/bin/yt-dlp --version; \
+    /usr/local/bin/ffmpeg -version | head -1; \
+    /usr/local/bin/ffprobe -version | head -1; \
+    /usr/local/bin/deno --version | head -1; \
+    # ⚠ whisper is NOT proved by `--help`: it returns 0 without ever initialising a compute
+    # backend, and did so on arm64 in a layout where the first real transcription aborted
+    # with "GGML_ASSERT(device) failed". What actually has to be proved is that ggml can
+    # LOAD ITS BACKEND through the /usr/local/bin symlink — the same path the app execs —
+    # which is what catches a wrong lib layout, a pruned libggml set, or an arch mismatch.
+    #
+    # This probe does exactly that and nothing more. It is invoked with no usable model or
+    # input on purpose: the backend line is printed during init, BEFORE any inference, so
+    # the check is instant and the nonzero exit that follows is expected (hence `|| true`,
+    # and the grep is the real assertion).
+    #
+    # ⚠ IT DELIBERATELY DOES NOT TRANSCRIBE. Running the model here cost ~3s natively and
+    # ~341s under QEMU on CI's arm64 leg — whisper is dense matrix math, the worst case for
+    # instruction-level emulation, and it made the image job by far the slowest thing in
+    # CI. The full transcription proof still runs, on the NATIVE amd64 leg below, where it
+    # is cheap. Do not "restore" the transcription to this shared step.
+    { whisper-cli -m /dev/null -f /dev/null 2>&1 || true; } | grep -q 'load_backend: loaded'; \
+    # The FULL proof — real audio through the real model — but only where it is native.
+    # This is what a bad model download or a broken model file fails on.
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      ffmpeg -v error -f lavfi -i anullsrc=r=16000:cl=mono -t 1 -y /tmp/probe.wav; \
+      whisper-cli -m /usr/local/share/whisper/ggml-small.en.bin -f /tmp/probe.wav -np >/dev/null; \
+      rm -f /tmp/probe.wav; \
+    fi
+ARG VERSION=""
+COPY --from=build /out/loomarr /loomarr
+COPY --from=image-worker /src/target/release/loomarr-image /usr/local/bin/loomarr-image
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/
+RUN contract="$(/usr/local/bin/loomarr-image capabilities --protocol 1 --self-test)"; \
+    echo "$contract" | grep -q '"selfTest":true'; \
+    echo "$contract" | grep -q "\"release\":\"${VERSION:-dev}\""
+# Pre-create /data owned by nonroot. Docker seeds a fresh NAMED volume from the image's
+# directory at that path — including its ownership — so this is what makes the documented
+# zero-env `docker run -v loomarr-data:/data loomarr` actually work. Without it the volume
+# arrives root-owned, the app cannot create loomarr.db, and boot dies with
+# "unable to open database file (14)".
+#
+# Previously masked: DATABASE_URL had no default (S1), so the app never tried to open a
+# file and failed later and differently. Fixing the default made the real problem the
+# first thing that happens. compose works around it with a one-shot chown init container;
+# that stays for BIND mounts (host-owned paths the image cannot pre-seed), but a named
+# volume no longer needs it.
+# /data/filler alongside it: FILLER_DIR defaults there (§15), and seeding it here means a
+# fresh named volume arrives with the drop-folder already present and nonroot-owned. The app
+# also MkdirAll's it at boot — belt and braces, because a BIND mount ignores what the image
+# seeded and only the runtime create covers that case.
+# /data/images for the same reason (§22, V52): `images.dir` defaults there. ⚠ This became
+# load-bearing with phase 3b rather than merely tidy — `images-fetch` runs EVERY MINUTE, so on a
+# zero-env first run the very first thing to touch this path is a background job. Without the
+# pre-create it writes into a root-owned volume, fails, and reports the failure on the Tasks page
+# once a minute forever, with nothing connecting it to a directory nobody created.
+# /data/prepared is the persistent playout publication root (§9.1 V56). Unlike the live HLS
+# scratch directory it survives viewers and restarts, so a fresh named volume must make it writable
+# before the readiness job runs for the first time.
+RUN install -d -o 65532 -g 65532 /data /data/filler /data/images /data/prepared
+VOLUME /data
+# These paths are what the `ingest` feature gate probes for. Set here rather than
+# discovered, so the gate is a config question with an operator override (§10).
+ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
+    INGEST_FFMPEG_PATH=/usr/local/bin/ffmpeg \
+    INGEST_WHISPER_PATH=/usr/local/bin/whisper-cli \
+    INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin \
+    FILLER_LANGUAGE_MODEL=/usr/local/share/whisper/ggml-tiny.bin
+ARG COMMIT=""
+# licenses is the SPDX expression for the aggregate image: Loomarr source (MIT),
+# bundled ffmpeg and the official yt-dlp standalone executable (both
+# GPL-3.0-or-later). The packaged notice records redistribution blockers honestly.
+LABEL org.opencontainers.image.title="loomarr" \
+      org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
+      org.opencontainers.image.source="https://github.com/loomarr/loomarr" \
+      org.opencontainers.image.documentation="https://github.com/loomarr/loomarr/blob/main/THIRD_PARTY_NOTICES.md" \
+      org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
+EXPOSE 8080
+# The base now HAS a shell, so a HEALTHCHECK could shell out — but the orchestrator's
+# HTTP check (compose) still owns readiness, and keeping the image free of a
+# wget/curl dependency is worth more than an in-image probe. /v1/healthz is the contract
+# (the bare /healthz alias answers identically, for checks configured outside this repo).
+USER nonroot:nonroot
+ENTRYPOINT ["/loomarr"]

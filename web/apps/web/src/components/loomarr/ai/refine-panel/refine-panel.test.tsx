@@ -1,0 +1,179 @@
+import type { Proposal, ProposalDTO, ProposalJourneyDTO } from "@loomarr/api";
+import {
+  getApproveProposalMockHandler,
+  getGetProposalJobMockHandler,
+  getRefineChannelMockHandler,
+} from "@loomarr/api/msw";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/test/msw/server";
+import { RefinePanel } from "./refine-panel";
+
+const makeWrapper = () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+};
+
+const proposal: Proposal = {
+  intent: { description: "add more Juno Castellan" },
+  lineup: [{ name: "Marigold Protocol", year: 1987, mediaType: "movie", tmdbId: 90000106, inLibrary: true }],
+  acquisitions: [],
+  alternates: [],
+  scores: {
+    version: 1,
+    themeFit: 1,
+    availabilityRatio: 1,
+    eraBalance: null,
+    theme: {
+      status: "supported",
+      basis: "qualifiers",
+      assessedItems: 2,
+      unknownItems: 0,
+      qualifiers: [{ term: "action", supportedItems: 2 }],
+    },
+    era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
+  },
+  trace: { version: 1, surfacedTotal: 0, recordedTotal: 0, truncated: false, candidates: [] },
+};
+
+const journey = (proposalRow?: ProposalDTO): ProposalJourneyDTO => ({
+  version: 1,
+  jobId: "job-1",
+  milestone: proposalRow ? "awaiting_approval" : "generating",
+  intent: proposal.intent,
+  attempts: [],
+  actions: proposalRow ? ["review"] : ["wait"],
+  proposal: proposalRow
+    ? { id: proposalRow.id, status: proposalRow.status, proposal: proposalRow.proposal }
+    : undefined,
+  createdAt: "2026-08-22T10:00:00Z",
+  updatedAt: "2026-08-22T10:00:00Z",
+});
+
+// Dispatches by method+path: POST .../refine starts the run, the Journey read
+// lands its Proposal, and POST .../approve applies it.
+// ⚠ Three route-bound handlers replacing three substring branches, and the last one was the
+// dangerous shape: an unconditional `{ proposals }` for EVERY unmatched request, at any path.
+// `url.includes("/approve")` was also true of `POST /v1/proposals/approve` (the BULK route), which
+// is a different endpoint from the per-proposal one this panel calls.
+const stubRefine = (opts: { proposals: ProposalDTO[]; failed?: boolean }) =>
+  server.use(
+    getRefineChannelMockHandler({ jobId: "job-1" }),
+    // ⚠ `status` is REQUIRED on ApproveOutputBody and no stub ever sent it.
+    getApproveProposalMockHandler({ channelId: "ch-1", enqueued: 0, status: "approved" }),
+    getGetProposalJobMockHandler(
+      opts.failed
+        ? {
+            ...journey(),
+            milestone: "failed",
+            failure: {
+              code: "generation_failed",
+              message: "Refine couldn't complete. Try again.",
+              reason: "provider_unavailable",
+              recoveryAction: "retry_later",
+              guidance: "Try again later.",
+            },
+            actions: ["retry", "check_ai"],
+          }
+        : journey(opts.proposals[0]),
+    ),
+  );
+
+afterEach(() => {
+  window.sessionStorage.clear();
+  vi.unstubAllGlobals();
+});
+
+const CHANGE = "What to change on 90s Action";
+const SUGGEST = "Suggest changes";
+
+describe("RefinePanel", () => {
+  // The web mock's card is always open: no disclosure to click before typing.
+  it("shows the input straight away and disables Suggest changes until there's text", async () => {
+    stubRefine({ proposals: [] });
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+
+    expect(screen.getByRole("region", { name: "Refine with AI" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeEnabled();
+  });
+
+  it("submits on Enter", async () => {
+    stubRefine({
+      proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
+    });
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action{Enter}");
+
+    expect(await screen.findByRole("button", { name: /apply changes/i })).toBeInTheDocument();
+  });
+
+  it("runs the full idle -> running -> landed flow and applies the diff", async () => {
+    stubRefine({
+      proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
+    });
+    const onApplied = vi.fn();
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" onApplied={onApplied} />, {
+      wrapper: makeWrapper(),
+    });
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+
+    // Landed: the diff shows the new pick, with Apply available.
+    const applyButton = await screen.findByRole("button", { name: /apply changes/i });
+    expect(screen.getByText("Marigold Protocol")).toBeInTheDocument();
+
+    await userEvent.click(applyButton);
+
+    await waitFor(() => expect(onApplied).toHaveBeenCalledOnce());
+    // Applying returns the card to an empty input.
+    expect(screen.queryByText("Marigold Protocol")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("");
+  });
+
+  it("discarding a landed proposal returns to an empty input without applying", async () => {
+    stubRefine({
+      proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
+    });
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+
+    await screen.findByRole("button", { name: /apply changes/i });
+    await userEvent.click(screen.getByRole("button", { name: /discard/i }));
+
+    expect(screen.queryByText("Marigold Protocol")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("");
+  });
+
+  // A generation FAILURE restored from the durable Journey (never a proposal)
+  // must not dead-end the panel: it drops back to the form with an
+  // inline notice and the typed change preserved, so retry is one click away. This is the
+  // "inline error + keep the text" behaviour, not a toast-and-collapse.
+  it("surfaces a generation failure inline and keeps the typed change", async () => {
+    stubRefine({ proposals: [], failed: true });
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+    // Back on the form, with a recoverable error and the text intact — no diff, no Apply.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("AI is temporarily unavailable");
+    expect(alert).toHaveTextContent("Loomarr couldn't reach the AI service right now.");
+    expect(alert).not.toHaveTextContent(/provider|generation/i);
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("add more action");
+    expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
+    // And the retry affordance is right there.
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeEnabled();
+  });
+});

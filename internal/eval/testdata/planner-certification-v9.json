@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 8,
+  "version": "planner-certification-v9",
+  "base": {"path":"testdata/planner-certification-v8-base.json","sha256":"87e20c5a819cfb42f02ed771f261dcd2362011dcdc3a3669247ecf7d94a3c0e2"},
+  "promptVersion": "suggester-prompt-v7",
+  "toolSchemaVersion": "catalog-search-v6",
+  "scorerVersion": "planner-scorer-v3",
+  "qualityMetrics": ["correct_tool_operation","unnecessary_tool_calls","grounded_completion","policy_accuracy","proposal_quality","recovery"],
+  "thresholds": {"minGroundedCompletionRate":0.95,"minCorrectToolOperationRate":0.90,"minSchemaValidityRate":0.98,"minPolicyAccuracyRate":0.95,"minProposalQualityRate":0.90,"minRecoveryRate":0.80,"maxP95ToolCalls":3},
+  "selection": {"qualityMargin":0.02,"weights":{"groundedCompletion":0.20,"correctToolOperation":0.20,"schemaValidity":0.10,"policyAccuracy":0.15,"proposalQuality":0.25,"recovery":0.10}},
+  "proposalExpectation": "exact_fixture_candidates_or_declared_abstention",
+  "policyCeilings": {"refine-tightens-audience":"TV-Y7","audience-kids":"TV-Y7","audience-family":"PG","audience-explicit-ceiling":"PG-13","schema-valid-policy":"TV-PG"}, "recoveryCases": ["tool-error-recovery"], "repairCases": ["repair-malformed-json","repair-empty-selection","date-repair"],
+  "dateScopes": {
+    "date-movie-adjacent":{"movieRelease":[{"from":1990,"to":1992}]},
+    "date-movie-disjoint":{"movieRelease":[{"from":1990,"to":1991},{"from":2000,"to":2001}]},
+    "date-series-premiere-airing":{"seriesPremiere":[{"from":1980,"to":1980}],"seriesAiring":[{"from":2000,"to":2000}]},
+    "date-series-pre-era-airing":{"seriesPremiere":[{"from":1900,"to":1989}],"seriesAiring":[{"from":2000,"to":2000}]},
+    "date-title-year-none":{},
+    "date-repair":{"movieRelease":[{"from":1990,"to":1990}]}
+  },
+  "proposalKeys": {"date-movie-adjacent":["movie:tmdb:11001"],"date-movie-disjoint":["movie:tmdb:11003","movie:tmdb:11004"],"date-series-premiere-airing":["series:tmdb:11006"],"date-series-pre-era-airing":["series:tmdb:11007"],"date-title-year-none":["movie:tmdb:10001"],"date-repair":["movie:tmdb:11008"]},
+  "proposalTerminals": {"date-same-axis-conflict":"constraints_conflict"},
+  "scheduleExpectations": {
+    "date-movie-disjoint":{"requiredPrograms":["movie:tmdb:11003","movie:tmdb:11004"],"forbiddenPrograms":["movie:tmdb:11005"]},
+    "date-series-premiere-airing":{"requiredPrograms":["series:tmdb:11006:s01e02","series:tmdb:11006:s01e04"],"forbiddenPrograms":["series:tmdb:11006:s01e01","series:tmdb:11006:s01e03"]},
+    "date-series-pre-era-airing":{"requiredPrograms":["series:tmdb:11007:s01e02","series:tmdb:11007:s01e04"],"forbiddenPrograms":["series:tmdb:11007:s01e01","series:tmdb:11007:s01e03"]}
+  }
+}

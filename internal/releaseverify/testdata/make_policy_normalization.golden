@@ -1,0 +1,15 @@
+variable ENGINE=["docker"]
+variable ESCAPED=["docker#literal"]
+variable SPACED=["docker"]
+target .PHONY dependencies=["all" "dependency" "escaped#target" "inline" "continued" "recursive" "alternate"] recipes=[]
+target all dependencies=["dependency" "escaped#target"] recipes=["@printf '%s\\n' docker#literal-shell-token"]
+target alternate dependencies=[] recipes=["$(MAKE) -f attacker.mk safe"]
+target continued dependencies=[] recipes=["docker pull attacker.invalid/image:pinned"]
+target dependency dependencies=[] recipes=["@true"]
+target escaped#target dependencies=[] recipes=["@true"]
+target inline dependencies=["dependency"] recipes=["docker pull attacker.invalid/image:pinned#literal-shell-token"]
+target recursive dependencies=[] recipes=["echo \"$$(make test-pg)\""]
+classification inline-acquires=true
+classification continued-acquires=true
+classification recursive-reaches-protected=true
+classification alternate-untrusted-graph=true

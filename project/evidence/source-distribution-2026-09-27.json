@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "sourceRelease": "https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27",
+  "sourceTag": "third-party-sources-2026-09-27",
+  "pinCommit": "70f99ccdb936b5b2603607322b7deaa51de181ad",
+  "publishedAt": "2026-09-27T14:14:20Z",
+  "inventoryFilesVerified": 3,
+  "scope": "FFmpeg n9.0.1-11-ge47273f4d9 from the August 2026 monthly release; yt-dlp and other runtime sources unchanged in third-party-sources-2026-08-31; application image acceptance remains separate",
+  "assets": [
+    {
+      "name": "ffmpeg-builds-8267213e.tar.gz",
+      "bytes": 103067,
+      "sha256": "08279484656a586c149e119a20d3853f2596ee08192d97595edd2a5ba3b4fd51",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/ffmpeg-builds-8267213e.tar.gz"
+    },
+    {
+      "name": "ffmpeg-e47273f4d9227152dcbf543cebaf9e2430ddbcc4.tar.gz",
+      "bytes": 17323649,
+      "sha256": "6491dae95e3cf3cdbac02933b55860e782b0c4f0a6bd8f37cef30fded259283c",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/ffmpeg-e47273f4d9227152dcbf543cebaf9e2430ddbcc4.tar.gz"
+    },
+    {
+      "name": "ffmpeg-original-download-cache.zip",
+      "bytes": 2024950980,
+      "sha256": "c7c46c41c512872bf4ff3bd6e8165f14209c851149c9824d09241df18b8011cc",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/ffmpeg-original-download-cache.zip"
+    },
+    {
+      "name": "README.txt",
+      "bytes": 2522,
+      "sha256": "02bcda35f74e689162103ea29b4f1ebe300265aeb0a0891ee48ba12a1bd15f3c",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/README.txt"
+    },
+    {
+      "name": "SHA256SUMS",
+      "bytes": 491,
+      "sha256": "5e5a55aac9b9b2107f9aa64ae5beea45b67b4456c7909674a8830095d1e7243d",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/SHA256SUMS"
+    },
+    {
+      "name": "source-package-inventory.json",
+      "bytes": 1968,
+      "sha256": "b7500da746b5e55f66df6696be9aa93e987e913225ef22fe580a3aca1bba5f12",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-09-27/source-package-inventory.json"
+    }
+  ]
+}

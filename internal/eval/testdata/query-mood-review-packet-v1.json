@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "rubricVersion": "movie-mood-ordinal-v1",
+  "promptVersion": "query-mood-blind-review-v1",
+  "packetId": "movie-mood-review-2026-09-16-a",
+  "preparedAt": "2026-09-17T01:15:00Z",
+  "evidence": [
+    {
+      "id": "mood-e01",
+      "url": "https://www.bbfc.co.uk/release/paddington-2-q29sbgvjdglvbjpwwc0zotc2nzq",
+      "observed": "2026-09-16",
+      "summary": "The BBFC records Paddington 2 as a 2017 English-language Adventure, Comedy and Children film with mild threat and reassuring outcomes.",
+      "uncertainty": "BBFC content advice is jurisdiction-specific reviewer evidence, not a universal mood label.",
+      "sha256": "eac33230199e5ef10662de7ca0ee9164f9fa1c56bdd96a61e6ae36753e1f33d2"
+    },
+    {
+      "id": "mood-e02",
+      "url": "https://whatson.bfi.org.uk/online/default.asp?BOparam%3A%3AWScontent%3A%3AloadArticle%3A%3Apermalink=paddington-2",
+      "observed": "2026-09-16",
+      "summary": "The BFI describes Paddington 2 using family-fun and kindness language.",
+      "uncertainty": "The page returned 403 during recheck; this reviewed paraphrase is evidence input, not an objective mood label.",
+      "sha256": "d399434234bb26e4c33be698ce8367383e3b2210bb027770ae8e424be917d71a"
+    },
+    {
+      "id": "mood-e03",
+      "url": "https://catalog.afi.com/Film/55193-JAWS",
+      "observed": "2026-09-16",
+      "summary": "The AFI Catalog synopsis and production history for Jaws describe a threatening shark and sustained suspense around the swimmers and the hunt.",
+      "uncertainty": "A catalog synopsis and history can inform ordinal review but do not certify fear, valence, or suitability.",
+      "sha256": "616330e2b9b44b9e8bcf10d84b760401f6724c8e13722abb91844b8acf61b02e"
+    },
+    {
+      "id": "mood-e04",
+      "url": "https://www.koreanfilm.or.kr/mobile3/news/featuresView.jsp?seq=474",
+      "observed": "2026-09-16",
+      "summary": "The Korean Film Council describes Parasite as a darkly satirical thriller with wickedly comic elements.",
+      "uncertainty": "Institutional editorial prose informs ordinal review but does not create a universal sentiment label.",
+      "sha256": "55329b02b75ab192220dc98e570a6a75cd30da66b03589199fb65b9065fec820"
+    }
+  ],
+  "cases": [
+    {
+      "alias": "candidate-e492",
+      "displayTitle": "Parasite",
+      "evidenceIds": ["mood-e04"]
+    },
+    {
+      "alias": "candidate-7f3a",
+      "displayTitle": "Paddington 2",
+      "evidenceIds": ["mood-e01", "mood-e02"]
+    },
+    {
+      "alias": "candidate-b1c8",
+      "displayTitle": "Jaws",
+      "evidenceIds": ["mood-e03"]
+    }
+  ]
+}

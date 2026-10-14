@@ -1,0 +1,306 @@
+package api_test
+
+import (
+	"context"
+	"encoding/xml"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
+)
+
+// fakeXMLTVGuide answers programme timelines without a store or a scheduler.
+type fakeXMLTVGuide struct {
+	byChannel map[string][]playout.Broadcast
+	// withPending is what BroadcastsWithPending returns; nil ⇒ it echoes byChannel. Kept
+	// separate so a test can prove WHICH projection a route asked for — the XMLTV document and
+	// the time grid must not be able to swap them silently.
+	withPending map[string][]playout.Broadcast
+	errFor      map[string]error
+
+	// mu guards `windows`. GET /v1/guide resolves channels CONCURRENTLY, so this fake is
+	// called from several goroutines at once and the append below was a real data race —
+	// it surfaced as a rare failure in a full-package run (once in seven), which `-race`
+	// missed because with two channels the interleaving almost never happens.
+	//
+	// The lesson is about the PRODUCTION change, not the fake: making a previously-sequential
+	// interface concurrent puts a thread-safety obligation on every implementation of it,
+	// test doubles included.
+	mu      sync.Mutex
+	windows []time.Duration // the (to-from) span of each call, for the window assertions
+}
+
+// recordWindow notes one call's span. Separate method so both projections share the locking
+// rather than each remembering to take the mutex.
+func (f *fakeXMLTVGuide) recordWindow(d time.Duration) {
+	f.mu.Lock()
+	f.windows = append(f.windows, d)
+	f.mu.Unlock()
+}
+
+func (f *fakeXMLTVGuide) BroadcastsBetween(
+	_ context.Context, channelID string, from, to time.Time,
+) ([]playout.Broadcast, error) {
+	f.recordWindow(to.Sub(from))
+	if err := f.errFor[channelID]; err != nil {
+		return nil, err
+	}
+	return f.byChannel[channelID], nil
+}
+
+func (f *fakeXMLTVGuide) BroadcastsWithPending(
+	_ context.Context, channelID string, from, to time.Time,
+) ([]playout.Broadcast, error) {
+	f.recordWindow(to.Sub(from))
+	if err := f.errFor[channelID]; err != nil {
+		return nil, err
+	}
+	if f.withPending != nil {
+		return f.withPending[channelID], nil
+	}
+	return f.byChannel[channelID], nil
+}
+
+// playoutGuideHarness owns the device-authenticated XMLTV route's fixed
+// production wiring while leaving only the guide behavior variable.
+type playoutGuideHarness struct {
+	*apiHarness
+}
+
+func newPlayoutGuideHarness(t *testing.T, guide api.PlayoutGuide) *playoutGuideHarness {
+	t.Helper()
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		cfg := map[string]string{
+			"server.public_url": "http://loomarr.local:8080",
+			"playout.backend":   "internal",
+		}
+		return api.Router(defaults.Log, api.Options{
+			Store:         defaults.Store,
+			Auth:          api.NewTokenAuthorizer(adminToken),
+			Log:           defaults.Log,
+			PlayoutSecret: func() string { return playoutToken },
+			PlayoutGuide:  guide,
+			LiveConfig:    func(key string) string { return cfg[key] },
+		})
+	})
+	return &playoutGuideHarness{apiHarness: base}
+}
+
+func nowProgramme(title string, offset time.Duration, mins int) playout.Broadcast {
+	start := time.Now().Add(offset)
+	return playout.Broadcast{
+		Kind: schedule.SlotProgram, Title: title,
+		Start: start, Stop: start.Add(time.Duration(mins) * time.Minute),
+	}
+}
+
+// The guide is a playout route, so it is gated by the device token like every other one.
+func TestPlayoutGuide_RequiresTheDeviceToken(t *testing.T) {
+	harness := newPlayoutGuideHarness(t, &fakeXMLTVGuide{})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
+
+	for _, q := range []string{"", "?token=wrong", "?token=" + playoutToken[:8]} {
+		if resp := getPlayout(t, srv, "/v1/playout/guide.xml"+q); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("token %q: status %d, want 404", q, resp.StatusCode)
+		}
+	}
+}
+
+// THE POINT OF THE PHASE: a channel in the tuner gets real listings, not "no information".
+func TestPlayoutGuide_ServesRealListings(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"ch1": {
+			nowProgramme("Beacon of the Hollow Moon", -40*time.Minute, 130),
+			nowProgramme("Robo-Rabbits of Zone Nine: The Movie", 90*time.Minute, 84),
+		},
+	}}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "xml") {
+		t.Errorf("Content-Type = %q, want an XML type", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+
+	var doc struct {
+		Channels []struct {
+			ID string `xml:"id,attr"`
+		} `xml:"channel"`
+		Programmes []struct {
+			Title   string `xml:"title"`
+			Channel string `xml:"channel,attr"`
+			Start   string `xml:"start,attr"`
+		} `xml:"programme"`
+	}
+	if err := xml.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("guide does not parse — a media server would show nothing: %v\n%s", err, body)
+	}
+	if len(doc.Channels) != 1 || doc.Channels[0].ID != "ch1" {
+		t.Errorf("channels = %+v, want just ch1", doc.Channels)
+	}
+	if len(doc.Programmes) != 2 {
+		t.Fatalf("%d programmes, want 2:\n%s", len(doc.Programmes), body)
+	}
+	if doc.Programmes[0].Title != "Beacon of the Hollow Moon" {
+		t.Errorf("first programme = %q", doc.Programmes[0].Title)
+	}
+	if doc.Programmes[0].Channel != "ch1" {
+		t.Errorf("programme not attributed to its channel: %q", doc.Programmes[0].Channel)
+	}
+}
+
+// ⚠ The guide's channel ids must match the TUNER's tvg-id exactly — the most common Live TV
+// wiring failure, and silent (channels play, guide is empty). Asserted by fetching BOTH and
+// comparing, rather than by trusting each in isolation.
+func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"classic-kettle-kids": {nowProgramme("Pip and the Sugar Bowl", 0, 22)},
+	}}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "classic-kettle-kids", "Classic Kettle Kids", 52, "internal")
+
+	tuner, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken).Body)
+	guide, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
+
+	if !strings.Contains(string(tuner), `tvg-id="classic-kettle-kids"`) {
+		t.Fatalf("tuner is missing the channel:\n%s", tuner)
+	}
+	if !strings.Contains(string(guide), `<channel id="classic-kettle-kids">`) {
+		t.Errorf("guide id does not match the tuner's tvg-id — every channel would play with "+
+			"an empty guide:\n%s", guide)
+	}
+}
+
+// Only channels internal playout actually serves. A Tunarr-backed channel in Loomarr's guide
+// would advertise listings for a channel Loomarr does not stream.
+func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"mine":   {nowProgramme("Midnight at the Mapleton", 0, 60)},
+		"theirs": {nowProgramme("Emberfall Canyon", 0, 60)},
+	}}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "mine", "Internal", 1, "internal")
+	seedChannel(t, st, "theirs", "Tunarr", 2, "tunarr")
+
+	body, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
+	if !strings.Contains(string(body), `id="mine"`) {
+		t.Errorf("internal channel missing:\n%s", body)
+	}
+	if strings.Contains(string(body), `id="theirs"`) {
+		t.Errorf("advertised a Tunarr-backed channel Loomarr does not stream:\n%s", body)
+	}
+}
+
+func TestPlayoutGuide_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{
+		"live":     {nowProgramme("On Air", 0, 60)},
+		"paused":   {nowProgramme("Paused", 0, 60)},
+		"detached": {nowProgramme("Detached", 0, 60)},
+		"empty":    {nowProgramme("Empty", 0, 60)},
+	}}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "live", "Live Channel", 1, "internal")
+	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
+	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
+	seedChannel(t, st, "empty", "Empty Channel", 4, "internal")
+	setChannelStatus(t, st, "paused", schedule.StatusPaused)
+	setChannelStatus(t, st, "detached", schedule.StatusDetached)
+	setChannelStatus(t, st, "empty", schedule.StatusEmpty)
+
+	body, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
+	got := string(body)
+	if !strings.Contains(got, `id="live"`) || !strings.Contains(got, "On Air") {
+		t.Fatalf("live internal channel or listing is missing:\n%s", got)
+	}
+	for _, id := range []string{"paused", "detached", "empty"} {
+		if strings.Contains(got, `id="`+id+`"`) {
+			t.Errorf("channel %q was advertised in XMLTV:\n%s", id, got)
+		}
+	}
+}
+
+// ONE channel failing must not blank the whole guide. A media server re-fetches the document
+// wholesale, so an error return would empty every channel's listings because one had a problem.
+func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
+	g := &fakeXMLTVGuide{
+		byChannel: map[string][]playout.Broadcast{"good": {nowProgramme("Midnight at the Mapleton", 0, 60)}},
+		errFor:    map[string]error{"bad": errors.New("scheduler exploded")},
+	}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "good", "Good", 1, "internal")
+	seedChannel(t, st, "bad", "Bad", 2, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d — one bad channel failed the whole guide", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Midnight at the Mapleton") {
+		t.Errorf("the healthy channel lost its listings:\n%s", body)
+	}
+	// The failing channel still APPEARS, so the media server keeps it and shows
+	// "no information" rather than dropping it from Live TV.
+	if !strings.Contains(string(body), `id="bad"`) {
+		t.Errorf("the failing channel vanished from Live TV entirely:\n%s", body)
+	}
+}
+
+// The window spans past AND future: a media server needs the currently-airing programme's real
+// start time to draw it, which requires asking from before now.
+func TestPlayoutGuide_WindowCoversPastAndFuture(t *testing.T) {
+	g := &fakeXMLTVGuide{byChannel: map[string][]playout.Broadcast{"ch1": {}}}
+	harness := newPlayoutGuideHarness(t, g)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Ch", 1, "internal")
+
+	_ = getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
+	if len(g.windows) == 0 {
+		t.Fatal("the guide never asked for a timeline")
+	}
+	// Lookback + lookahead. A window of only the future would leave the in-progress
+	// programme without a start time.
+	if g.windows[0] < 20*time.Hour {
+		t.Errorf("window is %v — too short to be a useful day of listings", g.windows[0])
+	}
+}
+
+// A guide must never be cached: it changes as the wall clock advances, and a copy served an
+// hour later lists programmes that already finished.
+func TestPlayoutGuide_IsNotCacheable(t *testing.T) {
+	harness := newPlayoutGuideHarness(t, &fakeXMLTVGuide{})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Ch", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("Cache-Control = %q, want no-store", cc)
+	}
+}
+
+// Playout not running is a 501 that explains itself, not a 404 that reads as a wiring mistake.
+func TestPlayoutGuide_NotRunningExplainsItself(t *testing.T) {
+	harness := newPlayoutGuideHarness(t, nil)
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Ch", 1, "internal")
+
+	if resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken); resp.StatusCode != http.StatusNotImplemented {
+		t.Errorf("status %d, want 501", resp.StatusCode)
+	}
+}

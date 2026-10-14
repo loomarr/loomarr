@@ -1,0 +1,5 @@
+Loomarr turns your own media library into always-on television channels for Android TV.
+
+Pair the app with your self-hosted Loomarr server, start watching immediately, browse the Surf rail, or open the full channel guide with your remote. Loomarr keeps playback, programme details, artwork, recent channels, and newly added channels in sync without asking you to type a password on a television.
+
+Requires a separately installed and configured Loomarr server. Loomarr does not provide media or streaming subscriptions.

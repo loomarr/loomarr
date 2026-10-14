@@ -1,0 +1,3 @@
+for f in h1 h2 h3 h4 s4 sd la; do echo "== $f"; ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,width,height,pix_fmt,r_frame_rate,color_transfer,color_primaries:stream_side_data=dv_profile,dv_bl_signal_compatibility_id -of compact $f.mkv; ffprobe -v error -select_streams v:0 -read_intervals %+0.1 -show_frames -show_entries frame=side_data_list -of compact $f.mkv | head -2 | cut -c1-400; done
+ffmpeg -hide_banner -h filter=libplacebo | grep -iE 'tonemap|inverse|peak|contrast|gamut' | head -20
+ffmpeg -hide_banner -h filter=scale_vaapi | grep -iE 'out_' ; ffmpeg -hide_banner -h encoder=hevc_vaapi | grep -iE 'sei|profile|main10|tier' 

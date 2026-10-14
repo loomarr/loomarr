@@ -1,0 +1,33 @@
+-- +goose Up
+-- V40: the language a clip's speech was detected in.
+--
+-- Three distinct states, and conflating any two of them breaks the gate:
+--
+--   ''        NOT YET CHECKED. The default, and what every existing row gets — the detection job
+--             has not reached this clip. It is NOT "no speech", and it must never be treated as a
+--             reason to reject.
+--   'none'    CHECKED, and there is no speech to judge. A wordless visual spot. ALWAYS KEPT: those
+--             are often the best filler, and rejecting them would throw away the good ones.
+--   'en'/…    CHECKED, and this is what was heard. Rejected when it is confidently not
+--             `filler.language`.
+--
+-- ⚠ The empty-vs-'none' distinction is the whole reason this is a TEXT column rather than a
+-- nullable bool or a pair of flags. "We have not looked" and "we looked and heard nothing" produce
+-- the same UI and the same non-rejection today, which is exactly why they are easy to merge — and
+-- merging them means a clip that failed detection (whisper unrunnable, hosted key missing) is
+-- indistinguishable from one that legitimately has no dialogue, so a later change to "reject
+-- unknown languages" would silently drop every silent advert.
+--
+-- Detection runs in the BACKGROUND, after the clip is already catalogued (§10 V40): on the local
+-- backend a clip costs ~3s natively and ~341s under QEMU, so an inline pass would turn a 100-clip
+-- folder into a ~9.5-hour scan on arm64.
+--
+-- Safe as a plain ADD COLUMN: `clips` is a synced cache (00013), so the worst case is one cycle
+-- where nothing has been checked yet — which is the honest state anyway.
+--
+-- Forward-only (§16).
+ALTER TABLE clips ADD COLUMN language TEXT NOT NULL DEFAULT '';
+
+-- +goose Down
+-- No down: forward-only (§16).
+SELECT 1;

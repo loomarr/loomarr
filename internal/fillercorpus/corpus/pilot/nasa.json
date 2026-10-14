@@ -1,0 +1,226 @@
+{
+  "authority": "images.nasa.gov",
+  "maxRequests": 80,
+  "requestsUsed": 21,
+  "maxResponseBytes": 33554432,
+  "responseBytes": 146646,
+  "maxPredictedMediaBytes": 3221225472,
+  "predictedMediaBytes": 213923150,
+  "maxWallTimeMs": 120000,
+  "wallTimeMs": 5783,
+  "cases": [
+    {
+      "itemId": "Planetary Defenders (Official NASA Trailer)",
+      "title": "Planetary Defenders (Official NASA Trailer)",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29",
+      "metadataUrl": "https://images-assets.nasa.gov/video/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:41.867044284Z",
+      "metadataSha256": "e8b96351200d2182c232839422387fb2da92797a62b8e727116a46f0f2e43500",
+      "rightsAssertions": [
+        "NASA center assertion: LaRC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "Planetary Defenders (Official NASA Trailer)~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29/Planetary%20Defenders%20%28Official%20NASA%20Trailer%29~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 36167913
+      }
+    },
+    {
+      "itemId": "ksc_041505_dart_harding",
+      "title": "KSC-05-S-00084",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/ksc_041505_dart_harding",
+      "metadataUrl": "https://images-assets.nasa.gov/video/ksc_041505_dart_harding/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:42.436103217Z",
+      "metadataSha256": "16af3fc5deab74a78281b70b56f6c55353f97faea52861bbce0e965bfa552cfe",
+      "rightsAssertions": [
+        "NASA center assertion: KSC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+        "NASA creator assertion: NASA or National Aeronautics and Space Administration"
+      ],
+      "representation": {
+        "name": "ksc_041505_dart_harding~mobile.mp4",
+        "url": "https://images-assets.nasa.gov/video/ksc_041505_dart_harding/ksc_041505_dart_harding~mobile.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 18270844
+      }
+    },
+    {
+      "itemId": "Gravity Assist Podcast Season 5 Trailer",
+      "title": "Gravity Assist Podcast Season 5 Trailer",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/Gravity%20Assist%20Podcast%20Season%205%20Trailer",
+      "metadataUrl": "https://images-assets.nasa.gov/video/Gravity%20Assist%20Podcast%20Season%205%20Trailer/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:43.01419657Z",
+      "metadataSha256": "b860ce2ce825440177ad5bf7f27d2d799a868301e09e5fc957cfcf44163e5386",
+      "rightsAssertions": [
+        "NASA center assertion: HQ",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "Gravity Assist Podcast Season 5 Trailer~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/Gravity%20Assist%20Podcast%20Season%205%20Trailer/Gravity%20Assist%20Podcast%20Season%205%20Trailer~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 43684814
+      }
+    },
+    {
+      "itemId": "jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K",
+      "title": "Gateway - Lunar Space Station Trailer",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K",
+      "metadataUrl": "https://images-assets.nasa.gov/video/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:43.56035377Z",
+      "metadataSha256": "61d8b11b82bbc221f37baa494b3bc32800afff218a34cc8d358cbc4eda6064b7",
+      "rightsAssertions": [
+        "NASA center assertion: JSC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K/jsc2023m000213_Gateway_LunarSpaceStationTrailer_4K~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 10041067
+      }
+    },
+    {
+      "itemId": "ksc_032105_final_stop",
+      "title": "KSC-05-S-00069",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/ksc_032105_final_stop",
+      "metadataUrl": "https://images-assets.nasa.gov/video/ksc_032105_final_stop/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:44.138754747Z",
+      "metadataSha256": "0ae9ff18d1b3c8bb6d6feb053628a4c07ee1763327d127a65a5e361e93f59ea4",
+      "rightsAssertions": [
+        "NASA center assertion: KSC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+        "NASA creator assertion: NASA or National Aeronautics and Space Administration"
+      ],
+      "representation": {
+        "name": "ksc_032105_final_stop~mobile.mp4",
+        "url": "https://images-assets.nasa.gov/video/ksc_032105_final_stop/ksc_032105_final_stop~mobile.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 2744729
+      }
+    },
+    {
+      "itemId": "JPL-20221117-MSRf-0001-MSR Animation Trailer",
+      "title": "Mars Sample Return: Bringing Mars Rock Samples Back to Earth",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer",
+      "metadataUrl": "https://images-assets.nasa.gov/video/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:44.70160767Z",
+      "metadataSha256": "c3379fb7d47c8addfa73fa85e2a08f029e9f7da79037550477a6e2cc4d1cdbf7",
+      "rightsAssertions": [
+        "NASA center assertion: JPL",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "JPL-20221117-MSRf-0001-MSR Animation Trailer~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer/JPL-20221117-MSRf-0001-MSR%20Animation%20Trailer~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 28535344
+      }
+    },
+    {
+      "itemId": "jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4",
+      "title": "Spacesuits for the Next Explorers- Preview Trailer 1- What is an EVA?",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4",
+      "metadataUrl": "https://images-assets.nasa.gov/video/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:45.276570162Z",
+      "metadataSha256": "f6f6fe565b1652e1a9f581335a4e5ba2474d10bffd152af74634c45c07c38f04",
+      "rightsAssertions": [
+        "NASA center assertion: JSC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4/jsc2020m000242_SpacesuitsFortheNextExplorers_Trailer1_WhatIsAnEVA_1080_MP4~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 11655480
+      }
+    },
+    {
+      "itemId": "KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650",
+      "title": "SWOT Spacecraft Transport Container Move to Trailer",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650",
+      "metadataUrl": "https://images-assets.nasa.gov/video/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:45.853875543Z",
+      "metadataSha256": "55d98352a02a53863a8736ec3af184feb3fc65d7146233cc146ffb357b3fc047",
+      "rightsAssertions": [
+        "NASA center assertion: KSC",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions.",
+        "NASA creator assertion: USSF 30th Space Wing/David Holman"
+      ],
+      "representation": {
+        "name": "KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650/KSC-20221119-MH-DNH01-0001-SWOT_Spacecraft_Transport_Container_Move_to_Trailer_VSFB-3318650~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 38101388
+      }
+    },
+    {
+      "itemId": "NASA’s Artemis III Announcement (Official NASA Trailer)",
+      "title": "NASA’s Artemis III Announcement (Official NASA Trailer)",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29",
+      "metadataUrl": "https://images-assets.nasa.gov/video/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:46.423370419Z",
+      "metadataSha256": "87482959f594e8c471c5aa3f6bf1bb392be4935ca4c2fd73cd501a470a2c0b2d",
+      "rightsAssertions": [
+        "NASA center assertion: HQ",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "NASA’s Artemis III Announcement (Official NASA Trailer)~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29/NASA%E2%80%99s%20Artemis%20III%20Announcement%20%28Official%20NASA%20Trailer%29~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 13517431
+      }
+    },
+    {
+      "itemId": "OSIRIS-REx 1st US Asteroid Sample Lands Soon (Official NASA Trailer)",
+      "title": "OSIRIS-REx:1st US Asteroid Sample Lands Soon (Official NASA Trailer)",
+      "roleHints": [
+        "trailer"
+      ],
+      "itemUrl": "https://images.nasa.gov/details/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29",
+      "metadataUrl": "https://images-assets.nasa.gov/video/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29/collection.json",
+      "metadataRetrievedAt": "2026-08-26T12:38:46.997882796Z",
+      "metadataSha256": "9bb7a612ca383bc79168543a2ecb3a6ee3b81d4c494d1ef0c04d31ae95e736e6",
+      "rightsAssertions": [
+        "NASA center assertion: HQ",
+        "NASA media usage guidelines require item-level review for third-party copyright, identifiable people, logos, music, and endorsement restrictions."
+      ],
+      "representation": {
+        "name": "OSIRIS-REx 1st US Asteroid Sample Lands Soon (Official NASA Trailer)~medium.mp4",
+        "url": "https://images-assets.nasa.gov/video/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29/OSIRIS-REx%201st%20US%20Asteroid%20Sample%20Lands%20Soon%20%28Official%20NASA%20Trailer%29~medium.mp4",
+        "mimeType": "video/mp4",
+        "bytes": 11204140
+      }
+    }
+  ]
+}

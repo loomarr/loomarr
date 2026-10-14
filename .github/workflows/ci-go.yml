@@ -1,0 +1,209 @@
+name: CI / Go tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Go — race-policy tests (${{ matrix.lane }})
+    # #1570: the merge queue was paying GitHub-hosted runner-slot queueing (up to ~16 min) on top of
+    # test time. `merge_group` and a push to `main` specifically (NOT any push — `push` alone matches
+    # every branch) are the household self-hosted runner (loomarr-go, provisioned by the sibling
+    # homelab PR); `pull_request`, including from a fork, ALWAYS stays on GitHub-hosted — the
+    # repository is public, so a self-hosted runner must never execute untrusted fork code.
+    # `workflow_dispatch` stays on GitHub-hosted. The two household runners are sized for the merge
+    # queue; when dispatched runs (baseline regeneration, full-scope checks) also landed here, they
+    # took both runners and merge groups waited 30+ min for their Go lanes. The merge queue has
+    # priority on this capacity.
+    # The `|| 'ubuntu-latest'` fallback is the fail-safe default for every event (and every non-main
+    # push) this expression does not name, including a future trigger nobody has updated this comment
+    # for yet.
+    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
+    # The weighted package plan budgets each lane's test step from #1570's ten-minute Go-only queue
+    # target (`scripts/go-shard.sh --budgets`). This timeout is the backstop: crossing the
+    # operator-facing 15-minute budget fails loud instead of delaying the queue.
+    timeout-minutes: 15
+    # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
+    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
+    # runner time and inflated each lane's cache without adding assurance.
+    #
+    # TWO measured-weight ordinary lanes plus two serial `certification` lanes, which hold the media
+    # certification packages and CPU-heavy packages that need a runner to themselves (scripts/
+    # go-certification-lanes.tsv). Merge-group run
+    # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
+    # a 31m10s critical path. The weights in scripts/go-race-weights.tsv are measured seconds
+    # regenerated from hosted runs (`make go-race-weights`); longest-processing-time assignment
+    # models the current tree at 1796/1796 aggregate package-seconds per ordinary lane and
+    # 517/450-second worker makespans (#1570). The sharder emits that measured order and the
+    # race-policy filter preserves it; restoring lexical order made heavy packages start more than
+    # six minutes late in merge-group run 35510845578. `make go-shard-verify` rejects coverage,
+    # bounded-worker latency, or balance drift and proves the four lanes remain an exact partition.
+    #
+    # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
+    # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
+    # keeps that list honest; it is fail-safe (race stays ON for anything not explicitly opted out).
+    #
+    # ⚠ Sharding is the one change here that can quietly SHRINK the gate — a split that drops
+    # a package leaves those tests unrun and every shard green. `make go-shard-verify` below
+    # is the guard, and it is not optional.
+    #
+    strategy:
+      fail-fast: false # one lane's failures must not hide the others'
+      matrix:
+        lane: ["1/2", "2/2", "certification-1/2", "certification-2/2"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # ⚠ DELIBERATELY OFF — the step below owns every Go cache path in this job.
+          # `cache: true` caches `~/go/pkg/mod` AND `~/.cache/go-build` keyed on go.sum,
+          # which is the SAME `~/.cache/go-build` the unified cache rolls. Both on meant
+          # restoring it twice and, whenever go.sum moved, SAVING it twice: measured
+          # 2026-08-09, `Post Cache golangci` 83s ran alongside `Post Run actions/setup-go`
+          # 91s in one job. Worse, setup-go's half is keyed on go.sum alone — exactly the
+          # frozen-key bug the note below exists to prevent — so it re-froze a slice of the
+          # very cache the rolling key was added to keep fresh.
+          cache: false
+      # Composition tests acquire the real debug image worker through internal/testkit. Install
+      # the pinned toolchain but deliberately do not cache Cargo/target here: the old combined
+      # cache reached 1.36GB and cost longer to restore/save than the focused build. Static Rust
+      # checks and release certification still run once in `go-contracts`.
+      #
+      # GitHub-hosted images ship rustup on PATH; the self-hosted loomarr-go runner (#1570) does
+      # not. Bootstrap rustup there with no default toolchain — rust-toolchain.toml selects 1.93.0
+      # — and put Cargo's bin directory on PATH for later steps, because a persistent runner keeps
+      # ~/.cargo between jobs but a fresh job's PATH never includes it. The C compiler that
+      # libwebp-sys and `go test -race` need is a host package, not something this step installs.
+      - name: Install pinned Rust toolchain
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+            if [ ! -x "$cargo_bin/rustup" ]; then
+              # Download to a file, never `curl | sh`: the default `bash -e` step shell has no
+              # pipefail, so a failed download piped into sh would "succeed" with nothing installed.
+              installer="$RUNNER_TEMP/rustup-init.sh"
+              curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 5 \
+                --output "$installer" https://sh.rustup.rs
+              sh "$installer" -y --no-modify-path --profile minimal --default-toolchain none
+            fi
+            echo "$cargo_bin" >> "$GITHUB_PATH"
+            export PATH="$cargo_bin:$PATH"
+          fi
+          rustup toolchain install 1.93.0 --profile minimal
+      # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
+      # run in `go-contracts`, so restoring their caches here would spend time and storage on
+      # inputs this job never reads.
+      #
+      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
+      # NEVER overwrites an existing key — it skips the save when the key already hit. This
+      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
+      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
+      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
+      # being restored days and many source changes later, so `go test -race` recompiled
+      # nearly everything on every run (~224s of the job). `github.run_id` guarantees a miss
+      # on the exact key so the save always happens, while `restore-keys` still restores the
+      # newest prior cache to compile against.
+      #
+      # ⚠ AND A ROLLING KEY MUST BE BOUNDED — the other half of the same trade, and the
+      # failure mode the fix above created. A stable key never re-SAVES; a rolling key never
+      # PRUNES. Neither actions/cache mode evicts anything, so this entry grew purely by
+      # accretion: every run restored the previous one, added to it, and saved the union.
+      # Measured 2026-08-09 it had reached **1.36 GB**, costing 85s to restore (74s of that
+      # spent EXTRACTING, not downloading) plus 83–122s to save — ~168s of a ~10 min job
+      # spent moving a tarball before a single test ran.
+      #
+      # The ISO week in the key is the bound. It rotates on its own, so there is no number
+      # for anyone to remember to bump — this repo has been bitten repeatedly by
+      # hand-maintained lists that drift — and it costs exactly one cold build per week. It
+      # is in the restore-keys prefixes too, deliberately: a prefix that outlived the epoch
+      # would restore the very accumulation the epoch exists to drop.
+      - name: Cache epoch (bounds rolling-cache growth)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Go test caches (modules + build)
+        id: gocache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          # ⚠ THE LANE IS PART OF THE KEY. Each lane compiles a DIFFERENT set of packages, so
+          # a shared key would have them overwrite each other's build objects every run — each
+          # lane restoring a cache built for another lane's packages and recompiling its own.
+          # It also makes the save well-defined: without it all lanes race to write one key
+          # and every loser simply skips, so most objects are never cached at all.
+          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-
+      # On a cache miss (new epoch, or go.sum changed) this lane's module cache is empty, so the
+      # FIRST `go list ./...` this lane runs downloads the whole module graph live. Every other
+      # package in the lane only resolves its own direct deps, but internal/releaseverify's
+      # TestGoImpactSelector shells out to scripts/go-impact.sh, which runs `go list ./...` over
+      # every package in the repository — the one place in this lane that needs the FULL graph
+      # in one call. Fetching it here, in its own named step with the whole job's time budget
+      # behind it, turns a cold-cache network hiccup into a clear "Download Go modules" failure
+      # instead of a cryptic exit status buried inside that one test (#1834). The helper retries a
+      # proxy stream reset with the same bounded policy as container pulls (#1900).
+      - name: Download Go modules
+        run: ./scripts/go-mod-download.sh
+      # Exercise the deployed media toolchain. Distribution FFmpeg versions have different
+      # MPEG-TS startup latency; both executables must match the production image's pins.
+      # Cache the immutable archive by digest and verify every hit before extraction.
+      - name: Resolve production FFmpeg pin
+        id: ffmpeg-pin
+        run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
+      - name: Restore production FFmpeg archive
+        id: ffmpeg-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
+      - name: Download production FFmpeg
+        run: ./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"
+      - name: Install production FFmpeg
+        run: |
+          ./scripts/ci-ffmpeg.sh install "$HOME/.cache/loomarr-ffmpeg" "$RUNNER_TEMP/loomarr-ffmpeg"
+          echo "$RUNNER_TEMP/loomarr-ffmpeg" >> "$GITHUB_PATH"
+      - name: Verify production FFmpeg on PATH
+        run: |
+          test "$(command -v ffmpeg)" = "$RUNNER_TEMP/loomarr-ffmpeg/ffmpeg"
+          test "$(command -v ffprobe)" = "$RUNNER_TEMP/loomarr-ffmpeg/ffprobe"
+          ffmpeg -version
+          ffprobe -version
+      - run: make test GO_TEST_LANE=${{ matrix.lane }}
+        # The lane runner pins ordinary packages to -p=4 and both reviewed serial `certification`
+        # lanes to -p=1. It rejects caller-controlled GOFLAGS and retains race coverage.
+      # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
+      # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
+      # restored again once that PR closes — cache reads are scoped to the branch and its
+      # base — so every PR save wrote ~1.4GB that only ever became eviction pressure on the
+      # caches that ARE read. That is the same 10GB-quota burn `cache-cleanup.yml` exists to
+      # mop up after; not creating the garbage beats deleting it. PRs restore from main's
+      # entry and skip the measured 83–122s save outright.
+      #
+      # `always()` so a RED gate still refreshes the build objects it already produced — the
+      # next run should not recompile from cold merely because an assertion failed.
+      - name: Save Go caches (main only)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
+      # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
+      - name: Save production FFmpeg archive (not from the merge queue)
+        if: github.event_name != 'merge_group' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}

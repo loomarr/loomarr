@@ -1,0 +1,334 @@
+import brandContract from "./brand-contract.json";
+
+const brandChroma = brandContract.chroma as [string, string, string, string, string, string, string];
+
+const semanticThemes = {
+  dark: {
+    surface: {
+      canvas: "#0B0C0E",
+      raised: "#131519",
+      elevated: "#1B1E24",
+      overlay: "rgba(11, 12, 14, 0.88)",
+      chrome: "rgba(11, 12, 14, 0.78)",
+      entry: "rgba(11, 12, 14, 0.82)",
+      identity: "rgba(11, 12, 14, 0.72)",
+      focus: "#282C34",
+    },
+    content: {
+      primary: "#E7EAF0",
+      secondary: "#8B93A3",
+      muted: "#8B93A3",
+      inverse: "#0B0C0E",
+    },
+    border: {
+      decorative: "#2A2E37",
+      control: "#666970",
+      // Now-airing is a neutral tone step (TV 5b; #1909 Q3): amber is focus and the primary action
+      // only, so the airing block takes the control border and the focus surface, with no hue.
+      airing: "#666970",
+    },
+    state: {
+      live: "#E85A5F",
+      success: "#3DD68C",
+      warning: "#F5D90A",
+      danger: "#E85A5F",
+      info: "#4CC9E8",
+    },
+    stateSurface: {
+      live: "#331D21",
+      success: "#19322A",
+      warning: "#353217",
+      danger: "#331D21",
+      info: "#1C3038",
+      airing: "#282C34",
+    },
+    action: {
+      primary: "#FFB020",
+      secondary: "#E7EAF0",
+      focus: "#FFB020",
+      disabled: "#5A6170",
+    },
+    // A brand accent that is neither a state nor the primary action: the suggest/AI magenta's
+    // own accessible stop, same in both themes (the brand mark's chroma is theme-invariant, same
+    // as `guide.onAir` below).
+    accent: {
+      suggest: "#DC5BAC",
+    },
+    artwork: {
+      placeholder: "#1B1E24",
+      scrim: "rgba(11, 12, 14, 0.66)",
+      // Over a photograph, so the same in both themes (#1659 web mock cards): the foot of the
+      // overlay card's gradient, and the progress track drawn across a still.
+      scrimStrong: "rgba(11, 12, 14, 0.92)",
+      progressTrack: "rgba(255, 255, 255, 0.15)",
+    },
+    // The web mock's time grid (#1659): the row rule, an ordinary block's left accent, the dashed
+    // pending block, the break wash and the per-clip segments inside it.
+    guide: {
+      rowRule: "rgba(42, 46, 55, 0.6)",
+      blockAccent: "#3A3F49",
+      pendingFill: "rgba(76, 201, 232, 0.08)",
+      pendingBorder: "rgba(76, 201, 232, 0.4)",
+      breakFill: "rgba(255, 176, 32, 0.3)",
+      clipSignal: "rgba(255, 176, 32, 0.4)",
+      clipTune: "rgba(76, 201, 232, 0.4)",
+      clipSuggest: "rgba(214, 64, 159, 0.4)",
+      clipPlain: "#2A2E37",
+      // The rail's on-air and reconciling dots (the brand onair red, and the lighter queued amber).
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
+    },
+  },
+  light: {
+    surface: {
+      canvas: "#F7F8FA",
+      raised: "#FFFFFF",
+      elevated: "#E7EAF0",
+      overlay: "rgba(255, 255, 255, 0.9)",
+      chrome: "rgba(255, 255, 255, 0.78)",
+      entry: "rgba(255, 255, 255, 0.82)",
+      identity: "rgba(255, 255, 255, 0.72)",
+      // Selection is neutral (#1909, #1953): one grey step past `elevated`, a secondary action's
+      // resting fill, as dark's focus is one step past its own. The same step as `stateSurface.airing`.
+      focus: "#D2D6DE",
+    },
+    content: {
+      primary: "#17191D",
+      secondary: "#515866",
+      muted: "#69717F",
+      inverse: "#FFFFFF",
+    },
+    border: {
+      decorative: "#D2D6DE",
+      control: "#747C8B",
+      // As in dark: the airing block takes the control border and the focus surface (`#D2D6DE`),
+      // one grey step below `elevated`.
+      airing: "#747C8B",
+    },
+    state: {
+      live: "#A5272C",
+      success: "#116B45",
+      warning: "#655500",
+      danger: "#A5272C",
+      info: "#08657A",
+    },
+    stateSurface: {
+      live: "#F2DFDF",
+      success: "#DBE9E3",
+      warning: "#E8E6D9",
+      danger: "#F2DFDF",
+      info: "#DAE8EB",
+      airing: "#D2D6DE",
+    },
+    action: {
+      primary: "#795000",
+      secondary: "#2A2E37",
+      focus: "#8A5700",
+      disabled: "#8B93A3",
+    },
+    accent: {
+      suggest: "#DC5BAC",
+    },
+    artwork: {
+      placeholder: "#E7EAF0",
+      scrim: "rgba(11, 12, 14, 0.58)",
+      scrimStrong: "rgba(11, 12, 14, 0.92)",
+      progressTrack: "rgba(255, 255, 255, 0.15)",
+    },
+    // The light guide has no mock: each tint is the light theme's own hue at the dark mock's alpha.
+    guide: {
+      rowRule: "rgba(210, 214, 222, 0.6)",
+      blockAccent: "#747C8B",
+      pendingFill: "rgba(8, 101, 122, 0.08)",
+      pendingBorder: "rgba(8, 101, 122, 0.4)",
+      breakFill: "rgba(121, 80, 0, 0.3)",
+      clipSignal: "rgba(121, 80, 0, 0.4)",
+      clipTune: "rgba(8, 101, 122, 0.4)",
+      clipSuggest: "rgba(214, 64, 159, 0.4)",
+      clipPlain: "#D2D6DE",
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
+    },
+  },
+} as const;
+
+const semanticColors = {
+  brand: {
+    signal: brandChroma[0],
+    ground: brandContract.ground,
+    foreground: brandContract.foreground,
+    chroma: brandChroma,
+  },
+  ...semanticThemes.dark,
+} as const;
+
+const semanticSpace = {
+  screen: 32,
+  section: 24,
+  control: 12,
+  inline: 8,
+} as const;
+
+const semanticRadius = {
+  control: 10,
+  card: 16,
+  // The web mock's compact card (#1659): Home's Watching now and the Guide's On now.
+  cardCompact: 12,
+  overlay: 24,
+  round: 999,
+} as const;
+
+const semanticMotion = {
+  instant: 0,
+  focus: 140,
+  overlay: 220,
+  tune: 280,
+} as const;
+
+const semanticTargets = {
+  pointer: 40,
+  touch: 48,
+  tv: 64,
+} as const;
+
+const iconography = {
+  size: {
+    compact: 16,
+    default: 20,
+    // The Material bottom bar's glyph inside its pill (#1659 native mock 5f).
+    navigation: 22,
+    control: 24,
+    touch: 28,
+    tv: 36,
+  },
+  strokeWidth: 2,
+} as const;
+
+const typography = {
+  family: {
+    body: {
+      web: "'Geist Variable', Geist, ui-sans-serif, system-ui, sans-serif",
+      native: "System",
+    },
+    data: {
+      web: "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace",
+      native: "monospace",
+    },
+  },
+  // Pointer is the web's density, so its body is the web scale's body (`--text-base` 14 at
+  // `--leading-body` 1.5; #1909 Q9), and shared components match the Tailwind page around them.
+  // `data` is body in mono, as at every density.
+  pointer: {
+    display: { size: 40, lineHeight: 44, weight: "700" },
+    title: { size: 24, lineHeight: 30, weight: "650" },
+    body: { size: 14, lineHeight: 21, weight: "400" },
+    compact: { size: 13, lineHeight: 20, weight: "400" },
+    caption: { size: 13, lineHeight: 18, weight: "400" },
+    headline: { size: 20, lineHeight: 30, weight: "400" },
+    label: { size: 14, lineHeight: 20, weight: "600" },
+    section: { size: 14, lineHeight: 20, weight: "400" },
+    metadata: { size: 12, lineHeight: 18, weight: "500" },
+    // A form field's help or validation line (FieldHint, #970 step 45): the Web forms' existing
+    // 12px/16px regular measure. Touch and TV take cardMeta's size at each density, the nearest
+    // existing role, so no size is invented for a density nobody has mocked.
+    hint: { size: 12, lineHeight: 16, weight: "400" },
+    time: { size: 13, lineHeight: 18, weight: "550" },
+    data: { size: 14, lineHeight: 21, weight: "400" },
+    reading: { size: 16, lineHeight: 24, weight: "400" },
+    channelNumber: { size: 28, lineHeight: 32, weight: "650" },
+    code: { size: 36, lineHeight: 43, weight: "400" },
+    // The compact card (#1659 web mock), a pointer-density design. At touch and TV each role
+    // takes its nearest existing role's size (title → label, label → caption, meta and channel
+    // number, time and initials → metadata), so no size is invented for a density nobody has mocked.
+    cardTitle: { size: 15, lineHeight: 20, weight: "600" },
+    cardLabel: { size: 13, lineHeight: 18, weight: "500" },
+    cardMeta: { size: 12, lineHeight: 16, weight: "400" },
+    cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
+    cardTime: { size: 12, lineHeight: 16, weight: "400" },
+    cardInitials: { size: 11, lineHeight: 14, weight: "500" },
+    // The web mock's time grid (#1659). Touch and TV take the nearest existing role's size
+    // (meta, label and clip → metadata; number → headline), as the card roles do.
+    guideMeta: { size: 11, lineHeight: 14, weight: "400" },
+    guideLabel: { size: 11, lineHeight: 14, weight: "400" },
+    guideNumber: { size: 20, lineHeight: 20, weight: "600" },
+    guideClip: { size: 11, lineHeight: 14, weight: "400" },
+    guideIdent: { size: 11, lineHeight: 14, weight: "600" },
+    // The now-line's time pill sets its text solid (line-height 1), as the mock does.
+    guideNow: { size: 11, lineHeight: 11, weight: "400" },
+  },
+  touch: {
+    display: { size: 38, lineHeight: 42, weight: "700" },
+    title: { size: 24, lineHeight: 30, weight: "650" },
+    body: { size: 17, lineHeight: 25, weight: "400" },
+    compact: { size: 14, lineHeight: 21, weight: "400" },
+    caption: { size: 14, lineHeight: 20, weight: "400" },
+    headline: { size: 22, lineHeight: 33, weight: "400" },
+    label: { size: 15, lineHeight: 21, weight: "600" },
+    section: { size: 15, lineHeight: 22, weight: "400" },
+    metadata: { size: 13, lineHeight: 18, weight: "500" },
+    hint: { size: 13, lineHeight: 18, weight: "400" },
+    time: { size: 14, lineHeight: 20, weight: "550" },
+    data: { size: 17, lineHeight: 25, weight: "400" },
+    reading: { size: 17, lineHeight: 25, weight: "400" },
+    channelNumber: { size: 30, lineHeight: 34, weight: "650" },
+    code: { size: 40, lineHeight: 48, weight: "400" },
+    cardTitle: { size: 15, lineHeight: 21, weight: "600" },
+    cardLabel: { size: 14, lineHeight: 20, weight: "500" },
+    cardMeta: { size: 13, lineHeight: 18, weight: "400" },
+    cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
+    cardTime: { size: 13, lineHeight: 18, weight: "400" },
+    cardInitials: { size: 13, lineHeight: 18, weight: "500" },
+    guideMeta: { size: 13, lineHeight: 18, weight: "400" },
+    guideLabel: { size: 13, lineHeight: 18, weight: "400" },
+    guideNumber: { size: 22, lineHeight: 22, weight: "600" },
+    guideClip: { size: 13, lineHeight: 18, weight: "400" },
+    guideIdent: { size: 13, lineHeight: 18, weight: "600" },
+    guideNow: { size: 13, lineHeight: 13, weight: "400" },
+  },
+  tv: {
+    display: { size: 54, lineHeight: 60, weight: "700" },
+    title: { size: 32, lineHeight: 39, weight: "650" },
+    body: { size: 22, lineHeight: 31, weight: "400" },
+    compact: { size: 20, lineHeight: 30, weight: "400" },
+    caption: { size: 17, lineHeight: 26, weight: "400" },
+    headline: { size: 30, lineHeight: 45, weight: "400" },
+    label: { size: 18, lineHeight: 25, weight: "600" },
+    section: { size: 20, lineHeight: 30, weight: "400" },
+    metadata: { size: 16, lineHeight: 22, weight: "500" },
+    hint: { size: 16, lineHeight: 22, weight: "400" },
+    time: { size: 18, lineHeight: 24, weight: "550" },
+    data: { size: 24, lineHeight: 30, weight: "400" },
+    reading: { size: 24, lineHeight: 36, weight: "400" },
+    channelNumber: { size: 38, lineHeight: 43, weight: "650" },
+    code: { size: 52, lineHeight: 62, weight: "400" },
+    cardTitle: { size: 18, lineHeight: 25, weight: "600" },
+    cardLabel: { size: 17, lineHeight: 26, weight: "500" },
+    cardMeta: { size: 16, lineHeight: 22, weight: "400" },
+    cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
+    cardTime: { size: 16, lineHeight: 22, weight: "400" },
+    cardInitials: { size: 16, lineHeight: 22, weight: "500" },
+    guideMeta: { size: 16, lineHeight: 22, weight: "400" },
+    guideLabel: { size: 16, lineHeight: 22, weight: "400" },
+    guideNumber: { size: 30, lineHeight: 30, weight: "600" },
+    guideClip: { size: 16, lineHeight: 22, weight: "400" },
+    guideIdent: { size: 16, lineHeight: 22, weight: "600" },
+    guideNow: { size: 16, lineHeight: 16, weight: "400" },
+  },
+} as const;
+
+type Density = keyof typeof semanticTargets;
+type TextRole = keyof (typeof typography)["pointer"];
+
+export type { Density, TextRole };
+export {
+  brandChroma,
+  brandContract,
+  iconography,
+  semanticColors,
+  semanticMotion,
+  semanticRadius,
+  semanticSpace,
+  semanticTargets,
+  semanticThemes,
+  typography,
+};

@@ -1,0 +1,79 @@
+name: Docs site
+
+# Publishes the Starlight site to GitHub Pages.
+#
+# ⚠ The site renders docs/** IN PLACE — nothing is copied into docs-site/ (design §13). So the
+# path filter has to include docs/ itself, not just the site directory: a change to a help page
+# must republish even though no file under docs-site/ moved.
+#
+# ci.yml's `docs` job already BUILDS the site on every pull request, so a broken build is caught
+# in review rather than here. This workflow only deploys what main already proved.
+#
+# ⚠ THE WORKFLOW-LEVEL `paths:` BELOW LOOKS LIKE A RULE VIOLATION AND IS NOT. AGENTS.md bans
+# workflow-level path filters because a run that does not trigger reports NO CHECKS, so a
+# required check sits "expected" forever and the pull request can never merge. That reasoning is
+# specific to ci.yml, whose `ci-ok` job is the required check. Nothing here is a required check —
+# this workflow only runs on pushes to main and only deploys — so filtering at the workflow level
+# is both safe and the right place. Do not "fix" this by moving the filter into a job.
+on:
+  push:
+    branches: [main]
+    # Every v* release tag also triggers this workflow (#1682, maintainer decision D3: the
+    # docs site ships with every release). A pushed tag's `before` SHA is the all-zero ref, so
+    # GitHub cannot compute a push diff and ignores `paths` for that push — the tag run always
+    # deploys, even for a release with no docs change, which is what keeps the published site
+    # pinned to the latest release rather than to main's latest documented state.
+    tags: ["v*"]
+    paths:
+      - "docs/**"
+      - "docs-site/**"
+      - "README.md"
+      - ".github/workflows/pages.yml"
+  # Manual runs matter for a Pages site: enabling Pages on a repo for the first time, or
+  # re-deploying after a settings change, both need a run with no corresponding push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. `cancel-in-progress: false` deliberately — cancelling a half-finished
+# Pages deployment can leave the site serving a partial build.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+
+      - name: Build
+        working-directory: docs-site
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

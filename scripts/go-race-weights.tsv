@@ -1,0 +1,39 @@
+# Measured `go test` seconds per package in the Go race-policy lanes: the median over successful
+# lane jobs of merge-group runs 36366596157, rounded up. Regenerate with
+# `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
+# Packages below five seconds use the one-second floor in go-shard.sh.
+internal/reconcile	361
+internal/backendtransition	303
+internal/integration	232
+internal/app	215
+internal/recurate	196
+internal/binder	190
+internal/clipfetch	182
+internal/store	171
+internal/api	168
+internal/releaseverify	120
+internal/images	92
+internal/filler	62
+internal/secretprotection	56
+internal/suggest	52
+internal/proposalworkflow	41
+internal/auth	34
+internal/channels	29
+internal/notifications	26
+cmd/seed	24
+internal/playout	22
+internal/schedule	21
+internal/demolibrary	19
+internal/scheduler	19
+internal/devbootstrap	12
+internal/installationlocation	12
+internal	11
+internal/inventory	11
+internal/invitation	11
+internal/mediatools	11
+cmd/image-cert	10
+internal/proposaloutlook	10
+internal/playout/packager	9
+internal/mediameasure	8
+cmd/demo-library	7
+internal/watermark	7

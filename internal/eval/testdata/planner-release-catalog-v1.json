@@ -1,0 +1,1327 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "planner-release-catalog-v1",
+  "cases": [
+    {
+      "id": "tgif",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy associated with ABC's TGIF Friday-night programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20102,
+              "name": "Family Matters",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20102",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy in ABC's 1990s TGIF Friday-night lineup.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20103,
+              "name": "Step by Step",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20103",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A 1990s family comedy from ABC's TGIF programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20104,
+              "name": "Perfect Strangers",
+              "year": 1986,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20104",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A sitcom that helped establish ABC's Friday-night TGIF block.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20105,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20105",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A coming-of-age comedy broadcast in ABC's TGIF lineup.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20106,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20106",
+              "genres": [
+                "Comedy",
+                "Family",
+                "Fantasy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A fantasy sitcom from ABC's late-1990s TGIF block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20201,
+              "name": "Friends",
+              "year": 1994,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20201",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A 1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20202,
+              "name": "Rugrats",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20202",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20203,
+              "name": "Hey Arnold!",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20203",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y7",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20204,
+              "name": "Will & Grace",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20204",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A late-1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20205,
+              "name": "King of the Hill",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20205",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A 1990s prime-time animated comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20206,
+              "name": "Family Guy",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20206",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A prime-time animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20207,
+              "name": "Futurama",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20207",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A science-fiction animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20208,
+              "name": "South Park",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20208",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Comedy Central"
+              ],
+              "overview": "An adult animated comedy.",
+              "officialRating": "TV-MA",
+              "source": "library"
+            }
+          ]
+        },
+        {
+          "operation": "genre",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy associated with ABC's TGIF Friday-night programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20102,
+              "name": "Family Matters",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20102",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy in ABC's 1990s TGIF Friday-night lineup.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20103,
+              "name": "Step by Step",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20103",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A 1990s family comedy from ABC's TGIF programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20104,
+              "name": "Perfect Strangers",
+              "year": 1986,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20104",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A sitcom that helped establish ABC's Friday-night TGIF block.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20105,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20105",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A coming-of-age comedy broadcast in ABC's TGIF lineup.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20106,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20106",
+              "genres": [
+                "Comedy",
+                "Family",
+                "Fantasy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A fantasy sitcom from ABC's late-1990s TGIF block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20201,
+              "name": "Friends",
+              "year": 1994,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20201",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A 1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20202,
+              "name": "Rugrats",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20202",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20203,
+              "name": "Hey Arnold!",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20203",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y7",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20204,
+              "name": "Will & Grace",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20204",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A late-1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20205,
+              "name": "King of the Hill",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20205",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A 1990s prime-time animated comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20206,
+              "name": "Family Guy",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20206",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A prime-time animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20207,
+              "name": "Futurama",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20207",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A science-fiction animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20208,
+              "name": "South Park",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20208",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Comedy Central"
+              ],
+              "overview": "An adult animated comedy.",
+              "officialRating": "TV-MA",
+              "source": "library"
+            }
+          ]
+        },
+        {
+          "operation": "keyword",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy associated with ABC's TGIF Friday-night programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20102,
+              "name": "Family Matters",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20102",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy in ABC's 1990s TGIF Friday-night lineup.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20103,
+              "name": "Step by Step",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20103",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A 1990s family comedy from ABC's TGIF programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20104,
+              "name": "Perfect Strangers",
+              "year": 1986,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20104",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A sitcom that helped establish ABC's Friday-night TGIF block.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20105,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20105",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A coming-of-age comedy broadcast in ABC's TGIF lineup.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20106,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20106",
+              "genres": [
+                "Comedy",
+                "Family",
+                "Fantasy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A fantasy sitcom from ABC's late-1990s TGIF block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20201,
+              "name": "Friends",
+              "year": 1994,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20201",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A 1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20202,
+              "name": "Rugrats",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20202",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20203,
+              "name": "Hey Arnold!",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20203",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y7",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20204,
+              "name": "Will & Grace",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20204",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A late-1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20205,
+              "name": "King of the Hill",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20205",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A 1990s prime-time animated comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20206,
+              "name": "Family Guy",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20206",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A prime-time animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20207,
+              "name": "Futurama",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20207",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A science-fiction animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20208,
+              "name": "South Park",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20208",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Comedy Central"
+              ],
+              "overview": "An adult animated comedy.",
+              "officialRating": "TV-MA",
+              "source": "library"
+            }
+          ]
+        },
+        {
+          "operation": "network",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy associated with ABC's TGIF Friday-night programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20102,
+              "name": "Family Matters",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20102",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A family comedy in ABC's 1990s TGIF Friday-night lineup.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20103,
+              "name": "Step by Step",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20103",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A 1990s family comedy from ABC's TGIF programming block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20104,
+              "name": "Perfect Strangers",
+              "year": 1986,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20104",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A sitcom that helped establish ABC's Friday-night TGIF block.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20105,
+              "name": "Boy Meets World",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20105",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A coming-of-age comedy broadcast in ABC's TGIF lineup.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20106,
+              "name": "Sabrina the Teenage Witch",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20106",
+              "genres": [
+                "Comedy",
+                "Family",
+                "Fantasy"
+              ],
+              "networks": [
+                "ABC"
+              ],
+              "overview": "A fantasy sitcom from ABC's late-1990s TGIF block.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20201,
+              "name": "Friends",
+              "year": 1994,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20201",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A 1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20202,
+              "name": "Rugrats",
+              "year": 1991,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20202",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20203,
+              "name": "Hey Arnold!",
+              "year": 1996,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20203",
+              "genres": [
+                "Animation",
+                "Children"
+              ],
+              "networks": [
+                "Nickelodeon"
+              ],
+              "overview": "A 1990s children's animated series.",
+              "officialRating": "TV-Y7",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20204,
+              "name": "Will & Grace",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20204",
+              "genres": [
+                "Comedy"
+              ],
+              "networks": [
+                "NBC"
+              ],
+              "overview": "A late-1990s Thursday-night ensemble sitcom.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20205,
+              "name": "King of the Hill",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20205",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A 1990s prime-time animated comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20206,
+              "name": "Family Guy",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20206",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A prime-time animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20207,
+              "name": "Futurama",
+              "year": 1999,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20207",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Fox"
+              ],
+              "overview": "A science-fiction animated comedy.",
+              "officialRating": "TV-14",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20208,
+              "name": "South Park",
+              "year": 1997,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20208",
+              "genres": [
+                "Animation",
+                "Comedy"
+              ],
+              "networks": [
+                "Comedy Central"
+              ],
+              "overview": "An adult animated comedy.",
+              "officialRating": "TV-MA",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "broad-comedy",
+      "responses": [
+        {
+          "operation": "genre",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20102,
+              "name": "Family Matters",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20102",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "overview": "A long-running family sitcom.",
+              "officialRating": "TV-G",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20301,
+              "name": "Seinfeld",
+              "year": 1989,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20301",
+              "genres": [
+                "Comedy"
+              ],
+              "overview": "A 1990s observational ensemble comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20302,
+              "name": "Frasier",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20302",
+              "genres": [
+                "Comedy"
+              ],
+              "overview": "A sophisticated 1990s workplace and family comedy.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            },
+            {
+              "mediaType": "series",
+              "tmdbId": 20303,
+              "name": "Living Single",
+              "year": 1993,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20303",
+              "genres": [
+                "Comedy"
+              ],
+              "overview": "A 1990s ensemble comedy about friends in Brooklyn.",
+              "officialRating": "TV-PG",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "known-title",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "genre-era",
+      "responses": [
+        {
+          "operation": "genre",
+          "candidates": [
+            {
+              "mediaType": "movie",
+              "tmdbId": 20401,
+              "name": "Synthetic 90s Action One",
+              "year": 1992,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20401",
+              "genres": [
+                "Action"
+              ],
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 20402,
+              "name": "Synthetic 90s Action Two",
+              "year": 1995,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20402",
+              "genres": [
+                "Action",
+                "Thriller"
+              ],
+              "officialRating": "PG-13",
+              "source": "library"
+            },
+            {
+              "mediaType": "movie",
+              "tmdbId": 20403,
+              "name": "Synthetic 90s Action Three",
+              "year": 1998,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20403",
+              "genres": [
+                "Action",
+                "Adventure"
+              ],
+              "officialRating": "PG-13",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "named-collection",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {"mediaType":"movie","tmdbId":21101,"name":"Iron Man","year":2008,"inLibrary":true,"libraryItemId":"fixture-21101","genres":["Action","Science Fiction"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21102,"name":"The Incredible Hulk","year":2008,"inLibrary":true,"libraryItemId":"fixture-21102","genres":["Action","Science Fiction"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21103,"name":"Iron Man 2","year":2010,"inLibrary":true,"libraryItemId":"fixture-21103","genres":["Action","Science Fiction"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21104,"name":"Thor","year":2011,"inLibrary":true,"libraryItemId":"fixture-21104","genres":["Action","Fantasy"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21105,"name":"Captain America: The First Avenger","year":2011,"inLibrary":true,"libraryItemId":"fixture-21105","genres":["Action","Adventure"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21106,"name":"The Avengers","year":2012,"inLibrary":true,"libraryItemId":"fixture-21106","genres":["Action","Science Fiction"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21107,"name":"Guardians of the Galaxy","year":2014,"inLibrary":true,"libraryItemId":"fixture-21107","genres":["Action","Science Fiction"],"officialRating":"PG-13","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "known-franchise",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {"mediaType":"movie","tmdbId":21201,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"fixture-21201","genres":["Action","Science Fiction"],"officialRating":"R","source":"library"},
+            {"mediaType":"movie","tmdbId":21202,"name":"The Matrix Reloaded","year":2003,"inLibrary":true,"libraryItemId":"fixture-21202","genres":["Action","Science Fiction"],"officialRating":"R","source":"library"},
+            {"mediaType":"movie","tmdbId":21203,"name":"The Matrix Revolutions","year":2003,"inLibrary":true,"libraryItemId":"fixture-21203","genres":["Action","Science Fiction"],"officialRating":"R","source":"library"},
+            {"mediaType":"movie","tmdbId":21204,"name":"The Animatrix","year":2003,"inLibrary":true,"libraryItemId":"fixture-21204","genres":["Animation","Science Fiction"],"officialRating":"PG-13","source":"library"},
+            {"mediaType":"movie","tmdbId":21205,"name":"John Wick","year":2014,"inLibrary":true,"libraryItemId":"fixture-21205","genres":["Action","Thriller"],"officialRating":"R","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "movie-person",
+      "responses": [
+        {
+          "operation": "cast",
+          "candidates": [
+            {"mediaType":"movie","tmdbId":21301,"name":"Joe Versus the Volcano","year":1990,"inLibrary":true,"libraryItemId":"fixture-21301","genres":["Comedy","Romance"],"officialRating":"PG","source":"library"},
+            {"mediaType":"movie","tmdbId":21302,"name":"That Thing You Do!","year":1996,"inLibrary":true,"libraryItemId":"fixture-21302","genres":["Comedy","Music"],"officialRating":"PG","source":"library"},
+            {"mediaType":"movie","tmdbId":21303,"name":"You've Got Mail","year":1998,"inLibrary":true,"libraryItemId":"fixture-21303","genres":["Comedy","Romance"],"officialRating":"PG","source":"library"},
+            {"mediaType":"movie","tmdbId":21304,"name":"Saving Private Ryan","year":1998,"inLibrary":true,"libraryItemId":"fixture-21304","genres":["Drama","War"],"officialRating":"R","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tv-network",
+      "responses": [
+        {
+          "operation": "network",
+          "candidates": [
+            {"mediaType":"series","tmdbId":21401,"name":"The Sopranos","year":1999,"inLibrary":true,"libraryItemId":"fixture-21401","genres":["Drama"],"networks":["HBO"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21402,"name":"The Wire","year":2002,"inLibrary":true,"libraryItemId":"fixture-21402","genres":["Crime","Drama"],"networks":["HBO"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21403,"name":"Six Feet Under","year":2001,"inLibrary":true,"libraryItemId":"fixture-21403","genres":["Drama"],"networks":["HBO"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21404,"name":"Deadwood","year":2004,"inLibrary":true,"libraryItemId":"fixture-21404","genres":["Drama","Western"],"networks":["HBO"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21405,"name":"Friends","year":1994,"inLibrary":true,"libraryItemId":"fixture-21405","genres":["Comedy"],"networks":["NBC"],"officialRating":"TV-14","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tv-network-genre",
+      "responses": [
+        {
+          "operation": "network",
+          "candidates": [
+            {"mediaType":"series","tmdbId":21701,"name":"Foundation","year":2021,"inLibrary":true,"libraryItemId":"fixture-21701","genres":["Drama","Science Fiction"],"networks":["Apple TV+"],"officialRating":"TV-14","source":"library"},
+            {"mediaType":"series","tmdbId":21702,"name":"For All Mankind","year":2019,"inLibrary":true,"libraryItemId":"fixture-21702","genres":["Drama","Science Fiction"],"networks":["Apple TV+"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21703,"name":"Silo","year":2023,"inLibrary":true,"libraryItemId":"fixture-21703","genres":["Drama","Science Fiction"],"networks":["Apple TV+"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21704,"name":"Severance","year":2022,"inLibrary":true,"libraryItemId":"fixture-21704","genres":["Drama","Mystery","Science Fiction"],"networks":["Apple TV+"],"officialRating":"TV-MA","source":"library"},
+            {"mediaType":"series","tmdbId":21705,"name":"Ted Lasso","year":2020,"inLibrary":true,"libraryItemId":"fixture-21705","genres":["Comedy","Drama"],"networks":["Apple TV+"],"officialRating":"TV-MA","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mood-theme",
+      "responses": [
+        {
+          "operation": "keyword",
+          "candidates": [
+            {"mediaType":"series","tmdbId":21501,"name":"Murder, She Wrote","year":1984,"inLibrary":true,"libraryItemId":"fixture-21501","genres":["Crime","Drama","Mystery"],"officialRating":"TV-PG","source":"library"},
+            {"mediaType":"series","tmdbId":21502,"name":"Father Brown","year":2013,"inLibrary":true,"libraryItemId":"fixture-21502","genres":["Crime","Drama","Mystery"],"officialRating":"TV-PG","source":"library"},
+            {"mediaType":"series","tmdbId":21503,"name":"Miss Fisher's Murder Mysteries","year":2012,"inLibrary":true,"libraryItemId":"fixture-21503","genres":["Drama","Mystery"],"officialRating":"TV-14","source":"library"},
+            {"mediaType":"series","tmdbId":21504,"name":"True Detective","year":2014,"inLibrary":true,"libraryItemId":"fixture-21504","genres":["Crime","Drama","Mystery"],"officialRating":"TV-MA","source":"library"}
+          ]
+        },
+        {
+          "operation": "genre",
+          "candidates": [
+            {"mediaType":"series","tmdbId":21501,"name":"Murder, She Wrote","year":1984,"inLibrary":true,"libraryItemId":"fixture-21501","genres":["Crime","Drama","Mystery"],"officialRating":"TV-PG","source":"library"},
+            {"mediaType":"series","tmdbId":21502,"name":"Father Brown","year":2013,"inLibrary":true,"libraryItemId":"fixture-21502","genres":["Crime","Drama","Mystery"],"officialRating":"TV-PG","source":"library"},
+            {"mediaType":"series","tmdbId":21503,"name":"Miss Fisher's Murder Mysteries","year":2012,"inLibrary":true,"libraryItemId":"fixture-21503","genres":["Drama","Mystery"],"officialRating":"TV-14","source":"library"},
+            {"mediaType":"series","tmdbId":21504,"name":"True Detective","year":2014,"inLibrary":true,"libraryItemId":"fixture-21504","genres":["Crime","Drama","Mystery"],"officialRating":"TV-MA","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "public-reference",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {"mediaType":"movie","tmdbId":21601,"name":"E.T. the Extra-Terrestrial","year":1982,"inLibrary":true,"libraryItemId":"fixture-21601","genres":["Adventure","Family","Science Fiction"],"officialRating":"PG","source":"library"},
+            {"mediaType":"movie","tmdbId":21602,"name":"Hook","year":1991,"inLibrary":true,"libraryItemId":"fixture-21602","genres":["Adventure","Family","Fantasy"],"officialRating":"PG","source":"library"},
+            {"mediaType":"movie","tmdbId":21603,"name":"Jurassic Park","year":1993,"inLibrary":true,"libraryItemId":"fixture-21603","genres":["Adventure","Science Fiction"],"officialRating":"PG-13","source":"library"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "invented",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": []
+        }
+      ]
+    },
+    {
+      "id": "empty-exact",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": []
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-exact",
+      "responses": [
+        {
+          "operation": "title",
+          "candidates": [
+            {
+              "mediaType": "series",
+              "tmdbId": 20101,
+              "name": "Full House",
+              "year": 1987,
+              "inLibrary": true,
+              "libraryItemId": "fixture-20101",
+              "genres": [
+                "Comedy",
+                "Family"
+              ],
+              "officialRating": "TV-G",
+              "source": "library"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

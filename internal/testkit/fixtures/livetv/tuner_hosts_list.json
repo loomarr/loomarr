@@ -1,0 +1,18 @@
+[
+    {
+        "Id": "22222222222222222222222222222203",
+        "Url": "192.0.2.11",
+        "Type": "hdhomerun",
+        "DeviceId": "HDHR-DEVICE",
+        "FriendlyName": "HD Homerun",
+        "SetupUrl": "livetvsetup/livetvtuner.html?type=hdhomerun",
+        "ImportFavoritesOnly": false,
+        "PreferEpgChannelImages": true,
+        "PreferEpgChannelNumbers": false,
+        "AllowHWTranscoding": true,
+        "AllowMappingByNumber": true,
+        "ImportGuideData": true,
+        "TunerCount": 0,
+        "DataVersion": 0
+    }
+]

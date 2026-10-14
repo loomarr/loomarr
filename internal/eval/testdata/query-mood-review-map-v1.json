@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "query-mood-model-review-v1",
+  "packetId": "movie-mood-review-2026-09-16-a",
+  "packetSha256": "7247bc8930c5b7f5d16014c4c651bd8745eb6fe68a927936628f755fdc22f88f",
+  "entries": [
+    {
+      "alias": "candidate-e492",
+      "key": "movie:tmdb:496243"
+    },
+    {
+      "alias": "candidate-7f3a",
+      "key": "movie:tmdb:346648"
+    },
+    {
+      "alias": "candidate-b1c8",
+      "key": "movie:tmdb:578"
+    }
+  ]
+}

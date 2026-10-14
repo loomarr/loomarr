@@ -1,0 +1,33 @@
+{
+    "Name": "XmlTV",
+    "SetupUrl": "configurationpage?name=xmltv",
+    "Id": "<server-assigned>",
+    "Type": "xmltv",
+    "Path": "http://TUNARR_HOST:8000/api/xmltv.xml",
+    "EnabledTuners": [],
+    "EnableAllTuners": true,
+    "NewsCategories": [
+        "news",
+        "journalism",
+        "documentary",
+        "current affairs"
+    ],
+    "SportsCategories": [
+        "sports",
+        "basketball",
+        "baseball",
+        "football"
+    ],
+    "KidsCategories": [
+        "kids",
+        "family",
+        "children",
+        "childrens",
+        "disney"
+    ],
+    "MovieCategories": [
+        "movie"
+    ],
+    "ChannelMappings": [],
+    "TvgShiftTicks": 0
+}

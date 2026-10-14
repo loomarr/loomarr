@@ -1,0 +1,924 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
+)
+
+const (
+	playoutToken   = "playout-token-abcdefghijklmnop"
+	playoutTestURL = "http://example.com"
+)
+
+// fakePlayoutSessions stands in for playout.Manager. The session lifecycle is tested in
+// internal/playout; here the question is what the HTTP layer does with it.
+type fakePlayoutSessions struct {
+	mu sync.Mutex
+	// attached records each Attach as (channel, target) so a test can assert the tuner attaches as
+	// PlanFull (§9.1 V47) — the identity that keeps HEVC a copy for a media server.
+	attached []attachRecord
+	err      error
+	chunks   chan []byte
+	streams  map[playout.EncodePlan]chan []byte
+	detached int
+	// V16 telemetry: what the handlers reported, and what Stats hands back.
+	stats      []playout.SessionStat
+	capacity   int
+	asset      playout.Asset
+	assetOK    bool
+	opened     string
+	tunes      int
+	stopped    []string
+	still      playout.Still
+	stillOK    bool
+	stillErr   error
+	stillAsked []string
+}
+
+// attachRecord is one Attach call — its channel and codec target.
+type attachRecord struct {
+	channelID string
+	target    playout.EncodePlan
+}
+
+func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stats
+}
+
+func (f *fakePlayoutSessions) Capacity() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.capacity
+}
+
+func (f *fakePlayoutSessions) Budget() playout.BudgetSnapshot { return playout.BudgetSnapshot{} }
+
+func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return nil, nil, f.err
+	}
+	f.attached = append(f.attached, attachRecord{channelID: channelID, target: target})
+	if chunks := f.streams[target]; chunks != nil {
+		return chunks, func() {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.detached++
+		}, nil
+	}
+	if f.chunks == nil {
+		f.chunks = make(chan []byte, 8)
+	}
+	return f.chunks, func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.detached++
+	}, nil
+}
+
+func (f *fakePlayoutSessions) attachments() []attachRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]attachRecord(nil), f.attached...)
+}
+
+func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
+	f.mu.Lock()
+	f.tunes++
+	f.mu.Unlock()
+	chunks, release, err := f.Attach(ctx, request.ChannelID, request.Plan)
+	return playout.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
+}
+
+func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string, speculative bool) (playout.Asset, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opened = rel
+	return f.asset, f.assetOK, nil
+}
+
+func (f *fakePlayoutSessions) StopChannel(channelID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, channelID)
+}
+
+func (f *fakePlayoutSessions) detachCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.detached
+}
+
+func (f *fakePlayoutSessions) tuneCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tunes
+}
+
+type playoutHarnessConfig struct {
+	Sessions      *fakePlayoutSessions
+	Backend       string
+	WithoutSecret bool
+}
+
+// playoutHarness owns the tuner and stream routes' token authorization, live
+// configuration, store, and HTTP lifecycle. Tests vary only session behavior,
+// backend selection, or the deliberate absence of a device secret.
+type playoutHarness struct {
+	*apiHarness
+}
+
+func newPlayoutHarness(t *testing.T, config playoutHarnessConfig) *playoutHarness {
+	t.Helper()
+	if config.Backend == "" {
+		config.Backend = "internal"
+	}
+	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		cfg := map[string]string{
+			"server.public_url": "http://loomarr.local:8080",
+			"playout.backend":   config.Backend,
+		}
+		opts := api.Options{
+			Store:      defaults.Store,
+			Auth:       api.NewTokenAuthorizer(adminToken),
+			Log:        defaults.Log,
+			LiveConfig: func(key string) string { return cfg[key] },
+		}
+		if config.Sessions != nil {
+			opts.Playout = config.Sessions
+			opts.PlayoutObserver = config.Sessions
+		}
+		if !config.WithoutSecret {
+			opts.PlayoutSecret = func() string { return playoutToken }
+		}
+		return api.Router(defaults.Log, opts)
+	})
+	return &playoutHarness{apiHarness: base}
+}
+
+func getPlayout(t *testing.T, srv *httptest.Server, path string) *http.Response {
+	t.Helper()
+	resp, err := srv.Client().Get(playoutTestURL + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+func seedChannel(t *testing.T, st store.Store, id, name string, number int, backend string) {
+	t.Helper()
+	ch := store.Channel{Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive}}
+	if backend != "" {
+		ch.Policy.Playout = &schedule.PlayoutPolicy{Backend: backend}
+	}
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setChannelStatus(t *testing.T, st store.Store, id string, status schedule.ChannelStatus) {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Status = status
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChannelPlayURLCarriesAuthoritativeServerClock(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{})
+	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
+	before := time.Now().UnixMilli()
+
+	resp := do(t, harness.Server, http.MethodPost, "/v1/channels/ch1/play-url", adminToken, `{}`)
+	after := time.Now().UnixMilli()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("play URL status = %d, want 200", resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		RelativeURL string `json:"relativeUrl"`
+		ServerTime  int64  `json:"serverTimeMs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RelativeURL == "" {
+		t.Fatal("play URL response omitted the signed relative URL")
+	}
+	if body.ServerTime < before || body.ServerTime > after {
+		t.Fatalf("serverTimeMs = %d, want request interval %d..%d", body.ServerTime, before, after)
+	}
+}
+
+// The play-url carries the still URL signed by the same capability, so a client that already
+// minted a play-url for a neighbour channel can prefetch its still with no extra round trip — and
+// the URL it is handed must actually open the still route.
+func TestChannelPlayURLCarriesAWorkingStillURL(t *testing.T) {
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: time.Unix(1, 0)}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
+
+	resp := do(t, harness.Server, http.MethodPost, "/v1/channels/ch1/play-url", adminToken, `{}`)
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		StillURL         string `json:"stillUrl"`
+		RelativeStillURL string `json:"relativeStillUrl"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body.RelativeStillURL, "/v1/playout/still/ch1?sig=") {
+		t.Fatalf("relativeStillUrl = %q, want the signed still route", body.RelativeStillURL)
+	}
+	if want := "http://loomarr.local:8080" + body.RelativeStillURL; body.StillURL != want {
+		t.Fatalf("stillUrl = %q, want %q", body.StillURL, want)
+	}
+	if got := getPlayout(t, harness.Server, body.RelativeStillURL); got.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s = %d, want 200: the minted URL must open the route", body.RelativeStillURL, got.StatusCode)
+	}
+}
+
+// #1630: an internal channel that cannot air yet is Loomarr's to stream, so its refusal must
+// say why in Loomarr's terms. It used to share the Tunarr-backed refusal, which sent the viewer
+// of an internal-only install to look for Tunarr in their media server.
+func TestChannelPlayURLRefusalNamesWhyTheChannelCannotPlay(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{})
+	seedChannel(t, harness.Store, "empty", "Empty", 1, "internal")
+	setChannelStatus(t, harness.Store, "empty", schedule.StatusEmpty)
+	seedChannel(t, harness.Store, "paused", "Paused", 2, "internal")
+	setChannelStatus(t, harness.Store, "paused", schedule.StatusPaused)
+	seedChannel(t, harness.Store, "tunarr", "Tunarr", 3, "tunarr")
+
+	for _, tc := range []struct {
+		id, want, never string
+	}{
+		{id: "empty", want: "Nothing can air on this channel yet", never: "Tunarr"},
+		{id: "paused", want: "paused", never: "Tunarr"},
+		{id: "tunarr", want: "Tunarr streams this channel", never: "Nothing can air"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			resp := do(t, harness.Server, http.MethodPost, "/v1/channels/"+tc.id+"/play-url", adminToken, `{}`)
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusConflict {
+				t.Fatalf("play URL status = %d, want 409", resp.StatusCode)
+			}
+			var problem struct {
+				Title  string `json:"title"`
+				Detail string `json:"detail"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+				t.Fatal(err)
+			}
+			text := problem.Title + " " + problem.Detail
+			if !strings.Contains(text, tc.want) || strings.Contains(text, tc.never) {
+				t.Fatalf("refusal = %q, want it to contain %q and never %q", text, tc.want, tc.never)
+			}
+		})
+	}
+}
+
+// --- Device auth (§11). These are the negative cases AGENTS.md §19 requires. ---
+
+// EVERY playout route must reject a missing or wrong token. A television is the client, so
+// there is no session to fall back on — the token is the only auth these routes have.
+func TestPlayout_RejectsMissingOrWrongToken(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	for _, path := range []string{
+		"/v1/playout/tuner.m3u",
+		"/v1/playout/stream/ch1",
+		"/v1/playout/program/ch1",
+		// The in-app HLS surface (§9.1 Watch, V46) authenticates exactly like the rest.
+		"/v1/playout/hls/ch1/master.m3u8",
+		"/v1/playout/hls/ch1/seg-0.ts",
+	} {
+		for name, q := range map[string]string{
+			"no token":    "",
+			"empty token": "?token=",
+			"wrong token": "?token=nope",
+			// A prefix of the real token must not pass — it would if the comparison were
+			// truncating or prefix-based.
+			"token prefix": "?token=" + playoutToken[:10],
+		} {
+			resp := getPlayout(t, srv, path+q)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s with %s: status %d, want 404", path, name, resp.StatusCode)
+			}
+		}
+	}
+}
+
+// A wrong token gets 404, NOT 401/403. These URLs are pasted into a media server's config and
+// leak into logs and screenshots; an enumerable "real channel, wrong password" tells an
+// attacker where to aim.
+func TestPlayout_WrongTokenIsIndistinguishableFromNoRoute(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	real := getPlayout(t, srv, "/v1/playout/stream/ch1?token=wrong")
+	fake := getPlayout(t, srv, "/v1/playout/stream/does-not-exist?token=wrong")
+
+	if real.StatusCode != fake.StatusCode {
+		t.Errorf("a real channel with a bad token (%d) is distinguishable from a "+
+			"nonexistent one (%d) — that is an enumeration oracle",
+			real.StatusCode, fake.StatusCode)
+	}
+}
+
+// No token configured ⇒ fail CLOSED. Serving streams unauthenticated because a secret failed
+// to mint would silently remove the only auth these routes have.
+func TestPlayout_NoConfiguredTokenRefusesEverything(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}, WithoutSecret: true})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	for _, path := range []string{"/v1/playout/tuner.m3u", "/v1/playout/stream/ch1", "/v1/playout/program/ch1"} {
+		// Even presenting an empty token — which would "match" an unset secret under a naive
+		// equality check — must be refused.
+		for _, q := range []string{"", "?token=", "?token=" + playoutToken} {
+			if resp := getPlayout(t, srv, path+q); resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s%s: status %d with no token configured, want 404",
+					path, q, resp.StatusCode)
+			}
+		}
+	}
+}
+
+// The admin API token must NOT work on playout routes, and vice versa. §11: they are separate
+// secrets with opposite authority — playout_token grants no API access, api_token is
+// break-glass admin.
+func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	if resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+adminToken); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("the admin token authorized a playout route: status %d", resp.StatusCode)
+	}
+	// And the playout token grants no PRIVILEGED API access. POST /v1/channels is admin-only
+	// (requireAdmin); GET /v1/channels is deliberately NOT, so asserting against a read route
+	// would prove only that the route is public — which an earlier version of this test did.
+	req, _ := http.NewRequest(http.MethodPost, playoutTestURL+"/v1/channels",
+		strings.NewReader(`{"name":"Sneaky","number":99}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+playoutToken)
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		t.Errorf("the playout token created a channel (status %d) — §11 says it grants no "+
+			"write of any kind", resp.StatusCode)
+	}
+}
+
+// A playout path that matches no route must 404, not fall through to the SPA. Without the
+// /v1/ prefix guard, ffmpeg would read index.html as a transport stream and report a
+// corrupt stream naming neither the URL nor the typo.
+func TestPlayout_UnknownPathDoesNotServeTheSPA(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, _ := harness.Server, harness.Store
+
+	resp := getPlayout(t, srv, "/v1/playout/not-a-route?token="+playoutToken)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(strings.ToLower(string(body)), "<!doctype html") {
+		t.Error("an unknown playout path served the SPA; ffmpeg would read HTML as MPEG-TS")
+	}
+}
+
+// A packager asset is one path segment beside the master. Exercise the real router here: a
+// handler-only test can inject a slash into PathValue manually even though the registered
+// `{asset}` route would never match that URL, which is how a black-screen bug once escaped.
+func TestPlayoutHLS_PackagerAssetMatchesTheRegisteredRoute(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "init-*.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("packager init"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakePlayoutSessions{
+		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0)},
+		assetOK: true,
+	}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, _ := harness.Server, harness.Store
+	const token = "1080p-h264-sdr-init.mp4"
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/"+token+"?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 from the registered single-segment asset route", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "video/mp4" {
+		t.Fatalf("Content-Type = %q, want video/mp4 from the init suffix", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || string(body) != "packager init" {
+		t.Fatalf("body = %q, err=%v", body, err)
+	}
+	f.mu.Lock()
+	opened := f.opened
+	f.mu.Unlock()
+	if opened != token {
+		t.Fatalf("OpenAsset rel = %q, want %q", opened, token)
+	}
+}
+
+// The typed Huma input validates query enums before the raw streaming handler runs. Keep the
+// speculative warmer mode in that contract; a handler-only test cannot catch a stale enum because
+// it bypasses route validation entirely.
+func TestPlayoutHLS_WarmModePassesRegisteredRouteValidation(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/master.m3u8?token="+playoutToken+"&mode=warm")
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 from registered warm route: %s", resp.StatusCode, body)
+	}
+}
+
+// The retired prepared mode stays in the route contract (#1512 phase 4): a client built before the
+// retirement still probes with it, and a 422 from the enum would read as a failure, not "nothing
+// prepared". Through the registered route it answers 204 and starts nothing.
+func TestPlayoutHLS_RetiredPreparedModeAnswersNoContent(t *testing.T) {
+	f := &fakePlayoutSessions{}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/master.m3u8?token="+playoutToken+"&mode=prepared")
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 204 from the retired prepared mode: %s", resp.StatusCode, body)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.tunes != 0 {
+		t.Fatalf("mode=prepared tuned the channel %d times", f.tunes)
+	}
+}
+
+// --- The stream endpoint ---
+
+// The response must look like a LIVE stream, not a file. A Content-Length promises an end that
+// never comes, and advertising ranges invites a seek that is meaningless here.
+func TestPlayoutStream_LooksLikeALiveStreamNotAFile(t *testing.T) {
+	f := &fakePlayoutSessions{}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	// A real request would never end, so drive it with a cancellable context and stop after
+	// the headers arrive.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		playoutTestURL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
+
+	// Feed one chunk so the handler writes something and we know it is streaming.
+	f.chunks = make(chan []byte, 1)
+	f.chunks <- []byte("ts-bytes")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "video/mp2t" {
+		t.Errorf("Content-Type = %q, want video/mp2t", ct)
+	}
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		t.Errorf("Content-Length = %q — a live stream has no length", cl)
+	}
+	if ar := resp.Header.Get("Accept-Ranges"); ar != "none" {
+		t.Errorf("Accept-Ranges = %q, want none (a seek is meaningless on a live stream)", ar)
+	}
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("Cache-Control = %q, want no-store", cc)
+	}
+
+	// The bytes must actually arrive — proving the handler flushes rather than buffering.
+	buf := make([]byte, len("ts-bytes"))
+	if _, err := io.ReadFull(resp.Body, buf); err != nil {
+		t.Fatalf("no stream bytes: %v", err)
+	}
+	if string(buf) != "ts-bytes" {
+		t.Errorf("got %q, want the session's chunk", buf)
+	}
+}
+
+// A session can start its parent process successfully and still close before producing transport.
+// The raw tuner route must not commit 200 until it has one real chunk, or Emby waits on a stream
+// that has already failed and the response status lies about the channel being playable.
+func TestPlayoutStream_SessionClosingBeforeFirstChunkFailsBeforeCommitting(t *testing.T) {
+	f := &fakePlayoutSessions{chunks: make(chan []byte)}
+	close(f.chunks)
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp, err := srv.Client().Get(playoutTestURL + "/v1/playout/stream/ch1?token=" + playoutToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 before a streaming 200 is committed", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "video/mp2t") {
+		t.Fatalf("failed startup advertised transport Content-Type %q", ct)
+	}
+}
+
+// The full tuner plan may select a native HEVC broadcast that this machine cannot encode. A
+// zero-byte full presentation is not terminal when the known-playable H.264/AAC baseline can
+// produce transport: release the failed presentation, tune the baseline session, and commit 200
+// only after its first real chunk arrives.
+func TestPlayoutStream_FullPlanWithoutTransportFallsBackToBaseline(t *testing.T) {
+	full := make(chan []byte)
+	close(full)
+	baseline := make(chan []byte, 1)
+	baseline <- []byte("baseline-ts")
+	close(baseline)
+	f := &fakePlayoutSessions{streams: map[playout.EncodePlan]chan []byte{
+		playout.PlanFull: full, playout.PlanBaseline: baseline,
+	}}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want baseline transport 200", resp.StatusCode)
+	}
+	if string(body) != "baseline-ts" {
+		t.Fatalf("body = %q, want baseline transport", body)
+	}
+	if got, want := f.attachments(), []attachRecord{
+		{channelID: "ch1", target: playout.PlanFull},
+		{channelID: "ch1", target: playout.PlanBaseline},
+	}; !slices.Equal(got, want) {
+		t.Fatalf("tunes = %+v, want %+v", got, want)
+	}
+	if got := f.detachCount(); got != 2 {
+		t.Fatalf("released presentations = %d, want 2", got)
+	}
+}
+
+// A viewer disconnecting MUST detach. Nothing else reports it — the tuner path never
+// re-requests — and a leaked viewer keeps the channel encoding forever.
+func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
+	f := &fakePlayoutSessions{chunks: make(chan []byte, 1)}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		playoutTestURL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
+	f.chunks <- []byte("x")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(resp.Body, buf); err != nil {
+		t.Fatalf("stream did not start: %v", err)
+	}
+
+	cancel() // the television goes away
+	_ = resp.Body.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if f.detachCount() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("a disconnected viewer was never detached — the channel would encode forever")
+}
+
+// The session ending (encoder exited, channel stopped, viewer dropped for falling behind) must
+// end the response rather than hanging the client.
+func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
+	f := &fakePlayoutSessions{chunks: make(chan []byte, 1)}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	f.chunks <- []byte("y")
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
+	buf := make([]byte, 1)
+	if _, err := io.ReadFull(resp.Body, buf); err != nil {
+		t.Fatalf("stream did not start: %v", err)
+	}
+
+	close(f.chunks) // the encoder died
+
+	done := make(chan struct{})
+	go func() { _, _ = io.ReadAll(resp.Body); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Error("the response did not end when the session ended — the client hangs")
+	}
+}
+
+// At capacity must be a 503 with Retry-After, not a generic error. The measured capacity is a
+// safety boundary, so the response may suggest waiting or lowering quality but must never claim
+// that raising a configured cap creates hardware headroom.
+func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{
+		Sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
+	})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status %d, want 503", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("no Retry-After — a media server would retry immediately and hammer")
+	}
+	body, _ := io.ReadAll(resp.Body)
+	detail := string(body)
+	if !strings.Contains(detail, "wait") || !strings.Contains(detail, "lower quality") {
+		t.Errorf("the 503 body does not give safe recovery choices: %s", body)
+	}
+	if strings.Contains(detail, "Raise") {
+		t.Errorf("the 503 body promises capacity can be raised past measurement: %s", body)
+	}
+}
+
+// Playout not running is a 501 with an explanation, not a 404 that looks like a wiring bug.
+func TestPlayoutStream_NotRunningExplainsItself(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: nil})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Errorf("status %d, want 501", resp.StatusCode)
+	}
+}
+
+// --- The tuner M3U ---
+
+// tvg-id must match the guide's channel id, tvg-chno carries the operator's numbering, and the
+// stream URL must be absolute + tokenized.
+func TestPlayoutTuner_CarriesGuideCorrelationAttributes(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 3, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "mpegurl") {
+		t.Errorf("Content-Type = %q, want an m3u type", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+
+	if !strings.HasPrefix(got, "#EXTM3U\n") {
+		t.Errorf("missing the M3U header: %q", got)
+	}
+	// tvg-id ties the entry to its XMLTV <channel id>; a mismatch means the channel plays
+	// with an EMPTY guide, which is silent.
+	if !strings.Contains(got, `tvg-id="ch1"`) {
+		t.Errorf("no tvg-id — the channel would appear with no listings: %q", got)
+	}
+	if !strings.Contains(got, `tvg-chno="3"`) {
+		t.Errorf("no tvg-chno — the media server would impose its own numbering: %q", got)
+	}
+	if !strings.Contains(got, "http://loomarr.local:8080/v1/playout/stream/ch1?token="+playoutToken) {
+		t.Errorf("stream URL is not absolute + tokenized: %q", got)
+	}
+}
+
+// A channel on the TUNARR backend must not appear in Loomarr's tuner, or the media server has
+// two tuners offering the same channel and picks unpredictably — presenting as a channel that
+// plays sometimes and not others.
+func TestPlayoutTuner_ExcludesTunarrBackedChannels(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "mine", "Internal Channel", 1, "internal")
+	seedChannel(t, st, "theirs", "Tunarr Channel", 2, "tunarr")
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+
+	if !strings.Contains(got, "Internal Channel") {
+		t.Errorf("the internal channel is missing: %q", got)
+	}
+	if strings.Contains(got, "Tunarr Channel") {
+		t.Errorf("a Tunarr-backed channel appeared in Loomarr's tuner — two tuners would "+
+			"offer the same channel: %q", got)
+	}
+}
+
+func TestPlayoutTuner_ExcludesChannelsThatAreOffAirOrNotManaged(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "live", "Live Channel", 1, "internal")
+	seedChannel(t, st, "paused", "Paused Channel", 2, "internal")
+	seedChannel(t, st, "detached", "Detached Channel", 3, "internal")
+	seedChannel(t, st, "empty", "Empty Channel", 4, "internal")
+	setChannelStatus(t, st, "paused", schedule.StatusPaused)
+	setChannelStatus(t, st, "detached", schedule.StatusDetached)
+	setChannelStatus(t, st, "empty", schedule.StatusEmpty)
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+	if !strings.Contains(got, "Live Channel") {
+		t.Fatalf("live internal channel is missing: %q", got)
+	}
+	for _, name := range []string{"Paused Channel", "Detached Channel", "Empty Channel"} {
+		if strings.Contains(got, name) {
+			t.Errorf("%s was advertised by the internal tuner: %q", name, got)
+		}
+	}
+}
+
+func TestPlayoutTune_RejectsChannelsOutsideTheSurfableCatalog(t *testing.T) {
+	sessions := &fakePlayoutSessions{err: errors.New("Tune must not be called")}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: sessions})
+	srv, st := harness.Server, harness.Store
+	for i, tc := range []struct {
+		id     string
+		status schedule.ChannelStatus
+	}{
+		{id: "paused", status: schedule.StatusPaused},
+		{id: "detached", status: schedule.StatusDetached},
+		{id: "empty", status: schedule.StatusEmpty},
+	} {
+		seedChannel(t, st, tc.id, tc.id, i+1, "internal")
+		setChannelStatus(t, st, tc.id, tc.status)
+		for _, path := range []string{
+			"/v1/playout/stream/" + tc.id,
+			"/v1/playout/hls/" + tc.id + "/master.m3u8",
+		} {
+			resp := getPlayout(t, srv, path+"?token="+playoutToken)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s status = %d, want 404", path, resp.StatusCode)
+			}
+		}
+	}
+	if got := sessions.tuneCount(); got != 0 {
+		t.Fatalf("Tune called %d times for channels that cannot be played", got)
+	}
+}
+
+// A channel with no explicit backend INHERITS the global (§15 nil-means-inherit). With the
+// global set to tunarr, an unconfigured channel must not be served.
+func TestPlayoutTuner_InheritsTheGlobalBackend(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}, Backend: "tunarr"})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "inherits", "Inherits Global", 1, "")  // no policy
+	seedChannel(t, st, "opted-in", "Opted In", 2, "internal") // explicit override
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+
+	if strings.Contains(got, "Inherits Global") {
+		t.Errorf("a channel with no backend set was served while the global is tunarr: %q", got)
+	}
+	// …but an explicit per-channel override still wins over the global.
+	if !strings.Contains(got, "Opted In") {
+		t.Errorf("an explicitly-internal channel was not served: %q", got)
+	}
+}
+
+// A channel name is operator text and lands in an M3U attribute. A quote must not escape it.
+func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", `Bob's "Best" Movies`, 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	got := string(body)
+
+	// Each attribute must remain a single well-formed key="value" pair: an unescaped quote
+	// would terminate tvg-name early and the rest would parse as new attributes.
+	for _, attr := range []string{"tvg-id=", "tvg-name=", "tvg-chno="} {
+		if !strings.Contains(got, attr) {
+			t.Errorf("missing %s after a name with quotes: %q", attr, got)
+		}
+	}
+	if strings.Contains(got, `tvg-name="Bob's "Best" Movies"`) {
+		t.Errorf("the quotes in the name were not escaped: %q", got)
+	}
+}
+
+// Still returns the configured frame, satisfying api.StillProvider.
+func (f *fakePlayoutSessions) Still(_ context.Context, channelID string, _ playout.EncodePlan) (playout.Still, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stillAsked = append(f.stillAsked, channelID)
+	return f.still, f.stillOK, f.stillErr
+}
+
+// The still route serves the channel's latest frame under the same auth as the rest of playout,
+// as a revalidating image (never cached as the live edge moves) stamped with the segment time.
+func TestPlayoutStill_ServesTheLatestFrame(t *testing.T) {
+	at := time.Unix(1_700_000_000, 0)
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: at}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+
+	resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("Content-Type = %q, want image/jpeg", got)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "private, max-age=4" {
+		t.Fatalf("Cache-Control = %q, want a one-segment (4s) lifetime: a prefetched copy is reusable, never staler than a segment", got)
+	}
+	if got := resp.Header.Get("Last-Modified"); got != at.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q, want the segment time so a client can judge freshness", got)
+	}
+	if body, _ := io.ReadAll(resp.Body); string(body) != "\xff\xd8frame" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+// No still is a plain 404 — the client shows the card on the dark background; it must never get
+// a broken image body or a 5xx that surfaces as an error.
+func TestPlayoutStill_MissingIs404(t *testing.T) {
+	for name, f := range map[string]*fakePlayoutSessions{
+		"no segment":    {stillOK: false},
+		"decode failed": {stillErr: errors.New("ffmpeg: boom")},
+	} {
+		harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+		resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1?token="+playoutToken)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", name, resp.StatusCode)
+		}
+	}
+}
+
+func TestPlayoutStill_RejectsMissingOrWrongToken(t *testing.T) {
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("x")}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	for _, q := range []string{"", "?token=nope", "?token=" + playoutToken[:10]} {
+		if resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1"+q); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("still with %q: status %d, want 404", q, resp.StatusCode)
+		}
+	}
+	if len(f.stillAsked) != 0 {
+		t.Fatal("an unauthorized request reached the still provider")
+	}
+}

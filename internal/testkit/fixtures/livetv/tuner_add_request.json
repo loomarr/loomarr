@@ -1,0 +1,5 @@
+{
+    "Type": "m3u",
+    "Url": "http://TUNARR_HOST:8000/api/channels.m3u",
+    "FriendlyName": "loomarr"
+}

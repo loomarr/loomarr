@@ -1,0 +1,214 @@
+import type { PoolDTO } from "@loomarr/api";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { PoolHealth } from "./pool-health";
+
+const pool = (over: Partial<PoolDTO> = {}): PoolDTO => ({
+  clips: 120,
+  breakBody: 90,
+  eligible: 61,
+  untagged: 0,
+  channels: [],
+  ...over,
+});
+
+describe("PoolHealth", () => {
+  // The phone library (#1908): one line, with Details to open the full stats.
+  it("folds to one line with the stats behind Details", async () => {
+    render(
+      <PoolHealth
+        folded
+        pool={pool({
+          clips: 1284,
+          channels: [
+            {
+              channelId: "a",
+              name: "Night Owl Theatre",
+              number: 4,
+              level: "exact",
+              total: 9,
+              durationMs: 1,
+              categories: 1,
+              brands: 1,
+            },
+            {
+              channelId: "b",
+              name: "Weather Desk",
+              number: 12,
+              level: "widened",
+              total: 3,
+              durationMs: 1,
+              categories: 1,
+              brands: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("1,284 clips · 1/2 channels covered")).toBeInTheDocument();
+    expect(screen.queryByText("Fits a break")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText("Fits a break")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Hide details" }));
+    expect(screen.queryByText("Fits a break")).not.toBeInTheDocument();
+  });
+
+  // ⚠ The number that surprises people. A catalog of compilations reads as healthy by clip count
+  // and can fill nothing, so "fits a break" is shown against the commercial count rather than
+  // left for the operator to work out.
+  it("shows how many clips can actually go in a break, against the total", () => {
+    render(<PoolHealth pool={pool()} />);
+
+    expect(screen.getByText("61")).toBeInTheDocument();
+    expect(screen.getByText("of 90 break clips")).toBeInTheDocument();
+  });
+
+  it("shows optional metadata work without making it a readiness gate", () => {
+    render(<PoolHealth pool={pool({ untagged: 14 })} />);
+
+    expect(screen.getByText("14 commercials could use details")).toBeInTheDocument();
+  });
+
+  it("does not claim every clip is tagged when the metric only counts commercials", () => {
+    render(<PoolHealth pool={pool({ untagged: 0 })} />);
+
+    expect(screen.getByText("ready to browse")).toBeInTheDocument();
+    expect(screen.queryByText("all tagged")).not.toBeInTheDocument();
+  });
+
+  it("does not claim an empty library is ready to browse", () => {
+    render(<PoolHealth pool={pool({ clips: 0, breakBody: 0, eligible: 0 })} />);
+
+    expect(screen.getByText("no clips yet")).toBeInTheDocument();
+    expect(screen.queryByText("ready to browse")).not.toBeInTheDocument();
+  });
+
+  // The diagnosis. Naming the channel is the difference between "something is thin" and
+  // something an operator can act on — and the server already ordered the list worst-first, so
+  // the head is read positionally rather than re-sorted here.
+  it("names the weakest channel and what its breaks fall back to", () => {
+    render(
+      <PoolHealth
+        pool={pool({
+          channels: [
+            {
+              channelId: "ch-3",
+              name: "Newsreel",
+              number: 3,
+              level: "bumper_card",
+              total: 0,
+              durationMs: 0,
+              categories: 0,
+              brands: 0,
+            },
+            {
+              channelId: "ch-42",
+              name: "Cartoons",
+              number: 42,
+              level: "exact",
+              total: 44,
+              durationMs: 900_000,
+              categories: 5,
+              brands: 12,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Newsreel")).toBeInTheDocument();
+    expect(screen.getByText("breaks fall back to no commercials")).toBeInTheDocument();
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1 channel has nothing to play")).toBeInTheDocument();
+  });
+
+  // ⚠ A callout that is always on teaches people to stop reading it, so a healthy install gets
+  // no "weakest" stat at all.
+  it("omits the weakest callout when every channel matches exactly", () => {
+    render(
+      <PoolHealth
+        pool={pool({
+          channels: [
+            {
+              channelId: "ch-42",
+              name: "Cartoons",
+              number: 42,
+              level: "exact",
+              total: 44,
+              durationMs: 900_000,
+              categories: 5,
+              brands: 12,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Weakest")).not.toBeInTheDocument();
+    expect(screen.getByText("every channel matches exactly")).toBeInTheDocument();
+  });
+
+  // ⚠ **The note must describe the same population the fraction counts.** It used to say "every
+  // channel has commercials" whenever nothing had fallen to the bumper card — true, but an answer
+  // to a different question than the headline, which counts EXACT matches. An install where every
+  // channel sat on the middle rung rendered "0/2 · every channel has commercials": two numbers
+  // that read as a contradiction and were both correct. Seen live 2026-08-03.
+  it("names the middle rung rather than claiming coverage the fraction denies", () => {
+    render(
+      <PoolHealth
+        pool={pool({
+          channels: [
+            {
+              channelId: "ch-1",
+              name: "Cartoons",
+              number: 1,
+              level: "audience",
+              total: 12,
+              durationMs: 300_000,
+              categories: 2,
+              brands: 4,
+            },
+            {
+              channelId: "ch-2",
+              name: "Sci-Fi",
+              number: 2,
+              level: "widened",
+              total: 9,
+              durationMs: 240_000,
+              categories: 2,
+              brands: 3,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("0/2")).toBeInTheDocument();
+    expect(screen.getByText("2 channels fall back to a looser match")).toBeInTheDocument();
+    // The old copy claimed these channels were fine. They play commercials, but not matched ones.
+    expect(screen.queryByText("every channel has commercials")).not.toBeInTheDocument();
+  });
+
+  // A fresh install has no channels yet — that is the state the pull button exists for, and the
+  // strip must not claim "0/0 covered" at it.
+  it("drops the channel stats entirely when there are no channels", () => {
+    render(<PoolHealth pool={pool()} />);
+
+    expect(screen.queryByText("Channels covered")).not.toBeInTheDocument();
+  });
+
+  // huma types every Go slice as nullable, so the generated DTO says `channels: ... | null`
+  // even though the handler always sends []. Rendering must survive the null.
+  it("survives a null channels list", () => {
+    render(<PoolHealth pool={{ ...pool(), channels: null as unknown as PoolDTO["channels"] }} />);
+
+    expect(screen.getByText("61")).toBeInTheDocument();
+  });
+
+  it("is a read-only coverage summary rather than an acquisition control", () => {
+    render(<PoolHealth pool={pool()} />);
+    expect(screen.getByRole("region", { name: "Catalog health" })).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+});

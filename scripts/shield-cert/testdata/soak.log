@@ -1,0 +1,20 @@
+         1790100001.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=tune t=1000 att=1 ch=ch_a num=101 path=cold why=catalog
+         1790100001.050  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=format t=1050 att=1 mime=none
+         1790100001.200  5151  5190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type video
+         1790100001.300  5151  5190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type audio
+         1790100001.900  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=format t=1900 att=1 br=8160000 fps=25 h=1080 mime=video/avc w=1920
+         1790100002.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=2000 att=1
+         1790100050.000  7777  7790 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type video
+         1790100600.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=stall-start t=600000 att=1
+         1790100600.500  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=stall-end t=600500 att=1 dur=500 why=resumed
+         1790100900.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=format t=900000 att=1 br=8160000 fps=25 h=1080 mime=video/avc w=1920
+         1790101000.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=format t=1000000 att=1 br=6000000 fps=25 h=1080 mime=video/hevc w=1920
+         1790101000.010  5151  5190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type video
+         1790101800.001  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=tune t=1800001 att=2 ch=ch_b key=1800000 num=102 path=warm why=step
+         1790101800.100  5151  5190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type video
+         1790101800.110  5151  5190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type audio
+         1790101800.500  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=1800500 att=2
+         1790102000.000  5151  5170 I ReactNativeJS: LoomarrCert v=1 ev=error t=2000000 att=2 cause=network
+         1790102000.100  6161  6170 I ReactNativeJS: LoomarrCert v=1 ev=tune t=600 att=1 ch=ch_b num=102 path=cold why=catalog
+         1790102000.200  6161  6190 I DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter for track type video
+         1790102001.100  6161  6170 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=1600 att=1

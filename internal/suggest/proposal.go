@@ -1,0 +1,324 @@
+// Package suggest is the Suggester (design §8): it turns a channel intent into a
+// grounded proposal (a lineup from the library + an acquisition list of missing
+// titles). It owns the grounding loop — the LLM proposes names or candidates,
+// but only real ids returned by Catalog operations survive before display,
+// and nothing is auto-executed (§8 human-in-the-loop). Generation runs as a
+// persisted job (§8 execution model); this package is the pure suggestion logic,
+// driven by a worker (Phase 11e) and exposed via the API (Phase 11f).
+//
+// Source ownership follows the generation pipeline: suggester.go owns the public
+// facade and model loop, prompt.go owns prompt messages, tools.go owns catalog
+// tool execution, proposal_grounding.go owns the trust boundary that constructs a
+// Proposal, and intent_policy.go owns deterministic interpretation of user intent.
+package suggest
+
+import (
+	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/reference"
+	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
+)
+
+// Intent is a channel request: an NL description plus optional constraints (§8).
+type Intent struct {
+	Description string   `json:"description"`                // "90s action movies"
+	Era         string   `json:"era,omitempty"`              // e.g. "1990s"
+	Tone        string   `json:"tone,omitempty"`             // e.g. "high-energy"
+	RuntimeTgt  int      `json:"runtimeTargetMin,omitempty"` // total target minutes
+	MustInclude []string `json:"mustInclude,omitempty"`      // titles/terms to include
+	MustExclude []string `json:"mustExclude,omitempty"`      // titles/terms to exclude
+	MaxAcquire  int      `json:"maxAcquisitions,omitempty"`  // cap on acquisitions (§8 quota)
+	// ChannelName is a name the requester fixed (the manual builder's typed name when it hands
+	// over to AI, #1914). When set, the proposal keeps it instead of the model's; empty ⇒ the
+	// model names the channel.
+	ChannelName string `json:"channelName,omitempty"`
+	// Refine inputs (§7 refine): a free-text change ("add more Schwarzenegger, drop the
+	// slow ones") plus the channel's CURRENT lineup as context. The prompt renders these
+	// so the model reasons from what's already on the channel and returns a revised
+	// lineup. Context only — new picks are still grounded through Catalog operations, so
+	// refine can't invent titles. Empty on a fresh (non-refine) suggestion.
+	RefineText    string          `json:"refineText,omitempty"`
+	CurrentLineup []LineupContext `json:"currentLineup,omitempty"`
+	// Adjacent are pre-seeded candidates from the recommendation graph walked over this
+	// channel's own lineup (programming-design §8.3) — the deterministic second corpus,
+	// merged with whatever the model finds through the Catalog.
+	//
+	// They are OFFERED, never placed: the model still chooses, and an offered title it
+	// ignores is simply not picked. Grounding is unweakened because these are real
+	// catalog candidates with real ids that went through the same presence backfill a
+	// tool result does — Suggest seeds them into `surfaced` before generation, so
+	// buildProposal's "every pick traces to a candidate the catalog returned" invariant
+	// holds verbatim. Merging AFTER generation instead would append picks the chokepoint
+	// never checked, which is the one thing grounding exists to prevent.
+	//
+	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
+	// TMDB corpus wired.
+	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
+	// ReferenceTitles are bounded, source-resolved title anchors for this one
+	// Suggest execution. They never enter the API or persisted Intent JSON.
+	ReferenceTitles     []string `json:"-"`
+	ReferenceResolved   bool     `json:"-"`
+	referenceEvidence   reference.Evidence
+	referenceKeys       map[provision.Key]bool
+	referenceCandidates []catalog.Candidate
+	// membershipKeys contains only Catalog identities grounded from explicit user or
+	// public-reference title anchors. A model's collection-tool roster is a search
+	// hypothesis: catalog identity verifies that title exists, not that it belongs
+	// to the named set. It is execution-only evidence, never model data.
+	membershipKeys    map[provision.Key]bool
+	membershipSources *membershipSourceState
+	// requiredTitleKeys retains the independently resolved identity for each
+	// explicit include. The title is only a lookup label; the bound Key is the
+	// authority used for preservation and same-name rejection.
+	requiredTitleKeys map[string]provision.Key
+	// exampleFill is the era and neighbour pool derived from resolved example
+	// anchors when the request states no era (#1499). Nil when not applicable.
+	exampleFill     *exampleFill
+	curatedTitleKey provision.Key
+	curatedTitleSet bool
+	// networkDiscoveryComplete is invocation-local evidence that a network-style
+	// request actually retrieved a nonempty network-qualified Catalog pool.
+	networkDiscoveryComplete bool
+	// DiscoveryScopeID is internal execution context for channel-specific explicit
+	// feedback during re-curation. It never enters the API or persisted intent JSON.
+	DiscoveryScopeID string `json:"-"`
+}
+
+// LineupContext is a lightweight "what's on this channel now" entry fed to the refiner —
+// title/year for the model to reason about, plus the real key so a kept item can be
+// matched back exactly. Display/context only; not an identity the grounding gate checks.
+type LineupContext struct {
+	Name string `json:"name"`
+	Year int    `json:"year,omitempty"`
+	Key  string `json:"key,omitempty"` // provisioning key, e.g. "movie:tmdb:603"
+}
+
+// AdjacentContext is one pre-seeded adjacency candidate (§8.3): a title the channel's own
+// lineup points at through TMDB's recommendation graph.
+//
+// Votes is how many of the channel's titles independently recommended it — the consensus
+// that makes this a signal rather than noise, and the reason the candidate can explain
+// itself ("recommended by 5 of your films") where an LLM pick can only paraphrase. It is
+// rendered in the prompt so the model can weigh a strong consensus differently from a
+// marginal one, and it is what the approval card shows.
+type AdjacentContext struct {
+	Name  string `json:"name"`
+	Year  int    `json:"year,omitempty"`
+	Key   string `json:"key,omitempty"`
+	Votes int    `json:"votes,omitempty"`
+}
+
+// ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
+// Identity is always a real external id (the grounding guarantee); Name/Year are
+// for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
+// EditorialRole records the grounded origin of a selected pick in one proposal run.
+// A missing role is unknown; ownership never means favorite or explicit preference.
+type EditorialRole string
+
+const (
+	EditorialCore      EditorialRole = "core"
+	EditorialAdjacent  EditorialRole = "adjacent"
+	EditorialDiscovery EditorialRole = "discovery"
+)
+
+type ProposalItem struct {
+	EditorialRole EditorialRole       `json:"editorialRole,omitempty" enum:"core,adjacent,discovery"`
+	MediaType     provision.MediaType `json:"mediaType"`
+	TMDBID        int                 `json:"tmdbId,omitempty"`
+	TVDBID        int                 `json:"tvdbId,omitempty"`
+	Name          string              `json:"name"`
+	Year          int                 `json:"year,omitempty"`
+	Seasons       []int               `json:"seasons,omitempty"` // series ACQUISITION (what to download)
+	// SeasonMin/SeasonMax: optional AIRING season window for a series pick (which
+	// seasons play on the channel), distinct from Seasons (what to acquire). Set by
+	// the grounded suggester when the intent implies an era ("classic" → 1–10);
+	// carried onto LineupEntry.SeasonMin/Max and enforced at series expansion (§9).
+	// 0 = unbounded on that end. Validated + clamped by the suggester before it lands.
+	SeasonMin        int                       `json:"seasonMin,omitempty"`
+	SeasonMax        int                       `json:"seasonMax,omitempty"`
+	EpisodeSelection schedule.EpisodeSelection `json:"episodeSelection,omitempty"`
+	InLibrary        bool                      `json:"inLibrary"`
+	LibraryItemID    string                    `json:"libraryItemId,omitempty"`
+	Rationale        string                    `json:"rationale,omitempty"` // why-it-fits (LLM)
+	Confidence       float64                   `json:"confidence,omitempty"`
+	// Source records which corpus surfaced this pick, carried from the grounded Candidate
+	// (§8.3). It is PROVENANCE, never identity — Key() ignores it, exactly as it ignores
+	// Genres/Overview/OfficialRating.
+	//
+	// The re-curation quality bar reads it: an adjacency pick arrives with a consensus the
+	// model didn't compute and can't see, so a bare 0 confidence from a model that declined
+	// to score a title it was handed must not be read as "the model judged this poorly".
+	Source string `json:"source,omitempty"`
+	// AdjacentVotes is how many of the channel's own titles independently recommended this
+	// pick (§8.3) — 0 for anything that did not come from the adjacency corpus.
+	//
+	// It rides to the approval surface because it is the REASON: "recommended by 5 of your
+	// films" is a claim an operator can check, where an LLM rationale can only be read. The
+	// consensus is also what the unscored-pick floor trusts, so showing it makes that
+	// decision legible rather than magic.
+	AdjacentVotes int `json:"adjacentVotes,omitempty"`
+	// Genres + Overview carry from the grounded Candidate so deterministic theme
+	// scoring measures real metadata, not the title string (§8). Display/scoring
+	// only — never identity (Key ignores them).
+	Genres           []string `json:"genres,omitempty"`
+	Overview         string   `json:"overview,omitempty"`
+	OriginalLanguage string   `json:"originalLanguage,omitempty"`
+	OriginCountries  []string `json:"originCountries,omitempty"`
+	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
+	VoteAverage      float64  `json:"voteAverage,omitempty"`
+	VoteCount        int      `json:"voteCount,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	Networks         []string `json:"networks,omitempty"`
+	Cast             []string `json:"cast,omitempty"`
+	Creators         []string `json:"creators,omitempty"`
+	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
+	// enforcement (programming-design §4): it's stamped onto the channel's lineup
+	// entry at create time so enforcement filters without a library hit. Display/
+	// enforcement only — never identity.
+	OfficialRating string `json:"officialRating,omitempty"`
+	// SizeBytes + SizeConfidence state what an owned pick occupies, for the approval
+	// consequence summary (#1817). Read at proposal creation from the library row the
+	// grounding already fetched, with no lookup of its own; an approver's addition takes it
+	// from the presence check the gate already runs. Both are ABSENT when unavailable
+	// (an acquisition, or a series with no source of its own), never 0. Display only.
+	SizeBytes      int64                          `json:"sizeBytes,omitempty" doc:"Owned title's library file size in bytes; absent when unavailable, never 0"`
+	SizeConfidence storagegovernor.SizeConfidence `json:"sizeConfidence,omitempty"`
+}
+
+// WithLibrarySize sets an owned pick's exact library file size, or clears both size fields
+// when the pick is not owned or the library stated no size. Every path that sets or
+// clears InLibrary calls it (grounding, the approval addition resolver and the gate in
+// ResolveApprovalEdit), so a client-supplied size never reaches the approval surface.
+func (p ProposalItem) WithLibrarySize(sizeBytes int64) ProposalItem {
+	p.SizeBytes, p.SizeConfidence = 0, ""
+	if p.InLibrary && sizeBytes > 0 {
+		p.SizeBytes, p.SizeConfidence = sizeBytes, storagegovernor.SizeExact
+	}
+	return p
+}
+
+// Key derives the provisioning key (§3), enforcing the grounding guarantee: a
+// validated ProposalItem always has a usable id.
+func (p ProposalItem) Key() (provision.Key, error) {
+	return provision.Title{
+		MediaType: p.MediaType, TMDBID: p.TMDBID, TVDBID: p.TVDBID,
+		Name: p.Name, Year: p.Year, Seasons: p.Seasons,
+	}.Key()
+}
+
+// fromCandidate builds a ProposalItem from a grounded catalog Candidate, carrying
+// the rationale/confidence the model attached.
+func fromCandidate(c catalog.Candidate, rationale string, confidence float64) ProposalItem {
+	return ProposalItem{
+		MediaType: c.MediaType, TMDBID: c.TMDBID, TVDBID: c.TVDBID,
+		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
+		Rationale: rationale, Confidence: confidence, Source: string(c.Source),
+		Genres: c.Genres, Overview: c.Overview, OfficialRating: c.OfficialRating,
+		OriginalLanguage: c.OriginalLanguage,
+		OriginCountries:  append([]string(nil), c.OriginCountries...),
+		RuntimeMinutes:   c.RuntimeMinutes,
+		VoteAverage:      c.VoteAverage,
+		VoteCount:        c.VoteCount,
+		Keywords:         append([]string(nil), c.Keywords...),
+		Networks:         append([]string(nil), c.Networks...),
+		Cast:             append([]string(nil), c.Cast...),
+		Creators:         append([]string(nil), c.Creators...),
+	}.WithLibrarySize(c.SizeBytes)
+}
+
+// Proposal is the suggester's output (§8): a lineup of library items, an
+// acquisition list of missing titles, ranked alternates, deterministic scores,
+// and a rationale. Approved acquisitions feed the provisioner; the approved
+// lineup feeds the scheduler.
+type Proposal struct {
+	Intent Intent `json:"intent"`
+	// ChannelName is the LLM's proposed channel name (§8) — a real title derived from the
+	// intent + grounded picks (e.g. "Springfield Classics"), not the raw prompt. Empty ⇒
+	// the API falls back to a truncated intent description.
+	ChannelName  string         `json:"channelName,omitempty"`
+	Lineup       []ProposalItem `json:"lineup"`       // in-library items, ordered
+	Acquisitions []ProposalItem `json:"acquisitions"` // missing titles to acquire
+	Alternates   []ProposalItem `json:"alternates"`   // ranked backups (§9 substitution)
+	Scores       Scores         `json:"scores"`       // deterministic post-scoring
+	Rationale    string         `json:"rationale,omitempty"`
+	// Policy is the grounded ChannelPolicy the suggester extracted (programming-
+	// design §8): scope/audience/ordering/seasonal, validated + clamped (off-ladder
+	// ceilings dropped unless explicit child safety supplies its deterministic bound;
+	// era bounded). It rides the proposal into channel-create,
+	// where it lands on the channel row. Empty = the channel uses built-in defaults.
+	Policy schedule.ChannelPolicy `json:"policy,omitempty"`
+	// Retired are lineup keys the auto-curate turnstile decided to rotate OUT to make room
+	// for this proposal's incoming titles (§8.2a). Written by `recurate`, applied by the
+	// binder — never by the suggester, and never by a human approval.
+	//
+	// ⚠ It rides the PROPOSAL rather than being applied directly to the channel, and that is
+	// the whole point of the field. `recurate` used to trim `ch.Lineup` and call UpsertChannel
+	// itself, which made it a second lineup writer racing the binder's additive union — the
+	// two were ordered against each other by a code comment, and an additive union that ran
+	// first would put every retired title straight back. One writer (the binder), one
+	// primitive (schedule.ApplyLineup), and the retirement is now an INPUT to it.
+	Retired []provision.Key `json:"retired,omitempty"`
+	// Refused are picks the model grounded that this proposal's OWN extracted policy cannot
+	// air (§4). They are moved out of Lineup/Acquisitions and kept here with a reason, so the
+	// approval card shows what will not play instead of offering it.
+	//
+	// ⚠ Kept rather than deleted, deliberately. The operator's fix is usually to raise the
+	// ceiling, not to lose the title — and a pick that silently vanished between the model's
+	// answer and the approval screen is indistinguishable from one the model never made.
+	Refused []RefusedPick `json:"refused,omitempty"`
+	// Trace is immutable evidence from the original grounded proposal run. It is
+	// never updated by approval edits or later scheduler/channel decisions.
+	Trace DecisionTrace `json:"trace"`
+	// FromIdea is the library channel idea this proposal was built from (#1720), e.g.
+	// "genre:comedy": its lineup came from the library, not the model. Set by the server only;
+	// no request body carries a Proposal, so a client can't claim one.
+	FromIdea string `json:"fromIdea,omitempty" doc:"The library channel idea this request came from, if any"`
+	// Manual is true when a person picked every title by hand with the LLM off (#1817, G2) —
+	// set by the server only, from the manual-channel submit path, never from a client body.
+	// ProposalReview reads it to show the maintainer-approved copy ("You picked every title in
+	// this channel yourself — there's nothing to check.") instead of the stale-draft fallback,
+	// which was written for a proposal the model DID produce but couldn't be rechecked.
+	Manual bool `json:"manual,omitempty" doc:"Every title was picked by hand with the LLM off; nothing here was generated"`
+}
+
+// RefusedPick is one grounded pick the extracted policy will not air, with the exclusion
+// vocabulary §4 already uses (`over_ceiling`) so the approval card and the channel's exclusion
+// report say the same words about the same event.
+type RefusedPick struct {
+	Item   ProposalItem `json:"item"`
+	Reason string       `json:"reason"` // "over_ceiling"
+}
+
+// Scores describes source-backed evidence, not a calibrated probability or ranking.
+type Scores struct {
+	Version           int           `json:"version" doc:"Assessment contract version; zero means unassessed historical data"`
+	ThemeFit          *float64      `json:"themeFit" doc:"Mean distinct qualifier coverage; null when evidence is insufficient"`
+	AvailabilityRatio float64       `json:"availabilityRatio" doc:"In-library title share, not playback readiness"`
+	EraBalance        *float64      `json:"eraBalance" doc:"Requested date adherence; null when unknown or not requested"`
+	Theme             ThemeEvidence `json:"theme"`
+	Era               EraEvidence   `json:"era"`
+}
+
+// ThemeEvidence keeps the supported interpretation inspectable without treating
+// an unmatched word as proof that a grounded title is unsuitable.
+type ThemeEvidence struct {
+	Status        string              `json:"status" enum:"unassessed,partial,supported"`
+	Basis         string              `json:"basis" enum:"qualifiers,named_membership,none"`
+	AssessedItems int                 `json:"assessedItems"`
+	UnknownItems  int                 `json:"unknownItems"`
+	Qualifiers    []QualifierEvidence `json:"qualifiers"`
+}
+
+type QualifierEvidence struct {
+	Term           string `json:"term"`
+	SupportedItems int    `json:"supportedItems"`
+}
+
+// EraEvidence separates a missing request from missing catalog/episode dates.
+type EraEvidence struct {
+	Status        string `json:"status" enum:"not_requested,unassessed,partial,supported"`
+	AssessedItems int    `json:"assessedItems"`
+	MatchingItems int    `json:"matchingItems"`
+	UnknownItems  int    `json:"unknownItems"`
+}
