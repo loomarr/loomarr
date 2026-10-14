@@ -430,14 +430,20 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	if guardSlice {
 		since := windowOpening(windowIdx-1, window, ch.WindowZone)
 		aired := maps.Clone(history)
-		if age > 0 { // the window before aired its tile from its opening, watched or not
+		// The window before aired its tile from its opening, watched or not, less what its own guard
+		// traded out: the units on record as aired in the window before it. Stamping those too made
+		// every unit look unrested, and the hold ran out of rested units and let one open the window
+		// a day after it last did (#1939). A unit on record since `since` aired in the window before;
+		// its record is exact.
+		if age > 0 {
 			prevDealt, _ := windowSliceDealt(dealer, window, age-1)
 			at := since
+			tradable := windowOpening(windowIdx-2, window, ch.WindowZone)
 			for _, s := range holidays.tile(windowIdx-1, prevDealt) {
 				if !s.IsProgram() {
 					continue
 				}
-				if seen, ok := aired[s.LibraryItemID]; !ok || at.After(seen) {
+				if seen, ok := aired[s.LibraryItemID]; !ok || seen.Before(tradable) {
 					aired[s.LibraryItemID] = at
 				}
 				at = at.Add(time.Duration(s.DurationMs) * time.Millisecond)

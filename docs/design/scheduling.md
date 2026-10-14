@@ -158,6 +158,12 @@ consumes about 13 films, so a week without repeats needs about 168 hours of cont
 constraint would relax on nearly every real channel and teach operators to ignore the ladder. The
 signal spreads airings evenly; only more content fixes frequency.
 
+On a shuffled channel wider than its window, recency trades next-day repeats out of the window's
+tile and holds the window to the repeat spacing. What the window before aired comes from the record
+where it has one and otherwise from that window's tile, less the units its own guard traded out
+(#1939). History therefore never brings a unit back sooner, or keeps one waiting longer, than the
+same channel with no history.
+
 ## Breaks and pods
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.

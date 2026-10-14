@@ -68,11 +68,11 @@ func airWithHistory(n int, durs []time.Duration, window time.Duration, ordering 
 	return out
 }
 
-// airingStats is what a viewer notices: the same episode twice in a row, and the shortest time
-// before any episode came back (overall, and across a window seam).
+// airingStats is what a viewer notices: the same episode twice in a row, the shortest time before
+// any episode came back (overall, and across a window seam), and the longest an episode waited.
 type airingStats struct {
-	backToBack      int
-	minGap, minSeam time.Duration
+	backToBack              int
+	minGap, minSeam, maxGap time.Duration
 }
 
 func statsOf(aired []historyAiring, window time.Duration) airingStats {
@@ -86,6 +86,7 @@ func statsOf(aired []historyAiring, window time.Duration) airingStats {
 		if prev, ok := last[a.id]; ok {
 			gap := time.Duration(a.at-prev) * time.Millisecond
 			st.minGap = min(st.minGap, gap)
+			st.maxGap = max(st.maxGap, gap)
 			if prev/w != a.at/w {
 				st.minSeam = min(st.minSeam, gap)
 			}
@@ -96,11 +97,13 @@ func statsOf(aired []historyAiring, window time.Duration) airingStats {
 }
 
 // The repeat spacing holds whether or not anyone watches: with the history fed back, no unit airs
-// twice in a row and none comes back sooner than it does on the same channel with no history. Two
-// regressions this guards (#1939): a pool a little wider than its window traded yesterday's last
-// films into this morning (27 one-hour episodes in a 24h window came back after 4h, not 25h), and a
-// deck that fits one window, re-dealt with today's history, repaired its seam against a deck that
-// never aired and aired a unit back to back.
+// twice in a row, none comes back sooner than it does on the same channel with no history, and none
+// waits longer for its turn. Two regressions this guards (#1939): a pool a little wider than its
+// window traded yesterday's last films into this morning (27 one-hour episodes in a 24h window came
+// back after 4h, then 21h, not 25h: the window before was taken to have aired the units its guard
+// traded out, so no unit looked rested and the hold gave up), and a deck that fits one window,
+// re-dealt with today's history, repaired its seam against a deck that never aired and aired a unit
+// back to back.
 func TestHistory_NoUnitReturnsSoonerThanWithoutIt(t *testing.T) {
 	for _, tc := range []struct {
 		n      int
@@ -131,8 +134,51 @@ func TestHistory_NoUnitReturnsSoonerThanWithoutIt(t *testing.T) {
 				if watched.minGap < unwatched.minGap {
 					t.Fatalf("with history a unit came back after %v; with none, never sooner than %v", watched.minGap, unwatched.minGap)
 				}
+				if watched.maxGap > unwatched.maxGap {
+					t.Fatalf("with history a unit waited %v for its turn; with none, never longer than %v", watched.maxGap, unwatched.maxGap)
+				}
 			})
 		}
+	}
+}
+
+// A deck that fits one window is dealt afresh each window and loops inside it; the history must not
+// feed that deal (#1674), so watching never makes it air a unit twice in a row, at the seam or
+// inside the window, and never brings a unit back across the seam sooner than with no history.
+func TestHistory_FittingDeckNeverAirsBackToBack(t *testing.T) {
+	for _, n := range []int{5, 10, 15} {
+		for _, wh := range []int{6, 12, 24} {
+			window := time.Duration(wh) * time.Hour
+			dur := window * 9 / time.Duration(10*n) // the deck fills 90% of the window
+			for _, mode := range shuffled {
+				t.Run(fmt.Sprintf("%dx%v/%v/%s", n, dur, window, mode), func(t *testing.T) {
+					windows := int(20 * 24 * time.Hour / window)
+					unwatched := statsOf(airWithHistory(n, []time.Duration{dur}, window, mode, windows, false), window)
+					watched := statsOf(airWithHistory(n, []time.Duration{dur}, window, mode, windows, true), window)
+					if watched.backToBack > 0 {
+						t.Fatalf("with history, a unit aired twice in a row %d times", watched.backToBack)
+					}
+					if watched.minSeam < unwatched.minSeam {
+						t.Fatalf("with history a unit came back across a seam after %v; with none, never sooner than %v",
+							watched.minSeam, unwatched.minSeam)
+					}
+				})
+			}
+		}
+	}
+}
+
+// The ring's guarantee holds with the history fed back: on a pool a little wider than its window
+// (27 one-hour units, a 24h window) no unit returns inside the repeat spacing, a window and a unit.
+func TestHistory_RingWindowRestsTheSpacing(t *testing.T) {
+	window := 24 * time.Hour
+	for _, mode := range shuffled {
+		t.Run(string(mode), func(t *testing.T) {
+			st := statsOf(airWithHistory(27, []time.Duration{time.Hour}, window, mode, 60, true), window)
+			if spacing := window + time.Hour; st.minGap < spacing {
+				t.Fatalf("with history a unit came back after %v: under the %v spacing", st.minGap, spacing)
+			}
+		})
 	}
 }
 
