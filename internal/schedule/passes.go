@@ -454,8 +454,8 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 		}
 	}
 	if cur == nil {
-		switch {
-		case anchor == 0:
+		switch anchor {
+		case 0:
 			cur = d.base(0).deck
 		default:
 			// The segment's first pass: its predecessor is a different segment, so repair against it as
