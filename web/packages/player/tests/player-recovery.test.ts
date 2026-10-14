@@ -197,6 +197,11 @@ describe("a start the paired server refuses (#1455)", () => {
           { status: 200 },
         );
       }
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/baseline/index.m3u8")) {
+        return new Response('#EXTM3U\n#EXT-X-MAP:URI="init.mp4?sig=one"\n#EXTINF:1,\nseg1.m4s?sig=one\n');
+      }
+      if (!path.endsWith("/master.m3u8")) return new Response("media");
       const next = masters.length > 1 ? masters.shift() : masters[0];
       return (next ?? started)(init);
     });
@@ -325,6 +330,30 @@ describe("a start the paired server refuses (#1455)", () => {
 
     expect(controller.getSnapshot()).toMatchObject({ channel: { id: "futurama" }, status: "tuning" });
     expect(masterRequests("futurama")).toHaveLength(0);
+  });
+
+  it("reads a refused warm's master itself instead of handing it to the player", async () => {
+    // The current channel starts; from then on the server is full, so the neighbour's warm is
+    // refused and so is the tune to it.
+    const { masterRequests, source } = pairedSource(started, refused);
+    const two: PlayerChannel[] = [
+      ...channels,
+      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+    ];
+    const { controller, reports, transport } = harness(source);
+    await controller.reconcile(two);
+    await vi.advanceTimersByTimeAsync(0); // the neighbour's warm is refused
+
+    await controller.step(1);
+
+    expect(controller.getSnapshot()).toMatchObject({
+      channel: { id: "futurama" },
+      error: reason,
+      status: "failed",
+    });
+    expect(masterRequests("futurama")).toHaveLength(1);
+    expect(transport.replace).toHaveBeenCalledOnce(); // only the first channel ever reached the player
+    expect(reports).toEqual([expect.objectContaining({ fatal: true, status: 502 })]);
   });
 
   it("ends an automatic recovery at the refusal instead of spending the rest of the budget", async () => {
