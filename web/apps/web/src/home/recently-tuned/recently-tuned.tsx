@@ -26,7 +26,7 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <ChannelIdent name={data.channelName} number={channel.source.number} logo={data.channelLogoUri} />
-            <span className="font-mono text-signal text-sm">
+            <span className="font-mono text-foreground text-sm">
               {String(channel.source.number).padStart(2, "0")}
             </span>
             <span className="text-sm text-static-400">{data.channelName}</span>

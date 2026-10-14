@@ -99,7 +99,7 @@ do. Both themes are rendered and contrast-checked in Storybook.
 
 | Token | Hex | Meaning / use | Contrast notes |
 | --- | --- | --- | --- |
-| `signal` (amber) | `#FFB020` | **Focus, the primary action, and brand moments only** (#1909): the focus ring, the one solid primary action per view, the colour bars, the tuner lock and display numerals (direct-tune digits, the pairing code). Selection, now-airing, elapsed progress and channel numbers at rest are neutral; the web's desktop active nav moves off amber in the follow-up web PR | 10.7:1 on bg — AA everywhere; 8.8:1 on its tint |
+| `signal` (amber) | `#FFB020` | **Focus, the primary action, and brand moments only** (#1909): the focus ring, the one solid primary action per view, the colour bars, the tuner lock and display numerals (direct-tune digits, the pairing code). Selection (the current page, pressed toggles, checked boxes, the tuned channel), now-airing, elapsed progress and channel numbers at rest are neutral. A focused filled action keeps its fill and adds a 3px foreground ring outside a gap, because an amber border cannot show on an amber fill | 10.7:1 on bg — AA everywhere; 8.8:1 on its tint |
 | `onair` (red) | `#E5484D` | Live/actively-streaming indicators; destructive actions | 5.0:1 on bg; **on its tint use `onair-300`** |
 | `onair-300` | `#E85A5F` | Badge/pill text on the onair tint | 5.0:1 on tint (computed with margin) |
 | `suggest` (magenta) | `#D6409F` | **The AI color**: intent input focus, generation progress, proposal accents | 4.75:1 on bg; **on its tint use `suggest-300`** |

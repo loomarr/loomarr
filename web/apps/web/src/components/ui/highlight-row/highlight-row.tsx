@@ -31,7 +31,7 @@ const HighlightRow = ({
       children: (
         <>
           <span className="font-mono text-[13px]">{time}</span>
-          <span className="font-mono font-semibold text-[13px] text-signal">{channelNumber}</span>
+          <span className="font-mono font-semibold text-[13px] text-foreground">{channelNumber}</span>
           <span className="min-w-0 truncate font-medium text-sm">
             {title}
             {detail != null && <span className="font-normal text-static-400">{detail}</span>}

@@ -162,25 +162,19 @@ const DrawerRow = ({
         ]
           .filter(Boolean)
           .join(", ")}
+        // The tuned row is neutral (#1909 Q2): elevated fill, the TUNED tag and `aria-current`.
+        // Amber is left for the focus ring, so a focused row is never confused with the tuned one.
         className={cn(
-          "flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left text-foreground hover:bg-static-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          tuned ? "border-signal/45 bg-static-900" : "border-static-800 bg-transparent",
+          "flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          tuned ? "border-static-700 bg-static-800" : "border-static-800 bg-transparent hover:bg-static-900",
         )}
       >
         <span className="flex items-center gap-[9px] pr-7">
-          <span
-            className={cn("w-[26px] font-mono text-[13px]", tuned ? "text-signal" : "text-muted-foreground")}
-          >
+          <span className="w-[26px] font-mono text-[13px] text-muted-foreground">
             {channelNumber(channel.number)}
           </span>
-          <span className={cn("min-w-0 flex-1 truncate font-semibold text-[13px]", tuned && "text-signal")}>
-            {channel.name}
-          </span>
-          {tuned && (
-            <span className="rounded border border-signal/40 bg-signal/8 px-1.5 py-px font-mono text-[11px] text-signal">
-              TUNED
-            </span>
-          )}
+          <span className="min-w-0 flex-1 truncate font-semibold text-[13px]">{channel.name}</span>
+          {tuned && <span className="font-mono text-[11px] text-muted-foreground">TUNED</span>}
         </span>
         <span aria-hidden className="relative flex h-6 gap-0.5 overflow-hidden rounded">
           {channel.blocks.map((block) => (
@@ -215,8 +209,9 @@ const DrawerRow = ({
         aria-label={`Favorite ${channel.name}`}
         title={favourite ? "Unpin favorite" : "Pin as favorite"}
         className={cn(
-          "absolute top-2 right-2 flex size-6 items-center justify-center rounded hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          favourite ? "text-signal" : "text-muted-foreground",
+          // A pinned favourite is a pressed state, so it is foreground with the filled star, not amber.
+          "absolute top-2 right-2 flex size-6 items-center justify-center rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          favourite ? "text-foreground" : "text-muted-foreground",
         )}
       >
         <span aria-hidden className="text-[13px] leading-none">

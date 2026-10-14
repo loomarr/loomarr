@@ -157,9 +157,13 @@ describe("form field anatomy on the shared design system", () => {
     expect(field.style.borderColor).toBe(hexToRgb(semanticColors.border.control));
     expect(field.style.color).toBe(hexToRgb(semanticColors.content.primary));
     expect(field.style.caretColor).toBe(hexToRgb(semanticColors.action.primary));
-    expect(screen.getByRole("checkbox", { name: "Pick" }).style.accentColor).toBe(
-      hexToRgb(semanticColors.action.primary),
-    );
+    // Checked is neutral-pressed (#1909): no amber accent, a foreground border on the elevated fill.
+    const checkbox = screen.getByRole("checkbox", { name: "Pick" });
+    expect(checkbox.style.accentColor).toBe("");
+    expect(checkbox.style.getPropertyValue("--checkbox-border")).toBe(semanticColors.border.control);
+    expect(checkbox.style.getPropertyValue("--checkbox-checked-border")).toBe(semanticColors.content.primary);
+    expect(checkbox.style.getPropertyValue("--checkbox-checked-fill")).toBe(semanticColors.surface.elevated);
+    expect(checkbox).toHaveClass("size-6", "appearance-none");
   });
 
   // A caller's `style` still wins over the defaults, as a caller's class did before.

@@ -50,6 +50,8 @@ export {
   signalLoaderMotion,
   skeletonMotion,
 } from "./src/loading";
+export type { ModalLayerProps } from "./src/modal-layer";
+export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";

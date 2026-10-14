@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Action, LoomarrProvider } from "../index";
+import { Action, ChoiceGroup, LoomarrProvider, ModalLayer, semanticThemes, Toggle } from "../index";
 
 describe("Action variants", () => {
   // react-native-web flattens the Pressable's own style object to inline rgba() (not hex, and
@@ -101,6 +101,190 @@ describe("Action selected vs focused (#1887)", () => {
     expect(button().style.borderTopColor).not.toBe(amber);
     act(() => button().focus());
     expect(button().style.borderTopColor).toBe(amber);
+  });
+});
+
+describe("Action primary focus (WCAG 2.4.7)", () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const button = () => host.querySelector<HTMLElement>('[role="button"]') as HTMLElement;
+  const look = (el: HTMLElement) => ({
+    backgroundColor: el.style.backgroundColor,
+    borderTopColor: el.style.borderTopColor,
+    outlineColor: el.style.outlineColor,
+    outlineOffset: el.style.outlineOffset,
+    outlineStyle: el.style.outlineStyle,
+    outlineWidth: el.style.outlineWidth,
+  });
+  // WCAG relative luminance and contrast ratio, from a "#RRGGBB" token.
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const c = Number.parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  // The primary's fill is amber, so an amber focus border on it was invisible (the tvOS Retry
+  // audit, shots 41/42). Focus now adds a foreground ring outside a gap of the surface behind it.
+  it.each(["pointer", "touch", "tv"] as const)(
+    "draws a focused %s primary differently from its rest look",
+    (density) => {
+      act(() => {
+        root.render(
+          <LoomarrProvider>
+            <Action density={density} tone="primary">
+              Retry
+            </Action>
+          </LoomarrProvider>,
+        );
+      });
+      const rest = look(button());
+      expect(rest.outlineStyle).not.toBe("solid");
+
+      act(() => button().focus());
+      const focusedLook = look(button());
+      expect(focusedLook).not.toEqual(rest);
+      expect(focusedLook.backgroundColor).toBe(rest.backgroundColor);
+      expect(focusedLook.outlineStyle).toBe("solid");
+      expect(focusedLook.outlineWidth).toBe("3px");
+      expect(focusedLook.outlineColor).toBe("rgb(231, 234, 240)");
+      expect(Number.parseFloat(focusedLook.outlineOffset)).toBeGreaterThan(0);
+
+      act(() => button().blur());
+      expect(look(button())).toEqual(rest);
+    },
+  );
+
+  it.each(["dark", "light"] as const)(
+    "keeps the %s ring at 3:1 against the surface, and the gap at 3:1 against the fill",
+    (mode) => {
+      const theme = semanticThemes[mode];
+      for (const surface of [theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
+        expect(contrast(theme.content.primary, surface)).toBeGreaterThanOrEqual(3);
+        expect(contrast(surface, theme.action.primary)).toBeGreaterThanOrEqual(3);
+      }
+    },
+  );
+
+  it("keeps the amber focus border on a secondary action, with no ring", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action tone="secondary">Cancel</Action>
+        </LoomarrProvider>,
+      );
+    });
+    act(() => button().focus());
+    expect(button().style.borderTopColor).toBe("rgb(255, 176, 32)");
+    expect(button().style.outlineStyle).not.toBe("solid");
+  });
+});
+
+describe("Action behind a modal", () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const amber = "rgb(255, 176, 32)";
+  const byText = (text: string) =>
+    [...host.querySelectorAll<HTMLElement>('[role="button"]')].find(
+      (el) => el.textContent === text,
+    ) as HTMLElement;
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  // A native Modal never blurs the control that opened it, so its focus border showed through
+  // the scrim. The opener drops its focus look while a modal layer above it is open.
+  it("drops the opener's focus look while a modal is open, and keeps it inside the modal", () => {
+    const render = (visible: boolean) =>
+      act(() => {
+        root.render(
+          <LoomarrProvider>
+            <Action tone="secondary">Open</Action>
+            <ModalLayer visible={visible}>
+              <Action tone="secondary">Inside</Action>
+            </ModalLayer>
+          </LoomarrProvider>,
+        );
+      });
+
+    render(false);
+    act(() => byText("Open").focus());
+    expect(byText("Open").style.borderTopColor).toBe(amber);
+
+    render(true);
+    expect(byText("Open").style.borderTopColor).not.toBe(amber);
+    act(() => byText("Inside").focus());
+    expect(byText("Inside").style.borderTopColor).toBe(amber);
+
+    render(false);
+    act(() => byText("Open").focus());
+    expect(byText("Open").style.borderTopColor).toBe(amber);
+  });
+});
+
+describe("Toggle and ChoiceGroup checked (#1909)", () => {
+  // The box is a Tamagui Surface, so its colours arrive as token CSS variables, not inline hex.
+  const neutralPressed = (markup: string) => {
+    expect(markup).toContain("background-color:var(--surfaceElevated)");
+    expect(markup).toContain("border-top-color:var(--contentPrimary)");
+    expect(markup).not.toContain("var(--actionPrimary)");
+  };
+
+  it.each(["checkbox", "switch"] as const)(
+    "draws a checked %s neutral, never amber, and keeps aria-checked",
+    (kind) => {
+      const markup = renderToStaticMarkup(
+        <LoomarrProvider>
+          <Toggle checked kind={kind} label="Approve" onCheckedChange={() => undefined} />
+        </LoomarrProvider>,
+      );
+      expect(markup).toContain('aria-checked="true"');
+      neutralPressed(markup);
+    },
+  );
+
+  it("draws the chosen radio neutral", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <ChoiceGroup
+          label="Span"
+          onValueChange={() => undefined}
+          options={[
+            { label: "2h", value: "2" },
+            { label: "4h", value: "4" },
+          ]}
+          value="4"
+        />
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain('aria-checked="true"');
+    neutralPressed(markup);
   });
 });
 

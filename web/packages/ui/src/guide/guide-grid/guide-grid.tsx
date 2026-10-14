@@ -177,7 +177,8 @@ const Block = ({
                   : "$borderDecorative"
           }
           borderLeftColor={
-            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
+            // Now-airing is a neutral tone step (#1909 Q3), so its edge takes the airing border.
+            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$borderAiring" : "$guideBlockAccent"
           }
           borderLeftWidth={2}
           borderRadius={4}

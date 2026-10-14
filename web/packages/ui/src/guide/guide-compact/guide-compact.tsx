@@ -248,7 +248,8 @@ const GuideCompact = ({
                                 ? "$surfaceElevated"
                                 : "$surfaceRaised"
                           }
-                          borderColor={selected ? "$actionPrimary" : "$transparent"}
+                          // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
+                          borderColor={selected ? "$contentPrimary" : "$transparent"}
                           borderRadius={4}
                           borderWidth={2}
                           flex={1}

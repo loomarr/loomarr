@@ -221,7 +221,8 @@ const ChannelProgramming = ({
           <p
             className={cn(
               "rounded-md px-2.5 py-1.5 text-xs",
-              rules.isDirty ? "bg-signal-tint-15 text-signal" : "bg-muted text-muted-foreground",
+              // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
+              rules.isDirty ? "bg-tune-tint-15 text-tune" : "bg-muted text-muted-foreground",
             )}
           >
             {rules.isDirty

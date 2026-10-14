@@ -61,6 +61,9 @@ describe("ChannelDrawer", () => {
     const tuned = group("ALL CHANNELS").getByRole("button", { current: true });
     expect(tuned).toHaveTextContent("Westerns");
     expect(tuned).toHaveTextContent("TUNED");
+    // The tuned row is neutral (#1909 Q2), so amber is left for the focus ring alone.
+    expect(tuned).toHaveClass("bg-static-800");
+    expect(tuned.outerHTML).not.toMatch(/(text|border|bg)-signal/);
   });
 
   it("finds by name, programme or number", async () => {

@@ -1,9 +1,8 @@
 import { cn } from "@/lib/utils";
 import type { NavTabsProps } from "./nav-tabs.type";
 
-// NavTabs — THE tab bar for this app: a pill per destination, the active one filled with a
-// `signal` tint. Settings, Filler and Queue all use it, so "you are here" looks the same
-// everywhere.
+// NavTabs — THE tab bar for this app: a pill per destination, the active one on the elevated
+// fill. Settings, Filler and Queue all use it, so "you are here" looks the same everywhere.
 //
 // ⚠ **Every tab is a real `<Link>`, never a button.** All three bars already keep their position
 // in the URL — Settings as its own route per section, Filler and Queue as `?tab=` — so each tab
@@ -20,11 +19,13 @@ import type { NavTabsProps } from "./nav-tabs.type";
 // declare `role="tab"` with hand-rolled ←/→ handling — correct for what it was, wrong for what
 // these bars actually are.
 //
-// The active pill is the Settings treatment (maintainer's pick, 2026-08-02): `signal-tint-15`
-// fill, `signal` text, `rounded-md`. It replaced an underline-only bar on Filler and Queue.
+// The active pill is neutral: `static-800` (elevated) fill, foreground text at weight 500,
+// `rounded-md`. Amber means focus or the primary action, so "you are here" matches the phone
+// bottom bar (#1909 Q1, https://github.com/loomarr/loomarr/pull/1909). That decision overturns
+// the amber `signal-tint-15` pill picked for Settings on 2026-08-02.
 //
 // ⚠ **Two looks, one component.** `variant="underline"` is the v2 mock's Queue tab bar (Requests):
-// transparent tabs, a 2px bottom border in `signal` on the active one, and a 1px rule under the
+// transparent tabs, a 2px bottom border in foreground on the active one, and a 1px rule under the
 // bar that the active underline overlaps. The pill stays the default because Settings, Filler and
 // channel detail are drawn with pills in their own mocks — the variant exists so a screen follows
 // ITS mock rather than every bar being forced into one style.
@@ -59,7 +60,7 @@ const NavTabs = ({
             activeOptions={{ exact: true, includeSearch: false }}
             id={`tab-${tab.id}`}
             // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
-            // amber fill is the ONLY signal, which is invisible to anyone not looking at colour.
+            // elevated fill is the ONLY signal, which is invisible to anyone not looking at it.
             {...(active ? { "aria-current": "page" as const } : {})}
             // ⚠ There is deliberately NO `aria-controls`. It was carried over from `CountTabs`,
             // where the tabs genuinely revealed panels in the same document — but these NAVIGATE,
@@ -75,14 +76,14 @@ const NavTabs = ({
                     // `-mb-px` lets the 2px underline sit over the bar's 1px rule.
                     "-mb-px border-b-2 bg-transparent px-[13px] py-[9px] text-[13.5px] hover:text-foreground",
                     active
-                      ? "border-signal font-medium text-foreground"
+                      ? "border-foreground font-medium text-foreground"
                       : "border-transparent text-muted-foreground",
                   )
                 : cn(
                     // The #1659 web mock's pill: 13 px at the browser's normal line height (29 px
                     // tall, not the body's 1.5), and hover changes the colour only.
                     "rounded-md px-3 py-1.5 text-[13px] text-muted-foreground leading-[normal] hover:text-foreground",
-                    active && "bg-signal-tint-15 font-medium text-signal",
+                    active && "bg-static-800 font-medium text-foreground",
                   ),
             )}
           >
@@ -92,11 +93,9 @@ const NavTabs = ({
               <span
                 className={cn(
                   "rounded-full px-1.5 py-px font-mono text-2xs",
-                  // ⚠ The ACTIVE pill sits on `background`, not on a `signal` tint. Amber text on an
-                  // amber tint composites amber-on-amber: measured 4.11:1 against the required
-                  // 4.5:1 at 11px — an axe `color-contrast` failure at SERIOUS impact, and one only
-                  // this gate could catch. The tint was chosen for visual harmony without checking
-                  // it against the fill already behind it (the active tab is itself tinted).
+                  // ⚠ The ACTIVE pill's count sits on `background`, so it reads as a chip against
+                  // the elevated pill. A count tinted to match the fill behind it once failed axe
+                  // `color-contrast` (4.11:1 at 11px, SERIOUS); check a new tint against the pill.
                   underline
                     ? tab.attention && tab.count > 0
                       ? "bg-suggest-tint-15 px-[7px] text-suggest-300"
@@ -106,7 +105,7 @@ const NavTabs = ({
                       tab.attention && tab.count > 0
                       ? "bg-suggest-tint-15 text-suggest-300"
                       : active
-                        ? "bg-background text-signal"
+                        ? "bg-background text-foreground"
                         : "bg-static-800 text-static-400",
                 )}
               >

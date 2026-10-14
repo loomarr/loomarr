@@ -5,6 +5,7 @@ import { Pressable, TextInput } from "react-native";
 
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
+import { useBehindModal } from "../modal-layer";
 import { Surface, Text } from "../primitives";
 import {
   brandChroma,
@@ -121,12 +122,30 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     ref,
   ) => {
     const theme = useTheme();
-    const [focused, setFocused] = useState(false);
+    const [hasFocus, setFocused] = useState(false);
+    // A native Modal never blurs its opener, so a control behind an open modal drops its focus look.
+    const behindModal = useBehindModal();
+    const focused = hasFocus && !behindModal;
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
+    // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
+    // under 3:1 on the danger, destructive and suggest fills. A focused fill keeps its rest look
+    // and gains a 3px foreground ring outside a gap of the surface behind it, so the ring sits
+    // against that surface (about 16:1 in the dark theme) and the gap against the fill (10:1 on
+    // amber). The ring is `outline`, which RN 0.86 and react-native-web draw outside the box.
+    const filled = variant ? variant === "suggest" || variant === "destructive" : tone !== "secondary";
+    const focusRing =
+      filled && focused
+        ? {
+            outlineColor: theme.contentPrimary.val,
+            outlineOffset: tv ? 3 : 2,
+            outlineStyle: "solid" as const,
+            outlineWidth: 3,
+          }
+        : undefined;
     const backgroundColor = look
       ? look.background
       : tone === "danger"
@@ -139,10 +158,10 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     // Amber is focus, never selection (#1887): a selected action that does not have focus keeps
     // only its `surfaceFocus` fill, so one amber border marks where the remote is.
     const borderColor = look
-      ? focused
+      ? focused && !filled
         ? theme.actionFocus.val
         : look.border
-      : focused
+      : focused && !filled
         ? theme.actionFocus.val
         : tone === "danger"
           ? theme.stateDanger.val
@@ -221,13 +240,14 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           : focused
             ? 2
             : 1
-        : focused
+        : focused && !filled
           ? tv
             ? 3
             : 4
           : tv
             ? 1
             : 2,
+      ...focusRing,
       justifyContent: "center" as const,
       minHeight: tv ? 0 : semanticTargets[density],
       opacity: isDisabled ? 0.55 : 1,
@@ -451,6 +471,7 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
+  const [focused, setFocused] = useState(false);
   return (
     <Pressable
       accessibilityLabel={label}
@@ -459,6 +480,8 @@ const Toggle = ({
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onPress={() => onCheckedChange(!checked)}
       style={{
         alignItems: "center",
@@ -468,19 +491,25 @@ const Toggle = ({
         opacity: disabled ? 0.55 : 1,
       }}
     >
+      {/* Checked is a selection, so it is neutral-pressed (#1909): elevated fill with a foreground
+          border and mark. Amber is the focus ring around the box, outside a gap. */}
       <Surface
         alignItems={kind === "switch" ? (checked ? "flex-end" : "flex-start") : "center"}
-        backgroundColor={checked ? "$actionPrimary" : "$surfaceCanvas"}
-        borderColor={checked ? "$actionPrimary" : "$borderControl"}
+        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
+        borderColor={checked ? "$contentPrimary" : "$borderControl"}
         borderRadius={kind === "switch" ? "$round" : "$control"}
         height={controlSize}
         justifyContent="center"
+        outlineColor={focused ? "$actionFocus" : undefined}
+        outlineOffset={focused ? 2 : undefined}
+        outlineStyle={focused ? "solid" : undefined}
+        outlineWidth={focused ? (density === "tv" ? 3 : 2) : undefined}
         padding={kind === "switch" ? 3 : 0}
         width={kind === "switch" ? switchWidth : controlSize}
       >
         {kind === "switch" ? (
           <View
-            backgroundColor={checked ? "$contentInverse" : "$contentSecondary"}
+            backgroundColor={checked ? "$contentPrimary" : "$contentSecondary"}
             borderRadius="$round"
             height={controlSize - 8}
             width={controlSize - 8}
@@ -490,7 +519,7 @@ const Toggle = ({
             decorative
             glyph={icons.success}
             size={density === "tv" ? "control" : "compact"}
-            tone="inverse"
+            tone="content"
           />
         ) : null}
       </Surface>
@@ -558,15 +587,16 @@ const ChoiceGroup = <Value extends string>({
         >
           <Surface
             alignItems="center"
-            backgroundColor={checked ? "$actionPrimary" : "$surfaceCanvas"}
-            borderColor={checked ? "$actionPrimary" : "$borderControl"}
+            // A chosen option is neutral-pressed (#1909), like a checked box.
+            backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
+            borderColor={checked ? "$contentPrimary" : "$borderControl"}
             borderRadius="$round"
             height={density === "tv" ? 36 : 24}
             justifyContent="center"
             width={density === "tv" ? 36 : 24}
           >
             {checked ? (
-              <View backgroundColor="$contentInverse" borderRadius="$round" height="45%" width="45%" />
+              <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
             ) : null}
           </Surface>
           <View flex={1} gap={2}>
