@@ -261,7 +261,7 @@ interface RowProps {
 const Row = ({ children, field, help, hint, label, off, onReset, overridden }: RowProps) => {
   const [showHelp, setShowHelp] = useState(false);
   return (
-    <View style={{ gap: 8, opacity: off ? 0.55 : 1 }} testID={field ? `logo-field-${field}` : undefined}>
+    <View style={{ gap: 8 }} testID={field ? `logo-field-${field}` : undefined}>
       <View style={{ ...row, flexWrap: "wrap", justifyContent: "space-between" }}>
         <View style={{ ...row, gap: 6 }}>
           <Text textRole="label">{label}</Text>
@@ -311,7 +311,8 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
         ) : null}
       </View>
       {showHelp ? <FieldHint>{help}</FieldHint> : null}
-      {children}
+      {/* Paused rows fade only the control; the label and hint stay at full contrast (AA). */}
+      <View style={{ opacity: off ? 0.55 : 1 }}>{children}</View>
       {hint ? <FieldHint>{hint}</FieldHint> : null}
     </View>
   );
@@ -680,7 +681,6 @@ const OnScreenLogoSection = ({
         help="Adds a small picture beside the logo while a holiday is on, such as a pumpkin in October. The picture and colours are built in. It stops when the holiday ends."
         hint={img ? "Your own logo airs unchanged, so holiday touches are paused." : undefined}
         label="Holiday touches"
-        off={img}
         onReset={ignoresHolidays ? undefined : reset("holiday")}
         overridden={p.holiday !== undefined}
       >
