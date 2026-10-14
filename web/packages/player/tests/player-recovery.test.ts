@@ -173,6 +173,93 @@ describe("player automatic recovery", () => {
   });
 });
 
+describe("a stall the viewer didn't cause", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-25T00:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const stalledWhilePlaying = async () => {
+    const playing = harness();
+    await playing.controller.reconcile(channels);
+    playing.emit({ attemptId: playing.currentAttempt(), type: "first-frame" });
+    playing.emit({ attemptId: playing.currentAttempt(), type: "stalled" });
+    return playing;
+  };
+
+  it("holds the picture for a hiccup, shows Reconnecting… after 3 s, and fails with Retry after 20 s", async () => {
+    const { controller, reports, source } = await stalledWhilePlaying();
+
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(controller.getSnapshot()).toMatchObject({ status: "playing" });
+    expect(controller.getSnapshot().reconnecting).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(controller.getSnapshot()).toMatchObject({
+      reconnecting: { attempt: 0, maxAttempts: 3 },
+      status: "tuning",
+    });
+
+    await vi.advanceTimersByTimeAsync(16_999);
+    expect(controller.getSnapshot().status).toBe("tuning");
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(controller.getSnapshot()).toMatchObject({
+      error: "Lost the connection to the server.",
+      status: "failed",
+    });
+    expect(controller.getSnapshot().reconnecting).toBeUndefined();
+    expect(reports).toEqual([expect.objectContaining({ elapsedMs: 20_000, fatal: true })]);
+    // The player waits out the stall itself; nothing re-mints behind the viewer's back.
+    expect(source.mint).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears Reconnecting… and the pending failure when playback resumes", async () => {
+    const { controller, currentAttempt, emit } = await stalledWhilePlaying();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(controller.getSnapshot().status).toBe("tuning");
+
+    emit({ attemptId: currentAttempt(), type: "playing" });
+    expect(controller.getSnapshot()).toMatchObject({ status: "playing" });
+    expect(controller.getSnapshot().reconnecting).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(controller.getSnapshot()).toMatchObject({ status: "playing" });
+  });
+
+  it("returns from the stall failure to playing if the stream comes back on its own", async () => {
+    const { controller, currentAttempt, emit } = await stalledWhilePlaying();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(controller.getSnapshot().status).toBe("failed");
+
+    emit({ attemptId: currentAttempt(), type: "playing" });
+    expect(controller.getSnapshot()).toMatchObject({ status: "playing" });
+    expect(controller.getSnapshot().error).toBeUndefined();
+  });
+
+  it("never reports a stall under a viewer's pause", async () => {
+    const { controller, reports } = await stalledWhilePlaying();
+    controller.pause();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(controller.getSnapshot()).toMatchObject({ status: "paused" });
+    expect(controller.getSnapshot().reconnecting).toBeUndefined();
+    expect(reports).toEqual([]);
+  });
+
+  it("hands a player error during the stall to the re-tune budget instead", async () => {
+    const { controller, currentAttempt, emit, reports } = await stalledWhilePlaying();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    emit({ attemptId: currentAttempt(), error: "resource unavailable", type: "error" });
+    expect(controller.getSnapshot()).toMatchObject({ reconnecting: { attempt: 1 }, status: "tuning" });
+
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(reports.filter((report) => report.error === "Lost the connection to the server.")).toEqual([]);
+  });
+});
+
 // AVPlayer reports a refused manifest only as "resource unavailable" (Apple TV audit #5), so the
 // paired source reads the server's answer itself; these drive the real source over a fake server.
 describe("a start the paired server refuses (#1455)", () => {

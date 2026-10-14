@@ -353,6 +353,85 @@ describe("Expo video transport", () => {
   });
 });
 
+describe("native stall and live rejoin", () => {
+  const now = new Date("2026-08-26T20:00:00Z");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** A live, framed attempt whose stream then freezes for `stallSeconds` and resumes that far behind. */
+  const stallAndRecover = async (stallSeconds: number, beforeRecovery?: (transport: unknown) => void) => {
+    const native = nativePlayer();
+    const transport = createNativePlayerTransport(native.player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+    await transport.replace(
+      { uri: "https://loomarr.test/live.m3u8" },
+      { attemptId: 3, signal: new AbortController().signal },
+    );
+    transport.firstFrame();
+    native.emit("statusChange", { status: "loading" });
+    vi.advanceTimersByTime(stallSeconds * 1_000);
+    beforeRecovery?.(transport);
+    native.raw.currentLiveTimestamp = now.getTime();
+    native.raw.currentOffsetFromLive = stallSeconds;
+    native.emit("statusChange", { status: "readyToPlay" });
+    native.emit("playingChange", { isPlaying: true });
+    native.emit("timeUpdate", {
+      bufferedPosition: 1,
+      currentLiveTimestamp: native.raw.currentLiveTimestamp,
+      currentOffsetFromLive: native.raw.currentOffsetFromLive,
+      currentTime: 50,
+    });
+    return { events, native, transport };
+  };
+
+  it("reports a stall once, only after the attempt's first frame", async () => {
+    const { emit, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+    await transport.replace(
+      { uri: "https://loomarr.test/live.m3u8" },
+      { attemptId: 2, signal: new AbortController().signal },
+    );
+
+    emit("statusChange", { status: "loading" }); // the start's own buffering is not a stall
+    transport.firstFrame();
+    emit("statusChange", { status: "loading" });
+    emit("statusChange", { status: "loading" });
+
+    expect(events.filter((event) => event.type === "stalled")).toEqual([{ attemptId: 2, type: "stalled" }]);
+  });
+
+  it("rejoins the live edge when a stall left a live viewer more than 30 s behind", async () => {
+    const { events, native } = await stallAndRecover(45);
+
+    expect(native.raw.seekBy).toHaveBeenCalledTimes(1);
+    expect(native.raw.seekBy).toHaveBeenCalledWith(45);
+    expect(events.filter((event) => event.type === "live-state").at(-1)).toMatchObject({
+      state: { lagSeconds: 0, mode: "live" },
+    });
+  });
+
+  it("keeps the position after a short stall", async () => {
+    const { native } = await stallAndRecover(20);
+    expect(native.raw.seekBy).not.toHaveBeenCalled();
+  });
+
+  it("keeps a viewer's behind-live position when they paused, even through a stall", async () => {
+    const { native } = await stallAndRecover(45, (transport) => {
+      const paused = transport as ReturnType<typeof createNativePlayerTransport>;
+      paused.pause();
+      paused.play();
+    });
+    expect(native.raw.seekBy).not.toHaveBeenCalled();
+  });
+});
+
 describe("native start-failure reason (#1455)", () => {
   // The manifest request IS a tune on the server (internal/api/playout.go: tuneRaw → playout.Tune),
   // so this transport must never re-fetch it to learn why a tune failed — that would start a second

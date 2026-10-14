@@ -26,6 +26,8 @@ type PlayerTransportEvent =
   | { attemptId: number; state: LivePlaybackState; type: "live-state" }
   | { attemptId: number; type: "paused" }
   | { attemptId: number; type: "playing" }
+  /** Playback stopped to wait for data the viewer didn't pause for; the next `playing` ends it. */
+  | { attemptId: number; type: "stalled" }
   | { attemptId: number; error: string; type: "error" };
 
 interface PlayerTransport {
@@ -37,7 +39,10 @@ interface PlayerTransport {
   subscribe: (listener: (event: PlayerTransportEvent) => void) => () => void;
 }
 
-/** Present while the controller is silently re-tuning the same Channel after a player error. */
+/**
+ * Present while the controller is silently re-tuning the same Channel after a player error, or
+ * while the player waits out a stall it reports (`attempt` 0: no re-tune has been spent yet).
+ */
 interface PlayerReconnecting {
   attempt: number;
   maxAttempts: number;

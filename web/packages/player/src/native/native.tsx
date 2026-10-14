@@ -51,6 +51,11 @@ const pairedNativeImageSource = (
 };
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
+/**
+ * A stall that leaves a live viewer further behind than this rejoins the live edge: AVPlayer resumes
+ * where it froze, and a viewer who didn't pause shouldn't be left watching the past.
+ */
+const STALL_REJOIN_LAG_SECONDS = 30;
 
 /** Matches the HTTP status ExoPlayer embeds in its own error prose (e.g. "Response code: 502"). */
 const NATIVE_5XX_STATUS = /\b5\d{2}\b/;
@@ -86,6 +91,9 @@ const createNativePlayerTransport = (
   // A stall is buffering after the attempt's first frame while the viewer has not paused.
   let framedAttemptId: number | undefined;
   let stalledSinceMs: number | undefined;
+  // Set when a stall that began at the live edge ends; the next known position decides the rejoin.
+  let rejoinAfterStall = false;
+  let stallBeganLive = false;
   let liveMode: LivePlaybackMode = "live";
   let noticeRevision = 0;
   let serverClockOffsetMs: number | undefined;
@@ -134,7 +142,45 @@ const createNativePlayerTransport = (
     if (stalledSinceMs !== undefined && activeAttemptId !== undefined) {
       marks.stallEnd(activeAttemptId, marks.now() - stalledSinceMs, why);
     }
+    rejoinAfterStall = why === "resumed" && stalledSinceMs !== undefined && stallBeganLive;
     stalledSinceMs = undefined;
+  };
+
+  const seekToLiveEdge = (current: VideoPlayer) => {
+    const offset = current.currentOffsetFromLive;
+    if (offset !== null && Number.isFinite(offset) && offset > 0) {
+      current.seekBy(offset);
+    } else if (Number.isFinite(current.duration) && current.duration > 0) {
+      current.currentTime = current.duration;
+    }
+    liveMode = "live";
+    viewerTimeMs = liveNow();
+  };
+
+  /** Seconds the displayed frame trails the Channel wall clock, or undefined while the player can't say. */
+  const lagBehindLive = (currentLiveTimestamp: number | null, currentOffsetFromLive: number | null) => {
+    if (currentLiveTimestamp !== null && Number.isFinite(currentLiveTimestamp)) {
+      return (liveNow() - currentLiveTimestamp) / 1_000;
+    }
+    if (currentOffsetFromLive !== null && Number.isFinite(currentOffsetFromLive))
+      return currentOffsetFromLive;
+    return undefined;
+  };
+
+  /** After a stall the viewer didn't cause, returns to the live edge once the player reports a position. */
+  const rejoinLiveAfterStall = (
+    currentLiveTimestamp: number | null,
+    currentOffsetFromLive: number | null,
+  ) => {
+    if (!rejoinAfterStall || !player) return;
+    if (liveMode !== "live") {
+      rejoinAfterStall = false;
+      return;
+    }
+    const lag = lagBehindLive(currentLiveTimestamp, currentOffsetFromLive);
+    if (lag === undefined) return;
+    rejoinAfterStall = false;
+    if (lag > STALL_REJOIN_LAG_SECONDS) seekToLiveEdge(player);
   };
 
   const attachPlayer = (next: VideoPlayer) => {
@@ -162,7 +208,10 @@ const createNativePlayerTransport = (
       } else if (status === "loading") {
         if (framedAttemptId === activeAttemptId && stalledSinceMs === undefined && liveMode !== "paused") {
           stalledSinceMs = marks.now();
+          stallBeganLive = liveMode === "live";
+          rejoinAfterStall = false;
           marks.stallStart(activeAttemptId);
+          emit({ attemptId: activeAttemptId, type: "stalled" });
         }
       } else if (status === "readyToPlay") {
         endStall("resumed");
@@ -185,10 +234,12 @@ const createNativePlayerTransport = (
     }
     playingSubscription = next.addListener("playingChange", ({ isPlaying }) => {
       if (!isPlaying || activeAttemptId === undefined) return;
+      rejoinLiveAfterStall(next.currentLiveTimestamp, next.currentOffsetFromLive);
       emit({ attemptId: activeAttemptId, type: "playing" });
       emitLiveState();
     });
     timeSubscription = next.addListener("timeUpdate", ({ currentLiveTimestamp, currentOffsetFromLive }) => {
+      rejoinLiveAfterStall(currentLiveTimestamp, currentOffsetFromLive);
       emitLiveState(currentLiveTimestamp, currentOffsetFromLive);
     });
   };
@@ -231,14 +282,7 @@ const createNativePlayerTransport = (
     getPlayer: () => player,
     goLive: () => {
       if (!player) return;
-      const offset = player.currentOffsetFromLive;
-      if (offset !== null && Number.isFinite(offset) && offset > 0) {
-        player.seekBy(offset);
-      } else if (Number.isFinite(player.duration) && player.duration > 0) {
-        player.currentTime = player.duration;
-      }
-      liveMode = "live";
-      viewerTimeMs = liveNow();
+      seekToLiveEdge(player);
       emitLiveState(null, 0);
       player.play();
     },
@@ -262,14 +306,7 @@ const createNativePlayerTransport = (
         const lagSeconds = Math.max(0, Math.round((liveNow() - viewerTimeMs) / 1_000));
         if (lagSeconds >= LIVE_DVR_HORIZON_SECONDS) {
           noticeRevision += 1;
-          const offset = player.currentOffsetFromLive;
-          if (offset !== null && Number.isFinite(offset) && offset > 0) {
-            player.seekBy(offset);
-          } else if (Number.isFinite(player.duration) && player.duration > 0) {
-            player.currentTime = player.duration;
-          }
-          liveMode = "live";
-          viewerTimeMs = liveNow();
+          seekToLiveEdge(player);
           emitLiveState(null, 0);
         } else {
           liveMode = "behind";

@@ -13,6 +13,11 @@ const RECENT_CHANNEL_LIMIT = 6;
 const DEFAULT_BACKOFF_MS = [1_000, 3_000, 7_000] as const;
 /** Playing this long without an error proves the stream recovered, so the retry budget refills. */
 const STABLE_PLAYBACK_MS = 30_000;
+/** A stall this long is more than a hiccup: the viewer sees "Reconnecting…" instead of a frozen frame. */
+const STALL_NOTICE_MS = 3_000;
+/** A stall this long without progress fails with the manual Retry (the server is unreachable). */
+const STALL_FAIL_MS = 20_000;
+const STALL_FAILURE = "Lost the connection to the server.";
 
 const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
   [...channels]
@@ -38,6 +43,8 @@ const createPlayerController = ({
   let tuneStartedAt = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let stableTimer: ReturnType<typeof setTimeout> | undefined;
+  let stallNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let stallFailTimer: ReturnType<typeof setTimeout> | undefined;
   let snapshot: PlayerSnapshot = {
     catalog: [],
     recentChannelIds: [],
@@ -54,11 +61,57 @@ const createPlayerController = ({
   const isCurrentAttempt = (attemptId: number, signal?: AbortSignal) =>
     !disposed && attemptId === attempt && !signal?.aborted;
 
+  const cancelStall = () => {
+    clearTimeout(stallNoticeTimer);
+    clearTimeout(stallFailTimer);
+    stallNoticeTimer = undefined;
+    stallFailTimer = undefined;
+  };
+
   const cancelRecoveryTimers = () => {
     clearTimeout(retryTimer);
     clearTimeout(stableTimer);
     retryTimer = undefined;
     stableTimer = undefined;
+    cancelStall();
+  };
+
+  /**
+   * A stall the viewer didn't cause shows "Reconnecting…" once it outlasts a hiccup, and fails with
+   * the manual Retry once it shows no progress for long enough. The player keeps waiting meanwhile,
+   * so a stream that comes back on its own still clears both.
+   */
+  const startStall = (attemptId: number) => {
+    if (stallNoticeTimer || stallFailTimer) return;
+    stallNoticeTimer = setTimeout(() => {
+      stallNoticeTimer = undefined;
+      if (!isCurrentAttempt(attemptId) || snapshot.status !== "playing") return;
+      publish({ ...snapshot, reconnecting: { attempt: 0, maxAttempts: backoffMs.length }, status: "tuning" });
+    }, STALL_NOTICE_MS);
+    stallFailTimer = setTimeout(() => {
+      stallFailTimer = undefined;
+      const channel = snapshot.channel;
+      if (
+        !isCurrentAttempt(attemptId) ||
+        !channel ||
+        snapshot.status === "paused" ||
+        snapshot.status === "failed"
+      ) {
+        return;
+      }
+      try {
+        onPlayerError?.({
+          attempt: consecutiveFailures + 1,
+          channelId: channel.id,
+          elapsedMs: Date.now() - tuneStartedAt,
+          error: STALL_FAILURE,
+          fatal: true,
+        });
+      } catch {
+        // Diagnostics must never affect playback.
+      }
+      publish({ ...snapshot, error: STALL_FAILURE, reconnecting: undefined, status: "failed" });
+    }, STALL_FAIL_MS);
   };
 
   /**
@@ -224,6 +277,11 @@ const createPlayerController = ({
       publish({ ...snapshot, livePlayback: event.state });
       return;
     }
+    if (event.type === "stalled") {
+      if (snapshot.status === "playing") startStall(event.attemptId);
+      return;
+    }
+    cancelStall();
     if (event.type === "error") {
       // A retry is already scheduled for this failure; a second error from the same dead player
       // must not spend budget or report twice.
