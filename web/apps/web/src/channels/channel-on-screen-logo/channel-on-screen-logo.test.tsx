@@ -7,9 +7,10 @@ import {
 } from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
+import { useState } from "react";
 import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 import { channel } from "@/test/fixtures/channels";
@@ -151,5 +152,69 @@ describe("ChannelOnScreenLogo", () => {
     await pickFile();
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That image is too large"));
     expect(savePolicy).not.toHaveBeenCalled();
+  });
+
+  // Every saved choice changes the policy, which keys the options query; without keepPreviousData
+  // the section unmounts for the refetch and the keyboard focus the choice was made with is lost.
+  it("keeps keyboard focus in the Style choices through the autosave and the options refetch", async () => {
+    let release: () => void = () => {};
+    let held = false;
+    let refetchPending = false;
+    const options = { autoCallsign: "SC", era: "1980s", eraPalette: [], holidays: [] };
+    server.use(
+      http.get("*/v1/channels/:id/watermark/options", async () => {
+        // The first load answers at once; the refetch after the save waits, so the new key has no data yet.
+        if (held) {
+          refetchPending = true;
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        return HttpResponse.json(options);
+      }),
+      getSettingsListMockHandler({ features: {} as SettingsListOutputBody["features"], settings: [] }),
+      http.get("*/v1/channels/:id/watermark/preview", () =>
+        HttpResponse.arrayBuffer(new ArrayBuffer(8), { headers: { "Content-Type": "image/png" } }),
+      ),
+    );
+    const Page = () => {
+      const [policy, setPolicy] = useState<ChannelPolicy>({ watermark: { look: "text" } });
+      return (
+        <LoomarrProvider theme="dark">
+          <ChannelOnScreenLogo
+            channel={channel({ id: "ch-1", policy })}
+            onOpenProgramming={vi.fn()}
+            savePolicy={(next) => {
+              held = true;
+              setPolicy(next);
+            }}
+          />
+        </LoomarrProvider>
+      );
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Page />
+      </QueryClientProvider>,
+    );
+
+    const styleGroup = await screen.findByRole("radiogroup", { name: "Style" });
+    const region = screen.getByRole("region", { name: "On-screen logo" });
+    const checked = within(styleGroup).getByRole("radio", { checked: true });
+    checked.focus();
+    expect(styleGroup).toContainElement(document.activeElement as HTMLElement);
+
+    // Arrow key moves the choice, which autosaves a new look.
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(refetchPending).toBe(true));
+
+    // The refetch is still pending: the section must still be mounted and still hold focus.
+    expect(screen.getByRole("region", { name: "On-screen logo" })).toBe(region);
+    expect(styleGroup).toBeInTheDocument();
+    expect(styleGroup).toContainElement(document.activeElement as HTMLElement);
+
+    release();
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(screen.getByRole("radiogroup", { name: "Style" })).toBe(styleGroup);
+    expect(styleGroup).toContainElement(document.activeElement as HTMLElement);
   });
 });
