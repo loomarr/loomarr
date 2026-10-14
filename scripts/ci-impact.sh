@@ -72,6 +72,15 @@ classify() {
     web/apps/web/src/suggest/approval-queue/*|web/apps/web/src/suggest/intent-form/*|web/apps/web/src/suggest/live-proposal-outlook/*|web/apps/web/src/suggest/movie-collection-choices/*|web/apps/web/src/suggest/suggestion-expansion/*|web/apps/web/src/suggest/suggestion-language/*|web/apps/web/src/suggest/use-channel-refine/*|web/apps/web/src/suggest/use-proposal-review-edit/*|web/apps/web/src/suggest/use-suggestion-run/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
+    web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-player/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/shell/search-command/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/ui/panel-row/*|web/apps/web/src/components/ui/sheet/*|web/apps/web/src/components/ui/video-player/*|web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
