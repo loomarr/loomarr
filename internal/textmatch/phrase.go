@@ -30,13 +30,16 @@ func normalize(text string) string {
 }
 
 // ContainsPhraseOutside matches a whole normalized phrase outside occurrences of
-// excludedPhrase. Excluded spans remain separators, so masking never joins words
+// any excluded phrase. Excluded spans remain separators, so masking never joins words
 // into new matching phrases. It uses the same Unicode rules as ContainsPhrase.
-func ContainsPhraseOutside(text, phrase, excludedPhrase string) bool {
+func ContainsPhraseOutside(text, phrase string, excludedPhrases ...string) bool {
 	text = " " + normalize(text) + " "
 	phrase = normalize(phrase)
-	excludedPhrase = normalize(excludedPhrase)
-	if excludedPhrase != "" {
+	for _, excludedPhrase := range excludedPhrases {
+		excludedPhrase = normalize(excludedPhrase)
+		if excludedPhrase == "" {
+			continue
+		}
 		excluded := " " + excludedPhrase + " "
 		for strings.Contains(text, excluded) {
 			text = strings.ReplaceAll(text, excluded, " \x00 ")

@@ -145,6 +145,10 @@ type ResolvedProgram struct {
 	CommunityRating float64
 	Overview        string
 	Tags            []string
+	// AirDate is the episode's original air date (zero = unknown), holiday evidence only (§6).
+	// Persisted like OfficialRating: cached rows written before it existed decode as zero —
+	// "no date", which judges exactly as before — until the refresh sweep repopulates them.
+	AirDate time.Time `json:",omitzero"`
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -181,7 +185,7 @@ type LineupEntry struct {
 	// entry-set filter with no per-reconcile library I/O. For a series these are the
 	// SERIES' values (v1 series-level ceiling; episodes carry no per-episode rating).
 	OfficialRating Rating   // media-server content rating, normalized at enforcement
-	Genres         []string // for genre scope + seasonal keyword matching
+	Genres         []string // for genre scope + corroborating a seasonal mood word (§6)
 	Year           int      // for era scope + seasonal windowing
 	RuntimeSec     int      // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
 	// CollectionID is the TMDB collection (franchise) a MOVIE belongs to (§5 franchise
