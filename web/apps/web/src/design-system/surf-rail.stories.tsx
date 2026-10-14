@@ -3,6 +3,7 @@ import { surfGroups } from "@loomarr/fixtures";
 import { SurfRail, type SurfSelection } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { expect } from "storybook/test";
 
 const Artwork = () => (
   <Surface
@@ -96,8 +97,14 @@ const FocusedAllChannel: Story = {
 // row is the only amber on screen.
 const TvRailActionFocused: Story = {
   args: { density: "tv", railActions: true },
-  play: async ({ canvas }) => {
-    canvas.getByRole("button", { name: "Channel-number wait · 1.2 s" }).focus();
+  play: async ({ canvas, userEvent }) => {
+    // A narrow viewport keeps the adaptive rail, which has no rail actions.
+    // The value is joined to its unit by a no-break space, so the name is matched by its start.
+    const wait = canvas.queryByRole("button", { name: /^Channel-number wait/ });
+    if (!wait) return;
+    // Tab down the rail, as a keyboard would, past the channels to the wait row.
+    for (let press = 0; press < 8 && document.activeElement !== wait; press += 1) await userEvent.tab();
+    expect(wait).toHaveFocus();
   },
 };
 
