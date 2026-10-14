@@ -525,10 +525,11 @@ describe("ChannelWatch at phone width", () => {
     return () => vi.unstubAllGlobals();
   });
 
-  const renderPhone = () => {
+  const renderPhone = (favourites: string[] = []) => {
     stubTracks();
     const step = vi.fn();
     const tune = vi.fn();
+    const onFavourite = vi.fn();
     render(
       // The panel under the picture is the shared @loomarr/ui one, which main.tsx themes app-wide.
       <LoomarrProvider theme="dark">
@@ -537,13 +538,27 @@ describe("ChannelWatch at phone width", () => {
           isAdmin={false}
           onSavePolicy={vi.fn()}
           tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
+          drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
           phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
         />
       </LoomarrProvider>,
       { wrapper: makeWrapper() },
     );
-    return { step, tune };
+    return { onFavourite, step, tune };
   };
+
+  // The drawer's star is not on a phone, so the panel's is the only way to fill Favorites there.
+  it("pins and unpins the tuned channel from the star in the channel line", async () => {
+    const { onFavourite } = renderPhone();
+    await userEvent.click(await screen.findByRole("button", { name: "Add to Favorites" }));
+    expect(onFavourite).toHaveBeenCalledWith("ch-1", true);
+  });
+
+  it("shows the tuned channel as pinned when it is a favourite", async () => {
+    const { onFavourite } = renderPhone(["ch-1"]);
+    await userEvent.click(await screen.findByRole("button", { name: "Remove from Favorites" }));
+    expect(onFavourite).toHaveBeenCalledWith("ch-1", false);
+  });
 
   it("mounts no overlay controls on the picture, and the four controls under it", async () => {
     renderPhone();
