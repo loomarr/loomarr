@@ -1,9 +1,0 @@
-# GitHub introduced these hosted labels after actionlint v1.7.12's built-in runner
-# list. Declaring them here preserves strict label checking for every other workflow
-# value until actionlint publishes an updated list.
-self-hosted-runner:
-  labels:
-    - macos-26
-    - xcode-27
-    - loomarr-playout-arc
-    - loomarr-playout-geforce

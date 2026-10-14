@@ -1,3 +1,0 @@
-// The Apple verifier builds and launches on one simulator host. Release defaults to every standard
-// simulator architecture, duplicating the native dependency graph for an unused binary slice.
-ONLY_ACTIVE_ARCH = YES
