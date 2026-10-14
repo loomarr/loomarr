@@ -4,7 +4,7 @@ import "testing"
 
 func TestNetworkReferenceDoesNotTreatChannelCreationPhrasesAsNetworkNames(t *testing.T) {
 	for _, text := range []string{
-		"I'd like you to Make a channel built around The Matrix franchise.",
+		"I'd like you to Make a channel built around the Marigold Protocol franchise.",
 		"I'd like you to make a channel from the 1990s with action movies.",
 		"Recreate a channel with British mysteries.",
 	} {
@@ -20,12 +20,12 @@ func TestNetworkProgrammingEpochEndProjectsOnlyUnambiguousContext(t *testing.T) 
 		description, refine string
 		end                 int
 	}{
-		{"A channel like the History Channel from the 90s", "", 1999},
-		{"Like the Discovery Channel during the 2000s", "", 2009},
-		{"Recreate the Science network in the 80s", "", 1989},
-		{"Like the History Channel from the 1990s", "like the Discovery Channel from the 2000s", 0},
+		{"A channel like the Almanac Channel from the 90s", "", 1999},
+		{"Like the Fathom Channel during the 2000s", "", 2009},
+		{"Recreate the Lumen network in the 80s", "", 1989},
+		{"Like the Almanac Channel from the 1990s", "like the Fathom Channel from the 2000s", 0},
 		{"1990s documentary episodes", "", 0},
-		{"Like the History Channel", "", 0},
+		{"Like the Almanac Channel", "", 0},
 	} {
 		if got := networkProgrammingEpochEnd(Intent{Description: test.description, RefineText: test.refine}); got != test.end {
 			t.Errorf("%q / %q: epoch end=%d want %d", test.description, test.refine, got, test.end)
@@ -35,10 +35,10 @@ func TestNetworkProgrammingEpochEndProjectsOnlyUnambiguousContext(t *testing.T) 
 
 func TestNetworkToolKeepsIndependentDateAndOrdinaryLookupInterfaces(t *testing.T) {
 	for _, intent := range []Intent{
-		{Description: "Like the History Channel from the 1990s", Era: "1990s"},
-		{Description: "Like the History Channel from the 1990s. Only episodes aired during the 2000s."},
-		{Description: "Like the History Channel from the 1990s. Episodes from the last five years."},
-		{Description: "Like the History Channel from the 1990s. Only the first two seasons."},
+		{Description: "Like the Almanac Channel from the 1990s", Era: "1990s"},
+		{Description: "Like the Almanac Channel from the 1990s. Only episodes aired during the 2000s."},
+		{Description: "Like the Almanac Channel from the 1990s. Episodes from the last five years."},
+		{Description: "Like the Almanac Channel from the 1990s. Only the first two seasons."},
 	} {
 		tool := catalogToolForIntent(intent)
 		properties := tool.Parameters["properties"].(map[string]any)
@@ -52,14 +52,14 @@ func TestNetworkToolKeepsIndependentDateAndOrdinaryLookupInterfaces(t *testing.T
 	if _, present := ordinary.Parameters["allOf"]; !present {
 		t.Fatal("ordinary discovery lost its existing mode contract")
 	}
-	named := catalogToolForIntent(Intent{Description: "TGIF programming block"})
+	named := catalogToolForIntent(Intent{Description: "QFUN programming block"})
 	if _, present := named.Parameters["properties"].(map[string]any)["titles"]; !present {
 		t.Fatal("named block lost collection membership lookup")
 	}
 }
 
 func TestNetworkToolRetainsRequestedScalarBounds(t *testing.T) {
-	intent := Intent{Description: "Like the History Channel from the 1990s. At least 50 votes and a rating above 8, with episodes under 60 minutes."}
+	intent := Intent{Description: "Like the Almanac Channel from the 1990s. At least 50 votes and a rating above 8, with episodes under 60 minutes."}
 	properties := catalogToolForIntent(intent).Parameters["properties"].(map[string]any)
 	for _, field := range []string{"vote_count_min", "vote_average_min", "runtime_min", "runtime_max"} {
 		if _, present := properties[field]; !present || !networkScalarRequested(intent, field) {
@@ -69,7 +69,7 @@ func TestNetworkToolRetainsRequestedScalarBounds(t *testing.T) {
 }
 
 func TestNetworkEpochAnchorsUseRuneCoordinatesAndKeepSeparateDates(t *testing.T) {
-	intent := Intent{Description: "📺 Like the History Channel from the 1990s. Only 2000s episodes."}
+	intent := Intent{Description: "📺 Like the Almanac Channel from the 1990s. Only 2000s episodes."}
 	text := []rune(intent.Description)
 	for start := 0; start+5 <= len(text); start++ {
 		switch string(text[start : start+5]) {

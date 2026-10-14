@@ -11,13 +11,13 @@ import (
 )
 
 func TestSuggest_RetiredEraCannotBeProjectedAway(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{
-			"media_type": "series", "network": "ABC", "era": "1990s", "dateMeaning": dateMeaningNone(),
+			"media_type": "series", "network": "Kestrel One", "era": "1990s", "dateMeaning": dateMeaningNone(),
 		}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{
-			"query": "The Matrix", "dateMeaning": dateMeaningNone(),
+			"query": "Marigold Protocol", "dateMeaning": dateMeaningNone(),
 		}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
@@ -29,13 +29,13 @@ func TestSuggest_RetiredEraCannotBeProjectedAway(t *testing.T) {
 
 	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{
 		Description: "A named programming block",
-		MustInclude: []string{"The Matrix"},
+		MustInclude: []string{"Marigold Protocol"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Matrix" {
-		t.Fatalf("lineup = %#v, want The Matrix only", proposal.Lineup)
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "Marigold Protocol" {
+		t.Fatalf("lineup = %#v, want Marigold Protocol only", proposal.Lineup)
 	}
 	if got := len(corpus.Searches()); got != 2 {
 		t.Fatalf("searches = %d, want 2", got)

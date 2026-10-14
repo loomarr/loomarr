@@ -23,7 +23,7 @@ func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *t
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
 	model.PrefixCache = true // a self-hosted llama.cpp slot
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestSuggest_HostedProviderFinalizationStillDropsTools(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
