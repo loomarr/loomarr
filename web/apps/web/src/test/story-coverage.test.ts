@@ -100,7 +100,7 @@ describe("Primitive coverage", () => {
 // under one flat namespace looked like — every story present, and none of them findable.
 describe("Story grouping", () => {
   // Anchored to the META block, not to the first `title:` in the file. Several stories carry
-  // fixture data with its own `title` ("The Next Generation" — an episode name), and matching
+  // fixture data with its own `title` ("Cold Relay" — a series name), and matching
   // the first occurrence reported those as malformed story titles.
   const titleOf = (file: string): string | null => {
     const src = readFileSync(file, "utf8");

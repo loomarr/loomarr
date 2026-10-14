@@ -6,21 +6,23 @@ import { provisionKey } from "./provision";
 // mismatch surfacing as an approval edit that silently fails to drop a title.
 describe("provisionKey", () => {
   it("prefers TVDB for a series", () => {
-    expect(provisionKey({ mediaType: "series", tvdbId: 71663, tmdbId: 456 })).toBe("series:tvdb:71663");
+    expect(provisionKey({ mediaType: "series", tvdbId: 90071663, tmdbId: 90000456 })).toBe(
+      "series:tvdb:90071663",
+    );
   });
 
   it("falls back to TMDB for a series with no TVDB id", () => {
-    expect(provisionKey({ mediaType: "series", tmdbId: 4229 })).toBe("series:tmdb:4229");
+    expect(provisionKey({ mediaType: "series", tmdbId: 90004229 })).toBe("series:tmdb:90004229");
   });
 
   it("uses TMDB for a movie", () => {
-    expect(provisionKey({ mediaType: "movie", tmdbId: 603 })).toBe("movie:tmdb:603");
+    expect(provisionKey({ mediaType: "movie", tmdbId: 90000603 })).toBe("movie:tmdb:90000603");
   });
 
   // A movie's tvdbId is NOT a fallback — Go's series+TVDB branch is guarded on mediaType, so a
   // movie with only a TVDB id has no usable key.
   it("ignores a TVDB id on a movie", () => {
-    expect(provisionKey({ mediaType: "movie", tvdbId: 71663 })).toBe("");
+    expect(provisionKey({ mediaType: "movie", tvdbId: 90071663 })).toBe("");
   });
 
   // Go returns an error here; "" is the TS equivalent and means "not addable". Callers must

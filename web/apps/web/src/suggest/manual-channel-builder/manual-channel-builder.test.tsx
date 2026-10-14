@@ -32,13 +32,13 @@ const comedyIdea: ChannelIdeaDTO = {
   reason: { kind: "unaired", count: 2 },
   facet: "genre",
   value: "Comedy",
-  keys: ["movie:tmdb:1", "movie:tmdb:2"],
+  keys: ["movie:tmdb:90000001", "movie:tmdb:90000002"],
   titles: [
     {
       name: "Autumn Market",
       year: 2003,
       mediaType: "movie",
-      tmdbId: 1,
+      tmdbId: 90000001,
       inLibrary: true,
       libraryItemId: "lib-1",
     },
@@ -46,7 +46,7 @@ const comedyIdea: ChannelIdeaDTO = {
       name: "The Understudy",
       year: 1999,
       mediaType: "movie",
-      tmdbId: 2,
+      tmdbId: 90000002,
       inLibrary: true,
       libraryItemId: "lib-2",
     },
@@ -95,17 +95,25 @@ describe("ManualChannelBuilder", () => {
     stubIdeas([]);
     server.use(
       getSearchMockHandler({
-        candidates: [{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }],
+        candidates: [
+          {
+            name: "The Velvet Cartographer",
+            year: 1995,
+            mediaType: "movie",
+            tmdbId: 90000949,
+            inLibrary: true,
+          },
+        ],
       }),
     );
     const user = userEvent.setup();
     render(<ManualChannelBuilder isAdmin onCancel={vi.fn()} onSubmitted={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "Search titles" }));
-    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "heat");
-    await user.click(await screen.findByText("Heat"));
+    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "velvet");
+    await user.click(await screen.findByText("The Velvet Cartographer"));
 
-    expect(screen.getByText("Heat")).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
   });
 
   it("disables Continue to review until a name and at least one title are chosen", async () => {

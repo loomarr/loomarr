@@ -26,7 +26,7 @@ beforeEach(() => {
 const clip: ClipDTO = {
   hash: "aaaa1111",
   tunarrProgramId: "p1",
-  name: "Frosted Flakes",
+  name: "Crunchlings",
   kind: "commercial",
   durationMs: 30000,
   tagged: true,
@@ -91,7 +91,7 @@ describe("FillerClipList", () => {
   it("still renders a resolved clip with its name and duration", () => {
     renderList(<FillerClipList {...base} ids={["aaaa1111"]} resolve={() => clip} resolving={false} />);
 
-    expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
+    expect(screen.getByText("Crunchlings")).toBeInTheDocument();
     expect(screen.queryByText("This clip is no longer in your catalog")).not.toBeInTheDocument();
   });
 

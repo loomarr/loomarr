@@ -34,7 +34,7 @@ describe("ClipDetails", () => {
           ...clip,
           era: 1977,
           audience: "kids",
-          brand: "Tootsie Pop",
+          brand: "Twirlpop",
           assertedTags: ["candy"],
           source: "classic-ads",
           sourceUrl: "https://archive.org/details/exact-item",
@@ -42,7 +42,7 @@ describe("ClipDetails", () => {
       />,
     );
     expect(screen.getByText("1977")).toBeInTheDocument();
-    expect(screen.getByText("Tootsie Pop")).toBeInTheDocument();
+    expect(screen.getByText("Twirlpop")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View original" })).toHaveAttribute(
       "href",
       "https://archive.org/details/exact-item",
@@ -119,7 +119,7 @@ describe("ClipDetails", () => {
             country: "United States",
             confidence: 70,
             explanation: "The campaign debuted then; this exact cut is not proven.",
-            sources: [{ title: "Tootsie Pop", url: "https://en.wikipedia.org/wiki/Tootsie_Pop" }],
+            sources: [{ title: "Twirlpop", url: "https://en.wikipedia.org/wiki/Twirlpop" }],
           },
         }}
       />,
@@ -130,9 +130,9 @@ describe("ClipDetails", () => {
     expect(screen.getByText("United States · Likely")).toBeInTheDocument();
     expect(screen.getByText("Context")).toBeInTheDocument();
     expect(screen.getByText("The campaign debuted then; this exact cut is not proven.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Tootsie Pop/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Twirlpop/ })).toHaveAttribute(
       "href",
-      "https://en.wikipedia.org/wiki/Tootsie_Pop",
+      "https://en.wikipedia.org/wiki/Twirlpop",
     );
     expect(screen.queryByText(/Background context, not confirmed/i)).not.toBeInTheDocument();
   });

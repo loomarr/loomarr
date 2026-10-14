@@ -6,7 +6,7 @@ import { Incoming } from "./incoming";
 
 const status = (index: number, statusLabel = "Adding details"): IncomingStatusDTO => ({
   clipHash: `clip-${index}`,
-  name: index === 1 ? "Tootsie Pop classic commercial" : `Commercial ${index}`,
+  name: index === 1 ? "Twirlpop classic commercial" : `Commercial ${index}`,
   from: index % 2 === 0 ? "Classic TV Commercials" : "Commercials From The Vault",
   durationMs: 25_000 + index * 1_000,
   statusLabel,

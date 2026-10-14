@@ -12,7 +12,7 @@ import { Incoming } from "./incoming";
 
 const status = (over: Partial<IncomingStatusDTO> = {}): IncomingStatusDTO => ({
   clipHash: "clip-1",
-  name: "Tootsie Pop classic commercial",
+  name: "Twirlpop classic commercial",
   durationMs: 30_000,
   statusLabel: "Adding details",
   updatedAt: "2026-09-14T20:00:00Z",
@@ -70,7 +70,7 @@ describe("Incoming", () => {
     try {
       render(<Incoming />, { wrapper });
       expect(await screen.findByText("This clip is ready whenever a channel needs it.")).toBeInTheDocument();
-      await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
+      await userEvent.click(await screen.findByRole("button", { name: /view details for twirlpop/i }));
       await userEvent.click(screen.getByText("Processing details"));
       await userEvent.click(screen.getByRole("button", { name: "Show 3 skipped steps" }));
       const rows = within(screen.getByRole("dialog")).getAllByRole("listitem");
@@ -93,7 +93,7 @@ describe("Incoming", () => {
           preparing: {
             rows: [
               status(),
-              status({ clipHash: "clip-2", name: "HP Sauce advert", statusLabel: "Checking video" }),
+              status({ clipHash: "clip-2", name: "Brambly Sauce advert", statusLabel: "Checking video" }),
             ],
             total: 2,
           },
@@ -123,7 +123,9 @@ describe("Incoming", () => {
             total: 2,
           },
           recentlyReady: {
-            rows: [status({ clipHash: "ready-1", name: "Magna-Doodle commercial", statusLabel: "Ready" })],
+            rows: [
+              status({ clipHash: "ready-1", name: "Sketchpad Doodler commercial", statusLabel: "Ready" }),
+            ],
             total: 1,
           },
         }),
@@ -199,8 +201,8 @@ describe("Incoming", () => {
     );
     render(<Incoming />, { wrapper });
 
-    await userEvent.click(await screen.findByRole("button", { name: /view details for tootsie pop/i }));
-    expect(screen.getByRole("heading", { name: "Tootsie Pop classic commercial" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: /view details for twirlpop/i }));
+    expect(screen.getByRole("heading", { name: "Twirlpop classic commercial" })).toBeInTheDocument();
     expect(screen.getByText("Estimating time remaining…")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Clip preparation" })).toHaveAttribute(
       "aria-valuenow",

@@ -42,8 +42,8 @@ type Stored = {
   lineup: LineupEntryDTO[];
 };
 
-const heat: LineupEntryDTO = { key: "movie:tmdb:949", name: "Heat", year: 1995 };
-const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
+const velvet: LineupEntryDTO = { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995 };
+const choir: LineupEntryDTO = { key: "movie:tmdb:90009426", name: "The Seventh Satellite Choir", year: 1991 };
 
 const stale = () =>
   HttpResponse.json(
@@ -63,7 +63,7 @@ const renderChannel = (
     name: "Late Night Noir",
     number: 1,
     policy: {},
-    lineup: [heat, pointBreak],
+    lineup: [velvet, choir],
   };
   const patches: UpdateChannelInputBody[] = [];
   const conflicts: number[] = [];
@@ -150,14 +150,14 @@ describe("channel saves", () => {
 
     // A policy edit, a lineup remove and a rename, all while the first save is still open.
     await typeEra(user, "1990", "1999");
-    await user.click(screen.getByRole("button", { name: "Remove Point Break" }));
+    await user.click(screen.getByRole("button", { name: "Remove The Seventh Satellite Choir" }));
     await rename(user, "Midnight Noir");
     release();
 
     await waitFor(() =>
       expect(stored).toMatchObject({
         name: "Midnight Noir",
-        lineup: [heat],
+        lineup: [velvet],
         policy: { scope: { dates: eraDates({ from: 1990, to: 1999 }) } },
       }),
     );
@@ -200,10 +200,10 @@ describe("channel saves", () => {
     const user = userEvent.setup();
 
     await typeEra(user, "1990", "1999");
-    await user.click(screen.getByRole("button", { name: "Remove Point Break" }));
+    await user.click(screen.getByRole("button", { name: "Remove The Seventh Satellite Choir" }));
 
     await waitFor(() => expect(stored.policy.scope?.dates).toEqual(eraDates({ from: 1990, to: 1999 })));
-    await waitFor(() => expect(stored.lineup).toEqual([heat]));
+    await waitFor(() => expect(stored.lineup).toEqual([velvet]));
     expect(stored.policy.ordering).toBe("chronological");
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -215,12 +215,14 @@ describe("channel saves", () => {
     const user = userEvent.setup();
 
     await screen.findByLabelText("From year");
-    await user.click(screen.getByRole("button", { name: "Remove Point Break" }));
+    await user.click(screen.getByRole("button", { name: "Remove The Seventh Satellite Choir" }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't save the channel"));
     expect(patches).toHaveLength(1);
-    expect(stored.lineup).toEqual([heat, pointBreak]);
-    expect(await screen.findByRole("button", { name: "Remove Point Break" })).toBeInTheDocument();
+    expect(stored.lineup).toEqual([velvet, choir]);
+    expect(
+      await screen.findByRole("button", { name: "Remove The Seventh Satellite Choir" }),
+    ).toBeInTheDocument();
   });
 
   it("surfaces a number collision on the field instead of retrying it as a stale edit", async () => {

@@ -9,7 +9,9 @@ import {
 import { createPlayUrlSourcePort } from "@loomarr/player/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const channels: PlayerChannel[] = [{ id: "simpsons", inAppPlayable: true, name: "Simpsons", number: 7 }];
+const channels: PlayerChannel[] = [
+  { id: "kettle-kids", inAppPlayable: true, name: "Kettle Kids", number: 7 },
+];
 const backoffMs = [1_000, 3_000, 7_000];
 
 const mintedSource = (): PlayerSourcePort => ({
@@ -70,7 +72,7 @@ describe("player automatic recovery", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(source.mint).toHaveBeenCalledTimes(2);
     expect(transport.replace).toHaveBeenCalledTimes(2);
-    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "simpsons" }, tuneReason: "retry" });
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "kettle-kids" }, tuneReason: "retry" });
   });
 
   it("returns to playing with no manual action once a retry succeeds", async () => {
@@ -130,8 +132,8 @@ describe("player automatic recovery", () => {
     emit({ attemptId: currentAttempt(), error: "HTTP 502", type: "error" });
 
     expect(reports).toEqual([
-      { attempt: 1, channelId: "simpsons", elapsedMs: 4_000, error: "BehindLiveWindow", fatal: false },
-      { attempt: 2, channelId: "simpsons", elapsedMs: 7_000, error: "HTTP 502", fatal: false },
+      { attempt: 1, channelId: "kettle-kids", elapsedMs: 4_000, error: "BehindLiveWindow", fatal: false },
+      { attempt: 2, channelId: "kettle-kids", elapsedMs: 7_000, error: "HTTP 502", fatal: false },
     ]);
   });
 
@@ -206,7 +208,7 @@ describe("a start the paired server refuses (#1455)", () => {
       return (next ?? started)(init);
     });
     // The real tune's master reads (a warm's carry mode=warm).
-    const masterRequests = (channelId = "simpsons") =>
+    const masterRequests = (channelId = "kettle-kids") =>
       request.mock.calls.filter(([input]) => {
         const url = String(input);
         return url.includes(`/${channelId}/master.m3u8`) && !url.includes("mode=warm");
@@ -245,26 +247,27 @@ describe("a start the paired server refuses (#1455)", () => {
     const { masterRequests, request, source } = pairedSource(started, refused);
     const two: PlayerChannel[] = [
       ...channels,
-      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+      { id: "lunar-lemmings", inAppPlayable: true, name: "Lunar Lemmings", number: 8 },
     ];
     const { controller, currentAttempt, emit, transport } = harness(source);
     await controller.reconcile(two);
     emit({ attemptId: currentAttempt(), type: "first-frame" });
     vi.mocked(transport.pause).mockClear();
 
-    await controller.tuneChannel("futurama");
+    await controller.tuneChannel("lunar-lemmings");
 
     expect(controller.getSnapshot()).toMatchObject({
-      channel: { id: "futurama" },
+      channel: { id: "lunar-lemmings" },
       error: reason,
       status: "failed",
     });
     expect(transport.pause).toHaveBeenCalledOnce();
     expect(transport.replace).toHaveBeenCalledOnce(); // the first channel's, never the refused one's
     // Held before the start request went out, not after the refusal came back.
-    expect(masterRequests("futurama")).toHaveLength(1);
+    expect(masterRequests("lunar-lemmings")).toHaveLength(1);
     const startIndex = request.mock.calls.findIndex(
-      ([input]) => String(input).includes("/futurama/master.m3u8") && !String(input).includes("mode=warm"),
+      ([input]) =>
+        String(input).includes("/lunar-lemmings/master.m3u8") && !String(input).includes("mode=warm"),
     );
     expect(vi.mocked(transport.pause).mock.invocationCallOrder[0]).toBeLessThan(
       request.mock.invocationCallOrder[startIndex] ?? 0,
@@ -281,9 +284,9 @@ describe("a start the paired server refuses (#1455)", () => {
     expect(transport.replace).toHaveBeenCalledWith(
       {
         expiresAt: Date.parse("2026-09-25T01:00:00Z"),
-        mediaUri: "https://loomarr.test/v1/playout/hls/simpsons/baseline/index.m3u8?sig=one",
+        mediaUri: "https://loomarr.test/v1/playout/hls/kettle-kids/baseline/index.m3u8?sig=one",
         serverTimeMs: Date.now() + 5_000,
-        uri: "https://loomarr.test/v1/playout/hls/simpsons/master.m3u8?sig=one",
+        uri: "https://loomarr.test/v1/playout/hls/kettle-kids/master.m3u8?sig=one",
       },
       expect.objectContaining({ attemptId: 1 }),
     );
@@ -328,7 +331,7 @@ describe("a start the paired server refuses (#1455)", () => {
     const { masterRequests, source } = pairedSource(pending, started);
     const two: PlayerChannel[] = [
       ...channels,
-      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+      { id: "lunar-lemmings", inAppPlayable: true, name: "Lunar Lemmings", number: 8 },
     ];
     const { controller, reports, transport } = harness(source);
 
@@ -337,13 +340,13 @@ describe("a start the paired server refuses (#1455)", () => {
     await controller.step(1);
     await first;
 
-    expect(masterRequests("simpsons")).toHaveLength(1);
-    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "futurama" } });
+    expect(masterRequests("kettle-kids")).toHaveLength(1);
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "lunar-lemmings" } });
     expect(controller.getSnapshot().status).not.toBe("failed");
     expect(reports).toEqual([]);
     expect(transport.replace).toHaveBeenCalledOnce();
     expect(transport.replace).toHaveBeenCalledWith(
-      expect.objectContaining({ uri: expect.stringContaining("/futurama/master.m3u8") }),
+      expect.objectContaining({ uri: expect.stringContaining("/lunar-lemmings/master.m3u8") }),
       expect.anything(),
     );
   });
@@ -352,7 +355,7 @@ describe("a start the paired server refuses (#1455)", () => {
     const { masterRequests, source } = pairedSource(started);
     const two: PlayerChannel[] = [
       ...channels,
-      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+      { id: "lunar-lemmings", inAppPlayable: true, name: "Lunar Lemmings", number: 8 },
     ];
     const { controller } = harness(source);
     await controller.reconcile(two);
@@ -360,8 +363,8 @@ describe("a start the paired server refuses (#1455)", () => {
 
     await controller.step(1);
 
-    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "futurama" }, status: "tuning" });
-    expect(masterRequests("futurama")).toHaveLength(0);
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "lunar-lemmings" }, status: "tuning" });
+    expect(masterRequests("lunar-lemmings")).toHaveLength(0);
   });
 
   it("reads a refused warm's master itself instead of handing it to the player", async () => {
@@ -370,7 +373,7 @@ describe("a start the paired server refuses (#1455)", () => {
     const { masterRequests, source } = pairedSource(started, refused);
     const two: PlayerChannel[] = [
       ...channels,
-      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+      { id: "lunar-lemmings", inAppPlayable: true, name: "Lunar Lemmings", number: 8 },
     ];
     const { controller, reports, transport } = harness(source);
     await controller.reconcile(two);
@@ -379,11 +382,11 @@ describe("a start the paired server refuses (#1455)", () => {
     await controller.step(1);
 
     expect(controller.getSnapshot()).toMatchObject({
-      channel: { id: "futurama" },
+      channel: { id: "lunar-lemmings" },
       error: reason,
       status: "failed",
     });
-    expect(masterRequests("futurama")).toHaveLength(1);
+    expect(masterRequests("lunar-lemmings")).toHaveLength(1);
     expect(transport.replace).toHaveBeenCalledOnce(); // only the first channel ever reached the player
     expect(reports).toEqual([expect.objectContaining({ fatal: true, status: 502 })]);
   });

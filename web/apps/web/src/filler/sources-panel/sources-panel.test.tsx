@@ -843,9 +843,9 @@ describe("SourcesPanel per-source search", () => {
       getDiscoverFillerMockHandler({
         items: [
           {
-            id: "CampbellsSoupAdvert",
-            title: "Campbell's Soup",
-            url: "https://archive.org/details/CampbellsSoupAdvert",
+            id: "HearthpotsSoupAdvert",
+            title: "Hearthpot's Soup",
+            url: "https://archive.org/details/HearthpotsSoupAdvert",
           },
         ],
         total: 1,
@@ -858,15 +858,15 @@ describe("SourcesPanel per-source search", () => {
     await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
 
     await waitFor(() => {
       expect(sourceItems).toEqual([
         {
           sourceId: "archive:classic",
           body: {
-            remoteId: "CampbellsSoupAdvert",
-            url: "https://archive.org/details/CampbellsSoupAdvert",
+            remoteId: "HearthpotsSoupAdvert",
+            url: "https://archive.org/details/HearthpotsSoupAdvert",
           },
         },
       ]);
@@ -881,9 +881,9 @@ describe("SourcesPanel per-source search", () => {
       getDiscoverFillerMockHandler({
         items: [
           {
-            id: "CampbellsSoupAdvert",
-            title: "Campbell's Soup",
-            url: "https://archive.org/details/CampbellsSoupAdvert",
+            id: "HearthpotsSoupAdvert",
+            title: "Hearthpot's Soup",
+            url: "https://archive.org/details/HearthpotsSoupAdvert",
           },
         ],
         total: 1,
@@ -921,7 +921,7 @@ describe("SourcesPanel per-source search", () => {
     await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
 
     expect(await screen.findByText("Couldn’t add")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
@@ -934,9 +934,9 @@ describe("SourcesPanel per-source search", () => {
       getDiscoverFillerMockHandler({
         items: [
           {
-            id: "CampbellsSoupAdvert",
-            title: "Campbell's Soup",
-            url: "https://archive.org/details/CampbellsSoupAdvert",
+            id: "HearthpotsSoupAdvert",
+            title: "Hearthpot's Soup",
+            url: "https://archive.org/details/HearthpotsSoupAdvert",
           },
         ],
         total: 1,
@@ -948,7 +948,7 @@ describe("SourcesPanel per-source search", () => {
     await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /queue download: campbell's soup/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
     expect(await screen.findByText("Downloading…")).toBeInTheDocument();
     first.unmount();
 

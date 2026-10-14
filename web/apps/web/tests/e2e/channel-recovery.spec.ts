@@ -60,7 +60,7 @@ test("a failed builder journey preserves the complete intent through authorized 
   await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
   await page.getByLabel("Target length (minutes)").fill("180");
-  await page.getByLabel("Must include").fill("Heat, Point Break");
+  await page.getByLabel("Must include").fill("The Velvet Cartographer, The Seventh Satellite Choir");
   await page.getByLabel("Must exclude").fill("clowns");
 
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
@@ -80,7 +80,9 @@ test("a failed builder journey preserves the complete intent through authorized 
   await page.getByRole("button", { name: "Add details" }).click();
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
   await expect(page.getByLabel("Target length (minutes)")).toHaveValue("180");
-  await expect(page.getByLabel("Must include")).toHaveValue("Heat, Point Break");
+  await expect(page.getByLabel("Must include")).toHaveValue(
+    "The Velvet Cartographer, The Seventh Satellite Choir",
+  );
   await expect(page.getByLabel("Must exclude")).toHaveValue("clowns");
 
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
@@ -90,14 +92,14 @@ test("a failed builder journey preserves the complete intent through authorized 
       description: "90s action movies",
       era: "1990s",
       runtimeTargetMin: 180,
-      mustInclude: ["Heat", "Point Break"],
+      mustInclude: ["The Velvet Cartographer", "The Seventh Satellite Choir"],
       mustExclude: ["clowns"],
     },
     {
       description: "90s action movies",
       era: "1990s",
       runtimeTargetMin: 180,
-      mustInclude: ["Heat", "Point Break"],
+      mustInclude: ["The Velvet Cartographer", "The Seventh Satellite Choir"],
       mustExclude: ["clowns"],
     },
   ]);
@@ -121,7 +123,7 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
         version: 1,
         jobId: "failed-job-1",
         milestone: "failed",
-        intent: { description: "Create a TGIF channel" },
+        intent: { description: "Create a QFUN channel" },
         attempts: [],
         failure: {
           code: "budget_exhausted",
@@ -139,7 +141,7 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
 
   await page.goto("/guide");
   await page.getByRole("button", { name: "Add a channel" }).click();
-  await page.getByRole("textbox", { name: "Channel intent" }).fill("Create a TGIF channel");
+  await page.getByRole("textbox", { name: "Channel intent" }).fill("Create a QFUN channel");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
   const recovery = page.getByRole("alert");
@@ -148,7 +150,7 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
   await expect(recovery).toContainText("Try again. If this keeps happening, add a few example titles.");
   await expect(recovery).not.toContainText(/budget|more specific|too many possible directions/i);
   await page.getByRole("button", { name: "Edit description" }).click();
-  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a TGIF channel");
+  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("Create a QFUN channel");
 });
 
 test("discarding clears a deep-linked Journey so a reload is genuinely fresh", async ({ page }) => {
@@ -163,7 +165,7 @@ test("discarding clears a deep-linked Journey so a reload is genuinely fresh", a
   await expect.poll(() => mock.state.proposalJobRequests).toHaveLength(1);
 
   await page.goto("/guide?job=proposal-job-1&intent=stale%20template");
-  await expect(page.getByText("Heat")).toBeVisible();
+  await expect(page.getByText("The Velvet Cartographer")).toBeVisible();
   await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   await expect(page).toHaveURL(/\/guide$/);

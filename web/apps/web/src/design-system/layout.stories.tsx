@@ -16,10 +16,10 @@ const ProgrammeRegion = ({ density }: { density: Density }) => (
       NOW PLAYING
     </Text>
     <Text density={density} textRole="display">
-      Marge vs. the Monorail
+      The Monorail Pitch
     </Text>
     <Text density={density} textRole="body">
-      A fast-talking stranger convinces Springfield to build a monorail with a suspicious windfall.
+      A fast-talking stranger convinces Puddleford to build a monorail with a suspicious windfall.
     </Text>
   </Surface>
 );
