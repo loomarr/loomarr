@@ -8,7 +8,7 @@ import (
 
 func TestValidateDateMeaningRejectsMalformedValues(t *testing.T) {
 	index := 0
-	intent := Intent{Description: "café classics", Era: "the nineties", MustInclude: []string{"épisodes", "Star Trek"}}
+	intent := Intent{Description: "café classics", Era: "the nineties", MustInclude: []string{"épisodes", "Kestrel One"}}
 	validAnchor := DateAnchor{Field: DateAnchorDescription, Start: 0, End: 4}
 	cases := []struct {
 		name    string
@@ -58,8 +58,8 @@ func TestValidateIntentDateMeaningRequiresExplicitDateAcknowledgement(t *testing
 
 func TestValidateIntentDateMeaningDoesNotTreatBareTitleYearAsFilter(t *testing.T) {
 	for _, description := range []string{
-		"Build a channel around 2001: A Space Odyssey.",
-		"Build a channel around That '70s Show.",
+		"Build a channel around 2001: A Lighthouse Odyssey.",
+		"Build a channel around That '70s Kitchen.",
 	} {
 		if _, err := validateIntentDateMeaning(Intent{Description: description}, &DateMeaning{Kind: DateMeaningNone}); err != nil {
 			t.Fatalf("description %q: %v", description, err)

@@ -22,27 +22,27 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
-			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
-			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
+			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
+			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
-			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
-			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
+			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
+			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
-			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
-			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
+			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
+			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
-			{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"},
-			{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},
-			{"mediaType":"movie","key":"movie:tmdb:101","name":"The Rock"}
+			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
+			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
+			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
 	)
 	toolOrders := &toolOrderRecorder{}
@@ -50,9 +50,9 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	h := newHarness(t, withLLM(llmMock), withJobWorkers(1))
 	admin := h.asAdmin()
 	h.ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-matrix", Name: "The Matrix", Type: "Movie", Year: 1999, TMDBID: 603, Genres: []string{"Action", "Science Fiction"}},
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-speed", Name: "Speed", Type: "Movie", Year: 1994, TMDBID: 100, Genres: []string{"Action", "Thriller"}},
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-rock", Name: "The Rock", Type: "Movie", Year: 1996, TMDBID: 101, Genres: []string{"Action", "Thriller"}},
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-marigold", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603, Genres: []string{"Action", "Science Fiction"}},
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-engines", Name: "Quiet Engines", Type: "Movie", Year: 1994, TMDBID: 90000100, Genres: []string{"Action", "Thriller"}},
+		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-heist", Name: "Lemon Tree Heist", Type: "Movie", Year: 1996, TMDBID: 90000101, Genres: []string{"Action", "Thriller"}},
 	)
 
 	ctx := context.Background()
@@ -78,9 +78,9 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	}
 
 	for _, body := range []string{
-		`{"scope":"household","targetKey":"movie:tmdb:603","action":"surprise"}`,
-		`{"scope":"channel","scopeId":"channel-a","targetKey":"movie:tmdb:603","action":"never"}`,
-		`{"scope":"channel","scopeId":"channel-b","targetKey":"movie:tmdb:100","action":"never"}`,
+		`{"scope":"household","targetKey":"movie:tmdb:90000603","action":"surprise"}`,
+		`{"scope":"channel","scopeId":"channel-a","targetKey":"movie:tmdb:90000603","action":"never"}`,
+		`{"scope":"channel","scopeId":"channel-b","targetKey":"movie:tmdb:90000100","action":"never"}`,
 	} {
 		if code := h.status(http.MethodPost, "/v1/discovery/feedback", body, admin); code != http.StatusOK {
 			t.Fatalf("record feedback %s = %d, want 200", body, code)
@@ -92,10 +92,10 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 
 	channelA, attemptA := awaitRecuratedProposalAfter(t, h, "job-channel-a", 0)
 	channelB, attemptB := awaitRecuratedProposalAfter(t, h, "job-channel-b", 0)
-	assertProposalKeys(t, channelA, []provision.Key{"movie:tmdb:100", "movie:tmdb:101"})
-	assertProposalKeys(t, channelB, []provision.Key{"movie:tmdb:101", "movie:tmdb:603"})
+	assertProposalKeys(t, channelA, []provision.Key{"movie:tmdb:90000100", "movie:tmdb:90000101"})
+	assertProposalKeys(t, channelB, []provision.Key{"movie:tmdb:90000101", "movie:tmdb:90000603"})
 
-	clear := `{"scope":"channel","scopeId":"channel-a","targetKey":"movie:tmdb:603"}`
+	clear := `{"scope":"channel","scopeId":"channel-a","targetKey":"movie:tmdb:90000603"}`
 	if code := h.status(http.MethodPost, "/v1/discovery/feedback/clear", clear, admin); code != http.StatusOK {
 		t.Fatalf("clear channel feedback = %d, want 200", code)
 	}
@@ -104,16 +104,16 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	}
 	clearedA, _ := awaitRecuratedProposalAfter(t, h, "job-channel-a", attemptA)
 	clearedB, _ := awaitRecuratedProposalAfter(t, h, "job-channel-b", attemptB)
-	assertProposalKeys(t, clearedA, []provision.Key{"movie:tmdb:100", "movie:tmdb:101", "movie:tmdb:603"})
-	assertProposalKeys(t, clearedB, []provision.Key{"movie:tmdb:101", "movie:tmdb:603"})
+	assertProposalKeys(t, clearedA, []provision.Key{"movie:tmdb:90000100", "movie:tmdb:90000101", "movie:tmdb:90000603"})
+	assertProposalKeys(t, clearedB, []provision.Key{"movie:tmdb:90000101", "movie:tmdb:90000603"})
 	if llmMock.Calls != 8 {
 		t.Fatalf("generator calls = %d, want 8 for four durable recurate attempts", llmMock.Calls)
 	}
 	toolOrders.capture(llmMock.LastMessages)
-	// The household surprise target is Matrix (603). It never boosts Matrix itself: when a
+	// The household surprise target is Marigold (90000603). It never boosts Marigold itself: when a
 	// Channel override does not exclude it, the grounded Thriller neighbors widen the batch
 	// ahead of the marked Action/Sci-Fi anchor. Channel-scoped never still wins first.
-	if got, want := toolOrders.all(), [][]provision.Key{{"movie:tmdb:100", "movie:tmdb:101"}, {"movie:tmdb:101", "movie:tmdb:603"}, {"movie:tmdb:100", "movie:tmdb:101", "movie:tmdb:603"}, {"movie:tmdb:101", "movie:tmdb:603"}}; !slices.EqualFunc(got, want, slices.Equal) {
+	if got, want := toolOrders.all(), [][]provision.Key{{"movie:tmdb:90000100", "movie:tmdb:90000101"}, {"movie:tmdb:90000101", "movie:tmdb:90000603"}, {"movie:tmdb:90000100", "movie:tmdb:90000101", "movie:tmdb:90000603"}, {"movie:tmdb:90000101", "movie:tmdb:90000603"}}; !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("grounded rank orders = %v, want %v", got, want)
 	}
 }

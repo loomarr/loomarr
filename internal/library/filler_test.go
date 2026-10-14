@@ -15,7 +15,7 @@ import (
 // when the item isn't found (so the scheduler falls back, never dead air).
 func TestItemDurationMs_FromRunTimeTicks(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
-	ms.ItemRunTimeTicks = 81786880000 // The Matrix: 2h16m
+	ms.ItemRunTimeTicks = 81786880000 // a feature film: 2h16m
 	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	dur, err := c.ItemDurationMs(context.Background(), "642595")

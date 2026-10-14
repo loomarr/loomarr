@@ -43,11 +43,11 @@ func TestDynamicAPIKey_RotatesAndClearsBetweenOperations(t *testing.T) {
 		return key.Load().(string)
 	}, script)
 
-	if _, err := client.Search(context.Background(), "matrix", 1); err != nil {
+	if _, err := client.Search(context.Background(), "marigold", 1); err != nil {
 		t.Fatal(err)
 	}
 	key.Store("key-b")
-	if _, err := client.Exists(context.Background(), provision.Movie, 603); err != nil {
+	if _, err := client.Exists(context.Background(), provision.Movie, 90000603); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +66,7 @@ func TestDynamicAPIKey_RotatesAndClearsBetweenOperations(t *testing.T) {
 
 	key.Store("  ")
 	before := script.Calls()
-	if _, err := client.Search(context.Background(), "matrix", 1); !errors.Is(err, ErrAPIKeyRequired) {
+	if _, err := client.Search(context.Background(), "marigold", 1); !errors.Is(err, ErrAPIKeyRequired) {
 		t.Fatalf("Search with cleared key error = %v, want ErrAPIKeyRequired", err)
 	}
 	if got := script.Calls(); got != before {
@@ -84,10 +84,10 @@ func TestDynamicAPIKey_EmptyFailsEveryOperationWithoutHTTP(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{"Search", func() error { _, err := client.Search(context.Background(), "matrix", 1); return err }},
+		{"Search", func() error { _, err := client.Search(context.Background(), "marigold", 1); return err }},
 		{"Discover", func() error { _, err := client.Discover(context.Background(), catalog.DiscoveryQuery{}, 1); return err }},
 		{"Recommendations", func() error {
-			_, err := client.Recommendations(context.Background(), provision.Movie, 603, 1)
+			_, err := client.Recommendations(context.Background(), provision.Movie, 90000603, 1)
 			return err
 		}},
 		{"Exists", func() error { _, err := client.Exists(context.Background(), provision.Movie, 0); return err }},
@@ -149,7 +149,7 @@ func TestDynamicAPIKey_SnapshotsMultiRequestOperation(t *testing.T) {
 		t.Errorf("provider calls during Discover = %d, want 1", got)
 	}
 
-	if _, err := client.Search(context.Background(), "matrix", 1); err != nil {
+	if _, err := client.Search(context.Background(), "marigold", 1); err != nil {
 		t.Fatal(err)
 	}
 	requests = script.Requests()
@@ -160,14 +160,14 @@ func TestDynamicAPIKey_SnapshotsMultiRequestOperation(t *testing.T) {
 
 func TestDynamicAPIKey_SnapshotsNestedOperation(t *testing.T) {
 	script := httpfixture.NewScriptedTransport(
-		httpfixture.Step{Response: testResponse(`{"tv_results":[{"id":1396}]}`)},
+		httpfixture.Step{Response: testResponse(`{"tv_results":[{"id":90001396}]}`)},
 		httpfixture.Step{Response: testResponse(`{"still_path":"/pilot.jpg"}`)},
 	)
 	var key atomic.Value
 	key.Store("key-a")
 	var providerCalls atomic.Int64
 	transport := httpfixture.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path == "/3/find/71663" {
+		if request.URL.Path == "/3/find/90071663" {
 			key.Store("key-b")
 		}
 		return script.RoundTrip(request)
@@ -177,7 +177,7 @@ func TestDynamicAPIKey_SnapshotsNestedOperation(t *testing.T) {
 		return key.Load().(string)
 	}, transport)
 
-	got, err := client.EpisodeStillURLByTVDB(context.Background(), 71663, 1, 1)
+	got, err := client.EpisodeStillURLByTVDB(context.Background(), 90071663, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestDynamicAPIKey_ConcurrentRotation(t *testing.T) {
 		go func() {
 			defer calls.Done()
 			for range operations {
-				_, err := client.Search(context.Background(), "matrix", 1)
+				_, err := client.Search(context.Background(), "marigold", 1)
 				errs <- err
 			}
 		}()

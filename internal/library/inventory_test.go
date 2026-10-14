@@ -18,7 +18,7 @@ const richInventoryItem = `{
   "Studios":[{"Name":"Example Studio"}],"People":[{"Name":"A. Actor","Type":"Actor","Role":"Lead"}],
   "ProductionYear":2024,"PremiereDate":"2024-01-02T00:00:00.0000000Z","OfficialRating":"TV-PG",
   "CommunityRating":8.4,"RunTimeTicks":18000000000,"DateLastSaved":"2026-09-01T12:00:00Z",
-  "ProviderIds":{"Tmdb":"900","Tvdb":"901"},"ImageTags":{"Primary":"art-tag"},
+  "ProviderIds":{"Tmdb":"90000900","Tvdb":"90000901"},"ImageTags":{"Primary":"art-tag"},
   "UserData":{"Played":true,"PlaybackPositionTicks":1234},
   "SeriesId":"series-1","SeasonId":"season-1","ParentIndexNumber":1,"IndexNumber":1,
   "FutureProviderFact":{"Nested":true},"ApiKey":"must-not-persist","Path":"/private/media/Pilot.mkv",
