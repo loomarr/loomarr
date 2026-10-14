@@ -8,7 +8,9 @@ import (
 // Only Halloween has mood aliases today, so the other broadcast windows are not reachable through
 // Judge yet; their edges, the January wrap and the moving Thanksgiving week are pinned here.
 func TestAiredInWindowEdges(t *testing.T) {
-	day := func(year int, month time.Month, d int) time.Time { return time.Date(year, month, d, 0, 0, 0, 0, time.UTC) }
+	day := func(year int, month time.Month, d int) time.Time {
+		return time.Date(year, month, d, 0, 0, 0, 0, time.UTC)
+	}
 	for _, tt := range []struct {
 		id    string
 		aired time.Time

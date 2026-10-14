@@ -81,7 +81,9 @@ func TestJudgeHalloweenFloor(t *testing.T) {
 // is what proves them (§6); without it the episode title still fits the mood; a date alone or a
 // mood word in an ordinary overview proves nothing.
 func TestJudgeHalloweenEpisodes(t *testing.T) {
-	day := func(year int, month time.Month, d int) time.Time { return time.Date(year, month, d, 0, 0, 0, 0, time.UTC) }
+	day := func(year int, month time.Month, d int) time.Time {
+		return time.Date(year, month, d, 0, 0, 0, 0, time.UTC)
+	}
 	episode := func(title, overview string, aired time.Time) holidayvocab.Evidence {
 		return holidayvocab.Evidence{Title: title, Text: []string{overview}, Episode: true, AirDate: aired}
 	}
@@ -129,7 +131,9 @@ func TestJudgeHalloweenEpisodes(t *testing.T) {
 
 // Each holiday's broadcast window, including the ones that wrap into January.
 func TestJudgeEpisodeAirWindows(t *testing.T) {
-	day := func(year int, month time.Month, d int) time.Time { return time.Date(year, month, d, 0, 0, 0, 0, time.UTC) }
+	day := func(year int, month time.Month, d int) time.Time {
+		return time.Date(year, month, d, 0, 0, 0, 0, time.UTC)
+	}
 	for _, tt := range []struct {
 		id, text string
 		aired    time.Time
