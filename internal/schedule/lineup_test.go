@@ -204,7 +204,7 @@ func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(
 func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
 	key := provision.Key("series:tmdb:90000456")
 	episodes := []schedule.ResolvedProgram{
-		{LibraryItemID: "near-match", Title: "The Halloweeners", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "near-match", Title: "The Halloweenites", DurationMs: 1, Season: 1, Episode: 1},
 		{LibraryItemID: "match", Title: "A Halloween Story", DurationMs: 1, Season: 1, Episode: 2},
 		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 3},
 	}
@@ -233,7 +233,7 @@ func TestComputeDesiredHolidaySelectionNeedsTheHolidayNotAMoodWord(t *testing.T)
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "ghost", Title: "Grandpa's Attic", Overview: "Tansy is sure a ghost lives upstairs.", DurationMs: 1, Season: 3, Episode: 1},
 		{LibraryItemID: "special", Title: "Treetop of Terror II", Overview: "The annual Halloween special: three spooky tales.", DurationMs: 1, Season: 3, Episode: 7},
-		{LibraryItemID: "haunted-tag", Title: "Night Moves", Tags: []string{"haunted"}, DurationMs: 1, Season: 3, Episode: 9},
+		{LibraryItemID: "haunted-tag", Title: "Night Lanterns", Tags: []string{"haunted"}, DurationMs: 1, Season: 3, Episode: 9},
 	}
 	october := time.Date(2026, time.October, 20, 20, 0, 0, 0, time.UTC)
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{

@@ -157,8 +157,8 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 // ── The unscored-adjacency floor (§8.3) ──────────────────────────────────────────────────
 
 // adjItem is an acquisition candidate that came from the adjacency corpus.
-func adjItem(tmdbID int, name string, confidence float64) suggest.ProposalItem {
-	it := acqItem(tmdbID, name, confidence)
+func adjItem(n int, name string, confidence float64) suggest.ProposalItem {
+	it := acqItem(n, name, confidence)
 	it.Source = string(catalog.ScopeAdjacent)
 	return it
 }
