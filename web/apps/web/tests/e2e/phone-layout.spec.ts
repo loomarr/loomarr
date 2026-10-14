@@ -67,6 +67,25 @@ for (const viewport of PHONES) {
         await expectNothingClipped(page, `${tab.path} with every disclosure open`, viewport.width);
       });
     }
+
+    // A channel's pages as an admin, whose header holds the editable name: 25 characters, which a
+    // one-line field cut at both sizes. Its tab bar is one line that scrolls, so the active tab
+    // must be wholly in view, not merely reachable.
+    for (const section of ["watch", "info", "programming", "filler", "danger"]) {
+      test(`/channels/ch-1/${section} shows the whole name and its tab`, async ({ page }) => {
+        await installMockBackend(page, { authed: true, role: "admin", channelDetail: true });
+        await page.goto(`/channels/ch-1/${section}`);
+        await expect(page.getByLabel("Channel name")).toHaveValue("Saturday Morning Cartoons");
+        await expectNothingClipped(page, `/channels/ch-1/${section}`, viewport.width);
+
+        const bar = page.getByRole("navigation", { name: "Channel sections" });
+        const active = await bar.locator("[aria-current=page]").boundingBox();
+        const frame = await bar.boundingBox();
+        expect(
+          active && frame && active.x >= frame.x - 1 && active.x + active.width <= frame.x + frame.width + 1,
+        ).toBe(true);
+      });
+    }
   });
 }
 
