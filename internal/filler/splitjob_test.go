@@ -940,8 +940,8 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
 	tools := &fakeTools{chapters: []filler.Chapter{
-		{StartMs: 0, EndMs: 30000, Title: "McDonald's"},
-		{StartMs: 30000, EndMs: 61000, Title: "Lego"},
+		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
+		{StartMs: 30000, EndMs: 61000, Title: "Brickle"},
 	}}
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["fast_food"]}`),
@@ -962,7 +962,7 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	// on segments whose only input was a generated name. Tagging happens on each spawned segment's
 	// own `tag` rung now, and the grounding rule it must obey is tested at `Classify` itself
 	// (`TestClassify_UngroundedEraBecomesSuggestion`, `TestClassify_EraGroundedBySourceText`).
-	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" || p.Segments[1].Name != "Lego" {
+	if len(p.Segments) != 2 || p.Segments[0].Name != "Burger Barn" || p.Segments[1].Name != "Brickle" {
 		t.Errorf("proposal = %+v", p.Segments)
 	}
 	// Persisted — review happens later, possibly after a restart.
@@ -1293,8 +1293,8 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	tools := &fakeTools{ // no chapters, no black, no silence — the measured shape
 		transcripts: map[string][]filler.TranscriptSegment{
 			"0:149000": {
-				{StartMs: 0, EndMs: 27000, Text: "The Swiffer sweeper picks up dust"},
-				{StartMs: 27400, EndMs: 54000, Text: "Aqua Globes water your plants since 1987"},
+				{StartMs: 0, EndMs: 27000, Text: "The Dustwick sweeper picks up dust"},
+				{StartMs: 27400, EndMs: 54000, Text: "Drip Orbs water your plants since 1987"},
 				{StartMs: 54000, EndMs: 149000, Text: "Call now for the amazing knife set"},
 			},
 		},
@@ -1302,10 +1302,10 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		// 1: the rescue — three adverts, cut at 27.4s exactly (the measured cut).
 		testkit.FinalResponse(`{"adverts":[
-			{"start":"00:00","end":"00:27","product":"Swiffer"},
-			{"start":"00:27","end":"00:54","product":"Aqua Globes"},
+			{"start":"00:00","end":"00:27","product":"Dustwick"},
+			{"start":"00:27","end":"00:54","product":"Drip Orbs"},
 			{"start":"00:54","end":"02:29","product":"amazing knife set"}]}`),
-		// 2-4: classify each rescued segment. The Aqua Globes era is grounded
+		// 2-4: classify each rescued segment. The Drip Orbs era is grounded
 		// ("since 1987" IS in the transcript); the knife era is INVENTED.
 		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
 		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["tech"]}`),
@@ -1323,7 +1323,7 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	if p.Structure == nil || len(p.Structure.Boundaries) != 2 || p.Structure.Boundaries[0].Status != filler.BoundaryUnresolved || p.Structure.Kind != filler.StructureAmbiguous {
 		t.Fatalf("transcript rescue was treated as certifying structure: %+v", p.Structure)
 	}
-	if p.Segments[1].Name != "Aqua Globes" || p.Segments[1].StartMs != 27_000 {
+	if p.Segments[1].Name != "Drip Orbs" || p.Segments[1].StartMs != 27_000 {
 		t.Errorf("rescued boundary wrong: %+v", p.Segments[1])
 	}
 	// ⚠ The era-grounding assertions that stood here MOVED, they were not dropped (§8 is not
@@ -1419,8 +1419,8 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	existing := filler.StoreClip{}
 	// ⚠ A distinct, non-empty hash. Left empty, this clip and any other unhashed fixture share
 	// the map key "" — the collapsed-key trap that has now hidden four separate bugs in this file.
-	existing.Hash = "hash-of-old/mcdonalds.mp4"
-	existing.Path = "old/mcdonalds.mp4"
+	existing.Hash = "hash-of-old/burgerbarn.mp4"
+	existing.Path = "old/burgerbarn.mp4"
 	existing.DurationMs = 30_000
 	st.clips[existing.Hash] = existing
 
@@ -1435,10 +1435,10 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	tools := &fakeTools{
 		blacks: []filler.Interval{{StartMs: 29800, EndMs: 30200}},
 		grayFrames: map[string][][]byte{
-			key3("1987.mp4", 0, 30000):       {dupFrame},
-			key3("1987.mp4", 30000, 60_000):  {compFrame}, // matches ONLY the compilation
-			key3("1987.mp4", 0, 60_000):      {compFrame}, // the compilation, hashed whole
-			key3("mcdonalds.mp4", 0, 30_000): {dupFrame},
+			key3("1987.mp4", 0, 30000):        {dupFrame},
+			key3("1987.mp4", 30000, 60_000):   {compFrame}, // matches ONLY the compilation
+			key3("1987.mp4", 0, 60_000):       {compFrame}, // the compilation, hashed whole
+			key3("burgerbarn.mp4", 0, 30_000): {dupFrame},
 		},
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir())
@@ -1447,7 +1447,7 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Segments[0].DupOf != "old/mcdonalds.mp4" {
+	if p.Segments[0].DupOf != "old/burgerbarn.mp4" {
 		t.Errorf("duplicate not flagged: %+v", p.Segments[0])
 	}
 	// ⚠ The compilation itself is EXCLUDED from the candidate set — otherwise
@@ -1756,8 +1756,8 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	hash = bindCompilationIdentity(t, st, hash, src)
 	stageParentForSplitReview(st, hash)
 	tools := &fakeTools{chapters: []filler.Chapter{
-		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
-		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
+		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		{StartMs: 61_000, EndMs: 91_000, Title: "Boundary edit"},
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
@@ -1783,8 +1783,8 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	// The operator's EDITED list accepts tags but also forges language evidence. Language is detector
 	// evidence, not an editable tag: Confirm must bind it back to the persisted exact intervals.
 	edited := []filler.SplitSegment{
-		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
-		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
+		{StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
+		{StartMs: 30000, EndMs: 61000, Name: "Brickle", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
 		// Moving the start makes this a different audio span, so even a truthful copied answer must
 		// not bypass the child's downstream language check.
 		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", Era: 1987, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
@@ -1834,13 +1834,13 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	for _, segment := range segments {
 		confirmedNames[segment.Name] = true
 	}
-	for _, want := range []string{"McDonald's", "Lego", "Edited boundary"} {
+	for _, want := range []string{"Burger Barn", "Brickle", "Edited boundary"} {
 		if !confirmedNames[want] {
 			t.Errorf("confirmed child names = %v; missing operator-chosen name %q", confirmedNames, want)
 		}
 	}
 	for _, seg := range segments {
-		wantLanguage := map[string]string{"McDonald's": "en", "Lego": filler.LangNone, "Edited boundary": ""}[seg.Name]
+		wantLanguage := map[string]string{"Burger Barn": "en", "Brickle": filler.LangNone, "Edited boundary": ""}[seg.Name]
 		if seg.Language != wantLanguage {
 			t.Errorf("confirmed segment %q language = %q, want inherited %q", seg.Name, seg.Language, wantLanguage)
 		}

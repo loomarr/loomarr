@@ -85,10 +85,11 @@ func TestCoordinator_OneBadModelAnswerDoesNotStarveLaterClips(t *testing.T) {
 }
 
 func TestRunner_BoundsAndStampsTheDeterministicPass(t *testing.T) {
-	repository := &runnerRepository{candidates: []fillerenrichment.Candidate{{ClipHash: "hp", Path: "hp.mp4", Name: "HP Sauce Advert", Kind: "commercial"}}}
+	repository := &runnerRepository{candidates: []fillerenrichment.Candidate{{ClipHash: "brambly", Path: "brambly.mp4", Name: "Brambly Sauce Advert", Kind: "commercial"}}}
 	now := time.Unix(100, 0).UTC()
 	runner := fillerenrichment.NewRunner(repository, func(_ context.Context, candidate fillerenrichment.Candidate, _ time.Time) (fillerenrichment.Signals, error) {
-		return fillerenrichment.Signals{Description: "An advert for HP Sauce broadcast 1999 on Five."}, nil
+		// "on Five" stays real: it is the network phrase deterministic.go recognizes (fiveNetwork).
+		return fillerenrichment.Signals{Description: "An advert for Brambly Sauce broadcast 1999 on Five."}, nil
 	}, func() int { return 10 }, func() time.Time { return now })
 	result, err := runner.Run(context.Background())
 	if err != nil || result.Considered != 1 || result.Updated != len(fillerenrichment.DeterministicAxes) {
@@ -98,7 +99,7 @@ func TestRunner_BoundsAndStampsTheDeterministicPass(t *testing.T) {
 		t.Fatalf("passes = %d", len(repository.passes))
 	}
 	pass := repository.passes[0]
-	if pass.ClipHash != "hp" || pass.Producer != fillerenrichment.DeterministicProducer ||
+	if pass.ClipHash != "brambly" || pass.Producer != fillerenrichment.DeterministicProducer ||
 		pass.ProducerVersion != fillerenrichment.DeterministicProducerVersion || !pass.CompletedAt.Equal(now) {
 		t.Fatalf("pass = %+v", pass)
 	}
@@ -108,12 +109,12 @@ func TestCoordinator_UsesOneModelCallOnlyForStillEmptyAxes(t *testing.T) {
 	now := time.Unix(200, 0).UTC()
 	repository := &runnerRepository{
 		candidates: []fillerenrichment.Candidate{{
-			ClipHash: "tootsie", Name: "Tootsie Pop Classic Commercial", Kind: "commercial",
+			ClipHash: "twirlpop", Name: "Twirlpop Classic Commercial", Kind: "commercial",
 		}},
 		states: map[string][]fillerenrichment.State{
-			"tootsie": {{
-				ClipHash: "tootsie", Axis: fillerenrichment.AxisBrand, Status: fillerenrichment.StatusComplete,
-				Value: fillerenrichment.Value{Text: "Tootsie Pop"}, Evidence: fillerenrichment.Evidence{
+			"twirlpop": {{
+				ClipHash: "twirlpop", Axis: fillerenrichment.AxisBrand, Status: fillerenrichment.StatusComplete,
+				Value: fillerenrichment.Value{Text: "Twirlpop"}, Evidence: fillerenrichment.Evidence{
 					Kind: fillerenrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
 					Producer: fillerenrichment.DeterministicProducer, ProducerVersion: fillerenrichment.DeterministicProducerVersion,
 					ObservedAt: now,
@@ -128,7 +129,7 @@ func TestCoordinator_UsesOneModelCallOnlyForStillEmptyAxes(t *testing.T) {
 		},
 	}
 	provider := &textProvider{responses: []string{`{"items":[{
-		"id":"tootsie","audience":"kids","brand":"A made-up brand","product":["candy"],
+		"id":"twirlpop","audience":"kids","brand":"A made-up brand","product":["candy"],
 		"format":["commercial"],"presentation":["animated"],
 		"seasonal":["candy"],"audienceCue":["kids-cue"],"confidence":88
 	}]}`}}

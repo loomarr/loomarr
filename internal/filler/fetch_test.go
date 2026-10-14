@@ -301,19 +301,19 @@ func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
 
 func TestFetch_YouTubePrefersDifferentCampaignsOverShortAndLongCuts(t *testing.T) {
 	short := youtubeRef("qb-15", 15*time.Second)
-	short.Title = "JM X NFL QB Danny :15 sec. spot"
+	short.Title = "HH X GFL QB Rory :15 sec. spot"
 	long := youtubeRef("qb-30", 30*time.Second)
-	long.Title = "JM X NFL QB Danny :30 sec. spot"
+	long.Title = "HH X GFL QB Rory :30 sec. spot"
 	other := youtubeRef("hot-takes", 30*time.Second)
 	other.Title = "Hot Takes - 30 Sec"
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{
-			ID: "youtube:jersey-mikes", Kind: "youtube", URI: "https://youtube.com/@jerseymikes/videos", Enabled: true,
+			ID: "youtube:hoagie-hut", Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
 		offers: []filler.DiscoveredRef{short, long, other},
 	}
 
-	res, err := newFetcher(t, stub, limits(2, 2000)).RunSource(t.Context(), "youtube:jersey-mikes")
+	res, err := newFetcher(t, stub, limits(2, 2000)).RunSource(t.Context(), "youtube:hoagie-hut")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,18 +323,18 @@ func TestFetch_YouTubePrefersDifferentCampaignsOverShortAndLongCuts(t *testing.T
 }
 
 func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
-	const sourceID = "youtube:jersey-mikes"
+	const sourceID = "youtube:hoagie-hut"
 	short := youtubeRef("qb-15", 15*time.Second)
-	short.Title = "JM X NFL QB Danny :15 sec. spot"
+	short.Title = "HH X GFL QB Rory :15 sec. spot"
 	long := youtubeRef("qb-30", 30*time.Second)
-	long.Title = "JM X NFL QB Danny :30 sec. spot"
+	long.Title = "HH X GFL QB Rory :30 sec. spot"
 	firstOther := youtubeRef("hot-takes", 30*time.Second)
 	firstOther.Title = "Hot Takes - 30 Sec"
 	secondOther := youtubeRef("remember", 30*time.Second)
 	secondOther.Title = "Remember Get It Before Its Gone - 30 Sec"
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{
-			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@jerseymikes/videos", Enabled: true,
+			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
 		offers: []filler.DiscoveredRef{short, firstOther, secondOther, long},
 	}
@@ -642,11 +642,11 @@ func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
 func TestFetch_SkipsCataloguedArchiveOutputTemplatePath(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-		paths:   []string{"CampbellsSoupAdvert - Campbell's Soup Advert 1993.mp4"},
-		offers:  refs("CampbellsSoupAdvert", "new-ad"),
+		paths:   []string{"HearthpotsSoupAdvert - Hearthpot's Soup Advert 1993.mp4"},
+		offers:  refs("HearthpotsSoupAdvert", "new-ad"),
 	}
 	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
-		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "CampbellsSoupAdvert"}).Key(): filler.RemoteCatalogued,
+		(filler.RemoteIdentity{Provider: "archive", SourceID: "s1", RemoteID: "HearthpotsSoupAdvert"}).Key(): filler.RemoteCatalogued,
 	}).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)

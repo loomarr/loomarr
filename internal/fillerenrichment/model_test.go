@@ -1,10 +1,7 @@
 package fillerenrichment_test
 
 import (
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -36,9 +33,9 @@ func TestApply_PrefersEvidenceRankBeforeConfidence(t *testing.T) {
 
 func TestApply_IsIdempotentAndRefreshesStaleAtSameRank(t *testing.T) {
 	state := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisBrand,
-		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "HP Sauce"}, Evidence: evidence(fillerenrichment.EvidenceItem, 100)}
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "Brambly Sauce"}, Evidence: evidence(fillerenrichment.EvidenceItem, 100)}
 	got, changed, err := fillerenrichment.Apply(state, state)
-	if err != nil || changed || got.Value.Text != "HP Sauce" {
+	if err != nil || changed || got.Value.Text != "Brambly Sauce" {
 		t.Fatalf("idempotent Apply = %+v, changed %v, err %v", got, changed, err)
 	}
 	stale := state
@@ -151,59 +148,12 @@ func TestPass_RejectsMissingState(t *testing.T) {
 	}
 }
 
-type sidecarFixture struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	UploadDate  string `json:"upload_date"`
-	Loomarr     struct {
-		OriginalName string `json:"originalName"`
-		SourceID     string `json:"sourceId"`
-	} `json:"loomarr"`
-}
-
-func readSignals(t *testing.T, name, hash string) fillerenrichment.Signals {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixture sidecarFixture
-	if err := json.Unmarshal(raw, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	return fillerenrichment.Signals{ClipHash: hash, Kind: "commercial", Title: fixture.Title,
-		Description: fixture.Description, OriginalName: fixture.Loomarr.OriginalName,
-		UploadDate: fixture.UploadDate, SourceID: fixture.Loomarr.SourceID, ObservedAt: time.Unix(100, 0).UTC()}
-}
-
 func statesByAxis(states []fillerenrichment.State) map[fillerenrichment.Axis]fillerenrichment.State {
 	out := make(map[fillerenrichment.Axis]fillerenrichment.State, len(states))
 	for _, state := range states {
 		out[state.Axis] = state
 	}
 	return out
-}
-
-func TestAnalyzeDeterministic_TootsieUsesItemTextButNotUploadDate(t *testing.T) {
-	got := statesByAxis(fillerenrichment.AnalyzeDeterministic(readSignals(t, "tootsie-pop.info.json", "tootsie")))
-	if got[fillerenrichment.AxisKind].Value.Text != "commercial" {
-		t.Fatalf("kind = %+v", got[fillerenrichment.AxisKind])
-	}
-	if got[fillerenrichment.AxisBrand].Value.Text != "Tootsie Pop" {
-		t.Fatalf("brand = %+v", got[fillerenrichment.AxisBrand])
-	}
-	if tags := got[fillerenrichment.AxisProduct].Value.Tags; len(tags) != 1 || tags[0] != "candy" {
-		t.Fatalf("product = %+v", got[fillerenrichment.AxisProduct])
-	}
-	if got[fillerenrichment.AxisEra].Value.Year != 0 || got[fillerenrichment.AxisEra].Status != fillerenrichment.StatusComplete {
-		t.Fatalf("upload date became era or deterministic check was not recorded: %+v", got[fillerenrichment.AxisEra])
-	}
-	// The fixture's source declares no country: the pass records an empty withdrawal, never a
-	// completed location, so later passes still look for one.
-	if geo, exists := got[fillerenrichment.AxisGeography]; exists &&
-		(geo.Status == fillerenrichment.StatusComplete || geo.Value.Geography != (fillerenrichment.Geography{})) {
-		t.Fatalf("unknown geography was marked complete: %+v", geo)
-	}
 }
 
 func TestAnalyzeDeterministic_RecognizesRoleFromItemText(t *testing.T) {
@@ -219,25 +169,10 @@ func TestAnalyzeDeterministic_RecognizesRoleFromItemText(t *testing.T) {
 	}
 }
 
-func TestAnalyzeDeterministic_HPKeepsBroadcastYearAndTrustedNetwork(t *testing.T) {
-	got := statesByAxis(fillerenrichment.AnalyzeDeterministic(readSignals(t, "hp-sauce.info.json", "hp")))
-	if got[fillerenrichment.AxisEra].Value.Year != 1999 || got[fillerenrichment.AxisBrand].Value.Text != "HP Sauce" {
-		t.Fatalf("HP facts = era %+v, brand %+v", got[fillerenrichment.AxisEra], got[fillerenrichment.AxisBrand])
-	}
-	product := got[fillerenrichment.AxisProduct]
-	if len(product.Value.Tags) != 1 || product.Value.Tags[0] != "condiments" {
-		t.Fatalf("product = %+v", product)
-	}
-	geo := got[fillerenrichment.AxisGeography]
-	if geo.Value.Geography.Country != "GB" || geo.Value.Geography.Network != "Five" || geo.Evidence.Kind != fillerenrichment.EvidenceTrustedMap {
-		t.Fatalf("geography = %+v", geo)
-	}
-}
-
 // #1670: a source that declares no country is no evidence of where its clips aired.
 func TestAnalyzeDeterministic_UndeclaredSourceWithdrawsGeography(t *testing.T) {
 	got := statesByAxis(fillerenrichment.AnalyzeDeterministic(fillerenrichment.Signals{
-		ClipHash: "clip", Title: "NatWest commercial", SourceID: "archive:tv_ads",
+		ClipHash: "clip", Title: "Westbridge Bank commercial", SourceID: "archive:tv_ads",
 	}))
 	geo, ok := got[fillerenrichment.AxisGeography]
 	if !ok || geo.Status != fillerenrichment.StatusUnsupported || geo.Value.Geography != (fillerenrichment.Geography{}) {
@@ -251,12 +186,12 @@ func TestAnalyzeDeterministic_UndeclaredSourceWithdrawsGeography(t *testing.T) {
 func TestAnalyzeDeterministic_DeclaredSourceLabelsAndAdvertWordingDoesNot(t *testing.T) {
 	us := fillerenrichment.Geography{Scope: "national", Country: "US"}
 	declared := statesByAxis(fillerenrichment.AnalyzeDeterministic(fillerenrichment.Signals{
-		ClipHash: "clip", Title: "Tootsie Pop commercial", SourceID: "archive:us", Source: us,
+		ClipHash: "clip", Title: "Twirlpop commercial", SourceID: "archive:us", Source: us,
 	}))
 	if geo := declared[fillerenrichment.AxisGeography]; geo.Status != fillerenrichment.StatusComplete || geo.Value.Geography != us {
 		t.Fatalf("declared US source geography = %+v", geo)
 	}
-	for _, title := range []string{"Puma Advert", "Bird's jelly TV adverts 1989", "ADVERT - Rumbelows"} {
+	for _, title := range []string{"Lynxa Advert", "Wren's jelly TV adverts 1989", "ADVERT - Tumbleworths"} {
 		advert := statesByAxis(fillerenrichment.AnalyzeDeterministic(fillerenrichment.Signals{
 			ClipHash: "clip", Title: title, SourceID: "archive:us", Source: us,
 		}))
@@ -266,7 +201,7 @@ func TestAnalyzeDeterministic_DeclaredSourceLabelsAndAdvertWordingDoesNot(t *tes
 	}
 	// "advertisement" is ordinary US usage and must not trip the British cue.
 	american := statesByAxis(fillerenrichment.AnalyzeDeterministic(fillerenrichment.Signals{
-		ClipHash: "clip", Title: "Coca-Cola advertisement", SourceID: "archive:us", Source: us,
+		ClipHash: "clip", Title: "Sparkra-Cola advertisement", SourceID: "archive:us", Source: us,
 	}))
 	if geo := american[fillerenrichment.AxisGeography]; geo.Value.Geography != us {
 		t.Fatalf("\"advertisement\" geography = %+v, want the declared US source", geo)

@@ -33,7 +33,7 @@ func TestProjectDetails_OwnsTheQuietUserFacingState(t *testing.T) {
 		state(fillerenrichment.AxisKind, fillerenrichment.Value{Text: "commercial"}, fillerenrichment.EvidenceItem),
 		state(fillerenrichment.AxisEra, fillerenrichment.Value{Year: 1999}, fillerenrichment.EvidenceItem),
 		state(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: "family"}, fillerenrichment.EvidenceInference),
-		state(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: "HP Sauce"}, fillerenrichment.EvidenceContent),
+		state(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: "Brambly Sauce"}, fillerenrichment.EvidenceContent),
 		state(fillerenrichment.AxisGeography, fillerenrichment.Value{Geography: fillerenrichment.Geography{
 			Scope: "national", Country: "GB",
 		}}, fillerenrichment.EvidenceTrustedMap),

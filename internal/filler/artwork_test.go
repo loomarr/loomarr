@@ -120,7 +120,7 @@ func fakeArtwork(starts *[]float64, fail bool) filler.ArtworkRenderer {
 // in different era folders, silently, with one overwriting the other.
 func TestArtworkPathsPreserveStructure(t *testing.T) {
 	for _, tc := range []struct{ in, still, anim string }{
-		{"1994/toys-transformers.mp4", "1994/toys-transformers.jpg", "1994/toys-transformers.webp"},
+		{"1994/toys-robo-rabbits.mp4", "1994/toys-robo-rabbits.jpg", "1994/toys-robo-rabbits.webp"},
 		{"1988/intro.mkv", "1988/intro.jpg", "1988/intro.webp"},
 		// The V38c sharded-hash layout, which is what real paths look like now.
 		{"14/36/14365f2b.mp4", "14/36/14365f2b.jpg", "14/36/14365f2b.webp"},

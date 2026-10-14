@@ -178,29 +178,29 @@ func runVision(t *testing.T, s *filler.VisionStage, c filler.StoreClip) bool {
 // THE grounding property: a brand that appears in the returned visibleText is PERSISTED.
 func TestVisionStage_PersistsBrandGroundedInVisibleText(t *testing.T) {
 	st := newFakeVisionStore()
-	// The model read "KELLOGG'S FROSTED FLAKES" off the box and named the advertiser — the brand
+	// The model read "BRIGHTFIELD'S CRUNCHLINGS" off the box and named the advertiser — the brand
 	// appears literally in the visible text, so it grounds.
-	prov := &scriptedProvider{answer: `{"visibleText":"KELLOGG'S FROSTED FLAKES","brand":"Kellogg's","era":0,"category":""}`}
+	prov := &scriptedProvider{answer: `{"visibleText":"BRIGHTFIELD'S CRUNCHLINGS","brand":"Brightfield's","era":0,"category":""}`}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the wordless clip did not apply")
 	}
 	got := st.tags["silent.mp4"]
-	if got.brand != "Kellogg's" {
-		t.Errorf("brand = %q, want %q grounded off the visible text", got.brand, "Kellogg's")
+	if got.brand != "Brightfield's" {
+		t.Errorf("brand = %q, want %q grounded off the visible text", got.brand, "Brightfield's")
 	}
-	if got.visibleText != "KELLOGG'S FROSTED FLAKES" {
+	if got.visibleText != "BRIGHTFIELD'S CRUNCHLINGS" {
 		t.Errorf("visibleText = %q, want the on-screen text recorded verbatim", got.visibleText)
 	}
 }
 
 // ⚠ THE load-bearing grounding test: a brand the model returns but that is NOT in the visibleText
-// is an INFERENCE (it "feels like a Coke ad"), and it is DROPPED — the era rule applied to pixels.
+// is an INFERENCE (it "feels like a Sparkra ad"), and it is DROPPED — the era rule applied to pixels.
 // This goes RED if groundVisionTags stops checking the brand against the visible text.
 func TestVisionStage_DropsBrandNotInVisibleText(t *testing.T) {
 	st := newFakeVisionStore()
-	// visibleText spells out something else entirely — "Coca-Cola" appears nowhere the model claims
+	// visibleText spells out something else entirely — "Sparkra-Cola" appears nowhere the model claims
 	// to have read, so it is a guess and must not persist.
-	prov := &scriptedProvider{answer: `{"visibleText":"ENJOY THE HOLIDAYS","brand":"Coca-Cola","era":0,"category":""}`}
+	prov := &scriptedProvider{answer: `{"visibleText":"ENJOY THE HOLIDAYS","brand":"Sparkra-Cola","era":0,"category":""}`}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
 	}
@@ -225,7 +225,7 @@ func TestVisionStage_DropsBrandNotInVisibleText(t *testing.T) {
 func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	st := newFakeVisionStore()
 	// The model fenced its answer exactly as llava does in dev. All THREE fields must survive the
-	// unwrap: "Ford" grounds because it is in the visibleText, and "cars" grounds because it
+	// unwrap: "Ventor" grounds because it is in the visibleText, and "cars" grounds because it
 	// resolves in the taxonomy.
 	//
 	// ⚠ This asserted category was DROPPED until V54b, on the grounds that "a car ad rarely prints
@@ -234,15 +234,15 @@ func TestVisionStage_ParsesFencedJSON(t *testing.T) {
 	// boundary confidence. Category is now taxonomy-grounded rather than frame-text-grounded
 	// (§10 V54b); brand and era are unchanged and still require the frame — see
 	// TestVisionStage_DropsBrandNotInVisibleText, which must stay green.
-	prov := &scriptedProvider{answer: "```json\n{\"visibleText\":\"FORD MUSTANG\",\"brand\":\"Ford\",\"era\":0,\"category\":\"cars\"}\n```"}
+	prov := &scriptedProvider{answer: "```json\n{\"visibleText\":\"VENTOR STALLION\",\"brand\":\"Ventor\",\"era\":0,\"category\":\"cars\"}\n```"}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
 	}
 	got := st.tags["silent.mp4"]
-	if got.brand != "Ford" {
-		t.Errorf("brand = %q, want Ford grounded from the fenced answer (the fence must be unwrapped)", got.brand)
+	if got.brand != "Ventor" {
+		t.Errorf("brand = %q, want Ventor grounded from the fenced answer (the fence must be unwrapped)", got.brand)
 	}
-	if got.visibleText != "FORD MUSTANG" {
+	if got.visibleText != "VENTOR STALLION" {
 		t.Errorf("visibleText = %q, want it recorded from inside the fence", got.visibleText)
 	}
 	if got.category != "cars" {
@@ -271,12 +271,12 @@ func TestVisionStage_DropsCategoryNotInTheTaxonomy(t *testing.T) {
 // the whole vision rung even though the object and its visible text were otherwise usable.
 func TestVisionStage_DropsWrongTypedFieldWithoutDiscardingAnswer(t *testing.T) {
 	st := newFakeVisionStore()
-	prov := &scriptedProvider{answer: `{"visibleText":"FORD 1994","brand":"Ford","era":"1994","category":0}`}
-	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("ford.mp4"))) {
+	prov := &scriptedProvider{answer: `{"visibleText":"VENTOR 1994","brand":"Ventor","era":"1994","category":0}`}
+	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("ventor.mp4"))) {
 		t.Fatal("the clip did not apply")
 	}
-	got := st.tags["ford.mp4"]
-	if got.brand != "Ford" || got.era != 1994 {
+	got := st.tags["ventor.mp4"]
+	if got.brand != "Ventor" || got.era != 1994 {
 		t.Errorf("grounded = %+v, want valid brand and string-encoded era preserved", got)
 	}
 	if got.category != "" {
@@ -314,7 +314,7 @@ func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	st := newFakeVisionStore()
 	tools := &scriptedVision{frames: [][]byte{grayF(t, 128)}} // B&W 4:3, would hint pre-1970s alone
 	// The model read "©1985" off the frame and it is in the visibleText, so the era grounds.
-	prov := &scriptedProvider{answer: `{"visibleText":"NINTENDO ©1985","brand":"Nintendo","era":1985,"category":"games"}`}
+	prov := &scriptedProvider{answer: `{"visibleText":"PIXELWICK ©1985","brand":"Pixelwick","era":1985,"category":"games"}`}
 	if !runVision(t, newVisionStage(st, tools, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
 	}
@@ -327,16 +327,16 @@ func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	}
 }
 
-// Grounding is case-insensitive (a logo has a case a year does not): "FORD" on the car grounds a
-// model that answered "Ford".
+// Grounding is case-insensitive (a logo has a case a year does not): "VENTOR" on the car grounds a
+// model that answered "Ventor".
 func TestVisionStage_BrandGroundingIsCaseInsensitive(t *testing.T) {
 	st := newFakeVisionStore()
-	prov := &scriptedProvider{answer: `{"visibleText":"the new FORD mustang","brand":"Ford","era":0,"category":""}`}
+	prov := &scriptedProvider{answer: `{"visibleText":"the new VENTOR stallion","brand":"Ventor","era":0,"category":""}`}
 	if !runVision(t, newVisionStage(st, &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the clip did not apply")
 	}
-	if got := st.tags["silent.mp4"]; got.brand != "Ford" {
-		t.Errorf("brand = %q, want %q grounded case-insensitively against %q", got.brand, "Ford", "the new FORD mustang")
+	if got := st.tags["silent.mp4"]; got.brand != "Ventor" {
+		t.Errorf("brand = %q, want %q grounded case-insensitively against %q", got.brand, "Ventor", "the new VENTOR stallion")
 	}
 }
 
@@ -383,7 +383,7 @@ func TestVisionStage_GroundsAKnownCategoryPresentInVisibleText(t *testing.T) {
 // ⚠ A WORDLESS clip applies — the exact spot vision exists for (silent, no transcript, still
 // untagged). This is the positive of the selectivity: the tiers below vision could not tag it.
 func TestVisionStage_WordlessClipIsACandidate(t *testing.T) {
-	prov := &scriptedProvider{answer: `{"visibleText":"SONY","brand":"Sony","era":0,"category":"tech"}`}
+	prov := &scriptedProvider{answer: `{"visibleText":"VANTRO","brand":"Vantro","era":0,"category":"tech"}`}
 	if !runVision(t, newVisionStage(newFakeVisionStore(), &scriptedVision{frames: oneFrame}, prov), wordless(visionClip("silent.mp4"))) {
 		t.Fatal("the wordless clip did not apply — it is the case this tier exists for")
 	}
@@ -397,7 +397,7 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 	clip := wordless(visionClip("measured.mp4"))
 	clip.DurationMs = 30_000
 	if !runVision(t, newVisionStage(newFakeVisionStore(), tools,
-		&scriptedProvider{answer: `{"visibleText":"SONY","brand":"Sony"}`}), clip) {
+		&scriptedProvider{answer: `{"visibleText":"VANTRO","brand":"Vantro"}`}), clip) {
 		t.Fatal("the wordless clip did not apply")
 	}
 	if tools.spanCalls != 1 || tools.calls != 0 {
