@@ -62,6 +62,16 @@ classify() {
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;
+    # migratedTests: the unit tests #1592 moved onto the demo catalogue.
+    web/apps/web/src/components/loomarr/ai/approval-queue-item/*|web/apps/web/src/components/loomarr/ai/episode-selection-label/*|web/apps/web/src/components/loomarr/ai/proposal-edit/*|web/apps/web/src/components/loomarr/ai/proposal-review/*|web/apps/web/src/components/loomarr/ai/refine-panel/*|web/apps/web/src/components/loomarr/ai/refine-review/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/components/loomarr/feedback/generation-progress/*|web/apps/web/src/discovery-feedback/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/suggest/approval-queue/*|web/apps/web/src/suggest/intent-form/*|web/apps/web/src/suggest/live-proposal-outlook/*|web/apps/web/src/suggest/movie-collection-choices/*|web/apps/web/src/suggest/suggestion-expansion/*|web/apps/web/src/suggest/suggestion-language/*|web/apps/web/src/suggest/use-channel-refine/*|web/apps/web/src/suggest/use-proposal-review-edit/*|web/apps/web/src/suggest/use-suggestion-run/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
