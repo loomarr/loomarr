@@ -70,8 +70,9 @@ func TestBreakDurationFor(t *testing.T) {
 	}{
 		{"unset inherits global", nil, global, global},
 		{"channel override wins", durationPtr(90 * time.Second), global, 90 * time.Second},
-		{"invalid channel value falls back safely", durationPtr(0), global, 5 * time.Minute},
-		{"invalid global falls back safely", nil, 0, 5 * time.Minute},
+		{"invalid channel value falls to the install setting", durationPtr(0), global, global},
+		{"invalid global falls back to the shipped 2m", nil, 0, 2 * time.Minute},
+		{"both invalid fall back to the shipped 2m", durationPtr(10 * time.Second), 0, 2 * time.Minute},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pol := schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{BreakDuration: tc.policy}}
