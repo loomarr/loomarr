@@ -445,6 +445,15 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     and `sameAs` (the other strengths that rotate the pool identically; a pool of 5 makes Featured
     the same as Heavy, and a pool of 1–2 makes all three the same). The channel page can then say
     what a strength will do, and when a choice changes nothing, without counting anything itself.
+  - **Where the operator sets it.** The channel's Programming tab (`ChannelSeasonal`, built on
+    `ChannelSeasonalFields` in `@loomarr/ui`) offers **Holiday strength** (Light / Featured /
+    Heavy, each choice carrying its own plain-language consequence) and **Favour evenings** only
+    while the mode is the built-in rotation; `exclusive` and `off` keep their meaning and show
+    neither. Under Holiday strength one line restates the preview's `holidayEpisodes` for the
+    holiday that is on, or next: the episodes found and the resulting per-day count and spacing.
+    When `sameAs` is non-empty or `capped` is true the line says so plainly ("at this pool size
+    Featured and Heavy play the same"). The line is the backend's numbers, never a client-side
+    estimate.
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
 - Evaluation uses the reconcile instant's date on the guide time zone (`guide.timezone`, the clock

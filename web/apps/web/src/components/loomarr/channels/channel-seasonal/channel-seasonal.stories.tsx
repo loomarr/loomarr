@@ -1,16 +1,9 @@
 import type { Vocabulary } from "@loomarr/api";
-import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { TooltipProvider } from "@/components/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelSeasonal } from "./channel-seasonal";
 
 const noop = () => {};
-
-const withTooltip: Decorator = (Story) => (
-  <TooltipProvider>
-    <Story />
-  </TooltipProvider>
-);
 
 // Shaped like the BE's: holidays ride the `when` list as `holiday:<id>` tokens, alongside the
 // non-holiday WHEN tokens the picker filters out.
@@ -32,13 +25,15 @@ const vocabulary = {
   how: [],
 } as unknown as Vocabulary;
 
-// Holiday-aware programming (programming-design §6). The states below are the ones that render
-// differently: mode drives whether the holiday list and the off-season fallback appear at all.
+// Holiday-aware programming (programming-design §6): the channel policy mapped onto the shared
+// ChannelSeasonalFields (see Loomarr Components/Channel Seasonal). The states below are the ones
+// that render differently: mode drives whether the holiday list, strength, evenings and the
+// off-season fallback appear at all.
 const meta = {
   title: "Channels/ChannelSeasonal",
   component: ChannelSeasonal,
   args: { onChange: noop, vocabulary },
-  decorators: [withTooltip, widthFrame(480)],
+  decorators: [widthFrame(480)],
 } satisfies Meta<typeof ChannelSeasonal>;
 
 type Story = StoryObj<typeof meta>;
@@ -60,5 +55,55 @@ const HolidayChannel: Story = {
   args: { policy: { seasonal: { mode: "exclusive", holidays: ["christmas"], offSeason: "dark" } } },
 };
 
+// Built-in rotation in October with the backend's count for the open holiday: the consequence
+// line under Holiday strength (§6 "Holiday episodes").
+const HalloweenOn: Story = {
+  args: {
+    policy: {},
+    holidayEpisodes: [
+      { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true, capped: false, sameAs: [] },
+      {
+        holiday: "thanksgiving",
+        episodes: 0,
+        perDay: 0,
+        everyDays: 0,
+        active: false,
+        capped: false,
+        sameAs: [],
+      },
+    ],
+  },
+};
+
+// Heavy, spread across the day: the evenings opt-out reads back unchecked with its own hint, and
+// a small pool caps Heavy (nine episodes give four a day).
+const HeavyAnytime: Story = {
+  args: {
+    policy: { seasonal: { strength: "heavy", placement: "anytime" } },
+    holidayEpisodes: [
+      { holiday: "halloween", episodes: 9, perDay: 4, everyDays: 2, active: true, capped: true, sameAs: [] },
+    ],
+  },
+};
+
+// Five episodes: Featured and Heavy both rotate two a day, so the line says choosing between them
+// changes nothing (the backend's `sameAs`).
+const SmallPool: Story = {
+  args: {
+    policy: {},
+    holidayEpisodes: [
+      {
+        holiday: "halloween",
+        episodes: 5,
+        perDay: 2,
+        everyDays: 2,
+        active: true,
+        capped: true,
+        sameAs: ["heavy"],
+      },
+    ],
+  },
+};
+
 export default meta;
-export { Default, HolidayChannel, Off, Picked };
+export { Default, HalloweenOn, HeavyAnytime, HolidayChannel, Off, Picked, SmallPool };
