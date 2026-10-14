@@ -215,6 +215,8 @@ type Server struct {
 	// playoutCapability supplies the retained encoder probe result without starting a probe.
 	// Unlike live session stats, it remains available while playout is idle.
 	playoutCapability func() playout.Capacity
+	// watermarkPreview draws the channel page's On-screen logo preview (#1659); nil ⇒ 501.
+	watermarkPreview WatermarkPreviewer
 	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
 	// than the value so a REGENERATED token takes effect without a restart — rotation is
 	// an operator action the UI offers, and a cached value would keep authorizing the old
@@ -1105,6 +1107,8 @@ type Options struct {
 	// PlayoutCapability returns the already-published host encoder capability. It must not
 	// perform or await a probe on this observational request path.
 	PlayoutCapability func() playout.Capacity
+	// WatermarkPreview draws a channel's bug for the channel page's preview. Nil ⇒ the route 501s.
+	WatermarkPreview WatermarkPreviewer
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string

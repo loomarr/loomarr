@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -395,5 +396,80 @@ func TestWatermarkColoursAndMotifs_AgreeAcrossRendererAndPolicy(t *testing.T) {
 	slices.Sort(drawn)
 	if !slices.Equal(motifs, drawn) {
 		t.Errorf("policy motifs %v, renderer %v", motifs, drawn)
+	}
+}
+
+// The section's options come from the backend (#1659 W2c): the derived name, the era and its
+// colours, and only the holidays the channel honours, with the scheduler's "in effect today".
+func TestChannelWatermarks_Options(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{Holidays: []string{"christmas", "halloween"}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "ghost"}}
+	oct13 := time.Date(2026, time.October, 13, 20, 0, 0, 0, time.UTC)
+
+	got, err := testWatermarks(t, ch, true).Options(context.Background(), "ch-1", oct13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AutoCallsign != "SC" || got.Era != "1980s" || !slices.Equal(got.EraPalette, []string{"red", "amber", "cyan"}) {
+		t.Fatalf("name/era = %q %q %v, want SC 1980s [red amber cyan]", got.AutoCallsign, got.Era, got.EraPalette)
+	}
+	if len(got.Holidays) != 2 {
+		t.Fatalf("holidays = %+v, want halloween and christmas only", got.Holidays)
+	}
+	hw, xm := got.Holidays[0], got.Holidays[1]
+	if hw.ID != "halloween" || hw.Name != "Halloween" || hw.Start != "2026-10-01" || hw.End != "2026-10-31" || !hw.Active ||
+		hw.Picture != "ghost" || len(hw.Pictures) != 3 || hw.Pictures[0] != (api.WatermarkPicture{ID: "pumpkin", Name: "Pumpkin"}) {
+		t.Fatalf("halloween = %+v", hw)
+	}
+	if xm.ID != "christmas" || xm.Active || xm.Picture != "holly" || xm.Start != "2026-12-01" || xm.End != "2026-12-26" {
+		t.Fatalf("christmas = %+v", xm)
+	}
+
+	// Ignore holidays: none, and no era is amber's palette.
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}
+	ch.Policy.Scope.Dates = nil
+	got, err = testWatermarks(t, ch, true).Options(context.Background(), "ch-1", oct13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Holidays) != 0 || got.Holidays == nil || got.Era != "" || got.EraPalette[0] != "amber" {
+		t.Fatalf("ignore holidays = %+v, want an empty list, no era, amber", got)
+	}
+}
+
+// Preview draws the holiday version with the channel's picture, or the one the request names (the
+// section's picture thumbnails), without changing the saved policy; the everyday logo has none.
+func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	read := func(path string, err error) []byte {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	preview := func(c store.Channel, change schedule.WatermarkPolicy, holiday string) []byte {
+		path, _, err := testWatermarks(t, c, true).Preview(context.Background(), "ch-1", change, holiday)
+		return read(path, err)
+	}
+	everyday := preview(ch, schedule.WatermarkPolicy{}, "")
+	pumpkin := preview(ch, schedule.WatermarkPolicy{}, "halloween")
+	asked := preview(ch, schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}, "halloween")
+	saved := ch
+	saved.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}
+	if bytes.Equal(everyday, pumpkin) || bytes.Equal(pumpkin, asked) {
+		t.Fatal("the holiday version and its pictures must differ from each other and from the everyday logo")
+	}
+	if !bytes.Equal(asked, preview(saved, schedule.WatermarkPolicy{}, "halloween")) {
+		t.Fatal("a requested picture must draw exactly what the channel airs once it is saved")
+	}
+	if ch.Policy.Watermark != nil {
+		t.Fatal("a preview must not change the channel's policy")
 	}
 }

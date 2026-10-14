@@ -104,15 +104,29 @@ func WatermarkHoliday(p *WatermarkPolicy, r ResolvedWatermark, seasonal Seasonal
 		return "", ""
 	}
 	holiday = ActiveHolidayAt(at, seasonal, zone)
-	choices := WatermarkMotifs[holiday]
-	if len(choices) == 0 {
+	if motif = WatermarkMotif(p, holiday); motif == "" {
 		return "", ""
 	}
-	motif = choices[0]
-	if p != nil && slices.Contains(choices, p.Motifs[holiday]) {
-		motif = p.Motifs[holiday]
-	}
 	return holiday, motif
+}
+
+// WatermarkMotif is the picture a channel's logo shows for the holiday: its choice when it is one of
+// the holiday's pictures, else the default (the first); "" for an unknown holiday.
+func WatermarkMotif(p *WatermarkPolicy, holiday string) string {
+	choices := WatermarkMotifs[holiday]
+	if len(choices) == 0 {
+		return ""
+	}
+	if p != nil && slices.Contains(choices, p.Motifs[holiday]) {
+		return p.Motifs[holiday]
+	}
+	return choices[0]
+}
+
+// WatermarkMotifNames is each holiday picture's plain name on the channel page.
+var WatermarkMotifNames = map[string]string{
+	"pumpkin": "Pumpkin", "bat": "Bat", "ghost": "Ghost", "leaf": "Leaf", "holly": "Holly",
+	"snowflake": "Snowflake", "firework": "Firework", "heart": "Heart",
 }
 
 // ResolveWatermark applies the defaults to a channel's (possibly nil) policy. The channel's own

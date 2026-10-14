@@ -15,17 +15,19 @@ import (
 )
 
 type httpBuild struct {
-	rootCtx                  context.Context
-	store                    fillerstore.Store
-	log                      *slog.Logger
-	overrides                Overrides
-	foundation               foundationBuild
-	channels                 channelBuild
-	approval                 approvalBuild
-	suggestions              suggestionBuild
-	fillers                  fillerBuild
-	auth                     authBuild
-	backups                  api.BackupsService
+	rootCtx     context.Context
+	store       fillerstore.Store
+	log         *slog.Logger
+	overrides   Overrides
+	foundation  foundationBuild
+	channels    channelBuild
+	approval    approvalBuild
+	suggestions suggestionBuild
+	fillers     fillerBuild
+	auth        authBuild
+	backups     api.BackupsService
+	// watermarks draws the channel page's On-screen logo preview (#1659).
+	watermarks               *channelWatermarks
 	restart                  api.RestartService
 	bootConfig               *config.Config
 	guide                    api.GuideReader
@@ -181,6 +183,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
 		PlayoutCapability: playoutCapability,
+		WatermarkPreview:  deps.watermarks,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,
