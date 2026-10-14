@@ -44,6 +44,7 @@ const NavTabs = ({
   // is scrolled into view, sideways only: the page itself never moves. It is scrolled again when the
   // tab or the bar changes size: the web font arriving widens every tab after the first paint.
   const bar = useRef<HTMLElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeId IS the dependency; the effect reads the DOM it marks
   useLayoutEffect(() => {
     const nav = bar.current;
     const current = nav?.querySelector<HTMLElement>("[aria-current=page]");
