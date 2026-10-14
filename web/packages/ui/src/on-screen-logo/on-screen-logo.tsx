@@ -642,7 +642,7 @@ const OnScreenLogoSection = ({
                   backgroundColor={c.swatch}
                   borderColor={checked ? "$contentPrimary" : "$borderControl"}
                   borderRadius="$round"
-                  borderWidth={checked ? 3 : 1}
+                  borderWidth={checked ? 2 : 1}
                   height={32}
                   width={32}
                 />

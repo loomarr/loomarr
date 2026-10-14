@@ -66,7 +66,7 @@ const ModelRow = ({
     <li
       className={cn(
         "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
-        primary && "border-signal-tint-30 bg-signal-tint-5",
+        primary && !isActive && "border-signal-tint-30 bg-signal-tint-5",
         // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
         isActive && "bg-static-800",
       )}

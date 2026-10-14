@@ -348,6 +348,12 @@ const badgeTone = {
     borderColor: "$actionDisabled",
     color: "$contentSecondary",
   },
+  // A channel override or Custom value (#1909 Q5): neutral with a foreground label.
+  override: {
+    backgroundColor: "$surfaceElevated",
+    borderColor: "$borderControl",
+    color: "$contentPrimary",
+  },
   success: {
     backgroundColor: "$stateSuccessSurface",
     borderColor: "$stateSuccess",
