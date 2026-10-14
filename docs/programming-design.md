@@ -385,7 +385,11 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
        ordinary unit of the pass. The preferences, in order: not aired by the window before and
        not dealt to the next; at least the spacing from its last actual airing and from its next
        dealt airing; the farthest from both.
-    4. Arrange the window around its features, and record every programme's index in `airedAt`.
+    4. Arrange the window around its features, and check each unit where it really airs: an
+       off-season holiday episode leaving the evening pulls the units after it earlier than
+       their place in the tile. A unit now sooner than the spacing is dropped for the window and
+       the tile topped up again without it (step 3); each pass drops one unit, so it ends.
+    5. Record every programme's index in `airedAt`.
     Every decision reads what actually aired, never a ring position. A feature is decided by its
     day's plan. Its airing enters `airedAt`, so the windows after the season (and after a holiday
     date) trade away a unit the season just featured, like any recent airing. The holiday date

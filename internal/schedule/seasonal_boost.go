@@ -575,6 +575,7 @@ func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
 		if acc < need {
 			tile = p.topUp(tile, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
 		}
+		tile = p.settle(tile, need, v, end, a, spacing, prev, pooled, owed, airedAt)
 		run[v] = tile
 		prev = record(p.arrange(tile, v))
 		owed = slices.DeleteFunc(owed, func(s Slot) bool { return prev[unitKey(s)] })
@@ -599,6 +600,54 @@ func (p *holidayPlanner) restsBeyond(key string, v, end, spacing int64) bool {
 		}
 	}
 	return true
+}
+
+// settle checks a window's tile where it really airs. The tile is chosen by deal order from index a,
+// but arrange moves it: features go in, and an off-season holiday episode leaves the evening, so a
+// unit after one airs earlier than its place in the tile. A unit that, arranged, airs less than the
+// spacing after its last airing is dropped for the window, and the tile is topped up again without
+// it; each pass drops one unit for good, so it ends.
+func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, prev, pooled map[string]bool, owed []Slot, airedAt map[string]int64) []Slot {
+	dropped := map[string]bool{}
+	for {
+		mine := map[string]bool{}
+		for _, s := range tile {
+			if s.IsProgram() {
+				mine[unitKey(s)] = true
+			}
+		}
+		var i int64
+		soon := ""
+		for _, s := range p.arrange(tile, v) {
+			if !s.IsProgram() {
+				continue
+			}
+			key := unitKey(s)
+			if last, ok := airedAt[key]; ok && mine[key] && a+i-last < spacing {
+				soon = key
+				break
+			}
+			i++
+		}
+		if soon == "" {
+			return tile
+		}
+		dropped[soon] = true
+		tile = slices.DeleteFunc(tile, func(s Slot) bool { return s.IsProgram() && unitKey(s) == soon })
+		var acc, n int64
+		taken := maps.Clone(dropped)
+		for _, s := range tile {
+			if s.IsProgram() {
+				acc += s.DurationMs
+				taken[unitKey(s)] = true
+				n++
+			}
+		}
+		if acc < need {
+			// Its first estimate, like simulate's: the next pass checks where the top-up really airs.
+			tile = p.topUp(tile, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
+		}
+	}
 }
 
 // topUp fills a short tile with `short` of ordinary runtime, unavoidable when a window's features
