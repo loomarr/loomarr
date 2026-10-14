@@ -526,9 +526,11 @@ func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
 	stride := p.ring.stride
 	airedAt := map[string]int64{}
 	var a int64
+	// A window is recorded as playout airs it: a tile short of its window loops, so its head airs
+	// again at the close, next to the following window's head (#1939).
 	record := func(arranged []Slot) map[string]bool {
 		aired := map[string]bool{}
-		for _, s := range arranged {
+		for _, s := range loopedWindow(arranged, p.window.Milliseconds()) {
 			if s.IsProgram() {
 				airedAt[unitKey(s)], aired[unitKey(s)] = a, true
 				a++
