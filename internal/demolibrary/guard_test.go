@@ -59,6 +59,11 @@ var migratedTitles = []string{
 	// The integration, tmdb, catalog, binder and library tests (slice 9). "Terminator" and "Raiders"
 	// alone are left out: they would match ordinary prose.
 	"RoboCop", "Homer at the Bat", "Zero Theorem", "Space Odyssey", "70s Show",
+	// The schedule, playout and recurate tests (slice 11). Episode titles that are ordinary phrases
+	// ("Chain of Command", "Ship in a Bottle", "The Inner Light", "Night Moves") are left out.
+	"Battlestar Galactica", "Mad Max", "Marge vs. the Monorail", "Wings of the Dope", "Dog of Death",
+	"Canine Mutiny", "Halloween of Horror", "Life on the Fast Lane", "Farpoint", "Tribble", "Realm of Fear",
+	"Truffaut", "Jules & Jim", "Top Goon", "Halloweeners",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -155,6 +160,8 @@ var migratedGo = []string{
 	"internal/suggest/intent_policy_test.go",
 	"internal/suggest/scopenarrows_test.go",
 	"internal/suggest/worker_cache_internal_test.go",
+	// The schedule, playout and recurate tests (slice 11).
+	"internal/playout/", "internal/recurate/", "internal/schedule/",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
