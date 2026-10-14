@@ -70,7 +70,8 @@ const ClientNavigation = ({
             key={destination.value}
             onPress={() => onNavigate(destination.value)}
             // The current destination is a selection, so it is neutral (#1909 Q0/Q1): `selected`
-            // gives it the focus surface, and amber is left for the focused destination.
+            // draws it neutral-pressed (focus surface, foreground border, heavier TV label), and
+            // amber is left for the focused destination.
             selected={selected}
             style={{ flex: 1 }}
             tone="secondary"
