@@ -364,7 +364,7 @@ describe("ChannelFiller", () => {
         {
           hash: "p9-hash",
           tunarrProgramId: "p9",
-          name: "Frosted Flakes",
+          name: "Crunchlings",
           kind: "commercial",
           durationMs: 30000,
           tagged: true,
@@ -377,7 +377,7 @@ describe("ChannelFiller", () => {
     });
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
-    expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
+    expect(await screen.findByText("Crunchlings")).toBeInTheDocument();
 
     expect(catalogQueries.length, "the resolver must issue a listing request").toBeGreaterThan(0);
     expect(

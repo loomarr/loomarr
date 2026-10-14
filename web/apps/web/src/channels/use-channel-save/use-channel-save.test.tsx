@@ -67,7 +67,7 @@ const renderSave = (stored: Stored | undefined) => {
   return { ...hook, other, invalidate };
 };
 
-const heat: LineupEntryDTO = { key: "movie:tmdb:949", name: "Heat", year: 1995 };
+const velvet: LineupEntryDTO = { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995 };
 
 describe("useChannelSave", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -117,7 +117,7 @@ describe("useChannelSave", () => {
     // The other editor sees the pending edit and queues behind it.
     expect(other.result.current.isSaving).toBe(true);
     act(() => {
-      second = other.result.current.save({ lineup: [heat] });
+      second = other.result.current.save({ lineup: [velvet] });
     });
     await act(async () => {
       await Promise.all([first, second]);
@@ -126,9 +126,9 @@ describe("useChannelSave", () => {
     expect(patches).toEqual([
       { revision: 1, policy: { ordering: "sequential" } },
       // The policy already landed, so the follow-up carries only the lineup.
-      { revision: 2, lineup: [heat] },
+      { revision: 2, lineup: [velvet] },
     ]);
-    expect(stored).toMatchObject({ revision: 3, policy: { ordering: "sequential" }, lineup: [heat] });
+    expect(stored).toMatchObject({ revision: 3, policy: { ordering: "sequential" }, lineup: [velvet] });
   });
 
   it("on a 409 refetches and re-applies only the operator's edits, keeping the other writer's", async () => {
@@ -224,9 +224,9 @@ describe("useChannelSave", () => {
 
     let saving: Promise<void> | undefined;
     act(() => {
-      saving = result.current.save({ lineup: [heat] });
+      saving = result.current.save({ lineup: [velvet] });
     });
-    expect(result.current.pending).toEqual({ lineup: [heat] });
+    expect(result.current.pending).toEqual({ lineup: [velvet] });
 
     await expect(saving).rejects.toMatchObject({ status: 500 });
     expect(toast.error).toHaveBeenCalledWith("Couldn't save the channel");
@@ -248,18 +248,18 @@ describe("useChannelSave", () => {
     let number: Promise<void> | undefined;
     act(() => void result.current.save({ policy: { ordering: "sequential" } }));
     act(() => {
-      lineup = result.current.save({ lineup: [heat] });
+      lineup = result.current.save({ lineup: [velvet] });
       number = result.current.save({ number: 2 });
     });
 
     await expect(number).rejects.toMatchObject({ status: 409 });
     await expect(lineup).resolves.toBeUndefined();
-    expect(stored).toMatchObject({ policy: { ordering: "sequential" }, lineup: [heat] });
+    expect(stored).toMatchObject({ policy: { ordering: "sequential" }, lineup: [velvet] });
     // The coalesced PATCH was refused, so each field went out alone to find the one at fault.
     expect(patches).toEqual([
       { revision: 1, policy: { ordering: "sequential" } },
-      { revision: 2, lineup: [heat], number: 2 },
-      { revision: 2, lineup: [heat] },
+      { revision: 2, lineup: [velvet], number: 2 },
+      { revision: 2, lineup: [velvet] },
       { revision: 3, number: 2 },
     ]);
     expect(toast.error).toHaveBeenCalledWith("Channel already exists");
@@ -288,17 +288,17 @@ describe("useChannelSave", () => {
   });
 
   it("on a 409 rebases a lineup edit onto the other writer's lineup", async () => {
-    const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
-    const predator: LineupEntryDTO = { key: "movie:tmdb:106", name: "Predator", year: 1987 };
-    // The page read [Heat, Point Break]; another writer has since added Predator.
-    const stored: Stored = { revision: 2, policy: {}, lineup: [heat, pointBreak, predator] };
+    const choir: LineupEntryDTO = { key: "movie:tmdb:90009426", name: "The Seventh Satellite Choir", year: 1991 };
+    const marigold: LineupEntryDTO = { key: "movie:tmdb:90000106", name: "Marigold Protocol", year: 1987 };
+    // The page read [Velvet, Choir]; another writer has since added Marigold.
+    const stored: Stored = { revision: 2, policy: {}, lineup: [velvet, choir, marigold] };
     stubChannel(stored);
-    const { result } = renderSave({ revision: 1, policy: {}, lineup: [heat, pointBreak] });
+    const { result } = renderSave({ revision: 1, policy: {}, lineup: [velvet, choir] });
 
-    // The operator removes Point Break.
-    await act(() => result.current.save({ lineup: [heat] }));
+    // The operator removes Choir.
+    await act(() => result.current.save({ lineup: [velvet] }));
 
-    expect(stored.lineup).toEqual([heat, predator]);
+    expect(stored.lineup).toEqual([velvet, marigold]);
     expect(toast.error).not.toHaveBeenCalled();
   });
 

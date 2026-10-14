@@ -25,7 +25,7 @@ describe("progressLine", () => {
 
 describe("pickCount", () => {
   it("counts against the most titles the model is asked for, not a guess", () => {
-    const pick = { key: "movie:tmdb:1", mediaType: "movie", name: "A", inLibrary: true } as const;
+    const pick = { key: "movie:tmdb:90000001", mediaType: "movie", name: "A", inLibrary: true } as const;
     expect(pickCount(progress({ picks: [pick, pick, pick, pick], target: 8 }))).toBe("4 of about 8 picked");
   });
 

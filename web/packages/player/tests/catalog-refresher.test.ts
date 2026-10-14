@@ -1,7 +1,7 @@
 import { createCatalogRefresher, createPlayerController, type PlayerChannel } from "@loomarr/player";
 import { describe, expect, it, vi } from "vitest";
 
-const channels: PlayerChannel[] = [{ id: "simpsons", inAppPlayable: true, name: "Simpsons", number: 7 }];
+const channels: PlayerChannel[] = [{ id: "kettle-kids", inAppPlayable: true, name: "Kettle Kids", number: 7 }];
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;

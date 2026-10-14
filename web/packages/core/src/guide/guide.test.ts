@@ -82,12 +82,12 @@ describe("guide presentation facts", () => {
       guideAiringLabel({
         scheduleBlockId: "episode",
         kind: "program",
-        title: "Radioactive Man",
-        series: "The Simpsons",
+        title: "The Seventh Postcard",
+        series: "Kettle Kids",
         startMs: 0,
         stopMs: 1,
       }),
-    ).toBe("The Simpsons · Radioactive Man");
+    ).toBe("Kettle Kids · The Seventh Postcard");
     expect(
       guideAiringLabel({
         scheduleBlockId: "pending",
@@ -149,10 +149,10 @@ describe("layoutGuide", () => {
             stopMs: 1_000,
           },
           {
-            scheduleBlockId: "radioactive-man",
+            scheduleBlockId: "seventh-postcard",
             kind: "program",
-            title: "Radioactive Man",
-            series: "The Simpsons",
+            title: "The Seventh Postcard",
+            series: "Kettle Kids",
             season: 7,
             episode: 2,
             nominal: true,
@@ -199,7 +199,7 @@ describe("layoutGuide", () => {
     expect(layout.channels[0]?.airings[0]).toMatchObject({
       source: source.channels[0]?.airings[1],
       channelId: "classic-animation",
-      scheduleBlockId: "radioactive-man",
+      scheduleBlockId: "seventh-postcard",
       startRatio: 0,
       widthRatio: 0.5,
       clippedStartMs: 1_000,
@@ -265,7 +265,7 @@ describe("layoutGuide", () => {
 
     expect(selection).toEqual({
       channelId: "classic-animation",
-      scheduleBlockId: "radioactive-man",
+      scheduleBlockId: "seventh-postcard",
       anchorMs: 2_500,
     });
     expect(selection && moveGuideSelection(layout, selection, "down")).toEqual({

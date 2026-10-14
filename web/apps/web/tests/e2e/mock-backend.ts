@@ -326,14 +326,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             status: "submitted",
             proposal: {
               intent: submission,
-              channelName: "Wizarding World Marathon",
+              channelName: "Wren Halloway Marathon",
               rationale: "A movie marathon built from the requested series.",
               lineup: [
                 {
-                  name: "Harry Potter and the Philosopher's Stone",
+                  name: "Wren Halloway and the Lantern Key",
                   year: 2001,
                   mediaType: "movie",
-                  tmdbId: 671,
+                  tmdbId: 90000671,
                   inLibrary: true,
                   libraryItemId: "library-671",
                 },
@@ -350,7 +350,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   basis: "qualifiers",
                   assessedItems: 1,
                   unknownItems: 0,
-                  qualifiers: [{ term: "Harry Potter", supportedItems: 1 }],
+                  qualifiers: [{ term: "Wren Halloway", supportedItems: 1 }],
                 },
                 era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
               },
@@ -386,30 +386,30 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         const replacementAcquisitions = expansion
           ? expansionNumber === 1
             ? [
-                { name: "The Rock", year: 1996, mediaType: "movie", tmdbId: 9802, inLibrary: false },
-                { name: "Speed", year: 1994, mediaType: "movie", tmdbId: 1637, inLibrary: false },
+                { name: "Iron Lullaby", year: 1996, mediaType: "movie", tmdbId: 90009802, inLibrary: false },
+                { name: "Quiet Engines", year: 1994, mediaType: "movie", tmdbId: 90001637, inLibrary: false },
               ]
             : [
-                { name: "Crimson Tide", year: 1995, mediaType: "movie", tmdbId: 8963, inLibrary: false },
-                { name: "Air Force One", year: 1997, mediaType: "movie", tmdbId: 9772, inLibrary: false },
+                { name: "Scarlet Undertow", year: 1995, mediaType: "movie", tmdbId: 90008963, inLibrary: false },
+                { name: "Skyward Cabinet", year: 1997, mediaType: "movie", tmdbId: 90009772, inLibrary: false },
               ]
           : [
-              { name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false },
-              { name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false },
+              { name: "Parallax Garden", year: 1999, mediaType: "movie", tmdbId: 90000603, inLibrary: false },
+              { name: "Pelican Point Motel", year: 1997, mediaType: "movie", tmdbId: 90001701, inLibrary: false },
             ];
         const replacementAlternates = expansion
           ? expansionNumber === 1
-            ? [{ name: "True Lies", year: 1994, mediaType: "movie", tmdbId: 36955, inLibrary: false }]
+            ? [{ name: "Paper Alibis", year: 1994, mediaType: "movie", tmdbId: 90036955, inLibrary: false }]
             : [
                 {
-                  name: "Enemy of the State",
+                  name: "The Hollow Ledger",
                   year: 1998,
                   mediaType: "movie",
-                  tmdbId: 9798,
+                  tmdbId: 90009798,
                   inLibrary: false,
                 },
               ]
-          : [{ name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false }];
+          : [{ name: "Lemon Tree Heist", year: 1997, mediaType: "movie", tmdbId: 90000754, inLibrary: false }];
         return json(route, {
           version: 1,
           jobId,
@@ -449,17 +449,31 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   : "Friday Night Action",
               rationale: "A focused night of high-energy 90s action movies.",
               lineup: [
-                { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
-                { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 1089, inLibrary: true },
+                { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+                {
+                  name: "The Seventh Satellite Choir",
+                  year: 1991,
+                  mediaType: "movie",
+                  tmdbId: 90001089,
+                  inLibrary: true,
+                },
               ],
               acquisitions:
                 displayedRevision > 0
                   ? replacementAcquisitions
-                  : [{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }],
+                  : [
+                      {
+                        name: "Pelican Point Motel",
+                        year: 1997,
+                        mediaType: "movie",
+                        tmdbId: 90001701,
+                        inLibrary: false,
+                      },
+                    ],
               alternates:
                 displayedRevision > 0
                   ? replacementAlternates
-                  : [{ name: "Face/Off", year: 1997, mediaType: "movie", tmdbId: 754, inLibrary: false }],
+                  : [{ name: "Lemon Tree Heist", year: 1997, mediaType: "movie", tmdbId: 90000754, inLibrary: false }],
               scores: {
                 version: 1,
                 themeFit: 1,
@@ -503,7 +517,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     }
     if (path === "/v1/search" && method === "GET") {
       return json(route, {
-        candidates: [{ name: "The Matrix", year: 1999, mediaType: "movie", tmdbId: 603, inLibrary: false }],
+        candidates: [{ name: "Parallax Garden", year: 1999, mediaType: "movie", tmdbId: 90000603, inLibrary: false }],
       });
     }
     if (path === "/v1/movie-collections" && method === "GET") {
@@ -512,40 +526,40 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       return json(route, {
         complete: true,
         collections:
-          opts.movieCollectionJourney && keys.includes("movie:tmdb:671")
+          opts.movieCollectionJourney && keys.includes("movie:tmdb:90000671")
             ? [
                 {
-                  tmdbId: 1241,
-                  name: "Harry Potter Collection",
+                  tmdbId: 90001241,
+                  name: "Wren Halloway Collection",
                   members: [
                     {
-                      name: "Harry Potter and the Philosopher's Stone",
+                      name: "Wren Halloway and the Lantern Key",
                       year: 2001,
                       mediaType: "movie",
-                      tmdbId: 671,
+                      tmdbId: 90000671,
                       inLibrary: true,
                       libraryItemId: "library-671",
                     },
                     {
-                      name: "Harry Potter and the Chamber of Secrets",
+                      name: "Wren Halloway and the Sunken Library",
                       year: 2002,
                       mediaType: "movie",
-                      tmdbId: 672,
+                      tmdbId: 90000672,
                       inLibrary: false,
                     },
                     {
-                      name: "Harry Potter and the Prisoner of Azkaban",
+                      name: "Wren Halloway and the Glass Orchard",
                       year: 2004,
                       mediaType: "movie",
-                      tmdbId: 673,
+                      tmdbId: 90000673,
                       inLibrary: true,
                       libraryItemId: "library-673",
                     },
                     {
-                      name: "Harry Potter and the Goblet of Fire",
+                      name: "Wren Halloway and the Ember Clock",
                       year: 2005,
                       mediaType: "movie",
-                      tmdbId: 674,
+                      tmdbId: 90000674,
                       inLibrary: false,
                     },
                   ],
@@ -569,10 +583,10 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           proposal: {
             intent: { description: "90s saturday morning cartoons" },
             rationale: "Kid-friendly 90s animation, all ages.",
-            lineup: [{ name: "Animaniacs", year: 1993, mediaType: "series" }],
+            lineup: [{ name: "Kettle Kids", year: 1993, mediaType: "series" }],
             // One acquisition: the in-library pick needs nothing, so only the missing
             // title spends anything (§8).
-            acquisitions: [{ name: "Gargoyles", year: 1994, mediaType: "series", tmdbId: 12345 }],
+            acquisitions: [{ name: "Stone Sentinels", year: 1994, mediaType: "series", tmdbId: 90012345 }],
             scores: {
               version: 1,
               themeFit: 1,

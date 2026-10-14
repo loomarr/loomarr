@@ -14,6 +14,9 @@ const journey = (over: Partial<ProposalJourneyDTO> = {}): ProposalJourneyDTO => 
   ...over,
 });
 
+// Call sites number titles 1, 2, 3…; each becomes an invented TMDB id above 90,000,000.
+const demoTMDBID = (n: number) => 90_000_000 + n;
+
 const withAcquisitions = (milestone: ProposalJourneyDTO["milestone"], ids: number[]): ProposalJourneyDTO =>
   journey({
     milestone,
@@ -24,20 +27,20 @@ const withAcquisitions = (milestone: ProposalJourneyDTO["milestone"], ids: numbe
         intent: { description: "x" },
         lineup: [],
         alternates: [],
-        acquisitions: ids.map((tmdbId) => ({
+        acquisitions: ids.map((n) => ({
           mediaType: "movie",
-          name: `Movie ${tmdbId}`,
-          tmdbId,
+          name: `Movie ${n}`,
+          tmdbId: demoTMDBID(n),
           inLibrary: false,
         })),
       } as never,
     },
   });
 
-const title = (tmdbId: number, state: TitleDTO["state"]): TitleDTO => ({
-  key: `movie:tmdb:${tmdbId}`,
+const title = (n: number, state: TitleDTO["state"]): TitleDTO => ({
+  key: `movie:tmdb:${demoTMDBID(n)}`,
   mediaType: "movie",
-  tmdbId,
+  tmdbId: demoTMDBID(n),
   state,
 });
 
@@ -149,9 +152,9 @@ describe("requestStatus", () => {
 describe("requestStatus while generating", () => {
   const progress = {
     stage: "choosing" as const,
-    terms: ["speed"],
+    terms: ["engines"],
     picks: [
-      { key: "movie:tmdb:100", mediaType: "movie" as const, name: "Speed", year: 1994, inLibrary: false },
+      { key: "movie:tmdb:90000100", mediaType: "movie" as const, name: "Quiet Engines", year: 1994, inLibrary: false },
     ],
     target: 8,
     startedAt: "2026-09-25T12:00:00Z",

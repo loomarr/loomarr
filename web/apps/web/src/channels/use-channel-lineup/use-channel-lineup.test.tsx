@@ -38,31 +38,31 @@ const stubLineup = () => {
   return { patches };
 };
 
-const heat: LineupEntryDTO = { key: "movie:tmdb:949", name: "Heat", year: 1995 };
-const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
-const predator: LineupEntryDTO = { key: "movie:tmdb:106", name: "Predator", year: 1987 };
+const velvet: LineupEntryDTO = { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995 };
+const choir: LineupEntryDTO = { key: "movie:tmdb:90009426", name: "The Seventh Satellite Choir", year: 1991 };
+const marigold: LineupEntryDTO = { key: "movie:tmdb:90000106", name: "Marigold Protocol", year: 1987 };
 
 describe("useChannelLineup", () => {
   it("exposes the current lineup unchanged before any commit", () => {
     stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir]), {
       wrapper: makeWrapper(),
     });
-    expect(result.current.entries).toEqual([heat, pointBreak]);
+    expect(result.current.entries).toEqual([velvet, choir]);
   });
 
   it("add appends the new entry and commits the full list, in order", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir]), {
       wrapper: makeWrapper(),
     });
 
     act(() => {
-      expect(result.current.add(predator)).toBe(true);
+      expect(result.current.add(marigold)).toBe(true);
     });
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ revision: 1, lineup: [heat, pointBreak, predator] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [velvet, choir, marigold] });
   });
 
   it("a not-in-library (pending) add still commits — pending slots are a valid add", async () => {
@@ -70,25 +70,25 @@ describe("useChannelLineup", () => {
     // genres} only) — pending-ness is a library-membership fact the hook has no reason
     // to know or gate on. Any well-formed entry commits the same way.
     const { patches } = stubLineup();
-    const pending: LineupEntryDTO = { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008 };
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat]), { wrapper: makeWrapper() });
+    const pending: LineupEntryDTO = { key: "series:tvdb:90081189", name: "Copperline Foundry", year: 2008 };
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet]), { wrapper: makeWrapper() });
 
     act(() => {
       expect(result.current.add(pending)).toBe(true);
     });
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ revision: 1, lineup: [heat, pending] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [velvet, pending] });
   });
 
   it("adding a duplicate key is prevented — no request is sent", () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir]), {
       wrapper: makeWrapper(),
     });
 
     act(() => {
-      expect(result.current.add({ key: heat.key, name: "Heat (dupe)", year: 1995 })).toBe(false);
+      expect(result.current.add({ key: velvet.key, name: "The Velvet Cartographer (dupe)", year: 1995 })).toBe(false);
     });
 
     expect(patches).toHaveLength(0);
@@ -96,19 +96,19 @@ describe("useChannelLineup", () => {
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir, marigold]), {
       wrapper: makeWrapper(),
     });
 
-    act(() => result.current.remove(pointBreak.key));
+    act(() => result.current.remove(choir.key));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ revision: 1, lineup: [heat, predator] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [velvet, marigold] });
   });
 
   it("reorder commits arrayMove's result — the exact shape an onDragEnd hands it", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir, marigold]), {
       wrapper: makeWrapper(),
     });
 
@@ -116,7 +116,7 @@ describe("useChannelLineup", () => {
     act(() => result.current.reorder(2, 0));
 
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ revision: 1, lineup: [predator, heat, pointBreak] });
+    expect(patches[0]).toEqual({ revision: 1, lineup: [marigold, velvet, choir] });
   });
 
   it("a second op inside the round trip builds on the first and waits its turn (#1899)", async () => {
@@ -134,19 +134,19 @@ describe("useChannelLineup", () => {
         return HttpResponse.json(channel({ revision, lineup: body.lineup }));
       }),
     );
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir, marigold]), {
       wrapper: makeWrapper(),
     });
 
-    act(() => result.current.remove(pointBreak.key));
+    act(() => result.current.remove(choir.key));
     // Shown at once, so the next remove starts from it rather than the stale read.
-    expect(result.current.entries).toEqual([heat, predator]);
-    act(() => result.current.remove(predator.key));
+    expect(result.current.entries).toEqual([velvet, marigold]);
+    act(() => result.current.remove(marigold.key));
 
     await waitFor(() => expect(patches).toHaveLength(2));
     expect(patches).toEqual([
-      { revision: 1, lineup: [heat, predator] },
-      { revision: 2, lineup: [heat] },
+      { revision: 1, lineup: [velvet, marigold] },
+      { revision: 2, lineup: [velvet] },
     ]);
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -158,14 +158,14 @@ describe("useChannelLineup", () => {
         HttpResponse.json({ title: "Invalid lineup", detail: "That title can't be added." }, { status: 422 }),
       ),
     );
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [velvet, choir]), {
       wrapper: makeWrapper(),
     });
 
-    act(() => result.current.remove(pointBreak.key));
-    expect(result.current.entries).toEqual([heat]);
+    act(() => result.current.remove(choir.key));
+    expect(result.current.entries).toEqual([velvet]);
 
-    await waitFor(() => expect(result.current.entries).toEqual([heat, pointBreak]));
+    await waitFor(() => expect(result.current.entries).toEqual([velvet, choir]));
     expect(toast.error).toHaveBeenCalledWith("Invalid lineup");
   });
 });
