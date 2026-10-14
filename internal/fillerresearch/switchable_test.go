@@ -16,7 +16,7 @@ func TestSwitchableUsesLiveSettingAndChangesIdentity(t *testing.T) {
 	if adapter != "fixture" || version != "switchable-v1:fixture-v1:on" {
 		t.Fatalf("enabled identity = %q %q", adapter, version)
 	}
-	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop"}); err != nil || inner.calls != 1 {
+	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "Twirlpop"}); err != nil || inner.calls != 1 {
 		t.Fatalf("enabled retrieve calls=%d err=%v", inner.calls, err)
 	}
 
@@ -25,7 +25,7 @@ func TestSwitchableUsesLiveSettingAndChangesIdentity(t *testing.T) {
 	if version != "switchable-v1:fixture-v1:off" {
 		t.Fatalf("disabled identity version = %q", version)
 	}
-	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop"}); !errors.Is(err, ErrRetrieverDisabled) || inner.calls != 1 {
+	if _, err := retriever.Retrieve(t.Context(), Lookup{Title: "Twirlpop"}); !errors.Is(err, ErrRetrieverDisabled) || inner.calls != 1 {
 		t.Fatalf("disabled retrieve calls=%d err=%v", inner.calls, err)
 	}
 }

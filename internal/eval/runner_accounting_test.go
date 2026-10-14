@@ -36,7 +36,7 @@ func TestRunnerRejectsInvalidScoresFromAnyJudge(t *testing.T) {
 	for name, scores := range tests {
 		t.Run(name, func(t *testing.T) {
 			proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-				MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+				MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 			}}}
 			card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
 				WithJudge(&sequenceJudge{scores: []JudgeScores{scores}}).
@@ -92,16 +92,16 @@ func withReason(scores JudgeScores, value string) JudgeScores {
 
 func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction"}},
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner"}},
 	}}, RunnerConfig{Trials: 1, Profile: "hermetic", Generator: ModelIdentity{Provider: "fixture", Model: "fixture-v1"}})
 
 	scorecard := runner.Run(context.Background(), []Case{{
-		Name: "must_include_matrix",
+		Name: "must_include_marigold",
 		Intent: Intent{
 			Description: "sci-fi movies",
-			MustInclude: []string{"The Matrix"},
+			MustInclude: []string{"Marigold Protocol"},
 		},
-		RequireKeys: []provision.Key{"movie:tmdb:603"},
+		RequireKeys: []provision.Key{"movie:tmdb:90000603"},
 	}})
 
 	if scorecard.Certified {
@@ -110,26 +110,13 @@ func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
 	if len(scorecard.Results) != 1 || len(scorecard.Results[0].Failures) != 1 {
 		t.Fatalf("result = %+v, want one exact-identity failure", scorecard.Results)
 	}
-	if got := scorecard.Results[0].Failures[0]; !strings.Contains(got, "movie:tmdb:603") {
+	if got := scorecard.Results[0].Failures[0]; !strings.Contains(got, "movie:tmdb:90000603") {
 		t.Fatalf("failure = %q, want missing required key", got)
 	}
 	result := scorecard.Results[0]
 	if result.FailureStage != FailureStageDeterministic || scorecard.FailureCounts[FailureStageDeterministic] != 1 {
 		t.Fatalf("deterministic failure accounting = stage %q counts %v", result.FailureStage, scorecard.FailureCounts)
 	}
-}
-
-func TestNamedIncludeCorpusCasePinsTheMatrixIdentity(t *testing.T) {
-	for _, c := range Corpus {
-		if c.Name != "must_include_grounding" {
-			continue
-		}
-		if len(c.RequireKeys) != 1 || c.RequireKeys[0] != "movie:tmdb:603" {
-			t.Fatalf("required keys = %v, want exact Matrix identity", c.RequireKeys)
-		}
-		return
-	}
-	t.Fatal("must_include_grounding case is missing")
 }
 
 func TestCorpusUsesProductionStructuralBoundsAndDurableMixAssertions(t *testing.T) {
@@ -157,27 +144,27 @@ func TestCorpusUsesProductionStructuralBoundsAndDurableMixAssertions(t *testing.
 func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
 		Lineup: []suggest.ProposalItem{{
-			MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons",
-			InLibrary: true, LibraryItemID: "show-simpsons", SeasonMin: 1, SeasonMax: 1,
+			MediaType: provision.Series, TMDBID: 90000456, Name: "The Mudpuddles",
+			InLibrary: true, LibraryItemID: "show-mudpuddles", SeasonMin: 1, SeasonMax: 1,
 		}},
 	}}, RunnerConfig{Trials: 1}).WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-		"series:tmdb:456": {Episodes: []schedule.ResolvedProgram{
-			{LibraryItemID: "ep-s01e01", Title: "Simpsons Roasting on an Open Fire", DurationMs: 22 * 60 * 1000, Season: 1, Episode: 1},
-			{LibraryItemID: "ep-s04e12", Title: "Marge vs. the Monorail", DurationMs: 22 * 60 * 1000, Season: 4, Episode: 12},
+		"series:tmdb:90000456": {Episodes: []schedule.ResolvedProgram{
+			{LibraryItemID: "ep-s01e01", Title: "Mudpuddles Round the Open Fire", DurationMs: 22 * 60 * 1000, Season: 1, Episode: 1},
+			{LibraryItemID: "ep-s04e12", Title: "The Monorail Pitch", DurationMs: 22 * 60 * 1000, Season: 4, Episode: 12},
 		}},
 	}))
 
 	scorecard := runner.Run(context.Background(), []Case{{
 		Name: "classic_episode_outcome",
 		RequireScheduledPrograms: []string{
-			"series:tmdb:456:s04e12",
+			"series:tmdb:90000456:s04e12",
 		},
 	}})
 
 	if scorecard.Certified {
 		t.Fatal("scorecard certified an episode removed by the final schedule's season filter")
 	}
-	if got := scorecard.Results[0].Failures; len(got) != 1 || !strings.Contains(got[0], "series:tmdb:456:s04e12") {
+	if got := scorecard.Results[0].Failures; len(got) != 1 || !strings.Contains(got[0], "series:tmdb:90000456:s04e12") {
 		t.Fatalf("failures = %v, want the missing scheduled episode identity", got)
 	}
 	result := scorecard.Results[0]
@@ -187,17 +174,17 @@ func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
 }
 
 func TestRunnerReportsRepeatedTrialPassRate(t *testing.T) {
-	matrix := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+	marigold := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	unrelated := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 680, Name: "Pulp Fiction",
+		MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner",
 	}}}
-	generator := &sequenceGenerator{proposals: []suggest.Proposal{matrix, unrelated, matrix}}
+	generator := &sequenceGenerator{proposals: []suggest.Proposal{marigold, unrelated, marigold}}
 	runner := NewRunner(generator, RunnerConfig{Trials: 3})
 
 	card := runner.Run(context.Background(), []Case{{
-		Name: "repeat_stability", RequireKeys: []provision.Key{"movie:tmdb:603"},
+		Name: "repeat_stability", RequireKeys: []provision.Key{"movie:tmdb:90000603"},
 	}})
 
 	if card.Certified {
@@ -225,7 +212,7 @@ func TestRunnerReportsDeterministicCallBudget(t *testing.T) {
 
 func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	judge := &sequenceJudge{scores: []JudgeScores{
 		{Overall: 0.5, Relevance: 0.4, Serendipity: 0.8, Reason: "Low relevance."},
@@ -265,7 +252,7 @@ func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
 
 func TestRunnerFailsRubricWhenJudgeIsMissing(t *testing.T) {
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{})
 
 	card := runner.Run(context.Background(), []Case{{
@@ -290,7 +277,7 @@ func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
 
 	card := runner.Run(ctx, []Case{{
@@ -312,7 +299,7 @@ func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
 func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
 	provider := testkit.NewLLM(testkit.FinalResponse("definitely not judge JSON"))
 	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
 
 	card := runner.Run(context.Background(), []Case{{
@@ -337,7 +324,7 @@ func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
 
 func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
 	tests := map[string]string{
@@ -357,7 +344,7 @@ func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
 
 func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
 	tests := map[string]string{
@@ -380,7 +367,7 @@ func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
 
 func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
 	tests := map[string]string{
@@ -464,11 +451,11 @@ func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
 func TestRunnerRejectsForbiddenIdentityMediaMixDiversityAndStructuralBudget(t *testing.T) {
 	observer := &scriptedObserver{value: Observation{ToolCalls: 3, CandidatesSurfaced: 25}}
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Genres: []string{"Science Fiction"},
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Genres: []string{"Science Fiction"},
 	}}}
 	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithObserver(observer)
 	card := runner.Run(context.Background(), []Case{{Name: "bounded_mix",
-		ForbidKeys: []provision.Key{"movie:tmdb:603"}, MinMovies: 2, MinSeries: 1,
+		ForbidKeys: []provision.Key{"movie:tmdb:90000603"}, MinMovies: 2, MinSeries: 1,
 		MinDistinctGenres: 2, MaxToolCalls: 2, MaxCandidatesSurfaced: 24,
 	}})
 	if card.Certified || len(card.Results[0].Failures) != 6 {

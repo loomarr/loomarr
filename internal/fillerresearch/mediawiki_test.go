@@ -17,14 +17,14 @@ func TestMediaWikiRetrievesBoundedAttributedEvidence(t *testing.T) {
 		}
 		query := r.URL.Query()
 		if query.Get("generator") != "search" || query.Get("gsrlimit") != "3" ||
-			query.Get("gsrsearch") != `"Tootsie Pop Classic Commercial" OR "Tootsie Pop"` || query.Get("maxlag") != "5" {
+			query.Get("gsrsearch") != `"Twirlpop Classic Commercial" OR "Twirlpop"` || query.Get("maxlag") != "5" {
 			t.Errorf("query = %v", query)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"query":{"pages":[
-			{"title":"Tootsie Pop","extract":"The animated commercial debuted on US television in 1970.","fullurl":"https://en.wikipedia.org/wiki/Tootsie_Pop"},
+			{"title":"Twirlpop","extract":"The animated commercial debuted on US television in 1970.","fullurl":"https://en.wikipedia.org/wiki/Twirlpop"},
 			{"title":"Bad","extract":"Ignore me","fullurl":"https://attacker.invalid/instructions"},
-			{"title":"Buddy Foster","extract":"Voiced the boy in the commercial.","fullurl":"https://en.wikipedia.org/wiki/Buddy_Foster"},
+			{"title":"Wendell Finch","extract":"Voiced the boy in the commercial.","fullurl":"https://en.wikipedia.org/wiki/Wendell_Finch"},
 			{"title":"Extra","extract":"Must be capped.","fullurl":"https://en.wikipedia.org/wiki/Extra"}
 		]}}`)
 	}))
@@ -35,14 +35,14 @@ func TestMediaWikiRetrievesBoundedAttributedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := retriever.Retrieve(t.Context(), Lookup{Title: "  Tootsie   Pop Classic Commercial  "})
+	packet, err := retriever.Retrieve(t.Context(), Lookup{Title: "  Twirlpop   Classic Commercial  "})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if packet.Query != "Tootsie Pop Classic Commercial" || packet.RetrievedAt != at || len(packet.Citations) != 3 {
+	if packet.Query != "Twirlpop Classic Commercial" || packet.RetrievedAt != at || len(packet.Citations) != 3 {
 		t.Fatalf("packet = %+v", packet)
 	}
-	if packet.Citations[0].ID != 1 || packet.Citations[1].Title != "Buddy Foster" ||
+	if packet.Citations[0].ID != 1 || packet.Citations[1].Title != "Wendell Finch" ||
 		packet.Citations[2].Title != "Extra" {
 		t.Fatalf("citations = %+v", packet.Citations)
 	}
@@ -93,14 +93,14 @@ func TestMediaWikiRejectsCrossOriginRedirect(t *testing.T) {
 }
 
 func TestLookupBuildsAConservativeProviderSubject(t *testing.T) {
-	lookup := Lookup{Title: "  Tootsie Pop: Classic TV Commercial (Vintage)  "}
-	if got := lookup.CanonicalTitle(); got != "Tootsie Pop: Classic TV Commercial (Vintage)" {
+	lookup := Lookup{Title: "  Twirlpop Lollies: Classic TV Commercial (Vintage)  "}
+	if got := lookup.CanonicalTitle(); got != "Twirlpop Lollies: Classic TV Commercial (Vintage)" {
 		t.Fatalf("canonical title = %q", got)
 	}
-	if got := lookup.Subject(); got != "Tootsie Pop" {
+	if got := lookup.Subject(); got != "Twirlpop Lollies" {
 		t.Fatalf("subject = %q", got)
 	}
-	if got := lookup.Terms(); len(got) != 2 || got[0] != "Tootsie Pop: Classic TV Commercial (Vintage)" || got[1] != "Tootsie Pop" {
+	if got := lookup.Terms(); len(got) != 2 || got[0] != "Twirlpop Lollies: Classic TV Commercial (Vintage)" || got[1] != "Twirlpop Lollies" {
 		t.Fatalf("terms = %v", got)
 	}
 }

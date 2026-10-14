@@ -30,7 +30,7 @@ func TestRunnerRejectsUnboundedOrInvalidProviderChargeText(t *testing.T) {
 		}},
 	})
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{}).
 		WithObserver(observed).
@@ -81,7 +81,7 @@ func TestRunnerRecordsIndependentGeneratorAndJudgeCallAttribution(t *testing.T) 
 		},
 	})
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	runner := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		Generator: ModelIdentity{Provider: "configured-generator", Model: "configured-generator-model"},
@@ -117,7 +117,7 @@ func TestRunnerBoundsTheJudgeCompletion(t *testing.T) {
 		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Grounded."}`,
 	))
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
 		WithJudge(modelJudge{provider: judgeProvider}).
@@ -138,7 +138,7 @@ func TestRunnerKeepsMissingCallAttributionExplicitInsteadOfInferringIt(t *testin
 		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Grounded."}`,
 	))
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	runner := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		Generator: ModelIdentity{Provider: "configured-generator", Model: "configured-generator-model"},
@@ -182,7 +182,7 @@ func TestRunnerStopsProviderWorkWhenRunOrSuiteBudgetIsExhausted(t *testing.T) {
 				`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
 			))
 			proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-				MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+				MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 			}}}
 			card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 				ResourceBudget: tc.budget,
@@ -230,7 +230,7 @@ func TestRunnerEnforcesPerRunAndSuiteCallBudgetsBeforeProviders(t *testing.T) {
 				`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
 			))
 			proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-				MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+				MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 			}}}
 			card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 				ResourceBudget: tc.budget,
@@ -256,7 +256,7 @@ func TestRunnerEnforcesPerRunAndSuiteCallBudgetsBeforeProviders(t *testing.T) {
 
 func TestRunnerEnforcesGeneratorBudgetAtEveryProviderCallBoundary(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	for _, tc := range []struct {
 		name      string
@@ -320,7 +320,7 @@ func TestRunnerRefusesAGeneratorCallThatCannotFitItsReservation(t *testing.T) {
 	provider := testkit.NewLLM(testkit.FinalResponse(`{"channelName":"Should not run"}`))
 	observed := &observedProvider{inner: provider}
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
@@ -387,7 +387,7 @@ func TestRunnerRefusesAJudgeCallThatCannotFitItsReservation(t *testing.T) {
 		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
 	))
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
@@ -420,7 +420,7 @@ func TestRunnerRefusesAJudgeRequestOutsideItsDerivedCallLimits(t *testing.T) {
 		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
 	))
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
@@ -449,7 +449,7 @@ func TestRunnerRefusesAJudgeRequestOutsideItsDerivedCallLimits(t *testing.T) {
 
 func TestRunnerTreatsMissingGeneratorUsageAsStickyPerCall(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	reported := llm.Attribution{
 		RequestedProvider: "openrouter", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2},
@@ -492,7 +492,7 @@ func TestRunnerLatchesMissingHostedUsageAcrossLaterTrials(t *testing.T) {
 		`{"overall":0.9,"relevance":0.9,"serendipity":0.8,"reason":"Must not run."}`,
 	))
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal}, RunnerConfig{
 		Trials: 2,
@@ -553,7 +553,7 @@ func TestRunnerKeepsLocalOllamaCallsExplicitlyNonBilled(t *testing.T) {
 	}}
 	provider := testkit.NewLLM(response, response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 2}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
@@ -572,7 +572,7 @@ func TestRunnerKeepsSelfHostedCustomCallsExplicitlyNonBilled(t *testing.T) {
 	}}
 	provider := testkit.NewLLM(response, response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 2}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
@@ -597,7 +597,7 @@ func TestRunnerKeepsSelfHostedOpenAIProviderCallsExplicitlyNonBilled(t *testing.
 	}}
 	provider := testkit.NewLLM(response, response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 2}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
@@ -620,7 +620,7 @@ func TestRunnerFailsClosedWhenPublicOpenAIProviderChargeMissing(t *testing.T) {
 	}}
 	provider := testkit.NewLLM(response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
@@ -645,7 +645,7 @@ func TestRunnerCountsReportedHostedProviderCharge(t *testing.T) {
 	}}
 	provider := testkit.NewLLM(response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
@@ -664,7 +664,7 @@ func TestRunnerFailsClosedWhenHostedProviderChargeMissing(t *testing.T) {
 	}}
 	provider := testkit.NewLLM(response)
 	observed := &observedProvider{inner: provider}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}
 	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
 		ResourceBudget: ResourceBudget{
 			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
@@ -699,7 +699,7 @@ func TestRunnerBoundsAndScrubsGeneratorCallAttribution(t *testing.T) {
 	provider := testkit.NewLLM(responses...)
 	observed := &observedProvider{inner: provider}
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	card := NewRunner(providerGenerator{
 		provider: observed, proposal: proposal, calls: len(responses),

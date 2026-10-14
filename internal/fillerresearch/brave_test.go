@@ -20,7 +20,7 @@ func TestBraveRetrievesBoundedSnippetsWithoutLeakingTheKey(t *testing.T) {
 		}
 		query = r.URL.Query().Get("q")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"web":{"results":[{"title":"Tootsie Pop","url":"https://example.com/tootsie","description":"The animated campaign began in 1970."}]}}`))
+		_, _ = w.Write([]byte(`{"web":{"results":[{"title":"Twirlpop","url":"https://example.com/twirlpop","description":"The animated campaign began in 1970."}]}}`))
 	}))
 	defer server.Close()
 
@@ -29,11 +29,11 @@ func TestBraveRetrievesBoundedSnippetsWithoutLeakingTheKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop Classic Commercial"})
+	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Twirlpop Classic Commercial"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(query, "Tootsie Pop Classic Commercial") || len(packet.Citations) != 1 || packet.Citations[0].Extract == "" {
+	if !strings.Contains(query, "Twirlpop Classic Commercial") || len(packet.Citations) != 1 || packet.Citations[0].Extract == "" {
 		t.Fatalf("query=%q packet=%+v", query, packet)
 	}
 

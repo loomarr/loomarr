@@ -64,7 +64,7 @@ func TestV8TypedDateRefusalKeepsAbstentionAndNoFabricationContracts(t *testing.T
 		{name: "old abstention accepts ordinary no grounded titles", err: suggest.ErrNoGroundedTitles, quality: true, schema: true, passed: true},
 		{name: "old abstention rejects typed ordinary cause", err: typedDateFailure(suggest.TerminalConstraintsConflict), schema: false, passed: false},
 		{name: "old abstention rejects successful empty proposal", quality: false, schema: true, passed: true},
-		{name: "old abstention rejects nonempty proposal", proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}, quality: false, schema: true, passed: true},
+		{name: "old abstention rejects nonempty proposal", proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}}}, quality: false, schema: true, passed: true},
 		{name: "no typed expectation preserves rejection of typed ordinary cause", err: typedDateFailure(suggest.TerminalConstraintsConflict), quality: true, schema: false, passed: false, noTypedRef: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

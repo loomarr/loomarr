@@ -54,9 +54,9 @@ func (p *fixtureProvider) Chat(_ context.Context, messages []llm.Message, option
 }
 
 func researchPacket() Packet {
-	return Packet{Query: "Tootsie Pop Classic Commercial", Adapter: "mediawiki",
+	return Packet{Query: "Twirlpop Classic Commercial", Adapter: "mediawiki",
 		AdapterVersion: MediaWikiAdapterVersion, RetrievedAt: time.Unix(100, 0).UTC(),
-		Citations: []Citation{{ID: 1, Title: "Tootsie Pop", URL: "https://en.wikipedia.org/wiki/Tootsie_Pop",
+		Citations: []Citation{{ID: 1, Title: "Twirlpop", URL: "https://en.wikipedia.org/wiki/Twirlpop",
 			Extract: "The animated commercial debuted on US television in 1970."}}}
 }
 
@@ -65,7 +65,7 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 	provider := &fixtureProvider{content: `{"year":1970,"decade":1970,"countryCode":"US","country":"United States","confidence":95,"explanation":"Likely campaign context; the exact cut is not proven.","citationIds":[1]}`}
 	at := time.Unix(200, 0).UTC()
 	researcher := New(retriever, provider, "openrouter", "model", func() time.Time { return at })
-	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop Classic Commercial",
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Twirlpop Classic Commercial",
 		InputRevision: 1, Description: "The classic commercial.", SourceKind: "archive", SourceID: "archive:classic"})
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 		len(report.Cited()) != 1 || report.CompletedAt != at {
 		t.Fatalf("report = %+v", report)
 	}
-	if retriever.lookup.Title != "Tootsie Pop Classic Commercial" || retriever.lookup.Description != "The classic commercial." ||
+	if retriever.lookup.Title != "Twirlpop Classic Commercial" || retriever.lookup.Description != "The classic commercial." ||
 		!provider.options.JSONMode || len(provider.messages) != 2 ||
 		provider.options.MaxTokens <= 0 || provider.options.Temperature == nil || *provider.options.Temperature > 0.2 {
 		t.Fatalf("lookup/options/messages = %+v %+v %#v", retriever.lookup, provider.options, provider.messages)
@@ -88,7 +88,7 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 func TestResearchRejectsModelInventedCitation(t *testing.T) {
 	provider := &fixtureProvider{content: `{"decade":1970,"confidence":70,"explanation":"Likely.","citationIds":[99]}`}
 	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
-	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop",
+	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Twirlpop",
 		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic"})
 	if err == nil || !strings.Contains(err.Error(), "outside its packet") {
 		t.Fatalf("invented citation error = %v", err)
@@ -98,14 +98,14 @@ func TestResearchRejectsModelInventedCitation(t *testing.T) {
 func TestResearchIncludesCanonicalSourceMetadataAsEvidence(t *testing.T) {
 	provider := &fixtureProvider{content: `{"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"Likely from the source description.","citationIds":[1]}`}
 	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
-	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Brambly Sauce Advert",
 		Description: "British condiment advertisement from the 1980s.", InputRevision: 1,
-		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/hp-sauce"})
+		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/brambly-sauce"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(report.Packet.Citations) != 2 || report.Packet.Citations[0].ID != 1 ||
-		report.Packet.Citations[0].URL != "https://archive.org/details/hp-sauce" ||
+		report.Packet.Citations[0].URL != "https://archive.org/details/brambly-sauce" ||
 		report.Packet.Citations[1].ID != 2 || len(report.Cited()) != 1 {
 		t.Fatalf("packet = %+v", report.Packet)
 	}
@@ -115,14 +115,14 @@ func TestResearchUsesExactSourceMetadataWhenStructuredSearchMisses(t *testing.T)
 	retriever := &fixtureRetriever{err: errors.New("no related results")}
 	provider := &fixtureProvider{content: `{"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"The exact source description identifies a British advert.","citationIds":[1]}`}
 	researcher := New(retriever, provider, "fixture", "model", func() time.Time { return time.Unix(300, 0).UTC() })
-	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Brambly Sauce Advert",
 		Description: "British condiment advertisement from the 1980s.", InputRevision: 1,
-		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/hp-sauce"})
+		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/brambly-sauce"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Suggestion.CountryCode != "GB" || len(report.Packet.Citations) != 1 ||
-		report.Packet.Citations[0].URL != "https://archive.org/details/hp-sauce" || len(report.Cited()) != 1 {
+		report.Packet.Citations[0].URL != "https://archive.org/details/brambly-sauce" || len(report.Cited()) != 1 {
 		t.Fatalf("source-only report = %+v", report)
 	}
 }
@@ -130,8 +130,8 @@ func TestResearchUsesExactSourceMetadataWhenStructuredSearchMisses(t *testing.T)
 func TestResearchRejectsAnArbitraryClaimedSourceURLBeforeRetrieval(t *testing.T) {
 	retriever := &fixtureRetriever{packet: researchPacket()}
 	researcher := New(retriever, &fixtureProvider{}, "fixture", "model", time.Now)
-	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
-		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://example.com/details/hp"})
+	_, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Brambly Sauce Advert",
+		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://example.com/details/brambly"})
 	if err == nil || retriever.calls != 0 {
 		t.Fatalf("arbitrary source err=%v calls=%d", err, retriever.calls)
 	}
@@ -140,7 +140,7 @@ func TestResearchRejectsAnArbitraryClaimedSourceURLBeforeRetrieval(t *testing.T)
 func TestResearchOnlyRequestsStillMissingContext(t *testing.T) {
 	provider := &fixtureProvider{content: `{"year":1980,"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"Likely.","citationIds":[1]}`}
 	researcher := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now)
-	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "Brambly Sauce Advert",
 		InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic", KnownEra: 1999})
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ func TestReportCountryFactRequiresCitedConfidentCountry(t *testing.T) {
 
 func TestResearchUsesWebFallbackOnlyAfterStructuredEvidenceAbstains(t *testing.T) {
 	primary := &fixtureRetriever{packet: researchPacket()}
-	fallbackPacket := Packet{Query: "Tootsie Pop", Adapter: "web", AdapterVersion: "web-v1", RetrievedAt: time.Unix(150, 0).UTC(),
+	fallbackPacket := Packet{Query: "Twirlpop", Adapter: "web", AdapterVersion: "web-v1", RetrievedAt: time.Unix(150, 0).UTC(),
 		Citations: []Citation{{ID: 1, Title: "Campaign history", URL: "https://example.com/history", Extract: "The campaign started in the United States in 1970."}}}
 	fallback := &fixtureRetriever{packet: fallbackPacket}
 	provider := &sequenceProvider{responses: []string{
@@ -193,7 +193,7 @@ func TestResearchUsesWebFallbackOnlyAfterStructuredEvidenceAbstains(t *testing.T
 		`{"decade":1970,"countryCode":"US","country":"United States","confidence":60,"explanation":"Likely campaign context.","citationIds":[2]}`,
 	}}
 	report, err := New(primary, provider, "fixture", "model", time.Now).WithFallback(fallback).Research(t.Context(), Input{
-		ClipHash: "hash", Title: "Tootsie Pop", InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic",
+		ClipHash: "hash", Title: "Twirlpop", InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestResearchSkipsFallbackWhenStructuredEvidenceAnswersAndPreservesItOnFallb
 			fallback := &fixtureRetriever{err: tc.fallbackErr}
 			provider := &sequenceProvider{responses: []string{tc.first}}
 			report, err := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now).
-				WithFallback(fallback).Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop", InputRevision: 1,
+				WithFallback(fallback).Research(t.Context(), Input{ClipHash: "hash", Title: "Twirlpop", InputRevision: 1,
 				SourceKind: "archive", SourceID: "archive:classic"})
 			if err != nil || fallback.calls != tc.wantCalls || provider.calls != 1 {
 				t.Fatalf("report=%+v err=%v fallback=%d model=%d", report, err, fallback.calls, provider.calls)
