@@ -25,7 +25,7 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 		// Respond with a tool call whose arguments are a JSON STRING (OpenAI shape).
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"",
 			"tool_calls":[{"id":"call_1","type":"function","function":{
-				"name":"catalog_search","arguments":"{\"query\":\"matrix\",\"genres\":[\"Action\"]}"}}]}}]}`))
+				"name":"catalog_search","arguments":"{\"query\":\"marigold\",\"genres\":[\"Action\"]}"}}]}}]}`))
 	}))
 	defer srv.Close()
 
@@ -46,7 +46,7 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 	if tc.Name != "catalog_search" {
 		t.Errorf("tool name = %q", tc.Name)
 	}
-	if q, _ := tc.Arguments["query"].(string); q != "matrix" {
+	if q, _ := tc.Arguments["query"].(string); q != "marigold" {
 		t.Errorf("arguments not decoded to a map: %+v", tc.Arguments)
 	}
 	if _, ok := tc.Arguments["genres"].([]any); !ok {

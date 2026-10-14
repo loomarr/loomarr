@@ -87,7 +87,7 @@ func TestOpenAI_SlowFirstTokenThenSteadyStreamSucceeds(t *testing.T) {
 func TestOpenAI_StreamAssemblesToolCallDeltas(t *testing.T) {
 	srv := sseServer(t, []sseFrame{
 		{0, `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"catalog_search","arguments":"{\"query\":"}}]}}]}`},
-		{0, `{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"matrix\"}"}}]},"finish_reason":"tool_calls"}]}`},
+		{0, `{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"marigold\"}"}}]},"finish_reason":"tool_calls"}]}`},
 	}, false)
 	o := llm.NewOpenAI(srv.URL, "m", "")
 	resp, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}},
@@ -95,7 +95,7 @@ func TestOpenAI_StreamAssemblesToolCallDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "catalog_search" || resp.ToolCalls[0].Arguments["query"] != "matrix" {
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].Name != "catalog_search" || resp.ToolCalls[0].Arguments["query"] != "marigold" {
 		t.Fatalf("tool call not reassembled: %+v", resp.ToolCalls)
 	}
 }
