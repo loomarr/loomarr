@@ -11454,6 +11454,17 @@ components:
           description: Text of the generated Plate bug; omitted derives it from the channel name
           maxLength: 12
           type: string
+        color:
+          description: "Colour of the coloured looks: era (colours from the channel's decade, amber without one) or a fixed colour; omitted is era"
+          enum:
+            - era
+            - amber
+            - cyan
+            - green
+            - red
+            - pink
+            - yellow
+          type: string
         corner:
           description: Corner of the active picture; omitted is top-right
           enum:
@@ -11465,16 +11476,25 @@ components:
         enabled:
           description: false turns the bug off; omitted is on (the default)
           type: boolean
+        holiday:
+          description: false turns the holiday version off; omitted is on unless the channel ignores holidays (seasonal mode off)
+          type: boolean
         image:
           description: Custom bug image hash (upload with role watermark); omitted is automatic
           type: string
         look:
-          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters) or small-plate (75% size, no shadow); omitted is the install setting playout.watermark_look (default text)"
+          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters), small-plate (75% size, no shadow), tint (colour plate), twotone (number + name), badge (number badge), lockup (number | name, white), glass (frosted plate) or stripe (era stripe); omitted is the install setting playout.watermark_look (default text)"
           enum:
             - plate
             - text
             - outline
             - small-plate
+            - tint
+            - twotone
+            - badge
+            - lockup
+            - glass
+            - stripe
           type: string
         margin:
           description: Inset from the picture edges as a share of the frame width and height, 0-0.2; omitted is 0.05
@@ -11482,6 +11502,11 @@ components:
           maximum: 0.2
           minimum: 0
           type: number
+        motifs:
+          additionalProperties:
+            type: string
+          description: "Holiday picture per holiday, where there is a choice: halloween is pumpkin, bat or ghost; christmas is holly or snowflake; an omitted holiday is the first"
+          type: object
         opacity:
           description: Bug opacity, 0.1-1; omitted is the install setting playout.watermark_opacity_pct (default 40%)
           format: double

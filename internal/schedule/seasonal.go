@@ -95,6 +95,21 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
+// ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
+// boosts, through the same calendar, selection and evaluation, so the on-screen logo's holiday
+// version (WatermarkHoliday) can never disagree with the programming. A channel whose seasonal mode
+// is off (Ignore holidays) honours none. It is the one seam for the holiday date rule: a
+// channel-local calendar (#1930) replaces its body, and both callers follow.
+func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy) string {
+	if seasonal.Mode == SeasonalOff {
+		return ""
+	}
+	if active := activeHolidays(t, seasonal.Holidays); len(active) > 0 {
+		return active[0].id
+	}
+	return ""
+}
+
 // activeHolidays returns the calendar holidays whose window contains `now`, limited
 // to the channel's selected subset (empty subset = all built-in holidays).
 func activeHolidays(now time.Time, selected []string) []holiday {

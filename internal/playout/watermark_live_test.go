@@ -52,6 +52,14 @@ func TestLive_WatermarkCheck(t *testing.T) {
 		r := WatermarkCheck(context.Background(), bin, host, dir)
 		verdict := map[bool]string{true: "works", false: "disabled"}[r.Works]
 		t.Logf("%s: watermark %s: %s", host.Family, verdict, r.Detail)
+		if r.Works {
+			// The coloured target (#1659): "works" expects colour too, so a host that only passes
+			// white is reported, not hidden behind the white verdict.
+			t.Logf("%s: coloured logos %s %s", host.Family, map[bool]string{true: "in colour", false: "in white:"}[r.Colour], r.ColourDetail)
+			if w == "works" && !r.Colour {
+				t.Errorf("%s: coloured self-check failed: %s", host.Family, r.ColourDetail)
+			}
+		}
 		if w != "" && w != verdict {
 			t.Errorf("%s: watermark %s, expected %s", host.Family, verdict, w)
 		}
