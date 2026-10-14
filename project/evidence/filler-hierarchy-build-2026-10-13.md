@@ -18,12 +18,16 @@ Build of [#1817](https://github.com/loomarr/loomarr/issues/1817) item 7 (parent
 | 7. 24px select target | `SelectCheckbox`: the 16px checkbox inside a 24px label, shared by card and row | `clip-card.tsx`, `clip-row.tsx` |
 | 8. Members: text, no admin buttons | "An admin can sort this out from Filler › Manage." and no action button | `filler-overview.tsx` |
 | Overview "Open diagnostics" | `retry_failed_work` and `retry_acquisition` link `/filler/manage#diagnostics`; Manage opens the panel and scrolls to it once the admin session resolves | `filler-overview.tsx`, `filler-manage.tsx` |
+| Draft 2: caution "Needs details" | Server-computed `ClipDTO.needsDetails` from one Go predicate shared with the store's untagged SQL; chip on card, compact card and phone row | `internal/clipcatalog/clip.go`, `internal/store/clips.go`, `internal/api/filler.go`, `clip-card.tsx`, `clip-row.tsx` |
 | Draft 3/4: activity + Problems tone | Routine admits neutral (like routine skips); Problems row `warn` (caution), not amber `notice` | `filler-manage.tsx` |
 
-Not built: the Draft's caution "Needs details" chip on an untagged commercial. `ClipDTO` has no flag
-for it; the rule lives only in store SQL (`internal/store/clips.go`, `UntaggedOnly`). Building it
-honestly needs a server-computed field (an `openapi-client` change), so it is left as a follow-up
-for the coordinator to schedule.
+The Draft's caution "Needs details" chip on an untagged commercial comes from a server field, not a
+client guess. `ClipDTO.needsDetails` is `clipcatalog.Clip.NeedsDetails` (a commercial missing era,
+audience or category). The store's `UntaggedOnly` SQL is the same rule with the kind bound to the
+same constant, and the store conformance test `ClipNeedsDetailsAgreesWithSQL` pins the two to the same
+clips. The card (full and compact) and the phone list row render the chip from the field alone. A
+held clip ("Preparing") or a recording ("Recording") keeps its single exception chip instead, as the
+mock draws one exception per clip.
 
 ## Live check (lane backend, demo data)
 
@@ -87,4 +91,6 @@ Screenshots: `filler-hierarchy-build-2026-10-13/{admin,member}-{desktop,phone}-*
 | `filler-page.tsx` | tailwind 42→56 | "← Manage" link (decision 5) + 16px phone gutter (decision 3) |
 | `split-review-page.tsx` | tailwind 52→60 | origin crumb (decision 4) |
 
-No new file carries legacy usage; `clip-row.tsx` fell.
+| `clip-row.tsx` | tailwind 64→67 | phone-row "Needs details" chip (Draft 2) |
+
+No new file carries legacy usage.
