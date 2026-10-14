@@ -8,7 +8,7 @@ import type { WatermarkPolicy } from "@loomarr/api/models/watermarkPolicy";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type OnScreenLogoPolicy, type OnScreenLogoPreviewRequest, OnScreenLogoSection } from "@loomarr/ui";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { toast } from "sonner";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -39,6 +39,9 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
   const options = unwrap(
     channelsApi.useGetChannelWatermarkOptions(channel.id, {
       query: {
+        // Every saved choice is a new key; without the previous data the section would unmount
+        // during the refetch and drop the keyboard focus the choice was made with.
+        placeholderData: keepPreviousData,
         queryKey: [
           ...channelsApi.getGetChannelWatermarkOptionsQueryKey(channel.id),
           version,
