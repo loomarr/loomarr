@@ -242,6 +242,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	chDomain.WindowZone = e.windowZoneFor()
+	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
 	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
 	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
