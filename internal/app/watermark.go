@@ -166,15 +166,15 @@ type bugDesign struct {
 	white   bool
 }
 
-// colours is the design's fill and palette (#1659 Q8): "era" is the holiday's colours while one is
-// on, else the era's (amber without one); a named colour fills the look, and the Era stripe keeps
-// the era or holiday palette beside it.
+// colours is the design's fill and palette (#1659 Q8): while a holiday is on its colours and palette
+// apply whatever colour is chosen (the approved mock's holOpts); otherwise "era" is the era's
+// (amber without one) and a named colour fills the look, with the Era stripe keeping the era palette.
 func (b bugDesign) colours(color string) (watermark.Colour, watermark.Palette) {
+	if h, ok := watermark.HolidayLooks[b.holiday]; ok {
+		return h.Colour, h.Palette
+	}
 	pal := watermark.EraPalette(b.decade)
 	fill := pal[0]
-	if h, ok := watermark.HolidayLooks[b.holiday]; ok {
-		fill, pal = h.Colour, h.Palette
-	}
 	if color != schedule.WatermarkDefaultColor {
 		fill = watermark.Colour(color)
 	}

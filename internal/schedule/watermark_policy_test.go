@@ -106,9 +106,11 @@ func TestWatermarkEraDecade(t *testing.T) {
 		want  int
 	}{
 		{nil, 0},
-		{&DateScope{SeriesAiring: []Range{{From: 1980, To: 1989}}}, 1980},
-		{&DateScope{MovieRelease: []Range{{From: 1975, To: 1979}}, SeriesAiring: []Range{{From: 1982, To: 1988}}}, 1980},
-		{&DateScope{SeriesAiring: []Range{{From: 1990}}}, 0}, // open-ended: no era
+		{&DateScope{SeriesAiring: []Range{{From: 1980, To: 1989}}}, 0}, // one axis is not an era
+		{EraDates(Range{From: 1980, To: 1989}), 1980},
+		{EraDates(Range{From: 1950, To: 2020}), 0}, // spans decades: no single palette
+		{&DateScope{MovieRelease: []Range{{From: 1970, To: 1979}}, SeriesPremiere: []Range{{From: 1990, To: 1999}}, SeriesAiring: []Range{{From: 1990, To: 1999}}}, 0}, // movies and series differ
+		{EraDates(Range{From: 1990}), 0}, // open-ended: no era
 	} {
 		if got := WatermarkEraDecade(ScopePolicy{Dates: c.dates}); got != c.want {
 			t.Errorf("%+v: %d, want %d", c.dates, got, c.want)

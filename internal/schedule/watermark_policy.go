@@ -151,28 +151,17 @@ func ResolveWatermark(p *WatermarkPolicy, install WatermarkInstall) ResolvedWate
 	return r
 }
 
-// WatermarkEraDecade is the decade a channel's date window centres on (1980 for the 1980s), the key
-// of "Match the era" (watermark.EraPalette), or 0 when the channel has no bounded window. The window
-// is every date range's earliest From to latest To.
+// WatermarkEraDecade is the decade a channel's era sits in (1980 for the 1980s), the key
+// of "Match the era" (watermark.EraPalette), or 0 when the channel has no era. The era is the one the
+// Programming tab shows (DateScope.Era: the same single range on all three axes), so what airs and
+// what the page says cannot disagree; any other date scope, an open-ended range or one spanning
+// decades has none (amber).
 func WatermarkEraDecade(scope ScopePolicy) int {
-	if scope.Dates.empty() {
+	r, ok := scope.Dates.Era()
+	if !ok || r.From <= 0 || r.To < r.From || r.From/10 != r.To/10 {
 		return 0
 	}
-	from, to := 0, 0
-	for _, rs := range [][]Range{scope.Dates.MovieRelease, scope.Dates.SeriesPremiere, scope.Dates.SeriesAiring} {
-		for _, r := range rs {
-			if r.From > 0 && (from == 0 || r.From < from) {
-				from = r.From
-			}
-			if r.To > 0 && r.To > to {
-				to = r.To
-			}
-		}
-	}
-	if from == 0 || to == 0 || to < from {
-		return 0
-	}
-	return (from + to) / 2 / 10 * 10
+	return r.From / 10 * 10
 }
 
 func (p *WatermarkPolicy) validate() error {
