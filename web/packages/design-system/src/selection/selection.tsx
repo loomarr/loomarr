@@ -144,7 +144,8 @@ const SelectControl = <Value extends string>({
             paddingHorizontal={semanticSpace.control}
           >
             <View flex={1} minWidth={0}>
-              <Text density={density} numberOfLines={1} textRole="compact" tone="primary">
+              {/* Left, like a form field: the web Pressable's button would otherwise centre it. */}
+              <Text density={density} numberOfLines={1} textAlign="left" textRole="compact" tone="primary">
                 {selected?.label ?? "Choose an option"}
               </Text>
             </View>

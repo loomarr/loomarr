@@ -9,9 +9,10 @@ import {
   Surface,
   Text,
   Toggle,
+  typography,
 } from "@loomarr/design-system";
 import { type ReactNode, useEffect, useState } from "react";
-import { Image, Pressable, useWindowDimensions, View } from "react-native";
+import { Image, Platform, Pressable, useWindowDimensions, View } from "react-native";
 
 // ON-SCREEN LOGO — the channel page's per-channel logo section (#1659; approved mock
 // project/prototypes/watermark.html, "Channel page → Channel info"). Presentational: the app
@@ -277,15 +278,19 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
             <Badge shape="square" tone={overridden ? "signal" : "neutral"}>
               {overridden ? "Channel override" : "Default"}
             </Badge>
-            <Action
+            {/* The mock's .link: 12 px underlined text, no button box, so the header stays one row. */}
+            <Pressable
               accessibilityLabel={`Reset to default (${label})`}
+              accessibilityRole="button"
               disabled={!overridden}
+              hitSlop={12}
               onPress={onReset}
-              tone="secondary"
-              variant="link"
+              style={{ opacity: overridden ? 1 : 0.5 }}
             >
-              Reset to default
-            </Action>
+              <Text textDecorationLine="underline" textRole="hint" tone="primary">
+                Reset to default
+              </Text>
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -297,44 +302,72 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
 };
 
 interface PickProps<V extends string> {
+  columns?: number;
   label: string;
+  /** Shown first in the row, before the cards (the mock's inline "Show as"). */
+  lead?: ReactNode;
   onPick: (v: V) => void;
   options: readonly { label: string; value: V; visual?: ReactNode }[];
   value: V | undefined;
 }
 
 // A row of selectable cards (style thumbnails, scene buttons, "Show as"): one radio group.
-const Pick = <V extends string>({ label, onPick, options, value }: PickProps<V>) => (
-  <Surface aria-label={label} role="radiogroup" {...group}>
-    {options.map((o) => {
-      const checked = o.value === value;
-      return (
-        <Pressable
-          accessibilityLabel={o.label}
-          accessibilityRole="radio"
-          aria-checked={checked}
-          key={o.value}
-          onPress={() => onPick(o.value)}
+// With `columns`, the cards sit in a fixed grid of equal tiles (the mock's .looks grid).
+const Pick = <V extends string>({ columns, label, lead, onPick, options, value }: PickProps<V>) => {
+  const card = (o: PickProps<V>["options"][number]) => {
+    const checked = o.value === value;
+    return (
+      <Pressable
+        accessibilityLabel={o.label}
+        accessibilityRole="radio"
+        aria-checked={checked}
+        key={o.value}
+        onPress={() => onPick(o.value)}
+        style={columns ? { flex: 1, minWidth: 0 } : undefined}
+      >
+        <Surface
+          alignItems="center"
+          backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
+          borderColor={checked ? "$actionPrimary" : "$borderControl"}
+          borderRadius="$control"
+          borderWidth={checked ? 2 : 1}
+          flexGrow={columns ? 1 : undefined}
+          gap={6}
+          paddingHorizontal={12}
+          paddingVertical={8}
         >
-          <Surface
-            alignItems="center"
-            backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
-            borderColor={checked ? "$actionPrimary" : "$borderControl"}
-            borderRadius="$control"
-            borderWidth={checked ? 2 : 1}
-            gap={6}
-            minWidth={o.visual ? 104 : undefined}
-            paddingHorizontal={12}
-            paddingVertical={8}
-          >
-            {o.visual}
-            <Text textRole="cardLabel">{o.label}</Text>
-          </Surface>
-        </Pressable>
-      );
-    })}
-  </Surface>
-);
+          {o.visual}
+          <Text textRole="cardLabel">{o.label}</Text>
+        </Surface>
+      </Pressable>
+    );
+  };
+  if (!columns) {
+    return (
+      <Surface alignItems="center" aria-label={label} role="radiogroup" {...group}>
+        {lead}
+        {options.map(card)}
+      </Surface>
+    );
+  }
+  // Rows of `columns` equal cells; the last row keeps empty cells so its tiles stay the same width.
+  const rows = Array.from({ length: Math.ceil(options.length / columns) }, (_, i) =>
+    options.slice(i * columns, (i + 1) * columns),
+  );
+  return (
+    <Surface aria-label={label} borderWidth={0} gap={8} role="radiogroup">
+      {rows.map((r) => (
+        <View key={r[0]?.value} style={{ flexDirection: "row", gap: 8 }}>
+          {r.map(card)}
+          {Array.from({ length: columns - r.length }, (_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: an empty cell's only identity is its column.
+            <View key={`empty-${i}`} style={{ flex: 1 }} />
+          ))}
+        </View>
+      ))}
+    </Surface>
+  );
+};
 
 interface FrameProps {
   corner: LogoCorner;
@@ -390,6 +423,34 @@ const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProp
     </LogoScene>
   );
 };
+
+// One consequence line under the preview: a bold lead phrase, then the plain sentence.
+const Consequence = ({ children, lead }: { children: ReactNode; lead: string }) => (
+  <Text textRole="compact" tone="muted">
+    <Text textRole="cardLabel" tone="primary">
+      {lead}
+    </Text>{" "}
+    {children}
+  </Text>
+);
+
+// The mock's .btn.sm.outline: the holiday chips' box with a 13 px label, not a bold Action.
+const SmallButton = ({ label, onPress }: { label: string; onPress?: () => void }) => (
+  <Pressable accessibilityRole="button" onPress={onPress}>
+    <Surface
+      alignItems="center"
+      backgroundColor="transparent"
+      borderColor="$borderControl"
+      borderRadius="$control"
+      borderWidth={1}
+      justifyContent="center"
+      minHeight={32}
+      paddingHorizontal={10}
+    >
+      <Text textRole="cardLabel">{label}</Text>
+    </Surface>
+  </Pressable>
+);
 
 // A holiday picture at chip size: the backend's picture-only PNG (the mock's 24 px icon).
 const MotifIcon = ({ src }: { src: string }) => (
@@ -485,6 +546,7 @@ const OnScreenLogoSection = ({
         overridden={p.look !== undefined}
       >
         <Pick
+          columns={phone ? 2 : 3}
           label="Style"
           onPick={(v) => onChange({ look: v })}
           options={LOOKS.map((l) => ({
@@ -565,6 +627,10 @@ const OnScreenLogoSection = ({
             }}
             onChangeText={setCallsign}
             placeholder={autoCallsign ? `Auto: ${autoCallsign}` : "Auto"}
+            // The mock's .input is the body face; Field defaults to the data (mono) face.
+            style={{
+              fontFamily: Platform.OS === "web" ? typography.family.body.web : typography.family.body.native,
+            }}
             value={callsign}
           />
         </View>
@@ -660,7 +726,7 @@ const OnScreenLogoSection = ({
                     ) : (
                       <View style={{ ...row, gap: 6 }}>
                         <MotifIcon src={previewSrc({ holiday: h.id, motifOnly: true })} />
-                        <Text textRole="metadata">{h.pictures[0]?.name ?? ""}</Text>
+                        <Text textRole="cardLabel">{h.pictures[0]?.name ?? ""}</Text>
                       </View>
                     )}
                   </Surface>
@@ -687,7 +753,7 @@ const OnScreenLogoSection = ({
         onReset={reset("corner")}
         overridden={p.corner !== undefined}
       >
-        <Surface aria-label="Position" role="radiogroup" {...group} gap={6} width={92}>
+        <Surface aria-label="Position" role="radiogroup" {...group} gap={6} width={118}>
           {CORNERS.map((c) => {
             const checked = corner === c.value;
             return (
@@ -698,14 +764,21 @@ const OnScreenLogoSection = ({
                 key={c.value}
                 onPress={() => onChange({ corner: c.value })}
               >
+                {/* The mock's .cell: 56 × 40, the chosen one tinted with a 16 px marker inside. */}
                 <Surface
-                  backgroundColor={checked ? "$actionPrimary" : "$surfaceRaised"}
+                  alignItems="center"
+                  backgroundColor={checked ? "$surfaceFocus" : "transparent"}
                   borderColor={checked ? "$actionPrimary" : "$borderControl"}
                   borderRadius="$control"
                   borderWidth={1}
-                  height={28}
-                  width={40}
-                />
+                  height={40}
+                  justifyContent="center"
+                  width={56}
+                >
+                  {checked ? (
+                    <Surface backgroundColor="$actionPrimary" borderRadius={3} height={14} width={14} />
+                  ) : null}
+                </Surface>
               </Pressable>
             );
           })}
@@ -769,16 +842,12 @@ const OnScreenLogoSection = ({
         <View style={{ ...row, flexWrap: "wrap" }}>
           {img ? (
             <>
-              <Text textRole="metadata">Your image is in use.</Text>
-              <Action onPress={onRemoveImage} tone="secondary">
-                Remove
-              </Action>
+              <Text textRole="compact">Your image is in use.</Text>
+              <SmallButton label="Remove" onPress={onRemoveImage} />
             </>
           ) : (
             <>
-              <Action onPress={onUploadImage} tone="secondary">
-                Upload an image
-              </Action>
+              <SmallButton label="Upload an image" onPress={onUploadImage} />
               <FieldHint>PNG or WebP. Transparent background works best.</FieldHint>
             </>
           )}
@@ -788,7 +857,7 @@ const OnScreenLogoSection = ({
   );
 
   const what = enabled
-    ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label}, ${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
+    ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label}, ${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase().replace(" — ", " (")}).`
     : "No logo on this channel.";
   const preview = (
     <View style={{ flex: phone ? undefined : 1.3, gap: 10, minWidth: 0 }} testID="logo-preview">
@@ -800,12 +869,14 @@ const OnScreenLogoSection = ({
         onCheckedChange={setZoom}
       />
       {showAs ? (
-        <View style={{ gap: 6 }}>
-          <Text textRole="hint" tone="muted">
-            Show as
-          </Text>
+        <View>
           <Pick
             label="Show the logo as"
+            lead={
+              <Text textRole="hint" tone="muted">
+                Show as
+              </Text>
+            }
             onPick={(v) => setView(v === "none" ? null : v)}
             options={[
               { value: "none", label: "Everyday" },
@@ -830,20 +901,21 @@ const OnScreenLogoSection = ({
           </>
         );
       })()}
-      <Surface backgroundColor="$surfaceRaised" borderRadius="$control" gap={6} padding={12}>
-        <Text textRole="hint">{`What you will see. ${what}`}</Text>
-        <Text textRole="hint">
-          Where it shows. Over movies and episodes. Hidden during commercials, bumpers and station IDs.
-        </Text>
-        <Text textRole="hint">
-          When. From the next programme on this channel. What is airing now does not change.
-        </Text>
+      {/* The mock's .consq: muted lines, each led by a bold phrase. */}
+      <View style={{ gap: 4 }} testID="logo-consequence">
+        <Consequence lead="What you will see.">{what}</Consequence>
+        <Consequence lead="Where it shows.">
+          Over movies and episodes. Hidden during commercials, bumpers and station IDs.
+        </Consequence>
+        <Consequence lead="When.">
+          From the next programme on this channel. What is airing now does not change.
+        </Consequence>
         {showAs ? (
-          <Text textRole="hint">
-            {`Holidays. ${holSentence} ${active ? `Today (${todayLabel}) that is the ${active.name} one.` : `Today (${todayLabel}) it shows the everyday logo.`}`}
-          </Text>
+          <Consequence lead="Holidays.">
+            {`${holSentence} ${active ? `Today (${todayLabel}) that is the ${active.name} one.` : `Today (${todayLabel}) it shows the everyday logo.`}`}
+          </Consequence>
         ) : null}
-      </Surface>
+      </View>
       {drawable ? null : (
         <Surface
           backgroundColor="$stateWarningSurface"

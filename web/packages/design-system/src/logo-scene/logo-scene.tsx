@@ -158,6 +158,9 @@ const LogoScene = ({ children, label, scene }: LogoSceneProps) => {
       borderWidth={1}
       onLayout={(e) => setSize({ height: e.nativeEvent.layout.height, width: e.nativeEvent.layout.width })}
       overflow="hidden"
+      // Tamagui's web View is position: static, so the art and the logo would anchor to the
+      // nearest positioned ancestor (the whole preview column) instead of this frame.
+      position="relative"
       role="img"
       width="100%"
     >
