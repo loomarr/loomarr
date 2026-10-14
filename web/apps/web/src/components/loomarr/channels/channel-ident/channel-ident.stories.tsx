@@ -27,8 +27,8 @@ const PaletteSpread: Story = {
   render: () => (
     <div className="flex gap-2">
       {[
-        ["Springfield Classics", 1],
-        ["Star Trek Classics", 2],
+        ["Sparrowmoor Classics", 1],
+        ["Star Transit Classics", 2],
         ["1980s Action Heroes", 3],
         ["Saturday Morning Kids", 4],
         ["Late Night Sci-Fi", 5],

@@ -68,7 +68,7 @@ export const Default: Story = {
         {
           path: "a1.mp4",
           tunarrProgramId: "a1",
-          name: "Frosted Flakes",
+          name: "Crunchlings",
           kind: "commercial",
           durationMs: 30000,
           isFallbackCard: false,
@@ -77,7 +77,7 @@ export const Default: Story = {
         {
           path: "a2.mp4",
           tunarrProgramId: "a2",
-          name: "TMNT figures",
+          name: "Shell Squad figures",
           kind: "commercial",
           durationMs: 30000,
           isFallbackCard: false,

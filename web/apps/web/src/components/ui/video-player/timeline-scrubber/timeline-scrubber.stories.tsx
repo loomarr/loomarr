@@ -11,8 +11,8 @@ const airings: GuideAiring[] = [
   {
     kind: "program",
     scheduleBlockId: "block_episode_a",
-    series: "The Simpsons",
-    title: "Some Enchanted Evening",
+    series: "Kettle Kids",
+    title: "The Babysitter Storm",
     season: 1,
     episode: 13,
     startMs: NOW - min(8),
@@ -28,8 +28,8 @@ const airings: GuideAiring[] = [
   {
     kind: "program",
     scheduleBlockId: "block_episode_b",
-    series: "The Simpsons",
-    title: "Bart the Genius",
+    series: "Kettle Kids",
+    title: "Pip the Inventor",
     season: 1,
     episode: 2,
     startMs: NOW + min(16),

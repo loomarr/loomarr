@@ -29,8 +29,14 @@ const withStubbedLineup = (): Decorator => (Story) => {
       return Promise.resolve(
         jsonResponse<SearchOutputBody>({
           candidates: [
-            { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
-            { mediaType: "series", tvdbId: 81189, name: "Breaking Bad", year: 2008, inLibrary: false },
+            { mediaType: "movie", tmdbId: 90000106, name: "Marigold Protocol", year: 1987, inLibrary: true },
+            {
+              mediaType: "series",
+              tvdbId: 90081189,
+              name: "Copperline Foundry",
+              year: 2008,
+              inLibrary: false,
+            },
           ],
         }),
       );
@@ -92,16 +98,16 @@ type Story = StoryObj<typeof meta>;
 const Populated: Story = {
   args: {
     lineup: [
-      { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
-      { key: "movie:tmdb:9426", name: "Point Break", year: 1991, state: "pending" },
+      { key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995, state: "available" },
+      { key: "movie:tmdb:90009426", name: "The Seventh Satellite Choir", year: 1991, state: "pending" },
       {
-        key: "movie:tmdb:1892",
-        name: "Return of the Jedi",
+        key: "movie:tmdb:90001892",
+        name: "Return to Comet Harbor",
         year: 1983,
         state: "acquiring",
         downloadStatus: "Downloading",
       },
-      { key: "movie:tmdb:11", name: "Star Wars", year: 1977, state: "unavailable" },
+      { key: "movie:tmdb:90000011", name: "Comet Harbor", year: 1977, state: "unavailable" },
     ],
   },
 };
@@ -137,11 +143,13 @@ const Empty: Story = { args: { lineup: [] } };
 // behaviour (the optimistic state seeded from the search result's inLibrary), not just a
 // prop on a static entry.
 const AddingATitle: Story = {
-  args: { lineup: [{ key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" }] },
+  args: {
+    lineup: [{ key: "movie:tmdb:90000949", name: "The Velvet Cartographer", year: 1995, state: "available" }],
+  },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: /add a title/i }));
-    await userEvent.type(canvas.getByLabelText("Search"), "breaking");
-    await userEvent.click(await canvas.findByText("Breaking Bad"));
+    await userEvent.type(canvas.getByLabelText("Search"), "copper");
+    await userEvent.click(await canvas.findByText("Copperline Foundry"));
     await canvas.findByText("Pending");
   },
 };

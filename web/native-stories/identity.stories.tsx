@@ -1,23 +1,28 @@
 import { Screen, Surface, Text } from "@loomarr/design-system";
+import { classicEpisode } from "@loomarr/fixtures";
 import { ChannelIdentity, ProgrammeIdentity } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const NativeIdentityWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => (
   <Screen density={density} gap="$section">
     <ChannelIdentity
-      channel={{ channelLogoState: "missing", channelName: "Classic Animation", channelNumber: "07" }}
+      channel={{
+        channelLogoState: "missing",
+        channelName: classicEpisode.channelName,
+        channelNumber: classicEpisode.channelNumber,
+      }}
       density={density}
     />
     <Surface padding="$section">
       <ProgrammeIdentity
         density={density}
         programme={{
-          badge: { label: "On now", tone: "live" },
-          description: "Springfield considers an ambitious monorail proposal.",
-          episodeLabel: "S04E12",
-          seriesTitle: "The Simpsons",
-          timeLabel: "7:00–7:30 PM",
-          title: "Marge vs. the Monorail",
+          badge: classicEpisode.badge,
+          description: classicEpisode.description,
+          episodeLabel: classicEpisode.episodeLabel,
+          seriesTitle: classicEpisode.seriesTitle,
+          timeLabel: classicEpisode.timeLabel,
+          title: classicEpisode.title,
         }}
       />
     </Surface>

@@ -1,4 +1,5 @@
 import { Screen, Surface, Text } from "@loomarr/design-system";
+import { classicEpisode } from "@loomarr/fixtures";
 import { ModalOverlay, TransientOverlay } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
@@ -33,7 +34,7 @@ const NativeOverlayWorkshop = ({
       ) : (
         <TransientOverlay
           density={density}
-          description="The Simpsons · Marge vs. the Monorail · 7:00–7:30 PM"
+          description={`${classicEpisode.seriesTitle} · ${classicEpisode.title} · ${classicEpisode.timeLabel}`}
           eyebrow="07 · CLASSIC ANIMATION"
           onDismiss={() => setVisible(false)}
           title="Now playing"

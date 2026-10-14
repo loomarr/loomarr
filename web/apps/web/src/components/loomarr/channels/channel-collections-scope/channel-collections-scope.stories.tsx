@@ -42,7 +42,7 @@ const withStubbedCollections =
 const COLLECTIONS = {
   collections: [
     { id: "bs-1", name: "Halloween", childCount: 12 },
-    { id: "bs-2", name: "Criterion", childCount: 88 },
+    { id: "bs-2", name: "Bellwether", childCount: 88 },
     { id: "bs-3", name: "Christmas" },
   ],
 };
@@ -87,10 +87,10 @@ const MANY = {
   collections: [
     { id: "c-1", name: "80s Best" },
     { id: "c-2", name: "Top Scariest" },
-    { id: "c-3", name: "Oscars 2024" },
+    { id: "c-3", name: "Award Winners 2024" },
     ...Array.from({ length: 40 }, (_, i) => ({
       id: `f-${i}`,
-      name: `${["Alien", "Batman", "Die Hard", "Rocky", "Bond"][i % 5]} ${i} Collection`,
+      name: `${["Marigold", "Halloway", "Hollis Tower", "Atlas Finch", "Tin Sheriff"][i % 5]} ${i} Collection`,
     })),
   ],
 };

@@ -25,7 +25,7 @@ const withStubbedSearch = (): Decorator => (Story) => {
       return Promise.resolve(
         jsonResponse<SearchOutputBody>({
           candidates: [
-            { mediaType: "series", tvdbId: 71663, name: "The Simpsons", year: 1989, inLibrary: true },
+            { mediaType: "series", tvdbId: 90071663, name: "Kettle Kids", year: 1989, inLibrary: true },
           ],
         }),
       );
@@ -60,7 +60,7 @@ const Empty: Story = { args: { policy: {} } };
 // Picked shows render as chips carrying the key's source + id — accurate, since the policy
 // stores no display name and a guessed title would be fiction.
 const Picked: Story = {
-  args: { policy: { scope: { series: ["series:tvdb:71663", "series:tvdb:73739"] } } },
+  args: { policy: { scope: { series: ["series:tvdb:90071663", "series:tvdb:90073739"] } } },
 };
 
 export default meta;

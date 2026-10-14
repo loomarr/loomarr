@@ -28,7 +28,7 @@ const InContext: Story = {
   render: () => (
     <div className="flex w-72 flex-col gap-1 rounded-md border border-border p-3">
       <Caption shout>Now playing</Caption>
-      <span className="text-sm">The Simpsons · Bart the Mother</span>
+      <span className="text-sm">Kettle Kids · The Borrowed Teapot</span>
       <Caption>4:00 PM–4:22 PM · S10E03</Caption>
     </div>
   ),

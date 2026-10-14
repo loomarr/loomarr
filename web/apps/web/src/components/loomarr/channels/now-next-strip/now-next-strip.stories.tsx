@@ -11,8 +11,13 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Playing: Story = { args: { now: { title: "Heat", until: "9:42 PM" }, next: { title: "Con Air" } } };
-const FlexPodGap: Story = { args: { gap: true, next: { title: "Con Air" } } };
+const Playing: Story = {
+  args: {
+    now: { title: "The Velvet Cartographer", until: "9:42 PM" },
+    next: { title: "Pelican Point Motel" },
+  },
+};
+const FlexPodGap: Story = { args: { gap: true, next: { title: "Pelican Point Motel" } } };
 const Empty: Story = { args: {} };
 
 export default meta;

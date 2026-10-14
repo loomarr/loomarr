@@ -50,7 +50,7 @@ const OneHugeBlock: Story = {
 const Focused: Story = {
   args: {
     segments: [
-      { key: "a", startMs: 0, endMs: 30_000, name: "Frosted Flakes" },
+      { key: "a", startMs: 0, endMs: 30_000, name: "Crunchlings" },
       { key: "b", startMs: 30_000, endMs: 45_000, name: "Station ident" },
       { key: "c", startMs: 45_000, endMs: 105_000, name: "Toy ad" },
     ],

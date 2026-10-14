@@ -31,7 +31,7 @@ var realTitles = []string{
 // migratedTitles are real titles, brands, people and ids that #1592 removed from the migrated
 // paths below. Unmigrated fixtures still carry many of them, so they cannot join realTitles yet
 // without listing those files; until then they are enforced on the migrated paths only. Add to
-// it; never remove from it. When legacyFixtures is empty, fold it into realTitles.
+// it; never remove from it. When legacyFixtures and pendingGo are both empty, fold it into realTitles.
 var migratedTitles = []string{
 	"Sunny D", "Gushers", "Fruit by the Foot", "Kellogg", "Bran Flakes", "Grrreat", "Springfield",
 	"Bart the Mother", "Lisa Gets an A", "Kidney Trouble", "Radioactive Man", "Milhouse", "Homediddly",
@@ -118,6 +118,25 @@ var migrated = []string{
 	"web/apps/web/src/design-system/layout.stories.tsx",
 	"web/apps/web/src/filler/incoming/incoming.stories.tsx",
 	"web/apps/web/tests/e2e/mock-backend.ts",
+	// The legacy stories and the TV emulator fixture server (slice 18).
+	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-ident/channel-ident.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
+	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
+	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
+	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
+	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
+	"web/apps/web/src/design-system/identity.stories.tsx",
+	"web/apps/web/src/design-system/overlay.stories.tsx",
+	"web/native-stories/identity.stories.tsx",
+	"web/native-stories/layout.stories.tsx",
+	"web/native-stories/overlay.stories.tsx",
+	"web/scripts/tv-emulator-fixture-server.mjs",
 }
 
 // migratedTests are the directories whose unit tests and e2e specs #1592 has moved onto the demo
@@ -180,6 +199,8 @@ var migratedTests = []string{
 	"web/packages/core/src/",
 	"web/packages/core/tests/",
 	"web/packages/player/tests/",
+	// The visual specs, which assert the migrated stories' text (slice 18).
+	"web/apps/web/tests/visual/",
 }
 
 // migratedGo are the Go trees and files #1592 has moved onto the demo catalogue: the API tests,
@@ -308,26 +329,9 @@ var guarded = []string{"cmd/seed", "cmd/demo-library", "internal/demolibrary"}
 // legacyFixtures still carry real titles and are migrated off them in #1592. They render the
 // Storybook stories behind the visual baselines, so each migration re-shoots baselines; until
 // then this list may only SHRINK: a new file with a real title fails, and so does a listed file
-// that is already clean (delete its line).
-var legacyFixtures = []string{
-	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-ident/channel-ident.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
-	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
-	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
-	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
-	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
-	"web/apps/web/src/design-system/identity.stories.tsx",
-	"web/apps/web/src/design-system/overlay.stories.tsx",
-	"web/native-stories/identity.stories.tsx",
-	"web/native-stories/overlay.stories.tsx",
-	"web/scripts/tv-emulator-fixture-server.mjs",
-}
+// that is already clean (delete its line). Slice 18 emptied it. migratedTitles folds into
+// realTitles once pendingGo (#1917) is empty too.
+var legacyFixtures = []string{}
 
 // isFixture reports whether a repo path is a seed or fixture the guard scans. Captured provider
 // responses under internal/testkit/fixtures are deliberately out of scope: they are recorded
