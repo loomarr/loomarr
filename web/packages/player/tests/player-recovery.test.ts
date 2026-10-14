@@ -182,25 +182,30 @@ describe("a start the paired server refuses (#1455)", () => {
       status: 502,
     });
   const started = () => new Response(master, { status: 200 });
-  const pairedSource = (...masters: (() => Response)[]) => {
-    const request = vi.fn((input: RequestInfo | URL) => {
-      if (String(input).endsWith("/play-url")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              expiresAt: "2026-09-25T01:00:00Z",
-              relativeUrl: "/v1/playout/hls/simpsons/master.m3u8?sig=one",
-              url: "",
-            }),
-            { status: 200 },
-          ),
+  type MasterAnswer = (init?: RequestInit) => Response | Promise<Response>;
+  const pairedSource = (...masters: MasterAnswer[]) => {
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const channelId = /\/channels\/([^/]+)\/play-url$/.exec(String(input))?.[1];
+      if (channelId) {
+        return new Response(
+          JSON.stringify({
+            expiresAt: "2026-09-25T01:00:00Z",
+            relativeUrl: `/v1/playout/hls/${channelId}/master.m3u8?sig=one`,
+            serverTimeMs: Date.now() + 5_000,
+            url: "",
+          }),
+          { status: 200 },
         );
       }
       const next = masters.length > 1 ? masters.shift() : masters[0];
-      return Promise.resolve((next ?? started)());
+      return (next ?? started)(init);
     });
-    const masterRequests = () =>
-      request.mock.calls.filter(([input]) => String(input).includes("master.m3u8"));
+    // The real tune's master reads (a warm's carry mode=warm).
+    const masterRequests = (channelId = "simpsons") =>
+      request.mock.calls.filter(([input]) => {
+        const url = String(input);
+        return url.includes(`/${channelId}/master.m3u8`) && !url.includes("mode=warm");
+      });
     return {
       masterRequests,
       source: createPlayUrlSourcePort({ baseUrl: "https://loomarr.test", fetch: request }),
@@ -240,10 +245,86 @@ describe("a start the paired server refuses (#1455)", () => {
       {
         expiresAt: Date.parse("2026-09-25T01:00:00Z"),
         mediaUri: "https://loomarr.test/v1/playout/hls/simpsons/baseline/index.m3u8?sig=one",
+        serverTimeMs: Date.now() + 5_000,
         uri: "https://loomarr.test/v1/playout/hls/simpsons/master.m3u8?sig=one",
       },
       expect.objectContaining({ attemptId: 1 }),
     );
+  });
+
+  it("counts the server's start wait in the clock the player starts from", async () => {
+    const slowStart: MasterAnswer = () =>
+      new Promise((resolve) => setTimeout(() => resolve(started()), 8_000));
+    const { source } = pairedSource(slowStart);
+    const { controller, transport } = harness(source);
+    const mintedServerTime = Date.now() + 5_000;
+
+    const tuning = controller.reconcile(channels);
+    await vi.advanceTimersByTimeAsync(8_000);
+    await tuning;
+
+    // Without the wait counted, the live clock would run 8 s behind the server's for the whole tune.
+    expect(transport.replace).toHaveBeenCalledWith(
+      expect.objectContaining({ serverTimeMs: mintedServerTime + 8_000 }),
+      expect.anything(),
+    );
+  });
+
+  it("retries a start that failed without the server's reason, as the player's own errors are", async () => {
+    const { masterRequests, source } = pairedSource(() => new Response("", { status: 404 }), started);
+    const { controller, reports, transport } = harness(source);
+
+    await controller.reconcile(channels);
+    expect(controller.getSnapshot()).toMatchObject({ reconnecting: { attempt: 1 }, status: "tuning" });
+    expect(reports).toEqual([expect.objectContaining({ attempt: 1, fatal: false })]);
+
+    await vi.advanceTimersByTimeAsync(backoffMs[0] ?? 0);
+    expect(masterRequests()).toHaveLength(2);
+    expect(transport.replace).toHaveBeenCalledOnce();
+  });
+
+  it("abandons a pending start when the viewer surfs on, without a failure or a stale player", async () => {
+    const pending: MasterAnswer = (init) =>
+      new Promise((_, reject) =>
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))),
+      );
+    const { masterRequests, source } = pairedSource(pending, started);
+    const two: PlayerChannel[] = [
+      ...channels,
+      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+    ];
+    const { controller, reports, transport } = harness(source);
+
+    const first = controller.reconcile(two);
+    await vi.advanceTimersByTimeAsync(0);
+    await controller.step(1);
+    await first;
+
+    expect(masterRequests("simpsons")).toHaveLength(1);
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "futurama" } });
+    expect(controller.getSnapshot().status).not.toBe("failed");
+    expect(reports).toEqual([]);
+    expect(transport.replace).toHaveBeenCalledOnce();
+    expect(transport.replace).toHaveBeenCalledWith(
+      expect.objectContaining({ uri: expect.stringContaining("/futurama/master.m3u8") }),
+      expect.anything(),
+    );
+  });
+
+  it("tunes a warmed neighbour without reading its master again", async () => {
+    const { masterRequests, source } = pairedSource(started);
+    const two: PlayerChannel[] = [
+      ...channels,
+      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+    ];
+    const { controller } = harness(source);
+    await controller.reconcile(two);
+    await vi.advanceTimersByTimeAsync(0); // the neighbour's warm settles
+
+    await controller.step(1);
+
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "futurama" }, status: "tuning" });
+    expect(masterRequests("futurama")).toHaveLength(0);
   });
 
   it("ends an automatic recovery at the refusal instead of spending the rest of the budget", async () => {

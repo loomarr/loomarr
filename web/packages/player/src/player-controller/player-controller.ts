@@ -142,6 +142,7 @@ const createPlayerController = ({
       ? transport.replace(warmedSource, { attemptId, signal: request.signal })
       : undefined;
     replacing?.catch(() => undefined); // awaited below; never an unhandled rejection meanwhile
+    let starting = false;
     publish({
       attemptId,
       catalog: snapshot.catalog,
@@ -176,7 +177,9 @@ const createPlayerController = ({
         if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
           publish({ ...snapshot, stillUri: nextSource.stillUri });
         }
+        starting = true;
         const started = source.start ? await source.start(nextSource, request.signal) : nextSource;
+        starting = false;
         if (!isCurrentAttempt(attemptId, request.signal)) return;
         await transport.replace(started, { attemptId, signal: request.signal });
       }
@@ -192,7 +195,9 @@ const createPlayerController = ({
         recordFailure(message, error);
         return;
       }
-      if (recovering) {
+      // A start that failed without the server's reason (a dropped connection, a warm-up 404) gets
+      // the automatic retries it got when the player made that request itself.
+      if (recovering || starting) {
         recordFailure(message);
         return;
       }

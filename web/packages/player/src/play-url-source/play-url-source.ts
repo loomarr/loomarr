@@ -56,7 +56,7 @@ const resolveStillUrl = (
 };
 
 /** A request that could not reach the server says so in words; an aborted one stays an abort. */
-const reach = async (signal: AbortSignal, send: () => Promise<Response>): Promise<Response> => {
+const reach = async <T>(signal: AbortSignal, send: () => Promise<T>): Promise<T> => {
   try {
     return await send();
   } catch (error) {
@@ -101,15 +101,24 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
      * player whole, and its re-read joins the session this request already started.
      */
     start: async (minted, signal) => {
-      const response = await reach(signal, () => request(minted.uri, { method: "GET", signal }));
-      const body = await response.text();
+      const requestedAt = Date.now();
+      const { body, response } = await reach(signal, async () => {
+        const answer = await request(minted.uri, { method: "GET", signal });
+        return { body: await answer.text(), response: answer };
+      });
       if (!response.ok) {
         const reason = parseStartFailureReason(response.status, body);
         throw reason ? new StartFailure(reason, response.status) : new Error(GENERIC_START_FAILURE);
       }
+      // The server held this answer until the stream was ready; its mint-time clock reading must
+      // count that wait, or the player's live clock runs behind the server's for the whole tune.
+      const started =
+        minted.serverTimeMs === undefined
+          ? minted
+          : { ...minted, serverTimeMs: minted.serverTimeMs + (Date.now() - requestedAt) };
       const [only, ...others] = variantUris(body);
-      if (only === undefined || others.length > 0) return minted;
-      return { ...minted, mediaUri: new URL(only, response.url || minted.uri).toString() };
+      if (only === undefined || others.length > 0) return started;
+      return { ...started, mediaUri: new URL(only, response.url || minted.uri).toString() };
     },
     // Warms on the exact signed URL the real tune will reuse (see warmSource for the protocol).
     warm: async (channel, profile, signal) => {
