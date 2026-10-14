@@ -286,13 +286,21 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 
 // nextClockChange is the first instant in (after, before) at which the clock changes what the
 // arrangement reads (schedule.ClockSignature), or zero when it does not change. Rule hours and
-// holidays turn on the hour (holidays at the channel's local midnight in zone), so the hour tops
-// are checked, plus each rule's explicit date edges.
+// holidays turn on the hour or at the channel's local midnight in zone, so the hour tops and the
+// zone's midnights are checked, plus each rule's explicit date edges.
 func nextClockChange(policy schedule.ChannelPolicy, zone *time.Location, after, before time.Time) time.Time {
 	base := schedule.ClockSignature(policy, after, zone)
 	var candidates []time.Time
 	top := time.Date(after.Year(), after.Month(), after.Day(), after.Hour(), 0, 0, 0, after.Location()).Add(time.Hour)
 	for t := top; t.Before(before); t = t.Add(time.Hour) {
+		candidates = append(candidates, t)
+	}
+	// A :30 or :45 zone's midnight is no hour top of the cursor's clock.
+	if zone == nil {
+		zone = time.UTC
+	}
+	y, m, d := after.In(zone).Date()
+	for t := time.Date(y, m, d+1, 0, 0, 0, 0, zone); t.Before(before); t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, zone) {
 		candidates = append(candidates, t)
 	}
 	for _, r := range policy.Rules {
