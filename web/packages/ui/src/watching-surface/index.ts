@@ -7,3 +7,4 @@ export type {
   WatchingScheduleData,
   WatchingSurfaceProps,
 } from "./watching-surface.type";
+export { watchingScheduleTimeMs } from "./watching-surface-state";

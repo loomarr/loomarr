@@ -1,5 +1,6 @@
 import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
+import { StartFailure } from "../start-failure";
 import type {
   PlayerController,
   PlayerControllerOptions,
@@ -62,15 +63,17 @@ const createPlayerController = ({
 
   /**
    * Counts one player error, reports it, and either schedules a silent re-tune of the same Channel
-   * (fresh mint + replace) or, once the budget is spent, publishes the manual-Retry failure.
+   * (fresh mint + replace) or, once the budget is spent, publishes the manual-Retry failure. A
+   * start the server refused (`StartFailure`) is final at once: retrying it waits out the server's
+   * start deadline again for the same answer.
    */
-  const recordFailure = (message: string) => {
+  const recordFailure = (message: string, startFailure?: StartFailure) => {
     const channel = snapshot.channel;
     if (!channel) return;
     clearTimeout(stableTimer);
     stableTimer = undefined;
     consecutiveFailures += 1;
-    const retryable = consecutiveFailures <= backoffMs.length;
+    const retryable = !startFailure && consecutiveFailures <= backoffMs.length;
     try {
       onPlayerError?.({
         attempt: consecutiveFailures,
@@ -78,6 +81,7 @@ const createPlayerController = ({
         elapsedMs: Date.now() - tuneStartedAt,
         error: message,
         fatal: !retryable,
+        ...(startFailure ? { status: startFailure.status } : {}),
       });
     } catch {
       // Diagnostics must never affect playback.
@@ -132,12 +136,15 @@ const createPlayerController = ({
     activeRequest = request;
     attempt += 1;
     const attemptId = attempt;
-    // A warmed source goes to the player before the tuning snapshot renders the switch overlay, so
-    // the native start is not queued behind the overlay's mount on the main thread (#1037).
-    const replacing = warmedSource
-      ? transport.replace(warmedSource, { attemptId, signal: request.signal })
-      : undefined;
+    // A warm that read its master names the only rendition, ready to open. It goes to the player
+    // before the tuning snapshot renders the switch overlay, so the native start is not queued
+    // behind the overlay's mount on the main thread (#1037). A warm that didn't (refused, or a
+    // master offering a choice) still saves the mint, but its master is read through `start`, like
+    // a cold tune's, so a refusal arrives with the server's reason.
+    const ready = warmedSource?.mediaUri !== undefined || !source.start ? warmedSource : undefined;
+    const replacing = ready ? transport.replace(ready, { attemptId, signal: request.signal }) : undefined;
     replacing?.catch(() => undefined); // awaited below; never an unhandled rejection meanwhile
+    let starting = false;
     publish({
       attemptId,
       catalog: snapshot.catalog,
@@ -165,14 +172,21 @@ const createPlayerController = ({
       if (replacing) {
         await replacing;
       } else {
-        const nextSource = await source.mint(channel, profile, request.signal);
+        const nextSource = warmedSource ?? (await source.mint(channel, profile, request.signal));
         if (!isCurrentAttempt(attemptId, request.signal)) return;
         // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
         // channel's still on demand, so the overlay can show it while the stream starts.
         if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
           publish({ ...snapshot, stillUri: nextSource.stillUri });
         }
-        await transport.replace(nextSource, { attemptId, signal: request.signal });
+        starting = true;
+        // The outgoing channel holds its last frame, silent, while the server starts this one, and
+        // stays held if it refuses; otherwise it would keep playing under the new channel's name.
+        if (source.start) transport.pause();
+        const started = source.start ? await source.start(nextSource, request.signal) : nextSource;
+        starting = false;
+        if (!isCurrentAttempt(attemptId, request.signal)) return;
+        await transport.replace(started, { attemptId, signal: request.signal });
       }
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       // The viewer's own stream is on its way; only now may neighbours start their sessions.
@@ -182,7 +196,13 @@ const createPlayerController = ({
     } catch (error) {
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       const message = error instanceof Error ? error.message : "Couldn't tune that channel.";
-      if (recovering) {
+      if (error instanceof StartFailure) {
+        recordFailure(message, error);
+        return;
+      }
+      // A start that failed without the server's reason (a dropped connection, a warm-up 404) gets
+      // the automatic retries it got when the player made that request itself.
+      if (recovering || starting) {
         recordFailure(message);
         return;
       }

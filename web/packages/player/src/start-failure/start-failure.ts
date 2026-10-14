@@ -1,16 +1,27 @@
 /**
- * The sentence shown when a channel refused to start and no more specific reason is available.
- *
- * Web reaches this only when a 5xx problem body can't be parsed (see `parseStartFailureReason`
- * below). Native (Expo) reaches it for EVERY 5xx start failure, by design (§1455 checkpoint 2):
- * the server's manifest endpoint IS the tune (internal/api/playout.go: tuneRaw → playout.Tune), so
- * the native transport cannot safely re-fetch it from JS to read the problem body — that would
- * start a second tune of a channel that just failed. Showing the server's specific `detail` on
- * native would need a read-only API surface the client can poll AFTER a failed tune without
- * triggering another one (e.g. a last-start-failure field scoped to the channel); none exists
- * today — see #1455 for that follow-up.
+ * The sentence shown when a channel refused to start and no more specific reason is available:
+ * a 5xx answer whose problem body can't be parsed (see `parseStartFailureReason` below).
  */
 const GENERIC_START_FAILURE = "Couldn't start this channel. Try again in a moment.";
+
+/** The sentence shown when the paired server could not be reached at all while starting a channel. */
+const SERVER_UNREACHABLE = "Couldn't reach Loomarr. Check your connection and try again.";
+
+/**
+ * A channel start the server refused and explained (a 5xx problem response to the manifest that
+ * starts the stream). It is final for this tune: the server already waited out its own start
+ * deadline, so an automatic retry only makes the viewer wait the same time again. The viewer sees
+ * the message and decides whether to Retry.
+ */
+class StartFailure extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "StartFailure";
+    this.status = status;
+  }
+}
 
 const decodeResponseBody = (body: unknown): string => {
   if (typeof body === "string") return body;
@@ -42,4 +53,4 @@ const parseStartFailureReason = (status: number, body: unknown): string | undefi
   return GENERIC_START_FAILURE;
 };
 
-export { GENERIC_START_FAILURE, parseStartFailureReason };
+export { GENERIC_START_FAILURE, parseStartFailureReason, SERVER_UNREACHABLE, StartFailure };
