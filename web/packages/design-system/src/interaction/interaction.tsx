@@ -155,8 +155,10 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           : selected
             ? theme.surfaceFocus.val
             : theme.surfaceElevated.val;
-    // Amber is focus, never selection (#1887): a selected action that does not have focus keeps
-    // only its `surfaceFocus` fill, so one amber border marks where the remote is.
+    // Amber is focus, never selection (#1887). A selected secondary action is neutral-pressed
+    // (#1909 Q1/Q2): the `surfaceFocus` fill, a foreground border and a heavier label, so the
+    // current item reads from across a room while one amber border still marks where the remote is.
+    const pressed = !look && tone === "secondary" && selected;
     const borderColor = look
       ? focused && !filled
         ? theme.actionFocus.val
@@ -167,10 +169,14 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           ? theme.stateDanger.val
           : tone === "primary"
             ? theme.actionPrimary.val
-            : stacked
-              ? backgroundColor
-              : theme.borderControl.val;
+            : pressed
+              ? theme.contentPrimary.val
+              : stacked
+                ? backgroundColor
+                : theme.borderControl.val;
     const textColor = variant ? variantTextColor(theme, variant) : undefined;
+    // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
+    const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
       : tone === "secondary"
@@ -192,6 +198,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
             fontFamily="$body"
             fontSize={typography[density].cardMeta.size}
+            fontWeight={pressed ? "600" : undefined}
             lineHeight={typography[density].cardMeta.lineHeight}
             numberOfLines={1}
           >
@@ -210,7 +217,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
             fontFamily="$body"
             fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-            fontWeight={tv ? "400" : "700"}
+            fontWeight={labelWeight}
             textDecorationLine={variant === "link" ? "underline" : undefined}
           >
             {children}
@@ -221,7 +228,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
           fontFamily="$body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-          fontWeight={tv ? "400" : "700"}
+          fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
         >
           {children}
@@ -244,7 +251,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           ? tv
             ? 3
             : 4
-          : tv
+          : tv && !pressed
             ? 1
             : 2,
       ...focusRing,

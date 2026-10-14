@@ -56,6 +56,7 @@ describe("Action selected vs focused (#1887)", () => {
   let root: Root;
   const amber = "rgb(255, 176, 32)";
   const focusFill = "rgb(40, 44, 52)";
+  const foreground = "rgb(231, 234, 240)";
   const button = () => host.querySelector<HTMLElement>('[role="button"]') as HTMLElement;
 
   beforeEach(() => {
@@ -70,8 +71,10 @@ describe("Action selected vs focused (#1887)", () => {
     host.remove();
   });
 
+  // Neutral-pressed (#1909 Q1/Q2): the focus fill plus a 2px foreground border, never thinner
+  // than an unselected neighbour's, so the current item reads from across a room.
   it.each(["pointer", "touch", "tv"] as const)(
-    "marks a selected %s action with the focus fill alone, and amber only once it has focus",
+    "marks a selected %s action neutral-pressed, and amber only once it has focus",
     (density) => {
       act(() => {
         root.render(
@@ -85,16 +88,32 @@ describe("Action selected vs focused (#1887)", () => {
 
       expect(button().getAttribute("aria-pressed")).toBe("true");
       expect(button().style.backgroundColor).toBe(focusFill);
-      expect(button().style.borderTopColor).not.toBe(amber);
+      expect(button().style.borderTopColor).toBe(foreground);
+      expect(button().style.borderTopWidth).toBe("2px");
 
       act(() => button().focus());
       expect(button().style.backgroundColor).toBe(focusFill);
       expect(button().style.borderTopColor).toBe(amber);
+      expect(button().style.borderTopWidth).toBe(density === "tv" ? "3px" : "4px");
 
       act(() => button().blur());
-      expect(button().style.borderTopColor).not.toBe(amber);
+      expect(button().style.borderTopColor).toBe(foreground);
     },
   );
+
+  it("sets a selected tv label at 600 over its 400 neighbours", () => {
+    // The label is Tamagui Text, so its weight arrives as an atomic `_fw-*` class on the span.
+    const weight = (selected: boolean) =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <Action density="tv" selected={selected} tone="secondary">
+            Guide
+          </Action>
+        </LoomarrProvider>,
+      ).match(/_fw-(\d+)[^"]*">Guide</)?.[1];
+    expect(weight(true)).toBe("600");
+    expect(weight(false)).toBe("400");
+  });
 
   it("draws an unselected focused action with the same amber border", () => {
     act(() => {
