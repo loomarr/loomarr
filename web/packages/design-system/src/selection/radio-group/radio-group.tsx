@@ -1,4 +1,4 @@
-import { useTheme, View } from "@tamagui/core";
+import { View } from "@tamagui/core";
 import { type ComponentProps, createContext, type ReactNode, useContext, useRef, useState } from "react";
 import { Pressable } from "react-native";
 
@@ -56,7 +56,6 @@ const KEY_STEP: Record<string, 1 | -1> = { ArrowDown: 1, ArrowLeft: -1, ArrowRig
 const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, value }: RadioItemProps) => {
   const group = useContext(RadioScope);
   if (!group) throw new Error("RadioItem must be rendered inside a RadioGroup");
-  const theme = useTheme();
   const [focused, setFocused] = useState(false);
   const checked = group.value === value;
   const tabStop = group.values.includes(group.value ?? "") ? group.value : group.values[0];
@@ -99,17 +98,15 @@ const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, v
         {children({ checked, focused })}
         {focused ? (
           <View
+            borderColor="$actionFocus"
+            borderRadius={ringRadius + 3}
+            borderWidth={2}
+            bottom={-3}
+            left={-3}
             pointerEvents="none"
-            style={{
-              borderColor: theme.actionFocus.val,
-              borderRadius: ringRadius + 3,
-              borderWidth: 2,
-              bottom: -3,
-              left: -3,
-              position: "absolute",
-              right: -3,
-              top: -3,
-            }}
+            position="absolute"
+            right={-3}
+            top={-3}
           />
         ) : null}
       </View>

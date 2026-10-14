@@ -199,6 +199,46 @@ describe("OnScreenLogoSection", () => {
     unmount();
   });
 
+  // Selection is neutral-pressed and amber is focus (#1909, #1983). Tamagui's atomic classes name
+  // the token (`_btc-contentPrim…` is a $contentPrimary top border), so these read tokens, not hex.
+  const html = (n: Node) => (n as unknown as { outerHTML: string }).outerHTML;
+
+  it.each([
+    ["a style card", "Text", { look: "text" }],
+    ["a colour swatch", "Cyan", { color: "cyan", look: "tint" }],
+    ["a holiday picture", "Pumpkin for Halloween", {}],
+    ["a position cell", "Top right", {}],
+  ] as const)("draws %s chosen with a foreground border and no amber", (_, name, policy) => {
+    const { radio, unmount } = render({ policy });
+    const chosen = radio(name);
+    expect(chosen.getAttribute("aria-checked")).toBe("true");
+    expect(html(chosen)).toMatch(/_btc-contentPrim/);
+    expect(html(chosen)).not.toMatch(/actionPrim/);
+    unmount();
+  });
+
+  it("puts the amber focus ring outside a chosen position, and keeps its foreground border", () => {
+    const { radio, unmount } = render();
+    const chosen = radio("Top right") as unknown as Node & { focus(): void };
+    expect(html(chosen)).not.toMatch(/actionFocu/);
+    act(() => chosen.focus());
+    expect(html(chosen)).toMatch(/_btc-actionFocu/);
+    expect(html(chosen)).toMatch(/_btc-contentPrim/);
+    unmount();
+  });
+
+  it("marks a channel override with a neutral badge: a foreground label and a hairline", () => {
+    const { container, unmount } = render({ policy: { corner: "bottom-left" } });
+    const badge = Array.from(container.querySelectorAll('[data-testid="logo-field-corner"] *')).find(
+      (n) => n.textContent === "Channel override" && html(n).startsWith("<div"),
+    );
+    if (!badge) throw new Error("missing override badge");
+    expect(html(badge)).toMatch(/_btc-borderCont/);
+    expect(html(badge)).toMatch(/_col-contentPrim/);
+    expect(html(badge)).not.toMatch(/actionPrim|rgba\(255,176,32/);
+    unmount();
+  });
+
   it("shows the uploaded image as a thumbnail with a plain label and a Remove button", () => {
     const onRemoveImage = vi.fn();
     const { container, unmount } = render({
