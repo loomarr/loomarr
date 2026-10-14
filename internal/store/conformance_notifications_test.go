@@ -204,9 +204,9 @@ func testNotificationProductVocabulary(t *testing.T, newStore NewStoreFunc) {
 		{ID: "intent-declined", Topic: notifications.TopicProposalDeclined, RecipientKind: notifications.RecipientPerson,
 			RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-3"},
 		{ID: "intent-available", Topic: notifications.TopicAcquisitionAvailable, RecipientKind: notifications.RecipientPerson,
-			RecipientID: "user-1", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:603"},
+			RecipientID: "user-1", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:90000603"},
 		{ID: "intent-gave-up", Topic: notifications.TopicAcquisitionGaveUp, RecipientKind: notifications.RecipientOperators,
-			RecipientID: "operators", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:604"},
+			RecipientID: "operators", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:90000604"},
 		{ID: "intent-degraded", Topic: notifications.TopicChannelDegraded, RecipientKind: notifications.RecipientOperators,
 			RecipientID: "operators", ReferenceKind: notifications.ReferenceChannel, ReferenceID: "channel-2"},
 	}

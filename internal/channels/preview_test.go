@@ -18,14 +18,14 @@ import (
 func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 
 	// A channel with a weekend rule (higher priority) over the always-on base.
 	weekend := schedule.SchedulingRule{ID: "w", Label: "Weekend Movies", Priority: 10, When: schedule.WhenPredicate{Weekend: true}}
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:1"), Title: "A", DurationMs: 3600000},
-		{Key: provision.Key("movie:tmdb:2"), Title: "B", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000002"), Title: "B", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"
 	ch.Name = "Movies"
@@ -76,7 +76,7 @@ func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	e := newEngine(st, tun, mapAvail{}, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 	at, _, _, _, err := e.CyclePreview(context.Background(), "c1", time.Time{})
 	if err != nil {
@@ -91,7 +91,7 @@ func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 func TestCyclePreview_ReadsLiveChannelDefaults(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	window := 24 * time.Hour
 	breaks := 0
 	e := channels.New(st, tun, avail, nil, channels.Config{
@@ -99,7 +99,7 @@ func TestCyclePreview_ReadsLiveChannelDefaults(t *testing.T) {
 		ResolveBreaksPerHour: func() int { return breaks },
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).
 		WithPods(&fakePods{ids: []string{"clip-a"}})
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	_, slots, _, gotWindow, err := e.CyclePreview(context.Background(), "c1", time.Time{})
 	if err != nil {
@@ -143,13 +143,13 @@ func fillerSlotCount(slots []schedule.Slot) int {
 func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 
 	// One admissible title and one the ceiling must refuse.
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:1"), Title: "Kids Film", OfficialRating: "TV-Y7", DurationMs: 3600000},
-		{Key: provision.Key("movie:tmdb:2"), Title: "Adult Film", OfficialRating: "TV-MA", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000001"), Title: "Kids Film", OfficialRating: "TV-Y7", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000002"), Title: "Adult Film", OfficialRating: "TV-MA", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"
 	ch.Name = "Kids"
@@ -186,7 +186,7 @@ func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	}
 	found := false
 	for _, fact := range got.Trace.Facts {
-		if fact.Key == "movie:tmdb:2" && fact.Reason == schedule.ReasonOverCeiling {
+		if fact.Key == "movie:tmdb:90000002" && fact.Reason == schedule.ReasonOverCeiling {
 			found = true
 		}
 	}

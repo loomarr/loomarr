@@ -35,9 +35,9 @@ func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			st := newStore(t)
 			tun := tunarrtest.NewTunarr()
-			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 				func() string { return tt.applied })
-			seedChannel(t, st, "inherited", 10, entry("movie:tmdb:1", "Movie"))
+			seedChannel(t, st, "inherited", 10, entry("movie:tmdb:90000001", "Movie"))
 
 			if err := e.PrepareInheritedBackend(context.Background(), tt.target); err != nil {
 				t.Fatal(err)
@@ -62,7 +62,7 @@ func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {
 func TestPrepareInheritedBackendSkipsPinsAndInactiveChannels(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
 
 	type candidate struct {
@@ -79,7 +79,7 @@ func TestPrepareInheritedBackendSkipsPinsAndInactiveChannels(t *testing.T) {
 	}
 	before := make(map[string]int64, len(candidates))
 	for i, candidate := range candidates {
-		seedChannel(t, st, candidate.id, i+1, entry("movie:tmdb:1", "Movie"))
+		seedChannel(t, st, candidate.id, i+1, entry("movie:tmdb:90000001", "Movie"))
 		ch, err := st.GetChannel(context.Background(), candidate.id)
 		if err != nil {
 			t.Fatal(err)
@@ -130,10 +130,10 @@ func TestPrepareInheritedBackendHonorsPinAddedAfterFleetSnapshot(t *testing.T) {
 			<-releaseFirstProjection
 		})
 	}
-	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "first", 1, entry("movie:tmdb:1", "Movie"))
-	seedChannel(t, st, "pin-during-prepare", 2, entry("movie:tmdb:1", "Movie"))
+	seedChannel(t, st, "first", 1, entry("movie:tmdb:90000001", "Movie"))
+	seedChannel(t, st, "pin-during-prepare", 2, entry("movie:tmdb:90000001", "Movie"))
 
 	done := make(chan error, 1)
 	go func() {
@@ -170,10 +170,10 @@ func TestPrepareInheritedBackendContinuesAfterFailureAndRetryIsIdempotent(t *tes
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	tun.SetLineupErrByChannel = map[string]error{"srv-1": errors.New("scripted lineup failure")}
-	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "fails", 1, entry("movie:tmdb:1", "Movie"))
-	seedChannel(t, st, "succeeds", 2, entry("movie:tmdb:1", "Movie"))
+	seedChannel(t, st, "fails", 1, entry("movie:tmdb:90000001", "Movie"))
+	seedChannel(t, st, "succeeds", 2, entry("movie:tmdb:90000001", "Movie"))
 
 	err := e.PrepareInheritedBackend(context.Background(), schedule.PlayoutBackendTunarr)
 	if err == nil || !strings.Contains(err.Error(), "prepare inherited channel fails") {
@@ -219,11 +219,11 @@ func TestPrepareInheritedBackendSerializesWithOrdinaryReconcile(t *testing.T) {
 	}
 	resolverEntered := make(chan struct{})
 	var resolverOnce sync.Once
-	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil, func() string {
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, func() string {
 		resolverOnce.Do(func() { close(resolverEntered) })
 		return schedule.PlayoutBackendInternal
 	})
-	seedChannel(t, st, "concurrent", 10, entry("movie:tmdb:1", "Movie"))
+	seedChannel(t, st, "concurrent", 10, entry("movie:tmdb:90000001", "Movie"))
 
 	prepareDone := make(chan error, 1)
 	go func() {

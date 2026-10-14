@@ -39,10 +39,10 @@ func getState(t *testing.T, st store.Store, key provision.Key) provision.State {
 // with the LibraryID stamped and a single terminal event emitted.
 func TestLibraryScan_ConfirmsRequestedMovie(t *testing.T) {
 	ls, st, ms, emit := setupScan(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Requested, 603, now.Add(24*time.Hour))
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-1", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -77,15 +77,15 @@ func TestLibraryScanRecordsPlayableQualityAfterCommittedConfirmation(t *testing.
 	ls, st, ms, _ := setupScan(t)
 	sink := &testkit.QualityRecorder{}
 	ls.WithQualityRecorder(quality.NewAcquisitionRecorder(sink, testkit.Logger()))
-	key := provision.Key("movie:tmdb:603")
+	key := provision.Key("movie:tmdb:90000603")
 	if err := st.UpsertTitle(t.Context(), provision.Record{
 		Key: key, State: provision.Requested, RequestedAt: now.Add(-45 * time.Minute),
-		Deadline: now.Add(24 * time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 603},
+		Deadline: now.Add(24 * time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000603},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-1", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	}
 
 	if n, err := ls.Incremental(t.Context()); err != nil || n != 1 {
@@ -102,15 +102,15 @@ func TestLibraryScanRecordsPlayableQualityAfterCommittedConfirmation(t *testing.
 // across the series-prefers-tvdb path.
 func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 	ls, st, ms, _ := setupScan(t)
-	key := provision.Key("series:tvdb:81189")
+	key := provision.Key("series:tvdb:90081189")
 	if err := st.UpsertTitle(context.Background(), provision.Record{
 		Key: key, State: provision.Downloading, Deadline: now.Add(12 * time.Hour),
-		Title: provision.Title{MediaType: provision.Series, TVDBID: 81189},
+		Title: provision.Title{MediaType: provision.Series, TVDBID: 90081189},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-2", Name: "Breaking Bad", Type: "Series", TVDBID: 81189},
+		{LibraryItemID: "lib-2", Name: "Copperline Foundry", Type: "Series", TVDBID: 90081189},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -125,7 +125,7 @@ func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 	}
 }
 
-// The Bluey scenario: a series was added TMDB-only (keyed series:tmdb:<id>, no TVDB id yet —
+// The TMDB-only series scenario: a series was added TMDB-only (keyed series:tmdb:<id>, no TVDB id yet —
 // the suggester/channel-add path), and its episodes land in the library, which indexes the show
 // with BOTH a TVDB and a TMDB id. The scan must still confirm it available by matching on the
 // item's TMDB id, even though Title.Key() prefers the item's TVDB id. Without ScanItemKeys
@@ -133,16 +133,16 @@ func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 // present (the live bug this fixes).
 func TestLibraryScan_ConfirmsTMDBSeriesWhenItemHasBothIDs(t *testing.T) {
 	ls, st, ms, _ := setupScan(t)
-	key := provision.Key("series:tmdb:82728") // Bluey, TMDB-keyed (no TVDB id on the record)
+	key := provision.Key("series:tmdb:90082728") // Snorkelsaurus, TMDB-keyed (no TVDB id on the record)
 	if err := st.UpsertTitle(context.Background(), provision.Record{
 		Key: key, State: provision.Requested, Deadline: now.Add(12 * time.Hour),
-		Title: provision.Title{MediaType: provision.Series, TMDBID: 82728},
+		Title: provision.Title{MediaType: provision.Series, TMDBID: 90082728},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// The library item carries BOTH ids (as Emby does) — Title.Key() would prefer tvdb:353546.
+	// The library item carries BOTH ids (as Emby does) — Title.Key() would prefer tvdb:90353546.
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-bluey", Name: "Bluey", Type: "Series", TMDBID: 82728, TVDBID: 353546},
+		{LibraryItemID: "lib-snorkelsaurus", Name: "Snorkelsaurus", Type: "Series", TMDBID: 90082728, TVDBID: 90353546},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -161,11 +161,11 @@ func TestLibraryScan_ConfirmsTMDBSeriesWhenItemHasBothIDs(t *testing.T) {
 // that isn't awaiting the library.
 func TestLibraryScan_IgnoresUntrackedItems(t *testing.T) {
 	ls, st, ms, emit := setupScan(t)
-	// One requested title (603) awaiting; the library reports a DIFFERENT movie (550).
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Requested, 603, now.Add(24*time.Hour))
+	// One requested title (90000603) awaiting; the library reports a DIFFERENT movie (90000550).
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-9", Name: "Fight Club", Type: "Movie", TMDBID: 550},
+		{LibraryItemID: "lib-9", Name: "Lemon Tree Heist", Type: "Movie", TMDBID: 90000550},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -187,10 +187,10 @@ func TestLibraryScan_IgnoresUntrackedItems(t *testing.T) {
 // not in the in-flight set, so the scan never touches it (provision invariant 1).
 func TestLibraryScan_SkipsTerminalTitles(t *testing.T) {
 	ls, st, ms, emit := setupScan(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Available, 603, time.Time{})
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Available, 90000603, time.Time{})
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-1", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -208,10 +208,10 @@ func TestLibraryScan_SkipsTerminalTitles(t *testing.T) {
 // The full sweep confirms via AllItems the same way the incremental path does.
 func TestLibraryScan_FullConfirms(t *testing.T) {
 	ls, st, ms, _ := setupScan(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Requested, 603, now.Add(24*time.Hour))
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-1", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	}
 
 	n, err := ls.Full(context.Background())
@@ -231,7 +231,7 @@ func TestLibraryScan_FullConfirms(t *testing.T) {
 func TestLibraryScan_NoInflightNoop(t *testing.T) {
 	ls, _, ms, emit := setupScan(t)
 	ms.SearchItems = []testkit.SearchStub{
-		{LibraryItemID: "lib-1", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	}
 	n, err := ls.Incremental(context.Background())
 	if err != nil {
