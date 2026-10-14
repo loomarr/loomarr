@@ -1,4 +1,5 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as imagesApi from "@loomarr/api/endpoints/images";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { PreviewChannelWatermarkHoliday } from "@loomarr/api/models/previewChannelWatermarkHoliday";
@@ -88,6 +89,8 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
         }}
         drawable={drawable.data ?? true}
         holidays={options?.holidays ?? []}
+        // The stored upload, served by the image service at its largest icon rung (alpha kept in WebP).
+        imageSrc={watermark.image ? imagesApi.getServeImageUrl(watermark.image, "w185.webp") : undefined}
         onChange={(patch) => save({ ...watermark, ...patch } as WatermarkPolicy)}
         onOpenProgramming={onOpenProgramming}
         onRemoveImage={() => save({ ...watermark, image: undefined })}

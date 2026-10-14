@@ -165,4 +165,23 @@ describe("OnScreenLogoSection", () => {
     expect(container.textContent).toContain("This server can't draw the logo right now.");
     unmount();
   });
+
+  it("shows the uploaded image as a thumbnail with a plain label and a Remove button", () => {
+    const onRemoveImage = vi.fn();
+    const { container, unmount } = render({
+      imageSrc: "/v1/images/abc/w185.webp",
+      onRemoveImage,
+      policy: { image: "abc" },
+    });
+    const thumb = Array.from(container.querySelectorAll('img[src="/v1/images/abc/w185.webp"]'));
+    expect(thumb).toHaveLength(1);
+    expect(container.textContent).toContain("Your own image");
+    expect(container.textContent).not.toContain("Your image is in use.");
+    const remove = Array.from(container.querySelectorAll('[role="button"], button')).find(
+      (n) => n.textContent === "Remove",
+    );
+    act(() => remove?.click());
+    expect(onRemoveImage).toHaveBeenCalledTimes(1);
+    unmount();
+  });
 });

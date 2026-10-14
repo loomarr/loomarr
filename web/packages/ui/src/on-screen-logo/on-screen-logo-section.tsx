@@ -104,6 +104,8 @@ interface OnScreenLogoSectionProps {
   ) => void;
   /** Opens the Programming tab, where Holidays are set. */
   onOpenProgramming: () => void;
+  /** The image service URL of the uploaded image (from policy.image's hash); shown as its thumbnail. */
+  imageSrc?: string;
   onRemoveImage: () => void;
   onUploadImage: () => void;
   policy: OnScreenLogoPolicy;
@@ -497,6 +499,7 @@ const OnScreenLogoSection = ({
   today = new Date(),
   onChange,
   onOpenProgramming,
+  imageSrc,
   onRemoveImage,
   onUploadImage,
   policy: p,
@@ -858,7 +861,20 @@ const OnScreenLogoSection = ({
         <View style={{ ...row, flexWrap: "wrap" }}>
           {img ? (
             <>
-              <Text textRole="compact">Your image is in use.</Text>
+              <View style={{ ...thumb, width: 96 }}>
+                {imageSrc ? (
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    accessibilityLabel="Your own image"
+                    resizeMode="contain"
+                    source={{ uri: imageSrc }}
+                    style={{ height: 30, width: 90 }}
+                  />
+                ) : null}
+              </View>
+              <View style={{ flexGrow: 1, flexShrink: 1 }}>
+                <Text textRole="compact">Your own image</Text>
+              </View>
               <SmallButton label="Remove" onPress={onRemoveImage} />
             </>
           ) : (
