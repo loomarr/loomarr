@@ -386,7 +386,14 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     back with the next window's opening.
     At the season's end, the first window out of season goes back to `windowSlice`'s position,
     which the last window in season never passed, so the seam only skips episodes, never repeats
-    one. The cost is in season: a far-side episode aired about half a deck ago and airs again
+    one. The walk follows the channel's dealt ring of passes (`dealtRing`), the same ring the
+    out-of-season tiles are cut from, so a shuffled channel's season meets a reshuffled pass where
+    its neighbours do. The out-of-season tile deals the pool at its ring positions, so the first
+    window after the season, and the day after a holiday date, trade away any unit the season
+    featured within the dealer's repeat spacing (`tradeFeatured`); the holiday date itself keeps
+    its whole plan. The spacing promised depends on the ordering: *In order* airs one fixed deck,
+    so the half-deck bound below holds; *Shuffled* and *Syndication* deal every pass afresh, so
+    their promise is the dealer's repeat spacing (two windows and a unit, §3.1). The cost is in season: a far-side episode aired about half a deck ago and airs again
     about half a deck on. On a small deck (or a pool walked past much faster than it is featured)
     an ordinary episode can therefore re-air about half a deck (less the pool) apart, and no
     sooner. That is the most spacing the deck allows: between two `windowSlice` starts there are

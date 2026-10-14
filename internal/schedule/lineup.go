@@ -423,10 +423,11 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 		window, ch.WindowZone, breakFactor(brk))
 	orderedAll := append([]Slot(nil), ordered...)
 	// In season the planner walks the deck of the pass the window starts in; out of season the
-	// tile runs across dealt passes (windowSliceDealt).
+	// tile runs across dealt passes (windowSliceDealt), less what the season featured within the
+	// repeat spacing (the first window after it, the day after a holiday date).
 	tile, inSeason := holidays.seasonTile(windowIdx)
 	if !inSeason {
-		tile = dealtTile
+		tile = holidays.tradeFeatured(dealtTile, windowIdx, dealer.spacing)
 	}
 	if guardSlice {
 		since := windowOpening(windowIdx-1, window, ch.WindowZone)

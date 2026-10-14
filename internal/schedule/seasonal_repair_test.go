@@ -422,19 +422,44 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 		}{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {30, 24 * time.Hour}, {400, 24 * time.Hour}} {
 			specials := max(3, pool.ordinary/20)
 			avail := seriesLike(pool.ordinary, seam.specials(specials)...)
-			// An episode aired again sooner than half the deck less its pool (the in-season
-			// minimum on a small deck) is a seam repeat; out of season the gap is a whole deck.
-			spacing := (pool.ordinary+specials)/2 - specials
 			// Consecutive windows share nothing when the deck holds the window before, this one and
 			// the next; on a shorter deck they must share, and spacing is the guarantee.
 			disjoint := time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond >= 3*pool.window
-			for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
-				t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s", seam.name, pool.ordinary, pool.window, strength), func(t *testing.T) {
-					assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, seasonalPolicy(schedule.SeasonalPolicy{Strength: strength}), seam.at, spacing, disjoint)
-				})
+			// The spacing guaranteed depends on the ordering (§6 "Holiday episodes"). In order airs
+			// one fixed deck, so an episode aired again sooner than half the deck less its pool (the
+			// in-season minimum on a small deck) is a seam repeat. Shuffled and syndication deal every
+			// pass afresh, so the fixed deck's geometry is gone and the guarantee is the dealer's
+			// repeat spacing.
+			for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
+				spacing := (pool.ordinary+specials)/2 - specials
+				if order != schedule.OrderSequential {
+					spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
+				}
+				for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
+					policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: strength})
+					policy.Ordering = order
+					t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s/%s", seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
+						assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, policy, seam.at, spacing, disjoint)
+					})
+				}
 			}
 		}
 	}
+}
+
+// repeatSpacingProgrammes is the dealer's repeat spacing (repeatSpacing in passes.go) for a deck of
+// n 22-minute episodes under the default seven-day episode separation, in whole programmes: a third
+// of the pool less two units, or two windows and a unit as far as the pool allows and never less
+// than a window and a unit, the floors winning.
+func repeatSpacingProgrammes(n int, window time.Duration) int {
+	unit := time.Duration(episodeMs) * time.Millisecond
+	pool := time.Duration(n) * unit
+	spacing := (pool - 2*unit) / 3
+	floor := 2 * unit
+	if pool > window {
+		floor = max(floor, min(2*window+unit, pool-window), window+unit)
+	}
+	return int(max(spacing, min(floor, pool)) / unit)
 }
 
 // assertSeamOnlySkips walks the windows of the two days either side of seam: none is empty, none

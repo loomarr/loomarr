@@ -502,6 +502,44 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 	return tile, true
 }
 
+// tradeFeatured keeps an out-of-season window from re-airing what the season just featured. The
+// dealt tile deals the pool at its ring positions, so the first window after the season, or the day
+// after a holiday date, could air an episode the evening before featured. A unit featured within
+// `spacing` (the dealer's repeat spacing) before window w opens is traded for ordinary runtime from
+// half a lap away (farFill). Features themselves are never dropped: the holiday date airs its plan.
+func (p *holidayPlanner) tradeFeatured(tile []Slot, w int64, spacing time.Duration) []Slot {
+	if !p.enabled() || p.ring.stride == 0 || p.ring.nProg == 0 {
+		return tile
+	}
+	opening := windowOpening(w, p.window, p.loc)
+	since := opening.Add(-spacing)
+	recent := map[string]bool{}
+	for v := w - 1; windowOpening(v, p.window, p.loc).Add(p.window).After(since); v-- {
+		for _, f := range p.features(v) {
+			if !f.at.Before(since) {
+				recent[unitKey(f.unit)] = true
+			}
+		}
+	}
+	if len(recent) == 0 {
+		return tile
+	}
+	var kept []Slot
+	var short int64
+	for _, s := range tile {
+		if s.IsProgram() && recent[unitKey(s)] {
+			short += s.DurationMs
+			continue
+		}
+		kept = append(kept, s)
+	}
+	if short == 0 {
+		return tile
+	}
+	stride := p.ring.stride
+	return p.farFill(kept, p.ring.tile(w-1), (w+1)*stride, (w+2)*stride, p.ring.nProg, short, recent)
+}
+
 // farFill tops a capped tile up with `short` of ordinary runtime from the far side of the ring,
 // half a lap from u: those episodes aired about half a cycle ago and air again about half a cycle
 // on, so an in-season re-air, unavoidable when the pool is walked past faster than it is
