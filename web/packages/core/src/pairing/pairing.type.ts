@@ -23,7 +23,18 @@ type PairingState =
     }
   | ({ status: "paired" } & PairingCredential)
   | { serverUrl: string; status: "revoked" }
-  | { message: string; retryable: boolean; serverUrl?: string; status: "failed" };
+  | {
+      // Set with kind "invalid-address": the text as typed, rejected before any request, so a UI
+      // can keep it in the field and show `message` inline. `retryable` is false there because
+      // resending the same text cannot succeed. One member (not a union) so existing consumers
+      // keep reading `serverUrl` without narrowing.
+      input?: string;
+      kind?: "invalid-address";
+      message: string;
+      retryable: boolean;
+      serverUrl?: string;
+      status: "failed";
+    };
 
 type PairingStart = { body: DeviceStartOutputBody; serverDate: string | undefined };
 type PairingPoll =

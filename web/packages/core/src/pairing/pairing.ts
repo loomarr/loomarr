@@ -16,11 +16,15 @@ import type {
 const DEFAULT_PAIRING_TTL_SECONDS = 10 * 60;
 const DEFAULT_POLL_SECONDS = 5;
 
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
+// A bare `host[:port]` ("localhost:18034") is what people type; it gets http:// since a LAN
+// server has no certificate. Anything that already names a scheme is judged as typed.
 const normalizeServerUrl = (input: string): string | undefined => {
   const value = input.trim();
   if (!value) return undefined;
   try {
-    const url = new URL(value);
+    const url = new URL(HAS_SCHEME.test(value) ? value : `http://${value}`);
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
     if (url.username || url.password || url.search || url.hash) return undefined;
     const pathname = url.pathname.replace(/\/+$/, "");
@@ -230,9 +234,12 @@ class PairingSession {
   async pair(serverUrlInput: string) {
     const serverUrl = normalizeServerUrl(serverUrlInput);
     if (!serverUrl) {
+      // Not a network failure: nothing was contacted, so retrying the same text can never help.
       this.emit({
-        message: "Enter a complete http:// or https:// Loomarr address.",
-        retryable: true,
+        input: serverUrlInput,
+        kind: "invalid-address",
+        message: "Enter a Loomarr address like 192.168.0.4:8080 or https://loomarr.example.",
+        retryable: false,
         status: "failed",
       });
       return;
