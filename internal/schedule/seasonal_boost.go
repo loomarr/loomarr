@@ -445,20 +445,23 @@ func (p *holidayPlanner) features(w int64) []holidayAt {
 // tile is window w's ordinary episodes, given the dealer's tile for it. In season, and for the
 // horizon of windows after a season, it is the season simulation's tile (§6 "Where it runs"):
 // every pick there is decided against what actually aired, never against ring positions, which
-// under per-pass reshuffle drift from it (#1939). Every other window airs the dealer's tile.
+// under per-pass reshuffle drift from it (#1939). The horizon after that hands off to the dealer
+// (handOff); every other window airs the dealer's tile.
 func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 	if !p.enabled() || p.ring.stride == 0 {
 		return dealt
 	}
-	if programRuntime(p.deck) <= p.window.Milliseconds() {
-		return p.fitted(w, dealt)
-	}
 	h := p.horizon()
 	last := w // the latest in-season window at or before w
-	for ; last >= w-h && len(p.pooled(last)) == 0; last-- {
+	for ; last >= w-2*h && len(p.pooled(last)) == 0; last-- {
 	}
-	if last < w-h {
-		return dealt
+	switch {
+	case last < w-2*h:
+		return p.handOff(w-h, p.arrange(p.ring.tile(w-h), w-h), w, dealt)
+	case last < w-h:
+		return p.handOff(last+h, p.arrange(p.tile(last+h, p.ring.tile(last+h)), last+h), w, dealt)
+	case programRuntime(p.deck) <= p.window.Milliseconds():
+		return p.fitted(w, dealt)
 	}
 	// The anchor and the end are the same for every window of the season, so each window reads
 	// the same simulation: two seasons closer than the horizon are one.
@@ -481,16 +484,9 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 // the pool. The dealer repaired the deal's seam against the window before as it dealt it, but in
 // season that window aired less its pool and plus its features, looped, so its loop stopped on a
 // different unit: the seam is repaired again against the window before as it really aired, and so
-// for the horizon after a season, until the deal's own repair holds again (#1939). Arrange only
-// delays a tile's units behind features, so a unit placed after its release stays after it.
+// for the horizon after a season (#1939). Arrange only delays a tile's units behind features, so a
+// unit placed after its release stays after it.
 func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
-	h := p.horizon()
-	last := w
-	for ; last >= w-h && len(p.pooled(last)) == 0; last-- {
-	}
-	if last < w-h {
-		return dealt
-	}
 	pooled := p.pooled(w)
 	var tile []Slot
 	for _, s := range dealt {
@@ -498,8 +494,39 @@ func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
 			tile = append(tile, s)
 		}
 	}
-	prev := p.arrange(p.fitted(w-1, p.ring.tile(w-1)), w-1)
+	prev := p.arrange(p.tile(w-1, p.ring.tile(w-1)), w-1)
 	return repairSeam(loopedWindow(prev, p.window.Milliseconds()), tile, p.ring.d.spacing)
+}
+
+// handOff is window w's tile outside the season simulation, walked from window `from`, which aired
+// `aired`: a season's last decided window, or, further from a season, the window a horizon back,
+// taken to have aired its deal. The dealer repaired each deal's seam against the window before as it
+// dealt it, but a window can air otherwise: the season's tile, or its deal arranged, an off-season
+// holiday episode deferred out of the evening. Its loop then stops on a different unit, so the next
+// window's seam is repaired again against it as it really aired; a window after one that aired its
+// deal keeps the dealer's repair (#1939).
+func (p *holidayPlanner) handOff(from int64, aired []Slot, w int64, dealt []Slot) []Slot {
+	for v := from + 1; ; v++ {
+		deal := dealt
+		if v < w {
+			deal = p.ring.tile(v)
+		}
+		tile := deal
+		if !sameProgrammes(aired, p.ring.tile(v-1)) {
+			tile = repairSeam(loopedWindow(aired, p.window.Milliseconds()), deal, p.ring.d.spacing)
+		}
+		if v == w {
+			return tile
+		}
+		aired = p.arrange(tile, v)
+	}
+}
+
+// sameProgrammes reports whether a and b air the same programmes in the same order.
+func sameProgrammes(a, b []Slot) bool {
+	a = slices.DeleteFunc(slices.Clone(a), func(s Slot) bool { return !s.IsProgram() })
+	b = slices.DeleteFunc(slices.Clone(b), func(s Slot) bool { return !s.IsProgram() })
+	return slices.EqualFunc(a, b, func(x, y Slot) bool { return unitKey(x) == unitKey(y) })
 }
 
 // horizon is how many windows after a season the simulation still runs: twice the windows the

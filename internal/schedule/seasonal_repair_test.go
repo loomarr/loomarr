@@ -2,6 +2,7 @@ package schedule_test
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -539,6 +540,19 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 // next. Walked Oct 1 → Jan 10 as playout airs it (looped): every window airs most of its budget
 // and no unit airs twice in a row, in a window or across a seam.
 func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.T) {
+	walkHolidaySeasons(t, false)
+}
+
+// The same walk with the viewing history fed back, as production always has it after the first
+// day: each window's guard trades out what aired too recently, and that must not bring a unit back
+// to back where the walk without history does not (#1939).
+func TestHolidayEpisodes_InSeasonWindowsNeverRepeatBackToBackWithHistory(t *testing.T) {
+	walkHolidaySeasons(t, true)
+}
+
+// walkHolidaySeasons airs Oct 1 → Jan 10 window by window, looped as playout airs it, and counts the
+// episodes that air twice in a row.
+func walkHolidaySeasons(t *testing.T, withHistory bool) {
 	specials := func(n int) []special {
 		return append(append(halloweenSpecials(n), thanksgivingSpecials(n)...), christmasSpecials(n)...)
 	}
@@ -572,6 +586,7 @@ func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.
 				var prev, first string
 				repeats := 0
 				for open := day(time.October, 1, 0); open.Before(time.Date(2027, time.January, 10, 0, 0, 0, 0, time.UTC)); open = open.Add(tc.window) {
+					ch.WindowOpened = open
 					if got := arrange(t, ch, avail, policy, open); tc.episodes*episodeMs < int(tc.window.Milliseconds()) {
 						// A deck that fits its window airs all of it but the pool every window.
 						if len(got) < 2 {
@@ -580,6 +595,13 @@ func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.
 					} else if aired := len(got) * episodeMs; aired < int(tc.window.Milliseconds())*3/4 {
 						t.Fatalf("the window opening %s airs %v of its %v", open.Format(time.Stamp), time.Duration(aired)*time.Millisecond, tc.window)
 					}
+					var aired map[string]time.Time // what has aired, by unit, once this window has
+					if withHistory {
+						aired = maps.Clone(ch.LastAired)
+						if aired == nil {
+							aired = map[string]time.Time{}
+						}
+					}
 					for _, a := range airedLooped(t, ch, avail, policy, open) {
 						if a.id == prev {
 							if repeats++; first == "" {
@@ -587,6 +609,12 @@ func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.
 							}
 						}
 						prev = a.id
+						if aired != nil {
+							aired[a.id] = a.start
+						}
+					}
+					if withHistory {
+						ch.LastAired = aired
 					}
 				}
 				if repeats > tc.maxRepeats[o] {
