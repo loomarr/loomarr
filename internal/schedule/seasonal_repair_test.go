@@ -357,3 +357,34 @@ func TestHolidayEpisodes_SummaryNamesIdenticalStrengths(t *testing.T) {
 		t.Fatalf("pool 30, Featured: %+v, want uncapped and distinct", got)
 	}
 }
+
+// #1930 re-review N1: Heavy's holiday-night marathon longer than the window used to leave the
+// window with no ordinary room, and the window then arranged nothing at all. Every window of the
+// date airs something, the marathon airs whole across the windows, and no episode airs twice.
+func TestHolidayEpisodes_MarathonLongerThanTheWindowNeverEmpties(t *testing.T) {
+	heavy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy})
+	for _, w := range []time.Duration{time.Hour, 2 * time.Hour} {
+		ch := channelWithWindow(w, nil)
+		for at := day(time.October, 31, 0); at.Before(day(time.November, 1, 0)); at = at.Add(w) {
+			if len(arrange(t, ch, simpsonsLike(9), heavy, at)) == 0 {
+				t.Fatalf("%s window at %s arranges nothing", w, at.Format(time.Kitchen))
+			}
+		}
+		byDay := airedOn(t, ch, simpsonsLike(9), heavy, day(time.October, 31, 0), day(time.November, 1, 0))
+		assertNoRepeatInADay(t, fmt.Sprintf("%s window", w), byDay)
+		if n := len(holidayAirings(byDay["2026-10-31"])); n != 9 {
+			t.Fatalf("%s window: the marathon aired %d of 9", w, n)
+		}
+	}
+	// A pool longer than the whole day fills the date with holiday episodes, back to back.
+	got := arrange(t, simpsonsChannel(), seriesLike(400, halloweenSpecials(80)...), heavy, day(time.October, 31, 9))
+	var n int
+	for _, a := range got {
+		if isHoliday(a.id) {
+			n++
+		}
+	}
+	if n < 60 {
+		t.Fatalf("an 80-episode marathon on a daily window airs %d holiday episodes (%d slots), want the day full", n, len(got))
+	}
+}

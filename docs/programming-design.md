@@ -395,7 +395,10 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     episodes. The quarter cap is lifted for Heavy on the holiday date only. Heavy's holiday
     night is a **marathon**: the whole pool back to back from 17:00. If it is longer than the
     band, it starts early enough to end by 23:00, but never before the day starts. It uses the
-    evening band whatever the placement setting.
+    evening band whatever the placement setting. Each episode is due when the one before it ends,
+    so a marathon longer than the rolling window carries on into the next window, and a window
+    the marathon fills airs the marathon alone. A window never goes empty. Episodes that would
+    start after the date ends do not air that night (a pool longer than a day fills the date).
   - **Spacing: the in-season exception to `episodeNoRepeat`.** Honouring the channel's 7-day
     episode spacing would cap a nine-episode pool at one a day at every strength. Featured holiday
     episodes instead rotate evenly through the pool: day *d* features pool positions

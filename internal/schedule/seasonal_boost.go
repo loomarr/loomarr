@@ -351,7 +351,8 @@ func (p *holidayPlanner) plan(date time.Time) *dayPlan {
 
 // placeFeatures times a day's picks: evenly through the band (the evening, or the whole day for
 // anytime), except Heavy's holiday date, a marathon that airs back to back from 17:00, or early
-// enough to end by 23:00 when it is longer than the band.
+// enough to end by 23:00 when it is longer than the band (never before the date starts, and only
+// what starts before the date ends).
 func (p *holidayPlanner) placeFeatures(r *dayPlan, picks []Slot) []holidayAt {
 	if len(picks) == 0 {
 		return nil
@@ -371,8 +372,14 @@ func (p *holidayPlanner) placeFeatures(r *dayPlan, picks []Slot) []holidayAt {
 				at = r.start
 			}
 		}
+		// Each episode is due when the one before it ends, so a marathon longer than a window
+		// carries on into the next; what would start after the date ends does not air.
 		for _, u := range picks {
+			if !at.Before(r.end) {
+				break
+			}
 			out = append(out, holidayAt{at: at, unit: u})
+			at = at.Add(p.runtime(u))
 		}
 		return out
 	}
@@ -488,11 +495,15 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 // is deferred to the first moment outside it, or, when the window ends in the band, moved to just
 // before the band. Only a window wholly inside the band airs it there.
 func (p *holidayPlanner) arrange(tile []Slot, w int64) []Slot {
-	if !p.enabled() || len(tile) == 0 {
+	if !p.enabled() {
+		return tile
+	}
+	// A marathon can fill a window: its tile is then empty, and the window airs the features alone.
+	features := p.features(w)
+	if len(tile) == 0 && len(features) == 0 {
 		return tile
 	}
 	pooled := p.pooled(w)
-	features := p.features(w)
 	offSeason := func(s Slot) bool {
 		if !p.f.seasonal.Evenings || pooled[unitKey(s)] {
 			return false
