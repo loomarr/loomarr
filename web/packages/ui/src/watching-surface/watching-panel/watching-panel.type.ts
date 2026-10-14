@@ -14,6 +14,8 @@ interface WatchingPanelProps {
   density: Density;
   /** The viewer's favourite channels, each with what it has on now (surfGroupsFromGuide's). */
   favourites: readonly SurfChannelData[];
+  /** The tuned channel is one of the viewer's favourites: the star beside its name is filled. */
+  isFavourite?: boolean;
   /** Where playback sits against the live edge: paused and behind offer Go Live. */
   live: { lagSeconds: number; mode: "behind" | "live" | "paused" };
   onChannelDown: () => void;
@@ -22,6 +24,8 @@ interface WatchingPanelProps {
   onPause: () => void;
   onPlay: () => void;
   onPrevious: () => void;
+  /** Star or unstar the tuned channel. Omit where the client can't write favourites: no star is drawn. */
+  onToggleFavourite?: () => void;
   onTune: (channelId: string) => void;
   schedule?: WatchingScheduleData;
 }

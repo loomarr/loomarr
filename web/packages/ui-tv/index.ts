@@ -8,6 +8,8 @@ export {
   createTvSurfFocusRegistry,
   TvFocusRegistry,
 } from "./src/focus-registry";
+export type { TvFavouriteToggle } from "./src/favourite-navigation";
+export { isTvLongSelect, tvFavouriteToggle } from "./src/favourite-navigation";
 export type {
   TvGuideActivation,
   TvGuideFilterOption,
@@ -20,6 +22,7 @@ export {
   activateTvGuideFocus,
   moveTvGuideFocus,
   restoreTvGuideFocus,
+  tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./src/guide-navigation";
@@ -32,6 +35,7 @@ export {
   activateTvSurfSelection,
   moveTvSurfSelection,
   restoreTvSurfSelection,
+  tvSurfFavouriteChannel,
 } from "./src/surf-navigation";
 export type {
   TvNumberEntryPresentation,

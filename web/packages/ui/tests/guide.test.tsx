@@ -88,7 +88,7 @@ describe("GuideSurface", () => {
           filter="recent"
           filters={[
             { label: "All", value: "all" },
-            { disabled: true, label: "Favourites", value: "favourites" },
+            { disabled: true, label: "Favorites", value: "favourites" },
             { label: "Recent", value: "recent" },
           ]}
           layout={layout}

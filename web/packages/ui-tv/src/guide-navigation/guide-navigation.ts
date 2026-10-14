@@ -154,6 +154,10 @@ const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation 
     ? { filter: state.focus.filter, kind: "filter" }
     : { kind: "tune", selection: state.focus.selection };
 
+/** The channel a long-press of Select acts on: the focused programme's, never a filter chip's. */
+const tvGuideFavouriteChannel = (focus: GuideFocusTarget | undefined): string | undefined =>
+  focus?.kind === "airing" ? focus.selection.channelId : undefined;
+
 const restoreTvGuideFocus = (
   layout: GuideLayout,
   state: TvGuideNavigationState,
@@ -192,4 +196,11 @@ const tvGuideRowWindow = (
   };
 };
 
-export { activateTvGuideFocus, moveTvGuideFocus, restoreTvGuideFocus, tvGuideRowWindow, tvGuideTimeEdge };
+export {
+  activateTvGuideFocus,
+  moveTvGuideFocus,
+  restoreTvGuideFocus,
+  tvGuideFavouriteChannel,
+  tvGuideRowWindow,
+  tvGuideTimeEdge,
+};

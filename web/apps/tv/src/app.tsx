@@ -5,7 +5,7 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
-import { BrandLaunch, LoomarrProvider } from "@loomarr/design-system";
+import { BrandLaunch, LoomarrProvider, Surface, Text } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   createPlaybackMarks,
@@ -30,15 +30,19 @@ import {
   createTvSurfFocusRegistry,
   DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
+  isTvLongSelect,
   reduceTvWatchingRemote,
   restoreTvSurfSelection,
   TV_AUTO_TUNE_CHOICES_MS,
   type TvWatchingRemoteEvent,
   type TvWatchingRemoteIntent,
   type TvWatchingRemoteState,
+  tvFavouriteToggle,
+  tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
   tvNumberEntryPresentation,
+  tvSurfFavouriteChannel,
   tvWatchingRemoteEventFromNative,
 } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
@@ -46,7 +50,15 @@ import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppState, BackHandler, Platform, TVEventControl, useTVEventHandler, View } from "react-native";
+import {
+  AccessibilityInfo,
+  AppState,
+  BackHandler,
+  Platform,
+  TVEventControl,
+  useTVEventHandler,
+  View,
+} from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -62,6 +74,8 @@ const certMarks = createPlaybackMarks({
 });
 /** A remote key older than this did not cause the tune (a guide pick, a retry, the boot tune). */
 const keyToTuneMaxMs = 1_500;
+/** How long the Favorites confirmation stays up after a long-press of Select. */
+const favouriteNoteMs = 2_500;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -105,6 +119,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     controller,
     guide,
     guideSnapshot,
+    myChannels,
     myChannelsSnapshot,
     refresh,
     serverVersion,
@@ -202,6 +217,40 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     if (active !== "watching") return;
     const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), eventKeyAction);
     if (event && event.key !== "select") dispatchRemoteEvent(event);
+  });
+  // A long-press of Select on a Guide or Surf row stars or unstars that row's channel (a short
+  // press still tunes). The controller shows the change at once and puts it back if the server
+  // refuses, so the note reads what the lists say afterwards rather than what was asked for.
+  const [favouriteNote, setFavouriteNote] = useState<string | undefined>(undefined);
+  const favouriteNoteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(favouriteNoteTimer.current), []);
+  const toggleFavourite = useCallback(
+    async (channelId: string) => {
+      const { starred } = tvFavouriteToggle(channelId, myChannels.getSnapshot().favouriteIds);
+      await myChannels.setFavourite(channelId, starred);
+      const applied = myChannels.getSnapshot().favouriteIds.includes(channelId) === starred;
+      const name = snapshot.catalog.find(({ id }) => id === channelId)?.name;
+      const note = applied
+        ? `${starred ? "Added to" : "Removed from"} Favorites${name ? ` · ${name}` : ""}`
+        : "Couldn't update Favorites";
+      setFavouriteNote(note);
+      void AccessibilityInfo.announceForAccessibility(note);
+      clearTimeout(favouriteNoteTimer.current);
+      favouriteNoteTimer.current = setTimeout(() => setFavouriteNote(undefined), favouriteNoteMs);
+    },
+    [myChannels, snapshot.catalog],
+  );
+  useTVEventHandler(({ eventKeyAction, eventType }) => {
+    if (active === "watching" || !isTvLongSelect(eventType, eventKeyAction)) return;
+    const guideSelection = guide.getSnapshot().selection;
+    const channelId =
+      active === "guide"
+        ? tvGuideFavouriteChannel(
+            guideFocusRegistry.current() ??
+              (guideSelection ? { kind: "airing", selection: guideSelection } : undefined),
+          )
+        : tvSurfFavouriteChannel(surfFocusRegistry.current());
+    if (channelId) void toggleFavourite(channelId);
   });
   useEffect(() => {
     const expiresAtMs = remoteState.numberEntry?.expiresAtMs;
@@ -320,6 +369,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               controller={guide}
               currentChannelId={snapshot.channel?.id}
               density="tv"
+              favoriteChannelIds={myChannelsSnapshot.favouriteIds}
               focusRegistry={surfFocusRegistry}
               onDisconnect={() => session.disconnect()}
               onForget={() => session.forgetServer()}
@@ -354,6 +404,23 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               serverVersion={serverVersion}
             />
           )}
+          {favouriteNote ? (
+            <Surface
+              accessibilityLiveRegion="polite"
+              alignItems="center"
+              backgroundColor="$surfaceEntry"
+              borderRadius={8}
+              bottom={48}
+              left={48}
+              paddingHorizontal={20}
+              paddingVertical={12}
+              position="absolute"
+            >
+              <Text density="tv" numberOfLines={1} textRole="reading">
+                {favouriteNote}
+              </Text>
+            </Surface>
+          ) : null}
         </View>
       )}
     </View>

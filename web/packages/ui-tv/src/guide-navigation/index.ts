@@ -2,6 +2,7 @@ export {
   activateTvGuideFocus,
   moveTvGuideFocus,
   restoreTvGuideFocus,
+  tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./guide-navigation";

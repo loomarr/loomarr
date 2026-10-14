@@ -37,4 +37,8 @@ const activateTvSurfSelection = (selection: SurfSelection): TvSurfActivation => 
   kind: "tune",
 });
 
-export { activateTvSurfSelection, moveTvSurfSelection, restoreTvSurfSelection };
+/** The channel a long-press of Select acts on: the focused channel card's. */
+const tvSurfFavouriteChannel = (selection: SurfSelection | undefined): string | undefined =>
+  selection?.channelId;
+
+export { activateTvSurfSelection, moveTvSurfSelection, restoreTvSurfSelection, tvSurfFavouriteChannel };

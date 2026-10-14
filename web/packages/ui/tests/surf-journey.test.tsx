@@ -76,7 +76,7 @@ describe("SurfJourney", () => {
 
     const output = renderJourney(controller);
 
-    expect(output).toContain("FAVOURITES");
+    expect(output).toContain("FAVORITES");
     expect(output).toContain("RECENT");
     expect(output).toContain("ALL CHANNELS");
     expect(output).toContain("Radioactive Man");

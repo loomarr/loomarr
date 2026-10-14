@@ -44,7 +44,7 @@ const scifiChannel = {
 } as const;
 
 const surfGroups = [
-  { channels: [], kind: "favourites", label: "Favourites" },
+  { channels: [], kind: "favourites", label: "Favorites" },
   { channels: [cartoonChannel], kind: "recent", label: "Recent" },
   {
     channels: [cartoonChannel, scifiChannel, actionChannel],
