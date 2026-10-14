@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -153,6 +154,69 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 	}
 	return &playout.Watermark{Straight: straight, Kernel: c.blendKernel(), Width: w, Height: h,
 		Corner: playout.Corner(res.Corner), MarginX: evenRound(res.Margin * float64(width)), MarginY: evenRound(res.Margin * float64(height))}
+}
+
+// previewFrameHeight is the frame a preview bug is drawn for: 1080p, the size most programmes air.
+const previewFrameHeight = 1080
+
+// Preview is the bug a channel airs with its saved policy and the given changes (#1659 W2, the
+// channel page's On-screen logo preview): the same source, colours, holiday version, cache and PNG
+// as For, drawn for a 1080-line frame. holiday is a calendar holiday's id to show its version, or ""
+// for the everyday logo. drawable is false while no encoder's self-check has passed, when
+// programmes air without the bug.
+func (c *channelWatermarks) Preview(ctx context.Context, channelID string, change schedule.WatermarkPolicy, holiday string) (path string, drawable bool, err error) {
+	ch, err := c.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		return "", false, err
+	}
+	p := schedule.WatermarkPolicy{}
+	if ch.Policy.Watermark != nil {
+		p = *ch.Policy.Watermark
+	}
+	if change.Look != "" {
+		p.Look = change.Look
+	}
+	if change.Color != "" {
+		p.Color = change.Color
+	}
+	if change.Size != nil {
+		p.Size = change.Size
+	}
+	res := schedule.ResolveWatermark(&p, c.install())
+	drawable, colour := c.drawable()
+	design := bugDesign{decade: schedule.WatermarkEraDecade(ch.Policy.Scope), white: drawable && !colour}
+	if choices := schedule.WatermarkMotifs[holiday]; len(choices) > 0 && res.Image == "" {
+		design.holiday, design.motif = holiday, watermark.Motif(choices[0])
+		if m := p.Motifs[holiday]; slices.Contains(choices, m) {
+			design.motif = watermark.Motif(m)
+		}
+	}
+	look := watermark.Look{Size: res.Size, Opacity: res.Opacity, Shadow: true}
+	key, render := c.source(ctx, ch, res, design)
+	path, _, _, err = c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, previewFrameHeight, look.Size, look.Opacity, renderVersion),
+		func() (watermark.Bug, error) {
+			mask, err := render()
+			if err != nil {
+				return watermark.Bug{}, err
+			}
+			return mask(previewFrameHeight, look)
+		})
+	return path, drawable, err
+}
+
+// drawable reports whether any encoder's self-check has passed, and whether one draws colour. No
+// encoder checked yet (nothing has aired since start) counts as drawable, in colour.
+func (c *channelWatermarks) drawable() (works, colour bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.gates) == 0 {
+		return true, true
+	}
+	for _, g := range c.gates {
+		works = works || g.works.Load()
+		colour = colour || (g.works.Load() && g.colour.Load())
+	}
+	return works, colour
 }
 
 type bugRenderer func(frameHeight int, look watermark.Look) (watermark.Bug, error)

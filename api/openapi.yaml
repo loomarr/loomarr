@@ -12645,6 +12645,88 @@ paths:
       summary: Upload a custom channel watermark
       tags:
         - channels
+  /v1/channels/{id}/watermark/preview:
+    get:
+      description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: its saved policy.watermark with the query's look, colour and size, in the named holiday's version. The `X-Loomarr-Watermark-Drawable` header is false while this server cannot overlay a logo."
+      operationId: preview-channel-watermark
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - description: Style to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: look
+          schema:
+            description: Style to draw; omitted is the channel's
+            enum:
+              - plate
+              - text
+              - outline
+              - small-plate
+              - tint
+              - twotone
+              - badge
+              - lockup
+              - glass
+              - stripe
+            type: string
+        - description: Colour to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: color
+          schema:
+            description: Colour to draw; omitted is the channel's
+            enum:
+              - era
+              - amber
+              - cyan
+              - green
+              - red
+              - pink
+              - yellow
+            type: string
+        - description: Holiday version to draw; omitted is the everyday logo
+          explode: false
+          in: query
+          name: holiday
+          schema:
+            description: Holiday version to draw; omitted is the everyday logo
+            enum:
+              - halloween
+              - thanksgiving
+              - christmas
+              - newyear
+              - valentines
+            type: string
+        - description: Bug height as a share of the frame height; omitted (0) is the channel's
+          explode: false
+          in: query
+          name: size
+          schema:
+            description: Bug height as a share of the frame height; omitted (0) is the channel's
+            format: double
+            maximum: 0.15
+            minimum: 0
+            type: number
+      responses:
+        "200":
+          content:
+            image/png: {}
+          description: The bug PNG
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview the channel's on-screen logo
+      tags:
+        - channels
   /v1/diagnostics/client-crashes:
     get:
       description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. Operator and automation API: no Loomarr client calls it."
