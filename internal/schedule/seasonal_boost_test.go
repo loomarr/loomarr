@@ -282,6 +282,46 @@ func TestHolidayEpisodes_OutOfSeasonShuffledLeavesTheEveningWhereSpacingAllows(t
 	}
 }
 
+// #1960: a shuffled channel moves an off-season holiday episode out of the evening by swapping it
+// with one ordinary unit after the band, so every programme between keeps its place. Deferring it
+// instead would bring each of them forward a slot.
+func TestHolidayEpisodes_OutOfSeasonShuffledSwapsWithOneUnit(t *testing.T) {
+	ch := channelWithWindow(12*time.Hour, nil)
+	avail := seriesLike(80, halloweenSpecials(4)...)
+	evenings := seasonalPolicy(schedule.SeasonalPolicy{})
+	evenings.Ordering = schedule.OrderShuffle
+	anytime := seasonalPolicy(schedule.SeasonalPolicy{Placement: schedule.HolidayPlacementAnytime})
+	anytime.Ordering = schedule.OrderShuffle
+	swaps := 0
+	for at := day(time.March, 2, 0); at.Before(day(time.March, 16, 0)); at = at.Add(ch.DefaultWindow) {
+		dealt, aired := arrange(t, ch, avail, anytime, at), arrange(t, ch, avail, evenings, at)
+		if len(dealt) != len(aired) {
+			t.Fatalf("the window opening %s airs %d programmes where the deck deals %d", at.Format(time.Stamp), len(aired), len(dealt))
+		}
+		var moved []int
+		for i := range dealt {
+			if dealt[i].id != aired[i].id {
+				moved = append(moved, i)
+			}
+		}
+		if len(moved) != 2 || moved[1]-moved[0] < 2 {
+			continue // unmoved, or deferred a slot (the fallback)
+		}
+		e, u := moved[0], moved[1]
+		if !isHoliday(dealt[e].id) || isHoliday(dealt[u].id) || aired[u].id != dealt[e].id || aired[e].id != dealt[u].id {
+			continue
+		}
+		if !inEvening(dealt[e], nil) || inEvening(aired[u], nil) {
+			t.Fatalf("the window opening %s swapped %s from %s to %s", at.Format(time.Stamp), dealt[e].id,
+				dealt[e].start.Format(time.Kitchen), aired[u].start.Format(time.Kitchen))
+		}
+		swaps++
+	}
+	if swaps == 0 {
+		t.Fatal("no holiday episode swapped out of an evening in two weeks")
+	}
+}
+
 func TestHolidayEpisodes_DeterministicWithinAWindow(t *testing.T) {
 	policy := seasonalPolicy(schedule.SeasonalPolicy{})
 	morning := arrange(t, mudpuddlesChannel(), mudpuddlesLike(9), policy, day(time.October, 20, 1))

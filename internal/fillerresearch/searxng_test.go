@@ -14,7 +14,7 @@ func TestSearXNGRetrievesJSONSnippetsFromConfiguredEndpoint(t *testing.T) {
 		path, query = r.URL.Path, r.URL.Query().Get("q")
 		format, safe = r.URL.Query().Get("format"), r.URL.Query().Get("safesearch")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results":[{"title":"HP Sauce","url":"https://example.org/hp","content":"A British condiment advert."}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"title":"Brambly Sauce","url":"https://example.org/brambly","content":"A British condiment advert."}]}`))
 	}))
 	defer server.Close()
 	provider, err := NewSearXNG(SearXNGConfig{Client: server.Client(), Endpoint: server.URL + "/meta",
@@ -22,12 +22,12 @@ func TestSearXNGRetrievesJSONSnippetsFromConfiguredEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "HP Sauce Advert"})
+	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Brambly Sauce Advert"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != "/meta/search" || !strings.Contains(query, "HP Sauce Advert") || format != "json" || safe != "1" ||
-		len(packet.Citations) != 1 || packet.Citations[0].Title != "HP Sauce" {
+	if path != "/meta/search" || !strings.Contains(query, "Brambly Sauce Advert") || format != "json" || safe != "1" ||
+		len(packet.Citations) != 1 || packet.Citations[0].Title != "Brambly Sauce" {
 		t.Fatalf("path=%q query=%q format=%q safe=%q packet=%+v", path, query, format, safe, packet)
 	}
 }

@@ -42,8 +42,8 @@ func TestReleaseGateLatencySeparatesFailedRequestsFromSuccessfulMaximum(t *testi
 }
 
 func TestReleaseGateAcceptableMembersCountDistinctIdentities(t *testing.T) {
-	proposal := proposalWithKeys(t, "series:tmdb:20101")
-	c := Case{AcceptableKeys: []provision.Key{"series:tmdb:20101", "series:tmdb:20101"}, MinAcceptableKeys: 2}
+	proposal := proposalWithKeys(t, "series:tmdb:90020101")
+	c := Case{AcceptableKeys: []provision.Key{"series:tmdb:90020101", "series:tmdb:90020101"}, MinAcceptableKeys: 2}
 	if failures := deterministicChecks(c, proposal, nil); !strings.Contains(strings.Join(failures, ";"), "acceptable grounded members 1 < required 2") {
 		t.Fatalf("duplicate identity supplied two members: %v", failures)
 	}
