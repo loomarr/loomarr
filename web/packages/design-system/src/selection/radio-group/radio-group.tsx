@@ -2,7 +2,7 @@ import { useTheme, View } from "@tamagui/core";
 import { type ComponentProps, createContext, type ReactNode, useContext, useRef, useState } from "react";
 import { Pressable } from "react-native";
 
-import { Surface } from "../primitives";
+import { Surface } from "../../primitives";
 
 type Focusable = { focus?: () => void };
 

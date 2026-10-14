@@ -7,5 +7,5 @@ export type {
   OnScreenLogoPolicy,
   OnScreenLogoPreviewRequest,
   OnScreenLogoSectionProps,
-} from "./on-screen-logo-section";
-export { OnScreenLogoSection } from "./on-screen-logo-section";
+} from "./on-screen-logo";
+export { OnScreenLogoSection } from "./on-screen-logo";
