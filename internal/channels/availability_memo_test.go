@@ -43,14 +43,14 @@ func seedAvailable(t *testing.T, st store.Store, key provision.Key, libraryID st
 
 func TestResolveMemoizesDurationPerLibraryItem(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("movie:tmdb:603")
-	seedAvailable(t, st, key, "lib-603")
+	key := provision.Key("movie:tmdb:90000603")
+	seedAvailable(t, st, key, "lib-90000603")
 
 	calls := 0
 	dur := func(_ context.Context, libraryItemID string) (int64, error) {
 		calls++
-		if libraryItemID != "lib-603" {
-			t.Fatalf("duration asked for %q, want lib-603", libraryItemID)
+		if libraryItemID != "lib-90000603" {
+			t.Fatalf("duration asked for %q, want lib-90000603", libraryItemID)
 		}
 		return 8_160_000, nil
 	}
@@ -60,8 +60,8 @@ func TestResolveMemoizesDurationPerLibraryItem(t *testing.T) {
 	// Resolve the SAME key repeatedly, as a cycle layout does.
 	for i := 0; i < 25; i++ {
 		id, ms, ok := av.Resolve(key)
-		if !ok || id != "lib-603" || ms != 8_160_000 {
-			t.Fatalf("resolve %d = (%q, %d, %v), want (lib-603, 8160000, true)", i, id, ms, ok)
+		if !ok || id != "lib-90000603" || ms != 8_160_000 {
+			t.Fatalf("resolve %d = (%q, %d, %v), want (lib-90000603, 8160000, true)", i, id, ms, ok)
 		}
 	}
 
@@ -72,9 +72,9 @@ func TestResolveMemoizesDurationPerLibraryItem(t *testing.T) {
 
 func TestResolveMemoizesTheStoreLookupIncludingMisses(t *testing.T) {
 	st := availTestStore(t)
-	present := provision.Key("movie:tmdb:603")
-	absent := provision.Key("movie:tmdb:999999")
-	seedAvailable(t, st, present, "lib-603")
+	present := provision.Key("movie:tmdb:90000603")
+	absent := provision.Key("movie:tmdb:90999999")
+	seedAvailable(t, st, present, "lib-90000603")
 
 	durCalls := 0
 	dur := func(_ context.Context, _ string) (int64, error) { durCalls++; return 1, nil }
@@ -97,7 +97,7 @@ func TestResolveMemoizesTheStoreLookupIncludingMisses(t *testing.T) {
 
 func TestResolveEpisodesMemoizesTheEpisodeEnumeration(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedAvailable(t, st, key, "lib-show")
 
 	calls := 0
@@ -129,7 +129,7 @@ func TestResolveEpisodesMemoizesTheEpisodeEnumeration(t *testing.T) {
 
 func TestResolveEpisodesMemoizesAnEmptyEnumeration(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedAvailable(t, st, key, "lib-show")
 
 	calls := 0
@@ -158,8 +158,8 @@ func TestResolveEpisodesMemoizesAnEmptyEnumeration(t *testing.T) {
 // laying out a pending slot for content that had already landed.
 func TestMemoExpiresSoAvailabilityCanChange(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("movie:tmdb:603")
-	seedAvailable(t, st, key, "lib-603")
+	key := provision.Key("movie:tmdb:90000603")
+	seedAvailable(t, st, key, "lib-90000603")
 
 	clock := time.Now()
 	calls := 0
@@ -194,7 +194,7 @@ func TestMemoExpiresSoAvailabilityCanChange(t *testing.T) {
 // be race-free. Run under `-race` (comprehensive verification does) this fails loudly if the mutex goes away.
 func TestAvailabilityMemoIsSafeUnderConcurrentResolve(t *testing.T) {
 	st := availTestStore(t)
-	keys := []provision.Key{"movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"}
+	keys := []provision.Key{"movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"}
 	for i, k := range keys {
 		seedAvailable(t, st, k, "lib-"+string(rune('a'+i)))
 	}
@@ -229,8 +229,8 @@ func TestPrewarmDurations_CollapsesTheNPlusOneToOneCall(t *testing.T) {
 	keys := make([]provision.Key, n)
 	ids := make([]string, n)
 	for i := range keys {
-		keys[i] = provision.Key(fmt.Sprintf("movie:tmdb:%d", 1000+i))
-		ids[i] = fmt.Sprintf("lib-%d", 1000+i)
+		keys[i] = provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_001_000+i))
+		ids[i] = fmt.Sprintf("lib-%d", 90_001_000+i)
 		seedAvailable(t, st, keys[i], ids[i])
 	}
 
@@ -269,8 +269,8 @@ func TestPrewarmDurations_CollapsesTheNPlusOneToOneCall(t *testing.T) {
 // precondition.
 func TestPrewarmDurations_BulkFailureFallsBackToPerItem(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("movie:tmdb:603")
-	seedAvailable(t, st, key, "lib-603")
+	key := provision.Key("movie:tmdb:90000603")
+	seedAvailable(t, st, key, "lib-90000603")
 
 	perItem := 0
 	dur := func(_ context.Context, _ string) (int64, error) { perItem++; return 8_160_000, nil }
@@ -279,10 +279,10 @@ func TestPrewarmDurations_BulkFailureFallsBackToPerItem(t *testing.T) {
 	}
 
 	av := WithBulkDurations(NewStoreAvailability(context.Background(), st, dur, nil), bulk)
-	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-603"})
+	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-90000603"})
 
 	id, ms, ok := av.Resolve(key)
-	if !ok || id != "lib-603" || ms != 8_160_000 {
+	if !ok || id != "lib-90000603" || ms != 8_160_000 {
 		t.Fatalf("resolve = (%q, %d, %v), want the per-item answer after a bulk failure", id, ms, ok)
 	}
 	if perItem != 1 {
@@ -295,8 +295,8 @@ func TestPrewarmDurations_BulkFailureFallsBackToPerItem(t *testing.T) {
 // bulk answer was thinnest on.
 func TestPrewarmDurations_UnansweredIDsDoNotFallBackPerOccurrence(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("movie:tmdb:777")
-	seedAvailable(t, st, key, "lib-777")
+	key := provision.Key("movie:tmdb:90000777")
+	seedAvailable(t, st, key, "lib-90000777")
 
 	perItem := 0
 	dur := func(_ context.Context, _ string) (int64, error) { perItem++; return 5, nil }
@@ -306,7 +306,7 @@ func TestPrewarmDurations_UnansweredIDsDoNotFallBackPerOccurrence(t *testing.T) 
 	}
 
 	av := WithBulkDurations(NewStoreAvailability(context.Background(), st, dur, nil), bulk)
-	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-777"})
+	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-90000777"})
 
 	for i := 0; i < 10; i++ {
 		if _, _, ok := av.Resolve(key); !ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -624,7 +625,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	sourceProposal := Proposal{
 		ID: "proposal-source", JobID: source.ID, Status: "approved", CreatedBy: source.CreatedBy,
-		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"The Matrix"}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:603","ownership":"library","disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`,
+		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"Marigold Protocol"}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000603","ownership":"library","disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, sourceProposal); err != nil {
@@ -653,7 +654,7 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 			} `json:"candidates"`
 		} `json:"trace"`
 	}
-	if err := json.Unmarshal([]byte(clone.ProposalJSON), &roundTrip); err != nil || roundTrip.Trace.Version != 1 || len(roundTrip.Trace.Candidates) != 1 || roundTrip.Trace.Candidates[0].Key != "movie:tmdb:603" {
+	if err := json.Unmarshal([]byte(clone.ProposalJSON), &roundTrip); err != nil || roundTrip.Trace.Version != 1 || len(roundTrip.Trace.Candidates) != 1 || roundTrip.Trace.Candidates[0].Key != "movie:tmdb:90000603" {
 		t.Fatalf("cloned trace did not round-trip: %+v %v", roundTrip, err)
 	}
 	gotJob, err := s.GetJob(ctx, cloneJob.ID)
@@ -1054,18 +1055,18 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	existing := provision.Record{
-		Key: "movie:tmdb:1", Title: provision.Title{MediaType: provision.Movie, TMDBID: 1, Name: "Existing"},
+		Key: "movie:tmdb:90000001", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing"},
 		State: provision.Downloading, Attempts: 3, LastError: "keep me",
 	}
 	if err := s.UpsertTitle(ctx, existing); err != nil {
 		t.Fatal(err)
 	}
 	available := provision.Record{
-		Key: "movie:tmdb:2", Title: provision.Title{MediaType: provision.Movie, TMDBID: 2, Name: "Available"},
+		Key: "movie:tmdb:90000002", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000002, Name: "Available"},
 		State: provision.Available, LibraryID: "library-2",
 	}
 	wanted := provision.Record{
-		Key: "movie:tmdb:3", Title: provision.Title{MediaType: provision.Movie, TMDBID: 3, Name: "Wanted"},
+		Key: "movie:tmdb:90000003", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000003, Name: "Wanted"},
 		State: provision.Wanted, Deadline: now,
 	}
 	proposal.Status = "approved"
@@ -1075,7 +1076,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	enqueued, err := s.CommitProposalApproval(ctx, ProposalApproval{
 		Proposal: proposal,
 		Titles: []provision.Record{
-			{Key: existing.Key, Title: provision.Title{MediaType: provision.Movie, TMDBID: 1}, State: provision.Wanted, Deadline: now},
+			{Key: existing.Key, Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000001}, State: provision.Wanted, Deadline: now},
 			available, wanted, wanted,
 		},
 		Channel: approvalChannel("ch-approval", proposal.JobID, 101),
@@ -1132,12 +1133,12 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	loser.Status = "approved"
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
 		Proposal: loser,
-		Titles:   []provision.Record{{Key: "movie:tmdb:99", Title: provision.Title{MediaType: provision.Movie, TMDBID: 99}, State: provision.Wanted, Deadline: now}},
+		Titles:   []provision.Record{{Key: "movie:tmdb:90000099", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000099}, State: provision.Wanted, Deadline: now}},
 		Channel:  approvalChannel("ch-denied", loser.JobID, 102),
 	}); !errors.Is(err, ErrProposalNotSubmitted) {
 		t.Fatalf("approve denied proposal = %v, want ErrProposalNotSubmitted", err)
 	}
-	if _, err := s.GetTitle(ctx, "movie:tmdb:99"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetTitle(ctx, "movie:tmdb:90000099"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("losing approval inserted a title: %v", err)
 	}
 	if _, err := s.GetChannel(ctx, "ch-denied"); !errors.Is(err, ErrNotFound) {
@@ -1157,14 +1158,14 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	invalid.Status = "approved"
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: invalid, Titles: []provision.Record{{
-		Key: "movie:tmdb:404", Title: provision.Title{MediaType: provision.Movie, TMDBID: 404}, State: provision.Wanted,
+		Key: "movie:tmdb:90000404", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000404}, State: provision.Wanted,
 	}}, Channel: approvalChannel("ch-invalid", invalid.JobID, 104)}); err == nil {
 		t.Fatal("approval accepted a wanted title with no deadline")
 	}
 	if got, err := s.GetProposal(ctx, invalid.ID); err != nil || got.Status != "submitted" {
 		t.Errorf("invalid approval changed proposal = (%+v, %v)", got, err)
 	}
-	if _, err := s.GetTitle(ctx, "movie:tmdb:404"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetTitle(ctx, "movie:tmdb:90000404"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("invalid approval inserted title: %v", err)
 	}
 	if _, err := s.GetChannel(ctx, "ch-invalid"); !errors.Is(err, ErrNotFound) {
@@ -1180,7 +1181,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	invalidChannelProposal.Status = "approved"
 	validTitle := provision.Record{
-		Key: "movie:tmdb:405", Title: provision.Title{MediaType: provision.Movie, TMDBID: 405},
+		Key: "movie:tmdb:90000405", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000405},
 		State: provision.Wanted, Deadline: now,
 	}
 	invalidChannel := approvalChannel("ch-invalid-channel", invalidChannelProposal.JobID, 105)
@@ -1250,7 +1251,7 @@ func testProposalApprovalSameIntentConflict(t *testing.T, newStore NewStoreFunc)
 
 	second.Status, second.ApprovedBy = "approved", "admin-b"
 	loserTitle := provision.Record{
-		Key: "movie:tmdb:141", Title: provision.Title{MediaType: provision.Movie, TMDBID: 141},
+		Key: "movie:tmdb:90000141", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000141},
 		State: provision.Wanted, Deadline: now,
 	}
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
@@ -1307,7 +1308,7 @@ func testProposalApprovalStaleChannel(t *testing.T, newStore NewStoreFunc) {
 	}
 	p.Status, p.ApprovedBy = "approved", "admin"
 	title := provision.Record{
-		Key: "movie:tmdb:145", Title: provision.Title{MediaType: provision.Movie, TMDBID: 145},
+		Key: "movie:tmdb:90000145", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000145},
 		State: provision.Wanted, Deadline: now,
 	}
 	planned.Name = "stale approval"
@@ -1362,7 +1363,7 @@ func testProposalApprovalSuperseded(t *testing.T, newStore NewStoreFunc) {
 	olderChannel := current
 	olderChannel.Name = "older lineup"
 	title := provision.Record{
-		Key: "movie:tmdb:146", Title: provision.Title{MediaType: provision.Movie, TMDBID: 146},
+		Key: "movie:tmdb:90000146", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000146},
 		State: provision.Wanted, Deadline: now,
 	}
 	if _, err := s.CommitProposalApproval(ctx, ProposalApproval{
@@ -1402,14 +1403,14 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		}
 		out := make(chan outcome, 2)
 		for i, actor := range []string{"admin-a", "admin-b"} {
-			key := provision.Key([]string{"movie:tmdb:10", "movie:tmdb:20"}[i])
+			key := provision.Key([]string{"movie:tmdb:90000010", "movie:tmdb:90000020"}[i])
 			channelID := []string{"ch-race-a", "ch-race-b"}[i]
 			go func() {
 				<-start
 				p := seed
 				p.Status, p.ApprovedBy, p.ProposalJSON = "approved", actor, `{"winner":"`+actor+`"}`
 				_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
-					Key: key, Title: provision.Title{MediaType: provision.Movie, TMDBID: map[string]int{"admin-a": 10, "admin-b": 20}[actor]}, State: provision.Wanted, Deadline: now,
+					Key: key, Title: provision.Title{MediaType: provision.Movie, TMDBID: map[string]int{"admin-a": 90000010, "admin-b": 90000020}[actor]}, State: provision.Wanted, Deadline: now,
 				}}, Channel: approvalChannel(channelID, p.JobID, 110+i)})
 				out <- outcome{actor: actor, key: string(key), err: err}
 			}()
@@ -1458,7 +1459,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 			p := seed
 			p.Status, p.ApprovedBy = "approved", "approver"
 			_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
-				Key: "movie:tmdb:30", Title: provision.Title{MediaType: provision.Movie, TMDBID: 30}, State: provision.Wanted, Deadline: now,
+				Key: "movie:tmdb:90000030", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000030}, State: provision.Wanted, Deadline: now,
 			}}, Channel: approvalChannel("ch-race-decision", p.JobID, 120)})
 			errs <- err
 		}()
@@ -1484,7 +1485,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		if err != nil || (got.Status != "approved" && got.Status != "denied") {
 			t.Errorf("terminal proposal = (%+v, %v)", got, err)
 		}
-		_, titleErr := s.GetTitle(ctx, "movie:tmdb:30")
+		_, titleErr := s.GetTitle(ctx, "movie:tmdb:90000030")
 		_, channelErr := s.GetChannel(ctx, "ch-race-decision")
 		if got.Status == "approved" && titleErr != nil {
 			t.Errorf("approved winner has no acquisition: %v", titleErr)
@@ -1510,9 +1511,10 @@ func testProposalApprovalOverlappingTitles(t *testing.T, newStore NewStoreFunc) 
 			t.Fatal(err)
 		}
 	}
-	record := func(id int) provision.Record {
+	record := func(n int) provision.Record {
+		id := 90_000_000 + n
 		return provision.Record{
-			Key:   provision.Key("movie:tmdb:" + string(rune('0'+id))),
+			Key:   provision.Key("movie:tmdb:" + strconv.Itoa(id)),
 			Title: provision.Title{MediaType: provision.Movie, TMDBID: id},
 			State: provision.Wanted, Deadline: now,
 		}
@@ -1670,7 +1672,7 @@ func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
 	job.Status = "done"
 	proposal := Proposal{
 		ID: "proposal-idea", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"channelName":"Comedy Movies","lineup":[{"mediaType":"movie","tmdbId":1,"name":"A","inLibrary":true}]}`,
+		ProposalJSON: `{"channelName":"Comedy Movies","lineup":[{"mediaType":"movie","tmdbId":90000001,"name":"A","inLibrary":true}]}`,
 		CreatedAt:    now, UpdatedAt: now,
 	}
 	if err := s.CreateSuggestionResult(ctx, job, proposal); err != nil {

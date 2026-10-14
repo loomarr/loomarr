@@ -73,6 +73,9 @@ var migratedTitles = []string{
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
 	"Highway Patrol", "Sega Genesis", "TMNT", "Capri Sun", "La Llave", "TV Puls", "NatWest", "Rumbelows",
 	"KCPQ", "WNYW", "WAGA", "Sony", "Lego", "NFL", "CBC",
+	// The channels, store and reconcile tests (slice 13). "Bluey" is left out: it is a kids-signal
+	// keyword in the product's own list (suggest/intent_policy.go), pinned on purpose by a migrated test.
+	"Fight Club", "Darkwing Duck", "CBS",
 	// The web app, core and player tests, and the e2e mock backend (slice 14). "Speed" alone is
 	// left out: it would match ordinary prose.
 	"Wizarding World", "Crimson Tide", "Air Force One", "True Lies", "Enemy of the State", "Animaniacs",
@@ -231,6 +234,8 @@ var migratedGo = []string{
 	"internal/playout/", "internal/recurate/", "internal/schedule/",
 	// The filler, fillerenrichment and fillerstore tests (slice 12).
 	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
+	// The channels, store and reconcile tests (slice 13).
+	"internal/channels/", "internal/reconcile/", "internal/store/",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).

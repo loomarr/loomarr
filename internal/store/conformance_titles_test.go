@@ -17,7 +17,7 @@ import (
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
 	return provision.Record{
 		Key:         key,
-		Title:       provision.Title{MediaType: provision.Movie, TMDBID: 1111867, Name: "In Flames", Year: 2023},
+		Title:       provision.Title{MediaType: provision.Movie, TMDBID: 91111867, Name: "Ashgrove Anomaly", Year: 2023},
 		State:       state,
 		Deadline:    deadline,
 		RequestedAt: time.Unix(1_700_000_000, 0).UTC(),
@@ -28,7 +28,7 @@ func sampleRecord(key provision.Key, state provision.State, deadline time.Time) 
 func testTitleRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	want := sampleRecord("movie:tmdb:1111867", provision.Requested, time.Unix(1_800_000_000, 0).UTC())
+	want := sampleRecord("movie:tmdb:91111867", provision.Requested, time.Unix(1_800_000_000, 0).UTC())
 	if err := s.UpsertTitle(ctx, want); err != nil {
 		t.Fatal(err)
 	}
@@ -57,21 +57,21 @@ func testTitlesAvailableSince(t *testing.T, newStore NewStoreFunc) {
 		return r
 	}
 	for _, r := range []provision.Record{
-		arrived("movie:tmdb:1", day(0)),
-		arrived("movie:tmdb:2", day(5)),
-		arrived("movie:tmdb:3", day(3)),
-		sampleRecord("movie:tmdb:4", provision.Available, time.Time{}), // an in-library pick: never arrived
-		sampleRecord("movie:tmdb:5", provision.Downloading, day(9)),
+		arrived("movie:tmdb:90000001", day(0)),
+		arrived("movie:tmdb:90000002", day(5)),
+		arrived("movie:tmdb:90000003", day(3)),
+		sampleRecord("movie:tmdb:90000004", provision.Available, time.Time{}), // an in-library pick: never arrived
+		sampleRecord("movie:tmdb:90000005", provision.Downloading, day(9)),
 	} {
 		if err := s.UpsertTitle(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// The approve path re-writes #2 without a stamp.
-	if err := s.UpsertTitle(ctx, sampleRecord("movie:tmdb:2", provision.Available, time.Time{})); err != nil {
+	if err := s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000002", provision.Available, time.Time{})); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.GetTitle(ctx, "movie:tmdb:2")
+	got, err := s.GetTitle(ctx, "movie:tmdb:90000002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func testTitlesAvailableSince(t *testing.T, newStore NewStoreFunc) {
 	for _, r := range recs {
 		keys = append(keys, string(r.Key)+"@"+r.AvailableAt.Sub(day(0)).String())
 	}
-	if want := "movie:tmdb:2@120h0m0s movie:tmdb:3@72h0m0s"; strings.Join(keys, " ") != want {
+	if want := "movie:tmdb:90000002@120h0m0s movie:tmdb:90000003@72h0m0s"; strings.Join(keys, " ") != want {
 		t.Fatalf("available since day 2 = %v, want %s", keys, want)
 	}
 }
@@ -96,7 +96,7 @@ func testTitlesAvailableSince(t *testing.T, newStore NewStoreFunc) {
 func testUpdateTitleProgress(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	rec := sampleRecord("movie:tmdb:603", provision.Downloading, time.Unix(1_800_000_000, 0).UTC())
+	rec := sampleRecord("movie:tmdb:90000603", provision.Downloading, time.Unix(1_800_000_000, 0).UTC())
 	if err := s.UpsertTitle(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func testUpdateTitleProgress(t *testing.T, newStore NewStoreFunc) {
 func testUpsertIdempotent(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	rec := sampleRecord("movie:tmdb:1", provision.Wanted, time.Time{})
+	rec := sampleRecord("movie:tmdb:90000001", provision.Wanted, time.Time{})
 	if err := s.UpsertTitle(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func testUpsertIdempotent(t *testing.T, newStore NewStoreFunc) {
 
 func testGetMissing(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
-	if _, err := s.GetTitle(context.Background(), "movie:tmdb:404"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.GetTitle(context.Background(), "movie:tmdb:90000404"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetTitle(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -168,9 +168,9 @@ func testGetMissing(t *testing.T, newStore NewStoreFunc) {
 func testListByState(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:10", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:11", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:12", provision.Available, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000010", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000011", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000012", provision.Available, time.Time{}))
 	req, err := s.ListTitlesByState(ctx, provision.Requested)
 	if err != nil {
 		t.Fatal(err)
@@ -185,18 +185,18 @@ func testClaimDue(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	// Due: requested, deadline in the past.
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:20", provision.Requested, now.Add(-time.Hour)))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000020", provision.Requested, now.Add(-time.Hour)))
 	// Not due: deadline in the future.
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:21", provision.Requested, now.Add(time.Hour)))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000021", provision.Requested, now.Add(time.Hour)))
 	// Not eligible: terminal state, even though deadline is past.
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:22", provision.Available, now.Add(-time.Hour)))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000022", provision.Available, now.Add(-time.Hour)))
 
 	claimed, err := s.ClaimDueTitles(ctx, now, time.Minute, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(claimed) != 1 || claimed[0].Key != "movie:tmdb:20" {
-		t.Errorf("ClaimDueTitles returned %d rows, want just movie:tmdb:20: %+v", len(claimed), claimed)
+	if len(claimed) != 1 || claimed[0].Key != "movie:tmdb:90000020" {
+		t.Errorf("ClaimDueTitles returned %d rows, want just movie:tmdb:90000020: %+v", len(claimed), claimed)
 	}
 	// The claimed row is now leased (deadline pushed to now+lease); a second
 	// claim at the same `now` must NOT re-return it.
@@ -208,7 +208,7 @@ func testClaimDue(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("re-claim returned %d leased rows, want 0 (lease not honored)", len(again))
 	}
 	// The claim leased the row: its stored deadline is now pushed to now+lease.
-	got, _ := s.GetTitle(ctx, "movie:tmdb:20")
+	got, _ := s.GetTitle(ctx, "movie:tmdb:90000020")
 	if !got.Deadline.Equal(now.Add(time.Minute)) {
 		t.Errorf("claimed row deadline = %v, want leased %v", got.Deadline, now.Add(time.Minute))
 	}

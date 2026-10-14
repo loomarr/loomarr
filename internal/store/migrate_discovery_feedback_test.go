@@ -57,7 +57,7 @@ func testDiscoveryFeedbackOrphanCleanupMigration(t *testing.T, db *sql.DB, diale
 	for _, event := range events {
 		query := `INSERT INTO discovery_feedback
 			(id, actor_id, scope, scope_id, target_key, action, created_at)
-			VALUES (?, 'admin', ?, ?, 'movie:tmdb:603', 'never', 1)`
+			VALUES (?, 'admin', ?, ?, 'movie:tmdb:90000603', 'never', 1)`
 		_, err := db.ExecContext(ctx, ph(query), event.id, event.scope, event.scopeID)
 		if err != nil {
 			t.Fatal(err)
