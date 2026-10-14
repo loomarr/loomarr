@@ -92,9 +92,87 @@ const IdeaCard = ({
   </Surface>
 );
 
+const ChannelIdeas = ({
+  hiddenIdea,
+  ideas,
+  ideasStatus,
+  nowMs,
+  onHideIdea,
+  onRequestIdea,
+  onRetryIdeas,
+  onUndoHide,
+  requestingIdeaId,
+}: Omit<RequestChannelProps, "brief" | "initialIntent" | "onBack" | "onSubmitBrief" | "viewer">) => {
+  const [page, setPage] = useState(0);
+  const start = ideas.length > 0 ? (page * PAGE) % ideas.length : 0;
+  const shown = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, PAGE);
+
+  return (
+    <>
+      <Text density="touch" textRole="headline">
+        Channel ideas
+      </Text>
+      {hiddenIdea ? (
+        <Surface
+          alignItems="center"
+          flexDirection="row"
+          gap="$control"
+          justifyContent="space-between"
+          padding="$control"
+        >
+          <Text density="touch" textRole="caption" tone="secondary">{`Hid ${hiddenIdea.name}`}</Text>
+          <Action accessibilityRole="button" density="touch" onPress={onUndoHide} tone="secondary">
+            Undo
+          </Action>
+        </Surface>
+      ) : null}
+      {ideasStatus === "loading" ? (
+        <StatePanel density="touch" kind="loading" title="Finding ideas from your library" />
+      ) : ideasStatus === "error" ? (
+        <StatePanel
+          action={{ label: "Try again", onPress: onRetryIdeas }}
+          density="touch"
+          kind="error"
+          title="Couldn't load channel ideas"
+        />
+      ) : ideas.length === 0 ? (
+        <Text density="touch" textRole="body" tone="secondary">
+          That's every idea for now. New ones appear as your library grows.
+        </Text>
+      ) : (
+        <>
+          {shown.map((idea) => (
+            <IdeaCard
+              busy={requestingIdeaId === idea.id}
+              idea={idea}
+              key={idea.id}
+              nowMs={nowMs}
+              onHide={() => onHideIdea(idea.id)}
+              onRequest={() => onRequestIdea(idea.id)}
+            />
+          ))}
+          {ideas.length > PAGE ? (
+            <Action
+              accessibilityRole="button"
+              density="touch"
+              icon="channels"
+              onPress={() => setPage((current) => current + 1)}
+              tone="secondary"
+            >
+              Different ideas
+            </Action>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+};
+
 // "Request a channel" on the phone, with both of Web's ways in. Channel ideas are the server's cards
 // and work with AI off; the typed brief goes to the suggester and, when AI or TMDB isn't set up, keeps
-// the draft and says who can fix it. Either way the request then waits for an admin.
+// the draft and says who can fix it. Either way the request then waits for an admin. An admin gets the
+// brief only: the server refuses an admin's idea request ("Channel ideas are for members"), and Web's
+// Home leaves the ideas out for an admin the same way.
 const RequestChannel = ({
   brief,
   hiddenIdea,
@@ -111,13 +189,9 @@ const RequestChannel = ({
   requestingIdeaId,
   viewer,
 }: RequestChannelProps) => {
-  const [page, setPage] = useState(0);
   const [description, setDescription] = useState(initialIntent?.description ?? "");
   const [problem, setProblem] = useState<string>();
   const sending = brief.kind === "sending";
-
-  const start = ideas.length > 0 ? (page * PAGE) % ideas.length : 0;
-  const shown = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, PAGE);
 
   const submit = () => {
     // The same schema Web's form validates with; a resumed request keeps its constraints.
@@ -141,60 +215,18 @@ const RequestChannel = ({
           Describe what you want to watch. You'll choose the final titles before anything is created.
         </Text>
 
-        <Text density="touch" textRole="headline">
-          Channel ideas
-        </Text>
-        {hiddenIdea ? (
-          <Surface
-            alignItems="center"
-            flexDirection="row"
-            gap="$control"
-            justifyContent="space-between"
-            padding="$control"
-          >
-            <Text density="touch" textRole="caption" tone="secondary">{`Hid ${hiddenIdea.name}`}</Text>
-            <Action accessibilityRole="button" density="touch" onPress={onUndoHide} tone="secondary">
-              Undo
-            </Action>
-          </Surface>
-        ) : null}
-        {ideasStatus === "loading" ? (
-          <StatePanel density="touch" kind="loading" title="Finding ideas from your library" />
-        ) : ideasStatus === "error" ? (
-          <StatePanel
-            action={{ label: "Try again", onPress: onRetryIdeas }}
-            density="touch"
-            kind="error"
-            title="Couldn't load channel ideas"
+        {viewer === "admin" ? null : (
+          <ChannelIdeas
+            hiddenIdea={hiddenIdea}
+            ideas={ideas}
+            ideasStatus={ideasStatus}
+            nowMs={nowMs}
+            onHideIdea={onHideIdea}
+            onRequestIdea={onRequestIdea}
+            onRetryIdeas={onRetryIdeas}
+            onUndoHide={onUndoHide}
+            requestingIdeaId={requestingIdeaId}
           />
-        ) : ideas.length === 0 ? (
-          <Text density="touch" textRole="body" tone="secondary">
-            That's every idea for now. New ones appear as your library grows.
-          </Text>
-        ) : (
-          <>
-            {shown.map((idea) => (
-              <IdeaCard
-                busy={requestingIdeaId === idea.id}
-                idea={idea}
-                key={idea.id}
-                nowMs={nowMs}
-                onHide={() => onHideIdea(idea.id)}
-                onRequest={() => onRequestIdea(idea.id)}
-              />
-            ))}
-            {ideas.length > PAGE ? (
-              <Action
-                accessibilityRole="button"
-                density="touch"
-                icon="channels"
-                onPress={() => setPage((current) => current + 1)}
-                tone="secondary"
-              >
-                Different ideas
-              </Action>
-            ) : null}
-          </>
         )}
 
         <Text density="touch" textRole="headline">

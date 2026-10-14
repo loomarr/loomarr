@@ -157,18 +157,18 @@ func TestChannelIdeasFromLibraryAndCalendar(t *testing.T) {
 	t.Parallel()
 	lib := &fakeIdeaLibrary{}
 	for i := 1; i <= 7; i++ {
-		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", i))},
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
 			MediaType: provision.Movie, Name: fmt.Sprintf("Film %d", i), Genres: []string{"Comedy"}})
 	}
 	for i := 20; i <= 22; i++ {
-		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", i))},
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
 			MediaType: provision.Movie, Name: fmt.Sprintf("Haunted night %d", i), Genres: []string{"Horror"}})
 	}
 	now := time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
 	h := newIdeasHarness(t, lib, now)
 	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
 		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
-	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:1"}}}); err != nil {
+	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
 		t.Fatal(err)
 	}
 	kid := login(t, h.Server, "kid", "pw")
@@ -229,6 +229,32 @@ func requestIdea(t *testing.T, srv *httptest.Server, ideaID string, session *htt
 	return res.StatusCode, out.JobID
 }
 
+// queuedProposalArrays reads the one submitted proposal from the admin's approval queue and
+// returns its acquisitions and alternates exactly as the wire carried them.
+func queuedProposalArrays(t *testing.T, srv *httptest.Server, session *http.Cookie) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/proposals?status=submitted", nil)
+	req.AddCookie(session)
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		Proposals []struct {
+			Proposal struct {
+				Acquisitions json.RawMessage `json:"acquisitions"`
+				Alternates   json.RawMessage `json:"alternates"`
+			} `json:"proposal"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK || len(out.Proposals) != 1 {
+		t.Fatalf("approval queue = %d %+v, %v", res.StatusCode, out, err)
+	}
+	p := out.Proposals[0].Proposal
+	return fmt.Sprintf(`{"acquisitions":%s,"alternates":%s}`, p.Acquisitions, p.Alternates)
+}
+
 // A member turns an idea into a channel request (#1720) with the LLM nowhere in the harness: the
 // idea's name, pitch and library titles become a submitted proposal in the real approval queue,
 // admins hear about it, and the idea then reads as requested. Asking again returns the same
@@ -237,7 +263,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	t.Parallel()
 	lib := &fakeIdeaLibrary{}
 	for i := 1; i <= 7; i++ {
-		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", i))},
+		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i))},
 			// One per decade, so no decade idea competes; the newest is Film 7.
 			MediaType: provision.Movie, Name: fmt.Sprintf("Film %d", i), Year: 1950 + 10*i, Genres: []string{"Comedy"}})
 	}
@@ -247,7 +273,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	h := newIdeasHarnessNotifying(t, lib, now, notify)
 	if _, err := h.Store.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
 		ID: "ch-1", Name: "Comedy one", Number: 1, Strategy: schedule.Shuffle, Status: schedule.StatusLive,
-	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:1"}}}); err != nil {
+	}, Lineup: []schedule.LineupEntry{{Key: "movie:tmdb:90000001"}}}); err != nil {
 		t.Fatal(err)
 	}
 	kid := login(t, h.Server, "kid", "pw")
@@ -289,16 +315,23 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	}
 	// Newest first, grounded by the key's own id, every title already in the library; the title on
 	// a channel stays off.
-	if first := payload.Lineup[0]; first.TMDBID != 7 || first.Name != "Film 7" || !first.InLibrary {
+	if first := payload.Lineup[0]; first.TMDBID != 90000007 || first.Name != "Film 7" || !first.InLibrary {
 		t.Fatalf("first lineup item = %+v", first)
 	}
 	for _, item := range payload.Lineup {
-		if item.TMDBID == 1 {
+		if item.TMDBID == 90000001 {
 			t.Fatalf("the lineup carries a title a channel already plays: %+v", item)
 		}
 	}
 	if notify.count() != 1 {
 		t.Fatalf("admins were told about %d requests, want 1", notify.count())
+	}
+	// ⚠ On the WIRE, not the stored Go value: len() of a nil slice is 0, so the check above passed
+	// while the admin queue sent `"acquisitions": null` and the phone's Needs-you tab crashed
+	// calling .length on it. An idea request has nothing to acquire and no alternates; both must
+	// still arrive as the arrays the spec promises.
+	if got := queuedProposalArrays(t, h.Server, boss); got != `{"acquisitions":[],"alternates":[]}` {
+		t.Fatalf("admin queue sent the idea request's arrays as %s, want empty arrays", got)
 	}
 
 	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid); len(got.Ideas) != 1 ||
@@ -395,8 +428,8 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
 	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 1, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 2, Name: "Not Actually Owned"}, Owned: false},
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	kid := login(t, h.Server, "kid", "pw")
@@ -406,8 +439,8 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 		"description": "Built by hand, title by title.",
 		"lineup": []map[string]any{
 			// The client CLAIMS both are already owned; only the first really is.
-			{"mediaType": "movie", "tmdbId": 1, "name": "Owned Already", "inLibrary": true, "libraryItemId": "lib-1"},
-			{"mediaType": "movie", "tmdbId": 2, "name": "Not Actually Owned", "inLibrary": true, "libraryItemId": "forged"},
+			{"mediaType": "movie", "tmdbId": 90000001, "name": "Owned Already", "inLibrary": true, "libraryItemId": "lib-1"},
+			{"mediaType": "movie", "tmdbId": 90000002, "name": "Not Actually Owned", "inLibrary": true, "libraryItemId": "forged"},
 		},
 	}, kid)
 	if code != http.StatusAccepted || jobID == "" {
@@ -428,10 +461,10 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	if !payload.Manual || payload.ChannelName != "My Hand-Built Channel" || payload.Rationale != "Built by hand, title by title." {
 		t.Fatalf("queued proposal = %+v, want a manual proposal carrying the name and description", payload)
 	}
-	if len(payload.Lineup) != 1 || payload.Lineup[0].TMDBID != 1 || !payload.Lineup[0].InLibrary || payload.Lineup[0].LibraryItemID != "lib-1" {
+	if len(payload.Lineup) != 1 || payload.Lineup[0].TMDBID != 90000001 || !payload.Lineup[0].InLibrary || payload.Lineup[0].LibraryItemID != "lib-1" {
 		t.Fatalf("lineup = %+v, want only the resolver-confirmed owned title", payload.Lineup)
 	}
-	if len(payload.Acquisitions) != 1 || payload.Acquisitions[0].TMDBID != 2 || payload.Acquisitions[0].InLibrary {
+	if len(payload.Acquisitions) != 1 || payload.Acquisitions[0].TMDBID != 90000002 || payload.Acquisitions[0].InLibrary {
 		t.Fatalf("acquisitions = %+v, want the unconfirmed title moved here, not trusted as owned", payload.Acquisitions)
 	}
 }
@@ -442,13 +475,13 @@ func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 9, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	boss := login(t, h.Server, "boss", "pw")
 	if code, jobID, _ := submitManualChannel(t, h.Server, map[string]any{
 		"name":   "Admin's Channel",
-		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 9, "name": "A Title", "inLibrary": false}},
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 90000009, "name": "A Title", "inLibrary": false}},
 	}, boss); code != http.StatusAccepted || jobID == "" {
 		t.Fatalf("admin submit = %d %q, want 202 with a job", code, jobID)
 	}
@@ -462,7 +495,7 @@ func TestSubmitManualChannelRejectsEmptyInput(t *testing.T) {
 	kid := login(t, h.Server, "kid", "pw")
 	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
 		"name":   "",
-		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 9, "name": "A Title", "inLibrary": false}},
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 90000009, "name": "A Title", "inLibrary": false}},
 	}, kid); code != http.StatusBadRequest {
 		t.Fatalf("empty name = %d %q, want 400", code, title)
 	}

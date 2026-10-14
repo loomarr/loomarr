@@ -165,9 +165,12 @@ served docs all derive from it, and hand-kept API docs are not allowed (decision
   redirects (`rawOp` in `internal/api/rawop.go`). That keeps one fail-closed authorization
   middleware, CSRF and the router/exporter drift guard covering every route.
 - **Arrays are never nullable**, and `null` is not an empty list anywhere. `humaConfig` sets
-  `DefaultArrayNullable = false`, and `TestResponses_ContainNoJSONNull` runs every parameterless GET
-  against an empty store. A handler returning a nil slice is a bug: build slices with
-  `make([]T, 0, …)`.
+  `DefaultArrayNullable = false`, and the API's one JSON encoder (`wireJSONFormat`, also behind
+  `writeJSON` and the SSE frames) sends every nil slice as `[]` and nil map as `{}`, at any depth.
+  `TestResponseSchemas_RequiredArraysNeverNull` encodes every response type's zero value and fails
+  on a `null` in any required property not declared nullable; `TestResponses_ContainNoJSONNull` runs
+  every parameterless GET against an empty store. The one declared `null` is a pointer to a scalar
+  (`scores.themeFit`), which Huma types `T | null`; a pointer to a struct must be `omitempty`.
 - **SSE frames are declared types.** Huma names an event after its payload type, so a frame whose
   type is not registered ships without an `event:` name and every browser listener silently stops.
 - **Listing a byte route in the spec describes it; it is not a stability promise.** Playout stream

@@ -40,10 +40,11 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
   useEffect(() => {
     void controller.refresh();
   }, [controller]);
-  const requesting = route.view === "request";
+  // An admin's form has no ideas to show (RequestChannel), so it reads none.
+  const requestingIdeas = route.view === "request" && snapshot.role !== "admin";
   useEffect(() => {
-    if (requesting) void controller.refreshIdeas();
-  }, [controller, requesting]);
+    if (requestingIdeas) void controller.refreshIdeas();
+  }, [controller, requestingIdeas]);
 
   // Land on Needs you when something is waiting for this person, as Web's badge invites.
   const needsYou =

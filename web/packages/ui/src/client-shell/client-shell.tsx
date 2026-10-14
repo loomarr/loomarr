@@ -3,7 +3,9 @@ import { View } from "react-native";
 
 import { ClientNavigation, clientDestinationLabel } from "../client-navigation";
 import { DeviceDisconnectAction } from "../device-disconnect";
+import { StatePanel } from "../state-panel";
 import type { ClientShellProps } from "./client-shell.type";
+import { DestinationBoundary } from "./destination-boundary";
 
 const ClientShell = ({
   active,
@@ -24,13 +26,30 @@ const ClientShell = ({
   );
   // A phone docks its platform's tab bar under the content; pointer and TV keep the row inline.
   const phone = density === "touch";
-  if (phone && typeof children === "function") return children(navigation);
-  // A destination with its own screen (the phone's Guide and Watching) sets its own gutters.
   if (phone && children)
     return (
-      <Screen density={density} flush footer={navigation}>
-        {children}
-      </Screen>
+      <DestinationBoundary
+        fallback={(retry) => (
+          <Screen density={density} footer={navigation}>
+            <StatePanel
+              action={{ label: "Try again", onPress: retry }}
+              density={density}
+              kind="error"
+              title="Something went wrong"
+            />
+          </Screen>
+        )}
+        resetKey={active}
+      >
+        {typeof children === "function" ? (
+          children(navigation)
+        ) : (
+          // A destination with its own screen (the phone's Guide and Watching) sets its own gutters.
+          <Screen density={density} flush footer={navigation}>
+            {children}
+          </Screen>
+        )}
+      </DestinationBoundary>
     );
   return (
     <Screen density={density} footer={phone ? navigation : undefined} gap="$section">
