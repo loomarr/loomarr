@@ -66,7 +66,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <FillerHeader />
-        <div className="min-h-0 flex-1 p-4 md:p-6" role="status">
+        <div className="min-h-0 flex-1 p-6" role="status">
           <p className="text-muted-foreground text-sm">Loading filler…</p>
         </div>
       </div>
@@ -77,7 +77,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <FillerHeader />
-        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+        <div className="min-h-0 flex-1 overflow-auto p-6">
           <EmptyState
             title="No filler folder configured"
             description="Choose a folder for commercials, bumpers, and station IDs. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
@@ -110,7 +110,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 md:gap-6 md:p-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -211,11 +211,10 @@ const FillerDescription = () => (
   </>
 );
 
-// On a phone, Filler takes the approved phone-web-nav page gutter (16px) rather than the desktop
-// 24px (#1817, decided on #1908). The header and the body share it, so the title lines up with
-// the tabs below it.
+// The header keeps the shared 24px page gutter at every width (frontend-design.md, "One page-edge
+// contract"), so Filler's title sits where every other page's does.
 const FillerHeader = ({ status }: { status?: ReactNode }) => (
-  <PageHeader title="Filler" description={<FillerDescription />} status={status} className="px-4 md:px-6" />
+  <PageHeader title="Filler" description={<FillerDescription />} status={status} />
 );
 
 export { FillerPage };

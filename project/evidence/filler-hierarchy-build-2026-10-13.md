@@ -11,7 +11,7 @@ Build of [#1817](https://github.com/loomarr/loomarr/issues/1817) item 7 (parent
 | --- | --- | --- |
 | 1. Exception set = held in Incoming + Problems/diagnostics | Only a next action makes the Overview loud; Problems keeps its diagnostics panel | `filler-overview.tsx`, `filler-manage.tsx` |
 | 2. Normal is quiet, no READY chip | Ready card: plain card + lock-green dot, no badge. Exceptions: one caution card (`border-caution/40 bg-caution/5`). Clip cards and the compact card name only Preparing / Recording | `filler-overview.tsx`, `clip-card.tsx` |
-| 3. Phone library = A | Below `md` (`usePhoneWidth`): 2-up compact grid; PoolHealth folds to "N clips · x/y channels covered" + Details; toolbar folds to search + Filters + icon view toggle; 16px page gutter (header and body) | `filler-catalog.tsx`, `pool-health.tsx`, `filler-page.tsx` |
+| 3. Phone library = A | Below `md` (`usePhoneWidth`): 2-up compact grid; PoolHealth folds to "N clips · x/y channels covered" + Details; toolbar folds to search + Filters + icon view toggle. The page keeps the shared 24px gutter (see "Gutter" below) | `filler-catalog.tsx`, `pool-health.tsx`, `filler-page.tsx` |
 | 4. Split-review Back via `from=` | `validateSplitReviewSearch` keeps only `incoming`/`library`; anything else falls back to Library. The crumb above the title and Back both use it. Incoming's server-built link is `/filler/splits/{id}?from=incoming`; Library's split navigation sends `from=library` | `split-review-page.tsx`, `routes/_authed/filler/splits/$proposalId.tsx`, `internal/api/fillerincoming.go`, `filler-catalog.tsx` |
 | 5. "← Manage" on Incoming, Sources, Tags | The Settings-index markup, rendered once by the Filler shell for those three tabs | `filler-page.tsx` |
 | 6. Return from the coverage card's channel page | Coverage card links `?from=filler`; the channel filler route validates it and shows "← Filler overview" | `filler-overview.tsx`, `routes/_authed/channels/$id/filler.tsx`, `channel-filler.tsx` |
@@ -30,6 +30,15 @@ chip is `NeedsDetailsChip` in `@loomarr/ui` (a square caution design-system Badg
 held clip ("Preparing") or a recording ("Recording") keeps its single exception chip instead, as the
 mock draws one exception per clip.
 
+### Gutter
+
+The Draft's item 8 (a 16px phone gutter) is not built. Its premise, "the approved phone-web-nav page
+gutter", was wrong: `docs/frontend-design.md` ("One page-edge contract") gives every page header the
+24px gutter, and `tests/e2e/page-consistency.spec.ts` enforces it on every page. The coordinator chose
+the shared 24px gutter at every width on 2026-10-14. Re-measured live at 390×844 after the revert:
+first clip card top ~453px (it was 740px before the build, and ~437px at 16px), title 24px from the
+main edge, no horizontal overflow (`admin-phone-library-24px-gutter.png`).
+
 ## Live check (lane backend, demo data)
 
 Isolated lane backend `make dev-be` (:18793, own SQLite) + `make dev-fe` (:15793) from this
@@ -46,7 +55,7 @@ repo's `@playwright/test` Chromium as admin (dev login) and as a created member,
 | Coverage card href | `/channels/{id}/filler?from=filler` | same |
 | Channel filler: "← Filler overview" → `/filler` | ✓ | ✓ |
 | Library columns | 3 | 2 |
-| First clip card top (with frames) | ~497px | ~437px (fold 772px) |
+| First clip card top (with frames) | ~497px | ~453px with the 24px gutter (fold 772px; the first row of two ends ~604px) |
 | READY chips in the grid | 0 | 0 |
 | Select target (admin) | 24×24 | 24×24 |
 | Member checkboxes | 0 | 0 |
@@ -105,7 +114,7 @@ Screenshots: `filler-hierarchy-build-2026-10-13/{admin,member}-{desktop,phone}-*
 | `channel-filler.tsx` | tailwind 110→118 | "← Filler overview" return link (decision 6) |
 | `filler-catalog.tsx` | tailwind 150→159 | folded phone toolbar + 2-up grid (decision 3) |
 | `filler-overview.tsx` | tailwind 58→72 | quiet normal card + loud exception card + member line (decisions 2, 8) |
-| `filler-page.tsx` | tailwind 42→56 | "← Manage" link (decision 5) + 16px phone gutter (decision 3) |
+| `filler-page.tsx` | tailwind 42→50 | "← Manage" link (decision 5) |
 | `split-review-page.tsx` | tailwind 52→60 | origin crumb (decision 4) |
 
 | `clip-row.tsx` | tailwind 64→67 | phone-row "Needs details" chip (Draft 2) |
