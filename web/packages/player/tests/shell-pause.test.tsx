@@ -216,4 +216,31 @@ describe("shell pause", () => {
     expect(transport.goLive).not.toHaveBeenCalled();
     expect(transport.play).not.toHaveBeenCalled();
   });
+
+  // iPhone simulator, killed tunnel: the stall failed, the viewer opened Requests and came back to a
+  // black picture under "Paused · 1:37 behind" and Go Live, because leaving had paused the failure away.
+  it("keeps a stall failure and its Retry across leaving Watching and coming back", async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, listeners, transport } = await playingOnA();
+      const attemptId = controller.getSnapshot().attemptId as number;
+      for (const listener of listeners) listener({ attemptId, type: "stalled" });
+      await vi.advanceTimersByTimeAsync(20_000);
+      const failed = { error: "Lost the connection to the server.", status: "failed" };
+      expect(controller.getSnapshot()).toMatchObject(failed);
+      const shell = await mountShell(controller);
+
+      await shell.render(controller, false);
+      // The dead player stops rather than play on unseen if the stream comes back by itself.
+      expect(transport.pause).toHaveBeenCalledTimes(1);
+      expect(controller.getSnapshot()).toMatchObject(failed);
+
+      await shell.render(controller, true);
+      expect(transport.goLive).not.toHaveBeenCalled();
+      expect(controller.getSnapshot()).toMatchObject(failed);
+      await shell.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

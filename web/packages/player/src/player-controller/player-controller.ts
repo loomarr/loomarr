@@ -325,6 +325,9 @@ const createPlayerController = ({
       if (disposed || !snapshot.channel) return;
       cancelRecoveryTimers();
       transport.pause();
+      // A failure has nothing to pause: it keeps its Retry, or the viewer comes back to a black
+      // picture labelled Paused over a dead player.
+      if (snapshot.status === "failed") return;
       publish({ ...snapshot, error: undefined, reconnecting: undefined, status: "paused" });
     },
     play: async () => {
