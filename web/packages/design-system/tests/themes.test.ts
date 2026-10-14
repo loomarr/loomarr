@@ -27,6 +27,21 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
     expect(contrast(theme.content.muted, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // A selected secondary action (#1909 Q1/Q2): the focus fill, a 2px `content.primary` border, and
+  // the amber focus border once the remote lands on it. Amber is focus, never selection (#1953).
+  it("keeps the selected fill neutral, legible and bordered", () => {
+    const fill = theme.surface.focus;
+    const channels = [1, 3, 5].map((offset) => Number.parseInt(fill.slice(offset, offset + 2), 16));
+    expect(Math.max(...channels) - Math.min(...channels)).toBeLessThanOrEqual(16);
+    expect(fill).not.toBe(theme.surface.elevated);
+
+    expect(contrast(theme.content.primary, fill)).toBeGreaterThanOrEqual(4.5);
+    for (const surface of [fill, theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
+      expect(contrast(theme.content.primary, surface)).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrast(theme.action.focus, fill)).toBeGreaterThanOrEqual(3);
+  });
+
   it("keeps semantic text colors at WCAG AA contrast on the canvas", () => {
     for (const color of [...Object.values(theme.state), theme.action.primary]) {
       expect(contrast(color, theme.surface.canvas)).toBeGreaterThanOrEqual(4.5);
