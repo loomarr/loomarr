@@ -56,6 +56,9 @@ var migratedTitles = []string{
 	"Lover Come Back", "Casablanca", "The Expanse", "Matrix Reloaded", "Matrix Revolutions", "Father Brown",
 	"with Children", "MST3K", "DS9", "Tom Hanks", "Meg Ryan", "Nora Ephron", "Keanu Reeves", "Wachowski",
 	"Tiffani Thiessen", "Jeff Franklin", "David Simon", "Idris Elba", "HBO", "PG Tips",
+	// The integration, tmdb, catalog, binder and library tests (slice 9). "Terminator" and "Raiders"
+	// alone are left out: they would match ordinary prose.
+	"RoboCop", "Homer at the Bat", "Zero Theorem", "Space Odyssey", "70s Show",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -107,15 +110,11 @@ var migratedGo = []string{
 	// The mock TMDB catalogue's consumers (slice 6).
 	"internal/app/adapters_tmdb_test.go",
 	"internal/app/iconadapter_test.go",
-	"internal/catalog/adjacent_test.go",
-	"internal/catalog/catalog_test.go",
 	"internal/suggest/suggester_progress_test.go",
 	"internal/suggest/suggester_test.go",
 	"internal/suggest/worker_callsite_test.go",
 	"internal/suggest/worker_llmcause_test.go",
 	"internal/suggest/worker_test.go",
-	"internal/tmdb/network_epoch_test.go",
-	"internal/tmdb/tmdb_test.go",
 	// The suggest date-execution candidate's callers and the reference/network internals (slice 7).
 	"internal/suggest/cache_prefix_test.go",
 	"internal/suggest/date_execution_test.go",
@@ -148,6 +147,14 @@ var migratedGo = []string{
 	"internal/suggest/score_era_test.go",
 	"internal/suggest/score_intent_test.go",
 	"internal/suggest/tools_internal_test.go",
+	// The integration, tmdb, catalog, binder, library and collection tests, and the last suggest
+	// leftovers (slice 9).
+	"internal/binder/", "internal/catalog/", "internal/ideas/", "internal/integration/", "internal/library/",
+	"internal/moviecollections/", "internal/recommend/", "internal/tmdb/",
+	"internal/suggest/date_meaning_test.go",
+	"internal/suggest/intent_policy_test.go",
+	"internal/suggest/scopenarrows_test.go",
+	"internal/suggest/worker_cache_internal_test.go",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
@@ -164,11 +171,13 @@ var realDataGo = map[string]string{
 	"internal/eval/schedule_live_test.go":        "queries live data on purpose",
 	"internal/suggest/live_latency_test.go":      "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/suggest/live_named_titles_test.go": "drives a real LLM on requests that name real titles",
+	"internal/tmdb/exists_contract_test.go":      "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
 	"internal/tmdb/fixture_test.go":              "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON
-// field (`movie:tmdb:603`, `TMDBID: 603`, `"tmdbId": 603`); a positional id after a media type
+// field (`movie:tmdb:603`, `TMDBID: 603`, `"tmdbId": 603`, a media server's
+// `"ProviderIds":{"Tmdb":"603"}`); a positional id after a media type
 // (`libItem("movie", 603, …)`, `Exists(ctx, provision.Movie, 603)`) or first in a testkit TMDB
 // call (`AddMovie(603, …)`); a provider path (`/tv/1396/season/1`); or a bare id (`"id": 603`,
 // or a title-shaped `ID: 603, Name:` literal). Digits may carry Go's `_` separators. Any id
@@ -176,7 +185,7 @@ var realDataGo = map[string]string{
 // cannot tell a provider id from any other small number, so a scanned file gives every such
 // id, provider or not, a value from ProviderIDBase up.
 var realProviderID = regexp.MustCompile(`(?i)(?:` +
-	`(?:movie|series):(?:tmdb|tvdb):|(?:tmdb|tvdb)_?id"?\s*[:=]\s*"?|` +
+	`(?:movie|series):(?:tmdb|tvdb):|(?:tmdb|tvdb)_?id"?\s*[:=]\s*"?|"(?:tmdb|tvdb)"\s*:\s*"?|` +
 	`"(?:movie|series|tv)",\s*|provision\.(?:movie|series),\s*|` +
 	`(?:AddKeywordMovie|AddMovie|AddSeries|AddPerson|AddNetwork)\(\s*|` +
 	`/(?:movie|tv|collection|find)/|(?-i:"id")\s*:\s*` +
@@ -269,6 +278,7 @@ func TestGuardCatchesRealTitlesAndIDs(t *testing.T) {
 		`key: "movie:tmdb:78"`,
 		`TMDBID: 9738,`,
 		`"tvdbId": 71663`,
+		`"ProviderIds":{"Tmdb":"603","Tvdb":"81189"}`,
 		`name: "point break"`,
 		// Positional ids: after a media type, and first in a testkit TMDB call.
 		`ok, err := c.Exists(ctx, provision.Movie, 603)`,
@@ -288,7 +298,7 @@ func TestGuardCatchesRealTitlesAndIDs(t *testing.T) {
 		`key: "movie:tmdb:90000001"`, `"The Clockmaker's Umbrella"`, `Bladerunner-free text: blades, bladed`,
 		`mock.AddKeywordMovie(90_077_001, "Winter Story", 2020, nil, "", "Christmas")`,
 		`c.Exists(ctx, provision.Movie, 0)`, `{ID: 1, Title: "Uncited"}`, `want := map[string]int{two.ID: 2}`,
-		`{id: 3, name: "Kettle Kids"}`,
+		`{id: 3, name: "Kettle Kids"}`, `"ProviderIds":{"Tmdb":"90000603"}`,
 	} {
 		if hits := realHits(ok); len(hits) != 0 {
 			t.Errorf("guard flagged %q in invented text %q", hits, ok)

@@ -14,12 +14,12 @@ import (
 func TestListEpisodesCarriesProductionYear(t *testing.T) {
 	c, ms := newClient(t, Emby)
 	ms.SetEpisodeItems(testkit.EpisodeStub{
-		LibraryItemID: "episode-1", Name: "Homer at the Bat", RunTimeMs: 1_320_000,
+		LibraryItemID: "episode-1", Name: "Puddle Town Plays Ball", RunTimeMs: 1_320_000,
 		Season: 3, Episode: 17, ProductionYear: 1992, PremiereDate: "1992-02-20T00:00:00.0000000Z", OfficialRating: "TV-PG",
-		CommunityRating: 9.1, Overview: "Springfield plays ball at Christmas", Tags: []string{"holiday", "baseball"},
+		CommunityRating: 9.1, Overview: "Puddle Town plays ball at Christmas", Tags: []string{"holiday", "baseball"},
 	})
 
-	episodes, err := c.ListEpisodes(context.Background(), "the-simpsons")
+	episodes, err := c.ListEpisodes(context.Background(), "the-mudpuddles")
 	if err != nil {
 		t.Fatal(err)
 	}

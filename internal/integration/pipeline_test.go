@@ -244,10 +244,10 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// term "cartoon" so the model sees them all — enforcement, not search, is what
 	// must keep the adult one off a kids channel.
 	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 5002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 5003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 5004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 90005002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 90005003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
 	)
 
 	// The scripted LLM: turn 1 searches the catalog by term (grounding it to the real
@@ -271,10 +271,10 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toon Hour"},
-				{"mediaType":"movie","key":"movie:tmdb:5002","name":"Robo Rangers"},
-				{"mediaType":"movie","key":"movie:tmdb:5003","name":"Critter Club"},
-				{"mediaType":"movie","key":"movie:tmdb:5004","name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers"},
+				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Club"},
+				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Toons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
@@ -327,7 +327,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// that vanished between the model's answer and the approval card is indistinguishable from
 	// one the model never made.
 	for _, it := range prop.Lineup {
-		if it.TMDBID == 5004 {
+		if it.TMDBID == 90005004 {
 			t.Fatal("the TV-MA toon is still in the lineup — it must move to Refused, not stay")
 		}
 	}
@@ -351,7 +351,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	if approved.ChannelID == "" {
 		t.Fatal("approve returned no channel id")
 	}
-	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {
+	for _, key := range []string{"movie:tmdb:90005001", "movie:tmdb:90005002", "movie:tmdb:90005003"} {
 		if rec, err := r.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
 			t.Fatalf("approve should mark %s available, got %v/%v", key, rec.State, err)
 		}
@@ -359,7 +359,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	// ⚠ The REFUSED pick is not provisioned at all. Approval acts on what was offered, and
 	// offering was the thing #259 fixed — provisioning a title the ceiling will drop spends an
 	// acquisition (on the out-of-library path, a real download) for something that can never air.
-	if _, err := r.store.GetTitle(context.Background(), provision.Key("movie:tmdb:5004")); err == nil {
+	if _, err := r.store.GetTitle(context.Background(), provision.Key("movie:tmdb:90005004")); err == nil {
 		t.Error("the refused TV-MA toon was provisioned — approval must act only on what it offered")
 	}
 

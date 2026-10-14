@@ -39,20 +39,20 @@ func TestJourney_NewAdmin(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","key":"movie:tmdb:5001","name":"Sunny Toon Hour"},
-				{"mediaType":"movie","key":"movie:tmdb:5002","name":"Robo Rangers"},
-				{"mediaType":"movie","key":"movie:tmdb:5003","name":"Critter Club"},
-				{"mediaType":"movie","key":"movie:tmdb:5004","name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers"},
+				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Club"},
+				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Toons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
 	h := newHarness(t, withLLM(llm), withSeerr(), withTunarrPlayout())
 	h.ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 5002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 5003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 5004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 90005002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 90005003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
+		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
 	)
 	seedFillerClips(t, h.store)
 
@@ -161,7 +161,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	if approved.ChannelID == "" {
 		t.Fatal("approve returned no channel id")
 	}
-	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {
+	for _, key := range []string{"movie:tmdb:90005001", "movie:tmdb:90005002", "movie:tmdb:90005003"} {
 		if rec, err := h.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
 			t.Fatalf("approve should mark %s available, got %v/%v", key, rec.State, err)
 		}
@@ -212,12 +212,12 @@ func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testin
 		testkit.FinalResponse(`{
 			"channelName":"Snow Day Cinema",
 			"dateMeaning":{"kind":"none","anchors":[],"axes":[]},
-			"picks":[{"mediaType":"movie","key":"movie:tmdb:2401","name":"Snowbound Reunion","confidence":0.91}],
+			"picks":[{"mediaType":"movie","key":"movie:tmdb:90002401","name":"Snowbound Reunion","confidence":0.91}],
 			"policy":{"seasonal":{"mode":"exclusive"}}
 		}`),
 	)
 	h := newHarness(t, withLLM(llm))
-	h.tmdb.AddKeywordMovie(2401, "Snowbound Reunion", 2021, []int{35, 10751},
+	h.tmdb.AddKeywordMovie(90002401, "Snowbound Reunion", 2021, []int{35, 10751},
 		"Estranged siblings reunite during Christmas week.", "Christmas")
 	if code := h.bootstrap("owner", "owner-pass"); code != http.StatusOK {
 		t.Fatalf("bootstrap → %d, want 200", code)
@@ -233,7 +233,7 @@ func TestJourney_HolidayKeywordProposalIncludesOutsideLibraryDiscovery(t *testin
 		t.Fatal("submit returned no jobId")
 	}
 	_, prop := h.awaitProposal(admin, submitted.JobID)
-	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 2401 {
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 90002401 {
 		t.Fatalf("submitted holiday proposal did not include grounded outside-Library discovery: %+v", prop)
 	}
 	if prop.Policy.Seasonal.Mode != "exclusive" {

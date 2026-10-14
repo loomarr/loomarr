@@ -13,7 +13,7 @@ func TestIntentHashInvalidatesPriorPlannerContract(t *testing.T) {
 }
 
 func TestIntentHashSeparatesMembershipPolicyFromNormalizedDescription(t *testing.T) {
-	if IntentHash(Intent{Description: "tgif"}) == IntentHash(Intent{Description: "TGIF"}) {
+	if IntentHash(Intent{Description: "qfun"}) == IntentHash(Intent{Description: "QFUN"}) {
 		t.Fatal("a named-set request must not reuse a generic cached proposal")
 	}
 }

@@ -11,12 +11,15 @@ import (
 
 var now = time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
 
-func movie(id int, name string, year int, genres ...string) ideas.Item {
-	return ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", id))},
+// The helpers take a small n and key the title at 90,000,000+n, above every real provider id
+// (#1592).
+func movie(n int, name string, year int, genres ...string) ideas.Item {
+	return ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+n))},
 		MediaType: provision.Movie, Name: name, Year: year, Genres: genres}
 }
 
-func series(id int, name string, year int, genres ...string) ideas.Item {
+func series(n int, name string, year int, genres ...string) ideas.Item {
+	id := 90_000_000 + n
 	return ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("series:tvdb:%d", id)), provision.Key(fmt.Sprintf("series:tmdb:%d", id))},
 		MediaType: provision.Series, Name: name, Year: year, Genres: genres}
 }
@@ -37,7 +40,7 @@ func TestBuild_GenreIdeaCountsOnlyUnairedTitles(t *testing.T) {
 		lib = append(lib, movie(i, fmt.Sprintf("Film %d", i), 1990+i, "Comedy"))
 	}
 	lib = append(lib, series(100, "Show", 2001, "comedy"), series(101, "Other show", 2002, "Comedy"))
-	onChannel := map[provision.Key]bool{"movie:tmdb:1": true, "series:tmdb:101": true}
+	onChannel := map[provision.Key]bool{"movie:tmdb:90000001": true, "series:tmdb:90000101": true}
 
 	got := byID(ideas.Build(ideas.Input{Library: lib, OnChannel: onChannel, Now: now}))
 
@@ -55,7 +58,7 @@ func TestBuild_GenreIdeaCountsOnlyUnairedTitles(t *testing.T) {
 		t.Errorf("facet = %s %q, want genre as the library first spells it", idea.Facet, idea.Value)
 	}
 	for _, k := range idea.Keys {
-		if k == "movie:tmdb:1" || k == "series:tvdb:101" {
+		if k == "movie:tmdb:90000001" || k == "series:tvdb:90000101" {
 			t.Errorf("idea offers %s, which is already on a channel", k)
 		}
 	}
@@ -100,7 +103,7 @@ func TestBuild_HolidayAheadMatchesTitlesNotGenres(t *testing.T) {
 	start := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 	got := ideas.Build(ideas.Input{
-		Library: lib, OnChannel: map[provision.Key]bool{"movie:tmdb:2": true}, Now: now,
+		Library: lib, OnChannel: map[provision.Key]bool{"movie:tmdb:90000002": true}, Now: now,
 		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: end}},
 	})
 	if len(got) == 0 || got[0].ID != "holiday:halloween" {
