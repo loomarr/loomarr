@@ -44,12 +44,9 @@ func mudpuddlesLike(holiday int) libraryfixture.Availability {
 	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 }
 
-// mudpuddlesChannel pins DealOrigin to the day its id derived before the #1592 rename. The seam
-// spacing guarantee holds for that origin but not for every one (#1960); drop the pin with that fix.
 func mudpuddlesChannel() schedule.Channel {
 	return schedule.Channel{ID: "mudpuddles", Name: "Classics", Number: 7, Strategy: schedule.Shuffle,
-		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour,
-		DealOrigin: time.Date(2025, time.August, 18, 0, 0, 0, 0, time.UTC)}
+		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour}
 }
 
 func seasonalPolicy(s schedule.SeasonalPolicy) schedule.ChannelPolicy {
