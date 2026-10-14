@@ -52,7 +52,8 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
         position="absolute"
         top={48}
       >
-        <Text density="tv" textRole="channelNumber">
+        {/* The direct-tune digits are a display numeral, which keeps amber (#1909 Q4). */}
+        <Text density="tv" textRole="channelNumber" tone="signal">
           {`${numberEntry.digits.split("").join(" ")} _`}
         </Text>
         {numberEntry.channelName ? (

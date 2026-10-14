@@ -23,7 +23,9 @@ const semanticThemes = {
     border: {
       decorative: "#2A2E37",
       control: "#666970",
-      airing: "rgba(255, 176, 32, 0.4)",
+      // Now-airing is a neutral tone step (TV 5b; #1909 Q3): amber is focus and the primary action
+      // only, so the airing block takes the control border and the focus surface, with no hue.
+      airing: "#666970",
     },
     state: {
       live: "#E85A5F",
@@ -38,7 +40,7 @@ const semanticThemes = {
       warning: "#353217",
       danger: "#331D21",
       info: "#1C3038",
-      airing: "rgba(255, 176, 32, 0.12)",
+      airing: "#282C34",
     },
     action: {
       primary: "#FFB020",
@@ -97,7 +99,9 @@ const semanticThemes = {
     border: {
       decorative: "#D2D6DE",
       control: "#747C8B",
-      airing: "rgba(121, 80, 0, 0.4)",
+      // The light theme's own neutral step: its focus surface is amber-tinted, so the airing block
+      // takes the control border and the decorative grey (`#D2D6DE`) one step below `elevated`.
+      airing: "#747C8B",
     },
     state: {
       live: "#A5272C",
@@ -112,7 +116,7 @@ const semanticThemes = {
       warning: "#E8E6D9",
       danger: "#F2DFDF",
       info: "#DAE8EB",
-      airing: "rgba(121, 80, 0, 0.12)",
+      airing: "#D2D6DE",
     },
     action: {
       primary: "#795000",
@@ -129,8 +133,7 @@ const semanticThemes = {
       scrimStrong: "rgba(11, 12, 14, 0.92)",
       progressTrack: "rgba(255, 255, 255, 0.15)",
     },
-    // The light guide has no mock: each tint is the light theme's own hue at the dark mock's alpha,
-    // the way `border.airing` and `stateSurface.airing` already are.
+    // The light guide has no mock: each tint is the light theme's own hue at the dark mock's alpha.
     guide: {
       rowRule: "rgba(210, 214, 222, 0.6)",
       blockAccent: "#747C8B",
@@ -210,10 +213,13 @@ const typography = {
       native: "monospace",
     },
   },
+  // Pointer is the web's density, so its body is the web scale's body (`--text-base` 14 at
+  // `--leading-body` 1.5; #1909 Q9), and shared components match the Tailwind page around them.
+  // `data` is body in mono, as at every density.
   pointer: {
     display: { size: 40, lineHeight: 44, weight: "700" },
     title: { size: 24, lineHeight: 30, weight: "650" },
-    body: { size: 16, lineHeight: 24, weight: "400" },
+    body: { size: 14, lineHeight: 21, weight: "400" },
     compact: { size: 13, lineHeight: 20, weight: "400" },
     caption: { size: 13, lineHeight: 18, weight: "400" },
     headline: { size: 20, lineHeight: 30, weight: "400" },
@@ -225,7 +231,7 @@ const typography = {
     // existing role, so no size is invented for a density nobody has mocked.
     hint: { size: 12, lineHeight: 16, weight: "400" },
     time: { size: 13, lineHeight: 18, weight: "550" },
-    data: { size: 16, lineHeight: 24, weight: "400" },
+    data: { size: 14, lineHeight: 21, weight: "400" },
     reading: { size: 16, lineHeight: 24, weight: "400" },
     channelNumber: { size: 28, lineHeight: 32, weight: "650" },
     code: { size: 36, lineHeight: 43, weight: "400" },

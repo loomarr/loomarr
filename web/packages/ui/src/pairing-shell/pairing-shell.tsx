@@ -311,6 +311,8 @@ const pairingContent = (
                 density={density}
                 selectable
                 textRole={density === "tv" ? "code" : "channelNumber"}
+                // A display numeral, the brand moment that keeps amber (#1909 Q4).
+                tone="signal"
               >
                 {state.userCode}
               </Text>
