@@ -15,20 +15,20 @@ const progress = (over: Partial<ProposalJourneyProgressDTO> = {}): ProposalJourn
   ...over,
 });
 
-const speed = {
-  key: "movie:tmdb:100",
+const quietEngines = {
+  key: "movie:tmdb:90000100",
   mediaType: "movie",
-  name: "Speed",
+  name: "Quiet Engines",
   year: 1994,
-  tmdbId: 100,
+  tmdbId: 90000100,
   inLibrary: false,
 } as const;
-const matrix = {
-  key: "movie:tmdb:603",
+const parallaxGarden = {
+  key: "movie:tmdb:90000603",
   mediaType: "movie",
-  name: "The Matrix",
+  name: "Parallax Garden",
   year: 1999,
-  tmdbId: 603,
+  tmdbId: 90000603,
   inLibrary: true,
 } as const;
 
@@ -71,21 +71,23 @@ describe("GenerationProgress", () => {
 
   it("streams each chosen title as a row, with an honest count and elapsed time", () => {
     vi.useFakeTimers({ now: NOW });
-    render(<GenerationProgress phase="reasoning" progress={progress({ picks: [speed, matrix] })} />);
+    render(
+      <GenerationProgress phase="reasoning" progress={progress({ picks: [quietEngines, parallaxGarden] })} />,
+    );
     const list = screen.getByRole("list", { name: "Titles chosen so far" });
     const rows = within(list).getAllByRole("listitem");
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("Speed");
+    expect(rows[0]).toHaveTextContent("Quiet Engines");
     expect(rows[0]).toHaveTextContent("1994");
     expect(rows[0]).toHaveTextContent("Will be added");
-    expect(rows[1]).toHaveTextContent("The Matrix");
+    expect(rows[1]).toHaveTextContent("Parallax Garden");
     expect(rows[1]).toHaveTextContent("In your library");
     expect(screen.getByText("2 of about 8 picked · 12 s")).toBeInTheDocument();
   });
 
   it("counts on from the server's start time, one clock per second", () => {
     vi.useFakeTimers({ now: NOW });
-    render(<GenerationProgress phase="reasoning" progress={progress({ picks: [speed] })} />);
+    render(<GenerationProgress phase="reasoning" progress={progress({ picks: [quietEngines] })} />);
     act(() => vi.advanceTimersByTime(3000));
     expect(screen.getByText("1 of about 8 picked · 15 s")).toBeInTheDocument();
   });
@@ -99,10 +101,10 @@ describe("GenerationProgress", () => {
   // The live region announces the stage only: a per-second clock or a growing list inside it
   // would make a screen reader chatter through the whole wait.
   it("keeps the ticking clock and the list out of the live region", () => {
-    render(<GenerationProgress phase="reasoning" progress={progress({ picks: [speed] })} />);
+    render(<GenerationProgress phase="reasoning" progress={progress({ picks: [quietEngines] })} />);
     const live = document.querySelector("[aria-live]");
     expect(live).toHaveTextContent("Choosing titles…");
-    expect(live).not.toHaveTextContent("Speed");
+    expect(live).not.toHaveTextContent("Quiet Engines");
     expect(live).not.toHaveTextContent(/picked|\d s/);
   });
 

@@ -27,50 +27,56 @@ const stubSearch = (candidates: ProposalItem[]) => {
   );
 };
 
-const heat: ProposalItem = { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true };
-const simpsons: ProposalItem = {
-  name: "The Simpsons",
+const cartographer: ProposalItem = {
+  name: "The Velvet Cartographer",
+  year: 1995,
+  mediaType: "movie",
+  tmdbId: 90000949,
+  inLibrary: true,
+};
+const kettleKids: ProposalItem = {
+  name: "Kettle Kids",
   year: 1989,
   mediaType: "series",
-  tvdbId: 71663,
+  tvdbId: 90071663,
   inLibrary: false,
 };
-const philosopherStone: ProposalItem = {
-  name: "Harry Potter and the Philosopher's Stone",
+const copperKey: ProposalItem = {
+  name: "Wren Halloway and the Copper Key",
   year: 2001,
   mediaType: "movie",
-  tmdbId: 671,
+  tmdbId: 90000671,
   inLibrary: true,
   libraryItemId: "library-671",
 };
-const chamberSecrets: ProposalItem = {
-  name: "Harry Potter and the Chamber of Secrets",
+const glassOrchard: ProposalItem = {
+  name: "Wren Halloway and the Glass Orchard",
   year: 2002,
   mediaType: "movie",
-  tmdbId: 672,
+  tmdbId: 90000672,
   inLibrary: false,
 };
-const prisonerAzkaban: ProposalItem = {
-  name: "Harry Potter and the Prisoner of Azkaban",
+const lanternTide: ProposalItem = {
+  name: "Wren Halloway and the Lantern Tide",
   year: 2004,
   mediaType: "movie",
-  tmdbId: 673,
+  tmdbId: 90000673,
   inLibrary: true,
   libraryItemId: "library-673",
 };
-const harryPotter = {
-  tmdbId: 1241,
-  name: "Harry Potter Collection",
-  members: [philosopherStone, chamberSecrets, prisonerAzkaban],
+const wrenHalloway = {
+  tmdbId: 90001241,
+  name: "Wren Halloway Collection",
+  members: [copperKey, glassOrchard, lanternTide],
 };
 
 describe("ProposalEdit", () => {
   it("lists the lineup and the acquisitions as one review list", () => {
     stubSearch([]);
-    render(<ProposalEdit lineup={[heat]} acquisitions={[simpsons]} onChange={vi.fn()} />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[kettleKids]} onChange={vi.fn()} />);
 
-    expect(screen.getByText("Heat")).toBeInTheDocument();
-    expect(screen.getByText("The Simpsons")).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
+    expect(screen.getByText("Kettle Kids")).toBeInTheDocument();
     expect(screen.getByText("In your library")).toBeInTheDocument();
     expect(screen.getByText("Will be added")).toBeInTheDocument();
   });
@@ -83,12 +89,12 @@ describe("ProposalEdit", () => {
   it("emits undefined — never an empty edit — when a change is undone", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
-    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:949"] });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
+    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:90000949"] });
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
@@ -99,76 +105,82 @@ describe("ProposalEdit", () => {
   it("drops by provisioning key, preferring TVDB for a series", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[]} acquisitions={[simpsons]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[]} acquisitions={[kettleKids]} onChange={onChange} />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Simpsons" }));
-    expect(onChange).toHaveBeenLastCalledWith({ drop: ["series:tvdb:71663"] });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Kettle Kids" }));
+    expect(onChange).toHaveBeenLastCalledWith({ drop: ["series:tvdb:90071663"] });
   });
 
   it("marks a dropped pick without removing it from view, so the choice is reversible", async () => {
     stubSearch([]);
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={vi.fn()} />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     // Still rendered — struck through, with the control now offering to put it back.
-    expect(screen.getByText(/Heat/)).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Include Heat" })).not.toBeChecked();
+    expect(screen.getByText(/The Velvet Cartographer/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" })).not.toBeChecked();
   });
 
   it("adds a searched title as an acquisition", async () => {
-    stubSearch([{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }]);
+    stubSearch([
+      { name: "Pelican Point Motel", year: 1997, mediaType: "movie", tmdbId: 90001701, inLibrary: false },
+    ]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Add title" }));
-    await userEvent.type(screen.getByRole("combobox"), "con air");
-    await userEvent.click(await screen.findByText("Con Air"));
+    await userEvent.type(screen.getByRole("combobox"), "pelican");
+    await userEvent.click(await screen.findByText("Pelican Point Motel"));
 
     expect(onChange).toHaveBeenLastCalledWith({
-      add: [{ name: "Con Air", mediaType: "movie", inLibrary: false, year: 1997, tmdbId: 1701 }],
+      add: [
+        { name: "Pelican Point Motel", mediaType: "movie", inLibrary: false, year: 1997, tmdbId: 90001701 },
+      ],
     });
   });
 
   it("keeps authoritative library availability on a searched title", async () => {
     stubSearch([
       {
-        name: "Con Air",
+        name: "Pelican Point Motel",
         year: 1997,
         mediaType: "movie",
-        tmdbId: 1701,
+        tmdbId: 90001701,
         inLibrary: true,
-        libraryItemId: "library-con-air",
+        libraryItemId: "library-pelican-point",
       },
     ]);
     const onChange = vi.fn();
     render(<ProposalEdit lineup={[]} acquisitions={[]} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Add title" }));
-    await userEvent.type(screen.getByRole("combobox"), "con air");
-    await userEvent.click(await screen.findByText("Con Air"));
+    await userEvent.type(screen.getByRole("combobox"), "pelican");
+    await userEvent.click(await screen.findByText("Pelican Point Motel"));
 
     expect(onChange.mock.lastCall?.[0].add[0]).toMatchObject({
       inLibrary: true,
-      libraryItemId: "library-con-air",
+      libraryItemId: "library-pelican-point",
     });
     expect(screen.getByText("In your library")).toBeVisible();
   });
 
   it("does not offer a title already on the proposal", async () => {
-    stubSearch([{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }]);
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={vi.fn()} />);
+    stubSearch([
+      { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+    ]);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={vi.fn()} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Add title" }));
-    await userEvent.type(screen.getByRole("combobox"), "heat");
+    await userEvent.type(screen.getByRole("combobox"), "velvet");
 
-    // "Heat" still appears as the existing pick, but not as a search result to add again.
-    await waitFor(() => expect(screen.queryAllByText("Heat")).toHaveLength(1));
+    // "The Velvet Cartographer" still appears as the existing pick, but not as a search result to add again.
+    await waitFor(() => expect(screen.queryAllByText("The Velvet Cartographer")).toHaveLength(1));
   });
 
   it("carries the note, trimmed, and drops it when cleared", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={onChange} showNote />);
 
     const note = screen.getByLabelText("Note to the requester");
     await userEvent.type(note, "  too violent for this channel  ");
@@ -180,19 +192,21 @@ describe("ProposalEdit", () => {
   });
 
   it("combines drops, adds and a note into one edit", async () => {
-    stubSearch([{ name: "Con Air", year: 1997, mediaType: "movie", tmdbId: 1701, inLibrary: false }]);
+    stubSearch([
+      { name: "Pelican Point Motel", year: 1997, mediaType: "movie", tmdbId: 90001701, inLibrary: false },
+    ]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={onChange} showNote />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     await userEvent.click(screen.getByRole("button", { name: "Add title" }));
-    await userEvent.type(screen.getByRole("combobox"), "con air");
-    await userEvent.click(await screen.findByText("Con Air"));
+    await userEvent.type(screen.getByRole("combobox"), "pelican");
+    await userEvent.click(await screen.findByText("Pelican Point Motel"));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "swapped");
 
     expect(onChange).toHaveBeenLastCalledWith({
-      drop: ["movie:tmdb:949"],
-      add: [expect.objectContaining({ name: "Con Air" })],
+      drop: ["movie:tmdb:90000949"],
+      add: [expect.objectContaining({ name: "Pelican Point Motel" })],
       note: "swapped",
     });
   });
@@ -200,14 +214,14 @@ describe("ProposalEdit", () => {
   it("resets every change back to unmodified", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} onChange={onChange} showNote />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[]} onChange={onChange} showNote />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" }));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "nope");
     await userEvent.click(screen.getByRole("button", { name: /Reset/ }));
 
     expect(onChange).toHaveBeenLastCalledWith(undefined);
-    expect(screen.getByRole("checkbox", { name: "Include Heat" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Include The Velvet Cartographer" })).toBeChecked();
   });
 
   // A pick with no tmdbId/tvdbId has no usable key, so it could never have been enqueued and
@@ -224,18 +238,20 @@ describe("ProposalEdit", () => {
   it("keeps more suggestions unselected until the reviewer adds one", async () => {
     stubSearch([]);
     const onChange = vi.fn();
-    const backup = { ...heat, name: "Face/Off", tmdbId: 754, inLibrary: false };
-    render(<ProposalEdit lineup={[heat]} acquisitions={[]} alternates={[backup]} onChange={onChange} />);
+    const backup = { ...cartographer, name: "Lemon Tree Heist", tmdbId: 90000754, inLibrary: false };
+    render(
+      <ProposalEdit lineup={[cartographer]} acquisitions={[]} alternates={[backup]} onChange={onChange} />,
+    );
 
     await userEvent.click(screen.getByText("More suggestions"));
-    expect(screen.queryByRole("checkbox", { name: "Include Face/Off" })).not.toBeInTheDocument();
-    const suggestion = screen.getByRole("button", { name: "Add Face/Off" }).closest("li");
+    expect(screen.queryByRole("checkbox", { name: "Include Lemon Tree Heist" })).not.toBeInTheDocument();
+    const suggestion = screen.getByRole("button", { name: "Add Lemon Tree Heist" }).closest("li");
     expect(suggestion).not.toBeNull();
     expect(within(suggestion!).getByText("Not in your library")).toBeVisible();
     expect(within(suggestion!).queryByText("Will be added")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Add Face/Off" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add Lemon Tree Heist" }));
     expect(onChange).toHaveBeenLastCalledWith({
-      drop: ["movie:tmdb:754"],
+      drop: ["movie:tmdb:90000754"],
       add: [backup],
     });
   });
@@ -244,20 +260,20 @@ describe("ProposalEdit", () => {
     stubSearch([]);
     render(
       <ProposalEdit
-        lineup={[philosopherStone, prisonerAzkaban]}
+        lineup={[copperKey, lanternTide]}
         acquisitions={[]}
-        movieCollections={[harryPotter]}
+        movieCollections={[wrenHalloway]}
         onChange={vi.fn()}
       />,
     );
 
-    expect(screen.getAllByText("Harry Potter Collection")).toHaveLength(1);
+    expect(screen.getAllByText("Wren Halloway Collection")).toHaveLength(1);
     expect(screen.getByText("2 of 3 selected")).toBeVisible();
     expect(screen.getByText("2 in your library")).toBeVisible();
-    expect(screen.getAllByText("Harry Potter and the Chamber of Secrets")[0]).not.toBeVisible();
+    expect(screen.getAllByText("Wren Halloway and the Glass Orchard")[0]).not.toBeVisible();
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose films from Harry Potter Collection" }));
-    expect(screen.getAllByText("Harry Potter and the Chamber of Secrets")[0]).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Choose films from Wren Halloway Collection" }));
+    expect(screen.getAllByText("Wren Halloway and the Glass Orchard")[0]).toBeVisible();
   });
 
   it("checks the visible TMDB movies and renders the grounded collection response", async () => {
@@ -266,33 +282,28 @@ describe("ProposalEdit", () => {
       getSearchMockHandler({ candidates: [] }),
       getResolveMovieCollectionsMockHandler(({ request }) => {
         requestedKeys = new URL(request.url).searchParams.getAll("key");
-        return { collections: [harryPotter], complete: true };
+        return { collections: [wrenHalloway], complete: true };
       }),
     );
 
     render(
       <ProposalEdit
-        lineup={[philosopherStone]}
+        lineup={[copperKey]}
         acquisitions={[]}
-        optionalSuggestions={[prisonerAzkaban]}
-        value={{ add: [chamberSecrets] }}
+        optionalSuggestions={[lanternTide]}
+        value={{ add: [glassOrchard] }}
         onChange={vi.fn()}
       />,
     );
 
-    expect(await screen.findByText("Harry Potter Collection")).toBeVisible();
-    expect(requestedKeys).toEqual(["movie:tmdb:671", "movie:tmdb:672", "movie:tmdb:673"]);
+    expect(await screen.findByText("Wren Halloway Collection")).toBeVisible();
+    expect(requestedKeys).toEqual(["movie:tmdb:90000671", "movie:tmdb:90000672", "movie:tmdb:90000673"]);
   });
 
   it("shows calm progress while collection choices are being checked", () => {
     stubSearch([]);
     render(
-      <ProposalEdit
-        lineup={[philosopherStone]}
-        acquisitions={[]}
-        movieCollectionsLoading
-        onChange={vi.fn()}
-      />,
+      <ProposalEdit lineup={[copperKey]} acquisitions={[]} movieCollectionsLoading onChange={vi.fn()} />,
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("Checking for movie collections…");
@@ -303,37 +314,39 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(
       <ProposalEdit
-        lineup={[philosopherStone]}
+        lineup={[copperKey]}
         acquisitions={[]}
-        movieCollections={[harryPotter]}
+        movieCollections={[wrenHalloway]}
         onChange={onChange}
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add all films from Wren Halloway Collection" }),
+    );
 
     expect(onChange).toHaveBeenLastCalledWith({
       add: [
         {
-          name: "Harry Potter and the Chamber of Secrets",
+          name: "Wren Halloway and the Glass Orchard",
           mediaType: "movie",
           inLibrary: false,
           year: 2002,
-          tmdbId: 672,
+          tmdbId: 90000672,
         },
         {
-          name: "Harry Potter and the Prisoner of Azkaban",
+          name: "Wren Halloway and the Lantern Tide",
           mediaType: "movie",
           inLibrary: true,
           libraryItemId: "library-673",
           year: 2004,
-          tmdbId: 673,
+          tmdbId: 90000673,
         },
       ],
     });
     expect(screen.queryByRole("region", { name: "Movie collections" })).not.toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: "Include Harry Potter and the Prisoner of Azkaban" }),
+      screen.getByRole("checkbox", { name: "Include Wren Halloway and the Lantern Tide" }),
     ).toBeChecked();
   });
 
@@ -342,20 +355,18 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(
       <ProposalEdit
-        lineup={[philosopherStone]}
+        lineup={[copperKey]}
         acquisitions={[]}
-        movieCollections={[harryPotter]}
+        movieCollections={[wrenHalloway]}
         onChange={onChange}
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose films from Harry Potter Collection" }));
-    await userEvent.click(
-      screen.getByRole("button", { name: "Add Harry Potter and the Chamber of Secrets" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Choose films from Wren Halloway Collection" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add Wren Halloway and the Glass Orchard" }));
 
     expect(onChange).toHaveBeenLastCalledWith({
-      add: [expect.objectContaining({ name: "Harry Potter and the Chamber of Secrets", tmdbId: 672 })],
+      add: [expect.objectContaining({ name: "Wren Halloway and the Glass Orchard", tmdbId: 90000672 })],
     });
     expect(onChange.mock.lastCall?.[0].add).toHaveLength(1);
   });
@@ -365,21 +376,21 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(
       <ProposalEdit
-        lineup={[philosopherStone]}
+        lineup={[copperKey]}
         acquisitions={[]}
-        movieCollections={[harryPotter]}
+        movieCollections={[wrenHalloway]}
         onChange={onChange}
       />,
     );
 
-    await userEvent.click(
-      screen.getByRole("checkbox", { name: "Include Harry Potter and the Philosopher's Stone" }),
-    );
-    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:671"] });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include Wren Halloway and the Copper Key" }));
+    expect(onChange).toHaveBeenLastCalledWith({ drop: ["movie:tmdb:90000671"] });
 
-    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add all films from Wren Halloway Collection" }),
+    );
     expect(onChange).toHaveBeenLastCalledWith({
-      add: [expect.objectContaining({ tmdbId: 672 }), expect.objectContaining({ tmdbId: 673 })],
+      add: [expect.objectContaining({ tmdbId: 90000672 }), expect.objectContaining({ tmdbId: 90000673 })],
     });
   });
 
@@ -388,18 +399,20 @@ describe("ProposalEdit", () => {
     const onChange = vi.fn();
     render(
       <ProposalEdit
-        lineup={[philosopherStone]}
+        lineup={[copperKey]}
         acquisitions={[]}
-        optionalSuggestions={[chamberSecrets]}
-        movieCollections={[harryPotter]}
+        optionalSuggestions={[glassOrchard]}
+        movieCollections={[wrenHalloway]}
         onChange={onChange}
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Add all films from Harry Potter Collection" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add all films from Wren Halloway Collection" }),
+    );
     expect(onChange).toHaveBeenLastCalledWith({
-      drop: ["movie:tmdb:672"],
-      add: [expect.objectContaining({ tmdbId: 672 }), expect.objectContaining({ tmdbId: 673 })],
+      drop: ["movie:tmdb:90000672"],
+      add: [expect.objectContaining({ tmdbId: 90000672 }), expect.objectContaining({ tmdbId: 90000673 })],
     });
     expect(onChange.mock.lastCall?.[0].add).toHaveLength(2);
   });
@@ -409,7 +422,7 @@ describe("ProposalEdit", () => {
     const onFindMore = vi.fn();
     const view = render(
       <ProposalEdit
-        lineup={[heat]}
+        lineup={[cartographer]}
         acquisitions={[]}
         alternates={[]}
         onChange={vi.fn()}
@@ -425,7 +438,7 @@ describe("ProposalEdit", () => {
 
     view.rerender(
       <ProposalEdit
-        lineup={[heat]}
+        lineup={[cartographer]}
         acquisitions={[]}
         alternates={[]}
         onChange={vi.fn()}
@@ -438,7 +451,7 @@ describe("ProposalEdit", () => {
 
   it("renders a read-only title summary when no edit handler is provided", () => {
     stubSearch([]);
-    render(<ProposalEdit lineup={[heat]} acquisitions={[simpsons]} />);
+    render(<ProposalEdit lineup={[cartographer]} acquisitions={[kettleKids]} />);
 
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add title" })).not.toBeInTheDocument();

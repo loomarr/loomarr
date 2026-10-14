@@ -19,12 +19,12 @@ describe("suggestion expansion", () => {
   it("builds a repeatable request that excludes each unique option already shown", () => {
     expect(
       suggestionExpansionRequest([
-        movie("Face/Off", 1997, 754),
-        movie("Face/Off", 1997, 754),
-        movie("Point Break", 1991, 1089),
+        movie("Lemon Tree Heist", 1997, 90000754),
+        movie("Lemon Tree Heist", 1997, 90000754),
+        movie("The Seventh Satellite Choir", 1991, 90001089),
       ]),
     ).toBe(
-      'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Face/Off" (1997); "Point Break" (1991).',
+      'Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup. Do not return these suggestions already shown: "Lemon Tree Heist" (1997); "The Seventh Satellite Choir" (1991).',
     );
   });
 
@@ -37,7 +37,7 @@ describe("suggestion expansion", () => {
   });
 
   it("uses grounded identity when available and keeps the pool bounded", () => {
-    expect(suggestionIdentity(movie("Face/Off", 1997, 754))).toBe("movie:tmdb:754");
+    expect(suggestionIdentity(movie("Lemon Tree Heist", 1997, 90000754))).toBe("movie:tmdb:90000754");
     expect(suggestionIdentity(movie("Unknown Cut", 1998))).toBe("movie:unknown cut:1998");
     expect(MAX_SUGGESTION_OPTIONS).toBe(24);
   });
