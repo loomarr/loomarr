@@ -25,6 +25,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -116,7 +117,7 @@ func TestSSO_AgainstRealAuthelia(t *testing.T) {
 		code := idp.signInAndGetCode(t, authURL, "stranger", ssoPassword)
 
 		token, _, _, claims, _, err := svc.Exchange(ctx, state, code)
-		if err != auth.ErrInvalidCredentials {
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
 			t.Fatalf("Exchange for an un-allowlisted identity = %v, want ErrInvalidCredentials", err)
 		}
 		if token != "" {

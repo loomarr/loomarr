@@ -256,15 +256,15 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
 	}
 	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL}
-	switch err := s.systemLLM.Select(ctx, req); err {
-	case nil:
-	case ErrModelNotPulled:
+	switch err := s.systemLLM.Select(ctx, req); {
+	case err == nil:
+	case errors.Is(err, ErrModelNotPulled):
 		return nil, errConflict("Model not ready", "Download this model before selecting it.")
-	case ErrUnknownProvider:
+	case errors.Is(err, ErrUnknownProvider):
 		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
-	case ErrInvalidHostedModel:
+	case errors.Is(err, ErrInvalidHostedModel):
 		return nil, errUnprocessable("Invalid hosted model", "Choose a synchronous OpenRouter provider/model slug, such as openai/gpt-4o-mini. Ollama tags and :batch variants cannot serve Loomarr's chat-completions requests.")
-	case ErrKeyInvalid:
+	case errors.Is(err, ErrKeyInvalid):
 		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't select the model", "Loomarr couldn't activate that model. Check the AI provider connection and try again.", err)
@@ -307,10 +307,10 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 			Error string `json:"error,omitempty"`
 		}
 	}{}
-	switch err := s.systemLLM.Test(ctx, in.Body.Provider, in.Body.BaseURL, in.Body.APIKey); err {
-	case nil:
+	switch err := s.systemLLM.Test(ctx, in.Body.Provider, in.Body.BaseURL, in.Body.APIKey); {
+	case err == nil:
 		out.Body.OK = true
-	case ErrUnknownProvider:
+	case errors.Is(err, ErrUnknownProvider):
 		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	default:
 		// A bad key / unreachable provider is a normal, reportable outcome (not a
@@ -339,7 +339,7 @@ func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*st
 		return nil, errUnprocessable("Model required", "Enter the model to download.")
 	}
 	jobID, err := s.systemLLM.Pull(ctx, in.Body.Model)
-	if err == ErrNotLocal {
+	if errors.Is(err, ErrNotLocal) {
 		return nil, errConflict("Download not supported", "Downloading models only applies to a local Ollama provider.")
 	}
 	if err != nil {

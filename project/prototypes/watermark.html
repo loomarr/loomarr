@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr on-screen logo — design review</title>
+<style>
+  /* Tokens: web/packages/tokens/generated/theme.css (static-*, signal, lock, caution, onair-300, tune, suggest). */
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #08090B;
+    --s950:#0B0C0E; --s900:#131519; --s800:#1B1E24; --s700:#2A2E37; --s500:#5A6170; --s400:#8B93A3; --s100:#E7EAF0;
+    --signal:#FFB020; --lock:#3DD68C; --caution:#F5D90A; --onair:#E5484D; --onair300:#E85A5F; --tune:#4CC9E8; --suggest:#DC5BAC; --control:#666970; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; color: inherit; }
+  a { text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  code { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 24px; border-bottom: 1px solid var(--s700); background: var(--s900); position: sticky; top: 0; z-index: 60; }
+  .review strong { flex-basis: 100%; }
+  .review label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .review select { min-height: 36px; background: var(--s800); border: 1px solid var(--control); border-radius: 6px; padding: 4px 8px; }
+  .review-note { font-size: 13px; color: var(--s400); margin: 12px auto; max-width: 1040px; padding: 0 16px; line-height: 1.5; }
+
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 16px auto 8px; padding: 0 16px; }
+  #frame { width: 100%; max-width: 1040px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); overflow: hidden; display: flex; flex-direction: column; position: relative; container: frame / inline-size; }
+  #frame.phone { max-width: 390px; height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--s900); }
+  #scroll { flex: 1; min-height: 0; overflow: auto; }
+  .frame-label { font-size: 12px; color: var(--s400); font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  .ph { padding: 16px 24px; border-bottom: 1px solid var(--s700); }
+  .ph h1 { font-size: 20px; line-height: 28px; margin: 0; font-weight: 600; }
+  .ph .desc { margin: 4px 0 0; font-size: 14px; color: var(--s400); max-width: 768px; line-height: 1.45; }
+  .body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--s700); overflow-x: auto; }
+  .tab { padding: 9px 12px; font-size: 14px; color: var(--s400); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tab[aria-current] { color: var(--s100); font-weight: 500; border-bottom-color: var(--signal); }
+
+  h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+  h2.xl { font-size: 20px; }
+  h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  p { margin: 0; line-height: 1.5; }
+  .muted { color: var(--s400); } .sm { font-size: 14px; } .xs { font-size: 12px; } .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .card { background: var(--s900); border: 1px solid var(--s700); border-radius: 8px; }
+  .p4 { padding: 16px; }
+  .row { display: flex; align-items: center; gap: 12px; } .wrap { flex-wrap: wrap; } .grow { flex: 1; min-width: 0; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+
+  .badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 2px 6px; font: 500 11px/1.4 'Geist Mono', ui-monospace, monospace; letter-spacing: .025em; text-transform: uppercase; white-space: nowrap; background: var(--s800); color: var(--s400); }
+  .badge.signal { background: rgba(255,176,32,.15); color: var(--signal); }
+  .badge.lock { background: rgba(61,214,140,.15); color: var(--lock); }
+  .badge.caution { background: rgba(245,217,10,.15); color: var(--caution); }
+  .badge.tune { background: rgba(76,201,232,.15); color: var(--tune); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid var(--signal); background: var(--signal); color: var(--s950); white-space: nowrap; }
+  .btn.sm { min-height: 32px; padding: 0 10px; font-size: 13px; }
+  .btn.outline { background: transparent; border-color: var(--control); color: var(--s100); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .link { background: none; border: 0; padding: 0; font-size: 12px; text-decoration: underline; color: var(--s100); }
+  .link[disabled] { opacity: .5; cursor: not-allowed; }
+  .backlink { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--s400); }
+
+  /* Draft marker, as in the other review sheets. */
+  .delta { border: 1px dashed rgba(220,91,172,.55); border-radius: 8px; position: relative; padding: 20px; }
+  .delta-tag { position: absolute; top: -9px; right: 10px; background: var(--s950); color: var(--suggest); font: 500 10.5px/1.4 'Geist Mono', ui-monospace, monospace; padding: 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+  .flagline { font-size: 12px; color: var(--suggest); border-top: 1px dashed rgba(220,91,172,.4); padding-top: 8px; margin-top: 10px; }
+  .future { color: var(--caution); }
+
+  /* PolicyField: label + FieldHelp left, source badge + Reset right (channel-policy-fields.tsx:215). */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; align-items: start; }
+  .zoom { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--s400); margin-left: auto; }
+  .zoom input { accent-color: var(--signal); width: 16px; height: 16px; }
+  .fields { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field[data-off="true"] { opacity: .45; pointer-events: none; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .flabel { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; }
+  .help { width: 18px; height: 18px; border-radius: 999px; border: 1px solid var(--control); color: var(--s400); font-size: 11px; display: inline-grid; place-items: center; background: none; padding: 0; }
+  .fsrc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .hint { font-size: 12px; color: var(--s400); }
+  .input, .selectbox { min-height: 36px; border: 1px solid var(--control); border-radius: 6px; background: var(--s950); padding: 6px 10px; font-size: 14px; color: var(--s100); }
+  .selectbox { min-width: 200px; max-width: 100%; }
+  .switch { width: 40px; height: 22px; border-radius: 999px; background: var(--s700); position: relative; flex-shrink: 0; border: 0; padding: 0; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: var(--s100); transition: left .12s; }
+  .switch[aria-checked="true"] { background: var(--signal); } .switch[aria-checked="true"]::after { left: 21px; background: var(--s950); }
+
+  /* Radio-style buttons: the .views radiogroup of the approved Filler Library (aria-checked). */
+  .opts { display: grid; gap: 8px; }
+  .opt { border: 1px solid var(--control); border-radius: 8px; background: transparent; padding: 8px; text-align: left; display: flex; flex-direction: column; gap: 6px; min-height: 44px; }
+  .opt[aria-checked="true"] { border-color: var(--signal); background: rgba(255,176,32,.08); }
+  .opt .t { font-size: 13px; font-weight: 500; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .opt .d { font-size: 12px; color: var(--s400); line-height: 1.35; }
+  .thumb { height: 44px; border-radius: 4px; position: relative; overflow: hidden; background: linear-gradient(135deg, #2a3140, #14171d); display: grid; place-items: center; }
+  .thumb svg { height: 26px; width: auto; }
+  .looks { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+  .opt .t { justify-content: space-between; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px; }
+  .cell { width: 56px; height: 40px; border: 1px solid var(--control); border-radius: 6px; background: transparent; padding: 0; position: relative; }
+  .cell[aria-checked="true"] { border-color: var(--signal); background: rgba(255,176,32,.12); }
+  .cell[aria-checked="true"]::after { content: ''; position: absolute; inset: 12px 20px; border-radius: 3px; background: var(--signal); }
+  .cell[disabled] { border-style: dashed; opacity: .35; cursor: not-allowed; }
+  .posrow { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .sw { width: 28px; height: 28px; border-radius: 999px; border: 2px solid transparent; padding: 0; }
+  .sw[aria-checked="true"] { border-color: var(--s100); box-shadow: 0 0 0 2px var(--s950) inset; }
+  .sw.era { background: conic-gradient(var(--onair), var(--signal), var(--lock), var(--tune), var(--suggest), var(--onair)); }
+  .swrow { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Preview frames: art is geometry in token colours, no imagery. */
+  .pv { display: grid; gap: 10px; position: sticky; top: 76px; }
+  #frame.phone.tall { height: auto; }
+  .scene { position: relative; aspect-ratio: 16/9; container-type: size; overflow: hidden; border-radius: 6px; background: #000; border: 1px solid var(--s700); }
+  .scene .pic { position: absolute; top: 0; bottom: 0; overflow: hidden; }
+  .scene.bright .pic { background: linear-gradient(#f4ecd2 0%, #ffe9a8 55%, #f7c97b 55%, #d9a45a 100%); }
+  .scene.bright .pic::before { content: ''; position: absolute; left: 14%; top: 14%; width: 16%; aspect-ratio: 1; border-radius: 50%; background: #fff7d6; box-shadow: 0 0 0 4cqh #ffefb8; }
+  .scene.bright .pic::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 45%; background: linear-gradient(100deg, #b98a46 0 30%, #d6a85d 30% 62%, #c4944e 62%); clip-path: polygon(0 40%, 25% 10%, 50% 45%, 75% 5%, 100% 35%, 100% 100%, 0 100%); }
+  .scene.dark .pic { background: radial-gradient(ellipse at 70% 60%, #1c2a3a 0%, #0c1118 60%, #06080b 100%); }
+  .scene.dark .pic::before { content: ''; position: absolute; right: 18%; bottom: 14%; width: 22%; height: 34%; border-radius: 4px; background: #0e1722; box-shadow: inset 0 0 0 1px #1f3144, 0 0 30px rgba(76,201,232,.12); }
+  .scene.dark .pic::after { content: ''; position: absolute; right: 22%; bottom: 22%; width: 6%; height: 12%; background: #ffd27a; opacity: .55; }
+  .scene.box .pic { left: 12.5%; right: 12.5%; background: linear-gradient(#7aa5b8, #cfc7a0 62%, #8f7a52 62%); }
+  .scene.box .pic::before { content: ''; position: absolute; left: 20%; top: 20%; width: 24%; height: 38%; background: #d94f4f; border-radius: 6px; box-shadow: 60cqw 8cqh 0 -2cqh #284f7a; }
+  .scene:not(.box) .pic { left: 0; right: 0; }
+  .anchor { position: absolute; inset: 0; }
+  .bug { position: absolute; display: block; }
+  .bug svg { display: block; height: 100%; width: auto; overflow: visible; }
+  .pvbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .pvbar .opt { flex-direction: row; padding: 6px 10px; min-height: 36px; align-items: center; }
+  .minis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .consq { display: grid; gap: 4px; }
+  .consq p { font-size: 13px; color: var(--s400); }
+  .consq p b { color: var(--s100); font-weight: 500; }
+  .warn { border: 1px solid rgba(245,217,10,.45); background: rgba(245,217,10,.07); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+
+  /* Round 2: holiday touches, lineup colours, suggest-a-design, real-size tiles. */
+  .sw.lineup { width: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; background: var(--s800); }
+  .sw.lineup i { display: block; width: 14px; height: 14px; border-radius: 999px; }
+  .lineuprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .posters { display: flex; gap: 4px; align-items: center; }
+  .poster { width: 16px; height: 24px; border-radius: 2px; border: 1px solid rgba(255,255,255,.18); }
+  .arrow { color: var(--s400); font-size: 13px; }
+  .hlist { display: grid; gap: 8px; }
+  .hrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px; border: 1px solid var(--s700); border-radius: 8px; }
+  .hrow .hn { font-size: 14px; font-weight: 500; min-width: 108px; }
+  .mot { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mot .opt { flex-direction: row; align-items: center; padding: 4px 10px 4px 6px; min-height: 36px; gap: 6px; }
+  .mot svg { width: 24px; height: 24px; display: block; }
+  .sug { border: 1px solid rgba(220,91,172,.55); border-radius: 8px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; background: rgba(220,91,172,.05); }
+  .sug .st { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .sug .sc { display: grid; gap: 10px; align-content: start; }
+  .specs { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
+  .specs dt { color: var(--s400); } .specs dd { margin: 0; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .tile { border-radius: 6px; border: 1px solid var(--s700); display: grid; place-items: center; padding: 10px 12px; min-width: 0; }
+  .tile.b { background: linear-gradient(#f4ecd2, #f7c97b); } .tile.d { background: #0c1118; }
+  .tile .cap { font: 10px/1.2 'Geist Mono', ui-monospace, monospace; margin-top: 6px; opacity: .75; }
+  .tile.b .cap { color: #3a2f1c; } .tile.d .cap { color: var(--s400); }
+  .tile span.b0 { display: block; }
+  .hgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  pre.prompt { margin: 0; padding: 12px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); font: 12px/1.5 'Geist Mono', ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--s100); }
+  details.card summary { cursor: pointer; font-weight: 500; font-size: 14px; }
+  .newtag { color: var(--suggest); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--s700); vertical-align: top; }
+  th { color: var(--s400); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--s700); border-radius: 8px; }
+  .lgrid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .lframes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .bar { display: none; }
+  #frame.phone .bar { display: flex; border-top: 1px solid var(--s700); background: var(--s900); padding: 6px 0 20px; }
+  .bt { flex: 1; background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--s400); font-size: 11px; padding: 4px; }
+  .bt .g { font-size: 16px; }
+
+  /* Narrow: one column, preview first, 16px gutter. Keyed to the frame's own width, so a real phone
+     viewport and the "390 px phone" frame toggle get the same layout. */
+  @container frame (max-width: 720px) {
+    .ph { padding: 14px 16px; }
+    .body { padding: 16px; gap: 20px; }
+    .delta { padding: 14px; }
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+    .pv { position: static; order: -1; }
+    .selectbox { width: 100%; }
+    .lframes { grid-template-columns: 1fr; }
+    .sug { grid-template-columns: minmax(0, 1fr); }
+    .hgrid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .review { position: static; padding: 12px 16px; }
+    .review select { max-width: 100%; }
+    .review-note { margin: 12px 0; }
+    #frame-wrap { padding: 0 16px; }
+  }
+</style>
+
+<div class="review" role="region" aria-label="Review controls">
+  <strong>On-screen logo (watermark) — per-channel customisation · design draft (Refs #1659)</strong>
+  <label>Variant <select id="variant"><option value="built">Built today (main @ d81538b40)</option><option value="draft" selected>Draft</option></select></label>
+  <label>Screen <select id="screen">
+    <option value="channel">Channel page → Channel info</option>
+    <option value="looks">All looks on 3 frames + feasibility</option>
+    <option value="holiday">Round 2: holiday versions, AI design, TMDB</option>
+  </select></label>
+  <label>Channel <select id="channel"></select></label>
+  <label>State <select id="state">
+    <option value="normal">Normal</option>
+    <option value="custom">Own image uploaded</option>
+    <option value="cantdraw">Server can't draw it (no GPU overlay)</option>
+  </select></label>
+  <label>Position control <select id="grid"><option value="corners">4 corners (today)</option><option value="grid">3 × 3 grid</option></select></label>
+  <label>Pretend today is <select id="today"></select></label>
+  <label>AI <select id="ai"><option value="on">Set up</option><option value="off">Not set up (rules only)</option></select></label>
+  <label>Lineup colours <select id="raw"><option value="snap">Snapped to app colours</option><option value="raw">As sampled</option></select></label>
+  <label>Frame <select id="frame-size"><option value="desktop">Desktop</option><option value="phone">390 px phone</option></select></label>
+</div>
+<p class="review-note">Proposal for maintainer review. No production component, token, route or API contract changes. Every fixture is invented; the pictures are shapes in token colours (no imagery); nothing calls a server. <strong>Built today</strong> reproduces main (sources in <code>project/evidence/watermark-2026-10-13.md</code>); <strong>Draft</strong> outlines what is new in a pink dashed box. Every look drawn here is one still PNG with alpha, the only thing the GPU overlay can blend, so none of them animates.</p>
+
+<div id="frame-wrap">
+  <div id="frame">
+    <div id="scroll"><div id="page"></div></div>
+    <footer class="bar" aria-label="Phone navigation">
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⌂</span>Home</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▶</span>Watch</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▦</span>Guide</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">✉</span>Requests</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⋯</span>More</button>
+    </footer>
+  </div>
+  <span class="frame-label" id="frame-label"></span>
+</div>
+<p class="review-note" id="status" role="status" aria-live="polite"></p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (t) => { $('status').textContent = t; };
+
+// Invented channels. `era` is the channel's own date window (policy.scope.era); `pal` is the era's suggested colours (tokens only).
+const TOKEN = { signal: '#FFB020', tune: '#4CC9E8', lock: '#3DD68C', onair: '#E85A5F', suggest: '#DC5BAC', caution: '#F5D90A' };
+const CHANNELS = {
+  sc: { name: 'Saturday Cartoons', num: 7, auto: 'SC', era: '1980s', pal: [TOKEN.onair, TOKEN.signal, TOKEN.tune] },
+  mm: { name: 'Midnight Movies', num: 13, auto: 'MM', era: '1990s', pal: [TOKEN.tune, TOKEN.suggest, TOKEN.lock] },
+  cm: { name: 'Cozy Mysteries', num: 22, auto: 'CM', era: '1970s', pal: [TOKEN.caution, TOKEN.signal, TOKEN.onair] },
+};
+// Round 2 fixtures. `seas` is the channel's own seasonal setting (policy.seasonal: mode + included holidays, [] = all).
+// `posters` are invented swatches standing in for the lineup's TMDB posters; `net` is an invented network (never a real mark).
+CHANNELS.sc.seas = { mode: 'auto', hol: [] };
+CHANNELS.sc.posters = ['#c9432e', '#e8a63a', '#3d78c4', '#cf5a2b', '#58a04c', '#e9bf4b'];
+CHANNELS.sc.net = { name: 'Kite TV', share: 72 };
+CHANNELS.sc.genres = 'Animation, Family'; CHANNELS.sc.titles = 'Gummi Rangers; Captain Comet; Pixel Pals; Robo Bakery; Moon Patrol';
+CHANNELS.mm.genres = 'Thriller, Horror, Mystery'; CHANNELS.mm.titles = 'The Hollow Lantern; Night Ferry; Static; Paper Moths; The Long Dark Hall';
+CHANNELS.cm.genres = 'Mystery, Drama'; CHANNELS.cm.titles = 'Tea at Larkspur; Murder at Marlow Inn; The Quiet Vicar; Lady Ashby Investigates';
+CHANNELS.mm.seas = { mode: 'auto', hol: ['halloween'] };
+CHANNELS.mm.posters = ['#2a3b6b', '#5a2f7a', '#1f6a55', '#8a2f4f', '#2e4e7a', '#3a2a55'];
+CHANNELS.mm.net = { none: 'Films have studios, not networks, so there is no network logo to use.' };
+CHANNELS.cm.seas = { mode: 'off', hol: [] };
+CHANNELS.cm.posters = ['#b8892e', '#8f3a2a', '#4a6a3a', '#c6a84a', '#7a4a2a', '#3a5a7a'];
+CHANNELS.cm.net = { none: 'No single network: this lineup mixes five, and none has half the titles.' };
+
+// Built-in calendar (internal/schedule/seasonal.go builtinCalendar). `md` is month*100+day, inclusive.
+const HOL = {
+  halloween: { name: 'Halloween', win: 'Oct 1 – Oct 31', md: [1001, 1031], col: TOKEN.signal, pal: [TOKEN.signal, TOKEN.suggest, TOKEN.lock], motifs: ['pumpkin', 'bat', 'ghost'] },
+  thanksgiving: { name: 'Thanksgiving', win: 'Nov 15 – Nov 30', md: [1115, 1130], col: TOKEN.signal, pal: [TOKEN.signal, TOKEN.onair, TOKEN.caution], motifs: ['leaf'] },
+  christmas: { name: 'Christmas', win: 'Dec 1 – Dec 26', md: [1201, 1226], col: TOKEN.lock, pal: [TOKEN.onair, TOKEN.lock, TOKEN.caution], motifs: ['holly', 'snowflake'] },
+  newyear: { name: 'New Year', win: 'Dec 27 – Jan 2', md: [1227, 102], col: TOKEN.tune, pal: [TOKEN.tune, TOKEN.caution, TOKEN.suggest], motifs: ['firework'] },
+  valentines: { name: 'Valentine’s Day', win: 'Feb 1 – Feb 14', md: [201, 214], col: TOKEN.suggest, pal: [TOKEN.suggest, TOKEN.onair, TOKEN.signal], motifs: ['heart'] },
+};
+const holActive = (id, md) => { const [a, b] = HOL[id].md; return a <= b ? md >= a && md <= b : md >= a || md <= b; };
+const TODAYS = [['2026-10-13', 'Today, Oct 13'], ['2026-10-31', 'Oct 31'], ['2026-11-01', 'Nov 1'], ['2026-12-05', 'Dec 5'], ['2026-07-04', 'Jul 4']];
+const todayMd = () => Number(S.today.slice(5, 7)) * 100 + Number(S.today.slice(8));
+// Holidays this channel honours: none when its seasonal mode is Ignore holidays, else its chosen subset (empty = all).
+const chHolidays = (ch) => { const s = CHANNELS[ch].seas; return s.mode === 'off' ? [] : (s.hol.length ? s.hol : Object.keys(HOL)); };
+const activeHol = () => chHolidays(S.ch).find((id) => holActive(id, todayMd())) || null;
+
+// Hue-only snap of a sampled colour to the nearest design token. Tokens fix brightness; the lineup decides hue.
+const hueOf = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return 0; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+const TOKEN_HUE = Object.fromEntries(Object.entries(TOKEN).map(([k, v]) => [k, hueOf(v)]));
+const snapToken = (hex) => { const h = hueOf(hex); return Object.keys(TOKEN).reduce((a, b) => { const da = Math.min(Math.abs(TOKEN_HUE[a] - h), 360 - Math.abs(TOKEN_HUE[a] - h)), db = Math.min(Math.abs(TOKEN_HUE[b] - h), 360 - Math.abs(TOKEN_HUE[b] - h)); return db < da ? b : a; }); };
+function lineupPal(ch) { // top three tokens by poster count; raw = the three most saturated poster colours as sampled
+  const c = CHANNELS[ch];
+  if (S.raw) return c.posters.slice(0, 3);
+  const n = {}; c.posters.forEach((p) => { const t = snapToken(p); n[t] = (n[t] || 0) + 1; });
+  const top = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  return [0, 1, 2].map((i) => TOKEN[top[i] || top[0]]);
+}
+const lineupNames = (ch) => { const n = {}; CHANNELS[ch].posters.forEach((p) => { const t = snapToken(p); n[t] = (n[t] || 0) + 1; }); return Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => COLOR_NAMES[t]); };
+
+// "Suggest a design": the model proposes a spec from a closed vocabulary; the renderer draws it. Invented answers, canned.
+const AI = {
+  sc: [{ look: 'tint', color: 'lineup', size: 0.06, pos: 'top-right', callsign: 'SATURDAY', motifs: { halloween: 'ghost' }, reason: 'Bold lineup colours suit a cartoon block.' },
+    { look: 'badge', color: 'onair', size: 0.06, pos: 'top-right', callsign: '', motifs: {}, reason: 'A number badge keeps a busy picture clear.' },
+    { look: 'stripe', color: 'era', size: 0.06, pos: 'top-left', callsign: 'SC', motifs: {}, reason: 'Three stripes nod to the eighties.' }],
+  mm: [{ look: 'lockup', color: 'era', size: 0.06, pos: 'top-right', callsign: 'MIDNIGHT', motifs: { halloween: 'bat' }, reason: 'Quiet white text suits late-night films.' },
+    { look: 'stripe', color: 'lineup', size: 0.045, pos: 'bottom-right', callsign: '', motifs: {}, reason: 'Small and cool, away from the action.' },
+    { look: 'tint', color: 'suggest', size: 0.06, pos: 'top-right', callsign: 'MM', motifs: {}, reason: 'A pink plate stands out on dark films.' }],
+  cm: [{ look: 'tint', color: 'caution', size: 0.06, pos: 'top-right', callsign: 'COZY', motifs: {}, reason: 'Warm yellow for a cosy seventies mood.' },
+    { look: 'text', color: 'era', size: 0.06, pos: 'top-right', callsign: '', motifs: {}, reason: 'Plain white text keeps it understated.' },
+    { look: 'twotone', color: 'signal', size: 0.06, pos: 'top-right', callsign: '', motifs: {}, reason: 'Number and name, like a seventies network.' }],
+};
+// The offline answer: rules over the same inputs, no model. Same shape, so Apply is one code path.
+const RULES = { look: 'tint', color: 'era', size: 0.06, pos: 'top-right', callsign: '', motifs: {}, reason: 'Picked by rules from the channel’s decade.' };
+const DEFAULT = { on: true, pos: 'top-right', size: 0.06, margin: 0.05, opacity: 40, look: 'text', color: 'era', callsign: '', holiday: true, motifs: { halloween: 'pumpkin', thanksgiving: 'leaf', christmas: 'holly', newyear: 'firework', valentines: 'heart' }, net: false };
+const SIZES = [[0.045, 'Small'], [0.06, 'Standard'], [0.08, 'Large'], [0.10, 'Extra large']];
+const MARGINS = [[0.03, 'Tight'], [0.05, 'Standard'], [0.08, 'Roomy']];
+const OPACITIES = [[25, 'Faint'], [40, 'Subtle'], [70, 'Clear'], [100, 'Solid']];
+const POS = [['top-left', 'Top left'], ['top-center', 'Top centre'], ['top-right', 'Top right'], ['mid-left', 'Middle left'], ['mid-center', 'Centre'], ['mid-right', 'Middle right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom centre'], ['bottom-right', 'Bottom right']];
+
+// name, built?, needs number?, uses colour?, one-line help, PNG feasibility, renderer cost, pipeline impact
+const LOOKS = [
+  ['plate', 'Plate', 1, 0, 0, 'The name cut out of a white rounded badge.', 'Built', '—', 'None'],
+  ['text', 'Text', 1, 0, 0, 'The name alone, with a soft shadow. The default.', 'Built', '—', 'None'],
+  ['outline', 'Outline', 1, 0, 0, 'The name as hollow letters.', 'Built', '—', 'None'],
+  ['small-plate', 'Small plate', 1, 0, 0, 'A smaller badge with no shadow.', 'Built', '—', 'None'],
+  ['tint', 'Colour plate', 0, 0, 1, 'The name cut out of a coloured badge.', 'One PNG', 'Small: a fill colour instead of white', 'Colour needs an explicit BT.709 step on the NVIDIA path and a coloured self-check (see Pipeline notes)'],
+  ['twotone', 'Number + name', 0, 1, 1, 'Channel number in a coloured tab beside a white name plate.', 'One PNG', 'Small–medium: two shapes, one mask', 'As Colour plate'],
+  ['badge', 'Number badge', 0, 1, 1, 'A rounded square with just the channel number. A name would be about 4 px tall at 1080p, so it is left out.', 'One PNG', 'Small: one shape, one number', 'As Colour plate'],
+  ['lockup', 'Number | name', 0, 1, 0, 'Number, thin divider, name. White text only, like a network ID.', 'One PNG', 'Small: text only, no colour', 'None (white, same as today)'],
+  ['glass', 'Glass', 0, 0, 0, 'A frosted, see-through plate with a bright edge. Fakes glass with a gradient; the picture behind is not blurred.', 'One PNG', 'Medium: gradient alpha and an edge pass', 'None, but alpha is mid-range so the self-check needs a gradient target'],
+  ['stripe', 'Era stripe', 0, 0, 1, 'The name with a three-colour stripe in the channel’s era palette.', 'One PNG', 'Small: three rectangles', 'As Colour plate'],
+];
+const L = Object.fromEntries(LOOKS.map((l) => [l[0], { id: l[0], name: l[1], built: !!l[2], num: !!l[3], col: !!l[4], help: l[5], png: l[6], cost: l[7], pipe: l[8] }]));
+const COLOR_NAMES = { era: 'Match the era', lineup: 'Colours from this lineup', signal: 'Amber', tune: 'Cyan', lock: 'Green', onair: 'Red', suggest: 'Pink', caution: 'Yellow' };
+
+const S = { variant: 'draft', screen: 'channel', ch: 'sc', state: 'normal', grid: 'corners', frame: 'desktop', scene: 'bright', pol: { ...DEFAULT, motifs: { ...DEFAULT.motifs } }, image: false, zoom: true, today: '2026-10-13', view: 'auto', ai: 'on', raw: false, sug: null };
+const isPhone = () => S.frame === 'phone';
+const isDraft = () => S.variant === 'draft';
+let uid = 0;
+
+// ---- Holiday motifs: flat shapes, token colours (or white), 100 x 100, a hole is a real alpha hole (mask). ----
+// Each is one more shape on the same still PNG. Kept to a handful of paths so it still reads at ~52 px.
+const MOTIFS = {
+  pumpkin: ['Pumpkin', (k) => `<mask id="k${k}"><rect width="100" height="100" fill="#fff"/><path d="M26 50L38 50L32 38ZM62 50L74 50L68 38ZM30 64L40 72L46 66L54 66L60 72L70 64L68 76Q50 86 32 76Z" fill="#000"/></mask><g mask="url(#k${k})"><ellipse cx="50" cy="60" rx="40" ry="30" fill="${TOKEN.signal}"/><ellipse cx="29" cy="60" rx="20" ry="29" fill="${TOKEN.signal}"/><ellipse cx="71" cy="60" rx="20" ry="29" fill="${TOKEN.signal}"/></g><path d="M45 34L44 18Q50 10 58 16L55 34Z" fill="${TOKEN.lock}"/>`],
+  bat: ['Bat', () => `<path d="M50 38L45 22L41 38C32 26 18 24 4 30C12 38 12 48 18 56C26 48 34 50 40 62C44 56 48 56 50 64C52 56 56 56 60 62C66 50 74 48 82 56C88 48 88 38 96 30C82 24 68 26 59 38L55 22Z" fill="#fff"/>`],
+  ghost: ['Ghost', (k) => `<mask id="k${k}"><rect width="100" height="100" fill="#fff"/><circle cx="38" cy="42" r="7" fill="#000"/><circle cx="62" cy="42" r="7" fill="#000"/><ellipse cx="50" cy="62" rx="7" ry="9" fill="#000"/></mask><path mask="url(#k${k})" d="M16 94V46C16 22 31 6 50 6S84 22 84 46V94L72 83L61 94L50 83L39 94L28 83Z" fill="#fff"/>`],
+  snowflake: ['Snowflake', () => `<g stroke="${TOKEN.tune}" stroke-width="8" stroke-linecap="round" fill="none">${[0, 60, 120].map((a) => `<g transform="rotate(${a} 50 50)"><path d="M50 6V94M50 24L38 12M50 24L62 12M50 76L38 88M50 76L62 88"/></g>`).join('')}</g>`],
+  holly: ['Holly', () => `<path d="M50 74C24 76 6 60 2 36C26 32 44 46 50 74Z" fill="${TOKEN.lock}"/><path d="M50 74C76 76 94 60 98 36C74 32 56 46 50 74Z" fill="${TOKEN.lock}"/><circle cx="40" cy="78" r="11" fill="${TOKEN.onair}"/><circle cx="60" cy="78" r="11" fill="${TOKEN.onair}"/><circle cx="50" cy="62" r="11" fill="${TOKEN.onair}"/>`],
+  heart: ['Heart', () => `<path d="M50 90C8 60 4 30 27 21C40 17 48 25 50 34C52 25 60 17 73 21C96 30 92 60 50 90Z" fill="${TOKEN.suggest}"/>`],
+  firework: ['Firework', () => `<g stroke="${TOKEN.caution}" stroke-width="12" stroke-linecap="round">${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<path transform="rotate(${i * 45} 50 50)" d="M50 10V32"/>`).join('')}</g><circle cx="50" cy="50" r="10" fill="${TOKEN.caution}"/>`],
+  leaf: ['Leaf', (k) => `<mask id="k${k}"><rect width="100" height="100" fill="#fff"/><path d="M50 84V30" stroke="#000" stroke-width="5" stroke-linecap="round"/></mask><path mask="url(#k${k})" d="M50 4C14 26 8 62 50 86C92 62 86 26 50 4Z" fill="${TOKEN.signal}"/><path d="M50 84V97" stroke="${TOKEN.signal}" stroke-width="8" stroke-linecap="round"/>`],
+};
+const motifSVG = (id, size) => `<svg viewBox="0 0 100 100" ${size ? `width="${size}" height="${size}"` : ''} aria-hidden="true">${MOTIFS[id][1](++uid)}</svg>`;
+
+// ---- Bug drawing: one SVG per look, 100 units tall, mirrors what the PNG would hold. ----
+// o.hol = { motif } adds a holiday motif to the same still, beside the look (a corner sticker was tried on the badge and vanished into it).
+function bugSVG(look, o) {
+  const n = ++uid, call = (o.call || '').toUpperCase(), num = String(o.num);
+  const T = (s, fs) => s.length * fs * 0.64;
+  const sh = `<filter id="s${n}" x="-25%" y="-35%" width="150%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3.3" flood-color="#000" flood-opacity=".35"/></filter>`;
+  const txt = (s, x, y, fs, extra) => `<text x="${x}" y="${y}" font-family="Geist, system-ui, sans-serif" font-weight="700" font-size="${fs}" text-anchor="middle" dominant-baseline="central" textLength="${T(s, fs)}" lengthAdjust="spacingAndGlyphs" ${extra || ''}>${esc(s)}</text>`;
+  const wrap = (W, body, shadow, scale) => {
+    if (o.hol) {
+      const m = MOTIFS[o.hol.motif][1](++uid);
+      const mh = 84, gap = 6; body = `<g transform="translate(${mh + gap} 0)">${body}</g><g transform="translate(0 ${(100 - mh) / 2}) scale(${mh / 100})">${m}</g>`; W += mh + gap;
+    }
+    return { w: W, svg: `<svg viewBox="0 0 ${W} 100" height="100%" style="opacity:${o.op / 100}" aria-hidden="true"><defs>${sh}</defs><g ${shadow ? `filter="url(#s${n})"` : ''}>${body}</g></svg>`, scale: scale || 1 };
+  };
+  const col = o.col, pal = o.pal;
+  let W, body;
+  switch (look) {
+    case 'plate': case 'small-plate': case 'tint': {
+      const tw = T(call, 52); W = tw + 60;
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(call, W / 2, 52, 52, 'fill="#000"')}</mask><rect width="${W}" height="100" rx="22" fill="${look === 'tint' ? col : '#fff'}" mask="url(#m${n})"/>`;
+      return wrap(W, body, look !== 'small-plate', look === 'small-plate' ? 0.75 : 1);
+    }
+    case 'text': W = T(call, 52) + 24; return wrap(W, txt(call, W / 2, 52, 52, 'fill="#fff"'), true);
+    case 'outline': W = T(call, 52) + 24; return wrap(W, txt(call, W / 2, 52, 52, 'fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"'), true);
+    case 'twotone': {
+      const cw = T(num, 60) + 44, pw = T(call, 44) + 50; W = cw + 4 + pw;
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(num, cw / 2, 52, 60, 'fill="#000"')}${txt(call, cw + 4 + pw / 2, 52, 44, 'fill="#000"')}</mask><g mask="url(#m${n})"><rect width="${cw}" height="100" rx="22" fill="${col}"/><rect x="${cw + 4}" width="${pw}" height="100" rx="22" fill="#fff"/></g>`;
+      return wrap(W, body, true);
+    }
+    case 'badge': {
+      W = Math.max(100, T(num, 62) + 40);
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(num, W / 2, 52, 62, 'fill="#000"')}</mask><rect width="${W}" height="100" rx="28" fill="${col}" mask="url(#m${n})"/>`;
+      return wrap(W, body, true);
+    }
+    case 'lockup': {
+      const a = T(num, 62), b = T(call, 44); W = a + b + 52;
+      body = txt(num, 12 + a / 2, 52, 62, 'fill="#fff"') + `<rect x="${a + 24}" y="22" width="3" height="56" rx="1.5" fill="#fff"/>` + txt(call, a + 40 + b / 2, 54, 44, 'fill="#fff"');
+      return wrap(W, body, true);
+    }
+    case 'glass': {
+      W = T(call, 50) + 60;
+      body = `<linearGradient id="g${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset="1" stop-color="#fff" stop-opacity=".16"/></linearGradient><filter id="t${n}" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1" flood-color="#000" flood-opacity=".45"/></filter><rect x="1" y="1" width="${W - 2}" height="98" rx="22" fill="url(#g${n})" stroke="#fff" stroke-opacity=".75" stroke-width="2"/><rect x="5" y="5" width="${W - 10}" height="38" rx="18" fill="#fff" fill-opacity=".18"/><g filter="url(#t${n})">${txt(call, W / 2, 54, 50, 'fill="#fff"')}</g>`;
+      return wrap(W, body, true);
+    }
+    case 'stripe': {
+      W = T(call, 48) + 24;
+      const st = pal.map((c, i) => `<rect x="12" y="${74 + i * 8}" width="${W - 24}" height="5" rx="2" fill="${c}"/>`).join('');
+      return wrap(W, txt(call, W / 2, 40, 48, 'fill="#fff"') + st, true);
+    }
+  }
+}
+
+function bugOpts(p, ch, overrides) {
+  const c = CHANNELS[ch];
+  const pal = p.color === 'lineup' ? lineupPal(ch) : c.pal;
+  const color = p.color === 'era' ? c.pal[0] : p.color === 'lineup' ? pal[0] : TOKEN[p.color];
+  return { call: (p.callsign || c.auto), num: c.num, op: p.opacity, col: color, pal, ...overrides };
+}
+// A holiday version of the look: the holiday's own colour and palette replace the channel's colour, plus the chosen motif.
+const holOpts = (p, ch, id) => bugOpts(p, ch, { col: HOL[id].col, pal: HOL[id].pal, hol: { motif: p.motifs[id] || DEFAULT.motifs[id] } });
+// Which holiday version the preview shows: the one in effect today, or the one picked, or none.
+const netOn = (p, ch) => !!(p.net && CHANNELS[ch].net && CHANNELS[ch].net.share);
+// An invented network mark (a kite in a circle). Real ones are third-party marks and never drawn here.
+const kiteSVG = (op) => `<svg viewBox="0 0 100 100" height="100%" style="opacity:${op / 100}" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="${TOKEN.tune}"/><path d="M50 16L74 46L50 78L26 46Z" fill="#fff"/><path d="M50 78Q44 88 52 94" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`;
+function previewHol() {
+  if (!S.pol.holiday || S.image || netOn(S.pol, S.ch) || !chHolidays(S.ch).length) return null;
+  const v = S.view === 'auto' ? activeHol() : S.view;
+  return v && v !== 'none' && chHolidays(S.ch).includes(v) ? v : null;
+}
+
+// ---- Scene: a frame with the active picture, the bug anchored inside it (decision 0036). ----
+function scene(kind, p, ch, opts) {
+  opts = opts || {};
+  const look = S.image ? 'image' : p.look;
+  let inner = '';
+  if (p.on) {
+    let b;
+    if (look === 'image') b = { w: 100, scale: 1, svg: `<svg viewBox="0 0 100 100" height="100%" style="opacity:${p.opacity / 100}" aria-hidden="true"><path d="M50 4l13 28 31 4-23 21 6 31-27-16-27 16 6-31L6 36l31-4z" fill="${TOKEN.signal}" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg>` };
+    else if (p.net && CHANNELS[ch].net && CHANNELS[ch].net.share) b = { w: 100, scale: 1, svg: kiteSVG(p.opacity) };
+    else b = bugSVG(look, opts.hol ? holOpts(p, ch, opts.hol) : bugOpts(p, ch));
+    const [v, h] = p.pos.split('-');
+    const hpx = p.size * 100 * (S.zoom ? 2 : 1); // bug height in cqh; the review zoom doubles it
+    const mx = p.margin * 100, my = p.margin * 100;
+    // Equal-area rule (render.go sizeFor): H = frame height x size, wide marks get shorter, never taller.
+    const hh = Math.min(hpx, hpx * Math.sqrt(2 / (b.w / 100)));
+    let css = `height:${hh * b.scale}cqh;`;
+    css += h === 'left' ? `left:${mx}cqh;` : h === 'right' ? `right:${mx}cqh;` : `left:50%;transform:translateX(-50%);`;
+    css += v === 'top' ? `top:${my}cqh;` : v === 'bottom' ? `bottom:${my}cqh;` : `top:50%;${h === 'center' ? 'transform:translate(-50%,-50%);' : 'transform:translateY(-50%);'}`;
+    inner = `<div class="anchor"><span class="bug" style="${css}">${b.svg}</span></div>`;
+  }
+  return `<div class="scene ${kind}${opts.cls ? ' ' + opts.cls : ''}" role="img" aria-label="${kind === 'box' ? 'Letterboxed 4:3 picture' : kind === 'dark' ? 'Dark frame' : 'Bright frame'} with the logo ${p.on ? 'at ' + esc(p.pos) : 'off'}"><div class="pic">${inner}</div></div>`;
+}
+const SCENES = [['bright', 'Bright'], ['dark', 'Dark'], ['box', 'Old 4:3 film']];
+
+// ---- Field rows (PolicyField shape) ----
+function overridden(k) { return JSON.stringify(S.pol[k]) !== JSON.stringify(DEFAULT[k]); }
+function src(k, label) {
+  const o = overridden(k);
+  return `<div class="fsrc"><span class="badge ${o ? 'signal' : ''}">${o ? 'Channel override' : 'Default'}</span><button class="link" type="button" ${o ? '' : 'disabled'} data-reset="${k}">Reset to default<span style="position:absolute;width:1px;height:1px;overflow:hidden">(${esc(label)})</span></button></div>`;
+}
+function field(k, label, help, body, opts) {
+  opts = opts || {};
+  return `<div class="field" data-off="${!!opts.off}"><div class="fhead"><div class="flabel" id="l-${k}">${label}<button class="help" type="button" aria-label="About ${esc(label)}" data-help="${esc(help)}">?</button></div>${opts.nosrc ? '' : src(k, label)}</div>${body}${opts.hint ? `<p class="hint">${opts.hint}</p>` : ''}</div>`;
+}
+const selectOf = (k, id, list, fmt) => `<select class="selectbox" id="${id}" aria-labelledby="l-${k}" data-set="${k}">${list.map(([v, l]) => `<option value="${v}" ${String(S.pol[k]) === String(v) ? 'selected' : ''}>${fmt ? fmt(v, l) : l}</option>`).join('')}</select>`;
+const near = (list, v) => list.reduce((a, b) => Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a)[0];
+
+function posControl() {
+  const g = S.grid === 'grid', cells = g ? POS : POS.filter(([id]) => id.split('-')[0] !== 'mid' && id.split('-')[1] !== 'center');
+  const items = cells.map(([id, l]) => `<button class="cell" type="button" role="radio" aria-checked="${S.pol.pos === id}" aria-label="${l}" data-pos="${id}"></button>`).join('');
+  return `<div class="posrow"><div class="${g ? 'grid3' : 'grid2'}" role="radiogroup" aria-labelledby="l-pos">${items}</div><p class="hint" style="max-width:240px">${g ? 'Centre positions cover the picture. Most channel logos sit in a corner.' : 'The logo sits inside the picture, so a letterboxed film keeps it off the black bars.'}</p></div>`;
+}
+
+function lookPicker(c) {
+  const p = S.pol, opt = (l) => {
+    const sel = p.look === l.id && !S.image;
+    const bug = bugSVG(l.id, { call: p.callsign || c.auto, num: c.num, op: 100, col: p.color === 'era' ? c.pal[0] : TOKEN[p.color], pal: c.pal });
+    return `<button class="opt" type="button" role="radio" aria-checked="${sel}" data-look="${l.id}"><span class="thumb"><span style="height:26px;display:block">${bug.svg.replace('height="100%"', 'height="' + 26 * bug.scale + '"')}</span></span><span class="t">${l.name}</span>${l.built ? '' : '<span class="badge tune" style="align-self:flex-start">New</span>'}</button>`;
+  };
+  const built = LOOKS.filter((x) => x[2]).map((x) => L[x[0]]), fresh = LOOKS.filter((x) => !x[2]).map((x) => L[x[0]]);
+  return `<div class="stack"><div class="opts looks" role="radiogroup" aria-labelledby="l-look">${built.map(opt).join('')}</div><div><p class="hint" style="margin-bottom:8px">New in this draft</p><div class="opts looks" role="radiogroup" aria-label="New logo styles">${fresh.map(opt).join('')}</div></div></div>`;
+}
+
+function colorPicker() {
+  const items = Object.entries(COLOR_NAMES).filter(([id]) => id !== 'lineup').map(([id, n]) => `<button class="sw ${id === 'era' ? 'era' : ''}" type="button" role="radio" aria-checked="${S.pol.color === id}" aria-label="${n}" title="${n}" style="${id === 'era' ? '' : 'background:' + TOKEN[id]}" data-color="${id}"></button>`).join('');
+  const lp = lineupPal(S.ch), c = CHANNELS[S.ch];
+  const lineup = `<div class="lineuprow"><button class="sw lineup" type="button" role="radio" aria-checked="${S.pol.color === 'lineup'}" aria-label="Colours from this lineup" title="Colours from this lineup" data-color="lineup">${lp.map((x) => `<i style="background:${x}"></i>`).join('')}</button><span class="posters" aria-hidden="true">${c.posters.map((x) => `<span class="poster" style="background:${x}"></span>`).join('')}</span><span class="arrow">${S.raw ? 'as sampled' : 'nearest app colours'}</span></div>`;
+  return `<div class="stack" style="gap:10px"><div class="swrow" role="radiogroup" aria-labelledby="l-color">${items}</div><div><p class="hint" style="margin-bottom:6px"><span class="badge tune">New</span> Colours from this lineup</p>${lineup}</div></div>`;
+}
+
+// The consequence line for the holiday in effect (or the first one the channel honours).
+function holSentence() { const hs = chHolidays(S.ch), id = hs.includes(activeHol()) ? activeHol() : hs[0]; return `From ${HOL[id].win.replace(' – ', ' to ')} this channel shows the ${HOL[id].name} logo.`; }
+// ---- Holiday touches (per-channel): follows the channel's own seasonal settings. ----
+function holidayField(c) {
+  const p = S.pol, hs = chHolidays(S.ch), off = !hs.length, now = activeHol();
+  const list = hs.map((id) => {
+    const h = HOL[id], opts = h.motifs.map((m) => `<button class="opt" type="button" role="radio" aria-checked="${(p.motifs[id] || DEFAULT.motifs[id]) === m}" data-motif="${id}:${m}" aria-label="${MOTIFS[m][0]} for ${h.name}">${motifSVG(m)}<span class="t">${MOTIFS[m][0]}</span></button>`).join('');
+    return `<div class="hrow"><span class="hn">${h.name}</span><span class="hint">${h.win}</span>${now === id ? '<span class="badge lock">In effect now</span>' : ''}<div class="mot" role="radiogroup" aria-label="Picture for ${h.name}">${h.motifs.length > 1 ? opts : `<span class="sm" style="display:flex;gap:6px;align-items:center">${motifSVG(h.motifs[0])}${MOTIFS[h.motifs[0]][0]}</span>`}</div></div>`;
+  }).join('');
+  const sentences = hs.length ? [holSentence()] : [];
+  const body = off
+    ? `<p class="sm muted">This channel ignores holidays, so its logo stays the same all year. To change that, set Holidays on its Programming tab.</p>`
+    : `<div class="row"><button class="switch" type="button" role="switch" aria-checked="${p.holiday}" aria-labelledby="l-holiday" data-toggle="holiday"></button><span class="sm muted">${p.holiday ? 'On' : 'Off'}</span></div>
+       ${p.holiday ? `<div class="hlist">${list}</div><p class="hint">Holidays come from this channel’s Programming tab${CHANNELS[S.ch].seas.hol.length ? ' (it uses ' + hs.map((i) => HOL[i].name).join(', ') + ')' : ' (it uses every built-in holiday)'}. ${sentences.join(' ')} ${hs.length > 1 ? 'The other holidays follow the dates above; on all other days it shows the everyday logo.' : 'On every other day it shows the everyday logo.'}</p><p class="hint">The change happens at the next programme that starts after the date. A programme already airing keeps its logo until it ends.</p>` : `<p class="hint">Off: the everyday logo airs all year.</p>`}`;
+  return field('holiday', 'Holiday touches', 'Adds a small picture beside the logo while a holiday is on, such as a pumpkin in October. The picture and colours are built in. It stops when the holiday ends.', body, { off: !!S.image || netOn(p, S.ch), nosrc: off, hint: S.image ? 'Your own logo airs unchanged, so holiday touches are paused.' : netOn(p, S.ch) ? 'The network logo airs unchanged, so holiday touches are paused.' : '' });
+}
+
+function networkField(c) {
+  const n = c.net, p = S.pol, can = !!n.share;
+  const body = can
+    ? `<div class="row wrap"><button class="switch" type="button" role="switch" aria-checked="${p.net}" aria-labelledby="l-net" data-toggle="net"></button><span class="sm muted">${p.net ? 'On' : 'Off'}</span>${p.net ? `<span class="thumb" style="width:72px;display:inline-grid"><span style="height:28px;display:block">${kiteSVG(100).replace('height="100%"', 'height="28"')}</span></span>` : ''}</div><p class="hint">${p.net ? `Using the ${esc(n.name)} logo, because ${n.share}% of this lineup aired there. Pictures and holiday touches are paused while it is on.` : `${n.share}% of this lineup aired on ${esc(n.name)}. Turn on to show its logo instead.`}</p>`
+    : `<div class="row"><button class="switch" type="button" role="switch" aria-checked="false" aria-disabled="true" disabled aria-labelledby="l-net"></button><span class="sm muted">Unavailable</span></div><p class="hint">${n.none}</p>`;
+  return field('net', 'Use the network’s own logo', 'Shows the logo of the TV network most of this lineup aired on, taken from TMDB. It is a company’s trademark, so it is off unless you turn it on. Your own uploaded logo wins over it.', body, { nosrc: !can, off: !!S.image }).replace('<div class="flabel" id="l-net">', '<div class="flabel" id="l-net"><span class="badge caution" title="Not wired today">New work</span>');
+}
+
+// ---- "Suggest a design": the model fills a closed form; Loomarr draws it. ----
+function specList(s, c) {
+  const hs = chHolidays(S.ch), m = hs.find((i) => s.motifs && s.motifs[i]);
+  return `<dl class="specs"><dt>Style</dt><dd>${L[s.look].name}</dd><dt>Colour</dt><dd>${L[s.look].col ? COLOR_NAMES[s.color] : 'White (this style has no colour)'}</dd><dt>Name</dt><dd>${esc(s.callsign || 'Auto: ' + c.auto)}</dd><dt>Position</dt><dd>${POS.find((x) => x[0] === s.pos)[1]}</dd><dt>Size</dt><dd>${SIZES.find((x) => x[0] === s.size)[1]}</dd>${m ? `<dt>${HOL[m].name}</dt><dd>${MOTIFS[s.motifs[m]][0]}</dd>` : ''}</dl>`;
+}
+function specCard(s, title, tag, actions) {
+  const c = CHANNELS[S.ch], q = { ...S.pol, ...s, on: true, net: false, motifs: { ...S.pol.motifs, ...(s.motifs || {}) } };
+  return `<div class="sc"><div class="row wrap"><h3 class="grow">${title}</h3>${tag}</div>${scene('dark', q, S.ch, { mini: true })}${specList(s, c)}<p class="sm"><b>Why:</b> ${esc(s.reason)}</p><div class="btnrow">${actions}</div></div>`;
+}
+function suggestBlock() {
+  const c = CHANNELS[S.ch], open = S.sug !== null;
+  const head = `<div class="row wrap"><button class="btn sm outline" type="button" data-sug="open" ${open ? 'aria-expanded="true"' : 'aria-expanded="false"'}>✦ Suggest a design</button><span class="hint">Looks at this channel’s name, decade, genres and a few titles, then proposes a design you can accept or change.</span></div>`;
+  if (!open) return head;
+  const list = AI[S.ch], i = S.sug % list.length;
+  const rules = specCard(RULES, S.ai === 'on' ? 'Without AI, Loomarr would pick' : 'Suggested design', '<span class="badge">By rules</span>', `<button class="btn sm" type="button" data-sug="apply-rules">Apply</button><button class="btn sm outline" type="button" data-sug="close">Dismiss</button>`);
+  const ai = S.ai === 'on'
+    ? specCard(list[i], 'Suggested design', `<span class="badge tune">AI · idea ${i + 1} of ${list.length}</span>`, `<button class="btn sm" type="button" data-sug="apply">Apply</button><button class="btn sm outline" type="button" data-sug="again">Try again</button><button class="btn sm outline" type="button" data-sug="close">Dismiss</button>`)
+    : '';
+  const note = S.ai === 'on'
+    ? `<p class="hint st">Sent to your AI: the channel name, its decade, genres and up to five titles. Nothing is saved until you press Apply, and the AI only chooses from the styles, colours and pictures listed here; it never draws.</p>`
+    : `<p class="hint st">AI is not set up, so this is a rules-based pick. Set up AI in Settings to get ideas tailored to the lineup. <span class="muted">(Nothing is sent anywhere.)</span></p>`;
+  return head + `<div class="sug" role="region" aria-label="Suggested design">${note}${ai}${S.ai === 'on' ? rules : rules.replace('<div class="sc">', '<div class="sc" style="grid-column:1/-1;max-width:420px">')}</div>`;
+}
+
+function section() {
+  const c = CHANNELS[S.ch], p = S.pol, look = L[p.look], img = S.image;
+  const net = netOn(p, S.ch), hol = previewHol(), hs = chHolidays(S.ch);
+  const lookOff = !p.on || img || net, colorOn = !!look.col && !img && p.on && !net;
+  const cant = S.state === 'cantdraw';
+  const fields = [
+    `<div class="field"><div class="fhead"><div class="flabel" id="l-on">Show the channel logo<button class="help" type="button" aria-label="About Show the channel logo" data-help="A small logo in the corner of movies and episodes. It never appears on commercials, bumpers or station IDs.">?</button></div>${src('on', 'Show the channel logo')}</div><div class="row"><button class="switch" type="button" role="switch" aria-checked="${p.on}" aria-labelledby="l-on" data-toggle="on"></button><span class="sm muted">${p.on ? 'On' : 'Off'}</span></div></div>`,
+    field('look', 'Style', 'How the logo Loomarr draws from this channel looks. Pick one and watch the preview. A logo you upload keeps its own shape.', lookPicker(c), { off: lookOff, hint: img ? 'Your own image is in use, so styles are paused.' : `${look.name}: ${look.help}` }),
+    field('color', 'Colour', 'Used by the coloured styles. “Match the era” picks colours from the channel’s decade. “Colours from this lineup” picks them from the posters of what the channel plays.', colorPicker(), { off: !colorOn, hint: !colorOn && !img && p.on ? 'This style is white, so colour does not apply.' : colorOn && p.color === 'era' ? `${c.era} palette for this channel.` : colorOn && p.color === 'lineup' ? (S.raw ? `Exactly as sampled from ${c.posters.length} posters in this lineup. Muted shades can look dull on screen.` : `Snapped from ${c.posters.length} posters in this lineup to the nearest app colours: ${lineupNames(S.ch).join(', ')}.`) : '' }),
+    field('callsign', 'Name on the logo', 'Up to 12 characters. Leave blank and Loomarr makes one from the channel name.', `<input class="input" style="width:176px" id="callsign" maxlength="12" placeholder="Auto: ${c.auto}" value="${esc(p.callsign)}" aria-labelledby="l-callsign" data-callsign>`, { off: lookOff, hint: look.num && !img ? `Styles with a number use the channel number, ${c.num}.` : '' }),
+    holidayField(c),
+    field('pos', 'Position', 'Where the logo sits on the picture.', posControl()),
+    field('size', 'Size', 'How big the logo is. Wide names are made shorter so every logo covers about the same area.', selectOf('size', 'size', SIZES, (v, l) => `${l}${v === 0.06 ? ' (default)' : ''}`)),
+    field('margin', 'Distance from the edge', 'Keeps the logo off the very edge, where some TVs crop. Standard is the broadcast safe area.', selectOf('margin', 'margin', MARGINS, (v, l) => `${l}${v === 0.05 ? ' (default)' : ''}`)),
+    field('opacity', 'How see-through', 'Faint blends in; Solid is easiest to read. Settings → Playback holds the default for every channel.', selectOf('opacity', 'opacity', OPACITIES, (v, l) => `${l} — ${v}%${v === 40 ? ' (default)' : ''}`)),
+    networkField(c),
+    `<div class="field"><div class="fhead"><div class="flabel" id="l-image">Your own logo<button class="help" type="button" aria-label="About Your own logo" data-help="Upload a PNG or WebP. It keeps its own colours and shape, and replaces the styles above.">?</button></div></div><div class="row wrap">${img ? `<span class="thumb" style="width:96px;display:inline-grid"><svg viewBox="0 0 100 100" style="height:30px" aria-hidden="true"><path d="M50 4l13 28 31 4-23 21 6 31-27-16-27 16 6-31L6 36l31-4z" fill="${TOKEN.signal}" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="sm grow">sample-logo.png</span><button class="btn sm outline" type="button" data-image="off">Remove</button>` : `<button class="btn sm outline" type="button" data-image="on">Upload an image</button><span class="hint">PNG or WebP. Transparent background works best.</span>`}</div></div>`,
+  ];
+  const preview = `<div class="pv"><div role="radiogroup" aria-label="Preview picture" class="pvbar">${SCENES.map(([id, n]) => `<button class="opt" type="button" role="radio" aria-checked="${S.scene === id}" data-scene="${id}"><span class="t">${n}</span></button>`).join('')}<label class="zoom"><input type="checkbox" ${S.zoom ? 'checked' : ''} data-zoom> Zoom the logo ×2 to inspect it (real size is the Size setting)</label></div>${p.on && p.holiday && hs.length && !img && !net ? `<div role="radiogroup" aria-label="Show the logo as" class="pvbar"><span class="hint">Show as</span>${[['none', 'Everyday'], ...hs.map((i) => [i, HOL[i].name])].map(([id, n]) => `<button class="opt" type="button" role="radio" aria-checked="${(hol || 'none') === id}" data-view="${id}"><span class="t">${n}</span></button>`).join('')}</div>` : ''}
+    ${scene(S.scene, p, S.ch, { hol })}<div class="minis">${SCENES.filter(([id]) => id !== S.scene).map(([id]) => `<div>${scene(id, p, S.ch, { mini: true, hol })}</div>`).join('')}</div>
+    <div class="consq"><p><b>What you will see.</b> ${p.on ? `${esc(img ? 'Your image' : net ? 'The ' + CHANNELS[S.ch].net.name + ' logo' : hol ? look.name + ' with a ' + HOL[hol].name + ' ' + MOTIFS[p.motifs[hol] || DEFAULT.motifs[hol]][0].toLowerCase() : look.name)}, ${esc(POS.find((x) => x[0] === p.pos)[1].toLowerCase())}, ${OPACITIES.find((x) => x[0] === p.opacity)[1].toLowerCase()} (${p.opacity}%).` : 'No logo on this channel.'}</p><p><b>Where it shows.</b> Over movies and episodes. Hidden during commercials, bumpers and station IDs.</p><p><b>When.</b> From the next programme on this channel. What is airing now does not change.</p>${p.on && p.holiday && hs.length && !img && !net ? `<p><b>Holidays.</b> ${holSentence()} ${activeHol() ? `Today (${S.today.slice(5).replace('-', '/')}) that is the ${HOL[activeHol()].name} one.` : `Today (${S.today.slice(5).replace('-', '/')}) it shows the everyday logo.`}</p>` : ''}</div>
+    ${cant ? `<div class="warn"><b>This server can't draw the logo right now.</b> It is encoding without a graphics card overlay, so programmes air without a logo. Your choices are saved and will show once it can. <span class="muted">(Reported today as a “watermark.disabled” Diagnostics event.)</span></div>` : ''}</div>`;
+  return `<div class="layout"><div class="fields">${fields.join('')}</div>${preview}</div>`;
+}
+
+function pageHeader() {
+  const c = CHANNELS[S.ch];
+  return `<div class="ph"><a class="backlink" href="#" data-noop><span aria-hidden="true">←</span> Channels</a><h1 style="margin-top:8px">${c.name} <span class="mono muted" style="font-size:13px">CH ${String(c.num).padStart(2, '0')}</span></h1><p class="desc"><span class="badge lock">On air</span></p></div>`;
+}
+const tabs = () => `<nav class="tabs" aria-label="Channel sections">${['Watch', 'Channel info', 'Programming', 'Filler', 'Danger zone'].map((t) => `<a class="tab" href="#" data-noop ${t === 'Channel info' ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</nav>`;
+
+function channelScreen() {
+  if (!isDraft()) {
+    const rows = [['Channel logo style', 'Text — the name alone, with a soft shadow', 'How the channel logo Loomarr draws from a channel’s name looks. A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel’s next programme.'], ['Channel logo opacity', '40', 'How solid the channel logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own watermark opacity keeps it. A change shows from each channel’s next programme.']];
+    return pageHeader() + `<div class="body">${tabs()}<section class="stack"><div><h2>Channel info</h2><p class="sm muted">Built today: this tab has air state, details and Diagnostics only. There is no logo section; the channel can only inherit the two install-wide settings below. The API already accepts corner, size, margin, opacity, look, image and callsign per channel (<code>policy.watermark</code>), and no screen sets them.</p></div></section>
+      <section class="stack"><div><h2>Settings → Playback → Picture and sound <span class="badge">Admin · whole install</span></h2></div><div class="card p4 stack">${rows.map((r) => `<div class="field"><div class="fhead"><div class="flabel">${r[0]}</div></div><div class="selectbox" style="max-width:420px">${r[1]}</div><p class="hint">${r[2]}</p></div>`).join('')}</div></section></div>`;
+  }
+  return pageHeader() + `<div class="body">${tabs()}
+    <section class="delta" aria-labelledby="logo-h"><span class="delta-tag">draft · new section</span>
+      <div style="margin-bottom:20px"><h2 class="xl" id="logo-h">On-screen logo</h2><p class="sm muted" style="margin-top:4px;max-width:576px">The small logo in the corner while a movie or episode plays. Pick how it looks and where it sits. Every choice is for this channel only.</p></div>
+      <div class="stack" style="margin-bottom:20px">${suggestBlock()}</div>
+      ${section()}
+      <p class="flagline">Admin-only, like Programming and Filler: members never see this section. Autosaves like the Programming fields (one PATCH of <code>policy.watermark</code>, #1895). The section sits on Channel info rather than a new tab; open question 6.</p>
+    </section></div>`;
+}
+
+// ---- Looks sheet ----
+function looksScreen() {
+  const c = CHANNELS[S.ch], p = { ...S.pol, on: true, look: 'text' };
+  const card = (l) => {
+    const q = { ...p, look: l.id };
+    const frames = SCENES.map(([k]) => scene(k, q, S.ch, { mini: true })).join('');
+    return `<article class="card p4 stack"><div class="row wrap"><h3 class="grow">${l.name}</h3><span class="badge ${l.built ? '' : 'tune'}">${l.built ? 'Built' : 'New'}</span></div><div class="lframes">${frames}</div><p class="sm muted">${l.help}</p>${l.built ? '' : `<p class="xs"><b>PNG:</b> ${l.png}. <b>Renderer cost:</b> ${l.cost}.</p>`}</article>`;
+  };
+  const rows = LOOKS.map((x) => L[x[0]]).filter((l) => !l.built).map((l) => `<tr><td><b>${l.name}</b></td><td>${l.png}</td><td>${l.cost}</td><td>${l.pipe}</td></tr>`).join('');
+  return `<div class="ph"><h1>Candidate looks on three frames</h1><p class="desc">Channel: ${c.name} (CH ${c.num}, ${c.era}). Position, size, margin and opacity come from the channel page's settings. Switch the channel above to see the era palette change.</p></div><div class="body">
+    <div class="lgrid">${LOOKS.map((x) => card(L[x[0]])).join('')}</div>
+    <section class="stack"><h2>Feasibility of the new looks</h2><div class="tablewrap"><table><thead><tr><th>Look</th><th>Stored as</th><th>Renderer cost</th><th>Pipeline impact</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+    <section class="stack"><h2>Not drawn, because the pipeline cannot do it</h2>
+      <div class="card p4 stack">
+        <p class="sm"><b class="future">Future, needs pipeline work:</b> a logo that alternates (channel number for 20 seconds, then name). The bug is one still frame uploaded once; both overlay paths take a single image for the whole programme item. Two images need either a timed <code>enable</code> on <code>overlay_cuda</code> and the OpenCL kernel (neither verified here) or cutting the item into pieces.</p>
+        <p class="sm"><b class="future">Future:</b> any motion (a shimmer, a fade-in at the start). Each frame would need its own blend input.</p>
+        <p class="sm"><b class="future">Future:</b> live text (the time, the next programme). The bug is rendered before the encode starts.</p>
+        <p class="sm"><b class="future">Not a bug look:</b> a blurred backdrop behind the glass plate. The blend is a plain alpha mix; it never reads the picture behind it beyond that.</p>
+      </div></section></div>`;
+}
+
+// ---- Round 2 sheet: holiday versions, motifs at real size, the AI prompt, feasibility ----
+const tokName = (hex) => COLOR_NAMES[Object.keys(TOKEN).find((k) => TOKEN[k] === hex)];
+function holidayScreen() {
+  const c = CHANNELS[S.ch], base = { ...S.pol, on: true, net: false, color: 'era' };
+  const HV = [['tint', 'Colour plate', (h, m) => `The plate takes the holiday colour (${tokName(HOL[h].col)}); a ${m} sits beside it.`], ['badge', 'Number badge', (h, m) => `The badge takes the holiday colour (${tokName(HOL[h].col)}); a ${m} sits beside it.`], ['stripe', 'Era stripe', (h, m) => `The stripe uses the holiday’s colours (${HOL[h].pal.map(tokName).join(', ')}); a ${m} sits beside the name.`]];
+  const cards = HV.flatMap(([k, name, cap]) => ['halloween', 'christmas'].map((h) => {
+    const q = { ...base, look: k }, m = MOTIFS[DEFAULT.motifs[h]][0].toLowerCase();
+    return `<article class="card p4 stack"><div class="row wrap"><h3 class="grow">${name} · ${HOL[h].name}</h3><span class="badge tune">New</span></div><div class="lframes">${SCENES.map(([sk]) => scene(sk, q, S.ch, { mini: true, hol: h })).join('')}</div><p class="sm muted">${cap(h, m)}</p></article>`;
+  })).join('');
+  const real = (id, px, bg, h) => {
+    const b = bugSVG('tint', bugOpts({ ...base, opacity: S.pol.opacity }, S.ch, { col: HOL[h].col, pal: HOL[h].pal, hol: { motif: id } }));
+    return `<div class="tile ${bg}"><span class="b0" style="height:${px}px">${b.svg}</span><span class="cap">${px === 65 ? '1080p' : '480p'} · bug ${px}px · ${S.pol.opacity}%</span></div>`;
+  };
+  const motifs = Object.keys(MOTIFS).map((id) => {
+    const h = Object.keys(HOL).find((x) => HOL[x].motifs.includes(id));
+    return `<article class="card p4 stack"><div class="row wrap"><h3 class="grow">${MOTIFS[id][0]}</h3><span class="badge">${HOL[h].name}</span></div><div class="tiles"><div class="tile d">${motifSVG(id, 88)}<span class="cap">zoomed</span></div>${real(id, 65, 'b', h)}${real(id, 65, 'd', h)}${real(id, 29, 'd', h)}</div></article>`;
+  }).join('');
+  const prompt = `Design a TV channel logo. Answer with JSON only.
+Channel: ${c.name} (channel ${c.num})
+Years: ${c.era}
+Genres: ${c.genres}
+Titles: ${c.titles}
+Choose every value from its list. Do not make up values.
+look: plate|text|outline|small-plate|tint|twotone|badge|lockup|stripe
+color: era|lineup|signal|tune|lock|onair|suggest|caution
+size: small|standard|large
+corner: top-left|top-right|bottom-left|bottom-right
+callsign: up to 12 letters or digits, or ""
+${chHolidays(S.ch).filter((i) => HOL[i].motifs.length > 1).map((i) => `${i}: ${HOL[i].motifs.join('|')}\n`).join('')}reason: at most 8 words
+{"look":"","color":"","size":"","corner":"","callsign":"",${chHolidays(S.ch).filter((i) => HOL[i].motifs.length > 1).map((i) => `"${i}":"",`).join('')}"reason":""}`;
+  return `<div class="ph"><h1>Holiday versions, AI design and TMDB signals</h1><p class="desc">Round 2. Channel: ${c.name} (CH ${c.num}, ${c.era}). Every logo here is still one PNG with alpha, drawn from design-token colours. No image is generated by a model, and the poster swatches and the network mark are invented.</p></div><div class="body">
+    <section class="stack"><h2>Holiday versions of three looks</h2><p class="sm muted">Halloween (Oct 1 – Oct 31) and Christmas (Dec 1 – Dec 26) on the same three frames. The look’s own shape and position do not change; the holiday adds a colour and one small picture.</p><div class="hgrid">${cards}</div></section>
+    <section class="stack"><h2>Every picture at real size</h2><p class="sm muted">Each bug is drawn at its true pixel height: 65 px is the default size on a 1080p picture, 29 px on a 480p one. It is shown at the current opacity (${S.pol.opacity}%). On a ${isPhone() ? 'phone' : 'desktop'} screen this fills more of the screen than it does on air, because the screen is much smaller than a 1080p picture.</p><div class="mgrid">${motifs}</div></section>
+    <section class="stack"><h2>What the AI is asked, and what it may answer</h2>
+      <div class="card p4 stack"><p class="sm">One request per click of “Suggest a design”, never at airtime. Plain, short, and every answer is picked from a list, so a small local model can do it. The model returns words; Loomarr’s renderer draws them.</p><pre class="prompt">${esc(prompt)}</pre>
+      <div class="tablewrap"><table><thead><tr><th>If the answer…</th><th>Loomarr does</th></tr></thead><tbody>
+        <tr><td>is not valid JSON, times out (12 s), or the AI is off</td><td>Uses the rules version: every field from the rules, no error shown.</td></tr>
+        <tr><td>has a value that is not in its list</td><td>Drops that one field and fills it from the rules. The rest is kept.</td></tr>
+        <tr><td>picks “lineup” but the channel has no posters</td><td>Drops the colour (falls back to “Match the era”).</td></tr>
+        <tr><td>has a name with symbols or more than 12 characters</td><td>Upper-cases, keeps letters, digits, space, “&amp;” and “-”, cuts to 12. Blank means “auto”.</td></tr>
+        <tr><td>has a reason longer than 8 words</td><td>Keeps the first 8 words.</td></tr>
+        <tr><td>asks for a size, a hex colour, a font, an image or a corner not listed</td><td>Ignored. The form has no such field.</td></tr></tbody></table></div>
+      <p class="sm"><b>Rules version (no AI):</b> Colour plate when the channel has a decade, otherwise Text; colour “Match the era”; Standard size; top right; the derived name; the default picture for each included holiday. Same inputs, same answer, so it is testable and free.</p></div></section>
+    <section class="stack"><h2>Feasibility and cost of the new asks</h2><div class="tablewrap"><table><thead><tr><th>Item</th><th>Stored as</th><th>Per-programme cost</th><th>Calls and jobs</th><th>New work</th></tr></thead><tbody>
+      <tr><td><b>Holiday version</b></td><td>One more PNG per channel, size, look and holiday</td><td>None: resolved once when the item starts, like today</td><td>None. Rendered on first use, then cached</td><td>The airing start is passed to the resolver; the cache key gains the holiday and picture; eight small shapes in the renderer</td></tr>
+      <tr><td><b>Suggest a design</b></td><td>Nothing until Apply (then ordinary policy fields)</td><td>None: never on the airtime path</td><td>One LLM call per click, about 400 tokens in and 120 out; zero calls without AI</td><td>A stateless endpoint, the prompt, the validator, the rules</td></tr>
+      <tr><td><b>Colours from this lineup</b></td><td>Up to three of the six app colours, saved on Apply</td><td>None</td><td>No TMDB call: the posters are already in the image service. Decodes at most 8 small posters on click</td><td>A hue sampler; today’s <code>DominantHex</code> is one average colour per image and would turn a red and blue poster purple</td></tr>
+      <tr><td><b>Network logo</b></td><td>The TMDB logo, drawn like an uploaded image</td><td>None</td><td>One TMDB request per series (cached), none per programme</td><td><span class="newtag">All of it</span>: the network is not read or stored today (<code>internal/app/watermark.go</code> <code>source</code>). Opt-in per channel</td></tr>
+    </tbody></table></div></section></div>`;
+}
+
+function render() {
+  const f = $('frame');
+  f.className = isPhone() ? 'phone' + (S.tall ? ' tall' : '') : '';
+  $('frame-label').textContent = `${isPhone() ? '390 × 844 · bottom bar' : 'desktop · content area beside the 224px rail (rail not drawn)'} · ${S.variant} · ${CHANNELS[S.ch].name}`;
+  $('page').innerHTML = S.screen === 'looks' ? looksScreen() : S.screen === 'holiday' ? holidayScreen() : channelScreen();
+  ['variant', 'screen', 'channel', 'state', 'grid'].forEach((k) => { const e = $(k); e.value = k === 'channel' ? S.ch : S[k === 'channel' ? 'ch' : k]; });
+  $('frame-size').value = S.frame; $('today').value = S.today; $('ai').value = S.ai; $('raw').value = S.raw ? 'raw' : 'snap';
+}
+
+function snap() {
+  const p = S.pol;
+  p.size = near(SIZES, p.size); p.margin = near(MARGINS, p.margin); p.opacity = near(OPACITIES, p.opacity);
+  if (S.grid === 'corners' && (p.pos.startsWith('mid') || p.pos.endsWith('center'))) p.pos = 'top-right';
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button,a'); if (!t) return;
+  if (t.hasAttribute('data-noop')) { e.preventDefault(); say('Not wired in the prototype.'); return; }
+  const d = t.dataset;
+  if (d.help) { say(d.help); return; }
+  if (d.toggle === 'holiday') { S.pol.holiday = !S.pol.holiday; say(S.pol.holiday ? 'Holiday touches on: the logo gains a small picture while a holiday is on.' : 'Holiday touches off: the everyday logo airs all year.'); }
+  else if (d.toggle === 'net') { S.pol.net = !S.pol.net; say(S.pol.net ? 'Network logo on. It is a company’s trademark, so this is the household’s choice per channel.' : 'Network logo off.'); }
+  else if (d.toggle) { S.pol.on = !S.pol.on; say(S.pol.on ? 'Logo on. This is the default.' : 'Logo off for this channel. Settings → Playback no longer applies to it.'); }
+  else if (d.pos) { S.pol.pos = d.pos; say(`Position: ${d.pos}. Placement anchors to the picture's measured area, so the 4:3 film keeps it inside the picture.`); }
+  else if (d.look) { S.pol.look = d.look; S.image = false; say(`${L[d.look].name}: ${L[d.look].help}`); }
+  else if (d.color) { S.pol.color = d.color; say(`Colour: ${COLOR_NAMES[d.color]}.`); }
+  else if (d.scene) { S.scene = d.scene; }
+  else if (d.view) { S.view = d.view; say(d.view === 'none' ? 'Previewing the everyday logo.' : `Previewing the ${HOL[d.view].name} logo. On air it shows ${HOL[d.view].win.replace(' – ', ' to ')}.`); }
+  else if (d.motif) { const [h, m] = d.motif.split(':'); S.pol.motifs[h] = m; S.view = h; say(`${HOL[h].name} picture: ${MOTIFS[m][0]}.`); }
+  else if (d.sug) {
+    const k = d.sug, list = AI[S.ch];
+    if (k === 'open') { S.sug = S.sug === null ? 0 : null; say(S.sug === null ? 'Suggestion closed.' : S.ai === 'on' ? 'Suggested by the AI from the lineup. Nothing is saved until Apply.' : 'AI is not set up: suggested by rules. Nothing is saved until Apply.'); }
+    else if (k === 'again') { S.sug = (S.sug + 1) % list.length; say('Another idea from the AI.'); }
+    else if (k === 'close') { S.sug = null; say('Dismissed. Nothing changed.'); }
+    else { const s = k === 'apply' ? list[S.sug % list.length] : RULES; Object.assign(S.pol, { look: s.look, color: s.color, size: s.size, pos: s.pos, callsign: s.callsign, on: true }); Object.assign(S.pol.motifs, s.motifs || {}); S.image = false; S.pol.net = false; S.sug = null; say('Applied. The fields below show the new values, and each can be changed or reset.'); }
+  }
+  else if (d.reset) { S.pol[d.reset] = DEFAULT[d.reset]; if (d.reset === 'look') S.image = false; say('Back to the default. Settings → Playback now decides again.'); }
+  else if (d.image) { S.image = d.image === 'on'; say(S.image ? 'Own image in use: styles, colour and name are paused.' : 'Own image removed.'); }
+  else return;
+  render();
+});
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.matches('[data-zoom]')) { S.zoom = t.checked; render(); return; }
+  if (t.dataset.set) { S.pol[t.dataset.set] = Number(t.value); render(); }
+});
+document.addEventListener('input', (e) => {
+  if (e.target.matches('[data-callsign]')) { S.pol.callsign = e.target.value; const pos = e.target.selectionStart; render(); const i = $('callsign'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } }
+});
+$('channel').innerHTML = Object.entries(CHANNELS).map(([k, c]) => `<option value="${k}">${c.name} · CH ${c.num} · ${c.era}</option>`).join('');
+$('today').innerHTML = TODAYS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+$('today').addEventListener('change', (e) => { S.today = e.target.value; S.view = 'auto'; render(); });
+$('ai').addEventListener('change', (e) => { S.ai = e.target.value; render(); });
+$('raw').addEventListener('change', (e) => { S.raw = e.target.value === 'raw'; render(); });
+$('variant').addEventListener('change', (e) => { S.variant = e.target.value; render(); });
+$('screen').addEventListener('change', (e) => { S.screen = e.target.value; render(); });
+$('channel').addEventListener('change', (e) => { S.ch = e.target.value; S.pol.callsign = ''; S.view = 'auto'; S.sug = null; render(); });
+$('state').addEventListener('change', (e) => { S.state = e.target.value; S.image = e.target.value === 'custom'; render(); });
+$('grid').addEventListener('change', (e) => { S.grid = e.target.value; snap(); render(); });
+$('frame-size').addEventListener('change', (e) => { S.frame = e.target.value; render(); });
+// A link can open a state directly: #screen=looks&frame=phone&state=custom&grid=grid&look=glass&scene=box&ch=mm&pos=mid-left&variant=built
+new URLSearchParams(location.hash.slice(1)).forEach((v, k) => {
+  if (k === 'screen' || k === 'frame' || k === 'state' || k === 'grid' || k === 'variant' || k === 'scene') S[k] = v;
+  if (k === 'ch' && CHANNELS[v]) S.ch = v;
+  if (k === 'look' && L[v]) S.pol.look = v;
+  if (k === 'pos' && POS.some((x) => x[0] === v)) S.pol.pos = v;
+  if (k === 'color') S.pol.color = v;
+  if (k === 'zoom') S.zoom = v === '1';
+  if (k === 'tall') S.tall = v === '1'; // phone frame grows to show the whole page (for screenshots)
+  if (k === 'today' && TODAYS.some((x) => x[0] === v)) S.today = v;
+  if (k === 'view') S.view = v; // auto | none | a holiday id
+  if (k === 'ai') S.ai = v;
+  if (k === 'raw') S.raw = v === '1';
+  if (k === 'sug') S.sug = Number(v); // open "Suggest a design" on idea n
+  if (k === 'net') S.pol.net = v === '1';
+  if (k === 'holiday') S.pol.holiday = v === '1';
+});
+S.image = S.state === 'custom';
+render();
+say('Try the look picker, the position grid and the Old 4:3 film frame; then State = Own image uploaded.');
+</script>
+</html>

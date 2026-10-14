@@ -92,7 +92,7 @@ type BlockProps = {
   focusPending?: RefObject<boolean>;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
-  /** The channel is paused: nothing airs, so no block wears the airing amber. */
+  /** The channel is paused: nothing airs, so no block wears the airing tone. */
   offAir?: boolean;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;

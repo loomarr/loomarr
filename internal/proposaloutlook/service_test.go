@@ -3,6 +3,7 @@ package proposaloutlook_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		t.Fatalf("outlook must not persist a channel: %+v, %v", listed, err)
 	}
 	for _, key := range []provision.Key{"movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"} {
-		if _, err := st.GetTitle(ctx, key); err != store.ErrNotFound {
+		if _, err := st.GetTitle(ctx, key); !errors.Is(err, store.ErrNotFound) {
 			t.Fatalf("outlook wrote title %s: %v", key, err)
 		}
 	}

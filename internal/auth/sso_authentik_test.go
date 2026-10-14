@@ -22,6 +22,7 @@ package auth_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -98,7 +99,7 @@ func TestSSO_AgainstRealAuthentik(t *testing.T) {
 		code := ak.signInAndGetCode(t, authURL, "stranger")
 
 		token, _, _, claims, _, err := svc.Exchange(ctx, state, code)
-		if err != auth.ErrInvalidCredentials {
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
 			t.Fatalf("Exchange for an un-allowlisted identity = %v, want ErrInvalidCredentials", err)
 		}
 		if token != "" {

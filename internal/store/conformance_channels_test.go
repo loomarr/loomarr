@@ -124,10 +124,10 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("GetChannelByNumber(5) = %q,%v want ch-a", byNum.ID, err)
 	}
 	// Missing lookups are ErrNotFound.
-	if _, err := s.GetChannel(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetChannel(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetChannel(missing) = %v, want ErrNotFound", err)
 	}
-	if _, err := s.GetChannelByNumber(ctx, 999); err != ErrNotFound {
+	if _, err := s.GetChannelByNumber(ctx, 999); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetChannelByNumber(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -239,7 +239,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	if len(after) != 2 {
 		t.Errorf("after delete: %d channels, want 2", len(after))
 	}
-	if _, err := s.GetChannel(ctx, "ch-2"); err != ErrNotFound {
+	if _, err := s.GetChannel(ctx, "ch-2"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("deleted channel still present: %v", err)
 	}
 }

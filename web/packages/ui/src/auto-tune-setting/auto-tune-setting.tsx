@@ -8,6 +8,8 @@ interface AutoTuneSettingActionProps {
   choicesMs: readonly number[];
   density: Density;
   onChange: (durationMs: number) => void;
+  /** The row took focus: the surf rail draws its selected channel at rest (#1887). */
+  onFocus?: () => void;
   valueMs: number;
 }
 
@@ -20,11 +22,17 @@ const formatSeconds = (ms: number) => `${(ms / 1000).toFixed(1).replace(/\.0$/, 
  * opens a ModalOverlay of choices walked with ◀▶, focus starting on the current value. OK on a
  * choice saves it and closes; BACK closes without a change.
  */
-const AutoTuneSettingAction = ({ choicesMs, density, onChange, valueMs }: AutoTuneSettingActionProps) => {
+const AutoTuneSettingAction = ({
+  choicesMs,
+  density,
+  onChange,
+  onFocus,
+  valueMs,
+}: AutoTuneSettingActionProps) => {
   const [choosing, setChoosing] = useState(false);
   return (
     <>
-      <Action density={density} onPress={() => setChoosing(true)} tone="secondary">
+      <Action density={density} onFocus={onFocus} onPress={() => setChoosing(true)} tone="secondary">
         {`Channel-number wait · ${formatSeconds(valueMs)}`}
       </Action>
       <ModalOverlay

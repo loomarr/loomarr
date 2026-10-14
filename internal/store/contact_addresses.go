@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,7 +78,7 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 		`SELECT normalized FROM contact_addresses
 		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`),
 		address.OwnerID).Scan(&verifiedNormalized)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if err == nil && verifiedNormalized == address.Normalized {
@@ -191,7 +192,7 @@ func scanContactAddress(sc scannable) (contact.Address, error) {
 	var ownerKind string
 	err := sc.Scan(&ownerKind, &address.OwnerID, &address.Email, &address.Normalized,
 		&status, &provenance, &created, &verified)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return contact.Address{}, ErrNotFound
 	}
 	if err != nil {

@@ -7,7 +7,7 @@
   "description": "Loomarr-owned semantic themes and universal primitives, implemented behind Tamagui Core.",
   "exports": {
     ".": "./index.ts",
-    "./qr-code-web": "./src/qr-code-web/index.ts"
+    "./qr-code-web": "./qr-code-web.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

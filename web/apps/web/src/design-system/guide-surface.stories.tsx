@@ -20,7 +20,7 @@ const GuideArtwork = () => (
     width="100%"
   >
     <Text textRole="label" tone="primary">
-      SPRINGFIELD
+      KETTLE KIDS
     </Text>
   </Surface>
 );
@@ -28,8 +28,8 @@ const GuideArtwork = () => (
 const GuideWorkshop = ({ density = "pointer" }: { density?: "pointer" | "touch" | "tv" }) => {
   const [selection, setSelection] = useState<GuideSelection>({
     anchorMs: guideFrom + 11 * 60_000,
-    channelId: "ch-springfield",
-    scheduleBlockId: "block_springfield_bart_mother",
+    channelId: "ch-cartoons",
+    scheduleBlockId: "block_cartoons_borrowed_teapot",
   });
   return (
     <Screen density={density} justifyContent="center">
@@ -38,7 +38,7 @@ const GuideWorkshop = ({ density = "pointer" }: { density?: "pointer" | "touch" 
         layout={layout}
         onSelectionChange={setSelection}
         renderArtwork={(airing) =>
-          airing.scheduleBlockId === "block_springfield_bart_mother" ? <GuideArtwork /> : undefined
+          airing.scheduleBlockId === "block_cartoons_borrowed_teapot" ? <GuideArtwork /> : undefined
         }
         selection={selection}
       />
@@ -60,7 +60,7 @@ const Tv: Story = { args: { density: "tv" } };
 const Light: Story = { globals: { theme: "light" } };
 const FocusedProgramme: Story = {
   play: async ({ canvas }) => {
-    canvas.getByRole("button", { name: /Springfield Classics, The Simpsons · Bart the Mother/ }).focus();
+    canvas.getByRole("button", { name: /Cartoon Classics, Kettle Kids · The Borrowed Teapot/ }).focus();
   },
 };
 

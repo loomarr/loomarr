@@ -15,8 +15,12 @@ import type { SearchResult } from "@loomarr/core/contracts";
 // both web and the future mobile app (§4.2, §5.2). Typed against the orval-generated
 // DTOs (ClipDTO, Proposal) so the fixtures track the real contract 1:1 (§12). No
 // `Date.now` / random anywhere, so the visual suite's frozen clock stays honest.
+//
+// The repo is public: every programme title comes from the invented demo catalogue
+// (internal/demolibrary), and every brand, person and episode name is invented (#1592).
+// internal/demolibrary/guard_test.go fails if a real one comes back.
 
-const sampleIntent = "90s action movies, high energy, keep it PG-13";
+const sampleIntent = "90s comedies and mysteries, easy-going, keep it PG-13";
 
 // --- V35: catalog health, the Incoming queue, and filler pulls ---
 
@@ -148,7 +152,7 @@ const pendingPull: PullDTO = {
 };
 
 const intentTemplates = [
-  { label: "90s action", value: sampleIntent },
+  { label: "90s comedies", value: sampleIntent },
   { label: "Cozy mysteries", value: "cozy sunday-afternoon mysteries" },
   { label: "Saturday cartoons", value: "saturday-morning cartoons for the kids" },
 ];
@@ -181,20 +185,20 @@ const podEntries: PodEntryDTO[] = [
     tunarrProgramId: "clip-bumper-open",
   },
   {
-    name: "Sunny D — Dude!",
+    name: "Fizzbolt — Dude!",
     kind: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
-    path: "clip-sunnyd.mp4",
-    tunarrProgramId: "clip-sunnyd",
+    path: "clip-fizzbolt.mp4",
+    tunarrProgramId: "clip-fizzbolt",
   },
   {
-    name: "Gushers — Fruit by the Foot",
+    name: "Gloopers — Snack Attack!",
     kind: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
-    path: "clip-gushers.mp4",
-    tunarrProgramId: "clip-gushers",
+    path: "clip-gloopers.mp4",
+    tunarrProgramId: "clip-gloopers",
   },
   {
     name: "Back after these",
@@ -218,7 +222,7 @@ const fallbackCardEntry: PodEntryDTO = {
 const podClips: ClipDTO[] = [
   bumperClip,
   {
-    name: "Sunny D — Dude!",
+    name: "Fizzbolt — Dude!",
     kind: "commercial",
     durationMs: 30000,
     era: 1990,
@@ -227,11 +231,11 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    hash: "hash-sunnyd",
-    tunarrProgramId: "clip-sunnyd",
+    hash: "hash-fizzbolt",
+    tunarrProgramId: "clip-fizzbolt",
   },
   {
-    name: "Gushers — Fruit by the Foot",
+    name: "Gloopers — Snack Attack!",
     kind: "commercial",
     durationMs: 30000,
     era: 1990,
@@ -240,8 +244,8 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    hash: "hash-gushers",
-    tunarrProgramId: "clip-gushers",
+    hash: "hash-gloopers",
+    tunarrProgramId: "clip-gloopers",
   },
   {
     name: "Back after these",
@@ -259,7 +263,7 @@ const podClips: ClipDTO[] = [
 ];
 
 const taggedClip: ClipDTO = {
-  name: "Sunny D — Dude!",
+  name: "Fizzbolt — Dude!",
   kind: "commercial",
   durationMs: 30000,
   era: 1990,
@@ -269,8 +273,8 @@ const taggedClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  hash: "hash-sunnyd-tagged",
-  tunarrProgramId: "clip-sunnyd-tagged",
+  hash: "hash-fizzbolt-tagged",
+  tunarrProgramId: "clip-fizzbolt-tagged",
 };
 
 // A clip whose frame was extracted (V17b/V30) and adopted into the image service (§22).
@@ -286,7 +290,7 @@ const taggedClip: ClipDTO = {
 // different colour so a baseline shows which rung a given box actually chose.
 const thumbnailedClip: ClipDTO = {
   ...taggedClip,
-  name: "Frosted Flakes — They're Grrreat!",
+  name: "Crunchlings — Morning Crunch!",
   hash: "3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a",
   thumbImage: {
     hash: "3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a",
@@ -301,7 +305,7 @@ const thumbnailedClip: ClipDTO = {
     srcSetAvif: "",
     src: "/poster-fallback.jpg",
   },
-  tunarrProgramId: "clip-frosted",
+  tunarrProgramId: "clip-crunchlings",
 };
 
 const untaggedClip: ClipDTO = {
@@ -351,14 +355,14 @@ const splitProposal: SplitReviewProposalDTO = {
       index: 0,
       startMs: 0,
       endMs: 30500,
-      name: "Sunny D — Dude!",
+      name: "Fizzbolt — Dude!",
       nameOrigin: "model-proposed",
-      nameEvidence: "SUNNY D — DUDE!",
+      nameEvidence: "FIZZBOLT — DUDE!",
       era: 1990,
       audience: "kids",
       category: "food & drink",
       artwork: thumbnailedClip.thumbImage,
-      transcript: "[00:01] Sunny D, dude!\n[00:12] Packed with sunshine.",
+      transcript: "[00:01] Fizzbolt, dude!\n[00:12] Packed with sunshine.",
     },
     {
       index: 1,
@@ -378,14 +382,14 @@ const splitProposal: SplitReviewProposalDTO = {
       index: 2,
       startMs: 61000,
       endMs: 91500,
-      name: "Gushers — Fruit by the Foot",
+      name: "Gloopers — Snack Attack!",
       nameOrigin: "source-authored",
       era: 1990,
       audience: "kids",
       category: "food & drink",
       artwork: thumbnailedClip.thumbImage,
       // dHash match against an existing catalog row — a FLAG, never a silent drop.
-      dupOf: "clip-gushers.mp4",
+      dupOf: "clip-gloopers.mp4",
     },
     {
       index: 3,
@@ -402,29 +406,29 @@ const splitProposal: SplitReviewProposalDTO = {
 
 const proposal: Proposal = {
   intent: { description: sampleIntent },
-  rationale: "A high-energy 90s action block, front-loaded with the crowd-pleasers you already own.",
+  rationale: "An easy-going 90s block, front-loaded with the crowd-pleasers you already own.",
   lineup: [
     {
-      name: "Heat",
+      name: "The Velvet Cartographer",
       year: 1995,
       mediaType: "movie",
       inLibrary: true,
       confidence: 0.92,
-      rationale: "Peak-era Michael Mann; anchors the block.",
+      rationale: "The library's best-loved mystery; anchors the block.",
     },
     {
-      name: "Point Break",
-      year: 1991,
+      name: "Pelican Point Motel",
+      year: 1993,
       mediaType: "movie",
       inLibrary: true,
       confidence: 0.84,
-      rationale: "Kinetic, sun-bleached, quotable.",
+      rationale: "Warm, sun-bleached, quotable.",
     },
   ],
   acquisitions: [
     {
-      name: "Con Air",
-      year: 1997,
+      name: "Pepperpot Summer",
+      year: 1998,
       mediaType: "movie",
       inLibrary: false,
       confidence: 0.81,
@@ -432,8 +436,8 @@ const proposal: Proposal = {
     },
   ],
   alternates: [
-    { name: "Face/Off", year: 1997, mediaType: "movie", inLibrary: false },
-    { name: "The Rock", year: 1996, mediaType: "movie", inLibrary: false },
+    { name: "The Seventh Satellite Choir", year: 1992, mediaType: "movie", inLibrary: false },
+    { name: "Marigold Protocol", year: 1989, mediaType: "movie", inLibrary: false },
   ],
   scores: {
     version: 1,
@@ -445,7 +449,7 @@ const proposal: Proposal = {
       basis: "qualifiers",
       assessedItems: 2,
       unknownItems: 0,
-      qualifiers: [{ term: "action", supportedItems: 2 }],
+      qualifiers: [{ term: "easy-going", supportedItems: 2 }],
     },
     era: { status: "not_requested", assessedItems: 0, matchingItems: 0, unknownItems: 0 },
   },
@@ -453,10 +457,10 @@ const proposal: Proposal = {
 };
 
 const searchResults: SearchResult[] = [
-  { id: "ch-42", scope: "channels", name: "90s Action", meta: "#42" },
-  { id: "lib-heat", scope: "library", name: "Heat", meta: "1995", inLibrary: true },
-  { id: "lib-pb", scope: "library", name: "Point Break", meta: "1991", inLibrary: true },
-  { id: "tmdb-conair", scope: "tmdb", name: "Con Air", meta: "1997" },
+  { id: "ch-42", scope: "channels", name: "90s Comedies", meta: "#42" },
+  { id: "lib-velvet", scope: "library", name: "The Velvet Cartographer", meta: "1995", inLibrary: true },
+  { id: "lib-pelican", scope: "library", name: "Pelican Point Motel", meta: "1993", inLibrary: true },
+  { id: "tmdb-pepperpot", scope: "tmdb", name: "Pepperpot Summer", meta: "1998" },
   { id: "help-webhooks", scope: "help", name: "Configuring Sonarr/Radarr webhooks", meta: "Docs" },
 ];
 
@@ -488,7 +492,7 @@ const guidePod: PodPoolDTO = {
       isFallbackCard: false,
     },
     {
-      name: "Sunny D — Dude!",
+      name: "Fizzbolt — Dude!",
       kind: "commercial",
       durationMs: 30_000,
       era: 1994,
@@ -496,7 +500,7 @@ const guidePod: PodPoolDTO = {
       isFallbackCard: false,
     },
     {
-      name: "Gushers",
+      name: "Gloopers",
       kind: "commercial",
       durationMs: 30_000,
       era: 1993,
@@ -516,23 +520,23 @@ const guidePod: PodPoolDTO = {
 
 // Three channels covering the four kinds a grid must distinguish (§12): a movie channel, an
 // episodic channel whose blocks carry series + SxxExx, and one still acquiring. Deliberately
-// includes a programme that STARTED BEFORE the window (Heat, at -25m) — the in-progress case
-// that must clip to the axis while keeping its true end.
+// includes a programme that STARTED BEFORE the window (Marigold Protocol, at -25m) — the
+// in-progress case that must clip to the axis while keeping its true end.
 const guideChannels: GuideChannelTimeline[] = [
   {
     channelId: "ch-action",
-    name: "1980s Action Heroes",
+    name: "1980s Thrillers",
     number: 3,
     status: "live",
     pendingCount: 0,
     airings: [
       {
         kind: "program",
-        scheduleBlockId: "block_action_heat",
-        title: "Heat",
+        scheduleBlockId: "block_action_marigold",
+        title: "Marigold Protocol",
         startMs: guideAt(-25),
         stopMs: guideAt(35),
-        year: 1995,
+        year: 1989,
       },
       {
         kind: "filler",
@@ -544,49 +548,49 @@ const guideChannels: GuideChannelTimeline[] = [
       },
       {
         kind: "program",
-        scheduleBlockId: "block_action_point_break",
-        title: "Point Break",
+        scheduleBlockId: "block_action_mapleton",
+        title: "Midnight at the Mapleton",
         startMs: guideAt(39),
         stopMs: guideAt(111),
-        year: 1991,
+        year: 1984,
       },
     ],
   },
   {
-    channelId: "ch-springfield",
-    name: "Springfield Classics",
+    channelId: "ch-cartoons",
+    name: "Cartoon Classics",
     number: 1,
     status: "live",
     pendingCount: 0,
     airings: [
       {
         description:
-          "Bart nurses an injured bird and learns how much responsibility comes with caring for it.",
+          "Pip nurses an injured gull and learns how much responsibility comes with caring for it.",
         genres: ["Animation", "Comedy"],
         kind: "program",
         rating: "TV-PG",
-        scheduleBlockId: "block_springfield_bart_mother",
-        title: "Bart the Mother",
-        series: "The Simpsons",
+        scheduleBlockId: "block_cartoons_borrowed_teapot",
+        title: "The Borrowed Teapot",
+        series: "Kettle Kids",
         season: 10,
         episode: 3,
         startMs: guideAt(0),
         stopMs: guideAt(22),
-        thumbUrl: "/v1/images/storybook-springfield",
+        thumbUrl: "/v1/images/storybook-cartoons",
         year: 1998,
       },
       {
         kind: "filler",
-        scheduleBlockId: "block_springfield_break_1",
+        scheduleBlockId: "block_cartoons_break_1",
         title: "Commercials",
         startMs: guideAt(22),
         stopMs: guideAt(26),
       },
       {
         kind: "program",
-        scheduleBlockId: "block_springfield_lisa_a",
-        title: "Lisa Gets an A",
-        series: "The Simpsons",
+        scheduleBlockId: "block_cartoons_runaway_kite",
+        title: "The Runaway Kite",
+        series: "Kettle Kids",
         season: 10,
         episode: 7,
         startMs: guideAt(26),
@@ -594,16 +598,16 @@ const guideChannels: GuideChannelTimeline[] = [
       },
       {
         kind: "flex",
-        scheduleBlockId: "block_springfield_flex_1",
+        scheduleBlockId: "block_cartoons_flex_1",
         title: "",
         startMs: guideAt(48),
         stopMs: guideAt(60),
       },
       {
         kind: "program",
-        scheduleBlockId: "block_springfield_kidney",
-        title: "Homer Simpson in: Kidney Trouble",
-        series: "The Simpsons",
+        scheduleBlockId: "block_cartoons_staircase",
+        title: "The Upside-Down Staircase, Part Two",
+        series: "Kettle Kids",
         season: 10,
         episode: 8,
         startMs: guideAt(60),
@@ -613,7 +617,7 @@ const guideChannels: GuideChannelTimeline[] = [
   },
   {
     channelId: "ch-scifi",
-    name: "Star Trek Classics",
+    name: "Sci-Fi Classics",
     number: 2,
     status: "live",
     // This channel has a pending acquisition on its timeline, so it reads "Filling in" — on
@@ -623,9 +627,9 @@ const guideChannels: GuideChannelTimeline[] = [
     airings: [
       {
         kind: "program",
-        scheduleBlockId: "block_scifi_best_worlds",
-        title: "The Best of Both Worlds",
-        series: "Star Trek: TNG",
+        scheduleBlockId: "block_scifi_dead_channel",
+        title: "Voices on a Dead Channel",
+        series: "Cold Relay",
         season: 3,
         episode: 26,
         startMs: guideAt(0),
@@ -635,8 +639,8 @@ const guideChannels: GuideChannelTimeline[] = [
       // promise that something airs then.
       {
         kind: "pending",
-        scheduleBlockId: "block_scifi_first_contact",
-        title: "Star Trek: First Contact",
+        scheduleBlockId: "block_scifi_hollow_moon",
+        title: "Beacon of the Hollow Moon",
         nominal: true,
         startMs: guideAt(45),
         stopMs: guideAt(75),
@@ -645,9 +649,9 @@ const guideChannels: GuideChannelTimeline[] = [
       },
       {
         kind: "program",
-        scheduleBlockId: "block_scifi_family",
-        title: "Family",
-        series: "Star Trek: TNG",
+        scheduleBlockId: "block_scifi_borrowed_antenna",
+        title: "The Borrowed Antenna",
+        series: "Cold Relay",
         season: 4,
         episode: 2,
         startMs: guideAt(75),
@@ -1042,15 +1046,16 @@ const channelFits: ChannelFitDTO[] = [
 // fetch and races the snapshot, which is a flaky baseline rather than a network policy
 // question — the same reason `thumbnailedClip` above is a 2×1 PNG.
 //
-// ⚠ The variety is deliberate and matches the pinned Go fixture: one row has everything, one
-// has NO date, and one has neither duration nor height. Absence is the common case — archive
-// has not probed every item — and a row that renders "0:00" for an unprobed clip claims it is
-// empty. A uniform fixture would let that bug pass here and fail on the first real search.
+// ⚠ The variety is deliberate and mirrors the pinned Go fixture's shapes (its titles and ids are
+// invented here): one row has everything, one has NO date, and one has neither duration nor
+// height. Absence is the common case — archive has not probed every item — and a row that renders
+// "0:00" for an unprobed clip claims it is empty. A uniform fixture would let that bug pass here
+// and fail on the first real search.
 const discoveredClips: DiscoveredClip[] = [
   {
-    id: "kelloggs-bran-flakes",
-    title: "Kellogg's Bran Flakes — 1989 television commercial",
-    url: "https://archive.org/details/kelloggs-bran-flakes",
+    id: "crunchlings-1989",
+    title: "Crunchlings Cereal — 1989 television commercial",
+    url: "https://archive.org/details/crunchlings-1989",
     thumbnailUrl:
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     date: "1989-01-01T00:00:00Z",
@@ -1059,9 +1064,9 @@ const discoveredClips: DiscoveredClip[] = [
     height: 720,
   },
   {
-    id: "saturday-morning-cartoons-v-110",
-    title: "Saturday Morning Cartoons Vol. 110 (full block)",
-    url: "https://archive.org/details/saturday-morning-cartoons-v-110",
+    id: "saturday-morning-block-v-7",
+    title: "Saturday Morning Block Vol. 7 (full block)",
+    url: "https://archive.org/details/saturday-morning-block-v-7",
     thumbnailUrl:
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     // No date: 2 of the 5 pinned docs declare none.
@@ -1069,9 +1074,9 @@ const discoveredClips: DiscoveredClip[] = [
     height: 360,
   },
   {
-    id: "youtube-IaEBrNaHfUs",
+    id: "youtube-dEm0cLiP001",
     title: "1980s cereal commercial compilation",
-    url: "https://archive.org/details/youtube-IaEBrNaHfUs",
+    url: "https://archive.org/details/youtube-dEm0cLiP001",
     thumbnailUrl:
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     date: "2015-09-06T00:00:00Z",

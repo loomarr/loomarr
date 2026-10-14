@@ -46,11 +46,6 @@
         "buildFromSource": [
           "expo-video"
         ]
-      },
-      "ios": {
-        "exclude": [
-          "@loomarr/lan-discovery-native"
-        ]
       }
     },
     "install": {

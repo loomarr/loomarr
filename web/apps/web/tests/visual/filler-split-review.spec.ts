@@ -7,7 +7,7 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
   const timeline = page.getByRole("list", { name: "Detected clips, in order" });
   const clips = timeline.getByRole("button");
   await expect(clips).toHaveCount(4);
-  await expect(clips.first().getByText("Sunny D — Dude!", { exact: true })).toBeVisible();
+  await expect(clips.first().getByText("Fizzbolt — Dude!", { exact: true })).toBeVisible();
 
   const timelineBounds = await timeline.boundingBox();
   const firstClipBounds = await clips.first().boundingBox();
@@ -16,15 +16,15 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
   expect(firstClipBounds?.height).toBeLessThanOrEqual(timelineBounds?.height ?? 0);
 
   await clips.first().hover();
-  await expect(page.getByRole("tooltip").filter({ hasText: "Sunny D — Dude!" })).toBeVisible();
+  await expect(page.getByRole("tooltip").filter({ hasText: "Fizzbolt — Dude!" })).toBeVisible();
 
   await clips.first().click();
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.locator('button[aria-label="00:00 · Sunny D — Dude!"]')).toHaveAttribute(
+  await expect(page.locator('button[aria-label="00:00 · Fizzbolt — Dude!"]')).toHaveAttribute(
     "aria-current",
     "true",
   );
-  await expect(page.getByRole("dialog", { name: "Sunny D — Dude!" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Fizzbolt — Dude!" })).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.locator("video")).toHaveCount(0);
@@ -57,22 +57,22 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
 
 test("split naming evidence stays quiet until requested and clears after an edit", async ({ page }) => {
   await page.goto(story("filler-splitrevieweditor--review"));
-  await page.getByRole("button", { name: "Open clip 1: Sunny D — Dude!" }).click();
-  const row = page.getByRole("region", { name: "Clip 1: Sunny D — Dude!" });
+  await page.getByRole("button", { name: "Open clip 1: Fizzbolt — Dude!" }).click();
+  const row = page.getByRole("region", { name: "Clip 1: Fizzbolt — Dude!" });
   const editFields = row.locator("details").filter({ hasText: "Rename or adjust timing" });
   const namingEvidence = row.getByText(/Name suggested from this clip/);
 
   await expect(namingEvidence).toBeHidden();
   await row.getByText("Details", { exact: true }).click();
-  await expect(namingEvidence).toContainText("SUNNY D — DUDE!");
+  await expect(namingEvidence).toContainText("FIZZBOLT — DUDE!");
   await expect(editFields).not.toHaveAttribute("open", "");
   await row.getByText("Rename or adjust timing", { exact: true }).click();
   await expect(editFields).toHaveAttribute("open", "");
 
-  await row.getByLabel("Name").fill("Sunny D family commercial");
+  await row.getByLabel("Name").fill("Fizzbolt family commercial");
   // The section's accessible name intentionally follows the edited clip name. Re-resolve the row
   // rather than keeping a locator whose own selector still asks for the old name.
-  const editedRow = page.getByRole("region", { name: "Clip 1: Sunny D family commercial" });
+  const editedRow = page.getByRole("region", { name: "Clip 1: Fizzbolt family commercial" });
   await expect(editedRow.getByText("Name edited during review.")).toBeVisible();
   await expect(editedRow.getByText(/Name suggested from this clip/)).toHaveCount(0);
 });

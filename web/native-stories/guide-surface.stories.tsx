@@ -13,7 +13,7 @@ const layout = layoutGuide(
 const Artwork = () => (
   <Surface alignItems="center" flex={1} justifyContent="center" width="100%">
     <Text textRole="label" tone="primary">
-      SPRINGFIELD
+      KETTLE KIDS
     </Text>
   </Surface>
 );
@@ -21,8 +21,8 @@ const Artwork = () => (
 const GuideWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
   const [selection, setSelection] = useState<GuideSelection>({
     anchorMs: guideFrom + 11 * 60_000,
-    channelId: "ch-springfield",
-    scheduleBlockId: "block_springfield_bart_mother",
+    channelId: "ch-cartoons",
+    scheduleBlockId: "block_cartoons_borrowed_teapot",
   });
   return (
     <GuideSurface
@@ -30,7 +30,7 @@ const GuideWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
       layout={layout}
       onSelectionChange={setSelection}
       renderArtwork={(airing) =>
-        airing.scheduleBlockId === "block_springfield_bart_mother" ? <Artwork /> : undefined
+        airing.scheduleBlockId === "block_cartoons_borrowed_teapot" ? <Artwork /> : undefined
       }
       selection={selection}
     />

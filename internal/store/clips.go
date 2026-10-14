@@ -1200,7 +1200,7 @@ func scanClip(sc scannable) (Clip, error) {
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &updatedAt, &createdAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Clip{}, ErrNotFound
 	}
 	if err != nil {

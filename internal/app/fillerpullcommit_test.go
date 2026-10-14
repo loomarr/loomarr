@@ -78,7 +78,8 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			func() {
 				if crash {
 					defer func() {
-						if got := recover(); got != interruption {
+						got := recover()
+						if gotErr, _ := got.(error); !errors.Is(gotErr, interruption) {
 							t.Errorf("crash seam = %v, want interruption", got)
 						}
 					}()

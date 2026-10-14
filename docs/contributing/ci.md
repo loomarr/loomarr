@@ -844,6 +844,15 @@ executes it.
 dispatch, it counts Go functions no `./cmd` binary reaches and opens or updates one tracking issue
 when the total exceeds the committed baseline. See [Code hygiene](code-hygiene.md).
 
+## Scheduled Go vulnerability scan
+
+`go-maintenance.yml` is outside the required PR gate too. Every Monday, and on manual dispatch, it
+runs `make vuln`: pinned govulncheck over the untagged build that ships, failing on any known
+vulnerability a Loomarr call path reaches, standard library included. It is weekly rather than a PR
+gate because a newly published advisory would otherwise fail every Go PR regardless of its content.
+A red run is the prompt to bump the module, or go.mod's `toolchain` line together with the
+Dockerfile's golang image.
+
 ## Scheduled Rust maintenance
 
 `rust-maintenance.yml` is intentionally outside the required PR gate. Every Monday, and on manual

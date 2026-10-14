@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -159,7 +160,7 @@ func testUpsertIdempotent(t *testing.T, newStore NewStoreFunc) {
 
 func testGetMissing(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
-	if _, err := s.GetTitle(context.Background(), "movie:tmdb:404"); err != ErrNotFound {
+	if _, err := s.GetTitle(context.Background(), "movie:tmdb:404"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetTitle(missing) = %v, want ErrNotFound", err)
 	}
 }

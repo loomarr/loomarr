@@ -35,6 +35,10 @@ func (s *sqlStore) RecoverInterruptedSpokenSafetyRuns(ctx context.Context, at ti
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}

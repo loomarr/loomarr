@@ -1,0 +1,115 @@
+name: Visual baselines render
+
+# The read-only half of Visual baselines (visual-baselines.yml), which dispatches it at a pull
+# request's branch and is the only thing that should. It runs the branch's own code (pnpm install,
+# Storybook, Playwright), so it must run in that branch's Actions cache scope, as the pull request's
+# CI does: dispatched from the default branch, a postinstall script could write caches that main's
+# CI and release builds restore. It hands back only the rewritten PNGs; the dispatching workflow
+# verifies this run and the artifact before anything is pushed. Inputs reach a shell only through env.
+run-name: Render visual baselines ${{ inputs.request }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit the dispatching run resolved; the branch must still be at it
+        required: true
+        type: string
+      request:
+        description: The dispatching run's id and attempt, which names this run so it can find it
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  render:
+    name: Render the visual baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      # Before any of the branch's code is fetched: never in the default branch's cache scope, and
+      # only at the commit the dispatching run resolved.
+      - name: Refuse the default branch
+        shell: bash
+        env:
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SHA: ${{ github.sha }}
+          WANT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [[ $REF != refs/heads/* ]] || [ "$REF" = "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::the render runs only on a pull request's branch, never $REF; dispatch Visual baselines instead"
+            exit 1
+          fi
+          if [ "$SHA" != "$WANT_SHA" ]; then
+            echo "::error::$REF is at $SHA, not the resolved $WANT_SHA; dispatch Visual baselines again"
+            exit 1
+          fi
+      # The commit this run was dispatched at, which the guard above tied to the resolved one. The
+      # checkout keeps no token: nothing in this workflow may write.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Restore pnpm store
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: make fe-install
+      - run: make fe-codegen
+      # The same path CI's visual suite takes (ci-playwright.yml): a Storybook build from this
+      # fresh checkout, so no stale storybook-static exists to serve old pixels, then the pinned
+      # Playwright image through scripts/run-playwright-container.sh, in visual-update mode. One
+      # unsharded run: the update rewrites only failed or missing snapshots, so the whole suite
+      # must see the build, and it still fails on an axe violation or a crashing story.
+      - name: Regenerate the baselines in the pinned Playwright image
+        run: make fe-visual-update
+      # Only a rewritten or new PNG under a visual snapshot directory may leave this job. Any other
+      # change to the tree fails it, so a build that edits a tracked file cannot ride along.
+      - name: Collect the rewritten baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/visual-baselines"
+          allowed='^web/apps/web/tests/visual/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
+          mkdir -p "$out/files"
+          git rev-parse HEAD > "$out/commit"
+          : > "$out/changed.txt"
+          git status --porcelain=v1 -z --untracked-files=all > "$RUNNER_TEMP/status"
+          unexpected=0
+          while IFS= read -r -d '' entry; do
+            status=${entry:0:2}
+            path=${entry:3}
+            if [[ ($status == ' M' || $status == '??') && $path =~ $allowed ]]; then
+              printf '%s\n' "$path" >> "$out/changed.txt"
+              mkdir -p "$out/files/$(dirname "$path")"
+              cp -- "$path" "$out/files/$path"
+            else
+              echo "::error::the update changed something other than a visual baseline: '$status' $path"
+              unexpected=1
+            fi
+          done < "$RUNNER_TEMP/status"
+          if [ "$unexpected" -ne 0 ]; then
+            exit 1
+          fi
+          echo "$(wc -l < "$out/changed.txt") baselines changed" >> "$GITHUB_STEP_SUMMARY"
+      - name: Hand the baselines to the dispatching run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: visual-baselines
+          path: ${{ runner.temp }}/visual-baselines/
+          if-no-files-found: error
+          retention-days: 1
