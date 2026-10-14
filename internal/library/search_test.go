@@ -20,9 +20,9 @@ func TestSearch_ParsesOfficialRatingAndRuntime(t *testing.T) {
 		_, _ = w.Write([]byte(`{"Items":[
 			{"Id":"lib-1","Name":"Cartoon Hour","Type":"Series","ProductionYear":1993,
 			 "Genres":["Animation"],"Overview":"kids show","OfficialRating":"TV-Y7","RunTimeTicks":54000000000,
-			 "ProviderIds":{"Tmdb":"456"}},
+			 "ProviderIds":{"Tmdb":"90000456"}},
 			{"Id":"lib-2","Name":"Late Movie","Type":"Movie","ProductionYear":1999,
-			 "OfficialRating":"R","ProviderIds":{"Tmdb":"603"}}
+			 "OfficialRating":"R","ProviderIds":{"Tmdb":"90000603"}}
 		],"TotalRecordCount":2}`))
 	}))
 	defer srv.Close()
@@ -73,8 +73,8 @@ func TestSearch_ParsesPrimarySourceSize(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				gotFields = r.URL.Query().Get("Fields")
 				_, _ = w.Write([]byte(`{"Items":[
-					{"Id":"lib-1","Name":"The Zero Theorem","Type":"Movie",` + tc.movieBytes + `,"ProviderIds":{"Tmdb":"157851"}},
-					{"Id":"lib-2","Name":"The Expanse","Type":"Series","Size":null,"ProviderIds":{"Tmdb":"63639"}}
+					{"Id":"lib-1","Name":"The Quiet Ledger","Type":"Movie",` + tc.movieBytes + `,"ProviderIds":{"Tmdb":"90157851"}},
+					{"Id":"lib-2","Name":"Kestrel One","Type":"Series","Size":null,"ProviderIds":{"Tmdb":"90063639"}}
 				]}`))
 			}))
 			defer srv.Close()
