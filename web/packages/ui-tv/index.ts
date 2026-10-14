@@ -3,13 +3,13 @@ export type {
   TvAutoTuneSettingStore,
 } from "./src/auto-tune-setting";
 export { createTvAutoTuneSetting, TV_AUTO_TUNE_CHOICES_MS } from "./src/auto-tune-setting";
+export type { TvFavouriteToggle } from "./src/favourite-navigation";
+export { isTvLongSelect, tvFavouriteToggle, tvPressIsLongSelectRelease } from "./src/favourite-navigation";
 export {
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
   TvFocusRegistry,
 } from "./src/focus-registry";
-export type { TvFavouriteToggle } from "./src/favourite-navigation";
-export { isTvLongSelect, tvFavouriteToggle, tvPressIsLongSelectRelease } from "./src/favourite-navigation";
 export type {
   TvGuideActivation,
   TvGuideFilterOption,
