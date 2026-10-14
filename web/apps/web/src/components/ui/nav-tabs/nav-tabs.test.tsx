@@ -105,11 +105,13 @@ describe("NavTabs", () => {
         />,
       );
 
-    it("draws the active tab with a 2px signal underline and no pill fill", () => {
+    it("draws the active tab with a 2px foreground underline and no pill fill (#1909 Q1)", () => {
       renderUnderline();
       const active = screen.getByRole("link", { name: /Needs you/ });
-      expect(active).toHaveClass("border-b-2", "border-signal", "bg-transparent");
-      expect(active).not.toHaveClass("bg-signal-tint-15", "rounded-md");
+      expect(active).toHaveAttribute("aria-current", "page");
+      expect(active).toHaveClass("border-b-2", "border-foreground", "bg-transparent");
+      expect(active).not.toHaveClass("bg-static-800", "rounded-md");
+      expect(active.className).not.toContain("signal");
       expect(screen.getByRole("link", { name: /In progress/ })).toHaveClass("border-transparent");
     });
 
@@ -145,7 +147,11 @@ describe("NavTabs", () => {
 
     it("leaves the default variant as pills", () => {
       render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
-      expect(screen.getByRole("link", { name: /In flight/ })).toHaveClass("bg-signal-tint-15", "rounded-md");
+      const active = screen.getByRole("link", { name: /In flight/ });
+      // The current pill is neutral (#1909 Q1): elevated fill and foreground text, never amber.
+      expect(active).toHaveAttribute("aria-current", "page");
+      expect(active).toHaveClass("bg-static-800", "font-medium", "text-foreground", "rounded-md");
+      expect(active.className).not.toContain("signal");
     });
   });
 

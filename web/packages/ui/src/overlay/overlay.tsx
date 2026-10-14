@@ -1,5 +1,6 @@
 import {
   Action,
+  ModalLayer,
   Surface,
   semanticMotion,
   semanticSpace,
@@ -145,7 +146,9 @@ const ModalOverlay = ({
         >
           <Surface backgroundColor="$artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
         </View>
-        <OverlayPanel {...content} modal />
+        <ModalLayer visible={visible}>
+          <OverlayPanel {...content} modal />
+        </ModalLayer>
       </Surface>
     </Modal>
   );

@@ -10,6 +10,7 @@ import {
 } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { expect } from "storybook/test";
 
 const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => {
   const [artwork, setArtwork] = useState(true);
@@ -137,5 +138,38 @@ const Focused: Story = {
   },
 };
 
+// The same primary at rest and focused, side by side. An amber focus border on the amber fill was
+// invisible (WCAG 2.4.7, the tvOS Retry audit), so focus is a foreground ring outside a gap.
+const PrimaryFocusPair = ({ density }: { density: Density }) => (
+  <Screen density={density} gap="$section">
+    <Text density={density} textRole="metadata" tone="secondary">
+      PRIMARY AT REST · PRIMARY FOCUSED
+    </Text>
+    <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$section">
+      <Action density={density} tone="primary">
+        Try again
+      </Action>
+      <Action density={density} tone="primary">
+        Retry
+      </Action>
+    </Surface>
+  </Screen>
+);
+
+const focusRetry: Story["play"] = async ({ canvas }) => {
+  const retry = canvas.getByRole("button", { name: "Retry" });
+  retry.focus();
+  await expect(retry).toHaveFocus();
+};
+
+const PrimaryFocus: Story = {
+  render: () => <PrimaryFocusPair density="pointer" />,
+  play: focusRetry,
+};
+const PrimaryFocusTv: Story = {
+  render: () => <PrimaryFocusPair density="tv" />,
+  play: focusRetry,
+};
+
 export default meta;
-export { Focused, Light, Pointer, Touch, Tv };
+export { Focused, Light, Pointer, PrimaryFocus, PrimaryFocusTv, Touch, Tv };

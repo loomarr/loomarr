@@ -202,7 +202,8 @@ const GuideCompact = ({
             return (
               <View key={channel.source.channelId} style={{ flexDirection: "row", height: ROW }}>
                 <View style={{ justifyContent: "center", width: NUMBER_COLUMN }}>
-                  <Text density={density} textRole="time" tone={rowSelected ? "signal" : "muted"}>
+                  {/* The selected row's number is foreground, never amber (#1909 Q2/Q4). */}
+                  <Text density={density} textRole="time" tone={rowSelected ? "primary" : "muted"}>
                     {String(channel.source.number)}
                   </Text>
                 </View>
@@ -248,7 +249,8 @@ const GuideCompact = ({
                                 ? "$surfaceElevated"
                                 : "$surfaceRaised"
                           }
-                          borderColor={selected ? "$actionPrimary" : "$transparent"}
+                          // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
+                          borderColor={selected ? "$contentPrimary" : "$transparent"}
                           borderRadius={4}
                           borderWidth={2}
                           flex={1}

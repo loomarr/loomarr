@@ -77,7 +77,9 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                 tone={tone}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="font-mono text-signal">{String(source.number).padStart(2, "0")}</span>
+                    <span className="font-mono text-foreground">
+                      {String(source.number).padStart(2, "0")}
+                    </span>
                     {source.name}
                   </span>
                 }
@@ -128,7 +130,7 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                   logo={data.channelLogoUri}
                   size={28}
                 />
-                <span className="font-mono text-signal text-sm">
+                <span className="font-mono text-foreground text-sm">
                   {String(channel.source.number).padStart(2, "0")}
                 </span>
                 <span className="truncate text-static-400 text-xs">{data.channelName}</span>
@@ -140,7 +142,8 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                 <p className="m-0 text-static-400 text-xs">{data.now.episodeLabel}</p>
               )}
               <p className="m-0 font-mono text-static-400 text-xs">{data.now.timeLabel}</p>
-              <span className="font-medium text-signal text-sm">
+              {/* The whole card is the link, so its trailing affordance is foreground (#1909 Q4). */}
+              <span className="font-medium text-foreground text-sm">
                 Watch live <span aria-hidden="true">→</span>
               </span>
             </div>

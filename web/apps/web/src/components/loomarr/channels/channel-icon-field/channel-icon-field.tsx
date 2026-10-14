@@ -226,7 +226,7 @@ const ChannelIconField = ({
                         aria-label={`Use ${s.title}'s poster as the channel icon`}
                         title={s.title}
                         onClick={() => void pickSuggestion(s.url)}
-                        className="block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border border-border transition-colors hover:border-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border border-border transition-colors hover:border-static-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {/*
                           ⚠ These were <img src={tmdbUrl}> until V52 phase 7 — a dozen third-party

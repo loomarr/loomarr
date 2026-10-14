@@ -166,18 +166,22 @@ const AppShell = ({
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
             // Watch's href always points at ONE channel, but any channel's watch route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
-            // Every other item keeps the plain automatic match.
+            // Every other item keeps the plain automatic match, and so does Guide off a channel route:
+            // forcing it to `false` there left /guide itself with no current item.
             const forcedActive =
               item.to === "/channels/$id/watch"
                 ? highlight === "watch"
-                : item.to === "/guide"
+                : item.to === "/guide" && highlight !== undefined
                   ? highlight === "guide"
                   : undefined;
+            // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
+            // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
               "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground",
               forcedActive === undefined
-                ? "data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
-                : forcedActive && "bg-signal-tint-15 text-signal",
+                ? "data-[status=active]:bg-static-800 data-[status=active]:font-medium data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
+                : forcedActive &&
+                    "bg-static-800 font-medium text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
             );
             const content = (
               <>

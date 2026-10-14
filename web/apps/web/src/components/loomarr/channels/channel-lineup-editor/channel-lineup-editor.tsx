@@ -297,8 +297,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               aria-pressed={sort === value}
               className={cn(
                 "cursor-pointer rounded-md border px-2.5 py-0.5 font-mono text-2xs transition-colors",
+                // Pressed is neutral (#1909 Q2), like the Guide's span picker.
                 sort === value
-                  ? "border-signal bg-signal-tint-15 text-signal"
+                  ? "border-foreground bg-static-800 font-semibold text-foreground"
                   : "border-border text-static-400 hover:border-static-400",
               )}
             >
