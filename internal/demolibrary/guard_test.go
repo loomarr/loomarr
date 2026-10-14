@@ -127,7 +127,9 @@ var realDataGo = map[string]string{
 // (`libItem("movie", 603, …)`, `Exists(ctx, provision.Movie, 603)`) or first in a testkit TMDB
 // call (`AddMovie(603, …)`); a provider path (`/tv/1396/season/1`); or a bare id (`"id": 603`,
 // or a title-shaped `ID: 603, Name:` literal). Digits may carry Go's `_` separators. Any id
-// from 1 to below ProviderIDBase names a real title; 0 means "no id".
+// from 1 to below ProviderIDBase names a real title; 0 means "no id". The bare and path forms
+// cannot tell a provider id from any other small number, so a scanned file gives every such
+// id, provider or not, a value from ProviderIDBase up.
 var realProviderID = regexp.MustCompile(`(?i)(?:` +
 	`(?:movie|series):(?:tmdb|tvdb):|(?:tmdb|tvdb)_?id"?\s*[:=]\s*"?|` +
 	`"(?:movie|series|tv)",\s*|provision\.(?:movie|series),\s*|` +
