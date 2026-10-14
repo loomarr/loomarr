@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
@@ -51,11 +51,41 @@ const keepEmbedDir = (): Plugin => ({
   },
 });
 
+// The document's first frame. Before the stylesheet arrives, a fresh browsing context — the
+// phone's pairing sheet, a new tab — paints the browser's default canvas, which is WHITE, for as
+// long as the CSS and module graph take on a phone. An inline canvas colour paints the app's own
+// background from the first parsed byte, and theme-color tints the browser chrome to match.
+// Injected here from the token rather than written into index.html, so the value cannot drift.
+// It is read from the generated token stylesheet, the package's public CSS entry: the config runs
+// in plain Node, which cannot load the package's TypeScript entries.
+// Only the app's index.html: Storybook's iframe.html goes through this config too, and its
+// baselines are framed on their own backgrounds.
+const firstPaintCanvas = (): Plugin => {
+  const theme = readFileSync(fileURLToPath(import.meta.resolve("@loomarr/tokens/theme.css")), "utf8");
+  const canvas = /--color-static-950:\s*(#[0-9A-Fa-f]{6});/.exec(theme)?.[1];
+  if (!canvas) throw new Error("vite.config: --color-static-950 is missing from @loomarr/tokens/theme.css");
+  return {
+    name: "loomarr-first-paint-canvas",
+    transformIndexHtml: (_html, ctx) =>
+      basename(ctx.filename) === "index.html"
+        ? [
+            { tag: "meta", attrs: { name: "theme-color", content: canvas }, injectTo: "head" },
+            {
+              tag: "style",
+              children: `html{background-color:${canvas};color-scheme:dark}`,
+              injectTo: "head",
+            },
+          ]
+        : undefined,
+  };
+};
+
 export default defineConfig({
   // tanstackRouter must precede react() — it generates src/routeTree.gen.ts from the
   // file-based routes in src/routes before React compiles (design §14).
   plugins: [
     keepEmbedDir(),
+    firstPaintCanvas(),
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
     tailwindcss(),

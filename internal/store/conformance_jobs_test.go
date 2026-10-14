@@ -66,7 +66,7 @@ func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if after.Status != "done" {
 		t.Errorf("update didn't persist status: %s", after.Status)
 	}
-	if _, err := s.GetJob(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetJob(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetJob(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -855,11 +855,11 @@ func testJobCacheByHash(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("FindJobByIntentHash = %q,%v want cached", got.ID, err)
 	}
 	// A search with `since` after the job's creation misses (TTL expired).
-	if _, err := s.FindJobByIntentHash(ctx, "hash-X", now.Add(time.Hour)); err != ErrNotFound {
+	if _, err := s.FindJobByIntentHash(ctx, "hash-X", now.Add(time.Hour)); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired cache lookup = %v, want ErrNotFound", err)
 	}
 	// A different hash misses.
-	if _, err := s.FindJobByIntentHash(ctx, "hash-other", now.Add(-24*time.Hour)); err != ErrNotFound {
+	if _, err := s.FindJobByIntentHash(ctx, "hash-other", now.Add(-24*time.Hour)); !errors.Is(err, ErrNotFound) {
 		t.Errorf("miss lookup = %v, want ErrNotFound", err)
 	}
 }
@@ -871,7 +871,7 @@ func testScheduledJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 
-	if _, err := s.GetScheduledJob(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetScheduledJob(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing scheduled job = %v, want ErrNotFound", err)
 	}
 	if err := s.UpsertScheduledJob(ctx, ScheduledJob{Name: "reconcile", NextRun: now, UpdatedAt: now}); err != nil {
@@ -1036,7 +1036,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	if after.Status != "approved" || after.ApprovedBy != "admin" || after.ProposalJSON != p1Seed.ProposalJSON {
 		t.Errorf("approve didn't persist: %+v", after)
 	}
-	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {
+	if _, err := s.GetProposal(ctx, "missing"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetProposal(missing) = %v, want ErrNotFound", err)
 	}
 }
@@ -1598,7 +1598,7 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 	}
 	// ⚠ ErrNotFound, NOT a zero Channel. The former scan returned an empty struct for "no
 	// match", whose blank ID reads as a valid channel to a caller that forgets to check.
-	if _, err := s.GetChannelByIntentRef(ctx, "job-nope"); err != ErrNotFound {
+	if _, err := s.GetChannelByIntentRef(ctx, "job-nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown intent = %v, want ErrNotFound", err)
 	}
 	// A channel with NO intent ref must not answer an empty-string lookup as if it matched
@@ -1650,11 +1650,11 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 	if p.JobID != "job-a" {
 		t.Errorf("returned job %q, want job-a", p.JobID)
 	}
-	if _, err := s.NewestProposalByStatusForJob(ctx, "job-none", "approved"); err != ErrNotFound {
+	if _, err := s.NewestProposalByStatusForJob(ctx, "job-none", "approved"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown job = %v, want ErrNotFound", err)
 	}
 	// A job with only a submitted proposal has no approved one — the binder refuses to build.
-	if _, err := s.NewestProposalByStatusForJob(ctx, "job-b", "denied"); err != ErrNotFound {
+	if _, err := s.NewestProposalByStatusForJob(ctx, "job-b", "denied"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("status with no rows = %v, want ErrNotFound", err)
 	}
 }

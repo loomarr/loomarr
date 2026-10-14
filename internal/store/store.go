@@ -719,6 +719,7 @@ type Store interface {
 	PasswordRecoveryStore
 	NotificationStore
 	DiagnosticStore
+	ClientCrashStore
 	SettingStore
 	SecretProtectionStore
 	CountStore

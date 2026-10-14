@@ -147,6 +147,8 @@ type Server struct {
 	diagnosticCapture DiagnosticCaptureService
 	// clientDiagnostics accepts a closed authenticated web/TV event set; it never grants reads.
 	clientDiagnostics ClientDiagnosticService
+	// clientCrashes takes crash reports from any signed-in app and serves them to admins (#1816).
+	clientCrashes ClientCrashService
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
@@ -1075,6 +1077,8 @@ type Options struct {
 	DiagnosticCapture DiagnosticCaptureService
 	// ClientDiagnostics accepts bounded curated events from authenticated web/TV clients.
 	ClientDiagnostics ClientDiagnosticService
+	// ClientCrashes backs the crash-report write and its admin reads (#1816); nil ⇒ unmounted.
+	ClientCrashes ClientCrashService
 	// StartupReports backs the current/recent application-generation report.
 	StartupReports StartupReportService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's

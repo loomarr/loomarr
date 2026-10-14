@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -68,7 +69,7 @@ func (s *sqlStore) createInvitation(
 	if err == nil {
 		return ErrInvitationIdentityConflict
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("create invitation: check allowlist: %w", err)
 	}
 
@@ -150,7 +151,7 @@ func (s *sqlStore) ReplaceInvitationGrant(
 	err = tx.QueryRowContext(ctx, s.ph(
 		`SELECT expires_at FROM invitations WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		invitationID, epoch(at)).Scan(&expiresAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -193,7 +194,7 @@ func (s *sqlStore) AddInvitationGrant(
 	err = tx.QueryRowContext(ctx, s.ph(
 		`SELECT expires_at FROM invitations WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		invitationID, epoch(at)).Scan(&expiresAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -331,7 +332,7 @@ func (s *sqlStore) RedeemInvitation(
 		&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt,
 		&value.RedeemedBy, &conveyance)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return invitation.Invitation{}, ErrNotFound
 	}
 	if err != nil {
@@ -366,7 +367,7 @@ func (s *sqlStore) RedeemInvitation(
 	if err == nil {
 		return invitation.Invitation{}, ErrInvitationIdentityConflict
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: check allowlist: %w", err)
 	}
 	user.Role = Role(value.Role)
@@ -484,7 +485,7 @@ func scanInvitation(sc scannable) (invitation.Invitation, error) {
 	var createdAt, expiresAt, terminalAt int64
 	err := sc.Scan(&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt, &value.RedeemedBy)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return invitation.Invitation{}, ErrNotFound
 	}
 	if err != nil {
@@ -529,7 +530,7 @@ func scanInvitationGrant(sc scannable) (invitation.Grant, error) {
 	var createdAt, expiresAt, consumedAt, revokedAt int64
 	err := sc.Scan(&grant.TokenHash, &grant.InvitationID, &kind, &conveyance,
 		&createdAt, &expiresAt, &consumedAt, &revokedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return invitation.Grant{}, ErrNotFound
 	}
 	if err != nil {

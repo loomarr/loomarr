@@ -237,6 +237,7 @@ build() {
     NODE_ENV=production RCT_NO_LAUNCH_PACKAGER=1 \
       REACT_NATIVE_NODE_MODULES_DIR="${APP_DIR}/node_modules" pod install
   )
+  "${WEB_ROOT}/scripts/check-ios-pods-binaries.sh" "${APP_DIR}/ios/Pods"
   local workspace="${APP_DIR}/ios/${SCHEME}.xcworkspace"
   if [[ ! -d "$workspace" ]]; then
     printf 'ios-testflight: prebuild did not produce %s\n' "$workspace" >&2

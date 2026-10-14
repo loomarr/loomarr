@@ -1,6 +1,7 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
+import { FieldHint } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -100,11 +101,19 @@ const SettingField = ({
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
   const inlineSwitch = entry.kind === "bool" && entry.presentation === "switch";
-  // Compact mode renders neither explanatory element, so pointing at one would be a dangling
-  // reference. Full fields associate both the ordinary help and any unavailable reason.
+  const problem = invalid ? result?.problem : undefined;
+  // Compact mode renders none of the explanatory elements, so pointing at one would be a dangling
+  // reference. Full fields associate the ordinary help, any unavailable reason, and the server's
+  // validation problem: `role="alert"` announces that once as it appears, and the description is
+  // what a screen reader repeats when the operator comes back to the field to fix it.
   const describedBy = compact
     ? undefined
-    : [entry.doc ? `${id}-doc` : undefined, disabledReason ? `${id}-unavailable` : undefined, descriptionId]
+    : [
+        entry.doc ? `${id}-doc` : undefined,
+        disabledReason ? `${id}-unavailable` : undefined,
+        problem ? `${id}-problem` : undefined,
+        descriptionId,
+      ]
         .filter(Boolean)
         .join(" ") || undefined;
 
@@ -463,21 +472,22 @@ const SettingField = ({
       )}
 
       {entry.caution && (
-        <p className={cn("flex items-center gap-1 text-onair-300 text-xs", inlineSwitch && "col-span-2")}>
+        <FieldHint tone="error" className={cn("flex items-center gap-1", inlineSwitch && "col-span-2")}>
           <TriangleAlert className="size-3" aria-hidden />
           The stored value was invalid and has been reset to the default.
-        </p>
+        </FieldHint>
       )}
 
       {disabledReason && (
-        <p
+        <FieldHint
           id={`${id}-unavailable`}
           role="alert"
-          className={cn("flex items-start gap-1 text-onair-300 text-xs", inlineSwitch && "col-span-2")}
+          tone="error"
+          className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
         >
           <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
           {disabledReason}
-        </p>
+        </FieldHint>
       )}
 
       {/* "changed by … · when" (§5 field anatomy). Audit provenance is signal when you're
@@ -498,10 +508,15 @@ const SettingField = ({
         </p>
       )}
 
-      {invalid && result?.problem && (
-        <p role="alert" className={cn("text-onair-300 text-xs", inlineSwitch && "col-span-2")}>
-          {result.problem}
-        </p>
+      {problem && (
+        <FieldHint
+          id={`${id}-problem`}
+          role="alert"
+          tone="error"
+          className={cn(inlineSwitch && "col-span-2")}
+        >
+          {problem}
+        </FieldHint>
       )}
     </div>
   );

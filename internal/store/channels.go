@@ -422,7 +422,7 @@ func scanChannel(sc scannable) (Channel, error) {
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, ErrNotFound
 	}
 	if err != nil {

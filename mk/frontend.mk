@@ -32,7 +32,7 @@ fe-api-codegen: ## regenerate only the orval api client from api/openapi.yaml
 	cd $(WEB) && pnpm api
 
 .PHONY: fe-lint
-fe-lint: ## Biome lint + format check (web/)
+fe-lint: ## Biome lint + format check, import and boundary gates (web/; needs codegen first)
 	cd $(WEB) && pnpm lint
 
 # knip reads the generated route tree and API client, so it runs after codegen (as in `make fe`).

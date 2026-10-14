@@ -1,5 +1,6 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -7,9 +8,15 @@ import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { SettingField } from "./setting-field";
 
-// The field's doc now shows in a FieldHelp (i) tooltip, which needs a TooltipProvider ancestor
-// (the app mounts one at the root). Wrap every render so the field mounts without a Radix error.
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+// The field's doc now shows in a FieldHelp (i) tooltip, which needs a TooltipProvider ancestor,
+// and its validation and unavailable lines are design-system FieldHints, which need the theme
+// (the app mounts both at the root). Wrap every render so the field mounts as it does there.
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <LoomarrProvider theme="dark">
+      <TooltipProvider>{ui}</TooltipProvider>
+    </LoomarrProvider>,
+  );
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   key: "library.url",
@@ -335,5 +342,21 @@ describe("SettingField", () => {
       />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("must include a scheme");
+  });
+
+  // The alert is announced once, as it appears. An operator who tabs away and comes back to fix
+  // the value hears the problem again only because the field is described by it.
+  it("describes an invalid field by its validation problem, not only by an alert", () => {
+    render(
+      <SettingField
+        entry={entry({ label: "Media server address" })}
+        value="nope"
+        onChange={vi.fn()}
+        result={{ key: "library.url", status: "invalid", problem: "must include a scheme" }}
+      />,
+    );
+    const field = screen.getByRole("textbox", { name: "Media server address" });
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription("Base URL of your Emby/Jellyfin server. must include a scheme");
   });
 });

@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
@@ -142,6 +143,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		DiagnosticBundles:   deps.foundation.diagnosticBundles,
 		DiagnosticCapture:   deps.foundation.diagnostics,
 		ClientDiagnostics:   deps.foundation.clientDiagnostics,
+		ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
 		StartupReports:      deps.foundation.startupReports,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
@@ -204,4 +206,13 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
 	})
+}
+
+// clientCrashService keeps a store-less build's nil module from becoming a non-nil interface,
+// which would mount the crash routes over nothing.
+func clientCrashService(c *diagnostics.ClientCrashes) api.ClientCrashService {
+	if c == nil {
+		return nil
+	}
+	return c
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -187,7 +188,7 @@ func (s *sqlStore) ClaimDueNotificationAttempt(
 		query += ` FOR UPDATE SKIP LOCKED`
 	}
 	attempt, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.ph(query), epoch(now)))
-	if err == notifications.ErrNotFound {
+	if errors.Is(err, notifications.ErrNotFound) {
 		if commitErr := tx.Commit(); commitErr != nil {
 			return notifications.Attempt{}, fmt.Errorf("claim notification attempt: commit recovery: %w", commitErr)
 		}
@@ -315,7 +316,7 @@ func scanNotificationIntent(sc scannable) (notifications.Intent, error) {
 	var createdAt, terminalAt int64
 	if err := sc.Scan(&intent.ID, &topic, &recipientKind, &intent.RecipientID,
 		&referenceKind, &intent.ReferenceID, &policy, &templateJSON, &intent.IdempotencyKey,
-		&createdAt, &terminalAt); err == sql.ErrNoRows {
+		&createdAt, &terminalAt); errors.Is(err, sql.ErrNoRows) {
 		return notifications.Intent{}, notifications.ErrNotFound
 	} else if err != nil {
 		return notifications.Intent{}, err
@@ -341,7 +342,7 @@ func scanNotificationAttempt(sc scannable) (notifications.Attempt, error) {
 	if err := sc.Scan(&attempt.ID, &attempt.IntentID, &means, &attempt.DestinationRef,
 		&attempt.DestinationRedacted, &status, &attempt.AttemptNumber, &availableAt,
 		&attempt.LeaseOwner, &leaseExpiresAt, &startedAt, &finishedAt,
-		&attempt.ProviderMessageID, &failureClass, &outcomeCode, &createdAt); err == sql.ErrNoRows {
+		&attempt.ProviderMessageID, &failureClass, &outcomeCode, &createdAt); errors.Is(err, sql.ErrNoRows) {
 		return notifications.Attempt{}, notifications.ErrNotFound
 	} else if err != nil {
 		return notifications.Attempt{}, err

@@ -1,4 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
+import { FieldHint } from "@loomarr/design-system";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -146,10 +147,10 @@ const DatabaseMigration = ({
                     placeholder="postgres://loomarr:password@postgres:5432/loomarr"
                     aria-describedby="migration-dsn-doc"
                   />
-                  <p id="migration-dsn-doc" className="text-muted-foreground text-xs">
+                  <FieldHint id="migration-dsn-doc">
                     sslmode=prefer negotiates TLS and falls back, which is right for a docker network. Use
                     require for a database across the internet.
-                  </p>
+                  </FieldHint>
                 </div>
                 <Button
                   onClick={onPreflight}
@@ -193,9 +194,7 @@ const DatabaseMigration = ({
                   </Button>
                 </div>
                 {!preflightPassed && checks.length > 0 && (
-                  <p className="text-muted-foreground text-xs">
-                    Every check has to pass. Fix the target and run preflight again.
-                  </p>
+                  <FieldHint>Every check has to pass. Fix the target and run preflight again.</FieldHint>
                 )}
               </div>
             )}

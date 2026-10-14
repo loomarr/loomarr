@@ -36,6 +36,7 @@ const playing: PlayerSnapshot = {
 const renderSurface = (
   snapshot: PlayerSnapshot,
   options: {
+    channelDigits?: boolean;
     chromeVisible?: boolean;
     controlsVisible?: boolean;
     density?: "touch" | "tv";
@@ -49,6 +50,7 @@ const renderSurface = (
   renderToStaticMarkup(
     <LoomarrProvider>
       <WatchingSurface
+        channelDigits={options.channelDigits}
         chromeVisible={options.chromeVisible}
         controlsVisible={options.controlsVisible}
         density={options.density ?? "tv"}
@@ -169,6 +171,12 @@ describe("WatchingSurface", () => {
     expect(output).not.toContain("Previous");
     expect(output).not.toContain("Channel −");
     expect(output).not.toContain("Channel +");
+  });
+
+  it("drops the 0–9 hint for a remote without number keys (Apple TV, #1500 audit #3)", () => {
+    const output = renderSurface(playing, { channelDigits: false });
+    expect(output).not.toContain("0–9");
+    expect(output).toContain("▲▼ tune · ◀ channels · OK guide");
   });
 
   it("renders authoritative current and next programme identity with live progress", () => {

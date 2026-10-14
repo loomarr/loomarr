@@ -28,6 +28,29 @@ var realTitles = []string{
 	"Transformers", "Pokémon", "Pokemon",
 }
 
+// migratedTitles are real titles, brands, people and ids that #1592 removed from the migrated
+// paths below. Unmigrated fixtures still carry many of them, so they cannot join realTitles yet
+// without listing those files; until then they are enforced on the migrated paths only. Add to
+// it; never remove from it. When legacyFixtures is empty, fold it into realTitles.
+var migratedTitles = []string{
+	"Sunny D", "Gushers", "Fruit by the Foot", "Kellogg", "Bran Flakes", "Grrreat", "Springfield",
+	"Bart the Mother", "Lisa Gets an A", "Kidney Trouble", "Radioactive Man", "Milhouse", "Homediddly",
+	"Treehouse of Horror", "Neutral Zone", "Best of Both Worlds", "First Contact", "TNG", "Michael Mann",
+	"Ada Lovelace", "Lovelace", "Grace Hopper", "Katherine Johnson", "Alan Turing", "Mary Jackson",
+	"Dorothy Vaughan", "Margaret Hamilton", "IaEBrNaHfUs", "saturday-morning-cartoons-v-110",
+}
+
+// migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
+// realTitles AND migratedTitles. Each later #1592 slice adds its paths here.
+var migrated = []string{
+	"web/packages/fixtures/src/",
+	// The stories that render the shared fixtures' guide and surf channels with their artwork.
+	"web/apps/web/src/design-system/guide-surface.stories.tsx",
+	"web/apps/web/src/design-system/programme-card.stories.tsx",
+	"web/apps/web/src/design-system/surf-rail.stories.tsx",
+	"web/native-stories/guide-surface.stories.tsx",
+}
+
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field, a JSON
 // field, or a positional id in a seed helper call (`libItem("movie", 603, …)`). Any id below
 // ProviderIDBase names a real title.
@@ -57,16 +80,11 @@ var legacyFixtures = []string{
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
 	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
 	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
-	"web/apps/web/src/design-system/guide-surface.stories.tsx",
 	"web/apps/web/src/design-system/identity.stories.tsx",
 	"web/apps/web/src/design-system/overlay.stories.tsx",
-	"web/apps/web/src/design-system/surf-rail.stories.tsx",
 	"web/apps/web/tests/e2e/mock-backend.ts",
 	"web/native-stories/identity.stories.tsx",
 	"web/native-stories/overlay.stories.tsx",
-	"web/packages/fixtures/src/client-platform/programmes/programmes.ts",
-	"web/packages/fixtures/src/client-platform/surf/surf.ts",
-	"web/packages/fixtures/src/testcard/testcard.ts",
 	"web/scripts/tv-emulator-fixture-server.mjs",
 }
 
@@ -85,9 +103,9 @@ func isFixture(rel string) bool {
 	return false
 }
 
-func denylistRE() *regexp.Regexp {
-	parts := make([]string, len(realTitles))
-	for i, t := range realTitles {
+func denylistRE(titles []string) *regexp.Regexp {
+	parts := make([]string, len(titles))
+	for i, t := range titles {
 		parts[i] = regexp.QuoteMeta(t)
 	}
 	return regexp.MustCompile(`(?i)\b(?:` + strings.Join(parts, "|") + `)\b`)
@@ -95,7 +113,7 @@ func denylistRE() *regexp.Regexp {
 
 // realHits lists the real titles and real provider ids in one file's text.
 func realHits(text string) []string {
-	hits := denylistRE().FindAllString(text, -1)
+	hits := denylistRE(realTitles).FindAllString(text, -1)
 	for _, m := range realProviderID.FindAllStringSubmatch(text, -1) {
 		if id, err := strconv.Atoi(m[1]); err == nil && id < ProviderIDBase {
 			hits = append(hits, m[0])
@@ -137,6 +155,17 @@ func TestGuardCatchesRealTitlesAndIDs(t *testing.T) {
 	for _, ok := range []string{`key: "movie:tmdb:90000001"`, `"The Clockmaker's Umbrella"`, `Bladerunner-free text: blades, bladed`} {
 		if hits := realHits(ok); len(hits) != 0 {
 			t.Errorf("guard flagged %q in invented text %q", hits, ok)
+		}
+	}
+	strict := denylistRE(migratedTitles)
+	for _, bad := range []string{`name: "Sunny D — Dude!"`, `series: "Star Trek: TNG"`, `approvedByName: "Ada Lovelace"`} {
+		if !strict.MatchString(bad) {
+			t.Errorf("migrated-path guard missed a real reference in %q", bad)
+		}
+	}
+	for _, ok := range []string{`name: "Fizzbolt — Dude!"`, `series: "Cold Relay"`, `approvedByName: "Adela Hale"`} {
+		if hits := strict.FindAllString(ok, -1); len(hits) != 0 {
+			t.Errorf("migrated-path guard flagged %q in invented text %q", hits, ok)
 		}
 	}
 }
@@ -254,6 +283,28 @@ func TestFixturesCarryNoNewRealTitles(t *testing.T) {
 		if !slices.Contains(dirty, rel) {
 			t.Errorf("%s no longer carries real titles; delete it from legacyFixtures", rel)
 		}
+	}
+}
+
+func TestMigratedFixturesStayInvented(t *testing.T) {
+	root := repoRoot(t)
+	strict := denylistRE(migratedTitles)
+	scanned := 0
+	for _, rel := range fixtureFiles(t, root) {
+		if !slices.ContainsFunc(migrated, func(prefix string) bool { return strings.HasPrefix(rel, prefix) }) {
+			continue
+		}
+		scanned++
+		if slices.Contains(legacyFixtures, rel) {
+			t.Errorf("%s is migrated (#1592) but still listed in legacyFixtures", rel)
+		}
+		text := mustRead(t, filepath.Join(root, rel))
+		if hits := append(realHits(text), strict.FindAllString(text, -1)...); len(hits) != 0 {
+			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", rel, hits)
+		}
+	}
+	if scanned == 0 {
+		t.Fatalf("no fixture file matched the migrated paths %q; the guard is scanning nothing", migrated)
 	}
 }
 

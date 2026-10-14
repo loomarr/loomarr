@@ -5,3 +5,14 @@ linters:
   default: standard
   enable:
     - errcheck
+    # Sentinel comparisons with == pass today and break silently the first time a callee wraps
+    # the error. Formatting with %v instead of %w is a style choice here, so `errorf` stays off.
+    - errorlint
+    # A `for rows.Next()` loop that never checks rows.Err() mistakes a mid-iteration failure for
+    # the end of the result set.
+    - rowserrcheck
+  settings:
+    errorlint:
+      errorf: false
+      asserts: true
+      comparison: true

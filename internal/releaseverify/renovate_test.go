@@ -68,7 +68,7 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	if config.LockFileMaintenance.Enabled {
 		t.Fatal("unscoped lockfile maintenance must remain disabled")
 	}
-	if len(config.CustomManagers) != 5 {
+	if len(config.CustomManagers) != 6 {
 		t.Fatalf("custom managers = %d, want all repository-owned pin managers", len(config.CustomManagers))
 	}
 	manager := customManagerByDescription(t, config.CustomManagers, "Update repository-owned test container image authorities")
@@ -80,6 +80,7 @@ func TestRenovateOwnsEveryDependencyEcosystem(t *testing.T) {
 	}
 	for _, description := range []string{
 		"Update pinned Go development tools",
+		"Update the pinned Go vulnerability scanner",
 		"Update pinned npm command-line tools",
 		"Update documentation tool containers",
 		"Keep the Playwright package and browser image discoverable together",

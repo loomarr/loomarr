@@ -168,7 +168,7 @@ func (s *sqlStore) ClaimDueTitles(ctx context.Context, now time.Time, lease time
 func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 	var v string
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT value FROM settings WHERE key = ?`), key).Scan(&v)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
 	return v, err
@@ -522,7 +522,7 @@ func scanTitle(sc scannable) (provision.Record, error) {
 	err := sc.Scan(&rec.Key, &blob, &rec.State, &rec.LibraryID,
 		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt,
 		&rec.Progress, &rec.ETAText, &rec.DownloadStatus, &availableAt, &rec.EpisodesHave, &rec.EpisodesWanted)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return provision.Record{}, ErrNotFound
 	}
 	if err != nil {

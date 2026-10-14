@@ -6,7 +6,11 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "ios": {
-      "bundleIdentifier": "media.loomarr.tv.prototype"
+      "bundleIdentifier": "media.loomarr.tv.prototype",
+      "infoPlist": {
+        "NSBonjourServices": ["_loomarr._tcp"],
+        "NSLocalNetworkUsageDescription": "Loomarr looks for your Loomarr server on your home network and connects to it."
+      }
     },
     "android": {
       "package": "media.loomarr.tv.prototype",

@@ -10,7 +10,15 @@ to the dependency. The Expo/Metro graph carries a local source patch on `image-s
 malformed ICNS/JXL/HEIF boxes fail instead of looping; retire it only when a compatible upstream fix
 passes the same consumer tests. The phone builds `expo-video` from source on iOS because the
 canary's precompiled xcframework links Swift Testing, which kills the app at launch
-(`web/patches/expo-video-58.0.0-canary-20260812-27f94d4.md`).
+(`web/patches/expo-video-58.0.0-canary-20260812-27f94d4.md`). It also builds `expo-modules-core`,
+and through it every Expo pod, from source: the canary's precompiled ExpoModulesCore was compiled
+against an older React Native whose `ShadowNodeFamily` lacks the 64-byte `nativePropsMutex` that
+react-native-tvos 0.86.2-0 has. Every mounted Expo view (the Watching picture) overflowed the heap,
+and the phone crashed later in unrelated text layout or mounting (#1816).
+`web/scripts/check-ios-pods-binaries.sh` fails a Simulator or TestFlight build whose Pods contain
+any precompiled framework other than React Native's own release archives. Remove
+`expo-modules-core` from `buildFromSource` only when Expo publishes prebuilds compiled against the
+exact React Native the app installs.
 
 ## Server (Go 1.27+)
 
@@ -42,6 +50,7 @@ canary's precompiled xcframework links Swift Testing, which kills the app at lau
 | Image rendering | required Rust `loomarr-image` worker over a versioned manifest protocol | contains decoder crashes and memory outside the Go process without cgo ([images](images.md)) |
 | Rust image crates | `serde`, `sha2`, `base64`, `thumbhash`, `image`, `fast_image_resize`, `webp`, `webp-animation`, `ravif` (via `image`) | bounded protocol, content identity, placeholders, static and animated decode/encode; locked by `Cargo.lock`, fuzz graph separate |
 | Backend tests | stdlib `testing`, `testcontainers-go` | Postgres conformance |
+| Vulnerability scan | `govulncheck` (`go run` at a pinned version, never a `go.mod` dependency) | `make vuln`, weekly in `go-maintenance.yml`, fails on a known vulnerability a Loomarr call path reaches, standard library included; unreached advisories don't fail. Never ships in the product |
 
 ## Bundled executables
 

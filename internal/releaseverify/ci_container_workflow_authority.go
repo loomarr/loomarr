@@ -358,8 +358,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make dev-docs-verify":          exactWorkflowStep(10, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}}),
 			"make retired-verify":           exactWorkflowStep(11, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}}),
 			"make ci-lint":                  exactWorkflowStep(12, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
-			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),
-		}),
+			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true})}),
 		"ci-go-cache-warm.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 		}),
@@ -559,6 +558,15 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"publish": {steps: map[string]workflowStepAuthority{}},
 			},
 		},
+		"go-maintenance.yml": {
+			environment: map[string]string{"GO_VERSION": "1.27"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"vulnerabilities": {steps: map[string]workflowStepAuthority{
+					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
+				}},
+			},
+		},
 		"rust-maintenance.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
@@ -566,6 +574,80 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"fuzz": {
 					environment: map[string]string{"FUZZ_SECONDS": "${{ inputs.fuzz_seconds }}"},
 					steps:       map[string]workflowStepAuthority{},
+				},
+			},
+		},
+		// Only the commit job may write contents; render and ci may only dispatch a workflow. None of
+		// these jobs runs the branch's code: that happens in visual-baselines-render.yml, dispatched
+		// at the branch (visual_baselines_workflow.go).
+		"visual-baselines.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"resolve": {
+					permissions: map[string]string{"contents": "read", "pull-requests": "read"},
+					steps: map[string]workflowStepAuthority{
+						visualBaselinesResolveCommand + "\n": exactWorkflowStep(0, "Resolve and vet the pull request", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "PR": "${{ inputs.pr }}", "REPO": "${{ github.repository }}",
+							"REF": "${{ github.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+						}}),
+					},
+				},
+				"render": {
+					permissions: map[string]string{"actions": "write", "contents": "read"},
+					steps: map[string]workflowStepAuthority{
+						visualBaselinesRenderDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch the render and wait for it", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
+							"BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
+							"REQUEST": visualBaselinesRequest, "SERVER_URL": "${{ github.server_url }}",
+						}}),
+					},
+				},
+				"commit": {
+					permissions: map[string]string{"actions": "read", "contents": "write"},
+					steps: map[string]workflowStepAuthority{
+						visualBaselinesVerifyRenderCommand + "\n": exactWorkflowStep(1, "Verify the render run", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
+							"BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
+							"RENDER_RUN": "${{ needs.render.outputs.run_id }}", "REQUEST": visualBaselinesRequest,
+						}}),
+						visualBaselinesCommitCommand + "\n": exactWorkflowStep(3, "Commit and push only the changed baselines", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"PR": "${{ inputs.pr }}", "BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
+							"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+							"RUN_ATTEMPT": "${{ github.run_attempt }}",
+							"RENDER_RUN":  "${{ needs.render.outputs.run_id }}",
+						}}),
+					},
+				},
+				"ci": {
+					permissions: map[string]string{"actions": "write", "contents": "read"},
+					condition:   "needs.commit.outputs.pushed == 'true'",
+					steps: map[string]workflowStepAuthority{
+						visualBaselinesCIDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch CI for the pushed commit", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
+							"BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.commit.outputs.sha }}",
+						}}),
+					},
+				},
+			},
+		},
+		// The one job that runs the branch's Make targets reads, and its first step refuses the
+		// default branch's cache scope before any of the branch is fetched.
+		"visual-baselines-render.yml": {
+			environment: map[string]string{"NODE_VERSION": "22"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"render": {
+					permissions: map[string]string{"contents": "read"},
+					steps: map[string]workflowStepAuthority{
+						visualBaselinesRenderGuardCommand + "\n": exactWorkflowStep(0, "Refuse the default branch", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"REF": "${{ github.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+							"SHA": "${{ github.sha }}", "WANT_SHA": "${{ inputs.sha }}",
+						}}),
+						"make fe-install":                    exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+						"make fe-codegen":                    exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
+						"make fe-visual-update":              exactWorkflowStep(7, visualBaselinesUpdateStepName, workflowStepAuthority{targets: []string{"fe-visual-update"}, allowsAcquisition: true}),
+						visualBaselinesCollectCommand + "\n": exactWorkflowStep(8, "Collect the rewritten baselines", workflowStepAuthority{shell: "bash"}),
+					},
 				},
 			},
 		},

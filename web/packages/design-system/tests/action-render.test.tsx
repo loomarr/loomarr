@@ -43,6 +43,67 @@ describe("Action variants", () => {
   });
 });
 
+describe("Action selected vs focused (#1887)", () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const amber = "rgb(255, 176, 32)";
+  const focusFill = "rgb(40, 44, 52)";
+  const button = () => host.querySelector<HTMLElement>('[role="button"]') as HTMLElement;
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it.each(["pointer", "touch", "tv"] as const)(
+    "marks a selected %s action with the focus fill alone, and amber only once it has focus",
+    (density) => {
+      act(() => {
+        root.render(
+          <LoomarrProvider>
+            <Action density={density} selected tone="secondary">
+              1.2 s
+            </Action>
+          </LoomarrProvider>,
+        );
+      });
+
+      expect(button().getAttribute("aria-pressed")).toBe("true");
+      expect(button().style.backgroundColor).toBe(focusFill);
+      expect(button().style.borderTopColor).not.toBe(amber);
+
+      act(() => button().focus());
+      expect(button().style.backgroundColor).toBe(focusFill);
+      expect(button().style.borderTopColor).toBe(amber);
+
+      act(() => button().blur());
+      expect(button().style.borderTopColor).not.toBe(amber);
+    },
+  );
+
+  it("draws an unselected focused action with the same amber border", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action density="tv" tone="secondary">
+            5 s
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+    expect(button().style.borderTopColor).not.toBe(amber);
+    act(() => button().focus());
+    expect(button().style.borderTopColor).toBe(amber);
+  });
+});
+
 describe("Action render composition", () => {
   let host: HTMLDivElement;
   let root: Root;

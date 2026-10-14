@@ -366,7 +366,7 @@ func scanJob(sc scannable) (Job, error) {
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
 		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
 	if err != nil {
@@ -463,7 +463,7 @@ func scanProposal(sc scannable) (Proposal, error) {
 	)
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
 		&p.ModSummary, &p.Note, &p.ProposalJSON, &approvedAt, &createdAt, &updatedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, ErrNotFound
 	}
 	if err != nil {

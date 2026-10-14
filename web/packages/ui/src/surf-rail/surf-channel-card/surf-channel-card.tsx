@@ -13,12 +13,12 @@ const secondaryIndent = identSize + 12 + 20 + 12;
  * programme, time left and progress. One component so the surf rail's focused row and the channel
  * switch overlay are the same picture (#1458 reuses this card exactly rather than inventing one).
  */
-const SurfChannelCard = ({ channel, current, logo, selected }: SurfChannelCardProps) => (
+const SurfChannelCard = ({ channel, current, focused, logo, selected }: SurfChannelCardProps) => (
   <Surface
     backgroundColor={selected ? "$surfaceRaised" : "$surfaceCanvas"}
-    borderColor={selected ? "$actionFocus" : "$surfaceCanvas"}
+    borderColor={selected ? (focused ? "$actionFocus" : "$borderDecorative") : "$surfaceCanvas"}
     borderRadius={12}
-    borderWidth={selected ? 3 : 1}
+    borderWidth={selected && focused ? 3 : 1}
     gap={4}
     paddingHorizontal={16}
     paddingVertical={12}
@@ -33,7 +33,7 @@ const SurfChannelCard = ({ channel, current, logo, selected }: SurfChannelCardPr
           size={identSize}
         />
       )}
-      <Text density="tv" textRole="data" tone={selected ? "signal" : "muted"}>
+      <Text density="tv" textRole="data" tone={selected && focused ? "signal" : "muted"}>
         {channel.channelNumber.padStart(2, "0")}
       </Text>
       <Text density="tv" flex={1} numberOfLines={1} textRole="compact">

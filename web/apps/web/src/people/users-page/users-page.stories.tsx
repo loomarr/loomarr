@@ -24,9 +24,9 @@ const signedInAdmin: MeBody = {
 };
 
 const candidates = [
-  { id: "server-dorothy", name: "Dorothy Vaughan", imported: false, disabled: false, isAdmin: true },
-  { id: "server-mary", name: "Mary Jackson", imported: false, disabled: true, isAdmin: false },
-  { id: "server-grace", name: "Grace Hopper", imported: true, disabled: false, isAdmin: false },
+  { id: "server-delia", name: "Delia Voss", imported: false, disabled: false, isAdmin: true },
+  { id: "server-mina", name: "Mina Jarrow", imported: false, disabled: true, isAdmin: false },
+  { id: "server-greta", name: "Greta Finch", imported: true, disabled: false, isAdmin: false },
 ];
 
 const json = (body: unknown, status = 200) =>
@@ -93,7 +93,7 @@ type Story = StoryObj<typeof meta>;
 const MixedRoster: Story = {};
 const SelectedOfflineReady: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: "Manage Katherine Johnson" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Manage Kira Brandt" }));
   },
 };
 const ImportOpen: Story = {

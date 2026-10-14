@@ -14,7 +14,7 @@ const Artwork = () => (
       width: "100%",
     }}
   >
-    <span style={{ color: semanticColors.content.primary, fontSize: 20, fontWeight: 700 }}>SPRINGFIELD</span>
+    <span style={{ color: semanticColors.content.primary, fontSize: 20, fontWeight: 700 }}>KETTLE KIDS</span>
   </div>
 );
 
