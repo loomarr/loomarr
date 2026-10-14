@@ -139,7 +139,7 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 		}
 		program := observed.ScheduledPrograms[0]
 		if program.Identity != "series:tmdb:90000456:s01e01" ||
-			program.Title != "Mudpuddles Round the Open Fire" || program.Title == proposal.Lineup[0].Name ||
+			program.Title != "Pip's Frosty Fireside" || program.Title == proposal.Lineup[0].Name ||
 			program.Season != 1 || program.Episode != 1 || program.Year != 1989 || program.Rating != "TV-PG" ||
 			program.CommunityRating != 8.1 || program.Overview != "The family has a difficult Christmas." ||
 			!slices.Equal(program.Tags, []string{"christmas", "holiday"}) {
@@ -151,7 +151,7 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
 			"series:tmdb:90000456": {
 				LibraryItemID: "series-mudpuddles", Episodes: []schedule.ResolvedProgram{{
-					LibraryItemID: "episode-s01e01", Title: "Mudpuddles Round the Open Fire",
+					LibraryItemID: "episode-s01e01", Title: "Pip's Frosty Fireside",
 					DurationMs: 23 * 60 * 1000, Season: 1, Episode: 1, Year: 1989,
 					OfficialRating: "TV-PG", CommunityRating: 8.1,
 					Overview: "The family has a difficult Christmas.", Tags: []string{"christmas", "holiday"},

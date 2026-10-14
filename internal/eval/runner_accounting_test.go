@@ -149,7 +149,7 @@ func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
 		}},
 	}}, RunnerConfig{Trials: 1}).WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
 		"series:tmdb:90000456": {Episodes: []schedule.ResolvedProgram{
-			{LibraryItemID: "ep-s01e01", Title: "Mudpuddles Round the Open Fire", DurationMs: 22 * 60 * 1000, Season: 1, Episode: 1},
+			{LibraryItemID: "ep-s01e01", Title: "Pip's Frosty Fireside", DurationMs: 22 * 60 * 1000, Season: 1, Episode: 1},
 			{LibraryItemID: "ep-s04e12", Title: "The Monorail Pitch", DurationMs: 22 * 60 * 1000, Season: 4, Episode: 12},
 		}},
 	}))
