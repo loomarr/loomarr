@@ -182,6 +182,21 @@ describe("ChannelFiller", () => {
     expect(screen.queryByText(/add and tag clips/)).not.toBeInTheDocument();
   });
 
+  // Reached from a Filler Overview coverage card, the page offers the way back (#1908); reached
+  // any other way it is the channel's own page and adds nothing.
+  it("offers a way back to the Filler overview when a coverage card opened it", async () => {
+    stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} from="filler" />);
+    expect(await screen.findByRole("link", { name: "Filler overview" })).toHaveAttribute("href", "/filler");
+  });
+
+  it("adds no Filler return link when opened from the channel", async () => {
+    stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    expect(await screen.findByLabelText("Audience")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Filler overview" })).not.toBeInTheDocument();
+  });
+
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
@@ -353,6 +368,7 @@ describe("ChannelFiller", () => {
           kind: "commercial",
           durationMs: 30000,
           tagged: true,
+          needsDetails: false,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,
@@ -404,6 +420,7 @@ describe("ChannelFiller", () => {
         durationMs: 30000,
         aiTagged: false,
         tagged: true,
+        needsDetails: false,
         playCount: 0,
         playsCounted: true,
       };

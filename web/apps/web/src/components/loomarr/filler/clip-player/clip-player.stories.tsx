@@ -39,6 +39,7 @@ const clip: ClipDTO = {
   audience: "kids",
   category: "food",
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,

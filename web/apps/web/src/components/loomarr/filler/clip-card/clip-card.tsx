@@ -1,11 +1,11 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
@@ -78,6 +78,7 @@ const ClipFrame = ({
   selected,
   onToggleSelect,
   onPlay,
+  compact,
 }: {
   // ⚠ `thumbImage` is REQUIRED here even though it is optional on ClipDTO. The frame exists only
   // when there is artwork to put in it, and stating that in the type is what lets this component
@@ -88,6 +89,7 @@ const ClipFrame = ({
   selected?: boolean;
   onToggleSelect?: () => void;
   onPlay?: () => void;
+  compact?: boolean | undefined;
 }) => {
   // ⚠ **Unmounted on leave, and that is what makes the animation RESTART.** An animated WebP
   // begins at frame 0 when it decodes and then runs on its own — the browser keeps it going while
@@ -117,7 +119,11 @@ const ClipFrame = ({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: decorative hover only, see above
     <div
-      className="group relative -mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800"
+      // The frame bleeds to the card's edge, so its negative margin is the card's padding.
+      className={cn(
+        "group relative aspect-video overflow-hidden rounded-t-[inherit] bg-static-800",
+        compact ? "-mx-2 -mt-2" : "-mx-3 -mt-3",
+      )}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       // Focus counts as hover so a keyboard user tabbing to the play button sees the same preview
@@ -170,7 +176,7 @@ const ClipFrame = ({
       <span className="absolute right-1.5 bottom-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100 tabular-nums">
         {formatClipDuration(clip.durationMs)}
       </span>
-      {clip.quality && (
+      {clip.quality && !compact && (
         // ⚠ `role="img"` is load-bearing, not decoration. `aria-label` on a BARE span is ignored —
         // ARIA only permits naming on an element that has a role, and the chip-row version below
         // gets one from Badge. Without it the label silently does nothing and "1080P" is announced
@@ -185,12 +191,13 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <Checkbox
-          checked={Boolean(selected)}
-          onChange={onToggleSelect}
-          className="absolute top-1.5 left-1.5 z-10 size-4 accent-signal"
-          aria-label={`Select ${clip.name}`}
-        />
+        <div className="absolute top-0.5 left-0.5 z-10">
+          <ClipSelect
+            clipName={clip.name}
+            selected={Boolean(selected)}
+            onSelectedChange={() => onToggleSelect()}
+          />
+        </div>
       )}
 
       {/* The play button — the mock's 58px amber disc (line 982 of the desktop prototype),
@@ -243,74 +250,102 @@ const ClipCard = ({
   splitPending,
   selected,
   onToggleSelect,
+  compact,
   className,
-}: ClipCardProps) => (
-  <Card className={cn("flex flex-col gap-2.5 p-3", selected && "ring-1 ring-signal", className)}>
-    {clip.thumbImage ? (
-      <ClipFrame
-        clip={{ ...clip, thumbImage: clip.thumbImage }}
-        selected={selected}
-        onToggleSelect={onToggleSelect}
-        onPlay={onOpen}
-      />
-    ) : null}
-    <div className="flex items-start gap-2">
-      {!clip.thumbImage && onToggleSelect ? (
-        <Checkbox
-          checked={Boolean(selected)}
-          onChange={onToggleSelect}
-          className="mt-0.5 size-4 shrink-0 accent-signal"
-          aria-label={`Select ${clip.name}`}
+}: ClipCardProps) => {
+  // Ready is the default and wears no chip (#1817, decided on #1908): a healthy library of a
+  // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
+  // its state.
+  const exception = clip.held ? "Preparing" : clip.isComposite ? "Recording" : undefined;
+  const exceptionChip = exception ? <Badge variant="neutral">{exception}</Badge> : null;
+  // One exception per clip: a clip still preparing or a recording is not yet the thing to tag.
+  // Only the server's `needsDetails`, never kind + tagged, so the chip agrees with the filter.
+  const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
+  return (
+    <Card
+      className={cn(
+        "flex flex-col",
+        compact ? "gap-1.5 p-2" : "gap-2.5 p-3",
+        selected && "ring-1 ring-signal",
+        className,
+      )}
+    >
+      {clip.thumbImage ? (
+        <ClipFrame
+          clip={{ ...clip, thumbImage: clip.thumbImage }}
+          selected={selected}
+          onToggleSelect={onToggleSelect}
+          onPlay={onOpen}
+          compact={compact}
         />
       ) : null}
-      {onOpen ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`View details for ${clip.name}`}
-          title={clip.name}
-          className="min-w-0 flex-1 truncate rounded-sm text-left font-medium text-sm hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {clip.name}
-        </button>
+      <div className="flex items-start gap-2">
+        {!clip.thumbImage && onToggleSelect ? (
+          <ClipSelect
+            clipName={clip.name}
+            selected={Boolean(selected)}
+            onSelectedChange={() => onToggleSelect()}
+          />
+        ) : null}
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`View details for ${clip.name}`}
+            title={clip.name}
+            className={cn(
+              "min-w-0 flex-1 truncate rounded-sm text-left font-medium hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              compact ? "text-[13px]" : "text-sm",
+            )}
+          >
+            {clip.name}
+          </button>
+        ) : (
+          <p className={cn("min-w-0 flex-1 truncate font-medium", compact ? "text-[13px]" : "text-sm")}>
+            {clip.name}
+          </p>
+        )}
+        {!clip.thumbImage ? (
+          <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
+            {formatClipDuration(clip.durationMs)}
+          </span>
+        ) : null}
+      </div>
+      {compact ? (
+        (exceptionChip || needsDetailsChip) && <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
       ) : (
-        <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
+        <>
+          {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
+          <div className="flex flex-wrap gap-1.5">
+            {exceptionChip}
+            {clip.kind !== "unclassified" ? <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge> : null}
+            {clip.era ? <Badge variant="neutral">{eraLabel(clip.era)}</Badge> : null}
+            {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
+            {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
+            {!clip.thumbImage && clip.quality ? (
+              <Badge variant="neutral" aria-label={`Resolution ${clip.quality}`}>
+                {clip.quality}
+              </Badge>
+            ) : null}
+            {needsDetailsChip}
+          </div>
+          <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
+        </>
       )}
-      {!clip.thumbImage ? (
-        <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
-          {formatClipDuration(clip.durationMs)}
-        </span>
+      {onSplit ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={splitPending}
+          onClick={onSplit}
+          title="Detect commercials inside this compilation and review the cuts"
+        >
+          <Scissors aria-hidden />
+          {splitPending ? "Splitting…" : "Split into clips"}
+        </Button>
       ) : null}
-    </div>
-    {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
-    <div className="flex flex-wrap gap-1.5">
-      <Badge variant={clip.held ? "neutral" : clip.isComposite ? "neutral" : "signal"}>
-        {clip.held ? "Preparing" : clip.isComposite ? "Recording" : "Ready"}
-      </Badge>
-      {clip.kind !== "unclassified" ? <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge> : null}
-      {clip.era ? <Badge variant="neutral">{eraLabel(clip.era)}</Badge> : null}
-      {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
-      {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
-      {!clip.thumbImage && clip.quality ? (
-        <Badge variant="neutral" aria-label={`Resolution ${clip.quality}`}>
-          {clip.quality}
-        </Badge>
-      ) : null}
-    </div>
-    <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
-    {onSplit ? (
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={splitPending}
-        onClick={onSplit}
-        title="Detect commercials inside this compilation and review the cuts"
-      >
-        <Scissors aria-hidden />
-        {splitPending ? "Splitting…" : "Split into clips"}
-      </Button>
-    ) : null}
-  </Card>
-);
+    </Card>
+  );
+};
 
 export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, playsLine };

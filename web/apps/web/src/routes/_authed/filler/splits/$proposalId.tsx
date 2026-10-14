@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SplitReviewPage } from "@/filler/split-review-page";
+import { SplitReviewPage, validateSplitReviewSearch } from "@/filler/split-review-page";
 
 // The split-review gate (§10 V34). The route exists so review survives the detection job:
 // the proposal is persisted, the SSE frame merely hands over its id, and this page reads
@@ -7,10 +7,12 @@ import { SplitReviewPage } from "@/filler/split-review-page";
 // <Outlet/>, and nesting would make the review unreachable.
 const SplitReviewScreen = () => {
   const { proposalId } = Route.useParams();
-  return <SplitReviewPage proposalId={proposalId} />;
+  const { from } = Route.useSearch();
+  return <SplitReviewPage proposalId={proposalId} from={from ?? "library"} />;
 };
 
 const Route = createFileRoute("/_authed/filler/splits/$proposalId")({
+  validateSearch: validateSplitReviewSearch,
   component: SplitReviewScreen,
 });
 

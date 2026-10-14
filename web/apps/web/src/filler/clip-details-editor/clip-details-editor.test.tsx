@@ -15,6 +15,7 @@ const clip: ClipDTO = {
   durationMs: 30000,
   aiTagged: false,
   tagged: false,
+  needsDetails: false,
   era: 1977,
   audience: "kids",
   brand: "Old advertiser",

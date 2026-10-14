@@ -61,8 +61,8 @@ type ClipFilter struct {
 	// absence is a neutral browse fact, not necessarily a defect: seasonal and audience cues are
 	// intentionally sparse.
 	WithoutTaxonomyAxis taxonomy.Axis
-	// UntaggedOnly restricts to clips missing era/audience/category — the AI
-	// tagging job's work list (§10).
+	// UntaggedOnly restricts to the clips clipcatalog.Clip.NeedsDetails selects — commercials
+	// missing era/audience/category, the AI tagging job's work list (§10).
 	UntaggedOnly bool
 	// IncludeRemoved lifts the default exclusion of tombstoned clips (V35).
 	//
@@ -685,7 +685,7 @@ func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error)
 }
 
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
-// UntaggedOnly flag adds "era=0 OR audience=” OR category=”" (any missing tag).
+// UntaggedOnly flag adds needsDetailsWhere (a commercial missing any match tag).
 //
 // Ordering comes from clipOrderBy (always total — see its tie-break warning), and `Limit`/`Offset`
 // page the result. ⚠ An unknown `Sort` is an ERROR (ErrUnknownClipSort), never a fall-back.
@@ -910,14 +910,17 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		args = append(args, "")
 	}
 	if f.UntaggedOnly {
-		// "Untagged" = a COMMERCIAL missing any match tag. Bumpers/station-ids/PSAs
-		// serve their bookend role without era/audience/category, so the AI-tagging
-		// job (§10) shouldn't spend an LLM call on them — only commercials need full
-		// tags for pod matching.
-		where = append(where, "kind = 'commercial' AND (era = 0 OR audience = '' OR category = '')")
+		where = append(where, needsDetailsWhere)
+		args = append(args, string(clipcatalog.Commercial))
 	}
 	return where, args
 }
+
+// needsDetailsWhere is clipcatalog.Clip.NeedsDetails in SQL: a COMMERCIAL missing any match tag
+// (the negation of Tagged: era > 0, audience and category set). The kind is bound, never a literal,
+// so it is the same constant the Go predicate reads. testClipNeedsDetailsAgreesWithSQL pins the two
+// to the same clips on both backends; the wire's ClipDTO.needsDetails comes from the Go side.
+const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR category = '')"
 
 // ListUntaggedCommercials is the AI-tagging job's work list (§10) — sugar over the
 // commercial-scoped UntaggedOnly filter.
