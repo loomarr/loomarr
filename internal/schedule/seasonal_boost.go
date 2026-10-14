@@ -201,7 +201,7 @@ type dayPlan struct {
 // holidayPlanner arranges one channel's windows around its per-day holiday plans.
 type holidayPlanner struct {
 	deck        []Slot     // pass 0's deal: the pool and day plans read it, so they hold across passes
-	ring        *dealtRing // what the windows air, pass after pass (seasonTile walks it)
+	ring        *dealtRing // what the windows air, pass after pass (simulate and fitted read it)
 	f           holidayFeature
 	window      time.Duration
 	loc         *time.Location
@@ -451,18 +451,7 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 		return dealt
 	}
 	if programRuntime(p.deck) <= p.window.Milliseconds() {
-		// The deck fits one window: every window airs all of it (that window's deal) but the pool.
-		pooled := p.pooled(w)
-		if len(pooled) == 0 {
-			return dealt
-		}
-		var tile []Slot
-		for _, s := range dealt {
-			if !pooled[unitKey(s)] {
-				tile = append(tile, s)
-			}
-		}
-		return tile
+		return p.fitted(w, dealt)
 	}
 	h := p.horizon()
 	last := w // the latest in-season window at or before w
@@ -486,6 +475,31 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 		}
 	}
 	return slices.Clone(p.simulate(anchor, end)[w]) // the run is shared: never hand out its slices
+}
+
+// fitted is window w's tile for a deck that fits one window: all of it (that window's deal) but
+// the pool. The dealer repaired the deal's seam against the window before as it dealt it, but in
+// season that window aired less its pool and plus its features, looped, so its loop stopped on a
+// different unit: the seam is repaired again against the window before as it really aired, and so
+// for the horizon after a season, until the deal's own repair holds again (#1939). Arrange only
+// delays a tile's units behind features, so a unit placed after its release stays after it.
+func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
+	h := p.horizon()
+	last := w
+	for ; last >= w-h && len(p.pooled(last)) == 0; last-- {
+	}
+	if last < w-h {
+		return dealt
+	}
+	pooled := p.pooled(w)
+	var tile []Slot
+	for _, s := range dealt {
+		if !pooled[unitKey(s)] {
+			tile = append(tile, s)
+		}
+	}
+	prev := p.arrange(p.fitted(w-1, p.ring.tile(w-1)), w-1)
+	return repairSeam(loopedWindow(prev, p.window.Milliseconds()), tile, p.ring.d.spacing)
 }
 
 // horizon is how many windows after a season the simulation still runs: twice the windows the
@@ -606,9 +620,12 @@ func (p *holidayPlanner) restsBeyond(key string, v, end, spacing int64) bool {
 // but arrange moves it: features go in, and an off-season holiday episode leaves the evening, so a
 // unit after one airs earlier than its place in the tile. A unit that, arranged, airs less than the
 // spacing after its last airing is dropped for the window, and the tile is topped up again without
-// it; each pass drops one unit for good, so it ends.
+// it; each pass drops one unit for good, so it ends. A short window is looped by playout, so its
+// head re-airs as many programmes later as the window holds: a unit no rested one can replace
+// stays when the window without it would loop sooner than the spacing. The window then airs the
+// most-rested units it has rather than a near-empty tile looped all day (#1939).
 func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, prev, pooled map[string]bool, owed []Slot, airedAt map[string]int64) []Slot {
-	dropped := map[string]bool{}
+	dropped, kept := map[string]bool{}, map[string]bool{}
 	for {
 		mine := map[string]bool{}
 		for _, s := range tile {
@@ -623,7 +640,7 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 				continue
 			}
 			key := unitKey(s)
-			if last, ok := airedAt[key]; ok && mine[key] && a+i-last < spacing {
+			if last, ok := airedAt[key]; ok && mine[key] && !kept[key] && a+i-last < spacing {
 				soon = key
 				break
 			}
@@ -633,10 +650,10 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 			return tile
 		}
 		dropped[soon] = true
-		tile = slices.DeleteFunc(tile, func(s Slot) bool { return s.IsProgram() && unitKey(s) == soon })
+		without := slices.DeleteFunc(slices.Clone(tile), func(s Slot) bool { return s.IsProgram() && unitKey(s) == soon })
 		var acc, n int64
 		taken := maps.Clone(dropped)
-		for _, s := range tile {
+		for _, s := range without {
 			if s.IsProgram() {
 				acc += s.DurationMs
 				taken[unitKey(s)] = true
@@ -645,9 +662,25 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 		}
 		if acc < need {
 			// Its first estimate, like simulate's: the next pass checks where the top-up really airs.
-			tile = p.topUp(tile, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
+			without = p.topUp(without, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
+		}
+		if aired := programRuntime(without); aired < need && aired < programRuntime(tile) && programmesIn(p.arrange(without, v)) < spacing {
+			kept[soon] = true
+			continue
+		}
+		tile = without
+	}
+}
+
+// programmesIn counts the programmes among slots.
+func programmesIn(slots []Slot) int64 {
+	var n int64
+	for _, s := range slots {
+		if s.IsProgram() {
+			n++
 		}
 	}
+	return n
 }
 
 // topUp fills a short tile with `short` of ordinary runtime, unavoidable when a window's features
@@ -720,21 +753,27 @@ func (p *holidayPlanner) topUp(tile []Slot, taken map[string]bool, short, v, end
 
 // spacingProgrammes is the rest the simulation gives an ordinary unit, in programmes: the dealer's
 // repeat spacing in programmes of the deck's mean runtime when it deals every pass afresh. One fixed
-// deck has no dealer spacing; its bound is half the deck less its holiday episodes (§6).
+// deck has no dealer spacing; its bound is half the deck less its holiday episodes (§6). The
+// dealer's spacing is capped at what the pool can honour at every airing: its ordinary units (their
+// last airings are distinct, so the most rested one rested at least that many). A pool barely
+// wider than its window has its dealer spacing capped at the whole pool, holiday episodes
+// included, so every ordinary unit would be too soon all season and the window would air nearly
+// empty, looped (#1939).
 func (p *holidayPlanner) spacingProgrammes() int64 {
-	if !p.ring.d.reshuffle {
-		holiday := 0
-		for _, s := range p.ring.pass(0) {
-			if slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected) {
-				holiday++
-			}
+	var holiday int64
+	for _, s := range p.ring.pass(0) {
+		if slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected) {
+			holiday++
 		}
-		return max(p.ring.nProg/2-int64(holiday), 1)
+	}
+	if !p.ring.d.reshuffle {
+		return max(p.ring.nProg/2-holiday, 1)
 	}
 	if p.meanMs <= 0 {
 		return 0
 	}
-	return int64(math.Ceil(float64(p.ring.d.spacing.Milliseconds()) / p.meanMs))
+	spacing := int64(math.Ceil(float64(p.ring.d.spacing.Milliseconds()) / p.meanMs))
+	return max(min(spacing, p.ring.nProg-holiday), 2)
 }
 
 // maxSeasonRuns bounds the season simulations remembered: a few seasons of a few channels' lineups.

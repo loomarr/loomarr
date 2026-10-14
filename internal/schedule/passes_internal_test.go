@@ -365,21 +365,22 @@ func equalPool(n int, dur time.Duration) []Slot {
 // inside the repeat spacing.
 func TestFittingDeck_LoopedSeamRestsTheSpacing(t *testing.T) {
 	for _, tc := range []struct {
-		n      int
-		dur    time.Duration
+		name   string
+		pool   []Slot
 		window time.Duration
 	}{
-		{5, time.Hour, 12 * time.Hour},
-		{5, time.Hour, 24 * time.Hour},
-		{7, 50 * time.Minute, 24 * time.Hour},
-		{10, 65 * time.Minute, 12 * time.Hour},
-		{10, 65 * time.Minute, 24 * time.Hour},
-		{15, 45 * time.Minute, 12 * time.Hour},
-		{15, 45 * time.Minute, 24 * time.Hour},
+		{"5x1h", equalPool(5, time.Hour), 12 * time.Hour},
+		{"5x1h", equalPool(5, time.Hour), 24 * time.Hour},
+		{"7x50m", equalPool(7, 50*time.Minute), 24 * time.Hour},
+		{"10x65m", equalPool(10, 65*time.Minute), 12 * time.Hour},
+		{"10x65m", equalPool(10, 65*time.Minute), 24 * time.Hour},
+		{"15x45m", equalPool(15, 45*time.Minute), 12 * time.Hour},
+		{"15x45m", equalPool(15, 45*time.Minute), 24 * time.Hour},
+		{"6 series x6x11m", multiPool(6, 6, 11*time.Minute), 24 * time.Hour},
 	} {
-		t.Run(fmt.Sprintf("%dx%v/%v", tc.n, tc.dur, tc.window), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/%v", tc.name, tc.window), func(t *testing.T) {
 			resetDealChains()
-			d := shuffleDealer(equalPool(tc.n, tc.dur), tc.window)
+			d := shuffleDealer(tc.pool, tc.window)
 			if !d.whole {
 				t.Fatalf("pool should fit the window")
 			}

@@ -21,7 +21,7 @@ import (
 // Production shape: an internal-playout shuffle channel on the default 24 h rolling window,
 // reconciled every few minutes. A viewer tuning in makes playout record the programme it
 // resolves (the resolver's own AiringAt + RecordAiring pair below). Before the fix the next
-// reconcile read that record, byRecency re-sorted the deck, and windowSlice cut the new deck at
+// reconcile read that record, byRecency re-sorted the deck, and windowSliceDealt cut the new deck at
 // the same offset: the same wall-clock instant mapped to a different programme, so the guide
 // and the picture parted company.
 

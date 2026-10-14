@@ -432,7 +432,11 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 			// repeat spacing.
 			for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
 				spacing := (pool.ordinary+specials)/2 - specials
-				if order != schedule.OrderSequential {
+				if time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond < pool.window {
+					// A deck that fits its window loops all day, so the loop, not the deck, sets where
+					// the window closes: the guarantee across the seam is the dealer's, never back to back.
+					spacing = 2
+				} else if order != schedule.OrderSequential {
 					spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
 				}
 				for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
@@ -465,8 +469,9 @@ func TestHolidayEpisodes_SeasonEndNeverReairsHalloweenNight(t *testing.T) {
 }
 
 // BenchmarkHolidayPlanner_ShuffledSeason prices one in-season window of a 400-episode shuffled
-// deck: the planner replays the season from its anchor and tops every window up from the far side
-// of the ring (farFill), so this is the regime #1939's real-distance pick has to keep cheap.
+// deck: the planner replays the season from its anchor and tops every window up with the
+// most-rested units of the pass (topUp), so this is the regime #1939's real-distance pick has to
+// keep cheap.
 func BenchmarkHolidayPlanner_ShuffledSeason(b *testing.B) {
 	ch := channelWithWindow(24*time.Hour, nil)
 	avail := seriesLike(400, halloweenSpecials(20)...)
@@ -508,7 +513,8 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 		if len(got) == 0 {
 			t.Fatalf("the window opening %s airs nothing", open.Format(time.Stamp))
 		}
-		for _, a := range got {
+		// Spacing is measured on what airs: a deck shorter than its window loops (#1939).
+		for _, a := range airedLooped(t, ch, avail, policy, open) {
 			n++
 			if isHoliday(a.id) {
 				continue
@@ -523,5 +529,58 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 			last[a.id], at[a.id] = a, n
 		}
 		before = ids(got)
+	}
+}
+
+// #1939 final review: in season, (A) a pool barely wider than its window had its repeat spacing
+// capped at the whole pool, so every unit was too soon, the Thanksgiving window aired one episode
+// and playout looped it all day; (B) a deck that fits its window had its seam repaired before the
+// holiday episodes changed where its loop stopped, so a unit closed one window and opened the
+// next. Walked Oct 1 → Jan 10 as playout airs it (looped): every window airs most of its budget
+// and no unit airs twice in a row, in a window or across a seam.
+func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.T) {
+	specials := func(n int) []special {
+		return append(append(halloweenSpecials(n), thanksgivingSpecials(n)...), christmasSpecials(n)...)
+	}
+	for _, tc := range []struct {
+		name     string
+		episodes int // ordinary and holiday, 22 minutes each
+		window   time.Duration
+	}{
+		{"pool 1.0 windows", 66, 24 * time.Hour},
+		{"pool 1.05 windows", 69, 24 * time.Hour},
+		{"pool 1.2 windows", 79, 24 * time.Hour},
+		{"pool 1.5 windows", 99, 24 * time.Hour},
+		{"fitting 5", 5, 6 * time.Hour},
+		{"fitting 10", 10, 12 * time.Hour},
+		{"fitting 15", 15, 24 * time.Hour},
+		{"fitting 10", 10, 6 * time.Hour},
+	} {
+		perHoliday := max(1, tc.episodes/25)
+		avail := seriesLike(tc.episodes-3*perHoliday, specials(perHoliday)...)
+		for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
+			policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+			policy.Ordering = order
+			t.Run(fmt.Sprintf("%s/%v/%s", tc.name, tc.window, order), func(t *testing.T) {
+				ch := channelWithWindow(tc.window, nil)
+				var prev string
+				for open := day(time.October, 1, 0); open.Before(time.Date(2027, time.January, 10, 0, 0, 0, 0, time.UTC)); open = open.Add(tc.window) {
+					if got := arrange(t, ch, avail, policy, open); tc.episodes*episodeMs < int(tc.window.Milliseconds()) {
+						// A deck that fits its window airs all of it but the pool every window.
+						if len(got) < 2 {
+							t.Fatalf("the window opening %s airs %d programmes", open.Format(time.Stamp), len(got))
+						}
+					} else if aired := len(got) * episodeMs; aired < int(tc.window.Milliseconds())*3/4 {
+						t.Fatalf("the window opening %s airs %v of its %v", open.Format(time.Stamp), time.Duration(aired)*time.Millisecond, tc.window)
+					}
+					for _, a := range airedLooped(t, ch, avail, policy, open) {
+						if a.id == prev {
+							t.Fatalf("%s airs twice in a row at %s", a.id, a.start.Format(time.Stamp))
+						}
+						prev = a.id
+					}
+				}
+			})
+		}
 	}
 }

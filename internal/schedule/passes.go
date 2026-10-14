@@ -482,7 +482,9 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 	return cur
 }
 
-// windowSliceDealt is windowSlice over a ring of dealt passes: the window starts at program
+// windowSliceDealt keeps a ROTATING ~window-of-runtime slice of a ring of dealt passes, advancing
+// its start by the window index and wrapping the catalog (§6.5), so over a full cycle every
+// program airs rather than the head of the deck every window. The window starts at program
 // index*stride of the ring, the ring being pass after pass, and a slice that runs off the end of
 // one pass carries on into the head of the next (skipping any unit it has already taken from the
 // pass before, so a unit never airs twice in one window). It reports the pass the window starts in.

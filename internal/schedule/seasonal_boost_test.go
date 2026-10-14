@@ -73,6 +73,34 @@ func arrange(t *testing.T, ch schedule.Channel, avail libraryfixture.Availabilit
 	return out
 }
 
+// airedLooped is the programmes of the window containing `at` as playout airs them: a lineup
+// shorter than its window is looped until the window closes, and a slot starting at or after the
+// close never airs.
+func airedLooped(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, at time.Time) []airing {
+	t.Helper()
+	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}, avail, schedule.PodFill, policy, at)
+	window := schedule.ResolveWindow(ch, policy, at)
+	clock := schedule.WindowStart(at, window, ch.WindowZone)
+	closing := clock.Add(window)
+	var out []airing
+	for clock.Before(closing) {
+		before := clock
+		for _, s := range d.Slots {
+			if !clock.Before(closing) {
+				break
+			}
+			if s.IsProgram() {
+				out = append(out, airing{s.LibraryItemID, clock})
+			}
+			clock = clock.Add(time.Duration(s.DurationMs) * time.Millisecond)
+		}
+		if clock.Equal(before) {
+			break
+		}
+	}
+	return out
+}
+
 func holidayAirings(as []airing) []airing {
 	var out []airing
 	for _, a := range as {

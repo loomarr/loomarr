@@ -360,7 +360,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Rolling window (§6.5): resolve the horizon (rule > channel > global default). The
 	// DECK ORDER is seed-stable per channel (no window index folded in) so a channel's
 	// guide isn't re-randomized every window; ROTATION comes from advancing the window
-	// SLICE OFFSET across the ordered deck (windowSlice below), which is what walks the
+	// SLICE OFFSET across the ordered deck (windowSliceDealt), which is what walks the
 	// whole catalog over a full cycle instead of looping a fixed prefix.
 	// Multi-part atomicity (§5): collapse each two-parter into one super-slot so ordering
 	// can't split or reorder its parts and the window counts the group as one unit. Ordering
@@ -572,31 +572,9 @@ func NextWindowStart(at time.Time, window time.Duration, zone *time.Location) ti
 	return windowOpening(windowIndex(at, window, zone)+1, window, zone)
 }
 
-// windowSlice keeps a ROTATING ~window-of-runtime slice of the ordered deck, advancing its
-// start by the window index and WRAPPING the catalog (§6.5). This is the fix for prefix
-// starvation: keeping only the deck head (`slots[:kept]`) would loop the same films every
-// window and never air the tail. Instead, window 0 airs programs [0..a), window 1 airs
-// [a..b), … wrapping past the end back to the head, so over a full cycle every program airs.
-//
-// Determinism/idempotency: the slice is a pure function of (slots, window, index) — identical
-// within a window (no Tunarr re-push) and advancing exactly one step at a boundary. The start
-// offset is measured in PROGRAM COUNT (not raw slot index) so a deck of mixed program/pending
-// slots rotates by whole programs; `index` is taken modulo the program count so it wraps.
-//
-// window <= 0 ⇒ the whole deck (unbounded / the "full binge" sentinel), no rotation. A deck
-// with no programs, or whose total runtime fits in one window, is returned whole (nothing to
-// rotate). Always yields ≥1 program so a channel is never dark.
-func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
-	// A fixed deck: every pass is this deck, which is what windowSliceDealt does for an ordering
-	// that does not reshuffle (see passes.go for the walk itself).
-	d := &deckDealer{bases: map[int64]dealt{0: {deck: slots}}}
-	out, _ := windowSliceDealt(d, window, index)
-	return out
-}
-
 // programsPerWindow counts how many programs from the deck head fit within one window's
 // runtime budget — the per-window rotation stride (§6.5). Counts whole programs whose summed
-// runtime first meets the budget (the same "first meets, then stop" rule windowSlice fills
+// runtime first meets the budget (the same "first meets, then stop" rule windowSliceDealt fills
 // with), so a window and its stride stay consistent. Non-program slots don't count.
 // programRuntime is the summed runtime of the program slots, in milliseconds.
 func programRuntime(slots []Slot) int64 {
