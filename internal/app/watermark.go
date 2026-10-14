@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/png"
 	"log/slog"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -182,6 +183,13 @@ func (c *channelWatermarks) Preview(ctx context.Context, channelID string, chang
 	}
 	if change.Size != nil {
 		p.Size = change.Size
+	}
+	if len(change.Motifs) > 0 {
+		p.Motifs = maps.Clone(p.Motifs)
+		if p.Motifs == nil {
+			p.Motifs = map[string]string{}
+		}
+		maps.Copy(p.Motifs, change.Motifs)
 	}
 	res := schedule.ResolveWatermark(&p, c.install())
 	drawable, colour := c.drawable()

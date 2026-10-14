@@ -12827,6 +12827,22 @@ paths:
             maximum: 0.15
             minimum: 0
             type: number
+        - description: The holiday's picture to draw, one of its own; omitted is the channel's
+          explode: false
+          in: query
+          name: picture
+          schema:
+            description: The holiday's picture to draw, one of its own; omitted is the channel's
+            enum:
+              - pumpkin
+              - bat
+              - ghost
+              - leaf
+              - holly
+              - snowflake
+              - firework
+              - heart
+            type: string
       responses:
         "200":
           content:

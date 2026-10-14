@@ -2,6 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { PreviewChannelWatermarkHoliday } from "@loomarr/api/models/previewChannelWatermarkHoliday";
+import type { PreviewChannelWatermarkPicture } from "@loomarr/api/models/previewChannelWatermarkPicture";
 import type { WatermarkPolicy } from "@loomarr/api/models/watermarkPolicy";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type OnScreenLogoPolicy, type OnScreenLogoPreviewRequest, OnScreenLogoSection } from "@loomarr/ui";
@@ -12,10 +13,8 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 // The Channel info tab's On-screen logo section (#1659), wired to the backend: every choice is one
 // PATCH of policy.watermark through the per-channel writer, like the Programming fields; the
 // preview is the PNG the renderer would air (GET …/watermark/preview), and that response's
-// drawable header drives the "can't draw" warning. Holiday names come from the BE vocabulary.
-
-// The rule vocabulary publishes each built-in holiday as a `holiday:<id>` when-token.
-const HOLIDAY_PREFIX = "holiday:";
+// drawable header drives the "can't draw" warning. The holidays (dates, in effect today, pictures),
+// the era and the automatic name come from GET …/watermark/options: the page never re-derives them.
 
 interface ChannelOnScreenLogoProps {
   channel: ChannelDTO;
@@ -28,28 +27,30 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
   const watermark: WatermarkPolicy = policy.watermark ?? {};
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const vocabulary = unwrap(
-    channelsApi.useGetProgrammingVocabulary({ query: { staleTime: Number.POSITIVE_INFINITY } }).data,
-  );
   const settings = useSettingsEntries();
   const setting = (key: string) => settings.find((s) => s.key === key)?.value;
 
-  const seasonal = policy.seasonal;
-  const builtIn = (vocabulary?.when ?? [])
-    .filter((w) => w.token.startsWith(HOLIDAY_PREFIX))
-    .map((w) => ({ id: w.token.slice(HOLIDAY_PREFIX.length), name: w.label }));
-  const chosen = seasonal?.holidays ?? [];
-  const holidays =
-    seasonal?.mode === "off" ? [] : chosen.length ? builtIn.filter((h) => chosen.includes(h.id)) : builtIn;
-
-  // A saved change (a new name or image) changes the PNG at the same query, so the policy
-  // itself versions the URL.
+  // A saved change (a new name, picture or image) changes the PNG at the same query, so the policy
+  // itself versions the URL; it also keys the options, whose pictures follow the saved choice.
   const version = encodeURIComponent(JSON.stringify(watermark));
+  const options = unwrap(
+    channelsApi.useGetChannelWatermarkOptions(channel.id, {
+      query: {
+        queryKey: [
+          ...channelsApi.getGetChannelWatermarkOptionsQueryKey(channel.id),
+          version,
+          policy.seasonal,
+          policy.scope,
+        ],
+      },
+    }).data,
+  );
   const previewSrc = (r: OnScreenLogoPreviewRequest) =>
     `${channelsApi.getPreviewChannelWatermarkUrl(channel.id, {
       color: r.color,
       holiday: (r.holiday ?? undefined) as PreviewChannelWatermarkHoliday | undefined,
       look: r.look,
+      picture: r.picture as PreviewChannelWatermarkPicture | undefined,
       size: r.size,
     })}${r.look || r.color || r.holiday || r.size ? "&" : "?"}v=${version}`;
 
@@ -68,16 +69,22 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
     if (res?.image) save({ ...watermark, image: res.image });
   };
 
+  // Until the options arrive the section would read "ignores holidays"; wait rather than mislead.
+  if (!options) return null;
+
   return (
     <>
       <OnScreenLogoSection
+        autoCallsign={options?.autoCallsign}
         channelNumber={channel.number}
+        eraLabel={options?.era || undefined}
+        everyHoliday={!policy.seasonal?.holidays?.length}
         defaults={{
           look: (setting("playout.watermark_look") ?? "text") as NonNullable<OnScreenLogoPolicy["look"]>,
           opacity: Number(setting("playout.watermark_opacity_pct") ?? 40) / 100,
         }}
         drawable={drawable.data ?? true}
-        holidays={holidays}
+        holidays={options?.holidays ?? []}
         onChange={(patch) => save({ ...watermark, ...patch } as WatermarkPolicy)}
         onOpenProgramming={onOpenProgramming}
         onRemoveImage={() => save({ ...watermark, image: undefined })}

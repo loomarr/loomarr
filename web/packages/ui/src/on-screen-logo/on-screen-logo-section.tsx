@@ -41,15 +41,31 @@ interface OnScreenLogoPolicy {
   image?: string;
   look?: LogoLook;
   margin?: number;
+  /** The picture per holiday, where there is a choice; an omitted holiday shows its first. */
+  motifs?: Record<string, string>;
   opacity?: number;
   size?: number;
 }
 type OnScreenLogoKey = keyof OnScreenLogoPolicy;
 
-/** A holiday this channel honours, as the backend names it. */
-interface OnScreenLogoHoliday {
+/** A holiday picture, as the backend names it. */
+interface OnScreenLogoPicture {
   id: string;
   name: string;
+}
+
+/** A holiday this channel honours, from the backend calendar. */
+interface OnScreenLogoHoliday {
+  /** The window that is on today or comes next: first and last day, YYYY-MM-DD. */
+  start: string;
+  end: string;
+  /** In effect today for this channel: the logo airs its holiday version. */
+  active: boolean;
+  id: string;
+  name: string;
+  /** The picture this channel shows, and the holiday's pictures (default first). */
+  picture: string;
+  pictures: readonly OnScreenLogoPicture[];
 }
 
 /** What the preview should draw: the backend renders it; `holiday` null is the everyday logo. */
@@ -57,6 +73,8 @@ interface OnScreenLogoPreviewRequest {
   color?: LogoColor;
   holiday: string | null;
   look?: LogoLook;
+  /** The holiday's picture to draw instead of the channel's. */
+  picture?: string;
   size?: number;
 }
 
@@ -71,10 +89,12 @@ interface OnScreenLogoSectionProps {
   drawable: boolean;
   /** The decade "Match the era" uses, from the channel's Programming era; omitted has none. */
   eraLabel?: string;
+  /** True when the channel uses every built-in holiday rather than a chosen few. */
+  everyHoliday: boolean;
   /** The holidays the channel honours; empty when its seasonal mode is "Ignore holidays". */
   holidays: readonly OnScreenLogoHoliday[];
-  /** The holiday in effect today, if any (backend calendar). */
-  activeHoliday?: string;
+  /** Today, for the "Today (10/13)" sentence; omitted is the device clock. */
+  today?: Date;
   onChange: (
     patch: Partial<Record<OnScreenLogoKey, OnScreenLogoPolicy[OnScreenLogoKey] | undefined>>,
   ) => void;
@@ -363,14 +383,23 @@ const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProp
   );
 };
 
+// "2026-10-01" → "Oct 1": a calendar day, so read and printed in UTC.
+const day = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+
 const OnScreenLogoSection = ({
-  activeHoliday,
   autoCallsign,
   channelNumber,
   defaults,
   drawable,
   eraLabel,
+  everyHoliday,
   holidays,
+  today = new Date(),
   onChange,
   onOpenProgramming,
   onRemoveImage,
@@ -382,7 +411,8 @@ const OnScreenLogoSection = ({
   const phone = width < 720;
   const [scene, setScene] = useState<Scene>("bright");
   const [zoom, setZoom] = useState(false);
-  const [view, setView] = useState<string | null>(activeHoliday ?? null);
+  // undefined follows today: the holiday in effect, else the everyday logo.
+  const [view, setView] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState<"size" | "margin" | "opacity" | null>(null);
   const [callsign, setCallsign] = useState(p.callsign ?? "");
 
@@ -398,8 +428,16 @@ const OnScreenLogoSection = ({
   const margin = nearest(MARGINS, p.margin ?? 0.05);
   const opacity = nearest(OPACITIES, p.opacity ?? defaults.opacity);
   const showAs = holidayOn && enabled && !img;
-  const hol = showAs && view && holidays.some((h) => h.id === view) ? view : null;
-  const holName = holidays.find((h) => h.id === hol)?.name;
+  const active = holidays.find((h) => h.active);
+  const shown = view === undefined ? (active?.id ?? null) : view;
+  const hol = showAs && shown && holidays.some((h) => h.id === shown) ? shown : null;
+  const holShown = holidays.find((h) => h.id === hol);
+  // The consequence names the holiday in effect, or the first one the channel honours.
+  const named = active ?? holidays[0];
+  const holSentence = named
+    ? `From ${day(named.start)} to ${day(named.end)} this channel shows the ${named.name} logo.`
+    : "";
+  const todayLabel = `${today.getMonth() + 1}/${today.getDate()}`;
   const reset = (k: OnScreenLogoKey) => () => onChange({ [k]: undefined });
   const src = previewSrc({ color: p.color, holiday: hol, look: p.look, size: Number(size) });
 
@@ -452,8 +490,10 @@ const OnScreenLogoSection = ({
         hint={
           !colorOn && !img && enabled
             ? "This style is white, so colour does not apply."
-            : colorOn && (p.color ?? "era") === "era" && eraLabel
-              ? `${eraLabel} palette for this channel.`
+            : colorOn && (p.color ?? "era") === "era"
+              ? eraLabel
+                ? `${eraLabel} palette for this channel.`
+                : "This channel has no era on its Programming tab, so it uses amber."
               : undefined
         }
         label="Colour"
@@ -538,11 +578,71 @@ const OnScreenLogoSection = ({
               label={holidayOn ? "On" : "Off"}
               onCheckedChange={(on) => onChange({ holiday: on })}
             />
-            <FieldHint>
-              {holidayOn
-                ? `Holidays come from this channel’s Programming tab (${holidays.map((h) => h.name).join(", ")}). On every other day it shows the everyday logo. The change happens at the next programme that starts after the date. A programme already airing keeps its logo until it ends.`
-                : "Off: the everyday logo airs all year."}
-            </FieldHint>
+            {holidayOn ? (
+              <>
+                {holidays.map((h) => (
+                  <View
+                    key={h.id}
+                    style={{
+                      alignItems: "center",
+                      columnGap: 12,
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      rowGap: 6,
+                    }}
+                  >
+                    <Text textRole="metadata">{h.name}</Text>
+                    <FieldHint>{`${day(h.start)} – ${day(h.end)}`}</FieldHint>
+                    {h.active ? <Badge tone="lock">In effect now</Badge> : null}
+                    {h.pictures.length > 1 ? (
+                      <Pick
+                        label={`Picture for ${h.name}`}
+                        onPick={(m) => onChange({ motifs: { ...p.motifs, [h.id]: m } })}
+                        options={h.pictures.map((m) => ({
+                          label: m.name,
+                          value: m.id,
+                          visual: (
+                            <Image
+                              accessibilityIgnoresInvertColors
+                              resizeMode="contain"
+                              source={{
+                                uri: previewSrc({
+                                  color: p.color,
+                                  holiday: h.id,
+                                  look: p.look,
+                                  picture: m.id,
+                                }),
+                              }}
+                              style={{ height: 26, width: 80 }}
+                            />
+                          ),
+                        }))}
+                        value={h.picture}
+                      />
+                    ) : (
+                      <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+                        <Image
+                          accessibilityIgnoresInvertColors
+                          resizeMode="contain"
+                          source={{ uri: previewSrc({ color: p.color, holiday: h.id, look: p.look }) }}
+                          style={{ height: 26, width: 80 }}
+                        />
+                        <Text textRole="metadata">{h.pictures[0]?.name ?? ""}</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+                <FieldHint>
+                  {`Holidays come from this channel’s Programming tab (${everyHoliday ? "it uses every built-in holiday" : `it uses ${holidays.map((h) => h.name).join(", ")}`}). ${holSentence} ${holidays.length > 1 ? "The other holidays follow the dates above; on all other days it shows the everyday logo." : "On every other day it shows the everyday logo."}`}
+                </FieldHint>
+                <FieldHint>
+                  The change happens at the next programme that starts after the date. A programme already
+                  airing keeps its logo until it ends.
+                </FieldHint>
+              </>
+            ) : (
+              <FieldHint>Off: the everyday logo airs all year.</FieldHint>
+            )}
           </View>
         )}
       </Row>
@@ -652,7 +752,7 @@ const OnScreenLogoSection = ({
   );
 
   const what = enabled
-    ? `${img ? "Your image" : holName ? `${look.label} with its ${holName} touch` : look.label}, ${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
+    ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label},${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
     : "No logo on this channel.";
   const preview = (
     <View style={{ gap: 12, width: phone ? "100%" : 420 }} testID="logo-preview">
@@ -702,8 +802,10 @@ const OnScreenLogoSection = ({
         <Text textRole="hint">
           When. From the next programme on this channel. What is airing now does not change.
         </Text>
-        {showAs && activeHoliday ? (
-          <Text textRole="hint">{`Holidays. Today that is the ${holidays.find((h) => h.id === activeHoliday)?.name ?? ""} one.`}</Text>
+        {showAs ? (
+          <Text textRole="hint">
+            {`Holidays. ${holSentence} ${active ? `Today (${todayLabel}) that is the ${active.name} one.` : `Today (${todayLabel}) it shows the everyday logo.`}`}
+          </Text>
         ) : null}
       </Surface>
       {drawable ? null : (

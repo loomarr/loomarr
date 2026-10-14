@@ -438,3 +438,38 @@ func TestChannelWatermarks_Options(t *testing.T) {
 		t.Fatalf("ignore holidays = %+v, want an empty list, no era, amber", got)
 	}
 }
+
+// Preview draws the holiday version with the channel's picture, or the one the request names (the
+// section's picture thumbnails), without changing the saved policy; the everyday logo has none.
+func TestChannelWatermarks_PreviewHolidayPicture(t *testing.T) {
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch-1", Name: "Saturday Cartoons", Number: 7}}
+	read := func(path string, err error) []byte {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	preview := func(c store.Channel, change schedule.WatermarkPolicy, holiday string) []byte {
+		path, _, err := testWatermarks(t, c, true).Preview(context.Background(), "ch-1", change, holiday)
+		return read(path, err)
+	}
+	everyday := preview(ch, schedule.WatermarkPolicy{}, "")
+	pumpkin := preview(ch, schedule.WatermarkPolicy{}, "halloween")
+	asked := preview(ch, schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}, "halloween")
+	saved := ch
+	saved.Policy.Watermark = &schedule.WatermarkPolicy{Motifs: map[string]string{"halloween": "bat"}}
+	if bytes.Equal(everyday, pumpkin) || bytes.Equal(pumpkin, asked) {
+		t.Fatal("the holiday version and its pictures must differ from each other and from the everyday logo")
+	}
+	if !bytes.Equal(asked, preview(saved, schedule.WatermarkPolicy{}, "halloween")) {
+		t.Fatal("a requested picture must draw exactly what the channel airs once it is saved")
+	}
+	if ch.Policy.Watermark != nil {
+		t.Fatal("a preview must not change the channel's policy")
+	}
+}

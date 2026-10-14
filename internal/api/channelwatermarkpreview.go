@@ -31,6 +31,7 @@ type watermarkPreviewInput struct {
 	Color   string  `query:"color" enum:"era,amber,cyan,green,red,pink,yellow" doc:"Colour to draw; omitted is the channel's"`
 	Holiday string  `query:"holiday" enum:"halloween,thanksgiving,christmas,newyear,valentines" doc:"Holiday version to draw; omitted is the everyday logo"`
 	Size    float64 `query:"size" minimum:"0" maximum:"0.15" doc:"Bug height as a share of the frame height; omitted (0) is the channel's"`
+	Picture string  `query:"picture" enum:"pumpkin,bat,ghost,leaf,holly,snowflake,firework,heart" doc:"The holiday's picture to draw, one of its own; omitted is the channel's"`
 }
 
 // watermarkDrawableHeader carries the host's overlay state beside the PNG, so the page learns both
@@ -55,6 +56,9 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 		change := schedule.WatermarkPolicy{Look: in.Look, Color: in.Color}
 		if in.Size > 0 {
 			change.Size = &in.Size
+		}
+		if in.Picture != "" && in.Holiday != "" {
+			change.Motifs = map[string]string{in.Holiday: in.Picture}
 		}
 		path, drawable, err := s.watermarkPreview.Preview(r.Context(), in.ID, change, in.Holiday)
 		if errors.Is(err, store.ErrNotFound) {

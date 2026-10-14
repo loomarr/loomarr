@@ -26,10 +26,35 @@ const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
     channelNumber: 7,
     defaults: { look: "text", opacity: 0.4 },
     drawable: true,
+    everyHoliday: false,
     holidays: [
-      { id: "halloween", name: "Halloween" },
-      { id: "christmas", name: "Christmas" },
+      {
+        id: "halloween",
+        name: "Halloween",
+        start: "2026-10-01",
+        end: "2026-10-31",
+        active: true,
+        picture: "pumpkin",
+        pictures: [
+          { id: "pumpkin", name: "Pumpkin" },
+          { id: "bat", name: "Bat" },
+          { id: "ghost", name: "Ghost" },
+        ],
+      },
+      {
+        id: "christmas",
+        name: "Christmas",
+        start: "2026-12-01",
+        end: "2026-12-26",
+        active: false,
+        picture: "holly",
+        pictures: [
+          { id: "holly", name: "Holly" },
+          { id: "snowflake", name: "Snowflake" },
+        ],
+      },
     ],
+    today: new Date(2026, 9, 13),
     onChange: vi.fn(),
     onOpenProgramming: vi.fn(),
     onRemoveImage: vi.fn(),
@@ -93,12 +118,42 @@ describe("OnScreenLogoSection", () => {
     unmount();
   });
 
-  it("previews a holiday version from the backend PNG", () => {
+  it("previews today's holiday version from the backend PNG, and the everyday logo on request", () => {
     const { container, radio, unmount } = render({ policy: { look: "plate" } });
-    act(() => radio("Halloween").click());
-    const imgs = Array.from(container.querySelectorAll("img")).map((n) => n.getAttribute("src") ?? "");
-    expect(imgs.some((s) => s.includes("holiday=halloween"))).toBe(true);
+    const preview = () =>
+      Array.from(container.querySelectorAll('[data-testid="logo-preview"] img')).map((n) =>
+        n.getAttribute("src"),
+      );
+    expect(preview().every((s) => s?.includes("holiday=halloween"))).toBe(true);
+    act(() => radio("Everyday").click());
+    expect(preview().every((s) => s?.endsWith("holiday="))).toBe(true);
     unmount();
+  });
+
+  it("lists each holiday with its dates, marks the one in effect, and says what airs when", () => {
+    const { container, props, radio, unmount } = render();
+    const text = container.textContent ?? "";
+    expect(text).toContain("Oct 1 – Oct 31");
+    expect(text).toContain("Dec 1 – Dec 26");
+    expect(text.match(/In effect now/g)).toHaveLength(1);
+    expect(text).toContain("it uses Halloween, Christmas");
+    expect(text).toContain("From Oct 1 to Oct 31 this channel shows the Halloween logo.");
+    expect(text).toContain("Today (10/13) that is the Halloween one.");
+    expect(text).toContain("Text with a Halloween pumpkin");
+    expect(radio("Pumpkin").getAttribute("aria-checked")).toBe("true");
+    act(() => radio("Bat").click());
+    expect(props.onChange).toHaveBeenCalledWith({ motifs: { halloween: "bat" } });
+    unmount();
+  });
+
+  it("names the era's palette, or amber without one, and shows the automatic name", () => {
+    const era = render({ autoCallsign: "SC", eraLabel: "1980s", policy: { look: "tint" } });
+    expect(era.container.textContent).toContain("1980s palette for this channel.");
+    expect(era.container.querySelectorAll('input[placeholder="Auto: SC"]')).toHaveLength(1);
+    era.unmount();
+    const none = render({ policy: { look: "tint" } });
+    expect(none.container.textContent).toContain("no era on its Programming tab, so it uses amber");
+    none.unmount();
   });
 
   it("pauses styles for an own image and warns when the server can't draw", () => {

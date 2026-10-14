@@ -76,7 +76,7 @@ func TestWatermarkPreviewRoute(t *testing.T) {
 	wm := &fakeWatermarks{png: png}
 	srv := newWatermarkServer(t, wm, time.Now())
 
-	res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?look=tint&color=pink&size=0.09&holiday=halloween")
+	res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?look=tint&color=pink&size=0.09&holiday=halloween&picture=bat")
 	body, _ := io.ReadAll(res.Body)
 	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "image/png" || string(body) != "\x89PNG fake" {
 		t.Fatalf("preview = %d %q %q", res.StatusCode, res.Header.Get("Content-Type"), body)
@@ -84,7 +84,8 @@ func TestWatermarkPreviewRoute(t *testing.T) {
 	if res.Header.Get("X-Loomarr-Watermark-Drawable") != "false" {
 		t.Fatalf("drawable header = %q, want false", res.Header.Get("X-Loomarr-Watermark-Drawable"))
 	}
-	if wm.gotChange.Look != "tint" || wm.gotChange.Color != "pink" || wm.gotChange.Size == nil || *wm.gotChange.Size != 0.09 || wm.gotHoliday != "halloween" {
+	if wm.gotChange.Look != "tint" || wm.gotChange.Color != "pink" || wm.gotChange.Size == nil || *wm.gotChange.Size != 0.09 || wm.gotHoliday != "halloween" ||
+		wm.gotChange.Motifs["halloween"] != "bat" {
 		t.Fatalf("renderer asked for %+v holiday %q", wm.gotChange, wm.gotHoliday)
 	}
 	if res := getAs(t, srv, memberToken, "/v1/channels/ch-1/watermark/preview"); res.StatusCode != http.StatusForbidden {
