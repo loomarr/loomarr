@@ -167,6 +167,15 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "rust-maintenance.yml", job: "supply-chain", step: 0}:  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "rust-maintenance.yml", job: "fuzz", step: 0}:          `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "rust-maintenance.yml", job: "fuzz", step: 4}:          `{"name":"Keep crash and timeout artifacts","if":"failure()","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"rust-image-fuzz-artifacts","path":"rust/loomarr-image/fuzz/artifacts/protocol_decoder","if-no-files-found":"ignore","retention-days":30}}`,
+		// The render checks out the commit it was dispatched at, without a persisted token; only the
+		// commit job's checkout keeps the token, for its push, and it reads only the render run's
+		// artifact, by the run id the render job reported and the push job verified.
+		{workflow: "visual-baselines-render.yml", job: "render", step: 1}: `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"persist-credentials":false}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 2}: `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"${{ env.NODE_VERSION }}"}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 4}: `{"name":"Restore pnpm store","uses":"actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.local/share/pnpm/store","key":"pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}","restore-keys":"pnpm-${{ runner.os }}-"}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 9}: `{"name":"Hand the baselines to the dispatching run","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines/","if-no-files-found":"error","retention-days":1}}`,
+		{workflow: "visual-baselines.yml", job: "commit", step: 0}:        `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"ref":"${{ needs.resolve.outputs.branch }}"}}`,
+		{workflow: "visual-baselines.yml", job: "commit", step: 2}:        `{"uses":"actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines","run-id":"${{ needs.render.outputs.run_id }}","github-token":"${{ github.token }}"}}`,
 	}
 	entries[workflowActionKey{workflow: "codeql.yml", job: "changes", step: 0}] = `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"fetch-depth":0}}`
 	codeQLJobs := map[string][2]string{

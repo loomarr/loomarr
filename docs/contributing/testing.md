@@ -591,6 +591,49 @@ Pod assembly and shuffling take an explicit seed. The visual suite pins the time
 Baselines are Linux-only, generated in the pinned Docker image; local macOS or Windows runs
 write differently-suffixed files that are gitignored.
 
+### Updating visual baselines
+
+Regenerate a pull request's baselines with the **Visual baselines** workflow, not a local
+`make fe-visual-update`. The local target runs about 1,400 browser screenshots and saturates the
+machine you're working on. Run the workflow when a pull request changes what a story renders and
+its visual suite fails on the intended change. Read the failure images first
+(`gh run download <run> -p 'playwright-failures-*'`): the workflow accepts every rewritten pixel,
+so it is only for changes you meant.
+
+```sh
+gh workflow run visual-baselines.yml --repo loomarr/loomarr -f pr=<number>
+```
+
+The **Actions** tab runs the same thing: pick **Visual baselines**, then **Run workflow**. One run:
+
+1. Resolves the pull request's head branch. It refuses a fork, a closed pull request, the default
+   branch, and a pull request in the merge queue, whose branch can't take a push. Take it out of
+   the queue first.
+2. Dispatches **Visual baselines render** (`visual-baselines-render.yml`) at that branch and waits
+   for it. The render builds Storybook from a fresh checkout of the commit, then runs
+   `make fe-visual-update` in the pinned Playwright image. This is the same path CI's visual suite
+   takes. The run fails, and pushes nothing, on an axe violation or a crashing story.
+3. Checks GitHub's record of the render run: it must be the one this run dispatched, at the
+   resolved commit, and it must have succeeded. Then it commits only the PNGs the update rewrote or
+   added under `web/apps/web/tests/visual/`, as `github-actions[bot]`, with both runs in the message.
+   Any other change to the tree fails the run. If nothing changed, the run says so and pushes
+   nothing. If the branch moved after it was rendered, the run fails: dispatch it again.
+4. Dispatches CI with `scope=full` on the branch. A push made with `GITHUB_TOKEN` starts no
+   `pull_request` run, so this run is what reports the required `CI` check on the new head. It is
+   the whole matrix, Playwright included, so it also proves the new baselines pass. If this step
+   fails after the push, re-run only the run's **Re-run CI on the new head** job.
+
+The render is a separate workflow because it runs the branch's own code: pnpm install scripts,
+codegen, and Storybook. **Visual baselines** runs from `main`, and a run's Actions cache scope is the
+ref it runs on. Run there, the branch's code could write caches that main's CI and release builds
+restore. Dispatched at the branch, the render sits in the branch's scope, as the pull request's CI
+does, and it refuses to run at `main`. The render workflow must exist on the branch, so rebase a
+branch cut before it landed onto `main` before you dispatch.
+
+GitHub only offers a dispatch for a workflow that exists on `main`, so the run always comes from
+main's copy, and it refuses to run from any other ref. The update only rewrites a baseline whose
+comparison failed. A change smaller than the suite's pixel tolerance leaves the old PNG in place.
+
 ## Fixtures
 
 Fixtures in `internal/testkit/fixtures/` are captures with source-version comments. Write
