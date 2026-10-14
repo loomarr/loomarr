@@ -307,7 +307,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	eligible := applyRuleScopeWithTrace(channelEligible, rule.What, trace)
 	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
 	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
-	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, trace)
+	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, ch.WindowZone, trace)
 	report.merge(seasonalReport)
 
 	// Franchise grouping (§5): tag movie entries sharing a TMDB collection so a franchise
@@ -320,7 +320,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
-	seasonalHolidays := exclusiveEpisodeHolidays(rp, now)
+	seasonalHolidays := exclusiveEpisodeHolidays(rp, now, ch.WindowZone)
 	// Auto mode features the holiday EPISODES of ordinary series (§6 "Holiday episodes"), so
 	// resolution records which holidays each episode is about.
 	var holidayMatches map[string][]string
@@ -386,32 +386,35 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// records any windows it had to loosen to fill the cycle.
 	ordered, applied := slotWithRelaxation(collapsed, rp, seed)
 
-	// Rolling window (§6.5): keep a ROTATING slice of ~window of runtime whose start
-	// advances with the window index and WRAPS the catalog — window 0 airs the first
-	// ~window, window 1 continues where it left off, and over a full cycle every program
-	// airs (no starved tail). window <= 0 (WindowFull / unbounded) keeps the whole deck
-	// (backward compat + the "full binge" sentinel). Runs on the collapsed deck, so a
-	// super-slot (two-parter/franchise) is kept whole and never split by the window seam.
-	orderedAll := append([]Slot(nil), ordered...)
-	if guardSlice {
-		since := windowOpening(windowIdx-1, window, ch.WindowZone)
-		ordered = tradeRecent(ordered, windowSlice(ordered, window, windowIdx), history, since, window)
-	} else {
-		ordered = windowSlice(ordered, window, windowIdx)
-	}
-
 	// Breaks: the active rule may suppress them (a marathon runs uninterrupted, §6.5).
 	brk := ch
 	if rule.How.NoBreaks {
 		brk.BreaksPerHour = 0
 	}
 
-	// Holiday episodes (§6): feature the tile's holiday episodes by day and daypart. Runs on the
-	// collapsed tile so a two-part holiday story moves whole, and after slicing so the deck, and
-	// with it every other window's tile, is untouched.
-	feature := holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand}
-	ordered = featureHolidayEpisodes(orderedAll, ordered, feature, window, windowIdx, ch.WindowZone, breakFactor(brk))
-	holidayEpisodes := holidayEpisodeSummary(orderedAll, feature, now)
+	// Rolling window (§6.5): keep a ROTATING slice of ~window of runtime whose start
+	// advances with the window index and WRAPS the catalog — window 0 airs the first
+	// ~window, window 1 continues where it left off, and over a full cycle every program
+	// airs (no starved tail). window <= 0 (WindowFull / unbounded) keeps the whole deck
+	// (backward compat + the "full binge" sentinel). Runs on the collapsed deck, so a
+	// super-slot (two-parter/franchise) is kept whole and never split by the window seam.
+	// Holiday episodes (§6): in season, the window's tile leaves the holiday pool out and continues
+	// the deck where the window before stopped; the pass then times each day's featured holiday
+	// episodes into it. Runs on the collapsed deck so a two-part holiday story moves whole, and
+	// never reorders the deck, so every other window's tile is untouched.
+	holidays := newHolidayPlanner(ordered, holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand},
+		window, ch.WindowZone, breakFactor(brk))
+	orderedAll := append([]Slot(nil), ordered...)
+	tile, inSeason := holidays.seasonTile(windowIdx)
+	if !inSeason {
+		tile = windowSlice(ordered, window, windowIdx)
+	}
+	if guardSlice {
+		since := windowOpening(windowIdx-1, window, ch.WindowZone)
+		tile = tradeRecent(ordered, tile, history, since, window)
+	}
+	ordered = holidays.arrange(tile, windowIdx)
+	holidayEpisodes := holidays.summary(now)
 
 	// Expand super-slots back into their real parts now that ordering + windowing are done.
 	orderedAll = expandGroups(orderedAll, expand)
@@ -746,7 +749,7 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 }
 
 // holidayMatches, when non-nil, collects which holidays each resolved episode of an ordinary
-// (non-seasonal-titled) series is about, for featureHolidayEpisodes. A series whose own title is
+// (non-seasonal-titled) series is about, for holidayPlanner. A series whose own title is
 // seasonal is already boosted and benched whole by applySeasonal, so it is not recorded.
 func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag, rp ResolvedPolicy, ruleScope *ScopePolicy, seasonalHolidays map[string]bool, holidayMatches map[string][]string, report *ExclusionReport, trace *scheduleTraceBuilder) []Slot {
 	// A series expands into its episodes (each a program slot).

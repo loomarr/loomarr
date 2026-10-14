@@ -114,12 +114,24 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
-// activeHolidays returns the calendar holidays whose window contains `now`, limited
-// to the channel's selected subset (empty subset = all built-in holidays).
-func activeHolidays(now time.Time, selected []string) []holiday {
+// civilNoon is noon UTC of `now`'s calendar date on zone's wall clock (nil = UTC): the instant a
+// holiday window, which is a run of whole dates, is evaluated at. Evaluating the instant itself
+// would end Halloween at 8 pm on Oct 31 in New York.
+func civilNoon(now time.Time, zone *time.Location) time.Time {
+	if zone == nil {
+		zone = time.UTC
+	}
+	y, m, d := now.In(zone).Date()
+	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+}
+
+// activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
+// clock, limited to the channel's selected subset (empty subset = all built-in holidays).
+func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {
 	if now.IsZero() {
 		return nil
 	}
+	now = civilNoon(now, zone)
 	sel := lowerSet(selected)
 	var active []holiday
 	for _, h := range builtinCalendar {
@@ -213,15 +225,15 @@ func isSeasonalForAny(e LineupEntry) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
-	return applySeasonalWithTrace(entries, rp, now, nil)
+	return applySeasonalWithTrace(entries, rp, now, nil, nil)
 }
 
-func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, zone *time.Location, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	inWindow := len(active) > 0
 
 	switch rp.Seasonal.Mode {
@@ -273,11 +285,11 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 	}
 }
 
-func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time) map[string]bool {
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, zone *time.Location) map[string]bool {
 	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
 		return nil
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	if len(active) == 0 {
 		return nil
 	}

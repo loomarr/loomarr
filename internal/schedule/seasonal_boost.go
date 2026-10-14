@@ -9,15 +9,16 @@ import (
 //
 // Title-level seasonality (applySeasonal) cannot see that "The Simpsons" holds nine "Treehouse of
 // Horror" episodes: the entry's title is not about Halloween, so an October auto channel aired them
-// only when the deck happened to deal one. This pass features them. During an active holiday window
-// it takes the window's tile of the deck, pulls every holiday episode out of it, and puts back a
-// ROTATING few per day, timed into the evening band (or spread across the day). Out of season, with
-// evenings favoured, a holiday episode is never benched but is kept out of the evening band.
+// only when the deck happened to deal one. This pass features them. Each civil day of an active
+// holiday window has ONE plan (which of the pool's episodes it features, and when), whatever the
+// window length; a window airs the plan's features that fall inside it. In season, a window's tile
+// leaves the pool out and continues the deck exactly where the window before stopped, so the
+// feature never re-airs an ordinary episode. Out of season, with evenings favoured, a holiday
+// episode is never benched but is kept out of the evening band.
 //
-// It runs on the window's tile, AFTER the deck is dealt and sliced, so the deck itself never
-// changes: the boost cannot reshuffle the channel's rotation. Its inputs are the deck, the tile,
-// the window index and zone, and the policy, so a window arranges identically on every reconcile
-// (#1674/#1675), and the cycle cache's key (ClockSignature + window index) stays complete.
+// The deck itself never changes: the boost cannot reshuffle the channel's rotation. Its inputs are
+// the deck, the window index and zone, and the policy, so a window arranges identically on every
+// reconcile (#1674/#1675), and the cycle cache's key (ClockSignature + window index) stays complete.
 
 const (
 	eveningFromHour = 17 // the evening band, channel-local: 17:00 ≤ start < 23:00
@@ -28,10 +29,13 @@ const (
 	// one a day, at every strength.
 	minHolidayRepeatDays = 2
 	// holidayShareOfDay caps the feature at 1/holidayShareOfDay of a day's programmes, so the
-	// rest of the lineup keeps at least three quarters of the day.
+	// rest of the lineup keeps at least three quarters of the day. Heavy's holiday date is exempt.
 	holidayShareOfDay = 4
 	// featuredHolidayDayMax is how many a Featured channel airs on the holiday's own date.
 	featuredHolidayDayMax = 5
+	// seasonLookback bounds the walk back to the first window of a holiday season (the longest
+	// built-in window is a month; this leaves room for back-to-back seasons).
+	seasonLookback = 120 * 24 * time.Hour
 )
 
 // dailyQuota is how many holiday episodes a strength asks for on an ordinary day of the window.
@@ -75,22 +79,31 @@ func HolidayRotation(pool int, strength HolidayStrength) (perDay, everyDays int)
 	return q, pool / q
 }
 
+// cappedRotation is HolidayRotation held to dayCap a day (the quarter-of-the-day cap).
+func cappedRotation(pool int, strength HolidayStrength, dayCap int) (perDay, everyDays int) {
+	perDay, everyDays = HolidayRotation(pool, strength)
+	if perDay > dayCap {
+		if perDay = max(dayCap, 0); perDay == 0 {
+			return 0, 0
+		}
+		everyDays = max(pool/perDay, minHolidayRepeatDays)
+	}
+	return perDay, everyDays
+}
+
 // rotationPicks returns the pool positions featured on civil day `day`. Consecutive days walk the
 // pool as a ring, perDay at a time, so an episode's next airing is at least ⌊pool/perDay⌋ days
 // later (≥ everyDays by HolidayRotation's construction).
-func rotationPicks(pool, perDay, everyDays int, day int64, holidayDay int) []int {
-	if pool == 0 {
+func rotationPicks(pool, perDay, everyDays int, day int64) []int {
+	if pool == 0 || perDay == 0 {
 		return nil
 	}
-	n := perDay
-	if holidayDay > 0 {
-		n = holidayDay
-	} else if pool < perDay*everyDays && day%int64(everyDays) != 0 {
+	if pool < perDay*everyDays && day%int64(everyDays) != 0 {
 		return nil // a pool too small for one a day airs every everyDays days
 	}
 	start := int((day*int64(perDay))%int64(pool)+int64(pool)) % pool
-	picks := make([]int, 0, n)
-	for k := range n {
+	picks := make([]int, 0, perDay)
+	for k := range perDay {
 		picks = append(picks, (start+k)%pool)
 	}
 	return picks
@@ -166,183 +179,416 @@ func civilDay(y int, m time.Month, d int) int64 {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() / 86400
 }
 
-// featureHolidayEpisodes rearranges one window's tile (see the file comment). breakFactor
-// stretches programme runtime by the channel's break density so the estimated start times land
-// where the guide will show them. A window ≤ 0 has no wall-clock anchor, so it is left alone.
-func featureHolidayEpisodes(deck, slice []Slot, f holidayFeature, window time.Duration, windowIdx int64, zone *time.Location, breakFactor float64) []Slot {
-	if f.seasonal.Mode != SeasonalAuto || window <= 0 || len(f.matches) == 0 || len(slice) == 0 {
-		return slice
-	}
-	loc := zone
-	if loc == nil {
-		loc = time.UTC
-	}
-	opening := windowOpening(windowIdx, window, zone)
-	closing := opening.Add(window)
-	advance := func(t time.Time, s Slot) time.Time {
-		return t.Add(time.Duration(float64(s.DurationMs)*breakFactor) * time.Millisecond)
-	}
+type holidayAt struct {
+	at   time.Time
+	unit Slot
+}
 
-	// Programmes per civil date in the tile as dealt: the base for the 1/4-of-the-day cap.
-	perDate := map[int64]int{}
-	for t, i := opening, 0; i < len(slice); i++ {
-		if slice[i].IsProgram() {
-			y, m, d := t.In(loc).Date()
-			perDate[civilDay(y, m, d)]++
-			t = advance(t, slice[i])
+// dayPlan is one civil day's holiday feature, computed once whatever window asks for it.
+type dayPlan struct {
+	start, end time.Time // the day's local midnights (23 or 25 hours apart on a DST day)
+	pool       []Slot    // the active selected holidays' units, in deck order
+	holiday    bool      // an active selected holiday's own date
+	features   []holidayAt
+}
+
+// holidayPlanner arranges one channel's windows around its per-day holiday plans.
+type holidayPlanner struct {
+	deck        []Slot
+	f           holidayFeature
+	window      time.Duration
+	loc         *time.Location
+	breakFactor float64
+	meanMs      float64 // mean programme runtime in the deck, the base of the day cap
+	raw         map[int64]*dayPlan
+	plans       map[int64]*dayPlan
+	base        map[int64][]Slot // the ring's ordinary-day picks, before neighbour drops
+	full        map[int64][]Slot // what the date features after its holiday-date top-up
+}
+
+// newHolidayPlanner prepares the pass. breakFactor stretches programme runtime by the channel's
+// break density so the estimated start times land where the guide will show them.
+func newHolidayPlanner(deck []Slot, f holidayFeature, window time.Duration, zone *time.Location, breakFactor float64) *holidayPlanner {
+	if zone == nil {
+		zone = time.UTC
+	}
+	p := &holidayPlanner{deck: deck, f: f, window: window, loc: zone, breakFactor: breakFactor,
+		raw: map[int64]*dayPlan{}, plans: map[int64]*dayPlan{}, base: map[int64][]Slot{}, full: map[int64][]Slot{}}
+	var n int
+	var sum int64
+	for _, s := range deck {
+		if s.IsProgram() {
+			n++
+			sum += s.DurationMs
 		}
 	}
-
-	type feature struct {
-		at   time.Time
-		unit Slot
+	if n > 0 {
+		p.meanMs = float64(sum) / float64(n)
 	}
-	var features []feature
-	pooled := map[string]bool{} // in an active pool: airs only where the rotation features it
-	y, m, d := opening.In(loc).Date()
-	for day := time.Date(y, m, d, 0, 0, 0, 0, loc); day.Before(closing); day = time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, loc) {
-		y, m, d := day.Date()
-		noon := time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
-		active, holidayDay := map[string]bool{}, false
-		for _, h := range builtinCalendar {
-			if f.selected(h.id) && holidayActive(h, noon) {
-				active[h.id] = true
-				if hd := h.day(y); hd.Month() == m && hd.Day() == d {
-					holidayDay = true
+	return p
+}
+
+// enabled reports whether the pass features anything: auto mode, a wall-clock window, and at
+// least one episode with holiday evidence. A window ≤ 0 has no wall-clock anchor.
+func (p *holidayPlanner) enabled() bool {
+	return p.f.seasonal.Mode == SeasonalAuto && p.window > 0 && len(p.f.matches) > 0 && len(p.deck) > 0
+}
+
+func (p *holidayPlanner) runtime(s Slot) time.Duration {
+	return time.Duration(float64(s.DurationMs)*p.breakFactor) * time.Millisecond
+}
+
+// dayCap is the quarter-of-the-day cap for a day of `length`: ⌊length / (mean runtime × breaks) / 4⌋.
+func (p *holidayPlanner) dayCap(length time.Duration) int {
+	if p.meanMs <= 0 {
+		return len(p.deck)
+	}
+	return int(float64(length.Milliseconds()) / (p.meanMs * p.breakFactor) / holidayShareOfDay)
+}
+
+// rawDay is a date's pool and ring picks, before its neighbours are considered.
+func (p *holidayPlanner) rawDay(date time.Time) *dayPlan {
+	y, m, d := date.Date()
+	key := civilDay(y, m, d)
+	if r, ok := p.raw[key]; ok {
+		return r
+	}
+	r := &dayPlan{start: time.Date(y, m, d, 0, 0, 0, 0, p.loc), end: time.Date(y, m, d+1, 0, 0, 0, 0, p.loc)}
+	active := map[string]bool{}
+	for _, h := range builtinCalendar {
+		if p.f.selected(h.id) && holidayActive(h, time.Date(y, m, d, 12, 0, 0, 0, time.UTC)) {
+			active[h.id] = true
+			if hd := h.day(y); hd.Month() == m && hd.Day() == d {
+				r.holiday = true
+			}
+		}
+	}
+	if len(active) > 0 {
+		r.pool = p.f.holidayPool(p.deck, active)
+	}
+	perDay, everyDays := cappedRotation(len(r.pool), p.f.seasonal.Strength, p.dayCap(r.end.Sub(r.start)))
+	var base []Slot
+	for _, i := range rotationPicks(len(r.pool), perDay, everyDays, key) {
+		base = append(base, r.pool[i])
+	}
+	p.raw[key], p.base[key] = r, base
+	return r
+}
+
+// holidayFull is what a holiday date features: its ring picks topped up to the strength's
+// holiday quota, in ring order, preferring units neither neighbour's ring would feature.
+func (p *holidayPlanner) holidayFull(date time.Time) []Slot {
+	r := p.rawDay(date)
+	y, m, d := date.Date()
+	key := civilDay(y, m, d)
+	if got, ok := p.full[key]; ok {
+		return got
+	}
+	picks := slices.Clone(p.base[key])
+	quota := p.f.seasonal.Strength.holidayDayQuota(len(r.pool))
+	if p.f.seasonal.Strength != HolidayStrengthHeavy {
+		quota = min(quota, p.dayCap(r.end.Sub(r.start)))
+	}
+	taken := map[string]bool{}
+	for _, u := range picks {
+		taken[unitKey(u)] = true
+	}
+	near := map[string]bool{}
+	p.rawDay(r.start.AddDate(0, 0, -1))
+	p.rawDay(r.start.AddDate(0, 0, 1))
+	for _, u := range append(slices.Clone(p.base[key-1]), p.base[key+1]...) {
+		near[unitKey(u)] = true
+	}
+	from := 0
+	if len(picks) > 0 {
+		from = slices.IndexFunc(r.pool, func(s Slot) bool { return unitKey(s) == unitKey(picks[len(picks)-1]) }) + 1
+	}
+	for _, avoidNear := range []bool{true, false} {
+		for k := 0; k < len(r.pool) && len(picks) < quota; k++ {
+			u := r.pool[(from+k)%len(r.pool)]
+			if !taken[unitKey(u)] && (!avoidNear || !near[unitKey(u)]) {
+				taken[unitKey(u)] = true
+				picks = append(picks, u)
+			}
+		}
+	}
+	p.full[key] = picks
+	return picks
+}
+
+// plan is a date's final feature: a holiday date airs its full quota; the day before and after
+// drop anything the holiday date airs (compared by unit, since neighbouring pools can differ).
+func (p *holidayPlanner) plan(date time.Time) *dayPlan {
+	r := p.rawDay(date)
+	y, m, d := date.Date()
+	key := civilDay(y, m, d)
+	if got, ok := p.plans[key]; ok {
+		return got
+	}
+	plan := *r
+	var picks []Slot
+	if r.holiday {
+		picks = p.holidayFull(date)
+	} else {
+		drop := map[string]bool{}
+		for _, nb := range []time.Time{r.start.AddDate(0, 0, -1), r.start.AddDate(0, 0, 1)} {
+			if p.rawDay(nb).holiday {
+				for _, u := range p.holidayFull(nb) {
+					drop[unitKey(u)] = true
 				}
 			}
 		}
-		if len(active) == 0 {
-			continue
-		}
-		pool := f.holidayPool(deck, active)
-		for _, u := range pool {
-			pooled[unitKey(u)] = true
-		}
-		perDay, everyDays := HolidayRotation(len(pool), f.seasonal.Strength)
-		onHoliday := 0
-		if holidayDay {
-			onHoliday = f.seasonal.Strength.holidayDayQuota(len(pool))
-		}
-		picks := rotationPicks(len(pool), perDay, everyDays, civilDay(y, m, d), onHoliday)
-		picks = picks[:min(len(picks), max(1, perDate[civilDay(y, m, d)]/holidayShareOfDay))]
-
-		from, to := day, time.Date(y, m, d+1, 0, 0, 0, 0, loc)
-		if f.seasonal.Evenings {
-			from, to = time.Date(y, m, d, eveningFromHour, 0, 0, 0, loc), time.Date(y, m, d, eveningToHour, 0, 0, 0, loc)
-		}
-		if from.Before(opening) {
-			from = opening
-		}
-		if to.After(closing) {
-			to = closing
-		}
-		if !to.After(from) || len(picks) == 0 {
-			continue
-		}
-		// Evenly spaced through the band: Featured's three land early, mid and late evening.
-		span := to.Sub(from)
-		for k, p := range picks {
-			features = append(features, feature{at: from.Add(span * time.Duration(2*k+1) / time.Duration(2*len(picks))), unit: pool[p]})
-		}
-	}
-
-	// Out of season (a selected holiday whose window is closed), a holiday episode keeps its
-	// turn but not the evening: with evenings favoured it is deferred past the band.
-	offSeason := func(s Slot) bool {
-		if !f.seasonal.Evenings || pooled[unitKey(s)] {
-			return false
-		}
-		for _, id := range f.unitHolidays(s) {
-			if f.selected(id) {
-				return true
+		for _, u := range p.base[key] {
+			if !drop[unitKey(u)] {
+				picks = append(picks, u)
 			}
 		}
-		return false
 	}
-	if len(pooled) == 0 && !slices.ContainsFunc(slice, offSeason) {
-		return slice
+	plan.features = p.placeFeatures(r, picks)
+	p.plans[key] = &plan
+	return &plan
+}
+
+// placeFeatures times a day's picks: evenly through the band (the evening, or the whole day for
+// anytime), except Heavy's holiday date, a marathon that airs back to back from 17:00, or early
+// enough to end by 23:00 when it is longer than the band.
+func (p *holidayPlanner) placeFeatures(r *dayPlan, picks []Slot) []holidayAt {
+	if len(picks) == 0 {
+		return nil
+	}
+	y, m, d := r.start.Date()
+	evening, late := time.Date(y, m, d, eveningFromHour, 0, 0, 0, p.loc), time.Date(y, m, d, eveningToHour, 0, 0, 0, p.loc)
+	out := make([]holidayAt, 0, len(picks))
+	if r.holiday && p.f.seasonal.Strength == HolidayStrengthHeavy {
+		var length time.Duration
+		for _, u := range picks {
+			length += p.runtime(u)
+		}
+		at := evening
+		if length > late.Sub(evening) {
+			at = late.Add(-length)
+			if at.Before(r.start) {
+				at = r.start
+			}
+		}
+		for _, u := range picks {
+			out = append(out, holidayAt{at: at, unit: u})
+		}
+		return out
+	}
+	from, to := r.start, r.end
+	if p.f.seasonal.Evenings {
+		from, to = evening, late
+	}
+	span := to.Sub(from)
+	for k, u := range picks {
+		out = append(out, holidayAt{at: from.Add(span * time.Duration(2*k+1) / time.Duration(2*len(picks))), unit: u})
+	}
+	return out
+}
+
+// days lists the local dates window w touches.
+func (p *holidayPlanner) days(w int64) []time.Time {
+	opening := windowOpening(w, p.window, p.loc)
+	closing := opening.Add(p.window)
+	y, m, d := opening.In(p.loc).Date()
+	var out []time.Time
+	for day := time.Date(y, m, d, 0, 0, 0, 0, p.loc); day.Before(closing); day = time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, p.loc) {
+		out = append(out, day)
+	}
+	return out
+}
+
+// pooled is the units of every active pool window w touches: in season, they air only where a
+// day's plan features them.
+func (p *holidayPlanner) pooled(w int64) map[string]bool {
+	out := map[string]bool{}
+	for _, day := range p.days(w) {
+		for _, u := range p.rawDay(day).pool {
+			out[unitKey(u)] = true
+		}
+	}
+	return out
+}
+
+// features is what window w airs of its days' plans: the features timed inside it, by time.
+func (p *holidayPlanner) features(w int64) []holidayAt {
+	opening := windowOpening(w, p.window, p.loc)
+	closing := opening.Add(p.window)
+	var out []holidayAt
+	for _, day := range p.days(w) {
+		for _, f := range p.plan(day).features {
+			if !f.at.Before(opening) && f.at.Before(closing) {
+				out = append(out, f)
+			}
+		}
+	}
+	slices.SortStableFunc(out, func(a, b holidayAt) int { return a.at.Compare(b.at) })
+	return out
+}
+
+// seasonTile is an in-season window's ordinary episodes. The season's first window starts where
+// windowSlice would; each later window continues exactly where the one before stopped, skipping
+// the pool and leaving room for its features, so consecutive windows never share an episode and
+// the season's first seam matches seasonality off. ok is false out of season (use windowSlice).
+func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
+	if !p.enabled() || len(p.pooled(w)) == 0 {
+		return nil, false
+	}
+	budget := p.window.Milliseconds()
+	var progAt []int
+	var total int64
+	for i, s := range p.deck {
+		if s.IsProgram() {
+			progAt = append(progAt, i)
+			total += s.DurationMs
+		}
+	}
+	if len(progAt) == 0 || total <= budget {
+		// The deck fits one window: every window airs all of it but the pool.
+		pooled := p.pooled(w)
+		for _, s := range p.deck {
+			if !pooled[unitKey(s)] {
+				tile = append(tile, s)
+			}
+		}
+		return tile, true
+	}
+	anchor := w
+	for back := int64(seasonLookback / p.window); anchor > w-back && len(p.pooled(anchor-1)) > 0; anchor-- {
+	}
+	stride := max(programsPerWindow(p.deck, budget), 1)
+	nProg := int64(len(progAt))
+	pos := progAt[((anchor*int64(stride))%nProg+nProg)%nProg]
+	for v := anchor; v <= w; v++ {
+		pooled := p.pooled(v)
+		need := budget
+		for _, f := range p.features(v) {
+			need -= f.unit.DurationMs
+		}
+		tile = tile[:0:0]
+		var acc int64
+		for n := 0; n < len(p.deck) && acc < need; n++ {
+			s := p.deck[pos]
+			pos = (pos + 1) % len(p.deck)
+			if s.IsProgram() {
+				if pooled[unitKey(s)] {
+					continue
+				}
+				acc += s.DurationMs
+			}
+			tile = append(tile, s)
+		}
+	}
+	return tile, true
+}
+
+// arrange times window w's tile around its features. A feature airs as soon as the clock reaches
+// it; out of season, with evenings favoured, a holiday episode the clock reaches inside the band
+// is deferred to the first moment outside it, or, when the window ends in the band, moved to just
+// before the band. Only a window wholly inside the band airs it there.
+func (p *holidayPlanner) arrange(tile []Slot, w int64) []Slot {
+	if !p.enabled() || len(tile) == 0 {
+		return tile
+	}
+	pooled := p.pooled(w)
+	features := p.features(w)
+	offSeason := func(s Slot) bool {
+		if !p.f.seasonal.Evenings || pooled[unitKey(s)] {
+			return false
+		}
+		return slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected)
+	}
+	if len(pooled) == 0 && !slices.ContainsFunc(tile, offSeason) {
+		return tile
+	}
+	opening := windowOpening(w, p.window, p.loc)
+	inEvening := func(t time.Time) bool {
+		h := t.In(p.loc).Hour()
+		return h >= eveningFromHour && h < eveningToHour
 	}
 
-	var queue []Slot
-	inTile := map[string]bool{}
-	for _, s := range slice {
-		inTile[unitKey(s)] = true
+	var queue, deferred []Slot
+	for _, s := range tile {
 		if !pooled[unitKey(s)] {
 			queue = append(queue, s)
 		}
 	}
-	// Top-up: when pulling holiday episodes shortens the tile, continue from where it ended.
-	next := 0
-	for i, s := range deck {
-		if s.IsProgram() && inTile[unitKey(s)] {
-			next = i + 1
-		}
-	}
-	topUp := func() (Slot, bool) {
-		for ; next < len(deck)+len(deck); next++ {
-			s := deck[next%len(deck)]
-			if s.IsProgram() && !pooled[unitKey(s)] && !inTile[unitKey(s)] {
-				inTile[unitKey(s)] = true
-				next++
-				return s, true
-			}
-		}
-		return Slot{}, false
-	}
-	inEvening := func(t time.Time) bool {
-		h := t.In(loc).Hour()
-		return h >= eveningFromHour && h < eveningToHour
-	}
-
-	out := make([]Slot, 0, len(slice)+len(features))
-	budget := window.Milliseconds()
-	t, fi := opening, 0
-	var acc int64
+	out := make([]Slot, 0, len(queue)+len(features))
+	t := opening
 	emit := func(s Slot) {
 		out = append(out, s)
 		if s.IsProgram() {
-			acc += s.DurationMs
-			t = advance(t, s)
+			t = t.Add(p.runtime(s))
 		}
 	}
-	for acc < budget {
-		if fi < len(features) && !t.Before(features[fi].at) {
-			emit(features[fi].unit)
-			fi++
+	for {
+		switch {
+		case len(features) > 0 && (!t.Before(features[0].at) || len(queue) == 0 && (len(deferred) == 0 || inEvening(t))):
+			emit(features[0].unit)
+			features = features[1:]
+		case len(deferred) > 0 && !inEvening(t):
+			emit(deferred[0])
+			deferred = deferred[1:]
+		case len(queue) > 0:
+			s := queue[0]
+			queue = queue[1:]
+			if offSeason(s) && inEvening(t) {
+				deferred = append(deferred, s)
+			} else {
+				emit(s)
+			}
+		default:
+			return p.beforeBand(out, deferred, opening, offSeason)
+		}
+	}
+}
+
+// beforeBand inserts the units the window could not air outside the evening, as one run, just
+// before the band the window ends in: at the last position where every one of them still starts
+// before 17:00. What does not fit before the band (a window wholly inside it has no room at all)
+// airs in place. An out-of-season unit after the insertion joins the run, since the insertion
+// would push it into the band.
+func (p *holidayPlanner) beforeBand(out, deferred []Slot, opening time.Time, offSeason func(Slot) bool) []Slot {
+	if len(deferred) == 0 {
+		return out
+	}
+	end := opening // the band the arrangement ends in
+	for _, s := range out {
+		if s.IsProgram() {
+			end = end.Add(p.runtime(s))
+		}
+	}
+	y, m, d := end.In(p.loc).Date()
+	band := time.Date(y, m, d, eveningFromHour, 0, 0, 0, p.loc)
+	var tail []Slot
+	for {
+		var lead time.Duration // the run's length up to its last unit's start
+		for _, s := range deferred[:len(deferred)-1] {
+			lead += p.runtime(s)
+		}
+		at, t := len(out), opening
+		for i, o := range out {
+			if o.IsProgram() && t.Add(lead).Before(band) {
+				at = i
+			}
+			if o.IsProgram() {
+				t = t.Add(p.runtime(o))
+			}
+		}
+		if at == len(out) && len(deferred) > 1 {
+			// Not all of them fit before the band: fit what does, the rest air in place.
+			tail = append([]Slot{deferred[len(deferred)-1]}, tail...)
+			deferred = deferred[:len(deferred)-1]
 			continue
 		}
-		if len(queue) == 0 {
-			s, ok := topUp()
-			if !ok {
-				if fi < len(features) {
-					emit(features[fi].unit)
-					fi++
-					continue
-				}
-				break
-			}
-			queue = append(queue, s)
+		if at == len(out) || !slices.ContainsFunc(out[at:], offSeason) {
+			return append(slices.Insert(out, at, deferred...), tail...)
 		}
-		pick := 0
-		if inEvening(t) {
-			eligible := func(s Slot) bool { return !offSeason(s) }
-			i := slices.IndexFunc(queue, eligible)
-			for i < 0 {
-				s, ok := topUp()
-				if !ok {
-					break
-				}
-				if queue = append(queue, s); eligible(s) {
-					i = len(queue) - 1
-				}
-			}
-			pick = max(i, 0)
-		}
-		emit(queue[pick])
-		queue = slices.Delete(queue, pick, pick+1)
+		i := at + slices.IndexFunc(out[at:], offSeason)
+		deferred = append(deferred, out[i])
+		out = slices.Delete(out, i, i+1)
 	}
-	return out
 }
 
 // HolidayEpisodes summarises one selected holiday's episode feature on a channel: how many holiday
@@ -353,24 +599,45 @@ type HolidayEpisodes struct {
 	Episodes  int    // distinct holiday episodes (a multi-part story counts once)
 	PerDay    int    // featured on an ordinary day of the window
 	EveryDays int    // the soonest one of them airs again
-	Active    bool   // the holiday's window is open at the evaluated instant
+	Active    bool   // the holiday's window is open on the channel's date at the evaluated instant
+	// Capped is true when the pool or the quarter-of-the-day cap holds the strength back: fewer a
+	// day than it asks for, or not every day.
+	Capped bool
+	// SameAs lists the other strengths that rotate this pool identically, so the page can say a
+	// choice would change nothing.
+	SameAs []HolidayStrength
 }
 
-// holidayEpisodeSummary lists the channel's selected holidays, open or soonest first.
-func holidayEpisodeSummary(deck []Slot, f holidayFeature, now time.Time) []HolidayEpisodes {
-	if f.seasonal.Mode != SeasonalAuto || now.IsZero() {
+var holidayStrengths = []HolidayStrength{HolidayStrengthLight, HolidayStrengthFeatured, HolidayStrengthHeavy}
+
+// summary lists the channel's selected holidays, open or soonest first, as of the channel's
+// date at `now`.
+func (p *holidayPlanner) summary(now time.Time) []HolidayEpisodes {
+	if p.f.seasonal.Mode != SeasonalAuto || now.IsZero() {
 		return nil
 	}
+	today := civilNoon(now, p.loc)
+	dayCap := p.dayCap(24 * time.Hour)
 	var out []HolidayEpisodes
-	for _, w := range UpcomingHolidays(now, 366*24*time.Hour) {
-		if !f.selected(w.ID) {
+	for _, w := range UpcomingHolidays(today, 366*24*time.Hour) {
+		if !p.f.selected(w.ID) {
 			continue
 		}
-		n := len(f.holidayPool(deck, map[string]bool{w.ID: true}))
-		perDay, every := HolidayRotation(n, f.seasonal.Strength)
-		out = append(out, HolidayEpisodes{
-			Holiday: w.ID, Episodes: n, PerDay: perDay, EveryDays: every, Active: !w.Start.After(now),
-		})
+		n := len(p.f.holidayPool(p.deck, map[string]bool{w.ID: true}))
+		perDay, every := cappedRotation(n, p.f.seasonal.Strength, dayCap)
+		h := HolidayEpisodes{
+			Holiday: w.ID, Episodes: n, PerDay: perDay, EveryDays: every, Active: !w.Start.After(today),
+			Capped: n > 0 && (perDay < p.f.seasonal.Strength.dailyQuota() || n < perDay*every),
+		}
+		for _, s := range holidayStrengths {
+			if s == p.f.seasonal.Strength {
+				continue
+			}
+			if pd, ev := cappedRotation(n, s, dayCap); pd == perDay && ev == every {
+				h.SameAs = append(h.SameAs, s)
+			}
+		}
+		out = append(out, h)
 	}
 	return out
 }

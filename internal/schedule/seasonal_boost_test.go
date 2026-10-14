@@ -2,6 +2,7 @@ package schedule_test
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func simpsonsLike(holiday int) libraryfixture.Availability {
 			LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Bart's day %d", i),
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs,
 		})
-		if h < holiday && i%(200/max(holiday, 1)) == 3 {
+		if h < holiday && (i+1)*holiday/200 > h { // one each time i crosses a 200/holiday stride
 			// The overview names the holiday itself, the evidence any matcher must accept.
 			eps = append(eps, schedule.ResolvedProgram{
 				LibraryItemID: fmt.Sprintf("thoh-%02d", h), Title: fmt.Sprintf("Treehouse of Horror %d", h+1),
@@ -61,7 +62,7 @@ type airing struct {
 func arrange(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, at time.Time) []airing {
 	t.Helper()
 	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}, avail, schedule.PodFill, policy, at)
-	clock := schedule.WindowStart(at, 24*time.Hour, ch.WindowZone)
+	clock := schedule.WindowStart(at, schedule.ResolveWindow(ch, policy, at), ch.WindowZone)
 	var out []airing
 	for _, s := range d.Slots {
 		if s.IsProgram() {
@@ -245,7 +246,7 @@ func TestHolidayEpisodes_SummaryIsTheConsequenceLine(t *testing.T) {
 		t.Fatal("no holiday summary in auto mode")
 	}
 	want := schedule.HolidayEpisodes{Holiday: "halloween", Episodes: 9, PerDay: 3, EveryDays: 3, Active: true}
-	if d.HolidayEpisodes[0] != want {
+	if !reflect.DeepEqual(d.HolidayEpisodes[0], want) {
 		t.Fatalf("first summary = %+v, want %+v", d.HolidayEpisodes[0], want)
 	}
 	if d.HolidayEpisodes[1].Active || d.HolidayEpisodes[1].Episodes != 0 {
