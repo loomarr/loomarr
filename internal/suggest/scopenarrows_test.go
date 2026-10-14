@@ -18,7 +18,7 @@ func TestScopeNarrows(t *testing.T) {
 	}{
 		{"nil", nil, false},
 		{"empty", &schedule.ScopePolicy{}, false},
-		{"series", &schedule.ScopePolicy{Series: []provision.Key{"series:tvdb:1"}}, true},
+		{"series", &schedule.ScopePolicy{Series: []provision.Key{"series:tvdb:90000001"}}, true},
 		{"dates", &schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}, true},
 		{"genres include", &schedule.ScopePolicy{Genres: schedule.GenreFilter{Include: []string{"Animation"}}}, true},
 		{"genres exclude", &schedule.ScopePolicy{Genres: schedule.GenreFilter{Exclude: []string{"Horror"}}}, true},

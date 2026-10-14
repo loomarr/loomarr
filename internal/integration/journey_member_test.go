@@ -30,7 +30,7 @@ func TestJourney_Member(t *testing.T) {
 
 	// B2: members MAY do member things (auth passes → not 401/403).
 	allowed := []struct{ method, path, body string }{
-		{http.MethodGet, "/v1/search?q=matrix", ""},
+		{http.MethodGet, "/v1/search?q=marigold", ""},
 		{http.MethodGet, "/v1/proposals", ""},
 		{http.MethodGet, "/v1/proposals?mine=true", ""},
 		{http.MethodGet, "/v1/channels", ""},
@@ -47,7 +47,7 @@ func TestJourney_Member(t *testing.T) {
 	// B3: members are 403 on the FULL admin-route matrix. requireAdmin runs before
 	// any nil-dep/501 check, so a member is refused regardless of configuration.
 	forbidden := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":1}`},
+		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":90000001}`},
 		{http.MethodGet, "/v1/users", ""},
 		{http.MethodPatch, "/v1/users/" + fixtureMemberID, `{"disabled":true}`},
 		{http.MethodPost, "/v1/users/import", `{"ids":["x"]}`},

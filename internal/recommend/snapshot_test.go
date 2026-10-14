@@ -10,7 +10,7 @@ import (
 func TestDecodeSnapshotRejectsIdentityAndViewingHistory(t *testing.T) {
 	for name, raw := range map[string]string{
 		"operator identity": `{"id":"private","signals":[],"userId":"user-123"}`,
-		"viewing history":   `{"id":"private","signals":[],"viewerHistory":["movie:tmdb:603"]}`,
+		"viewing history":   `{"id":"private","signals":[],"viewerHistory":["movie:tmdb:90000603"]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := recommend.DecodeSnapshot([]byte(raw))

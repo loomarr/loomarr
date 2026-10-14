@@ -25,6 +25,9 @@ const propSeed = 0x10054AC
 
 var propMediaTypes = []provision.MediaType{provision.Movie, provision.Series}
 
+// propIDBase is the first synthetic provider id: above every real TMDB/TVDB id (#1592).
+const propIDBase = 90_000_001
+
 // randCandidate builds a synthetic candidate. Identity fields (MediaType, ids,
 // Name) are drawn from a SMALL space so collisions actually happen and the
 // dedupe/merge machinery is exercised; non-identity fields are noise.
@@ -36,12 +39,12 @@ func randCandidate(rng *rand.Rand) Candidate {
 	// 0 = tmdb id, 1 = tvdb id (no tmdb), 2 = name-only (no ids).
 	switch rng.Intn(3) {
 	case 0:
-		c.TMDBID = 1 + rng.Intn(6)
+		c.TMDBID = propIDBase + rng.Intn(6)
 		if rng.Intn(2) == 0 { // sometimes also carry a tvdb id (tmdb still wins)
-			c.TVDBID = 1 + rng.Intn(6)
+			c.TVDBID = propIDBase + rng.Intn(6)
 		}
 	case 1:
-		c.TVDBID = 1 + rng.Intn(6)
+		c.TVDBID = propIDBase + rng.Intn(6)
 	case 2:
 		c.Name = randName(rng) // no ids: name IS identity, so it must vary
 	}
@@ -198,7 +201,7 @@ func TestProp_DedupeKey_InvariantUnderNonIdentityMutation(t *testing.T) {
 // noise collide; changing an identity component splits them. (Complements
 // invariant 1 from the other direction so "invariant" can't be trivially true.)
 func TestProp_DedupeKey_IdentityComponentsMatter(t *testing.T) {
-	base := Candidate{MediaType: provision.Movie, TMDBID: 5, Name: "Alpha"}
+	base := Candidate{MediaType: provision.Movie, TMDBID: 90000005, Name: "Alpha"}
 	k := dedupeKey(base)
 
 	// Same identity, different noise -> same key.
@@ -216,7 +219,7 @@ func TestProp_DedupeKey_IdentityComponentsMatter(t *testing.T) {
 		t.Error("MediaType is part of identity but didn't change key")
 	}
 	// Changing the TMDB id splits identity.
-	if id := base; func() bool { id.TMDBID = 6; return dedupeKey(id) == k }() {
+	if id := base; func() bool { id.TMDBID = 90000006; return dedupeKey(id) == k }() {
 		t.Error("TMDBID is part of identity but didn't change key")
 	}
 	// When identity is name-based (no ids), Name is part of identity.
@@ -227,8 +230,8 @@ func TestProp_DedupeKey_IdentityComponentsMatter(t *testing.T) {
 		t.Error("Name is part of name-based identity but didn't change key")
 	}
 	// TMDB id wins over TVDB id: two candidates sharing tmdb but differing tvdb collide.
-	a := Candidate{MediaType: provision.Movie, TMDBID: 5, TVDBID: 1, Name: "Alpha"}
-	b := Candidate{MediaType: provision.Movie, TMDBID: 5, TVDBID: 2, Name: "Zeta"}
+	a := Candidate{MediaType: provision.Movie, TMDBID: 90000005, TVDBID: 90000001, Name: "Alpha"}
+	b := Candidate{MediaType: provision.Movie, TMDBID: 90000005, TVDBID: 90000002, Name: "Zeta"}
 	if dedupeKey(a) != dedupeKey(b) {
 		t.Error("with tmdb set, tvdb/name must not affect identity")
 	}
