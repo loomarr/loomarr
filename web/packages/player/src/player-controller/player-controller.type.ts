@@ -51,8 +51,10 @@ interface PlayerErrorReport {
   /** Milliseconds since the viewer's tune (automatic retries do not restart this clock). */
   elapsedMs: number;
   error: string;
-  /** True when this error exhausted automatic recovery and the manual Retry is shown. */
+  /** True when this error exhausted automatic recovery, or the server refused the start, and the manual Retry is shown. */
   fatal: boolean;
+  /** The HTTP status of a start the server refused; absent for the player's own errors. */
+  status?: number;
 }
 
 /** One tune attempt as it starts, for client instrumentation. */

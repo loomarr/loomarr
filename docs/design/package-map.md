@@ -136,7 +136,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 4 importers · → `textmatch`
-  Owns Loomarr's immutable built-in holiday identities and aliases.
+  Owns Loomarr's immutable built-in holiday identities and the judgment of whether a title or episode is about one (programming-design §6).
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`

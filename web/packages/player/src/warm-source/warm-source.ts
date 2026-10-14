@@ -89,4 +89,4 @@ const warmSource = async (uri: string, get: WarmGet): Promise<WarmResult> => {
     : { warmed };
 };
 
-export { type WarmResult, warmSource };
+export { variantUris, type WarmResult, warmSource };

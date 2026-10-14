@@ -9,8 +9,8 @@ import (
 )
 
 // Seasonality (programming-design §6): holiday-aware programming. Detection is
-// deterministic and data-driven — an entry is seasonal for holiday H if it matches
-// H's keyword set. Evaluation is against the container wall-clock `now` at reconcile
+// holidayvocab's judgment of whether an entry is about holiday H (`about`) or only
+// fits its mood (`adjacent`). Evaluation is against the container wall-clock `now` at reconcile
 // time; the periodic sweep naturally rolls channels in/out of windows, so
 // seasonality needs no scheduler of its own.
 //
@@ -19,7 +19,7 @@ import (
 // out-of-window detected-seasonal items are BENCHED (the half viewers notice —
 // Christmas episodes in July break the spell). A zero `now` disables all of it.
 
-// holiday is one entry in the built-in calendar (§6). Windows + keyword sets ship
+// holiday is one entry in the built-in calendar (§6). Windows + vocabulary ship
 // as DATA, not code; custom/regional holidays are future work.
 type holiday struct {
 	id string
@@ -28,8 +28,8 @@ type holiday struct {
 	window func(year int) (start, end time.Time)
 }
 
-// builtinCalendar is the v1 holiday set (§6). Keyword matching is case-insensitive
-// substring against an entry's TITLE — never its genres (see isSeasonal for why).
+// builtinCalendar is the v1 holiday set (§6). holidayvocab judges membership; a genre
+// is never evidence on its own (see isSeasonal for why).
 var builtinCalendar = []holiday{
 	{
 		id:     "halloween",
@@ -129,10 +129,14 @@ func holidayActive(h holiday, now time.Time) bool {
 	return false
 }
 
-// isSeasonal reports whether an entry matches ANY holiday's keyword set (detection,
-// §6). Matching is case-insensitive substring against the entry's TITLE.
+// isSeasonal reports whether an entry is ABOUT any of the holidays (detection, §6):
+// holidayvocab's `about` verdict over the entry's title. Bench and boost act on this
+// alone, because a false bench silently removes programming: a mood word such as
+// "ghost" never benches (an action film named "Ghost …" airs all year), even with
+// genres that make it `adjacent`.
 //
-// ⚠ GENRES ARE DELIBERATELY NOT MATCHED, and this is a correction. Haying over
+// ⚠ A GENRE IS NEVER EVIDENCE ON ITS OWN, and this is a correction: genres only
+// corroborate a mood word into `adjacent`, which bench and boost ignore. Haying over
 // title + genres conflated "this title is ABOUT a holiday" with "this title is in a
 // genre that correlates with one" — different claims, and only the first is something
 // a holiday window should act on.
@@ -148,13 +152,27 @@ func holidayActive(h holiday, now time.Time) bool {
 // channel and left the mechanism to re-fire on the next collision (Romance near
 // Valentine's, Family near Christmas).
 func isSeasonal(e LineupEntry, holidays []holiday) bool {
-	hay := strings.ToLower(e.Title)
 	for _, h := range holidays {
-		if holidayvocab.MatchesEvidence(h.id, hay) {
+		if judgeEntry(e, h).Verdict == holidayvocab.VerdictAbout {
 			return true
 		}
 	}
 	return false
+}
+
+// fitsSeason reports whether an entry belongs on an exclusive holiday channel in
+// window: about the holiday, or `adjacent` (a mood word the genres corroborate).
+func fitsSeason(e LineupEntry, holidays []holiday) bool {
+	for _, h := range holidays {
+		if judgeEntry(e, h).Fits() {
+			return true
+		}
+	}
+	return false
+}
+
+func judgeEntry(e LineupEntry, h holiday) holidayvocab.Judgment {
+	return holidayvocab.Judge(h.id, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres})
 }
 
 // isSeasonalForAny reports whether an entry is seasonal for ANY built-in holiday
@@ -206,7 +224,7 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 		for _, e := range entries {
 			// A series title is not evidence about each of its episodes. The
 			// concrete exclusive filter runs after episode safety and grouping.
-			if e.Key.IsSeries() || isSeasonal(e, active) {
+			if e.Key.IsSeries() || fitsSeason(e, active) {
 				kept = append(kept, e)
 			} else {
 				report.add(e, "out_of_season")
