@@ -973,7 +973,7 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 
 	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken,
-		`{"change":"add more Schwarzenegger, drop the slow ones"}`)
+		`{"change":"add more heist capers, drop the slow ones"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("refine → %d, want 200", resp.StatusCode)
 	}
@@ -989,7 +989,7 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	// The refine intent carried the change + the current lineup as context + kept the
 	// original description.
-	if fs.last.RefineText != "add more Schwarzenegger, drop the slow ones" {
+	if fs.last.RefineText != "add more heist capers, drop the slow ones" {
 		t.Errorf("refine intent RefineText = %q", fs.last.RefineText)
 	}
 	if fs.last.Description != "90s action" {

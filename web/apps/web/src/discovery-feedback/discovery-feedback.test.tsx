@@ -4,7 +4,7 @@ import { DiscoveryFeedbackControls } from "./discovery-feedback";
 
 const event = {
   id: "feedback-1",
-  targetKey: "movie:tmdb:949",
+  targetKey: "movie:tmdb:90000949",
   action: "never",
   scope: "household",
   actorId: "admin",
@@ -16,7 +16,7 @@ describe("DiscoveryFeedbackControls", () => {
     const onClear = vi.fn();
     render(
       <DiscoveryFeedbackControls
-        name="Heat"
+        name="The Velvet Cartographer"
         scope={{ scope: "household" }}
         effective={event}
         onSet={vi.fn()}
@@ -24,7 +24,10 @@ describe("DiscoveryFeedbackControls", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Never — Heat" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Never — The Velvet Cartographer" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByText(/Household: Never.*future suggestions only/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(onClear).toHaveBeenCalledOnce();
@@ -34,7 +37,7 @@ describe("DiscoveryFeedbackControls", () => {
     const onSet = vi.fn();
     render(
       <DiscoveryFeedbackControls
-        name="Heat"
+        name="The Velvet Cartographer"
         scope={{ scope: "channel", scopeId: "channel-1" }}
         effective={event}
         onSet={onSet}
@@ -44,14 +47,14 @@ describe("DiscoveryFeedbackControls", () => {
 
     expect(screen.getByText(/Inherited household preference: Never/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Keep — Heat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep — The Velvet Cartographer" }));
     expect(onSet).toHaveBeenCalledWith("keep");
   });
 
   it("labels a Channel-owned choice and clears that override", () => {
     render(
       <DiscoveryFeedbackControls
-        name="Heat"
+        name="The Velvet Cartographer"
         scope={{ scope: "channel", scopeId: "channel-1" }}
         effective={{ ...event, scope: "channel", scopeId: "channel-1", action: "less" }}
         onSet={vi.fn()}

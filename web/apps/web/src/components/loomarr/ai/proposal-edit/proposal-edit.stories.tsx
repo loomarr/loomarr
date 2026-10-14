@@ -24,7 +24,15 @@ const withStubbedSearch = (): Decorator => (Story) => {
     if (typeof url === "string" && url.includes("/v1/search")) {
       return Promise.resolve(
         jsonResponse<SearchOutputBody>({
-          candidates: [{ mediaType: "movie", tmdbId: 1701, name: "Con Air", year: 1997, inLibrary: false }],
+          candidates: [
+            {
+              mediaType: "movie",
+              tmdbId: 90001701,
+              name: "Pelican Point Motel",
+              year: 1997,
+              inLibrary: false,
+            },
+          ],
         }),
       );
     }
@@ -42,48 +50,48 @@ const withStubbedSearch = (): Decorator => (Story) => {
 };
 
 const lineup: ProposalItem[] = [
-  { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true },
-  { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 9426, inLibrary: true },
+  { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+  { name: "The Seventh Satellite Choir", year: 1991, mediaType: "movie", tmdbId: 90009426, inLibrary: true },
 ];
 
 const acquisitions: ProposalItem[] = [
-  { name: "The Simpsons", year: 1989, mediaType: "series", tvdbId: 71663, inLibrary: false },
+  { name: "Kettle Kids", year: 1989, mediaType: "series", tvdbId: 90071663, inLibrary: false },
 ];
 
-const philosopherStone: ProposalItem = {
-  name: "Harry Potter and the Philosopher's Stone",
+const copperKey: ProposalItem = {
+  name: "Wren Halloway and the Copper Key",
   year: 2001,
   mediaType: "movie",
-  tmdbId: 671,
+  tmdbId: 90000671,
   inLibrary: true,
   libraryItemId: "library-671",
 };
 
-const harryPotterCollection: MovieCollectionChoice = {
-  tmdbId: 1241,
-  name: "Harry Potter Collection",
+const wrenHallowayCollection: MovieCollectionChoice = {
+  tmdbId: 90001241,
+  name: "Wren Halloway Collection",
   members: [
-    philosopherStone,
+    copperKey,
     {
-      name: "Harry Potter and the Chamber of Secrets",
+      name: "Wren Halloway and the Glass Orchard",
       year: 2002,
       mediaType: "movie",
-      tmdbId: 672,
+      tmdbId: 90000672,
       inLibrary: false,
     },
     {
-      name: "Harry Potter and the Prisoner of Azkaban",
+      name: "Wren Halloway and the Lantern Tide",
       year: 2004,
       mediaType: "movie",
-      tmdbId: 673,
+      tmdbId: 90000673,
       inLibrary: true,
       libraryItemId: "library-673",
     },
     {
-      name: "Harry Potter and the Goblet of Fire",
+      name: "Wren Halloway and the Ember Clock",
       year: 2005,
       mediaType: "movie",
-      tmdbId: 674,
+      tmdbId: 90000674,
       inLibrary: false,
     },
   ],
@@ -110,9 +118,9 @@ const Busy: Story = { args: { disabled: true } };
 // roster stays collapsed until the reviewer asks to choose individual films.
 const MovieCollection: Story = {
   args: {
-    lineup: [philosopherStone],
+    lineup: [copperKey],
     acquisitions: [],
-    movieCollections: [harryPotterCollection],
+    movieCollections: [wrenHallowayCollection],
     showNote: false,
   },
 };
