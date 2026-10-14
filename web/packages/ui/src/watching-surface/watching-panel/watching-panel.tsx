@@ -38,6 +38,7 @@ const WatchingPanel = ({
   onPrevious,
   onToggleFavourite,
   onTune,
+  reconnecting = false,
   schedule,
 }: WatchingPanelProps) => {
   const now = schedule?.now;
@@ -94,6 +95,12 @@ const WatchingPanel = ({
           )}
         </View>
       </View>
+
+      {reconnecting ? (
+        <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
+          Reconnecting…
+        </Text>
+      ) : null}
 
       {now ? (
         <>

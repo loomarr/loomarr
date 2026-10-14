@@ -118,6 +118,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
             onPrevious={() => previousId && void controller.tuneChannel(previousId)}
             onToggleFavourite={() => channelId && void myChannels.setFavourite(channelId, !isFavourite)}
             onTune={(channelId) => void controller.tuneChannel(channelId)}
+            reconnecting={snapshot.status === "tuning" && snapshot.reconnecting}
             schedule={panel.schedule}
           />
         </ScrollView>

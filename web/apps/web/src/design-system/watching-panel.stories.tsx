@@ -69,6 +69,7 @@ type Story = StoryObj<typeof meta>;
 const Live: Story = {};
 const PausedBehind: Story = { args: { live: { lagSeconds: 83, mode: "paused" } } };
 const NoFavourites: Story = { args: { canPrevious: false, favourites: [] } };
+const Reconnecting: Story = { args: { reconnecting: true } };
 
 export default meta;
-export { Live, NoFavourites, PausedBehind };
+export { Live, NoFavourites, PausedBehind, Reconnecting };
