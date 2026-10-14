@@ -272,6 +272,9 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
             aria-expanded={showHelp}
             hitSlop={13}
             onPress={() => setShowHelp((v) => !v)}
+            // react-native-web ignores hitSlop, so the web's tap area is this box: 24 px around the
+            // 18 px circle, drawn where it was (#1785).
+            style={{ margin: -3, padding: 3 }}
           >
             <Surface
               alignItems="center"
@@ -301,7 +304,8 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
               disabled={!overridden}
               hitSlop={12}
               onPress={onReset}
-              style={{ opacity: overridden ? 1 : 0.5 }}
+              // As the help circle's: a 24 px tall tap area on the web for 16 px of text (#1785).
+              style={{ marginVertical: -4, opacity: overridden ? 1 : 0.5, paddingVertical: 4 }}
             >
               <Text textDecorationLine="underline" textRole="hint" tone="primary">
                 Reset to default

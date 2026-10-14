@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NavTabs } from "./nav-tabs";
 
 // A plain anchor stand-in — NavTabs takes the router's Link injected so it stays
@@ -29,15 +29,37 @@ const tabs = [
 ];
 
 describe("NavTabs", () => {
-  it("wraps destinations into a discoverable mobile navigation", () => {
+  // #1785: at phone width the bar stays one line and scrolls sideways; wrapping put a channel's
+  // Danger zone, or Requests' Done, on a second row.
+  it("keeps the destinations on one line that scrolls sideways", () => {
     render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
 
-    expect(screen.getByRole("navigation", { name: "Queue sections" })).toHaveClass(
-      "shrink-0",
-      "flex-wrap",
-      "sm:flex-nowrap",
-      "sm:overflow-x-auto",
-    );
+    const bar = screen.getByRole("navigation", { name: "Queue sections" });
+    expect(bar).toHaveClass("shrink-0", "overflow-x-auto");
+    expect(bar).not.toHaveClass("flex-wrap");
+  });
+
+  it("scrolls the active destination into view, sideways only", () => {
+    // jsdom has no layout: a 200 px bar whose third tab sits at 260–340 px of its content.
+    let scrollLeft = 0;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const left =
+        this.tagName === "NAV" ? 0 : this.textContent?.startsWith("History") ? 260 - scrollLeft : 0;
+      const width = this.tagName === "NAV" ? 200 : 80;
+      return { left, width, right: left + width, top: 0, bottom: 30, height: 30, x: left, y: 0 } as DOMRect;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(200);
+    const scroll = vi
+      .spyOn(HTMLElement.prototype, "scrollLeft", "set")
+      .mockImplementation((value: number) => {
+        scrollLeft = value;
+      });
+    vi.spyOn(HTMLElement.prototype, "scrollLeft", "get").mockImplementation(() => scrollLeft);
+
+    render(<NavTabs tabs={tabs} activeId="history" linkComponent={anchorLink} label="Queue sections" />);
+
+    expect(scroll).toHaveBeenCalledWith(140);
+    vi.restoreAllMocks();
   });
 
   it("renders a real link per tab with its count", () => {

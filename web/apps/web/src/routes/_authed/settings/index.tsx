@@ -205,7 +205,8 @@ const SettingsHome = () => {
             <section className="border-border border-t pt-5" aria-label="Advanced settings">
               <DestinationAnchor
                 destination={advanced}
-                className="inline-flex items-center gap-2 text-muted-foreground text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                // `-my-1 py-1`: a 27 px tap area for a 19 px line, drawn where it was (#1785).
+                className="-my-1 inline-flex items-center gap-2 py-1 text-muted-foreground text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Advanced settings
                 <ArrowRight className="size-3.5" aria-hidden />

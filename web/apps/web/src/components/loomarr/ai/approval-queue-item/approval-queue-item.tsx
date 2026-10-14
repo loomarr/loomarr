@@ -202,6 +202,8 @@ const ApprovalQueueItem = ({
           <button
             type="button"
             className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground"
+            // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
+            data-touch-target
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
           >

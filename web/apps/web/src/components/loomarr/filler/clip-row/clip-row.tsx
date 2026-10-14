@@ -67,7 +67,9 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           type="button"
           onClick={onOpen}
           aria-label={`View details for ${clip.name}`}
-          className="block w-full truncate rounded-sm text-left text-sm hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
+          // shared `data-touch-target` box can't be used here: `truncate` clips it.
+          className="-my-0.5 block w-full truncate rounded-sm py-0.5 text-left text-sm hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={clip.name}
         >
           {clip.name}

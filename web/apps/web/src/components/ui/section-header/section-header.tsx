@@ -33,6 +33,9 @@ const SectionHeaderAction = ({ className, render, children, icon, ...props }: Se
           icon != null && "flex items-center gap-1.5",
           className,
         ),
+        // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785). A data
+        // attribute isn't in the button's prop type, so it is spread in.
+        ...{ "data-touch-target": "" },
         children:
           icon != null ? (
             <>

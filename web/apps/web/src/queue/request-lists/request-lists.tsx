@@ -115,6 +115,8 @@ const rowFor = ({ journey, status }: RequestEntry) => {
             params={{ id: channel.id }}
             aria-label={`Open channel for ${title}`}
             className={ROW_LINK}
+            // One line of 13 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
+            data-touch-target
           >
             Open channel <span aria-hidden="true">→</span>
           </Link>
@@ -124,6 +126,7 @@ const rowFor = ({ journey, status }: RequestEntry) => {
             params={{ jobId: journey.jobId }}
             aria-label={`Open ${title}`}
             className={ROW_LINK}
+            data-touch-target
           >
             Open <span aria-hidden="true">→</span>
           </Link>

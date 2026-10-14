@@ -1,8 +1,9 @@
 import { Check, X } from "lucide-react";
-import { useId, useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { GrowingTextarea, Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
 
@@ -70,41 +71,52 @@ const ChannelIdentityField = ({
 
   const error = serverError ?? (dirty ? validationError : undefined);
 
+  // Below `sm` the name has its own row (the channel header, #1785), and a one-line input there
+  // still cut a long name. So the title is a textarea that wraps to a second line instead: the
+  // same field, one line of content. Enter saves rather than breaking the line, and a newline
+  // that arrives some other way (a paste) becomes a space.
+  const narrow = useBelowSm();
+  const field = {
+    id,
+    value: draft,
+    disabled: saving,
+    "aria-label": label,
+    "aria-invalid": error ? true : undefined,
+    onChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setDraft(e.target.value.replace(/[\r\n]+/g, " "));
+      setServerError(undefined);
+    },
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void save();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        reset();
+      }
+    },
+    className: cn(
+      // Styled to read as intentionally editable (not the old transparent-border ghost).
+      "border-input bg-static-800/40",
+      // 448 px at most from `sm` up; below it the row is the name's alone (#1785). The textarea's
+      // 5 px padding keeps one line of it the input's 40 px.
+      variant === "title" && "h-10 py-[5px] font-semibold text-xl sm:max-w-md",
+      variant === "compact" && "h-9 w-20 text-center font-mono tabular-nums",
+      error && "border-onair-300 focus-visible:ring-onair-300",
+    ),
+  };
+
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <div className="flex items-center gap-2">
         <Label htmlFor={id} className="sr-only">
           {label}
         </Label>
-        <Input
-          id={id}
-          type={type}
-          {...(type === "number" ? { min: 1 } : {})}
-          value={draft}
-          disabled={saving}
-          aria-label={label}
-          aria-invalid={error ? true : undefined}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setServerError(undefined);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void save();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              reset();
-            }
-          }}
-          className={cn(
-            // Styled to read as intentionally editable (not the old transparent-border ghost).
-            "border-input bg-static-800/40",
-            variant === "title" && "h-10 max-w-xs font-semibold text-xl",
-            variant === "compact" && "h-9 w-20 text-center font-mono tabular-nums",
-            error && "border-onair-300 focus-visible:ring-onair-300",
-          )}
-        />
+        {variant === "title" && narrow ? (
+          <GrowingTextarea {...field} />
+        ) : (
+          <Input type={type} {...(type === "number" ? { min: 1 } : {})} {...field} />
+        )}
         {/* Save / Cancel appear ONLY when the field diverges from what's committed — the
             explicit per-field confirmation. */}
         {dirty && (
