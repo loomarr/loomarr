@@ -542,6 +542,9 @@ const ChannelWatch = ({
     const video = videoRef.current;
     if (video) void act(video);
   };
+  // The star in the panel's channel line pins the tuned channel, as the drawer's star does on wider
+  // screens and the iPhone's does (#1816). Without it a phone had no way to fill Favorites.
+  const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
   const phonePanel =
     onPhone && phone && tuner ? (
       <WatchingPanel
@@ -559,6 +562,8 @@ const ChannelWatch = ({
         onPlay={() => withVideo((video) => player.liveTransport.play(video))}
         onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
         favourites={phone.favourites}
+        isFavourite={isFavourite}
+        onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
         onTune={tuner.tune}
       />
     ) : undefined;
