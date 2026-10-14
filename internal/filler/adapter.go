@@ -276,7 +276,7 @@ func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, c
 
 // effectiveBreakDurationMs resolves the per-channel override over the live global setting.
 // A zero is inheritance, never "off" — breaks_per_hour owns the off switch. Invalid legacy
-// values also fall back to the documented 5 minute default rather than recreating Tunarr's
+// values also fall back to the documented 2 minute default rather than recreating Tunarr's
 // silent 30 second clamp and making Loomarr's preview disagree with playout.
 func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
 	return ResolveBreakDurationMs(sel.BreakDurationMs, pol.BreakDurationMs)

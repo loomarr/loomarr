@@ -25,9 +25,9 @@ type tailCandidate struct {
 //
 // Rules held identical to the ads' own: the candidates are the same ladder pools (so audience
 // ceiling, era rungs, geography, quality and duration bounds all apply), the same `used` set (no
-// repeat in a window, exclusions win), and the same rotation preference — a clip resting inside
-// its spacing is taken only after every rested one — then category variety, relaxed rather than
-// leaving time unused. Ads respect the pod's clip ceiling; bookends do not count against it.
+// repeat in a window, exclusions win), and rotation held strictly: a clip resting inside its
+// cooldown is never used here — a short tail beats a repeat — then category variety, relaxed
+// rather than leaving time unused. Ads respect the pod's clip ceiling; bookends do not count against it.
 //
 // Among the clips that fit, the LONGEST wins, so the leftover shrinks as fast as it can, and a
 // remainder that no clip fits exactly still ends under the shortest unused clip.
@@ -77,6 +77,10 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 				if c.rung >= 0 && adsPlaced >= podMax {
 					continue
 				}
+				// A few spare seconds never justify re-airing a clip still inside its cooldown.
+				if resting(c.Clip, w, policy) {
+					continue
+				}
 				if !allowRepeat && c.Category != "" && c.Category == lastCat {
 					continue
 				}
@@ -115,12 +119,9 @@ func (p *Pod) widenTo(pools []pool, rung int) {
 	}
 }
 
-// tailBetter orders two clips that both fit: rested before resting, then the longer, then an ad
+// tailBetter orders two rested clips that both fit: the longer, then an ad
 // before a bookend, then the durable rotation order. Equal clips keep their (seeded) position.
 func tailBetter(a, b tailCandidate, w Window, policy Policy) bool {
-	if ar, br := resting(a.Clip, w, policy), resting(b.Clip, w, policy); ar != br {
-		return !ar
-	}
 	if a.DurationMs != b.DurationMs {
 		return a.DurationMs > b.DurationMs
 	}

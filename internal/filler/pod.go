@@ -171,7 +171,7 @@ type Policy struct {
 	// the adapter hardcoded 32, ignoring the knob.
 	PodMax int
 	// BreakDurationMs is the live global target for each break. A channel may override
-	// it through Selection; zero falls back to the documented 5 minute default.
+	// it through Selection; zero falls back to the documented 2 minute default (ResolveBreakDurationMs).
 	BreakDurationMs int64
 	// MinQualityHeight is the opt-in minimum clip height in pixels (FILLER_MIN_QUALITY, §15;
 	// V17c). 0 ⇒ OFF, which is the default and the only value that preserves what
