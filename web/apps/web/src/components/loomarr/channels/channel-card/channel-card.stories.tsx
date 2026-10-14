@@ -17,10 +17,7 @@ const Healthy: Story = {
     number: 42,
     name: "90s Action",
     onAir: "live",
-    nowNext: {
-      now: { title: "The Velvet Cartographer", until: "9:42 PM" },
-      next: { title: "Pelican Point Motel" },
-    },
+    nowNext: { now: { title: "Kiln", until: "9:42 PM" }, next: { title: "Ash Lane" } },
     health: "healthy",
   },
 };
@@ -61,10 +58,7 @@ const WithMenu: Story = {
     number: 42,
     name: "90s Action",
     onAir: "live",
-    nowNext: {
-      now: { title: "The Velvet Cartographer", until: "9:42 PM" },
-      next: { title: "Pelican Point Motel" },
-    },
+    nowNext: { now: { title: "Kiln", until: "9:42 PM" }, next: { title: "Ash Lane" } },
     health: "healthy",
     trailing: (
       <Button variant="ghost" size="icon" className="size-8" aria-label="Actions">
