@@ -208,7 +208,7 @@ const MARGINS = [
 ] as const;
 const OPACITIES = [
   { value: "0.25", label: "Faint — 25%" },
-  { value: "0.4", label: "Subtle — 40%" },
+  { value: "0.4", label: "Subtle — 40% (default)" },
   { value: "0.7", label: "Clear — 70%" },
   { value: "1", label: "Solid — 100%" },
 ] as const;
@@ -227,6 +227,17 @@ const labelOf = (steps: readonly { label: string; value: string }[], v: string) 
 
 const row = { alignItems: "center", flexDirection: "row", gap: 8 } as const;
 // A radio group laid out as a wrapping row; Surface carries the role (Text drops it on web).
+const thumb = {
+  alignItems: "center",
+  borderRadius: 4,
+  height: 44,
+  justifyContent: "center",
+  overflow: "hidden",
+  // The mock's #2a3140 → #14171d scene backdrop; the bugs are drawn to be read on a dark frame.
+  ...(Platform.OS === "web"
+    ? ({ backgroundImage: "linear-gradient(135deg, #2a3140, #14171d)" } as object)
+    : { backgroundColor: "#1c212a" }),
+} as const;
 const group = { borderWidth: 0, flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
 
 interface RowProps {
@@ -326,17 +337,22 @@ const Pick = <V extends string>({ columns, label, lead, onPick, options, value }
         style={columns ? { flex: 1, minWidth: 0 } : undefined}
       >
         <Surface
-          alignItems="center"
+          alignItems={columns ? "stretch" : "center"}
           backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
           borderColor={checked ? "$actionPrimary" : "$borderControl"}
           borderRadius="$control"
           borderWidth={checked ? 2 : 1}
           flexGrow={columns ? 1 : undefined}
           gap={6}
-          paddingHorizontal={12}
+          paddingHorizontal={columns ? 8 : 12}
           paddingVertical={8}
         >
-          {o.visual}
+          {columns ? (
+            // The mock's .thumb: a dark gradient box that holds the bug, name left-aligned below.
+            <View style={thumb}>{o.visual}</View>
+          ) : (
+            o.visual
+          )}
           <Text textRole="cardLabel">{o.label}</Text>
         </Surface>
       </Pressable>
@@ -862,12 +878,21 @@ const OnScreenLogoSection = ({
   const preview = (
     <View style={{ flex: phone ? undefined : 1.3, gap: 10, minWidth: 0 }} testID="logo-preview">
       <Pick label="Preview picture" onPick={setScene} options={SCENES} value={scene} />
-      <Toggle
-        checked={zoom}
-        kind="checkbox"
-        label="Zoom the logo ×2 to inspect it (real size is the Size setting)"
-        onCheckedChange={setZoom}
-      />
+      <View style={{ ...row, gap: 6 }}>
+        <Toggle
+          checked={zoom}
+          kind="checkbox"
+          label="Zoom the logo ×2 to inspect it (real size is the Size setting)"
+          labelHidden
+          onCheckedChange={setZoom}
+        />
+        {/* The mock's .zoom label: 12 px muted, and clicking it toggles the box. */}
+        <View style={{ flex: 1 }}>
+          <Text onPress={() => setZoom(!zoom)} textRole="hint" tone="muted">
+            Zoom the logo ×2 to inspect it (real size is the Size setting)
+          </Text>
+        </View>
+      </View>
       {showAs ? (
         <View>
           <Pick
