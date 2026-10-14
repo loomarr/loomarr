@@ -177,12 +177,29 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `policy.breakDuration` per channel,
   minimum 30 s because Tunarr clamps smaller flex gaps). `policy.breaksPerHour = 0` is the only off
   switch. On internal playout the break length is a ceiling: a break slot is capped at its pod's
-  playable duration, so the programme resumes when the clips end. `FILLER_POD_MAX` yields to break
-  length when more clips are needed. **The break is a hard budget:** the intro bumper, the ads and
-  the return bumper together never exceed it, because the slot is cut at exactly the break length
-  and anything past it is lost. Assembly reserves the return bumper's real length before it places
-  an ad, then fills what is left with whole clips: a shorter clip or station ID takes the remainder
-  and an ad is never cut to fit. Time, not count, bounds the pod.
+  playable duration, so the programme resumes when the clips end. **One function owns the length**
+  (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
+  setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
+  the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
+  bumper together never exceed it, because the slot is cut at exactly the break length and anything
+  past it is lost. Assembly reserves the return bumper's real length before it places an ad, and
+  an ad is never cut to fit.
+- **A break with ads beats a break with bumpers.** If the bookends leave less room than the
+  shortest ad, assembly drops the return bumper, then the intro bumper, before it gives up: a
+  30 s break of 30 s ads still airs the ad. Only when no ad fits even alone is the break the 5 s
+  card, and the channel then airs no breaks (no playable file).
+- **Breaks use their time.** After the ads, assembly tops the break up with whole clips that fit
+  what is left, longest first: a short ad, a station ID or a bumper, ahead of the return bumper.
+  The top-up draws on the same ladder pools (audience ceiling, era, geography, quality and duration
+  bounds), the same no-repeat set and the same rotation and spacing rules as the ads, with category
+  variety relaxed rather than time left unused. It stops at the first moment nothing unused fits,
+  so a break ends within the shortest unused clip of its slot, not 18 s early. `FILLER_POD_MAX` is
+  a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
+  break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
+- **Previews are the break that airs.** The saved preview, the guide's per-break cards and both
+  draft previews (`pods/preview`, `programming/preview`) build their selection through
+  `channels.SelectionForPolicy`, which carries the policy's `breakDuration` and
+  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value.
 - **Placement** walks program durations and inserts a break after the program that crosses each
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.

@@ -26,6 +26,9 @@ type holiday struct {
 	// window reports the holiday's [start, end] for a given year (some windows
 	// straddle a year boundary, e.g. New Year).
 	window func(year int) (start, end time.Time)
+	// day is the holiday's own date in a given year (the night a Heavy channel runs its
+	// holiday-episode marathon, §6 "Holiday episodes"). Only month and day are read.
+	day func(year int) time.Time
 }
 
 // builtinCalendar is the v1 holiday set (§6). holidayvocab judges membership; a genre
@@ -34,23 +37,39 @@ var builtinCalendar = []holiday{
 	{
 		id:     "halloween",
 		window: fixedWindow(time.October, 1, time.October, 31),
+		day:    fixedDay(time.October, 31),
 	},
 	{
 		id:     "thanksgiving",
 		window: fixedWindow(time.November, 15, time.November, 30),
+		day:    thanksgivingDay,
 	},
 	{
 		id:     "christmas",
 		window: fixedWindow(time.December, 1, time.December, 26),
+		day:    fixedDay(time.December, 25),
 	},
 	{
 		id:     "newyear",
 		window: newYearWindow,
+		day:    fixedDay(time.December, 31),
 	},
 	{
 		id:     "valentines",
 		window: fixedWindow(time.February, 1, time.February, 14),
+		day:    fixedDay(time.February, 14),
 	},
+}
+
+func fixedDay(month time.Month, day int) func(int) time.Time {
+	return func(year int) time.Time { return time.Date(year, month, day, 0, 0, 0, 0, time.UTC) }
+}
+
+// thanksgivingDay is the fourth Thursday of November (US).
+func thanksgivingDay(year int) time.Time {
+	first := time.Date(year, time.November, 1, 0, 0, 0, 0, time.UTC)
+	offset := (int(time.Thursday) - int(first.Weekday()) + 7) % 7
+	return first.AddDate(0, 0, offset+21)
 }
 
 // fixedWindow builds a same-year [start, end] window (inclusive of the end day).
@@ -95,12 +114,24 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
-// activeHolidays returns the calendar holidays whose window contains `now`, limited
-// to the channel's selected subset (empty subset = all built-in holidays).
-func activeHolidays(now time.Time, selected []string) []holiday {
+// civilNoon is noon UTC of `now`'s calendar date on zone's wall clock (nil = UTC): the instant a
+// holiday window, which is a run of whole dates, is evaluated at. Evaluating the instant itself
+// would end Halloween at 8 pm on Oct 31 in New York.
+func civilNoon(now time.Time, zone *time.Location) time.Time {
+	if zone == nil {
+		zone = time.UTC
+	}
+	y, m, d := now.In(zone).Date()
+	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+}
+
+// activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
+// clock, limited to the channel's selected subset (empty subset = all built-in holidays).
+func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {
 	if now.IsZero() {
 		return nil
 	}
+	now = civilNoon(now, zone)
 	sel := lowerSet(selected)
 	var active []holiday
 	for _, h := range builtinCalendar {
@@ -194,15 +225,15 @@ func isSeasonalForAny(e LineupEntry) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
-	return applySeasonalWithTrace(entries, rp, now, nil)
+	return applySeasonalWithTrace(entries, rp, now, nil, nil)
 }
 
-func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, zone *time.Location, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	inWindow := len(active) > 0
 
 	switch rp.Seasonal.Mode {
@@ -254,11 +285,11 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 	}
 }
 
-func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time) map[string]bool {
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, zone *time.Location) map[string]bool {
 	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
 		return nil
 	}
-	active := activeHolidays(now, rp.Seasonal.Holidays)
+	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	if len(active) == 0 {
 		return nil
 	}

@@ -23,7 +23,11 @@ var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership 
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
 func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, meaning ValidatedDateMeaning) (Proposal, error) {
-	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
+	name := strings.TrimSpace(intent.ChannelName)
+	if name == "" {
+		name = strings.TrimSpace(out.ChannelName)
+	}
+	prop := Proposal{Intent: intent, ChannelName: name, Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
 	membershipRejected := false

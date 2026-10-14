@@ -32,7 +32,7 @@ func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handle
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,12 +60,12 @@ func iconsRequest(handler http.Handler, path string) *httptest.ResponseRecorder 
 }
 
 // The endpoint renders the candidate posters the service resolved from the channel's
-// own lineup — e.g. a Star Trek channel offering its five series' posters (§icon P2).
+// own lineup — e.g. a Late-Night Sci-Fi channel offering its series' posters (§icon P2).
 func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 	srv, _, fi := newIconsServer(t)
 	fi.Results = []api.IconSuggestion{
-		{Title: "Star Trek: The Next Generation", URL: "https://image.tmdb.org/t/p/w500/tng.jpg"},
-		{Title: "Star Trek: Deep Space Nine", URL: "https://image.tmdb.org/t/p/w500/ds9.jpg"},
+		{Title: "Cold Relay", URL: "https://image.tmdb.org/t/p/w500/cold-relay.jpg"},
+		{Title: "Ferrocene Station", URL: "https://image.tmdb.org/t/p/w500/ferrocene.jpg"},
 	}
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", adminToken, "")
@@ -81,7 +81,7 @@ func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 	if len(body.Suggestions) != 2 {
 		t.Fatalf("suggestions = %d, want 2", len(body.Suggestions))
 	}
-	if body.Suggestions[0].Title != "Star Trek: The Next Generation" || body.Suggestions[0].URL != "https://image.tmdb.org/t/p/w500/tng.jpg" {
+	if body.Suggestions[0].Title != "Cold Relay" || body.Suggestions[0].URL != "https://image.tmdb.org/t/p/w500/cold-relay.jpg" {
 		t.Errorf("suggestion[0] = %+v", body.Suggestions[0])
 	}
 	if asked := fi.ChannelIDs(); len(asked) != 1 || asked[0] != "ch-1" {
@@ -130,7 +130,7 @@ func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/icons2.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,6 @@ package filler
 import (
 	"context"
 	"log/slog"
-	"sort"
 	"time"
 )
 
@@ -277,31 +276,45 @@ func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, c
 
 // effectiveBreakDurationMs resolves the per-channel override over the live global setting.
 // A zero is inheritance, never "off" — breaks_per_hour owns the off switch. Invalid legacy
-// values also fall back to the documented 5 minute default rather than recreating Tunarr's
+// values also fall back to the documented 2 minute default rather than recreating Tunarr's
 // silent 30 second clamp and making Loomarr's preview disagree with playout.
 func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
-	if sel.BreakDurationMs >= 30_000 {
-		return sel.BreakDurationMs
+	return ResolveBreakDurationMs(sel.BreakDurationMs, pol.BreakDurationMs)
+}
+
+// ResolveBreakDurationMs is the ONE rule for how long a break is: the channel's own length when it
+// is valid, else the install setting when that is, else the 2 minute default the setting ships
+// with. Reconcile cuts the slot with it and the pod is assembled to it, so the two cannot differ.
+//
+// ⚠ It replaces two functions that disagreed about the fallback — the scheduler's said 5 minutes
+// and the assembler's 2 — so a nonsense value cut a 5 minute slot for a 2 minute pod. Disabling
+// breaks belongs to breaks-per-hour, never to a short length.
+func ResolveBreakDurationMs(channelMs, globalMs int64) int64 {
+	if channelMs >= minBreakDurationMs {
+		return channelMs
 	}
-	if pol.BreakDurationMs >= 30_000 {
-		return pol.BreakDurationMs
+	if globalMs >= minBreakDurationMs {
+		return globalMs
 	}
 	return defaultBreakDurationMs
 }
 
-// podMaxForDuration makes pod_max a soft density ceiling when it is too small to plausibly
-// fill the requested break. It derives the required count from the median duration of the
-// whole matching ladder, so a 30s catalog gets about ten slots for a 5m break while a 60s
-// catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+const minBreakDurationMs int64 = 30_000
+
+// podMaxForDuration makes pod_max a floor, never the reason a clip that fits is left out. The
+// count a break may need is bounded by its time over the SHORTEST eligible clip, so that is the
+// ceiling (up to maxPodClips); pod_max only raises it, for a catalog too sparse to ask for more.
+// Assemble still owns the hard no-repeat and gap invariants — time, not count, bounds the pod.
+//
+// ⚠ It used to size from the MEDIAN clip. That left a fitting short clip out of about 1% of
+// breaks whenever the pool mixed lengths, and the household had asked for fuller breaks.
 //
 // ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
 // holds every candidate). Sizing from the tightest rung let one long exact-era clip set the
 // density for a break filled mostly from the rungs below it.
 //
-// The count is deliberately NOT reduced for the bumpers. They come off the break's time budget
-// in Assemble, so a 2 minute break holding two 6s bumpers fits three 30s ads plus 18s; the slot
-// that leftover needs is the fourth one this ceiling keeps open, so a short whole clip fills it
-// instead of the break ending early. Time, not count, is what bounds the pod.
+// The count is deliberately NOT reduced for the bumpers: they come off the time budget in
+// Assemble, and what they leave is exactly where a short whole clip goes.
 func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targetMs int64) int {
 	pools := candidatePools(clips, w, pol)
 	matched := pools[len(pools)-1].clips
@@ -318,14 +331,20 @@ func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targe
 	if len(durations) == 0 {
 		return configured
 	}
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-	median := durations[len(durations)/2]
-	required := int((targetMs + median - 1) / median)
+	shortest := durations[0]
+	for _, d := range durations {
+		shortest = min(shortest, d)
+	}
+	required := int(min((targetMs+shortest-1)/shortest, maxPodClips))
 	if required > configured {
 		return required
 	}
 	return configured
 }
+
+// maxPodClips bounds the time-sized clip ceiling so a catalog of near-zero-length clips cannot
+// ask for a pod of thousands of entries.
+const maxPodClips = 64
 
 // windowFor builds the Window a channel's selection describes.
 //

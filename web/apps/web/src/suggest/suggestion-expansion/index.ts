@@ -1,6 +1,7 @@
 export {
   isSuggestionExpansion,
   MAX_SUGGESTION_OPTIONS,
-  suggestionExpansionRequest,
+  selectedLineupContext,
+  suggestionExpansionIntent,
   suggestionIdentity,
 } from "./suggestion-expansion";

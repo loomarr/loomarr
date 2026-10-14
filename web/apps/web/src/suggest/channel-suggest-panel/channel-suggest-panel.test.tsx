@@ -8,11 +8,14 @@ import {
   getResolveMovieCollectionsMockHandler,
   getReviseProposalJobMockHandler,
   getSearchMockHandler,
+  getSettingsListMockHandler,
   getSubmitManualChannelMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
+import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +23,7 @@ import { outlook } from "@/test/fixtures/outlook";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import { POLL_MS } from "../use-ai-reconnect";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
 
@@ -120,6 +124,8 @@ const stubSuggest = (
 
   server.use(
     getMeMockHandler(opts.me ?? ADMIN),
+    // The manual builder watches this for an admin, for its AI-reconnect banner; AI stays off.
+    getSettingsListMockHandler({ settings: [], features: { suggestions: false } }),
     // Approve — returns the created channel's id (what the panel navigates to).
     getApproveProposalMockHandler(async ({ params, request }) => {
       approvals.push({ id: String(params.id), edit: await request.json() });
@@ -290,6 +296,51 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: "Build it manually instead" }));
 
     expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
+  });
+
+  // The resume banner with nothing picked yet (#1817): there is no lineup to keep, so "Try AI
+  // suggestions" leaves the builder for the describe form, carrying the description over.
+  it("returns an empty manual build to the describe form when AI comes back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      stubSuggest();
+      const features = { suggestions: false, reads: 0 };
+      server.use(
+        getListChannelIdeasMockHandler({ ideas: [] }),
+        getSettingsListMockHandler(() => {
+          features.reads += 1;
+          return { settings: [], features: { suggestions: features.suggestions } };
+        }),
+      );
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <RouterHarness
+          content={
+            <LoomarrProvider theme="dark">
+              <QueryClientProvider client={client}>
+                <ChannelSuggestPanel onCreated={() => {}} initialManual />
+              </QueryClientProvider>
+            </LoomarrProvider>
+          }
+        />,
+      );
+      await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+      await waitFor(() => expect(features.reads).toBe(1));
+
+      features.suggestions = true;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_MS);
+      });
+      await user.click(await screen.findByRole("button", { name: "Try AI suggestions" }));
+
+      expect(await screen.findByLabelText("Channel intent")).toHaveValue(
+        CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
+      );
+      expect(screen.queryByRole("heading", { name: "Add a channel" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps configured AI truthful and routes a missing grounding key to TMDB", async () => {

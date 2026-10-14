@@ -128,7 +128,7 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		want    string
 		payload any
 	}{
-		{"title", api.TitleEvent{Key: "movie:tmdb:1", State: "available", Name: "In Flames"}},
+		{"title", api.TitleEvent{Key: "movie:tmdb:90000001", State: "available", Name: "Ashgrove Anomaly"}},
 		{"channel", api.ChannelEvent{ChannelID: "ch_1", Status: "live"}},
 		{"suggestion", api.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
 		{"job", api.JobEvent{Name: "library-scan"}},

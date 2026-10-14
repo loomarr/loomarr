@@ -21,7 +21,7 @@ func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehol
 	if err != nil {
 		t.Fatal(err)
 	}
-	channelEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"never"}`
+	channelEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:90000603","action":"never"}`
 	resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, channelEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
@@ -34,14 +34,14 @@ func TestDiscoveryFeedbackExistingAndDetachedChannelRemainsIndependentOfHousehol
 		t.Fatalf("soft detach = %d, want 204", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
-	detachedEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"surprise"}`
+	detachedEvent := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:90000603","action":"surprise"}`
 	resp = harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, detachedEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		t.Fatalf("detached-channel feedback = %d, want 200", resp.StatusCode)
 	}
 	_ = resp.Body.Close()
-	householdEvent := `{"scope":"household","targetKey":"movie:tmdb:603","action":"keep"}`
+	householdEvent := `{"scope":"household","targetKey":"movie:tmdb:90000603","action":"keep"}`
 	resp = harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, householdEvent)
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
@@ -81,8 +81,8 @@ func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testin
 		path string
 		body string
 	}{
-		{path: "/v1/discovery/feedback", body: `{"scope":"channel","scopeId":"missing-channel","targetKey":"movie:tmdb:603","action":"never"}`},
-		{path: "/v1/discovery/feedback/clear", body: `{"scope":"channel","scopeId":"missing-channel","targetKey":"movie:tmdb:603"}`},
+		{path: "/v1/discovery/feedback", body: `{"scope":"channel","scopeId":"missing-channel","targetKey":"movie:tmdb:90000603","action":"never"}`},
+		{path: "/v1/discovery/feedback/clear", body: `{"scope":"channel","scopeId":"missing-channel","targetKey":"movie:tmdb:90000603"}`},
 	}
 	for _, request := range requests {
 		resp := harness.Do(http.MethodPost, request.path, memberToken, request.body)
@@ -121,7 +121,7 @@ func TestDiscoveryFeedbackMissingChannelIsBounded404AfterAuthorization(t *testin
 
 func TestDiscoveryFeedbackAuthorizationAndRoundTrip(t *testing.T) {
 	harness := newAPIHarness(t)
-	body := `{"scope":"household","targetKey":"movie:tmdb:603","action":"keep","reason":"family favorite"}`
+	body := `{"scope":"household","targetKey":"movie:tmdb:90000603","action":"keep","reason":"family favorite"}`
 
 	if resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", "", body); resp.StatusCode != http.StatusUnauthorized {
 		_ = resp.Body.Close()
@@ -158,8 +158,8 @@ func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testi
 		t.Fatal(err)
 	}
 	requests := []string{
-		`{"scope":"household","targetKey":"movie:tmdb:603","action":"keep"}`,
-		`{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603","action":"never"}`,
+		`{"scope":"household","targetKey":"movie:tmdb:90000603","action":"keep"}`,
+		`{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:90000603","action":"never"}`,
 	}
 	for _, body := range requests {
 		resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, body)
@@ -169,7 +169,7 @@ func TestDiscoveryFeedbackChannelReadExplainsHouseholdFallbackAfterUndo(t *testi
 		}
 		_ = resp.Body.Close()
 	}
-	clear := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:603"}`
+	clear := `{"scope":"channel","scopeId":"feedback-channel","targetKey":"movie:tmdb:90000603"}`
 	resp := harness.Do(http.MethodPost, "/v1/discovery/feedback/clear", adminToken, clear)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -194,7 +194,7 @@ type discoveryFeedbackView struct {
 
 func TestDiscoveryFeedbackRejectsNonCanonicalTargetKeys(t *testing.T) {
 	harness := newAPIHarness(t)
-	for _, target := range []string{"movie:tmdb:not-a-number", "movie:tvdb:603", "movie:tmdb:0603", "movie:tmdb:603:extra"} {
+	for _, target := range []string{"movie:tmdb:not-a-number", "movie:tvdb:90000603", "movie:tmdb:090000603", "movie:tmdb:90000603:extra"} {
 		body := `{"scope":"household","targetKey":"` + target + `","action":"keep"}`
 		resp := harness.Do(http.MethodPost, "/v1/discovery/feedback", adminToken, body)
 		_ = resp.Body.Close()

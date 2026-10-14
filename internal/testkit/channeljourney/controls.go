@@ -13,9 +13,9 @@ import (
 func EligibilityControls() []Case {
 	named := Cases()[0]
 	named.Name += "_airing_year_control"
-	named.Episodes["full-house"][0].Year = 1990
-	named.Want = append([]string{"full-house-1989"}, named.Want...)
-	named.Forbidden = slices.DeleteFunc(named.Forbidden, func(id string) bool { return id == "full-house-1989" })
+	named.Episodes["bowling-alley-blues"][0].Year = 1990
+	named.Want = append([]string{"bowling-alley-blues-1989"}, named.Want...)
+	named.Forbidden = slices.DeleteFunc(named.Forbidden, func(id string) bool { return id == "bowling-alley-blues-1989" })
 
 	date := Cases()[1]
 	date.Name += "_release_year_control"
@@ -43,16 +43,16 @@ func EligibilityControls() []Case {
 
 	seasons := Cases()[3]
 	seasons.Name += "_season_limit_control"
-	seasons.Proposal.Intent.Description = "The Simpsons seasons one through twelve in episode order"
+	seasons.Proposal.Intent.Description = "Kettle Kids seasons one through twelve in episode order"
 	seasons.Proposal.Lineup[0].SeasonMax = 12
 	seasons.Want = append(seasons.Want, "classic-s12e01")
 	seasons.Forbidden = nil
 
 	seasonal := Cases()[4]
 	seasonal.Name += "_episode_evidence_control"
-	seasonal.Episodes["simpsons"][1].Title = "Synthetic second Christmas celebration"
+	seasonal.Episodes["kettle-kids"][1].Title = "Synthetic second Christmas celebration"
 	// Both episodes now qualify, so supply the library resolver's season/episode order.
-	slices.Reverse(seasonal.Episodes["simpsons"])
+	slices.Reverse(seasonal.Episodes["kettle-kids"])
 	seasonal.Want = []string{"ordinary", "christmas"}
 	seasonal.Forbidden = nil
 	return []Case{named, date, genre, unrated, rating, seasons, seasonal}
@@ -70,7 +70,7 @@ func SeparatedNamedBlock() Case {
 		SeriesMinGap:    schedule.Duration(44 * time.Minute),
 		BlockMax:        1,
 	}
-	for _, series := range []string{"full-house", "family-matters", "step-by-step"} {
+	for _, series := range []string{"bowling-alley-blues", "crumb-street-bakery", "grand-oak-hotel"} {
 		id := series + "-1994"
 		c.Episodes[series] = append(c.Episodes[series], episode(id, "Synthetic later member episode", 4, 1, 1994))
 		c.Want = append(c.Want, id)

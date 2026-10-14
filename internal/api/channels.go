@@ -618,6 +618,9 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 	}
 	intent.RefineText = strings.TrimSpace(in.Body.Change)
 	intent.CurrentLineup = lineupContext(ch.Lineup)
+	// A name fixed when the channel was requested belongs to that request; the channel may have
+	// been renamed since, so a refine names its proposal as any refine does.
+	intent.ChannelName = ""
 
 	jobID, err := s.suggest.Refine(ctx, ch.IntentRef, intent)
 	if err != nil {

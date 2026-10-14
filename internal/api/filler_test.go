@@ -595,7 +595,7 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
 	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
-	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":"  Kellogg's  ","tags":["cereal"]}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":"  Brightfield's  ","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin patch → %d", resp.StatusCode)
 	}
@@ -617,7 +617,7 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	if body.Category != "cereal" {
 		t.Errorf("derived category = %q, want cereal (the primary product leaf of the tag set)", body.Category)
 	}
-	if body.Brand != "Kellogg's" {
+	if body.Brand != "Brightfield's" {
 		t.Errorf("brand = %q, want trimmed operator correction", body.Brand)
 	}
 	if !slices.Contains(body.Tags, "cereal") {
@@ -641,7 +641,7 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 		byAxis[state.Axis] = state
 	}
 	if byAxis[fillerenrichment.AxisEra].Evidence.Kind != fillerenrichment.EvidenceOperator ||
-		byAxis[fillerenrichment.AxisBrand].Value.Text != "Kellogg's" ||
+		byAxis[fillerenrichment.AxisBrand].Value.Text != "Brightfield's" ||
 		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 || byAxis[fillerenrichment.AxisProduct].Value.Tags[0] != "cereal" {
 		t.Fatalf("operator enrichment evidence = %+v", states)
 	}
@@ -909,7 +909,7 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	if forbidden := do(t, srv, http.MethodPost, "/v1/filler/sources/archive:classic/items", memberToken,
-		`{"remoteId":"CampbellsSoupAdvert","url":"https://archive.org/details/CampbellsSoupAdvert"}`); forbidden.StatusCode != http.StatusForbidden {
+		`{"remoteId":"HearthpotSoupAdvert","url":"https://archive.org/details/HearthpotSoupAdvert"}`); forbidden.StatusCode != http.StatusForbidden {
 		t.Fatalf("member queue source item → %d, want 403", forbidden.StatusCode)
 	}
 	if len(ff.sourceItems) != 0 {
@@ -917,7 +917,7 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 	}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/archive:classic/items", adminToken,
-		`{"remoteId":"CampbellsSoupAdvert","url":"https://archive.org/details/CampbellsSoupAdvert"}`)
+		`{"remoteId":"HearthpotSoupAdvert","url":"https://archive.org/details/HearthpotSoupAdvert"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("queue source item → %d, want 200", resp.StatusCode)
 	}
@@ -934,8 +934,8 @@ func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 		t.Fatalf("source item calls = %+v, want one", ff.sourceItems)
 	}
 	want := filler.AcquisitionTarget{
-		SourceID: "archive:classic", RemoteID: "CampbellsSoupAdvert", Kind: "archive",
-		URL: "https://archive.org/details/CampbellsSoupAdvert",
+		SourceID: "archive:classic", RemoteID: "HearthpotSoupAdvert", Kind: "archive",
+		URL: "https://archive.org/details/HearthpotSoupAdvert",
 	}
 	if ff.sourceItems[0] != want {
 		t.Fatalf("source item = %+v, want %+v", ff.sourceItems[0], want)
@@ -1341,7 +1341,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "Burger Barn", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
 	}
