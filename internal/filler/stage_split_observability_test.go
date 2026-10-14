@@ -57,7 +57,7 @@ func TestGround_WarnsWhenItReadEveryCutAndLearnedNothing(t *testing.T) {
 // meaning anything.
 func TestGround_DoesNotWarnWhenItLearnedSomething(t *testing.T) {
 	log, buf := capture()
-	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOY KINGDOM MEGA SALE"}`}
+	model := &fixedVision{answer: `{"category":"toys","visibleText":"TOYBURROW MEGA SALE"}`}
 	s := NewSplitStage(nil, nil).WithLogger(log).WithSegmentVision(&SegmentVision{
 		Tools:    &spanTools{frames: [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}},
 		Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",

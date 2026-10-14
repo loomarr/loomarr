@@ -12,8 +12,8 @@ func TestGroundSegmentNameRequiresExactContentEvidence(t *testing.T) {
 		wantOK                              bool
 	}{
 		{
-			name: "grounded visible product", candidate: "Toy Kingdom commercial",
-			evidence: "TOY KINGDOM — THE WORLD'S BIGGEST TOY STORE", wantName: "Toy Kingdom commercial", wantOK: true,
+			name: "grounded visible product", candidate: "Toyburrow commercial",
+			evidence: "TOYBURROW — THE WORLD'S BIGGEST TOY STORE", wantName: "Toyburrow commercial", wantOK: true,
 		},
 		{
 			name: "grounded non-English product", candidate: "Café La Brisa advert",
