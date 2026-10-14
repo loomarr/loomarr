@@ -17,10 +17,10 @@ import (
 
 func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.SetDiscoveryEvidence(provision.Movie, 101, "en", []string{"US"}, 136, 7.4, 1200)
+	mock.SetDiscoveryEvidence(provision.Movie, 90000101, "en", []string{"US"}, 136, 7.4, 1200)
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	got, err := c.Search(context.Background(), "the", 20) // matches The Rock, The Matrix
+	got, err := c.Search(context.Background(), "o", 20) // matches Lemon Tree Heist, Marigold Protocol, Copperline Foundry
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 		if cand.MediaType != provision.Movie && cand.MediaType != provision.Series {
 			t.Errorf("person/unknown result not filtered: %+v", cand)
 		}
-		if cand.TMDBID == 101 && (cand.OriginalLanguage != "en" || len(cand.OriginCountries) != 1 ||
+		if cand.TMDBID == 90000101 && (cand.OriginalLanguage != "en" || len(cand.OriginCountries) != 1 ||
 			cand.OriginCountries[0] != "US" || cand.VoteAverage != 7.4 || cand.VoteCount != 1200) {
 			t.Errorf("TMDB result lost discovery evidence: %+v", cand)
 		}
@@ -43,7 +43,7 @@ func TestSearch_MapsMovieAndTV_DropsPerson(t *testing.T) {
 
 func TestDiscoverKeywordsCarriesResolvedKeywordEvidence(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddKeywordMovie(77_001, "Winter Story", 2020, []int{10_751}, "A family reunion.", "Christmas")
+	mock.AddKeywordMovie(90_077_001, "Winter Story", 2020, []int{10_751}, "A family reunion.", "Christmas")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
@@ -59,8 +59,8 @@ func TestDiscoverKeywordsCarriesResolvedKeywordEvidence(t *testing.T) {
 
 func TestDiscoverKeywordsDoesNotOverclaimORKeywordEvidence(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddKeywordMovie(77_001, "Winter Story", 2020, nil, "A family reunion.", "Christmas")
-	mock.AddKeywordMovie(77_002, "October Story", 2021, nil, "A masked visitor.", "Halloween")
+	mock.AddKeywordMovie(90_077_001, "Winter Story", 2020, nil, "A family reunion.", "Christmas")
+	mock.AddKeywordMovie(90_077_002, "October Story", 2021, nil, "A masked visitor.", "Halloween")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
@@ -81,7 +81,7 @@ func TestDiscoverKeywordsDoesNotOverclaimORKeywordEvidence(t *testing.T) {
 
 func TestDiscover_MapsScienceFictionToTVGenreID(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddSeries(52_001, "Midnight Orbit", 2022, []int{10765}, "Atmospheric science fiction after dark.")
+	mock.AddSeries(90_052_001, "Midnight Orbit", 2022, []int{10765}, "Atmospheric science fiction after dark.")
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
@@ -90,7 +90,7 @@ func TestDiscover_MapsScienceFictionToTVGenreID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].TMDBID != 52_001 {
+	if len(got) != 1 || got[0].TMDBID != 90_052_001 {
 		t.Fatalf("TV science-fiction discovery = %+v, want Midnight Orbit via genre 10765", got)
 	}
 }
@@ -143,19 +143,19 @@ func TestDiscover_AppliesAuthoritativeScalarQualifiersToMovieAndTV(t *testing.T)
 
 func TestDiscover_ResolvesMovieCastAndCreatorsToGroundedPeople(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddPerson(31, "Tom Hanks")
-	mock.AddPerson(560, "Nora Ephron")
-	mock.SetMoviePeople(100, []int{31}, []int{560})
+	mock.AddPerson(90000031, "Ansel Brightwater")
+	mock.AddPerson(90000560, "Odile Marchbank")
+	mock.SetMoviePeople(90000100, []int{90000031}, []int{90000560})
 	c := tmdb.NewWithBase(mock.URL, "key")
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
-		MediaType: provision.Movie, Cast: []string{"Tom Hanks"}, Creators: []string{"Nora Ephron"},
+		MediaType: provision.Movie, Cast: []string{"Ansel Brightwater"}, Creators: []string{"Odile Marchbank"},
 	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].TMDBID != 100 || !reflect.DeepEqual(got[0].Cast, []string{"Tom Hanks"}) ||
-		!reflect.DeepEqual(got[0].Creators, []string{"Nora Ephron"}) {
+	if len(got) != 1 || got[0].TMDBID != 90000100 || !reflect.DeepEqual(got[0].Cast, []string{"Ansel Brightwater"}) ||
+		!reflect.DeepEqual(got[0].Creators, []string{"Odile Marchbank"}) {
 		t.Fatalf("person-qualified discovery = %+v", got)
 	}
 	var searches int
@@ -168,7 +168,7 @@ func TestDiscover_ResolvesMovieCastAndCreatorsToGroundedPeople(t *testing.T) {
 			if parseErr != nil {
 				t.Fatal(parseErr)
 			}
-			if query.Get("with_cast") != "31" || query.Get("with_crew") != "560" {
+			if query.Get("with_cast") != "90000031" || query.Get("with_crew") != "90000560" {
 				t.Fatalf("person filters = %q/%q", query.Get("with_cast"), query.Get("with_crew"))
 			}
 		}
@@ -180,20 +180,20 @@ func TestDiscover_ResolvesMovieCastAndCreatorsToGroundedPeople(t *testing.T) {
 
 func TestDiscover_ResolvesAmbiguousNetworkByCountryWithoutLeakingCredentialToExport(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddSeries(20_001, "Signal House", 2024, []int{18}, "A prestige drama.")
-	mock.SetDiscoveryEvidence(provision.Series, 20_001, "en", []string{"US"}, 55, 8.1, 800)
-	mock.AddNetwork(49, "HBO", "US")
-	mock.AddNetwork(1590, "HBO", "DE")
-	mock.SetSeriesNetwork(20_001, 49)
+	mock.AddSeries(90_020_001, "Signal House", 2024, []int{18}, "A prestige drama.")
+	mock.SetDiscoveryEvidence(provision.Series, 90_020_001, "en", []string{"US"}, 55, 8.1, 800)
+	mock.AddNetwork(90000049, "Harbor Nine", "US")
+	mock.AddNetwork(90001590, "Harbor Nine", "DE")
+	mock.SetSeriesNetwork(90_020_001, 90000049)
 	c := tmdb.NewWithBase(mock.URL, "secret-key")
 
 	got, err := c.Discover(context.Background(), catalog.DiscoveryQuery{
-		MediaType: provision.Series, Network: "HBO", OriginCountry: "US",
+		MediaType: provision.Series, Network: "Harbor Nine", OriginCountry: "US",
 	}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].TMDBID != 20_001 || !reflect.DeepEqual(got[0].Networks, []string{"HBO"}) {
+	if len(got) != 1 || got[0].TMDBID != 90_020_001 || !reflect.DeepEqual(got[0].Networks, []string{"Harbor Nine"}) {
 		t.Fatalf("network-qualified discovery = %+v", got)
 	}
 	var exportRequests, detailRequests, discoverRequests int
@@ -215,8 +215,8 @@ func TestDiscover_ResolvesAmbiguousNetworkByCountryWithoutLeakingCredentialToExp
 			if parseErr != nil {
 				t.Fatal(parseErr)
 			}
-			if query.Get("with_networks") != "49" {
-				t.Fatalf("with_networks = %q, want 49", query.Get("with_networks"))
+			if query.Get("with_networks") != "90000049" {
+				t.Fatalf("with_networks = %q, want 90000049", query.Get("with_networks"))
 			}
 		}
 	}
@@ -233,27 +233,33 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 		want  string
 	}{
 		{
-			name:  "ambiguous person",
-			setup: func(mock *testkit.TMDB) { mock.AddPerson(1, "Alex Smith"); mock.AddPerson(2, "Alex Smith") },
+			name: "ambiguous person",
+			setup: func(mock *testkit.TMDB) {
+				mock.AddPerson(90000001, "Alex Smith")
+				mock.AddPerson(90000002, "Alex Smith")
+			},
 			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Alex Smith"}},
 			want:  "2 exact identities",
 		},
 		{
 			name:  "person interior whitespace is not normalized",
-			setup: func(mock *testkit.TMDB) { mock.AddPerson(31, "Tom Hanks") },
-			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Tom  Hanks"}},
+			setup: func(mock *testkit.TMDB) { mock.AddPerson(90000031, "Ansel Brightwater") },
+			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Ansel  Brightwater"}},
 			want:  "0 exact identities",
 		},
 		{
 			name:  "unresolved network",
-			setup: func(mock *testkit.TMDB) { mock.AddNetwork(49, "HBO", "US") },
+			setup: func(mock *testkit.TMDB) { mock.AddNetwork(90000049, "Harbor Nine", "US") },
 			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Imaginary Network"},
 			want:  "no exact identity",
 		},
 		{
-			name:  "ambiguous network without country",
-			setup: func(mock *testkit.TMDB) { mock.AddNetwork(49, "HBO", "US"); mock.AddNetwork(1590, "HBO", "DE") },
-			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "HBO"},
+			name: "ambiguous network without country",
+			setup: func(mock *testkit.TMDB) {
+				mock.AddNetwork(90000049, "Harbor Nine", "US")
+				mock.AddNetwork(90001590, "Harbor Nine", "DE")
+			},
+			query: catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Harbor Nine"},
 			want:  "include origin_country",
 		},
 	}
@@ -277,7 +283,7 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 func TestDiscover_RejectsUnsupportedEntityMediaTypeBeforeHTTP(t *testing.T) {
 	mock := testkit.NewTMDB(t)
 	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), catalog.DiscoveryQuery{
-		MediaType: provision.Series, Cast: []string{"Idris Elba"},
+		MediaType: provision.Series, Cast: []string{"Tobias Fenwright"},
 	}, 20)
 	if err == nil || !strings.Contains(err.Error(), "movie media type") {
 		t.Fatalf("error = %v", err)
@@ -291,23 +297,23 @@ func TestExists_RealID200_FabricatedID404(t *testing.T) {
 	mock := testkit.NewTMDB(t)
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	// Real movie id (100 = Speed) exists.
-	ok, err := c.Exists(context.Background(), provision.Movie, 100)
+	// Known movie id (90000100 = Quiet Engines) exists.
+	ok, err := c.Exists(context.Background(), provision.Movie, 90000100)
 	if err != nil || !ok {
-		t.Fatalf("Exists(movie,100) = %v,%v want true,nil", ok, err)
+		t.Fatalf("Exists(movie,90000100) = %v,%v want true,nil", ok, err)
 	}
 	// Fabricated id → does not exist (the LLM-hallucination path §8).
-	ok, err = c.Exists(context.Background(), provision.Movie, 88888888)
+	ok, err = c.Exists(context.Background(), provision.Movie, 98888888)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ok {
 		t.Error("fabricated TMDB id must report not-exists (grounding drops it)")
 	}
-	// Real series id.
-	ok, _ = c.Exists(context.Background(), provision.Series, 1396)
+	// Known series id.
+	ok, _ = c.Exists(context.Background(), provision.Series, 90001396)
 	if !ok {
-		t.Error("Breaking Bad (tv:1396) should exist")
+		t.Error("Copperline Foundry (tv:90001396) should exist")
 	}
 }
 
@@ -324,10 +330,10 @@ func TestExists_ZeroIDIsFalse(t *testing.T) {
 func TestCollectionID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/movie/85": // Raiders — in the Indiana Jones Collection (84)
-			_, _ = w.Write([]byte(`{"id":85,"belongs_to_collection":{"id":84,"name":"Indiana Jones Collection"}}`))
-		case "/movie/700": // a standalone — belongs_to_collection is null
-			_, _ = w.Write([]byte(`{"id":700,"belongs_to_collection":null}`))
+		case "/movie/90000085": // in the Wren Halloway Collection (90000084)
+			_, _ = w.Write([]byte(`{"id":90000085,"belongs_to_collection":{"id":90000084,"name":"Wren Halloway Collection"}}`))
+		case "/movie/90000700": // a standalone — belongs_to_collection is null
+			_, _ = w.Write([]byte(`{"id":90000700,"belongs_to_collection":null}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -335,14 +341,14 @@ func TestCollectionID(t *testing.T) {
 	defer srv.Close()
 	c := tmdb.NewWithBase(srv.URL, "key")
 
-	if id, err := c.CollectionID(context.Background(), provision.Movie, 85); err != nil || id != 84 {
-		t.Errorf("CollectionID(movie,85) = %d,%v want 84,nil", id, err)
+	if id, err := c.CollectionID(context.Background(), provision.Movie, 90000085); err != nil || id != 90000084 {
+		t.Errorf("CollectionID(movie,90000085) = %d,%v want 90000084,nil", id, err)
 	}
-	if id, err := c.CollectionID(context.Background(), provision.Movie, 700); err != nil || id != 0 {
-		t.Errorf("CollectionID(movie,700) = %d,%v want 0,nil (standalone)", id, err)
+	if id, err := c.CollectionID(context.Background(), provision.Movie, 90000700); err != nil || id != 0 {
+		t.Errorf("CollectionID(movie,90000700) = %d,%v want 0,nil (standalone)", id, err)
 	}
 	// A series never has a collection — no HTTP call, returns 0.
-	if id, err := c.CollectionID(context.Background(), provision.Series, 1396); err != nil || id != 0 {
+	if id, err := c.CollectionID(context.Background(), provision.Series, 90001396); err != nil || id != 0 {
 		t.Errorf("CollectionID(series,_) = %d,%v want 0,nil (no lookup)", id, err)
 	}
 }
@@ -354,10 +360,10 @@ func TestCollectionID(t *testing.T) {
 func TestEpisodeStillURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/tv/1396/season/1/episode/1": // Breaking Bad S1E1 — has a still
-			_, _ = w.Write([]byte(`{"id":62085,"still_path":"/abc.jpg"}`))
-		case "/tv/1396/season/1/episode/2": // has no still image
-			_, _ = w.Write([]byte(`{"id":62086,"still_path":""}`))
+		case "/tv/90001396/season/1/episode/1": // Copperline Foundry S1E1 — has a still
+			_, _ = w.Write([]byte(`{"id":90062085,"still_path":"/abc.jpg"}`))
+		case "/tv/90001396/season/1/episode/2": // has no still image
+			_, _ = w.Write([]byte(`{"id":90062086,"still_path":""}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -368,15 +374,15 @@ func TestEpisodeStillURL(t *testing.T) {
 	// ⚠ `original`, not `w500`, since V52 phase 7: the caller ADOPTS this URL into the image service
 	// rather than handing it to a browser, and §22 fetches the original once then builds the width
 	// ladder locally — asking TMDB for a pre-shrunk copy would upscale the larger rungs.
-	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 1); err != nil || u != "https://image.tmdb.org/t/p/original/abc.jpg" {
-		t.Errorf("EpisodeStillURL(1396,1,1) = %q,%v want image url,nil", u, err)
+	if u, err := c.EpisodeStillURL(context.Background(), 90001396, 1, 1); err != nil || u != "https://image.tmdb.org/t/p/original/abc.jpg" {
+		t.Errorf("EpisodeStillURL(90001396,1,1) = %q,%v want image url,nil", u, err)
 	}
-	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 2); err != nil || u != "" {
-		t.Errorf("EpisodeStillURL(1396,1,2) = %q,%v want \"\",nil (no still)", u, err)
+	if u, err := c.EpisodeStillURL(context.Background(), 90001396, 1, 2); err != nil || u != "" {
+		t.Errorf("EpisodeStillURL(90001396,1,2) = %q,%v want \"\",nil (no still)", u, err)
 	}
 	// A season/episode TMDB doesn't have → "" and NO error (not-found is not a failure).
-	if u, err := c.EpisodeStillURL(context.Background(), 1396, 99, 99); err != nil || u != "" {
-		t.Errorf("EpisodeStillURL(1396,99,99) = %q,%v want \"\",nil (not found)", u, err)
+	if u, err := c.EpisodeStillURL(context.Background(), 90001396, 99, 99); err != nil || u != "" {
+		t.Errorf("EpisodeStillURL(90001396,99,99) = %q,%v want \"\",nil (not found)", u, err)
 	}
 	// Zero id → no HTTP call, "" + nil.
 	if u, err := c.EpisodeStillURL(context.Background(), 0, 1, 1); err != nil || u != "" {
@@ -389,9 +395,9 @@ func TestEpisodeStillURL(t *testing.T) {
 func TestBackdropURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/movie/603":
-			_, _ = w.Write([]byte(`{"backdrop_path":"/matrix-wide.jpg","poster_path":"/matrix-poster.jpg"}`))
-		case "/movie/604":
+		case "/movie/90000603":
+			_, _ = w.Write([]byte(`{"backdrop_path":"/marigold-wide.jpg","poster_path":"/marigold-poster.jpg"}`))
+		case "/movie/90000604":
 			_, _ = w.Write([]byte(`{"backdrop_path":""}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -400,11 +406,11 @@ func TestBackdropURL(t *testing.T) {
 	defer srv.Close()
 	c := tmdb.NewWithBase(srv.URL, "key")
 
-	if u, err := c.BackdropURL(context.Background(), provision.Movie, 603); err != nil || u != "https://image.tmdb.org/t/p/original/matrix-wide.jpg" {
-		t.Errorf("BackdropURL(movie,603) = %q,%v want landscape image url,nil", u, err)
+	if u, err := c.BackdropURL(context.Background(), provision.Movie, 90000603); err != nil || u != "https://image.tmdb.org/t/p/original/marigold-wide.jpg" {
+		t.Errorf("BackdropURL(movie,90000603) = %q,%v want landscape image url,nil", u, err)
 	}
-	if u, err := c.BackdropURL(context.Background(), provision.Movie, 604); err != nil || u != "" {
-		t.Errorf("BackdropURL(movie,604) = %q,%v want empty,nil", u, err)
+	if u, err := c.BackdropURL(context.Background(), provision.Movie, 90000604); err != nil || u != "" {
+		t.Errorf("BackdropURL(movie,90000604) = %q,%v want empty,nil", u, err)
 	}
 	if u, err := c.BackdropURL(context.Background(), provision.Movie, 0); err != nil || u != "" {
 		t.Errorf("BackdropURL(movie,0) = %q,%v want empty,nil", u, err)
@@ -416,18 +422,18 @@ func TestBackdropURL(t *testing.T) {
 // Sparse coverage is normal, so a title with none returns "" and no error.
 func TestContentRating(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.SetRating(provision.Series, 1396, "TV-MA") // Breaking Bad
-	mock.SetRating(provision.Movie, 603, "R")       // The Matrix
+	mock.SetRating(provision.Series, 90001396, "TV-MA") // Copperline Foundry
+	mock.SetRating(provision.Movie, 90000603, "R")      // Marigold Protocol
 	c := tmdb.NewWithBase(mock.URL, "key")
 
-	if r, err := c.ContentRating(context.Background(), provision.Series, 1396); err != nil || r != "TV-MA" {
+	if r, err := c.ContentRating(context.Background(), provision.Series, 90001396); err != nil || r != "TV-MA" {
 		t.Errorf("tv rating = %q,%v want TV-MA,nil", r, err)
 	}
-	if r, err := c.ContentRating(context.Background(), provision.Movie, 603); err != nil || r != "R" {
+	if r, err := c.ContentRating(context.Background(), provision.Movie, 90000603); err != nil || r != "R" {
 		t.Errorf("movie rating = %q,%v want R,nil", r, err)
 	}
 	// A title TMDB doesn't rate → "" and NO error (sparse coverage is expected).
-	if r, err := c.ContentRating(context.Background(), provision.Movie, 100); err != nil || r != "" {
+	if r, err := c.ContentRating(context.Background(), provision.Movie, 90000100); err != nil || r != "" {
 		t.Errorf("unrated title = %q,%v want \"\",nil", r, err)
 	}
 	if r, err := c.ContentRating(context.Background(), provision.Movie, 0); err != nil || r != "" {

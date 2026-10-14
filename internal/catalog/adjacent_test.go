@@ -20,13 +20,13 @@ func seed(id int, name string) catalog.Candidate {
 // one-vote candidate must NOT be offered.
 func TestAdjacent_RequiresConsensusAcrossSeeds(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
-		100: {603, 101}, // Speed  → Matrix, The Rock
-		101: {603},      // Rock   → Matrix       (Matrix now has 2 votes)
+		90000100: {90000603, 90000101}, // Quiet Engines → Marigold, Lemon Tree Heist
+		90000101: {90000603},           // Heist         → Marigold   (Marigold now has 2 votes)
 	})
 	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
-		[]catalog.Candidate{seed(100, "Speed"), seed(101, "The Rock")},
+		[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist")},
 		map[provision.Key]bool{}, 10)
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
@@ -36,11 +36,11 @@ func TestAdjacent_RequiresConsensusAcrossSeeds(t *testing.T) {
 	for _, a := range got {
 		names[a.Candidate.Name] = true
 	}
-	if !names["The Matrix"] {
-		t.Errorf("The Matrix had 2 votes and must be offered; got %v", names)
+	if !names["Marigold Protocol"] {
+		t.Errorf("Marigold Protocol had 2 votes and must be offered; got %v", names)
 	}
-	if names["The Rock"] {
-		t.Errorf("The Rock had 1 vote (noise) and must not be offered; got %v", names)
+	if names["Lemon Tree Heist"] {
+		t.Errorf("Lemon Tree Heist had 1 vote (noise) and must not be offered; got %v", names)
 	}
 }
 
@@ -48,23 +48,23 @@ func TestAdjacent_RequiresConsensusAcrossSeeds(t *testing.T) {
 // adjacency run would be the channel's own lineup recommending itself.
 func TestAdjacent_ExcludesWhatTheChannelAlreadyHas(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
-		100: {603}, 101: {603},
+		90000100: {90000603}, 90000101: {90000603},
 	})
 	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
-	matrixKey, err := seed(603, "The Matrix").Key()
+	marigoldKey, err := seed(90000603, "Marigold Protocol").Key()
 	if err != nil {
 		t.Fatalf("key: %v", err)
 	}
 	got, err := c.Adjacent(context.Background(),
-		[]catalog.Candidate{seed(100, "Speed"), seed(101, "The Rock")},
-		map[provision.Key]bool{matrixKey: true}, 10)
+		[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist")},
+		map[provision.Key]bool{marigoldKey: true}, 10)
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
 	}
 	for _, a := range got {
-		if a.Candidate.TMDBID == 603 {
-			t.Fatalf("The Matrix is already on the channel and must be excluded; got %v", got)
+		if a.Candidate.TMDBID == 90000603 {
+			t.Fatalf("Marigold Protocol is already on the channel and must be excluded; got %v", got)
 		}
 	}
 }
@@ -72,13 +72,15 @@ func TestAdjacent_ExcludesWhatTheChannelAlreadyHas(t *testing.T) {
 // Ranking is by consensus, and ties break deterministically (§7 reproducibility): the
 // SAME seeds must yield the SAME order every run, not map-iteration order.
 func TestAdjacent_IsDeterministic(t *testing.T) {
-	graph := map[int][]int{100: {603, 101}, 101: {603, 100}, 603: {100, 101}}
+	graph := map[int][]int{
+		90000100: {90000603, 90000101}, 90000101: {90000603, 90000100}, 90000603: {90000100, 90000101},
+	}
 	var first []string
 	for range 5 {
 		mt := testkit.NewTMDB(t).WithRecommendations(graph)
 		c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 		got, err := c.Adjacent(context.Background(),
-			[]catalog.Candidate{seed(100, "Speed"), seed(101, "The Rock"), seed(603, "The Matrix")},
+			[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist"), seed(90000603, "Marigold Protocol")},
 			map[provision.Key]bool{}, 10)
 		if err != nil {
 			t.Fatalf("Adjacent: %v", err)
@@ -107,12 +109,12 @@ func TestAdjacent_IsDeterministic(t *testing.T) {
 // the whole re-curation would not be.
 func TestAdjacent_UnproductiveSeedIsSkipped(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
-		100: {603}, 101: {603}, // 999 deliberately unwired
+		90000100: {90000603}, 90000101: {90000603}, // 90000999 deliberately unwired
 	})
 	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
-		[]catalog.Candidate{seed(999, "Nonexistent"), seed(100, "Speed"), seed(101, "The Rock")},
+		[]catalog.Candidate{seed(90000999, "Nonexistent"), seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist")},
 		map[provision.Key]bool{}, 10)
 	if err != nil {
 		t.Fatalf("an unproductive seed must not fail the walk: %v", err)
@@ -126,7 +128,7 @@ func TestAdjacent_UnproductiveSeedIsSkipped(t *testing.T) {
 // without TMDB keeps working; it simply has one fewer corpus.
 func TestAdjacent_NoCorpusIsEmptyNotAnError(t *testing.T) {
 	c := catalog.New(realLibrary(t), nil)
-	got, err := c.Adjacent(context.Background(), []catalog.Candidate{seed(100, "Speed")},
+	got, err := c.Adjacent(context.Background(), []catalog.Candidate{seed(90000100, "Quiet Engines")},
 		map[provision.Key]bool{}, 10)
 	if err != nil {
 		t.Fatalf("no corpus must not error: %v", err)
@@ -142,17 +144,17 @@ func TestAdjacent_NoCorpusIsEmptyNotAnError(t *testing.T) {
 // twice by one seed must still hold exactly one vote, and so stay below the threshold.
 func TestAdjacent_OneVotePerSeedNotPerOccurrence(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
-		100: {603, 603, 603}, // Speed names The Matrix three times — still ONE seed
+		90000100: {90000603, 90000603, 90000603}, // Quiet Engines names Marigold Protocol three times — still ONE seed
 	})
 	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
-		[]catalog.Candidate{seed(100, "Speed")}, map[provision.Key]bool{}, 10)
+		[]catalog.Candidate{seed(90000100, "Quiet Engines")}, map[provision.Key]bool{}, 10)
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
 	}
 	for _, a := range got {
-		if a.Candidate.TMDBID == 603 {
+		if a.Candidate.TMDBID == 90000603 {
 			t.Fatalf("one seed repeated a neighbour into false consensus; got %v", got)
 		}
 	}
@@ -164,19 +166,19 @@ func TestAdjacent_OneVotePerSeedNotPerOccurrence(t *testing.T) {
 // to the ranker.
 func TestAdjacent_ReportsTheConsensusCount(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
-		100: {603}, 101: {603}, 603: {603}, // three seeds all name The Matrix
+		90000100: {90000603}, 90000101: {90000603}, 90000603: {90000603}, // three seeds all name Marigold Protocol
 	})
 	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
-		[]catalog.Candidate{seed(100, "Speed"), seed(101, "The Rock"), seed(603, "The Matrix")},
+		[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist"), seed(90000603, "Marigold Protocol")},
 		map[provision.Key]bool{}, 10)
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
 	}
 	var found bool
 	for _, a := range got {
-		if a.Candidate.TMDBID != 603 {
+		if a.Candidate.TMDBID != 90000603 {
 			continue
 		}
 		found = true
@@ -185,6 +187,6 @@ func TestAdjacent_ReportsTheConsensusCount(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("The Matrix should have been offered; got %v", got)
+		t.Fatalf("Marigold Protocol should have been offered; got %v", got)
 	}
 }

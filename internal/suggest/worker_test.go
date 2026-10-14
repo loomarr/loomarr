@@ -35,8 +35,21 @@ func idGen() func() string {
 	return func() string { return "id-" + strconv.FormatInt(n.Add(1), 10) }
 }
 
-func buildService(t *testing.T, st suggest.ProposalStore, llmMock llm.Provider) *suggest.Service {
+// marigoldMediaServer is the media-server mock with an owned film trio: its search
+// answers "marigold" with Marigold Protocol (90000603), Marigold Protocol II
+// (90000605) and Marigold Protocol III (90624860), in the real Emby /Items shape.
+func marigoldMediaServer(t *testing.T) *testkit.MediaServer {
 	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
+		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
+	)
+	return ms
+}
+
+func buildService(t *testing.T, st suggest.ProposalStore, llmMock llm.Provider) *suggest.Service {
+	ms := marigoldMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -147,7 +160,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	}
 	if err := st.CreateProposal(ctx, store.Proposal{
 		ID: "source-proposal", JobID: id1, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
-		ProposalJSON: `{"lineup":[{"name":"Speed"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		ProposalJSON: `{"lineup":[{"name":"Quiet Engines"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +183,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(carols) != 1 || carols[0].JobID != id3 || carols[0].Status != "submitted" ||
-		carols[0].ApprovedBy != "" || carols[0].ProposalJSON != `{"lineup":[{"name":"Speed"}]}` {
+		carols[0].ApprovedBy != "" || carols[0].ProposalJSON != `{"lineup":[{"name":"Quiet Engines"}]}` {
 		t.Fatalf("cached proposal lifecycle = %+v", carols)
 	}
 
@@ -231,7 +244,7 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 	ctx := context.Background()
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM())
-	sourceID, err := svc.Submit(ctx, suggest.Intent{Description: "tgif"}, "alice")
+	sourceID, err := svc.Submit(ctx, suggest.Intent{Description: "kettle kids"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,10 +256,10 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{ID: "tgif-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", ProposalJSON: `{"lineup":[{"name":"Full House"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+	if err := st.CreateProposal(ctx, store.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", ProposalJSON: `{"lineup":[{"name":"Grand Oak Hotel"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	newID, err := svc.Submit(ctx, suggest.Intent{Description: "TGIF"}, "bob")
+	newID, err := svc.Submit(ctx, suggest.Intent{Description: "KETTLE KIDS"}, "bob")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +310,8 @@ func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
 func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	st := newStore(t)
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 
@@ -344,7 +357,7 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 		finalResponseWithNone(`{"picks":[]}`),
 	)).
 		WithDurableWorkflow(workflow)
-	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,8 +405,8 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 		{
 			name: "accepted grounded proposal",
 			model: testkit.NewLLM(
-				catalogSearchResponse(map[string]any{"query": "matrix"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+				catalogSearchResponse(map[string]any{"query": "marigold"}),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			),
 			wantJob: "done", wantCands: true,
 			want: map[quality.Stage]quality.Outcome{
@@ -427,7 +440,7 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 				WithDurableWorkflow(workflow).
 				WithProgressEmitter(terminal).
 				WithQualityRecorder(recorder)
-			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -474,10 +487,10 @@ func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T
 	recorder := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	terminal := newDoneEmitter()
 	svc := buildService(t, st, testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)).WithDurableWorkflow(workflow).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
-	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +512,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
 			workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
-			ms := testkit.NewMediaServer(t)
+			ms := marigoldMediaServer(t)
 			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
@@ -511,7 +524,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 				WithDurableWorkflow(workflow).
 				WithProgressEmitter(terminal)
 
-			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "matrix"}, "alice")
+			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -541,7 +554,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	now := time.Now().UTC()
 	if err := st.CreateJob(ctx, store.Job{
 		ID: "job-channel-a", Kind: "suggest", Status: "done", CreatedBy: "admin",
-		IntentJSON: `{"description":"matrix"}`, IntentHash: "matrix", WorkflowVersion: proposalworkflow.WorkflowVersion1,
+		IntentJSON: `{"description":"marigold"}`, IntentHash: "marigold", WorkflowVersion: proposalworkflow.WorkflowVersion1,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -552,15 +565,15 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
-		"":          {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
-		"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+		"":          {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
+		"channel-a": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 	}}
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	workflow := proposalworkflow.New(st, idGen(), time.Now)
-	ms := testkit.NewMediaServer(t)
+	ms := marigoldMediaServer(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	suggester := suggest.New(llmMock,
@@ -570,7 +583,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger()).WithDurableWorkflow(workflow)
 
-	if _, err := svc.Recurate(ctx, "job-channel-a", suggest.Intent{Description: "matrix"}); err != nil {
+	if _, err := svc.Recurate(ctx, "job-channel-a", suggest.Intent{Description: "marigold"}); err != nil {
 		t.Fatal(err)
 	}
 	requeued, err := st.GetJob(ctx, "job-channel-a")
@@ -654,9 +667,9 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}
 			for _, event := range []store.DiscoveryFeedback{
 				{ID: "household-never", ActorID: "admin", Scope: store.FeedbackHousehold,
-					Target: "movie:tmdb:603", Action: store.FeedbackNever, CreatedAt: now},
+					Target: "movie:tmdb:90000603", Action: store.FeedbackNever, CreatedAt: now},
 				{ID: "unrelated-surprise", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "channel-unrelated",
-					Target: "movie:tmdb:603", Action: store.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
+					Target: "movie:tmdb:90000603", Action: store.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
 			} {
 				if err := base.AppendDiscoveryFeedback(ctx, event); err != nil {
 					t.Fatal(err)
@@ -664,17 +677,17 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}
 			if err := base.CreateJob(ctx, store.Job{
 				ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "admin",
-				IntentJSON: `{"description":"matrix"}`, IntentHash: "matrix",
+				IntentJSON: `{"description":"marigold"}`, IntentHash: "marigold",
 				WorkflowVersion: proposalworkflow.WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 			}); err != nil {
 				t.Fatal(err)
 			}
 			llmMock := testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`))
 			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
-				"":                  {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
-				"channel-unrelated": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+				"":                  {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
+				"channel-unrelated": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 			}}
-			ms := testkit.NewMediaServer(t)
+			ms := marigoldMediaServer(t)
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
@@ -728,18 +741,18 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 		start func(context.Context, *suggest.Service, store.Store) (string, error)
 	}{
 		{name: "fresh", start: func(ctx context.Context, svc *suggest.Service, _ store.Store) (string, error) {
-			return svc.Submit(ctx, suggest.Intent{Description: "matrix", DiscoveryScopeID: "channel-a"}, "admin")
+			return svc.Submit(ctx, suggest.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"}, "admin")
 		}},
 		{name: "refine", start: func(ctx context.Context, svc *suggest.Service, st store.Store) (string, error) {
 			now := time.Now().UTC()
 			if err := st.CreateJob(ctx, store.Job{
 				ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "admin",
-				IntentJSON: `{"description":"matrix"}`, IntentHash: "source",
+				IntentJSON: `{"description":"marigold"}`, IntentHash: "source",
 				WorkflowVersion: proposalworkflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
 			}); err != nil {
 				return "", err
 			}
-			return svc.Refine(ctx, "job-refine", suggest.Intent{Description: "matrix", DiscoveryScopeID: "channel-a"})
+			return svc.Refine(ctx, "job-refine", suggest.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"})
 		}},
 	}
 	for _, tt := range tests {
@@ -747,14 +760,14 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			ctx := context.Background()
 			st := newStore(t)
 			feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
-				"":          {{Target: "movie:tmdb:603", Action: suggest.FeedbackNever}},
-				"channel-a": {{Target: "movie:tmdb:603", Action: suggest.FeedbackSurprise}},
+				"":          {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
+				"channel-a": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 			}}
 			llmMock := testkit.NewLLM(
-				catalogSearchResponse(map[string]any{"query": "matrix"}),
-				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+				catalogSearchResponse(map[string]any{"query": "marigold"}),
+				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			)
-			ms := testkit.NewMediaServer(t)
+			ms := marigoldMediaServer(t)
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
@@ -804,7 +817,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	// The first turn surfaces grounded candidates; the second hangs. This proves
 	// timeout normalization preserves safe facts gathered before generation ended.
 	slow := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"channelName":"Late","picks":[]}`),
 	)
 	slow.OnChat = func() {
@@ -812,7 +825,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 			slow.Delay = 2 * time.Second
 		}
 	}
-	ms := testkit.NewMediaServer(t)
+	ms := marigoldMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -944,8 +957,8 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	st := newLifecycleErrorStore(base)
 	st.successErr = store.ErrJobNotRunning
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	terminal := newDoneEmitter()
@@ -985,8 +998,8 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 }
 
 func TestIntentHash_NormalizesEquivalentIntents(t *testing.T) {
-	a := suggest.Intent{Description: "  90s Action  ", MustInclude: []string{"Speed", "die hard"}}
-	b := suggest.Intent{Description: "90s action", MustInclude: []string{"die hard", "Speed"}}
+	a := suggest.Intent{Description: "  90s Action  ", MustInclude: []string{"Quiet Engines", "lemon tree heist"}}
+	b := suggest.Intent{Description: "90s action", MustInclude: []string{"lemon tree heist", "Quiet Engines"}}
 	if suggest.IntentHash(a) != suggest.IntentHash(b) {
 		t.Error("case/whitespace/order differences should hash the same")
 	}
@@ -1001,7 +1014,7 @@ func TestIntentHash_NormalizesEquivalentIntents(t *testing.T) {
 func TestIntentHash_DistinguishesRefine(t *testing.T) {
 	base := suggest.Intent{Description: "90s action"}
 	refineA := base
-	refineA.RefineText = "add more Schwarzenegger"
+	refineA.RefineText = "add more Ansel Brightwater"
 	refineB := base
 	refineB.RefineText = "make it kid-friendly"
 
@@ -1013,9 +1026,9 @@ func TestIntentHash_DistinguishesRefine(t *testing.T) {
 	}
 	// The current lineup also contributes (order-independent).
 	l1 := refineA
-	l1.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:603"}, {Key: "movie:tmdb:165"}}
+	l1.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:90000603"}, {Key: "movie:tmdb:90000165"}}
 	l2 := refineA
-	l2.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:165"}, {Key: "movie:tmdb:603"}}
+	l2.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:90000165"}, {Key: "movie:tmdb:90000603"}}
 	if suggest.IntentHash(l1) != suggest.IntentHash(l2) {
 		t.Error("current-lineup order must not change the hash")
 	}
@@ -1040,7 +1053,7 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	refine := suggest.Intent{Description: "90s action", RefineText: "add more Schwarzenegger"}
+	refine := suggest.Intent{Description: "90s action", RefineText: "add more Ansel Brightwater"}
 	got, err := svc.Refine(ctx, "job-orig", refine)
 	if err != nil {
 		t.Fatal(err)
@@ -1056,7 +1069,7 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 	if j.Kind != "suggest" {
 		t.Errorf("manual refine kind = %q, want suggest", j.Kind)
 	}
-	if !strings.Contains(j.IntentJSON, "add more Schwarzenegger") {
+	if !strings.Contains(j.IntentJSON, "add more Ansel Brightwater") {
 		t.Errorf("refined job intent = %q, want the refine text swapped in", j.IntentJSON)
 	}
 }
@@ -1070,7 +1083,7 @@ func TestRecurate_ReQueuesWithServerOwnedOrigin(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Recurate(ctx, "job-orig", suggest.Intent{Description: "90s action", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:603"}}}); err != nil {
+	if _, err := svc.Recurate(ctx, "job-orig", suggest.Intent{Description: "90s action", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000603"}}}); err != nil {
 		t.Fatal(err)
 	}
 	j, err := st.GetJob(ctx, "job-orig")
@@ -1159,8 +1172,8 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	}
 
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1242,8 +1255,8 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{}
@@ -1255,7 +1268,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
 	if _, err := svc.Recurate(ctx, "job-recurate", suggest.Intent{
-		Description: "sci-fi", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:603"}},
+		Description: "sci-fi", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000603"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1289,8 +1302,8 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "matrix"}),
-		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`),
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	svc := buildService(t, st, llmMock)
 	channels := &testkit.ApprovalChannels{PlanError: fmt.Errorf("cannot build local channel")}

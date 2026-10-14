@@ -46,9 +46,9 @@ func (m *streamingLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOpt
 	return turn, nil
 }
 
-const speedFinal = `{"rationale":"90s action","picks":[` +
-	`{"mediaType":"movie","key":"movie:tmdb:100","name":"Speed"},` +
-	`{"mediaType":"movie","key":"movie:tmdb:77777","name":"Totally Made Up Film"}` +
+const enginesFinal = `{"rationale":"90s action","picks":[` +
+	`{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},` +
+	`{"mediaType":"movie","key":"movie:tmdb:90077777","name":"Totally Made Up Film"}` +
 	`]}`
 
 // split cuts s into fragments that land inside the second pick's key, the way tokens do.
@@ -77,10 +77,10 @@ func runTracked(t *testing.T, m *streamingLLM) (*suggest.ProgressTracker, []sugg
 // with each resolved pick appearing DURING the streamed turn, an unresolvable pick never
 // appearing, and everything shown being something the proposal actually kept.
 func TestProgress_StreamsStageTermsAndResolvedPicks(t *testing.T) {
-	cut := strings.Index(speedFinal, `"key":"movie:tmdb:77777"`) + 12 // inside the second pick's key
+	cut := strings.Index(enginesFinal, `"key":"movie:tmdb:90077777"`) + 12 // inside the second pick's key
 	m := &streamingLLM{
-		turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
-		fragment: split(speedFinal, 30, cut),
+		turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "quiet"}), finalResponseWithNone(enginesFinal)},
+		fragment: split(enginesFinal, 30, cut),
 	}
 	var sawDuringStream []int
 	var tracker *suggest.ProgressTracker
@@ -104,16 +104,16 @@ func TestProgress_StreamsStageTermsAndResolvedPicks(t *testing.T) {
 		t.Errorf("stages = %v, want %v", stages, want)
 	}
 	final := tracker.Snapshot()
-	if !slices.Equal(final.Terms, []string{"speed"}) {
+	if !slices.Equal(final.Terms, []string{"quiet"}) {
 		t.Errorf("terms = %v, want the catalog_search query", final.Terms)
 	}
 	if final.Target != suggest.LineupPickCap {
 		t.Errorf("target = %d, want the prompt's cap %d", final.Target, suggest.LineupPickCap)
 	}
-	if len(final.Picks) != 1 || final.Picks[0].Key != "movie:tmdb:100" || final.Picks[0].Name != "Speed" {
-		t.Fatalf("picks = %+v, want only Speed (the fabricated id must never appear)", final.Picks)
+	if len(final.Picks) != 1 || final.Picks[0].Key != "movie:tmdb:90000100" || final.Picks[0].Name != "Quiet Engines" {
+		t.Fatalf("picks = %+v, want only Quiet Engines (the fabricated id must never appear)", final.Picks)
 	}
-	// Speed is visible before the stream finishes: after the fragment that closed its object
+	// Quiet Engines is visible before the stream finishes: after the fragment that closed its object
 	// (fragment 2) and while the fabricated pick's key was still being written.
 	if len(sawDuringStream) < 3 || sawDuringStream[0] != 0 || sawDuringStream[1] != 1 {
 		t.Errorf("picks visible after each fragment = %v, want 0 then 1 (streamed, not batched at the end)", sawDuringStream)
@@ -136,7 +136,7 @@ func TestProgress_StreamsStageTermsAndResolvedPicks(t *testing.T) {
 // is unchanged and picks are simply absent from the snapshot until the turn's proposal lands.
 func TestProgress_NonStreamingProviderShowsNoPicksButStillRuns(t *testing.T) {
 	m := &streamingLLM{
-		turns: []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
+		turns: []llm.Response{catalogSearchResponse(map[string]any{"query": "quiet"}), finalResponseWithNone(enginesFinal)},
 	}
 	tracker, _, prop, err := runTracked(t, m)
 	if err != nil {
@@ -153,10 +153,10 @@ func TestProgress_NonStreamingProviderShowsNoPicksButStillRuns(t *testing.T) {
 // Failure mid-stream: the run fails cleanly and whatever resolved before the drop stays a
 // grounded pick (never a half-parsed one).
 func TestProgress_FailureMidStreamKeepsOnlyResolvedPicks(t *testing.T) {
-	cut := strings.Index(speedFinal, `"key":"movie:tmdb:77777"`) + 12
+	cut := strings.Index(enginesFinal, `"key":"movie:tmdb:90077777"`) + 12
 	m := &streamingLLM{
-		turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
-		fragment: split(speedFinal, 30, cut),
+		turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "quiet"}), finalResponseWithNone(enginesFinal)},
+		fragment: split(enginesFinal, 30, cut),
 		failAt:   3,
 	}
 	tracker, _, _, err := runTracked(t, m)
@@ -164,8 +164,8 @@ func TestProgress_FailureMidStreamKeepsOnlyResolvedPicks(t *testing.T) {
 		t.Fatal("a dropped stream must fail the run")
 	}
 	picks := tracker.Snapshot().Picks
-	if len(picks) != 1 || picks[0].Key != "movie:tmdb:100" {
-		t.Errorf("picks = %+v, want just the fully-streamed, resolved Speed", picks)
+	if len(picks) != 1 || picks[0].Key != "movie:tmdb:90000100" {
+		t.Errorf("picks = %+v, want just the fully-streamed, resolved Quiet Engines", picks)
 	}
 }
 
@@ -200,8 +200,8 @@ func TestWorker_ProgressIsReadableMidStreamAndDroppedAfter(t *testing.T) {
 	st := newStore(t)
 	model := &gatedLLM{
 		streamingLLM: streamingLLM{
-			turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
-			fragment: split(speedFinal, strings.Index(speedFinal, `,{"mediaType"`)),
+			turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "quiet"}), finalResponseWithNone(enginesFinal)},
+			fragment: split(enginesFinal, strings.Index(enginesFinal, `,{"mediaType"`)),
 		},
 		midStream: make(chan struct{}), release: make(chan struct{}),
 	}
@@ -225,8 +225,8 @@ func TestWorker_ProgressIsReadableMidStreamAndDroppedAfter(t *testing.T) {
 	if !ok {
 		t.Fatal("a running job must have a live snapshot")
 	}
-	if snap.Stage != suggest.StageChoosing || len(snap.Picks) != 1 || snap.Picks[0].Name != "Speed" {
-		t.Fatalf("mid-stream snapshot = %+v, want choosing with Speed already picked", snap)
+	if snap.Stage != suggest.StageChoosing || len(snap.Picks) != 1 || snap.Picks[0].Name != "Quiet Engines" {
+		t.Fatalf("mid-stream snapshot = %+v, want choosing with Quiet Engines already picked", snap)
 	}
 	close(model.release)
 	select {
@@ -257,8 +257,8 @@ func TestProgress_StageAdvancesAfterASearchWithoutAQueryOrGenres(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := &streamingLLM{
-				turns:    []llm.Response{catalogSearchResponse(args), finalResponseWithNone(speedFinal)},
-				fragment: split(speedFinal, 30),
+				turns:    []llm.Response{catalogSearchResponse(args), finalResponseWithNone(enginesFinal)},
+				fragment: split(enginesFinal, 30),
 			}
 			var tracker *suggest.ProgressTracker
 			var stages []suggest.Stage
@@ -309,8 +309,8 @@ func TestWorker_EveryProgressChangeIsAnnouncedWhileStreaming(t *testing.T) {
 	ctx := context.Background()
 	model := &gatedLLM{
 		streamingLLM: streamingLLM{
-			turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
-			fragment: split(speedFinal, strings.Index(speedFinal, `,{"mediaType"`)),
+			turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "quiet"}), finalResponseWithNone(enginesFinal)},
+			fragment: split(enginesFinal, strings.Index(enginesFinal, `,{"mediaType"`)),
 		},
 		midStream: make(chan struct{}), release: make(chan struct{}),
 	}
@@ -331,6 +331,6 @@ func TestWorker_EveryProgressChangeIsAnnouncedWhileStreaming(t *testing.T) {
 	defer close(model.release)
 	got := probe.last()
 	if got.Stage != suggest.StageChoosing || len(got.Picks) != 1 {
-		t.Errorf("latest frame's snapshot = %+v, want choosing with Speed: the last change before the stream parked was not announced", got)
+		t.Errorf("latest frame's snapshot = %+v, want choosing with Quiet Engines: the last change before the stream parked was not announced", got)
 	}
 }

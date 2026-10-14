@@ -75,6 +75,19 @@
   --radius-DEFAULT: var(--radius);
 }
 
+/* The six content-width tiers (frontend-design.md, "One page-edge contract"; #1817 Q10). A route
+   picks the tier its task needs — `max-w-reading`, `max-w-form` — and centres it with `mx-auto`;
+   it never types a pixel width. All six were widths the app already used; this only names them.
+   `browse` is the time grid you scan across (the Guide), so it is uncapped. */
+@theme {
+  --container-browse: none;
+  --container-overview: 1120px;
+  --container-detail: 896px;
+  --container-reading: 768px;
+  --container-form: 672px;
+  --container-focused: 512px;
+}
+
 /* The default border colour, so a bare `border` needs no colour class.
  *
  * ⚠ **It MUST live in `@layer base`.** Tailwind v4 emits every utility inside

@@ -58,6 +58,16 @@ change per channel.
 unset. Omitted policy fields resolve to built-in Go constants; per-channel policy is the only
 operator override.
 
+**The Play order control explains its consequence.** A choice of order has a size: a channel set to
+"In order" over 226 episodes loops front to back about every 3½ days, and nothing used to say so.
+The cycle preview therefore carries `cycle` (`episodes`, `movies`, `series`, `runtimeMs`): one full
+pass through the deck, counted before the rolling-window slice, from the same computation that ships
+the guide. Pending titles are not counted and commercial breaks are not in the runtime. The
+Programming page shows a plain-language line under Play order built only from those numbers and the
+resolved ordering ("226 episodes, start to finish, then it starts over — about every 3½ days");
+`syndication` is always described as a deck dealt once before anything repeats. Copy never claims a
+reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
+
 ## Reconciliation and backfill
 
 - **On approval** the channel is built from the selected items that are available now, and the rest

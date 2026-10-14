@@ -1,4 +1,5 @@
 import type { ChannelPolicy } from "@loomarr/api";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
@@ -9,7 +10,14 @@ import { ChannelPolicyFields } from "./channel-policy-fields";
 
 // Each field's help is a FieldHelp tooltip now, which needs a TooltipProvider ancestor (the
 // app mounts one at the root). Wrap every render so the fields mount without a Radix error.
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+// The consequence line under Play order is a design-system Text, so LoomarrProvider mounts too,
+// as main.tsx does.
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <LoomarrProvider theme="dark">
+      <TooltipProvider>{ui}</TooltipProvider>
+    </LoomarrProvider>,
+  );
 
 const PolicyHarness = ({
   initial,
@@ -557,5 +565,67 @@ describe("ChannelPolicyFields defaults and overrides", () => {
     expect(screen.getByText("Programming dates")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Use a single era" }));
     expect(screen.getByLabelText("From year")).toHaveValue(1990);
+  });
+});
+
+// Play order says what its choice means for THIS channel, from the backend's cycle summary. The
+// numbers below mirror a real channel: 226 half-hour-ish episodes loop in about 3½ days.
+describe("ChannelPolicyFields · play order consequence", () => {
+  const HOUR = 3_600_000;
+  const SIMPSONS = { episodes: 226, movies: 0, series: 1, runtimeMs: 83 * HOUR };
+  const MOVIES = { episodes: 0, movies: 40, series: 0, runtimeMs: 72 * HOUR };
+  const MIXED = { episodes: 120, movies: 0, series: 3, runtimeMs: 60 * HOUR };
+
+  const renderOrder = (policy: ChannelPolicy, cycle?: Parameters<typeof ChannelPolicyFields>[0]["cycle"]) =>
+    render(<ChannelPolicyFields policy={policy} onChange={vi.fn()} show="ordering" cycle={cycle} />);
+
+  it("In order: names the episodes, start to finish, and how often it starts over", () => {
+    renderOrder({ ordering: "sequential" }, SIMPSONS);
+    expect(
+      screen.getByText("226 episodes, start to finish, then it starts over — about every 3½ days."),
+    ).toBeInTheDocument();
+  });
+
+  it("Shuffled: says the order is a random mix, not episode order", () => {
+    renderOrder({ ordering: "shuffle" }, SIMPSONS);
+    expect(
+      screen.getByText(
+        "226 episodes, in a random mix instead of episode order. One full pass is about 3½ days.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("Syndication: explains the deck instead of leaving the jargon bare", () => {
+    renderOrder({ ordering: "syndication" }, SIMPSONS);
+    expect(
+      screen.getByText(/dealt like a deck of cards: everything plays once before anything repeats/),
+    ).toBeInTheDocument();
+  });
+
+  it("counts a movie channel in movies and a multi-series channel across its shows", () => {
+    const { unmount } = renderOrder({ ordering: "sequential" }, MOVIES);
+    expect(
+      screen.getByText("40 movies, one after another in order, then it starts over — about every 3 days."),
+    ).toBeInTheDocument();
+    unmount();
+
+    renderOrder({ ordering: "shuffle" }, MIXED);
+    expect(screen.getByText(/^120 episodes from 3 shows, in a random mix/)).toBeInTheDocument();
+  });
+
+  it("follows the order the scheduler resolved when the channel uses its own strategy", () => {
+    renderOrder({}, { ...SIMPSONS, ordering: "shuffle" });
+    expect(screen.getByText(/^226 episodes, in a random mix/)).toBeInTheDocument();
+  });
+
+  it("uses plain words with no numbers before the cycle has loaded", () => {
+    renderOrder({ ordering: "syndication" });
+    expect(screen.getByText(/^Deals the list like a deck of cards/)).toBeInTheDocument();
+  });
+
+  it("links the consequence to the control for assistive tech", () => {
+    renderOrder({ ordering: "sequential" }, SIMPSONS);
+    const line = screen.getByText(/226 episodes, start to finish/);
+    expect(screen.getByRole("combobox", { name: /Play order/ })).toHaveAttribute("aria-describedby", line.id);
   });
 });
