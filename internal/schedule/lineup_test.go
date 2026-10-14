@@ -259,7 +259,9 @@ func TestComputeDesiredHolidaySelectionNeedsTheHolidayNotAMoodWord(t *testing.T)
 // October, or one whose overview mentions a ghost, is not a Halloween episode.
 func TestComputeDesiredHolidaySelectionFindsAnthologyByAirDateAndTitle(t *testing.T) {
 	key := provision.Key("series:tmdb:456")
-	aired := func(month time.Month, day, year int) time.Time { return time.Date(year, month, day, 0, 0, 0, 0, time.UTC) }
+	aired := func(month time.Month, day, year int) time.Time {
+		return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	}
 	episodes := []schedule.ResolvedProgram{
 		{LibraryItemID: "terror-1", Title: "Treetop of Terror", Overview: "Three tales of a cursed doll.", AirDate: aired(time.October, 25, 1990), DurationMs: 1, Season: 2, Episode: 3},
 		{LibraryItemID: "ordinary-oct", Title: "The New Neighbor", Overview: "Dad buys a boat.", AirDate: aired(time.October, 28, 1991), DurationMs: 1, Season: 3, Episode: 5},
