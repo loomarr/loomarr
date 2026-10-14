@@ -1014,7 +1014,7 @@ func TestIntentHash_NormalizesEquivalentIntents(t *testing.T) {
 func TestIntentHash_DistinguishesRefine(t *testing.T) {
 	base := suggest.Intent{Description: "90s action"}
 	refineA := base
-	refineA.RefineText = "add more Schwarzenegger"
+	refineA.RefineText = "add more Ansel Brightwater"
 	refineB := base
 	refineB.RefineText = "make it kid-friendly"
 
@@ -1053,7 +1053,7 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	refine := suggest.Intent{Description: "90s action", RefineText: "add more Schwarzenegger"}
+	refine := suggest.Intent{Description: "90s action", RefineText: "add more Ansel Brightwater"}
 	got, err := svc.Refine(ctx, "job-orig", refine)
 	if err != nil {
 		t.Fatal(err)
@@ -1069,7 +1069,7 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 	if j.Kind != "suggest" {
 		t.Errorf("manual refine kind = %q, want suggest", j.Kind)
 	}
-	if !strings.Contains(j.IntentJSON, "add more Schwarzenegger") {
+	if !strings.Contains(j.IntentJSON, "add more Ansel Brightwater") {
 		t.Errorf("refined job intent = %q, want the refine text swapped in", j.IntentJSON)
 	}
 }

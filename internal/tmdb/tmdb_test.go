@@ -233,8 +233,11 @@ func TestDiscover_UnresolvedOrAmbiguousEntityFailsBeforeDiscovery(t *testing.T) 
 		want  string
 	}{
 		{
-			name:  "ambiguous person",
-			setup: func(mock *testkit.TMDB) { mock.AddPerson(1, "Alex Smith"); mock.AddPerson(2, "Alex Smith") },
+			name: "ambiguous person",
+			setup: func(mock *testkit.TMDB) {
+				mock.AddPerson(90000001, "Alex Smith")
+				mock.AddPerson(90000002, "Alex Smith")
+			},
 			query: catalog.DiscoveryQuery{MediaType: provision.Movie, Cast: []string{"Alex Smith"}},
 			want:  "2 exact identities",
 		},

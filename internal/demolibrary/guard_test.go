@@ -85,26 +85,55 @@ var migratedTests = []string{
 	"web/apps/web/src/suggest/use-suggestion-run/",
 }
 
-// migratedGo are the Go trees #1592 has moved onto the demo catalogue: the API tests and the
-// shared testkit. Their *_test.go files, and every .go file of the testkit, are scanned like a
-// migrated fixture. The API's own route examples are not tests and are not scanned yet. Captured
-// provider responses under internal/testkit/fixtures stay out of scope, as they do for isFixture.
-var migratedGo = []string{"internal/api/", "internal/testkit/"}
+// migratedGo are the Go trees and files #1592 has moved onto the demo catalogue: the API tests,
+// the shared testkit, and the tests that consume the testkit's mock TMDB catalogue. Their
+// *_test.go files, and every .go file of the testkit, are scanned like a migrated fixture. The
+// API's own route examples are not tests and are not scanned yet. Captured provider responses
+// under internal/testkit/fixtures stay out of scope, as they do for isFixture.
+var migratedGo = []string{
+	"internal/api/", "internal/testkit/",
+	// The mock TMDB catalogue's consumers (slice 6).
+	"internal/app/adapters_tmdb_test.go",
+	"internal/app/iconadapter_test.go",
+	"internal/catalog/adjacent_test.go",
+	"internal/catalog/catalog_test.go",
+	"internal/suggest/suggester_progress_test.go",
+	"internal/suggest/suggester_test.go",
+	"internal/suggest/worker_callsite_test.go",
+	"internal/suggest/worker_llmcause_test.go",
+	"internal/suggest/worker_test.go",
+	"internal/tmdb/network_epoch_test.go",
+	"internal/tmdb/tmdb_test.go",
+}
 
-// pendingGo are the files under migratedGo not yet migrated: two an open PR owns (#1917), and the
-// mock TMDB catalogue, whose fixed titles and ids the suggest, catalog and tmdb tests assert on, so
-// it moves with them. This list may only SHRINK: a listed file that is already clean fails (delete
-// its line).
+// pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
+// This list may only SHRINK: a listed file that is already clean fails (delete its line).
 var pendingGo = []string{
 	"internal/api/channelideas_test.go",
 	"internal/api/proposaljourneys_test.go",
-	"internal/testkit/tmdb.go",
 }
 
-// realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field, a JSON
-// field, or a positional id in a seed helper call (`libItem("movie", 603, …)`). Any id below
-// ProviderIDBase names a real title.
-var realProviderID = regexp.MustCompile(`(?i)(?:(?:movie|series):(?:tmdb|tvdb):|(?:tmdb|tvdb)_?id"?\s*[:=]\s*"?|Item\("(?:movie|series)",\s*)(\d+)`)
+// realDataGo are Go tests that exercise real external data on purpose, so #1592 never migrates
+// them and migratedGo skips them even when a slice adds their whole package. Each carries its
+// reason; a file listed here must exist.
+var realDataGo = map[string]string{
+	"internal/suggest/live_latency_test.go":      "drives a real LLM, whose world knowledge of real titles is what it measures",
+	"internal/suggest/live_named_titles_test.go": "drives a real LLM on requests that name real titles",
+	"internal/tmdb/fixture_test.go":              "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+}
+
+// realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON
+// field (`movie:tmdb:603`, `TMDBID: 603`, `"tmdbId": 603`); a positional id after a media type
+// (`libItem("movie", 603, …)`, `Exists(ctx, provision.Movie, 603)`) or first in a testkit TMDB
+// call (`AddMovie(603, …)`); a provider path (`/tv/1396/season/1`); or a bare id (`"id": 603`,
+// or a title-shaped `ID: 603, Name:` literal). Digits may carry Go's `_` separators. Any id
+// from 1 to below ProviderIDBase names a real title; 0 means "no id".
+var realProviderID = regexp.MustCompile(`(?i)(?:` +
+	`(?:movie|series):(?:tmdb|tvdb):|(?:tmdb|tvdb)_?id"?\s*[:=]\s*"?|` +
+	`"(?:movie|series|tv)",\s*|provision\.(?:movie|series),\s*|` +
+	`(?:AddKeywordMovie|AddMovie|AddSeries|AddPerson|AddNetwork)\(\s*|` +
+	`/(?:movie|tv|collection|find)/|(?-i:"id")\s*:\s*` +
+	`)(\d[\d_]*)|(?-i:\bID):\s*(\d[\d_]*),\s*Name:`)
 
 // guarded must be entirely free of real titles and ids.
 var guarded = []string{"cmd/seed", "cmd/demo-library", "internal/demolibrary"}
@@ -161,7 +190,8 @@ func denylistRE(titles []string) *regexp.Regexp {
 func realHits(text string) []string {
 	hits := denylistRE(realTitles).FindAllString(text, -1)
 	for _, m := range realProviderID.FindAllStringSubmatch(text, -1) {
-		if id, err := strconv.Atoi(m[1]); err == nil && id < ProviderIDBase {
+		digits := m[1] + m[2] // exactly one group matched
+		if id, err := strconv.Atoi(strings.ReplaceAll(digits, "_", "")); err == nil && id > 0 && id < ProviderIDBase {
 			hits = append(hits, m[0])
 		}
 	}
@@ -193,12 +223,26 @@ func TestGuardCatchesRealTitlesAndIDs(t *testing.T) {
 		`TMDBID: 9738,`,
 		`"tvdbId": 71663`,
 		`name: "point break"`,
+		// Positional ids: after a media type, and first in a testkit TMDB call.
+		`ok, err := c.Exists(ctx, provision.Movie, 603)`,
+		`mock.SetRating(provision.Series, 1396, "TV-MA")`,
+		`mock.AddMovie(671, "Some Film", 2001, nil, "")`,
+		`mock.AddKeywordMovie(77_001, "Winter Story", 2020, nil, "", "Christmas")`,
+		// Bare ids: a provider path, a JSON id, a title-shaped literal.
+		`case "/tv/1396/season/1/episode/1":`,
+		`{"id":85,"belongs_to_collection":{"id":84}}`,
+		`100: {ID: 100, Name: "Some Film", Year: 1994},`,
 	} {
 		if len(realHits(bad)) == 0 {
 			t.Errorf("guard missed a real reference in %q", bad)
 		}
 	}
-	for _, ok := range []string{`key: "movie:tmdb:90000001"`, `"The Clockmaker's Umbrella"`, `Bladerunner-free text: blades, bladed`} {
+	for _, ok := range []string{
+		`key: "movie:tmdb:90000001"`, `"The Clockmaker's Umbrella"`, `Bladerunner-free text: blades, bladed`,
+		`mock.AddKeywordMovie(90_077_001, "Winter Story", 2020, nil, "", "Christmas")`,
+		`c.Exists(ctx, provision.Movie, 0)`, `{ID: 1, Title: "Uncited"}`, `want := map[string]int{two.ID: 2}`,
+		`{id: 3, name: "Kettle Kids"}`,
+	} {
 		if hits := realHits(ok); len(hits) != 0 {
 			t.Errorf("guard flagged %q in invented text %q", hits, ok)
 		}
@@ -320,6 +364,9 @@ func migratedGoFiles(t *testing.T, root string) []string {
 			if rel = filepath.ToSlash(rel); d.IsDir() && rel == "internal/testkit/fixtures" {
 				return filepath.SkipDir
 			}
+			if _, real := realDataGo[rel]; real {
+				return nil
+			}
 			if !d.IsDir() && (strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "internal/testkit/") && strings.HasSuffix(rel, ".go")) {
 				files = append(files, rel)
 			}
@@ -354,6 +401,11 @@ func TestMigratedGoTestsStayInvented(t *testing.T) {
 	for _, rel := range pendingGo {
 		if !slices.Contains(dirty, rel) {
 			t.Errorf("%s no longer carries real titles; delete it from pendingGo", rel)
+		}
+	}
+	for rel := range realDataGo {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("realDataGo lists %s, which no longer exists; delete its line", rel)
 		}
 	}
 }
