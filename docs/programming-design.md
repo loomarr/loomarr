@@ -450,17 +450,30 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
       an episode brings every unit behind it, up to the band's end, one slot forward. The dealer
       releases a held-back unit exactly at its spacing, so that slot re-aired it sooner than the
       spacing promises, on any evening, at a rate set by the channel's deal origin. So an
-      episode is deferred only when every unit it brings forward still rests the dealer's
-      spacing (in programmes) from its last airing, or no less than its deal gave it, and the
-      episode still rests it before its own next airing. Otherwise it airs in place, in the
-      evening. So does an episode the window cannot carry past the band, because the window
-      closes inside it. The check reads the windows around as dealt, without arranging them.
-      Away from a season that is exact. Arrange moves only a deferred episode later, and that
+      episode first **swaps** places with one ordinary unit (one with no selected holiday)
+      that airs after the band in the same window. Every unit between keeps its place in the
+      programme count the spacing is promised in. The swap is taken only when the episode then
+      starts outside the band, and both units still rest the dealer's spacing (in programmes),
+      or no less than their deal gave them: the unit from its last airing, the episode before
+      its own next one. Nor may the swap's shift in start times carry any other unit past a
+      holiday feature's start, which would air that unit later. Of the units that qualify, the
+      one with the most slack over its spacing takes the episode's place. A multi-part story is
+      never split.
+    - When no unit qualifies, the episode is deferred as before, but only when every unit it
+      brings forward still rests the spacing from its last airing, and the episode still rests
+      it before its next airing. Otherwise it airs in place, in the evening. So does an episode
+      the window cannot carry past the band, because the window closes inside it. The checks read
+      the windows around as dealt, without arranging them. Away from a season that is exact.
+      Arrange moves only a holiday episode later and an ordinary unit only earlier, and a moved
       episode leaves a slot of room for each episode its next window could defer from ahead of
-      it. Near a season the simulation and the hand-off check what really aired. The cost,
-      measured for #1960 over 30 deal origins in March: of the holiday episodes dealt into the
-      evening, about a third still air there on a 400-episode deck in a daily window, and most
-      do on an 80-episode deck. A small deck rests most units close to its spacing.
+      it. Near a season the simulation and the hand-off check what really aired.
+    - **The cost.** Some off-season holiday episodes stay in the evening on these channels.
+      Measured over 30 deal origins in March, these are the holiday episodes dealt into the
+      evening that still air there: 51% on an 80-episode deck in 6-hour windows, 38% in 12-hour
+      and 70% in daily windows, and 23% on a 400-episode deck in daily windows. The dealer
+      rests a holiday episode only a little past its spacing, so moving it to after the band
+      often brings its own next airing too close. A daily window has only 23:00–24:00 after the
+      band.
     - **In order** the dealer promises no spacing, and every episode leaves the band. If the
       window ends inside the band (a short window), the deferred episodes move, as one run, to
       just before that band. They go at the latest point where each still starts before 17:00.

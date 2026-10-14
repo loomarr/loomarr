@@ -923,15 +923,16 @@ func cmpBool(a, b bool) int {
 //
 // On a channel that deals every pass afresh, the repeat spacing wins over the evening (#1960).
 // Deferring an episode brings the units behind it forward, and a unit the dealer placed just
-// outside its spacing then re-aired inside it. So an episode is deferred only when every unit it
-// brings forward still rests the dealer's spacing from its last airing (or no less than its deal
-// gave it), and the episode still rests it before its own next one (costsSpacing); otherwise it
-// airs in place, as it does when the window closes before the band does.
+// outside its spacing then re-aired inside it. So an episode first swaps places with one ordinary
+// unit after the band (swapOut), which moves no other unit; failing that, it is deferred only when
+// every unit it brings forward still rests the dealer's spacing from its last airing (or no less
+// than its deal gave it), and the episode still rests it before its own next one (costsSpacing);
+// otherwise it airs in place, as it does when the window closes before the band does.
 //
 // The check reads the windows around as dealt, without arranging them. Away from a season that is
-// exact: on such a channel arrange moves only a deferred episode later, and the episode leaves
-// room for what its next window can bring its next airing forward. Near a season the simulation
-// and the hand-off air other tiles, and check what really aired.
+// exact: on such a channel arrange moves only a holiday episode later and an ordinary unit only
+// earlier, and the episode leaves room for what its next window can bring its next airing forward.
+// Near a season the simulation and the hand-off air other tiles, and check what really aired.
 //
 // In order, the dealer promises no spacing: an episode the window cannot defer past the band is
 // moved, with any others, to just before the band (beforeBand); what does not fit there airs at
@@ -955,26 +956,137 @@ func (p *holidayPlanner) arrange(tile []Slot, w int64) []Slot {
 	if len(pooled) == 0 && !slices.ContainsFunc(tile, offSeason) {
 		return tile
 	}
-	spacing := p.ring.d.spacing
+	if p.ring.d.spacing <= 0 {
+		out, deferred := p.place(tile, w, pooled, offSeason)
+		return p.beforeBand(out, deferred, opening, offSeason)
+	}
+	before, _ := p.place(tile, w, pooled, never)
+	dealt := p.airedIn(before, w)
 	inPlace := map[string]bool{} // off-season episodes that air where they are
 	for {
-		out, deferred := p.place(tile, w, pooled, func(s Slot) bool { return offSeason(s) && !inPlace[unitKey(s)] })
-		switch {
-		case spacing <= 0:
-			return p.beforeBand(out, deferred, opening, offSeason)
-		case len(deferred) > 0:
+		swapped := p.swapOut(tile, w, pooled, offSeason, inPlace, before, dealt)
+		out, deferred := p.place(swapped, w, pooled, func(s Slot) bool { return offSeason(s) && !inPlace[unitKey(s)] })
+		if len(deferred) > 0 {
 			// The window closes inside the band: what it deferred would only move to its end.
 			for _, s := range deferred {
 				inPlace[unitKey(s)] = true
 			}
 			continue
 		}
-		key := p.costsSpacing(tile, out, w, pooled, offSeason, inPlace)
+		key := p.costsSpacing(before, dealt, out, w, offSeason, inPlace)
 		if key == "" {
 			return out
 		}
 		inPlace[key] = true
 	}
+}
+
+func never(Slot) bool { return false }
+
+// swapOut is window w's tile with each off-season episode the clock reaches in the evening band
+// swapped with one ordinary unit after it (#1960). The swap moves only those two, so the units
+// between keep their places in the programme count the spacing is promised in. It is taken only
+// when the episode then starts outside the band, no other unit airs later than dealt, and neither
+// unit (nor any earlier swap's) comes closer to another airing than the spacing and its deal allow
+// (costsSpacing); of the units that qualify, the one with the most slack over that floor since its
+// last airing takes the episode's place. An episode no
+// unit qualifies for is left to arrange's deferral. A multi-part story is never split.
+func (p *holidayPlanner) swapOut(tile []Slot, w int64, pooled map[string]bool, offSeason func(Slot) bool, inPlace map[string]bool,
+	before []Slot, dealt windowAirings) []Slot {
+	count := map[string]int{}
+	for _, s := range tile {
+		count[unitKey(s)]++
+	}
+	ordinary := func(s Slot) bool {
+		key := unitKey(s)
+		return s.IsProgram() && count[key] == 1 && !pooled[key] && !slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected)
+	}
+	spacing := p.spacingProgrammes()
+	out := tile
+	tried, moved := map[string]bool{}, map[string]bool{} // episodes tried, and those swapped out
+	for {
+		placed, _ := p.place(out, w, pooled, never)
+		starts := p.startsIn(placed, w)
+		e := slices.IndexFunc(out, func(s Slot) bool {
+			key := unitKey(s)
+			return s.IsProgram() && offSeason(s) && count[key] == 1 && !inPlace[key] && !tried[key] && p.inEvening(starts[key])
+		})
+		if e < 0 {
+			return out
+		}
+		episode := unitKey(out[e])
+		tried[episode] = true
+		var best []Slot
+		var bestSlack int64
+		for u := e + 1; u < len(out); u++ {
+			key := unitKey(out[u])
+			// A unit past the window's close would air only by the swap, and the episode not at all.
+			if !ordinary(out[u]) || p.inEvening(starts[key]) || len(dealt.at[key]) == 0 {
+				continue
+			}
+			candidate := slices.Clone(out)
+			candidate[e], candidate[u] = candidate[u], candidate[e]
+			placed, _ := p.place(candidate, w, pooled, never)
+			airs := p.airedIn(placed, w)
+			if len(airs.at[episode]) == 0 || p.backInEvening(p.startsIn(placed, w), episode, moved) || laterThanDealt(placed, dealt, airs, offSeason) ||
+				p.costsSpacing(before, dealt, placed, w, offSeason, inPlace) != "" {
+				continue
+			}
+			slack := int64(math.MaxInt64) // no airing within the spacing's reach
+			if was, ok := p.lastGap(key, w, dealt); ok {
+				now, _ := p.lastGap(key, w, airs)
+				slack = now - min(spacing, was)
+			}
+			if best == nil || slack > bestSlack {
+				best, bestSlack = candidate, slack
+			}
+		}
+		if best != nil {
+			out, moved[episode] = best, true
+		}
+	}
+}
+
+// laterThanDealt reports whether `placed` airs any unit but an off-season episode later than its
+// deal. A swap keeps the units between in their places, but its time shift can carry one past a
+// feature's start, which then airs first; the checks read neighbours as dealt only because an
+// ordinary unit never moves later.
+func laterThanDealt(placed []Slot, dealt, airs windowAirings, offSeason func(Slot) bool) bool {
+	for _, s := range placed {
+		key := unitKey(s)
+		if s.IsProgram() && !offSeason(s) && len(dealt.at[key]) > 0 && len(airs.at[key]) > 0 && airs.first(key) > dealt.first(key) {
+			return true
+		}
+	}
+	return false
+}
+
+// backInEvening reports whether the episode, or any one swapped out before it, starts in the band.
+func (p *holidayPlanner) backInEvening(starts map[string]time.Time, episode string, moved map[string]bool) bool {
+	if p.inEvening(starts[episode]) {
+		return true
+	}
+	for key := range moved {
+		if p.inEvening(starts[key]) {
+			return true
+		}
+	}
+	return false
+}
+
+// startsIn is when each unit in window w's `placed` tile first starts.
+func (p *holidayPlanner) startsIn(placed []Slot, w int64) map[string]time.Time {
+	out := map[string]time.Time{}
+	t := windowOpening(w, p.window, p.loc)
+	for _, s := range placed {
+		if _, seen := out[unitKey(s)]; !seen {
+			out[unitKey(s)] = t
+		}
+		if s.IsProgram() {
+			t = t.Add(p.runtime(s))
+		}
+	}
+	return out
 }
 
 // place times tile around window w's features, deferring each unit `deferOut` names out of the
@@ -1028,10 +1140,9 @@ func (p *holidayPlanner) inEvening(t time.Time) bool {
 // when it leaves a unit closer to another airing than both the spacing and its deal did: the
 // episode itself, closer to its next dealt airing, or else the nearest episode deferred from ahead
 // of a unit it brought forward, closer to that unit's last airing. Keeping that one in place moves
-// the unit back a slot.
-func (p *holidayPlanner) costsSpacing(tile, out []Slot, w int64, pooled map[string]bool, offSeason func(Slot) bool, inPlace map[string]bool) string {
-	before, _ := p.place(tile, w, pooled, func(Slot) bool { return false })
-	dealt, airs := p.airedIn(before, w), p.airedIn(out, w)
+// the unit back a slot. `before` is the tile placed unmoved, and `dealt` where it airs.
+func (p *holidayPlanner) costsSpacing(before []Slot, dealt windowAirings, out []Slot, w int64, offSeason func(Slot) bool, inPlace map[string]bool) string {
+	airs := p.airedIn(out, w)
 	spacing := p.spacingProgrammes()
 	var deferred []string        // deferred episodes, in deal order
 	moved := func(s Slot) bool { // airs in both, so both say where

@@ -145,7 +145,7 @@ const ChannelSeasonalFields = ({
           density={density}
           description={
             favourEvenings
-              ? "Holiday episodes play between 5 and 11 pm. Out of season they stay out of the evening."
+              ? "Holiday episodes play between 5 and 11 pm. Out of season they move out of the evening, unless that would bring an episode back too soon."
               : "Holiday episodes are spread across the whole day."
           }
           label="Favour evenings"
