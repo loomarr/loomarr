@@ -125,6 +125,12 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 - **Geist** (UI) + **Geist Mono** (data) — one family pair, OFL-licensed, **self-hosted from the embed** (satisfies the main doc's offline rule *and* makes visual tests deterministic — no CDN font swaps).
 - Mono is a design signature, not a garnish: **channel numbers, EPG times, state badges, external ids, durations** are always mono. If it came from a machine, it's set in mono.
 - Scale: 12 / 13 / 14 (body) / 16 / 20 / 24 / 32, line-height 1.5 body · 1.2 headings. Channel-number display style: mono 24–32, tabular numerals.
+- **One size per role on web** (#1817, decided 2026-10-13): page title 24/600 (entity headers
+  such as the channel header included); focused-flow title 32/600 (pairing); status line and
+  section 20/600; subsection 14/600; eyebrow 11 mono (`Caption`); item title 14/600 on cards and
+  14/500 on rows; body 14 (16 in a focused flow); meta 12; data 12–13 mono; badge 11 mono. Nothing
+  renders under 11px, content stays at 12px or above, and new code takes its size from the
+  `--text-*` scale rather than an arbitrary `text-[Npx]`.
 
 ### 2.3 Space, radius, elevation
 
@@ -409,6 +415,28 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - TV layouts use logical units and fill both 1920x1080 and 3840x2160 output. Overscan/safe-area
   padding lives inside an edge-to-edge surface and never produces an outer frame.
 - **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
+- **Content width is picked by task, from six named tiers** (#1817, decided 2026-10-13). A route
+  names its tier (`max-w-reading`, defined in `apps/web/src/styles.css`) and never types a pixel
+  width. Every capped tier is centred with `mx-auto`. The gutter is 24px, and 16px below `sm`
+  where a surface has adopted it (the Guide's create panel); other routes keep their `p-6`.
+
+  | Tier | Width | For | Routes |
+  | --- | --- | --- | --- |
+  | `browse` | full | a time grid you scan across | Guide |
+  | `overview` | 1120 | a page of several sections and grids | Home |
+  | `detail` | 896 | one entity, tabbed, mixed forms and lists | channel detail, the Watch player included |
+  | `reading` | 768 | a single-column queue or list | Requests, request detail |
+  | `form` | 672 | a form or an inline workflow | Account, the Guide's create panel |
+  | `focused` | 512 | one task with no chrome competing | Pair |
+
+  Settings (1024) is outside the tiers and left as it is.
+- **Card or row** (#1817, decided 2026-10-13). A *card* has a picture slot (artwork or the
+  code-drawn `ArtworkFallback`) and the whole item is one destination; it sits in a grid. A
+  *decision card* is one item the viewer must decide on, with several actions and consequence text
+  (Requests' Needs you). A *row* is a scannable item of one kind with at most one progress readout
+  or one trailing action, inside a `ListGroup` (Requests' In progress and Done, Home's lists). A
+  *panel* holds a form or a group of rows and is never a link. The same entity takes the same shape
+  at the same density.
 - **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---

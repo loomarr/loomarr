@@ -93,7 +93,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   }
                 />
               </div>
-              <span className="break-words font-medium text-[13px]">{t.name ?? t.key}</span>
+              <span className="break-words font-medium text-sm">{t.name ?? t.key}</span>
               {t.channels?.[0] && (
                 <span className="truncate text-static-400 text-xs">{t.channels[0].name}</span>
               )}

@@ -143,7 +143,7 @@ const ManualChannelBuilder = ({
   return (
     <div className={cn("flex flex-col gap-5", className)}>
       <div>
-        <h2 className="font-medium text-lg">
+        <h2 className="font-semibold text-lg">
           {fromIdea ? "Edit before you request" : isAdmin ? "Add a channel" : "Request a channel"}
         </h2>
         <p className="mt-1 text-muted-foreground text-sm">

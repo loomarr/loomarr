@@ -28,6 +28,9 @@ const emptyTrace: PreviewCycleOutputBody["trace"] = {
   facts: [],
 };
 
+// The preview ignores the pass summary (the Programming page's Play order line reads it).
+const emptyCycle: PreviewCycleOutputBody["cycle"] = { episodes: 0, movies: 0, series: 0, runtimeMs: 0 };
+
 // ChannelCyclePreview owns the live generated hook (channelsApi.usePreviewChannelCycle)
 // rather than taking injectable state — same shape as ChannelLineupEditor elsewhere in
 // this package. Stubs `fetch` deterministically (no backend, no new dependency):
@@ -72,6 +75,7 @@ const Matched: Story = {
       excluded: nothingExcluded,
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         { kind: "program", title: "Die Hard", key: "movie:tmdb:562", part: 0 },
         { kind: "break" },
@@ -104,6 +108,7 @@ const SeriesEpisodes: Story = {
       excluded: nothingExcluded,
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
         { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
@@ -125,6 +130,7 @@ const BasePolicy: Story = {
       excluded: nothingExcluded,
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },
@@ -148,6 +154,7 @@ const LongList: Story = {
       excluded: nothingExcluded,
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
@@ -179,6 +186,7 @@ const Empty: Story = {
       excluded: nothingExcluded,
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [],
     }),
   ],
@@ -214,6 +222,7 @@ const ExcludedBySafety: Story = {
       },
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
         { kind: "break" },
@@ -241,6 +250,7 @@ const ExcludedByRules: Story = {
       },
       trace: emptyTrace,
       holidayEpisodes: [],
+      cycle: emptyCycle,
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },

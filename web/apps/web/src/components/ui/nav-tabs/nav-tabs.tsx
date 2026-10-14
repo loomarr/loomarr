@@ -82,7 +82,7 @@ const NavTabs = ({
                 : cn(
                     // The #1659 web mock's pill: 13 px at the browser's normal line height (29 px
                     // tall, not the body's 1.5), and hover changes the colour only.
-                    "rounded-md px-3 py-1.5 text-[13px] text-muted-foreground leading-[normal] hover:text-foreground",
+                    "rounded-md px-3 py-1.5 text-muted-foreground text-sm leading-[normal] hover:text-foreground",
                     active && "bg-static-800 font-medium text-foreground",
                   ),
             )}

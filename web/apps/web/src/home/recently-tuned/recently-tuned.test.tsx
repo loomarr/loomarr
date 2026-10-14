@@ -53,6 +53,17 @@ describe("RecentlyTuned — the return card (#1822 evidence, X2)", () => {
     expect(screen.getByRole("link", { name: "Watch live" })).toBeInTheDocument();
   });
 
+  // A card has a picture slot (#1817 Q12): with no artwork, it is the code-drawn fallback.
+  it("fills its picture slot with the monogram fallback when the airing has no artwork", async () => {
+    await renderCard({
+      continueWatching: { channelId: "c1", tunedAt: "2026-09-28T00:00:00Z" },
+      activeChannelIds: new Set(),
+    });
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    // Twice: the picture slot's fallback, and the small channel-identity mark beside the name.
+    expect(screen.getAllByText("NS")).toHaveLength(2);
+  });
+
   it("hides when there's no last-tuned channel", async () => {
     await renderCard({ continueWatching: undefined, activeChannelIds: new Set() });
     expect(screen.queryByRole("heading", { name: "Recently tuned" })).not.toBeInTheDocument();

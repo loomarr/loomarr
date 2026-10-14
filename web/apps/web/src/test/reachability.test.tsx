@@ -261,6 +261,7 @@ const stubReachable = () => {
       holidayEpisodes: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
       excluded: { overCeiling: 0, unrated: 0, items: [] },
+      cycle: { episodes: 0, movies: 0, series: 0, runtimeMs: 0 },
       trace: {
         version: 1,
         ordering: "sequential",

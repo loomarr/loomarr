@@ -2664,6 +2664,31 @@ components:
       required:
         - kind
       type: object
+    CycleSummaryDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          description: Episodes in one full pass
+          format: int64
+          type: integer
+        movies:
+          description: Movies in one full pass
+          format: int64
+          type: integer
+        runtimeMs:
+          description: Programme runtime of one full pass in ms, without commercial breaks
+          format: int64
+          type: integer
+        series:
+          description: Distinct shows the episodes belong to
+          format: int64
+          type: integer
+      required:
+        - episodes
+        - movies
+        - series
+        - runtimeMs
+      type: object
     DatabaseBackup:
       additionalProperties: false
       properties:
@@ -7584,6 +7609,9 @@ components:
         at:
           description: The resolved wall-clock this preview was computed for (RFC3339)
           type: string
+        cycle:
+          $ref: "#/components/schemas/CycleSummaryDTO"
+          description: Size of one full pass through the deck, before the rolling-window slice
         excluded:
           $ref: "#/components/schemas/ExcludedDTO"
           description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
@@ -7612,6 +7640,7 @@ components:
         - excluded
         - trace
         - holidayEpisodes
+        - cycle
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false

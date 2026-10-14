@@ -44,7 +44,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
         <h3 id={nameId} className="m-0 font-semibold text-base leading-[1.3]">
           {idea.name}
         </h3>
-        <p className="m-0 text-pretty text-[13px] text-static-400">{idea.pitch}</p>
+        <p className="m-0 text-pretty text-sm text-static-400">{idea.pitch}</p>
       </div>
       <div className="flex items-center gap-2 px-4 pt-2.5 text-xs">
         {/* The availability text beside it says what the dot does. */}
@@ -169,7 +169,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         )}
       </SectionHeader>
       {ideas.length === 0 ? (
-        <p className="m-0 rounded-lg border border-static-700 bg-static-900 px-4 py-5 text-[13px] text-static-400">
+        <p className="m-0 rounded-lg border border-static-700 bg-static-900 px-4 py-5 text-sm text-static-400">
           That’s every idea for now. New ones appear as your library grows.
         </p>
       ) : (

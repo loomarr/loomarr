@@ -35,6 +35,8 @@ type CycleResult struct {
 	// HolidayEpisodes is the auto-mode holiday-episode feature per selected holiday (§6), from
 	// the same call: what the seasonal control tells the operator its strength will do.
 	HolidayEpisodes []schedule.HolidayEpisodes
+	// Cycle sizes one full pass through the deck (before the rolling-window slice).
+	Cycle schedule.CycleSummary
 }
 
 // CyclePreview computes the channel's desired cycle at a chosen wall-clock `at` for the
@@ -172,5 +174,6 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		Excluded:        desired.Excluded,
 		Trace:           desired.Trace,
 		HolidayEpisodes: desired.HolidayEpisodes,
+		Cycle:           desired.Cycle,
 	}, nil
 }

@@ -88,7 +88,7 @@ const AccountScreen = () => {
         description="Your sign-in, your password, and the devices holding a session."
       />
 
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-auto p-6">
+      <div className="mx-auto flex w-full max-w-form flex-1 flex-col gap-4 overflow-auto p-6">
         <Card className="flex items-center gap-3 p-5">
           <div className="flex size-10 items-center justify-center rounded-full bg-muted font-medium">
             {(user?.name ?? "?").slice(0, 2).toUpperCase()}
@@ -179,7 +179,7 @@ const AccountScreen = () => {
                 className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-[13px]">
+                  <p className="font-medium text-sm">
                     {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                   </p>
                   {s.lastSeenAt !== undefined && (

@@ -17,7 +17,7 @@
       "legacyUi": 4
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 135,
+      "tailwindClasses": 138,
       "legacyUi": 4
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
@@ -668,18 +668,18 @@
       "legacyUi": 4
     },
     "src/home/on-the-way/on-the-way.tsx": {
-      "legacyUi": 4
+      "legacyUi": 3
     },
     "src/home/recently-tuned/recently-tuned.tsx": {
-      "tailwindClasses": 28,
+      "tailwindClasses": 34,
       "legacyUi": 2
     },
     "src/home/tonight/tonight.tsx": {
       "legacyUi": 3
     },
     "src/home/watching-now/watching-now.tsx": {
-      "tailwindClasses": 14,
-      "legacyUi": 2
+      "tailwindClasses": 10,
+      "legacyUi": 1
     },
     "src/lib/utils/utils.ts": {
       "tailwindMerge": 1,
@@ -694,11 +694,11 @@
       "legacyUi": 1
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 67,
+      "tailwindClasses": 69,
       "legacyUi": 3
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 34,
+      "tailwindClasses": 27,
       "legacyUi": 3
     },
     "src/routes/__root.tsx": {
