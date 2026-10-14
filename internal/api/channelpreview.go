@@ -303,17 +303,24 @@ type previewCycleOutput struct {
 
 // HolidayEpisodesDTO is one selected holiday's episode feature on a channel (§6).
 type HolidayEpisodesDTO struct {
-	Holiday   string `json:"holiday" doc:"Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)"`
-	Episodes  int    `json:"episodes" doc:"Holiday episodes found in this channel's series; a multi-part story counts once"`
-	PerDay    int    `json:"perDay" doc:"How many air on an ordinary day of the holiday window at the channel's strength"`
-	EveryDays int    `json:"everyDays" doc:"The soonest any one of them airs again, in days"`
-	Active    bool   `json:"active" doc:"The holiday's window is open at the previewed instant"`
+	Holiday   string   `json:"holiday" doc:"Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)"`
+	Episodes  int      `json:"episodes" doc:"Holiday episodes found in this channel's series; a multi-part story counts once"`
+	PerDay    int      `json:"perDay" doc:"How many air on an ordinary day of the holiday window at the channel's strength"`
+	EveryDays int      `json:"everyDays" doc:"The soonest any one of them airs again, in days"`
+	Active    bool     `json:"active" doc:"The holiday's window is open on the channel's date at the previewed instant"`
+	Capped    bool     `json:"capped" doc:"The number of holiday episodes or the quarter-of-the-day limit holds the strength back: fewer a day than it asks for, or not every day"`
+	SameAs    []string `json:"sameAs" doc:"The other holiday strengths (light, featured, heavy) that would rotate these episodes exactly the same way, so choosing one changes nothing"`
 }
 
 func holidayEpisodesToDTO(in []schedule.HolidayEpisodes) []HolidayEpisodesDTO {
 	out := make([]HolidayEpisodesDTO, 0, len(in))
 	for _, h := range in {
-		out = append(out, HolidayEpisodesDTO{Holiday: h.Holiday, Episodes: h.Episodes, PerDay: h.PerDay, EveryDays: h.EveryDays, Active: h.Active})
+		sameAs := make([]string, 0, len(h.SameAs))
+		for _, s := range h.SameAs {
+			sameAs = append(sameAs, string(s))
+		}
+		out = append(out, HolidayEpisodesDTO{Holiday: h.Holiday, Episodes: h.Episodes, PerDay: h.PerDay, EveryDays: h.EveryDays,
+			Active: h.Active, Capped: h.Capped, SameAs: sameAs})
 	}
 	return out
 }

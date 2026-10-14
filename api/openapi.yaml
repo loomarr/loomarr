@@ -5058,7 +5058,10 @@ components:
       additionalProperties: false
       properties:
         active:
-          description: The holiday's window is open at the previewed instant
+          description: The holiday's window is open on the channel's date at the previewed instant
+          type: boolean
+        capped:
+          description: "The number of holiday episodes or the quarter-of-the-day limit holds the strength back: fewer a day than it asks for, or not every day"
           type: boolean
         episodes:
           description: Holiday episodes found in this channel's series; a multi-part story counts once
@@ -5075,12 +5078,19 @@ components:
           description: How many air on an ordinary day of the holiday window at the channel's strength
           format: int64
           type: integer
+        sameAs:
+          description: The other holiday strengths (light, featured, heavy) that would rotate these episodes exactly the same way, so choosing one changes nothing
+          items:
+            type: string
+          type: array
       required:
         - holiday
         - episodes
         - perDay
         - everyDays
         - active
+        - capped
+        - sameAs
       type: object
     HostedModelView:
       additionalProperties: false
