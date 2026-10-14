@@ -166,11 +166,12 @@ const AppShell = ({
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
             // Watch's href always points at ONE channel, but any channel's watch route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
-            // Every other item keeps the plain automatic match.
+            // Every other item keeps the plain automatic match, and so does Guide off a channel route:
+            // forcing it to `false` there left /guide itself with no current item.
             const forcedActive =
               item.to === "/channels/$id/watch"
                 ? highlight === "watch"
-                : item.to === "/guide"
+                : item.to === "/guide" && highlight !== undefined
                   ? highlight === "guide"
                   : undefined;
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground

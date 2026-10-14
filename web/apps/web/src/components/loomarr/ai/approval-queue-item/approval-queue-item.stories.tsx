@@ -44,5 +44,39 @@ const Denied: Story = {
   },
 };
 
+// Titles the proposal's own ceiling cannot air, shown before any click. A warning, so `caution`
+// (#1909 Q5): amber is focus and the primary action. Only an LLM-grounded proposal produces these.
+const WithRefused: Story = {
+  args: {
+    title: "Saturday Morning Toons",
+    summary: "Bright cartoons for weekend mornings, TV-Y7.",
+    requestedBy: "ada",
+    acquisitions: 1,
+    status: "pending",
+    refused: [
+      {
+        item: {
+          mediaType: "movie",
+          name: "Midnight Toons",
+          tmdbId: 5004,
+          officialRating: "TV-MA",
+          inLibrary: true,
+        },
+        reason: "over_ceiling",
+      },
+      {
+        item: {
+          mediaType: "series",
+          name: "After Hours Doodles",
+          tmdbId: 5005,
+          officialRating: "TV-14",
+          inLibrary: false,
+        },
+        reason: "over_ceiling",
+      },
+    ],
+  },
+};
+
 export default meta;
-export { Approving, Denied, Pending };
+export { Approving, Denied, Pending, WithRefused };

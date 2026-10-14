@@ -75,6 +75,15 @@ describe("GuideCompact", () => {
     expect(html).toContain('aria-label="Watch 2 Channel 2"');
   });
 
+  // Selection is neutral (#1909 Q2): the pressed cell takes a foreground border and its row's number
+  // is foreground. Watch is the one amber, and it is drawn inline, not as a token class.
+  it("draws the selected cell and its row's number without amber", () => {
+    const html = markup({ selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" } });
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("border-top-color:var(--contentPrimary)");
+    expect(html).not.toContain("var(--actionPrimary)");
+  });
+
   it("docks the iPhone's sheet (5d): the channel, when it starts or ends, and Watch with the number", () => {
     const upcoming = markup({
       dock: BottomSheet,

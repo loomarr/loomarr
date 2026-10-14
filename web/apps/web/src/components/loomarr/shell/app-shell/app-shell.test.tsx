@@ -263,7 +263,11 @@ describe("AppShell", () => {
 
     it("still highlights Guide normally when actually on /guide", async () => {
       renderShellAt("/guide", { isAdmin: true, watchChannelId: "ch-7" });
-      expect(await screen.findByRole("link", { name: "Guide" })).toHaveAttribute("data-status", "active");
+      const guide = await screen.findByRole("link", { name: "Guide" });
+      expect(guide).toHaveAttribute("data-status", "active");
+      // `data-status` alone proved nothing: the drawn state once never reached /guide itself.
+      expect(guide).toHaveClass("data-[status=active]:bg-static-800");
+      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
     });
   });
 });
