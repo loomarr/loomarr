@@ -455,8 +455,10 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
       programme count the spacing is promised in. The swap is taken only when the episode then
       starts outside the band, and both units still rest the dealer's spacing (in programmes),
       or no less than their deal gave them: the unit from its last airing, the episode before
-      its own next one. Of the units that qualify, the one most rested since its last airing
-      takes the episode's place. A multi-part story is never split.
+      its own next one. Nor may the swap's shift in start times carry any other unit past a
+      holiday feature's start, which would air that unit later. Of the units that qualify, the
+      one with the most slack over its spacing takes the episode's place. A multi-part story is
+      never split.
     - When no unit qualifies, the episode is deferred as before, but only when every unit it
       brings forward still rests the spacing from its last airing, and the episode still rests
       it before its next airing. Otherwise it airs in place, in the evening. So does an episode

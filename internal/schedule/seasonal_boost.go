@@ -986,9 +986,10 @@ func never(Slot) bool { return false }
 // swapOut is window w's tile with each off-season episode the clock reaches in the evening band
 // swapped with one ordinary unit after it (#1960). The swap moves only those two, so the units
 // between keep their places in the programme count the spacing is promised in. It is taken only
-// when the episode then starts outside the band and neither unit (nor any earlier swap's) comes
-// closer to another airing than the spacing and its deal allow (costsSpacing); of the units that
-// qualify, the one most rested since its last airing takes the episode's place. An episode no
+// when the episode then starts outside the band, no other unit airs later than dealt, and neither
+// unit (nor any earlier swap's) comes closer to another airing than the spacing and its deal allow
+// (costsSpacing); of the units that qualify, the one with the most slack over that floor since its
+// last airing takes the episode's place. An episode no
 // unit qualifies for is left to arrange's deferral. A multi-part story is never split.
 func (p *holidayPlanner) swapOut(tile []Slot, w int64, pooled map[string]bool, offSeason func(Slot) bool, inPlace map[string]bool,
 	before []Slot, dealt windowAirings) []Slot {
@@ -1027,7 +1028,7 @@ func (p *holidayPlanner) swapOut(tile []Slot, w int64, pooled map[string]bool, o
 			candidate[e], candidate[u] = candidate[u], candidate[e]
 			placed, _ := p.place(candidate, w, pooled, never)
 			airs := p.airedIn(placed, w)
-			if len(airs.at[episode]) == 0 || p.backInEvening(p.startsIn(placed, w), episode, moved) ||
+			if len(airs.at[episode]) == 0 || p.backInEvening(p.startsIn(placed, w), episode, moved) || laterThanDealt(placed, dealt, airs, offSeason) ||
 				p.costsSpacing(before, dealt, placed, w, offSeason, inPlace) != "" {
 				continue
 			}
@@ -1044,6 +1045,20 @@ func (p *holidayPlanner) swapOut(tile []Slot, w int64, pooled map[string]bool, o
 			out, moved[episode] = best, true
 		}
 	}
+}
+
+// laterThanDealt reports whether `placed` airs any unit but an off-season episode later than its
+// deal. A swap keeps the units between in their places, but its time shift can carry one past a
+// feature's start, which then airs first; the checks read neighbours as dealt only because an
+// ordinary unit never moves later.
+func laterThanDealt(placed []Slot, dealt, airs windowAirings, offSeason func(Slot) bool) bool {
+	for _, s := range placed {
+		key := unitKey(s)
+		if s.IsProgram() && !offSeason(s) && len(dealt.at[key]) > 0 && len(airs.at[key]) > 0 && airs.first(key) > dealt.first(key) {
+			return true
+		}
+	}
+	return false
 }
 
 // backInEvening reports whether the episode, or any one swapped out before it, starts in the band.
