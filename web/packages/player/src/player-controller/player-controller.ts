@@ -180,6 +180,9 @@ const createPlayerController = ({
           publish({ ...snapshot, stillUri: nextSource.stillUri });
         }
         starting = true;
+        // The outgoing channel holds its last frame, silent, while the server starts this one, and
+        // stays held if it refuses; otherwise it would keep playing under the new channel's name.
+        if (source.start) transport.pause();
         const started = source.start ? await source.start(nextSource, request.signal) : nextSource;
         starting = false;
         if (!isCurrentAttempt(attemptId, request.signal)) return;

@@ -213,6 +213,7 @@ describe("a start the paired server refuses (#1455)", () => {
       });
     return {
       masterRequests,
+      request,
       source: createPlayUrlSourcePort({ baseUrl: "https://loomarr.test", fetch: request }),
     };
   };
@@ -237,6 +238,37 @@ describe("a start the paired server refuses (#1455)", () => {
     ]);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(masterRequests()).toHaveLength(1);
+  });
+
+  it("holds the outgoing channel silent while the next one starts, and after it is refused", async () => {
+    // Found on the Apple TV Simulator: without the hold, channel A kept playing under B's refusal.
+    const { masterRequests, request, source } = pairedSource(started, refused);
+    const two: PlayerChannel[] = [
+      ...channels,
+      { id: "futurama", inAppPlayable: true, name: "Futurama", number: 8 },
+    ];
+    const { controller, currentAttempt, emit, transport } = harness(source);
+    await controller.reconcile(two);
+    emit({ attemptId: currentAttempt(), type: "first-frame" });
+    vi.mocked(transport.pause).mockClear();
+
+    await controller.tuneChannel("futurama");
+
+    expect(controller.getSnapshot()).toMatchObject({
+      channel: { id: "futurama" },
+      error: reason,
+      status: "failed",
+    });
+    expect(transport.pause).toHaveBeenCalledOnce();
+    expect(transport.replace).toHaveBeenCalledOnce(); // the first channel's, never the refused one's
+    // Held before the start request went out, not after the refusal came back.
+    expect(masterRequests("futurama")).toHaveLength(1);
+    const startIndex = request.mock.calls.findIndex(
+      ([input]) => String(input).includes("/futurama/master.m3u8") && !String(input).includes("mode=warm"),
+    );
+    expect(vi.mocked(transport.pause).mock.invocationCallOrder[0]).toBeLessThan(
+      request.mock.invocationCallOrder[startIndex] ?? 0,
+    );
   });
 
   it("opens the master's only variant, so the player never repeats the tune", async () => {
