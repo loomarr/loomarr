@@ -16,7 +16,7 @@ const ProgrammeRegion = ({ density }: { density: Density }) => (
       NOW PLAYING
     </Text>
     <Text density={density} textRole="display">
-      The Puddleford Monorail
+      The Monorail Pitch
     </Text>
     <Text density={density} textRole="body">
       A fast-talking stranger convinces Puddleford to build a monorail with a suspicious windfall.
