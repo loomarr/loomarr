@@ -29,7 +29,9 @@ import (
 //   - Tail-stable (tailStable): the repair moves a unit at most 2*spacing + 2*longestUnit into the
 //     deck, so when that is short of the tail the next seam reads, the repaired tail IS the dealt
 //     tail, and pass p needs only the deals of p-1 and p. Exact, and the same cost at any age.
-//     Every pool large enough to hold three spacings is here, and so is a pool that fits one window.
+//     Every pool wider than a window and large enough to hold three spacings is here. A pool that
+//     fits one window never is: it loops inside the window, so the tail the next seam reads can be
+//     any part of the deck, repaired or not.
 //   - Chained: a pool of one to six windows, whose spacing is raised to two windows (see
 //     repeatSpacing), pushes units into the tail, so each seam needs the repaired deck before it and
 //     the walk runs from an anchor (dealChain). It is bounded by chainBudget.
@@ -144,7 +146,7 @@ func newDeckDealer(slots []Slot, rp ResolvedPolicy, seed int64, window time.Dura
 	}
 	d.whole = window > 0 && runtime > 0 && runtime <= window.Milliseconds()
 	d.spacing = d.repeatSpacing()
-	d.stable = 3*d.spacing.Milliseconds()+2*longest <= runtime
+	d.stable = !d.whole && 3*d.spacing.Milliseconds()+2*longest <= runtime
 	d.bound = chainBound(programs)
 	d.chain = chainFor(d)
 	return d
@@ -190,23 +192,29 @@ func (d *deckDealer) deck(pass int64) []Slot {
 
 // repeatSpacing is how long a unit must rest between two airings across a pass boundary: the
 // episode spacing for a pool of episodes, the film spacing for a pool of films, the longer of the
-// two for a mix. Two bounds apply:
+// two for a mix. Bounds apply, the floors winning over the cap, and none exceeding the pool:
 //
 //   - A third of the pool's runtime at most, less the slack (two longest units) that keeps the
 //     repair out of the tail the next seam reads (the tail-stable regime above). A pool shorter
 //     than the spacing can never honour it (the relaxation ladder, §7, owns that shortfall), and a
 //     spacing near the pool's runtime would pin every unit to its old place, a replay not a reshuffle.
-//   - Two windows at least, as far as the pool allows (it must keep one window free). Windows do
-//     not start where passes do, so a unit airing near the end of one pass can land in the very
-//     next window of the following one unless it rests for two windows (#1694). This floor is what
-//     takes a pool of one to six windows out of the tail-stable regime.
+//   - Two longest units at least, so a unit never airs twice in a row across a seam: a pool that
+//     fits one window loops inside it, and the cap above leaves a pool of five or fewer nothing.
+//   - For a pool wider than a window, two windows as far as the pool allows (it must keep one
+//     window free), and never less than a window and a unit. Windows do not start where passes do,
+//     so a unit airing near the end of one pass can land in the very next window of the following
+//     one (#1694), or, rested less than a window, in the same window twice; the window would skip
+//     it, read past its stride, and the next window would air those units again. This floor is
+//     what takes a pool of one to six windows out of the tail-stable regime.
 func (d *deckDealer) repeatSpacing() time.Duration {
 	var episodes, films bool
 	var longest int64
+	var programs int
 	for _, s := range d.slots {
 		if !s.IsProgram() {
 			continue
 		}
+		programs++
 		longest = max(longest, s.DurationMs)
 		if s.Season > 0 || s.SeriesTitle != "" {
 			episodes = true
@@ -222,8 +230,49 @@ func (d *deckDealer) repeatSpacing() time.Duration {
 		spacing = d.rp.Sep.MovieNoRepeat
 	}
 	pool := time.Duration(programRuntime(d.slots)) * time.Millisecond
-	spacing = min(spacing, (pool-2*time.Duration(longest)*time.Millisecond)/3)
-	return max(spacing, min(2*d.window, pool-d.window))
+	unit := time.Duration(longest) * time.Millisecond
+	spacing = min(spacing, (pool-2*unit)/3)
+	var floor time.Duration
+	if programs >= 2 {
+		floor = 2 * unit
+	}
+	if !d.whole {
+		floor = max(floor, min(2*d.window, pool-d.window), d.window+unit)
+	}
+	return max(spacing, min(floor, pool))
+}
+
+// repair is repairSeam against what really aired before `next`. A pool wider than a window airs
+// its decks back to back, so that is `prev` itself. A pool that fits one window loops its deck
+// until the window closes, `elapsed % total` as playout does, so the units that closed the window
+// are wherever the loop stopped: a deck repaired against its own end would let the unit that
+// really closed the window open the next one.
+func (d *deckDealer) repair(prev, next []Slot) []Slot {
+	if d.whole {
+		prev = loopedWindow(prev, d.window.Milliseconds())
+	}
+	return repairSeam(prev, next, d.spacing)
+}
+
+// loopedWindow is `deck`'s programs looped until `window` ms have aired, the last one cut at the
+// close, so its runtime is the window's.
+func loopedWindow(deck []Slot, window int64) []Slot {
+	var out []Slot
+	for at := int64(0); at < window; {
+		before := at
+		for _, s := range deck {
+			if !s.IsProgram() || s.DurationMs <= 0 || at >= window {
+				continue
+			}
+			s.DurationMs = min(s.DurationMs, window-at)
+			out = append(out, s)
+			at += s.DurationMs
+		}
+		if at == before {
+			break
+		}
+	}
+	return out
 }
 
 // repairSeam reorders `next` so that every unit airs at least `spacing` after it aired in `prev`.
@@ -337,6 +386,9 @@ func chainFor(d *deckDealer) *dealChain {
 	chainsMu.Lock()
 	defer chainsMu.Unlock()
 	if c, ok := chains[key]; ok {
+		if i := slices.Index(chainLRU, key); i >= 0 { // a hit is a use: it goes to the back
+			chainLRU = append(slices.Delete(chainLRU, i, i+1), key)
+		}
 		return c
 	}
 	if len(chainLRU) >= maxChains {
@@ -364,7 +416,7 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 		return deck
 	}
 	if d.stable {
-		deck := repairSeam(d.base(pass-1).deck, d.base(pass).deck, d.spacing)
+		deck := d.repair(d.base(pass-1).deck, d.base(pass).deck)
 		if len(c.decks) >= stableDecks {
 			clear(c.decks)
 		}
@@ -392,13 +444,13 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 		default:
 			// The segment's first pass: its predecessor is a different segment, so repair against it as
 			// dealt (the regimes' doc says why this is the one imperfect seam).
-			cur = repairSeam(d.deal(anchor-1).deck, d.deal(anchor).deck, d.spacing)
+			cur = d.repair(d.deal(anchor-1).deck, d.deal(anchor).deck)
 		}
 		c.decks[anchor] = cur
 	}
 
 	for p := at + 1; p <= pass; p++ {
-		cur = repairSeam(cur, d.deal(p).deck, d.spacing)
+		cur = d.repair(cur, d.deal(p).deck)
 		if p%checkpointEvery == 0 {
 			c.decks[p] = cur
 		}

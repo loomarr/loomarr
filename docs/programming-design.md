@@ -527,14 +527,21 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   1970, so a channel's pass number is its age in passes: a few hundred in a year, never thousands.
   The seam between two passes is **repaired**: every unit airs at least a *repeat spacing* after it
   last aired — the episode/film no-repeat window, capped at a third of the pool's runtime (a pool
-  shorter than the spacing can never honour it; §7 owns that shortfall) and never less than two
-  windows while the pool can hold them, because windows do not start where passes do and a unit
-  near the end of one pass would otherwise land in the very next day. A unit not yet allowed is held
+  shorter than the spacing can never honour it; §7 owns that shortfall) — with floors that win over
+  that cap, none longer than the pool itself. **The true guarantee:** a unit never airs twice in a
+  row (the spacing is at least two longest units); a pool wider than a window rests every unit more
+  than a window (a window and a unit at least, two windows once the pool is three windows wide), so a
+  unit never airs twice in one window and the next window starts exactly where this one stopped. A
+  shorter rest would let a unit from the end of one pass land in the same window again: the window
+  skips it and reads past its stride, and the next window re-airs what it pulled in (27 one-hour films
+  in a 24 h window re-aired units 2–3 h apart). A pool barely wider than a window (under a window and
+  a unit of slack) is pinned close to its old order: that is the price of never repeating inside a
+  window. A unit not yet allowed is held
   back and goes out the moment the deck reaches its release time. A repair moves a unit at most
   `2·spacing + 2·longest unit` into the deck. **When that stops short of the tail the next seam reads
-  (any pool holding three spacings, and any pool that fits one window), the repaired tail is the
+  (a pool wider than a window holding three spacings), the repaired tail is the
   dealt tail**, so a pass needs only its own deal and its predecessor's: exact, at any age. A pool of
-  one to six windows (spacing raised to two windows) is pushed into that tail, so each pass is
+  one to six windows (spacing raised to a window or two) is pushed into that tail, so each pass is
   repaired against the deck that **really aired**, walked pass by pass (memoised per
   pool/policy/seed/window; a lineup edit is a different pool, so it restarts the walk). A deal costs
   5–22 ms for a multi-series pool, so **the walk is bounded in deals**: at most `2048 / pool size`
@@ -545,7 +552,10 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   27 films meets it every 64 passes; measured, the short seam is ~5% under the spacing).
   **A catalog that fits inside one window has no ring to wrap**, so it used to air the same deck in
   the same order every window; there the **window is the pass**, dealt afresh and repaired against
-  the previous window like any other seam. Recency does not order such a deck: it airs every unit
+  the previous window **as it aired**: playout loops the deck until the window closes
+  (`elapsed % total`), so the units that closed it are wherever the loop stopped, not the deck's end,
+  and the seam is repaired against that looped tail. Since any part of the deck can be that tail,
+  such a pool is always walked pass by pass. Recency does not order such a deck: it airs every unit
   every window, so oldest-aired-first is just yesterday's order, a replay that survived every
   window once anyone watched (#1676, reversing #1694's "recency still orders a fitting deck"). The
   window's order is fixed when it opens and does not move as viewing is recorded (#1674).

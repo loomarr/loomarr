@@ -56,7 +56,8 @@ change per channel.
 **A shuffle is the channel's own and is dealt afresh each pass (#1676):** the seed is the stored one,
 or, when a channel stores none, a hash of its id, so two channels over one pool differ; each trip of
 the rolling window around the catalog is a new permutation, and the seam between trips keeps every
-unit at least a repeat spacing (two windows at least) from its last airing. The rule and its one
+unit at least a repeat spacing from its last airing: never twice in a row, and, for a pool wider
+than a window, never twice in one window. The rule and its one
 bounded relaxation are in [programming-design §6.5](../programming-design.md).
 **Ordering has one operator knob:** per-rule `How.Ordering` (within its window) >
 `policy.ordering` > `Channel.Strategy`, the create-time default used only when `policy.ordering` is

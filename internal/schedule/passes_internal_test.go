@@ -74,7 +74,7 @@ func TestRepairSeam_EveryUnitRestsTheSpacing(t *testing.T) {
 		{"small pool", dealPool(14, 90*time.Minute, 3), 6 * time.Hour},
 		{"several shows", multiPool(6, 26, 11*time.Minute), 24 * time.Hour},
 		{"several shows, chained", multiPool(3, 20, 44*time.Minute), 24 * time.Hour},
-		{"fits one window", multiPool(6, 6, 11*time.Minute), 24 * time.Hour},
+		// A pool that fits one window loops inside it: TestFittingDeck_LoopedSeamRestsTheSpacing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resetDealChains()
@@ -211,9 +211,8 @@ func TestDealChain_TailStableShortcutEqualsTheFullWalk(t *testing.T) {
 		slots  []Slot
 		window time.Duration
 	}{
-		{"kids 6x26 in 24h windows", multiPool(6, 26, 11*time.Minute), 24 * time.Hour},
+		{"kids 6x26 in 3h windows", multiPool(6, 26, 11*time.Minute), 3 * time.Hour},
 		{"sitcom 5x100 in 24h windows", multiPool(5, 100, 22*time.Minute), 24 * time.Hour},
-		{"fits one window", multiPool(6, 6, 11*time.Minute), 24 * time.Hour},
 		{"a long pool, short windows", dealPool(120, 40*time.Minute, 9), 3 * time.Hour},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -314,5 +313,114 @@ func BenchmarkDealChain(b *testing.B) {
 				shuffleDealer(slots, tc.window).deck(pass)
 			}
 		})
+	}
+}
+
+// airing is one unit as playout airs it: the channel's window w opens at w*window, and what the
+// window carries is looped (`elapsed % total`, as internal/playout/timeline.go does) until it closes.
+type airing struct {
+	id string
+	at int64 // ms from the first window's open
+}
+
+// airLooped is windows [0, windows) as aired. A slot that starts at or after its window's close
+// never airs: the next window's deck takes over.
+func airLooped(d *deckDealer, window time.Duration, windows int64) []airing {
+	var out []airing
+	w := window.Milliseconds()
+	for i := range windows {
+		slice, _ := windowSliceDealt(d, window, i)
+		var total int64
+		for _, s := range slice {
+			if s.IsProgram() {
+				total += s.DurationMs
+			}
+		}
+		for into := int64(0); into < w; {
+			for _, s := range slice {
+				if !s.IsProgram() || into >= w {
+					continue
+				}
+				out = append(out, airing{s.LibraryItemID, i*w + into})
+				into += s.DurationMs
+			}
+			if total == 0 {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func equalPool(n int, dur time.Duration) []Slot {
+	slots := dealPool(n, dur, 1)
+	for i := range slots {
+		slots[i].DurationMs = dur.Milliseconds()
+	}
+	return slots
+}
+
+// A deck that fits one window loops inside it, so the unit that closes a window is wherever the
+// loop stopped, not the deck's last. Across the seam no unit airs twice in a row, and none returns
+// inside the repeat spacing.
+func TestFittingDeck_LoopedSeamRestsTheSpacing(t *testing.T) {
+	for _, tc := range []struct {
+		n      int
+		dur    time.Duration
+		window time.Duration
+	}{
+		{5, time.Hour, 12 * time.Hour},
+		{5, time.Hour, 24 * time.Hour},
+		{7, 50 * time.Minute, 24 * time.Hour},
+		{10, 65 * time.Minute, 12 * time.Hour},
+		{10, 65 * time.Minute, 24 * time.Hour},
+		{15, 45 * time.Minute, 12 * time.Hour},
+		{15, 45 * time.Minute, 24 * time.Hour},
+	} {
+		t.Run(fmt.Sprintf("%dx%v/%v", tc.n, tc.dur, tc.window), func(t *testing.T) {
+			resetDealChains()
+			d := shuffleDealer(equalPool(tc.n, tc.dur), tc.window)
+			if !d.whole {
+				t.Fatalf("pool should fit the window")
+			}
+			aired := airLooped(d, tc.window, 60)
+			last := map[string]int64{}
+			for k, a := range aired {
+				if k > 0 && aired[k-1].id == a.id {
+					t.Fatalf("%s aired twice in a row at %v", a.id, time.Duration(a.at)*time.Millisecond)
+				}
+				if prev, ok := last[a.id]; ok && a.at/tc.window.Milliseconds() != prev/tc.window.Milliseconds() {
+					if gap := a.at - prev; gap < d.spacing.Milliseconds() {
+						t.Fatalf("%s returned %v after it aired, across the seam into window %d: under the %v spacing",
+							a.id, time.Duration(gap)*time.Millisecond, a.at/tc.window.Milliseconds(), d.spacing)
+					}
+				}
+				last[a.id] = a.at
+			}
+		})
+	}
+}
+
+// A pool a little longer than a window (27 one-hour films, a 24h window) used to re-air a unit
+// hours later: a window that skipped a duplicate read past its stride, and the next window started
+// at its stride and aired the same units again. No unit may return inside the repeat spacing, and
+// the spacing keeps a unit out of the window it already aired in.
+func TestRingWindow_NoUnitReturnsInsideTheSpacing(t *testing.T) {
+	resetDealChains()
+	window := 24 * time.Hour
+	d := shuffleDealer(equalPool(27, time.Hour), window)
+	if d.spacing < window {
+		t.Fatalf("spacing %v is shorter than the window: a unit could air twice in one", d.spacing)
+	}
+	aired := airLooped(d, window, 60) // 60 windows: 53 passes, inside one chained segment
+	last := map[string]int64{}
+	for _, a := range aired {
+		if prev, ok := last[a.id]; ok {
+			if gap := a.at - prev; gap < d.spacing.Milliseconds() {
+				t.Fatalf("%s returned %v after it aired (window %d): under the %v spacing",
+					a.id, time.Duration(gap)*time.Millisecond, a.at/window.Milliseconds(), d.spacing)
+			}
+		}
+		last[a.id] = a.at
 	}
 }
