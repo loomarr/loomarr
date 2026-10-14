@@ -26,7 +26,7 @@ func TestOpenAIEnvelopesRootCombinatorsWithoutWeakeningSchema(t *testing.T) {
 			if !reflect.DeepEqual(properties["input"], schema) || parameters["oneOf"] != nil || parameters["additionalProperties"] != false {
 				t.Errorf("complete schema must be nested under strict input envelope: %#v", parameters)
 			}
-			_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call1","function":{"name":"catalog_search","arguments":"{\"input\":{\"query\":\"Matrix\"}}"}}]}}]}`))
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call1","function":{"name":"catalog_search","arguments":"{\"input\":{\"query\":\"Marigold\"}}"}}]}}]}`))
 		} else {
 			messages := sent["messages"].([]any)
 			for _, raw := range messages {
@@ -63,7 +63,7 @@ func TestOpenAIEnvelopesRootCombinatorsWithoutWeakeningSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.ToolCalls) != 1 || response.ToolCalls[0].Arguments["query"] != "Matrix" {
+	if len(response.ToolCalls) != 1 || response.ToolCalls[0].Arguments["query"] != "Marigold" {
 		t.Fatalf("normalized arguments=%+v", response)
 	}
 	history := []llm.Message{{Role: llm.Assistant, ToolCalls: response.ToolCalls}, {Role: llm.Tool, ToolCallID: "call1", Content: "[]"}, {Role: llm.Assistant, ToolCalls: []llm.ToolCall{{ID: "source1", Name: "catalog_search", Arguments: map[string]any{"query": "Source"}}}}}

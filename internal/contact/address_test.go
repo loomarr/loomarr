@@ -12,7 +12,7 @@ func TestNormalize(t *testing.T) {
 		shouldFail bool
 	}{
 		{name: "trim and fold", raw: "  Ada@Example.COM  ", wantEmail: "Ada@Example.COM", wantKey: "ada@example.com"},
-		{name: "mailbox display name", raw: "Ada Lovelace <Ada@Example.COM>", wantEmail: "Ada@Example.COM", wantKey: "ada@example.com"},
+		{name: "mailbox display name", raw: "Ada Hale <Ada@Example.COM>", wantEmail: "Ada@Example.COM", wantKey: "ada@example.com"},
 		{name: "preserve plus addressing", raw: "ada+tv@example.com", wantEmail: "ada+tv@example.com", wantKey: "ada+tv@example.com"},
 		{name: "empty", raw: "  ", shouldFail: true},
 		{name: "multiple", raw: "ada@example.com, grace@example.com", shouldFail: true},

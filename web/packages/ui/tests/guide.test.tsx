@@ -11,25 +11,25 @@ const layout = {
     {
       airings: [
         {
-          channelId: "springfield",
+          channelId: "cartoons",
           clippedStartMs: 0,
           clippedStopMs: 1_800_000,
           endsAfterWindow: false,
           isOnNow: true,
           progressRatio: 0.5,
-          scheduleBlockId: "bart",
+          scheduleBlockId: "teapot",
           source: {
-            description: "Bart cares for an injured bird.",
+            description: "Pip cares for an injured gull.",
             episode: 3,
             genres: ["Animation", "Comedy"],
             kind: "program",
             rating: "TV-PG",
-            scheduleBlockId: "bart",
+            scheduleBlockId: "teapot",
             season: 10,
-            series: "The Simpsons",
+            series: "Kettle Kids",
             startMs: 0,
             stopMs: 1_800_000,
-            title: "Bart the Mother",
+            title: "The Borrowed Teapot",
             year: 1998,
           },
           startRatio: 0,
@@ -39,8 +39,8 @@ const layout = {
       ],
       source: {
         airings: [],
-        channelId: "springfield",
-        name: "Springfield Classics",
+        channelId: "cartoons",
+        name: "Cartoon Classics",
         number: 1,
         pendingCount: 0,
         status: "live",
@@ -53,7 +53,7 @@ const layout = {
   toMs: 3_600_000,
 } satisfies GuideLayout;
 
-const selection = { anchorMs: 900_000, channelId: "springfield", scheduleBlockId: "bart" };
+const selection = { anchorMs: 900_000, channelId: "cartoons", scheduleBlockId: "teapot" };
 
 const markup = () =>
   renderToStaticMarkup(
@@ -65,8 +65,8 @@ const markup = () =>
 describe("GuideSurface", () => {
   it("renders authoritative channel, programme, episode, and detail facts", () => {
     const output = markup();
-    expect(output).toContain("Springfield Classics");
-    expect(output).toContain("Bart the Mother");
+    expect(output).toContain("Cartoon Classics");
+    expect(output).toContain("The Borrowed Teapot");
     expect(output).toContain("S10E03");
     expect(output).toContain("1998 · TV-PG · Animation · Comedy");
     expect(output).toContain("12:00 AM");
@@ -74,7 +74,7 @@ describe("GuideSurface", () => {
 
   it("publishes one labelled tuning action and disables empty optional filters", () => {
     const output = markup();
-    expect(output).toContain("Springfield Classics, The Simpsons · Bart the Mother, 12:00–12:30 AM");
+    expect(output).toContain("Cartoon Classics, Kettle Kids · The Borrowed Teapot, 12:00–12:30 AM");
     expect(output).toContain('aria-label="Favorites channels"');
     expect(output).toContain('aria-label="Recent channels"');
     expect(output.match(/aria-disabled="true"/g)).toHaveLength(2);
@@ -88,7 +88,7 @@ describe("GuideSurface", () => {
           filter="recent"
           filters={[
             { label: "All", value: "all" },
-            { disabled: true, label: "Favourites", value: "favourites" },
+            { disabled: true, label: "Favorites", value: "favourites" },
             { label: "Recent", value: "recent" },
           ]}
           layout={layout}
@@ -136,7 +136,7 @@ describe("GuideSurface", () => {
       </LoomarrProvider>,
     );
 
-    expect(output).not.toContain("Springfield Classics");
+    expect(output).not.toContain("Cartoon Classics");
     expect(output).toContain("Loomarr News");
     expect(output).toContain("Evening News");
     expect(output).toContain("All · 2");
@@ -150,7 +150,7 @@ describe("GuideSurface", () => {
         <GuideSurface density="tv" layout={layout} onSelectionChange={vi.fn()} selection={selection} />
       </LoomarrProvider>,
     );
-    expect(output).toContain(`>${monogramOf("Springfield Classics")}<`);
+    expect(output).toContain(`>${monogramOf("Cartoon Classics")}<`);
   });
 
   it.each([

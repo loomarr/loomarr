@@ -15,5 +15,5 @@ test("Surf focus follows authoritative now-next detail and tunes without unmount
 
   await scifi.press("Enter");
   await expect(page.getByText("PLAYBACK REMAINS MOUNTED · ch-scifi")).toBeVisible();
-  await expect(page.getByText("No favourites yet")).toBeVisible();
+  await expect(page.getByText("No favorites yet")).toBeVisible();
 });

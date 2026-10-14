@@ -11,14 +11,14 @@ const sourceGuide = {
       airings: [
         {
           kind: "program" as const,
-          scheduleBlockId: "bart",
+          scheduleBlockId: "teapot",
           startMs: 0,
           stopMs: 1_800_000,
-          title: "Bart the Mother",
+          title: "The Borrowed Teapot",
         },
       ],
-      channelId: "springfield",
-      name: "Springfield Classics",
+      channelId: "cartoons",
+      name: "Cartoon Classics",
       number: 1,
       pendingCount: 0,
       status: "live" as const,
@@ -32,7 +32,7 @@ const sourceGuide = {
 const markup = (controller: ReturnType<typeof createGuideController>) =>
   renderToStaticMarkup(
     <LoomarrProvider>
-      <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="springfield" />
+      <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
     </LoomarrProvider>,
   );
 
@@ -42,12 +42,12 @@ describe("GuideJourney", () => {
       now: () => 900_000,
       source: { load: vi.fn().mockResolvedValue(sourceGuide) },
     });
-    await controller.refresh("springfield");
+    await controller.refresh("cartoons");
 
     const output = markup(controller);
 
-    expect(output).toContain("Springfield Classics");
-    expect(output).toContain("Bart the Mother");
+    expect(output).toContain("Cartoon Classics");
+    expect(output).toContain("The Borrowed Teapot");
     expect(output).toContain('accessibilityLabel="Programme guide"');
   });
 
@@ -56,7 +56,7 @@ describe("GuideJourney", () => {
       now: () => 900_000,
       source: { load: vi.fn().mockResolvedValue(sourceGuide) },
     });
-    await controller.refresh("springfield");
+    await controller.refresh("cartoons");
     const render = (myChannels?: { favouriteIds: string[]; recentIds: string[] }) =>
       renderToStaticMarkup(
         <LoomarrProvider>
@@ -65,7 +65,7 @@ describe("GuideJourney", () => {
       );
 
     // A starred channel the guide no longer serves isn't counted.
-    const output = render({ favouriteIds: ["springfield", "retired"], recentIds: [] });
+    const output = render({ favouriteIds: ["cartoons", "retired"], recentIds: [] });
     expect(output).toContain(">All · 1<");
     expect(output).toContain(">★ Favorites · 1<");
     expect(output).toContain(">Recent · 0<");
@@ -83,7 +83,7 @@ describe("GuideJourney", () => {
       now: () => 900_000,
       source: { load: vi.fn().mockResolvedValue(sourceGuide) },
     });
-    await controller.refresh("springfield");
+    await controller.refresh("cartoons");
 
     const output = renderToStaticMarkup(
       <LoomarrProvider>
@@ -95,7 +95,7 @@ describe("GuideJourney", () => {
       </LoomarrProvider>,
     );
 
-    expect(output).not.toContain("Springfield Classics, The Simpsons");
+    expect(output).not.toContain("Cartoon Classics, Kettle Kids");
     expect(output).toContain("1 channels · 1 of 1");
   });
 

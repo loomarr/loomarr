@@ -1,6 +1,7 @@
 package proposaloutlook
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,15 +11,21 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
+// demoTMDBID is film n's provider id, above every real TMDB id (#1592).
+func demoTMDBID(n int) int { return 90_000_000 + n }
+
+// demoKey is film n's provisioning key.
+func demoKey(n int) provision.Key { return provision.Key(fmt.Sprintf("movie:tmdb:%d", demoTMDBID(n))) }
+
 func TestRunwayCountsConcreteProgramsAndFirstRepeatInActualOrder(t *testing.T) {
 	minute := int64(time.Minute / time.Millisecond)
 	cycle := channels.CycleResult{Slots: []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "one", DurationMs: 90 * minute},
+		{Kind: schedule.SlotProgram, Key: demoKey(1), LibraryItemID: "one", DurationMs: 90 * minute},
 		{Kind: schedule.SlotFiller, DurationMs: 20 * minute},
-		{Kind: schedule.SlotPending, Key: "movie:tmdb:9", DurationMs: 120 * minute},
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:2", LibraryItemID: "two", DurationMs: 60 * minute},
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "one", DurationMs: 90 * minute},
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:3", LibraryItemID: "three", DurationMs: 45 * minute},
+		{Kind: schedule.SlotPending, Key: demoKey(9), DurationMs: 120 * minute},
+		{Kind: schedule.SlotProgram, Key: demoKey(2), LibraryItemID: "two", DurationMs: 60 * minute},
+		{Kind: schedule.SlotProgram, Key: demoKey(1), LibraryItemID: "one", DurationMs: 90 * minute},
+		{Kind: schedule.SlotProgram, Key: demoKey(3), LibraryItemID: "three", DurationMs: 45 * minute},
 	}}
 	got := summarize(cycle)
 	if got.Programs != 3 || got.UniqueRuntimeMs != 195*minute || got.FirstRepeatMs == nil || *got.FirstRepeatMs != 150*minute {
@@ -47,12 +54,12 @@ func TestWindowAndUnknownProgramsDoNotInventARepeatGuarantee(t *testing.T) {
 
 func TestEditorialMixDoesNotReclassifyMissingRunEvidence(t *testing.T) {
 	p := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 1, EditorialRole: suggest.EditorialCore},
-		{MediaType: provision.Movie, TMDBID: 2, EditorialRole: suggest.EditorialAdjacent},
-		{MediaType: provision.Movie, TMDBID: 3, EditorialRole: suggest.EditorialDiscovery},
-		{MediaType: provision.Movie, TMDBID: 4, InLibrary: true, Source: "library"},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(1), EditorialRole: suggest.EditorialCore},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(2), EditorialRole: suggest.EditorialAdjacent},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(3), EditorialRole: suggest.EditorialDiscovery},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(4), InLibrary: true, Source: "library"},
 	}}
-	got := editorialMix(p, []schedule.LineupEntry{{Key: "movie:tmdb:1"}, {Key: "movie:tmdb:2"}, {Key: "movie:tmdb:3"}, {Key: "movie:tmdb:4"}, {Key: "movie:tmdb:5"}})
+	got := editorialMix(p, []schedule.LineupEntry{{Key: demoKey(1)}, {Key: demoKey(2)}, {Key: demoKey(3)}, {Key: demoKey(4)}, {Key: demoKey(5)}})
 	if got != (Mix{Core: 1, Adjacent: 1, Discovery: 1, Unknown: 2}) {
 		t.Fatalf("ownership and missing history cannot invent editorial evidence: %+v", got)
 	}

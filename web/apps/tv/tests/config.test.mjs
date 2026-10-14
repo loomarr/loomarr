@@ -320,9 +320,12 @@ test("restarts Watching inactivity only for handled remote and tune activity", a
   assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
   assert.match(appSource, /if \(result\.handled\) showControlsForActivity\(\);/);
 
-  const tuneHandlers = appSource.match(
-    /onTune=\{\(channelId\) => \{\s*void controller\.tuneChannel\(channelId\);\s*showControlsForActivity\(\);\s*setActive\("watching"\);\s*\}\}/g,
+  // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts.
+  assert.match(
+    appSource,
+    /const tuneFromList = \(channelId: string\) => \{[\s\S]*?void controller\.tuneChannel\(channelId\);\s*showControlsForActivity\(\);\s*setActive\("watching"\);\s*\};/,
   );
+  const tuneHandlers = appSource.match(/onTune=\{tuneFromList\}/g);
   assert.equal(tuneHandlers?.length, 2, "Guide and Surf tune paths must restart Watching inactivity");
 });
 

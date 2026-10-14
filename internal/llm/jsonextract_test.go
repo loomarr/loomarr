@@ -15,7 +15,7 @@ func TestExtractJSONObject(t *testing.T) {
 		{"bare object unchanged", `{"a":1}`, `{"a":1}`},
 		// ⚠ THE live case (§10 V44): llava:7b fences its answer. The leading backtick made
 		// json.Unmarshal fail; the span between the fences must come back clean.
-		{"markdown json fence", "```json\n{\"brand\":\"Ford\"}\n```", `{"brand":"Ford"}`},
+		{"markdown json fence", "```json\n{\"brand\":\"Brightfield\"}\n```", `{"brand":"Brightfield"}`},
 		{"plain fence", "```\n{\"x\":true}\n```", `{"x":true}`},
 		{"prose around it", `Sure! Here is the answer: {"era":1994} — hope that helps.`, `{"era":1994}`},
 		{"nested braces", `{"a":{"b":2},"c":3}`, `{"a":{"b":2},"c":3}`},

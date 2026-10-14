@@ -55,8 +55,16 @@ const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 // Watching (#1659 mocks 5e/5g, #1785): the picture edge to edge, and the controls, what's next and
 // the favourites under it, the same panel the web phone draws.
 const WatchingScreen = ({ client }: { client: PairedClient }) => {
-  const { catalogState, controller, guideSnapshot, myChannelsSnapshot, refresh, snapshot, transport } =
-    client;
+  const {
+    catalogState,
+    controller,
+    guideSnapshot,
+    myChannels,
+    myChannelsSnapshot,
+    refresh,
+    snapshot,
+    transport,
+  } = client;
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -72,6 +80,8 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
     recentIds: myChannelsSnapshot.recentIds,
   });
   const { previousId } = panel;
+  const channelId = snapshot.channel?.id;
+  const isFavourite = channelId !== undefined && myChannelsSnapshot.favouriteIds.includes(channelId);
   const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
   return (
     <View style={{ flex: 1 }}>
@@ -98,6 +108,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
             clockLabel={panel.clockLabel}
             density="touch"
             favourites={panel.favourites}
+            isFavourite={isFavourite}
             live={snapshot.livePlayback ?? { lagSeconds: 0, mode: "live" }}
             onChannelDown={() => void controller.step(-1)}
             onChannelUp={() => void controller.step(1)}
@@ -105,6 +116,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
             onPause={controller.pause}
             onPlay={() => void controller.play()}
             onPrevious={() => previousId && void controller.tuneChannel(previousId)}
+            onToggleFavourite={() => channelId && void myChannels.setFavourite(channelId, !isFavourite)}
             onTune={(channelId) => void controller.tuneChannel(channelId)}
             schedule={panel.schedule}
           />

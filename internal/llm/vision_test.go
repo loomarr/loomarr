@@ -26,7 +26,7 @@ func TestOpenAI_AskAboutImages_BuildsDataURIParts(t *testing.T) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &sentReq)
-		_, _ = w.Write([]byte(`{"model":"gemini-vision","choices":[{"message":{"role":"assistant","content":"{\"brand\":\"Kellogg's\"}"}}],"usage":{"prompt_tokens":20,"completion_tokens":3,"prompt_tokens_details":{"image_tokens":11}}}`))
+		_, _ = w.Write([]byte(`{"model":"gemini-vision","choices":[{"message":{"role":"assistant","content":"{\"brand\":\"Brightfield's\"}"}}],"usage":{"prompt_tokens":20,"completion_tokens":3,"prompt_tokens_details":{"image_tokens":11}}}`))
 	}))
 	defer srv.Close()
 
@@ -44,7 +44,7 @@ func TestOpenAI_AskAboutImages_BuildsDataURIParts(t *testing.T) {
 	if resp.WantsTools() {
 		t.Error("vision response should carry no tool calls")
 	}
-	if resp.Content != `{"brand":"Kellogg's"}` {
+	if resp.Content != `{"brand":"Brightfield's"}` {
 		t.Errorf("content = %q", resp.Content)
 	}
 	if resp.Attribution.Tokens.Image != 11 || resp.Attribution.Tokens.Prompt != 20 || len(resp.Attribution.Modalities) != 2 {

@@ -70,8 +70,8 @@ func TestParseFreezedetect_PairsStartsAndEnds(t *testing.T) {
 
 func TestParseFFprobeChapters_ScalesTimeBase(t *testing.T) {
 	out := []byte(`{"chapters":[
-		{"id":0,"time_base":"1/1000","start":0,"end":30000,"tags":{"title":"McDonald's"}},
-		{"id":1,"time_base":"1/1000000","start":30000000,"end":61000000,"tags":{"title":"Lego"}}
+		{"id":90000000,"time_base":"1/1000","start":0,"end":30000,"tags":{"title":"Burger Barn"}},
+		{"id":90000001,"time_base":"1/1000000","start":30000000,"end":61000000,"tags":{"title":"Brickle"}}
 	]}`)
 	chs, err := parseFFprobeChapters(out)
 	if err != nil {
@@ -85,14 +85,14 @@ func TestParseFFprobeChapters_ScalesTimeBase(t *testing.T) {
 	if chs[1].StartMs != 30000 || chs[1].EndMs != 61000 {
 		t.Errorf("time_base not scaled: %+v", chs[1])
 	}
-	if chs[0].Title != "McDonald's" {
+	if chs[0].Title != "Burger Barn" {
 		t.Errorf("title lost: %+v", chs[0])
 	}
 }
 
 func TestParseWhisperJSON(t *testing.T) {
 	out := []byte(`{"transcription":[
-		{"timestamps":{"from":"00:00:00,000","to":"00:00:02,000"},"offsets":{"from":0,"to":2000},"text":" Rice Krispies treats are so easy to make"},
+		{"timestamps":{"from":"00:00:00,000","to":"00:00:02,000"},"offsets":{"from":0,"to":2000},"text":" Crunchlings treats are so easy to make"},
 		{"timestamps":{"from":"00:00:02,000","to":"00:00:04,500"},"offsets":{"from":2000,"to":4500},"text":" "},
 		{"timestamps":{"from":"00:00:04,500","to":"00:00:06,000"},"offsets":{"from":4500,"to":6000},"text":" even the kids can do it"}
 	]}`)

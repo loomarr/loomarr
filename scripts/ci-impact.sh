@@ -90,6 +90,13 @@ classify() {
     web/apps/web/tests/e2e/*)
       [[ "$path" != *.spec.ts ]] || select_gate contracts
       ;;
+    web/apps/web/src/components/loomarr/dashboard/activity-feed/*|web/packages/ui/tests/*|web/packages/ui-tv/tests/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    # migratedGo trees whose Go routing below skips the contracts job.
+    internal/releaseverify/*_test.go|research/*_test.go)
+      select_gate contracts
+      ;;
     web/apps/web/tests/visual/*)
       [[ "$path" != *.spec.ts ]] || select_gate contracts
       ;;

@@ -25,7 +25,7 @@ import (
 func deck(shows, each int) []Slot {
 	var out []Slot
 	for s := 0; s < shows; s++ {
-		key := provision.Key(fmt.Sprintf("series:tvdb:%d", 100+s))
+		key := provision.Key(fmt.Sprintf("series:tvdb:%d", 90_000_100+s))
 		for e := 1; e <= each; e++ {
 			out = append(out, Slot{
 				Kind:          SlotProgram,

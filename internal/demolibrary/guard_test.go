@@ -31,7 +31,7 @@ var realTitles = []string{
 // migratedTitles are real titles, brands, people and ids that #1592 removed from the migrated
 // paths below. Unmigrated fixtures still carry many of them, so they cannot join realTitles yet
 // without listing those files; until then they are enforced on the migrated paths only. Add to
-// it; never remove from it. When legacyFixtures and pendingGo are both empty, fold it into realTitles.
+// it; never remove from it. legacyFixtures and pendingGo are both empty, so the last #1592 step folds it into realTitles.
 var migratedTitles = []string{
 	"Sunny D", "Gushers", "Fruit by the Foot", "Kellogg", "Bran Flakes", "Grrreat", "Springfield",
 	"Bart the Mother", "Lisa Gets an A", "Kidney Trouble", "Radioactive Man", "Milhouse", "Homediddly",
@@ -87,6 +87,10 @@ var migratedTitles = []string{
 	// The eval and filler-research tests (slice 16). "Saw" is left out: it would match ordinary
 	// prose.
 	"Pulp Fiction", "Buddy Foster",
+	// The remaining small groups: notifications, llm, watermark, tunarr, mediatools, the ui and ui-tv
+	// tests and the activity feed (slice 17). "A Christmas Carol" is left out: "Christmas carol"
+	// would match ordinary prose.
+	"Rice Krispies", "Fallout Boy", "Nickelodeon", "NBC",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -118,6 +122,8 @@ var migrated = []string{
 	"web/apps/web/src/design-system/layout.stories.tsx",
 	"web/apps/web/src/filler/incoming/incoming.stories.tsx",
 	"web/apps/web/tests/e2e/mock-backend.ts",
+	// The activity feed story (slice 17).
+	"web/apps/web/src/components/loomarr/dashboard/activity-feed/activity-feed.stories.tsx",
 	// The legacy stories and the TV emulator fixture server (slice 18).
 	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
@@ -199,6 +205,10 @@ var migratedTests = []string{
 	"web/packages/core/src/",
 	"web/packages/core/tests/",
 	"web/packages/player/tests/",
+	// The activity feed and the ui and ui-tv packages' tests (slice 17).
+	"web/apps/web/src/components/loomarr/dashboard/activity-feed/",
+	"web/packages/ui/tests/",
+	"web/packages/ui-tv/tests/",
 	// The visual specs, which assert the migrated stories' text (slice 18).
 	"web/apps/web/tests/visual/",
 }
@@ -278,14 +288,17 @@ var migratedGo = []string{
 	"internal/eval/openrouter_certification_test.go",
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
+	// The remaining small groups and the archived filler research tooling (slice 17).
+	"internal/auth/", "internal/contact/", "internal/llm/", "internal/mediatools/", "internal/notifications/",
+	"internal/proposaloutlook/", "internal/quality/", "internal/releaseverify/", "internal/tunarr/",
+	"internal/watermark/", "research/",
+	"internal/suggest/season_window_test.go",
 }
 
-// pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
-// This list may only SHRINK: a listed file that is already clean fails (delete its line).
-var pendingGo = []string{
-	"internal/api/channelideas_test.go",
-	"internal/api/proposaljourneys_test.go",
-}
+// pendingGo are the files under migratedGo not yet migrated. It is empty: #1917 moved the last
+// two (internal/api's channelideas_test.go and proposaljourneys_test.go). This list may only
+// SHRINK: a listed file that is already clean fails (delete its line).
+var pendingGo = []string{}
 
 // realDataGo are Go tests that exercise real external data on purpose, so #1592 never migrates
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
@@ -299,12 +312,14 @@ var realDataGo = map[string]string{
 	"internal/eval/release_gate_test.go":                  "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
 	"internal/eval/schedule_live_test.go":                 "queries live data on purpose",
 	"internal/fillerenrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/llm/ollama_test.go":                         "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
 	"internal/provision/webhook_parity_test.go":           "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
 	"internal/requester/seerr_contract_test.go":           "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
 	"internal/suggest/live_latency_test.go":               "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/suggest/live_named_titles_test.go":          "drives a real LLM on requests that name real titles",
 	"internal/tmdb/exists_contract_test.go":               "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
 	"internal/tmdb/fixture_test.go":                       "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/watermark/render_samplelogos_test.go":       "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON
@@ -329,8 +344,7 @@ var guarded = []string{"cmd/seed", "cmd/demo-library", "internal/demolibrary"}
 // legacyFixtures still carry real titles and are migrated off them in #1592. They render the
 // Storybook stories behind the visual baselines, so each migration re-shoots baselines; until
 // then this list may only SHRINK: a new file with a real title fails, and so does a listed file
-// that is already clean (delete its line). Slice 18 emptied it. migratedTitles folds into
-// realTitles once pendingGo (#1917) is empty too.
+// that is already clean (delete its line). Slice 18 emptied it.
 var legacyFixtures = []string{}
 
 // isFixture reports whether a repo path is a seed or fixture the guard scans. Captured provider

@@ -28,6 +28,7 @@ const WatchingPanel = ({
   clockLabel,
   density,
   favourites,
+  isFavourite = false,
   live,
   onChannelDown,
   onChannelUp,
@@ -35,6 +36,7 @@ const WatchingPanel = ({
   onPause,
   onPlay,
   onPrevious,
+  onToggleFavourite,
   onTune,
   schedule,
 }: WatchingPanelProps) => {
@@ -51,6 +53,21 @@ const WatchingPanel = ({
         <Text density={density} flexShrink={1} numberOfLines={1} textRole="cardMeta">
           {channel.name}
         </Text>
+        {onToggleFavourite ? (
+          // The Guide's filter writes this same glyph ("★ Favorites"). The hit area is 44pt either way.
+          <Pressable
+            accessibilityLabel={isFavourite ? "Remove from Favorites" : "Add to Favorites"}
+            accessibilityRole="button"
+            aria-selected={isFavourite}
+            hitSlop={{ bottom: 8, left: 4, right: 4, top: 8 }}
+            onPress={onToggleFavourite}
+            style={{ alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 32 }}
+          >
+            <Text density={density} textRole="cardLabel" tone={isFavourite ? "primary" : "secondary"}>
+              {isFavourite ? "★" : "☆"}
+            </Text>
+          </Pressable>
+        ) : null}
         <View style={{ alignItems: "center", flexDirection: "row", gap: 8, marginLeft: "auto" }}>
           {live.mode === "live" ? (
             <>
