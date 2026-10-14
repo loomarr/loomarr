@@ -316,6 +316,13 @@ func repairSeam(prev, next []Slot, spacing time.Duration) []Slot {
 		}
 		started += s.DurationMs
 	}
+	return holdBack(next, release)
+}
+
+// holdBack scans `next` in order and holds a unit back until the deck reaches its release time (ms
+// into next, by library item id), placing it ahead of the next unit in line; every other unit keeps
+// its place relative to the others. Leftovers go out earliest-release first.
+func holdBack(next []Slot, release map[string]int64) []Slot {
 	if len(release) == 0 {
 		return next
 	}

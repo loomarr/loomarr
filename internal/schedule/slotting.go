@@ -458,16 +458,21 @@ func byRecency(slots []Slot, lastAired map[string]time.Time) []Slot {
 // tradeRecent is how recency shapes a windowed shuffle channel (§3.1, #1694). slice is the
 // window's tile of the seeded deck. A unit in it that the history shows aired after `since` (the
 // window before this one opened) would be a next-day repeat, so it is traded for the recorded
-// unit waiting outside the slice that aired longest ago, as long as that one aired earlier. On a
-// steady deck consecutive tiles don't meet, so nothing trades; when an edited lineup deals the
-// deck afresh, this is what keeps yesterday's films out of today.
+// unit waiting outside the slice that aired longest ago, as long as that one aired earlier. When an
+// edited lineup deals the deck afresh, this is what keeps yesterday's films out of today.
+//
+// A trade moves units off the tiles the ring spaced them on, so the traded window is then held to
+// the repeat spacing itself (#1939): `aired` is everything known to have aired (the history, and the
+// ring's tile of the window before, which `opening` follows), and a unit that aired late yesterday
+// waits in today's window until it has rested, rather than opening the morning.
 //
 // Only units the history records can trade in. A unit with no record may still have aired (the
 // history holds only watched airings), so it is never assumed older than one that has a record.
 // Trading only next-day repeats keeps the tiling intact otherwise: a trade moves a unit off its
 // tile, and the unit that then airs twice is usually one the history can't see. If trades
-// shorten the slice below the window, it is topped up from the deck after the tile.
-func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.Time, window time.Duration) []Slot {
+// shorten the slice below the window, it is topped up, with rested units, from the deck after the
+// tile.
+func tradeRecent(deck, slice []Slot, lastAired, aired map[string]time.Time, since, opening time.Time, spacing, window time.Duration) []Slot {
 	inSlice := map[string]bool{}
 	var recorded []int // slice positions of programmes recorded as aired after since
 	for i, s := range slice {
@@ -488,7 +493,7 @@ func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.
 		}
 	}
 	if len(recorded) == 0 || len(waiting) == 0 {
-		return slice
+		return restIn(slice, aired, opening, spacing)
 	}
 	sort.SliceStable(recorded, func(a, b int) bool {
 		return lastAired[slice[recorded[a]].LibraryItemID].After(lastAired[slice[recorded[b]].LibraryItemID])
@@ -507,7 +512,7 @@ func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.
 		traded = true
 	}
 	if !traded {
-		return slice
+		return restIn(slice, aired, opening, spacing)
 	}
 	var runtime int64
 	for _, s := range out {
@@ -536,5 +541,20 @@ func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.
 			runtime += s.DurationMs
 		}
 	}
-	return out
+	return restIn(out, aired, opening, spacing)
+}
+
+// restIn holds each unit of a window opening at `opening` back until it has rested `spacing` since
+// it last aired (#1939). A trade moves units off the tiles the ring spaced them on, and a unit
+// traded in yesterday is still on today's tile, so a guarded window is held to the spacing itself.
+func restIn(window []Slot, aired map[string]time.Time, opening time.Time, spacing time.Duration) []Slot {
+	release := map[string]int64{}
+	for _, s := range window {
+		if at, ok := aired[s.LibraryItemID]; ok && s.IsProgram() {
+			if r := at.Add(spacing).Sub(opening).Milliseconds(); r > 0 {
+				release[s.LibraryItemID] = r
+			}
+		}
+	}
+	return holdBack(window, release)
 }

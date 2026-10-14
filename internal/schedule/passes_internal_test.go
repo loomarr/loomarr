@@ -255,7 +255,7 @@ func TestTradeRecent_CountsTheFilmThatOpenedYesterday(t *testing.T) {
 		"lib-1": since,                          // yesterday's first film aired at its window's opening
 		"lib-3": since.Add(-3 * 24 * time.Hour), // and this one days ago
 	}
-	got := tradeRecent(deck, deck[:2], history, since, 2*time.Hour)
+	got := tradeRecent(deck, deck[:2], history, history, since, since.Add(24*time.Hour), time.Hour, 2*time.Hour)
 	if titles := titlesOf(got); slices.Contains(titles, "Opened yesterday") {
 		t.Fatalf("today's slice %v re-airs the film that opened yesterday", titles)
 	}

@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -398,7 +399,8 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// passes rather than a count from 1970: that is what lets each pass be repaired against the
 	// deck that really aired before it (passes.go).
 	dealer := newDeckDealer(collapsed, rp, seed, window)
-	dealtTile, pass := windowSliceDealt(dealer, window, windowIdx-windowIndex(dealOriginOf(ch), window, ch.WindowZone))
+	age := windowIdx - windowIndex(dealOriginOf(ch), window, ch.WindowZone)
+	dealtTile, pass := windowSliceDealt(dealer, window, age)
 	ordered := dealer.deck(pass)
 	applied := dealer.applied(pass)
 
@@ -427,7 +429,21 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	tile := holidays.tile(windowIdx, dealtTile)
 	if guardSlice {
 		since := windowOpening(windowIdx-1, window, ch.WindowZone)
-		tile = tradeRecent(ordered, tile, history, since, window)
+		aired := maps.Clone(history)
+		if age > 0 { // the window before aired its tile from its opening, watched or not
+			prevDealt, _ := windowSliceDealt(dealer, window, age-1)
+			at := since
+			for _, s := range holidays.tile(windowIdx-1, prevDealt) {
+				if !s.IsProgram() {
+					continue
+				}
+				if seen, ok := aired[s.LibraryItemID]; !ok || at.After(seen) {
+					aired[s.LibraryItemID] = at
+				}
+				at = at.Add(time.Duration(s.DurationMs) * time.Millisecond)
+			}
+		}
+		tile = tradeRecent(ordered, tile, history, aired, since, windowOpening(windowIdx, window, ch.WindowZone), dealer.spacing, window)
 	}
 	ordered = holidays.arrange(tile, windowIdx)
 	holidayEpisodes := holidays.summary(now)
