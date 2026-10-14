@@ -673,7 +673,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
-		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"us","market":" New York ","network":"Fox","station":"WNYW","airDate":"1994-05-06"}}`)
+		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"us","market":" New York ","network":"Kestrel One","station":"WKTL","airDate":"1994-05-06"}}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("geography patch → %d", resp.StatusCode)
 	}
@@ -682,7 +682,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
-		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1994-05-06" || got.GeoEvidence != "operator" {
+		got.Network != "Kestrel One" || got.Station != "WKTL" || got.AirDate != "1994-05-06" || got.GeoEvidence != "operator" {
 		t.Fatalf("stored geography = %+v", got.Clip)
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "geo")
