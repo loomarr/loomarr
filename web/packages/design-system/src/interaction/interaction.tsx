@@ -547,7 +547,7 @@ const Toggle = ({
             {label}
           </Text>
           {description ? (
-            <Text density={density} textRole="metadata">
+            <Text density={density} textRole="hint">
               {description}
             </Text>
           ) : null}
@@ -624,7 +624,7 @@ const ChoiceRow = ({
           {option.label}
         </Text>
         {option.description ? (
-          <Text density={density} textRole="metadata">
+          <Text density={density} textRole="hint">
             {option.description}
           </Text>
         ) : null}
