@@ -582,12 +582,19 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
-	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope, schedule.DeriveFiller(ch.Policy, ch.Lineup))
-	if ch.Policy.BreakDuration != nil {
-		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
+	return SelectionForPolicy(ch.Policy, ch.Lineup)
+}
+
+// SelectionForPolicy is SelectionForChannel for a policy that is not (yet) the saved one — a draft.
+// It carries everything the saved path does, break length and commercial spacing included, so a
+// draft preview cannot assemble with the install defaults while the channel airs its own.
+func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntry) filler.Selection {
+	sel := SelectionFrom(pol.Filler, pol.Scope, schedule.DeriveFiller(pol, lineup))
+	if pol.BreakDuration != nil {
+		sel.BreakDurationMs = pol.BreakDuration.Std().Milliseconds()
 	}
-	if ch.Policy.CommercialSpacing != nil {
-		spacing := ch.Policy.CommercialSpacing.Std()
+	if pol.CommercialSpacing != nil {
+		spacing := pol.CommercialSpacing.Std()
 		sel.Spacing = &spacing
 	}
 	return sel
@@ -652,21 +659,16 @@ func (e *Engine) naturalBreaksFor(ctx context.Context, pol schedule.ChannelPolic
 	return e.naturalBreaks(ctx)
 }
 
-// BreakDurationFor resolves the per-channel break length against the live global setting.
-// Invalid zero/sub-30s values fail to the documented 5m default; disabling belongs exclusively
-// to BreaksPerHour.
+// BreakDurationFor resolves the per-channel break length against the live global setting, through
+// filler.ResolveBreakDurationMs — the same rule the pod is assembled to. An invalid (zero or
+// sub-30s) value falls to the next level, ending at the documented 2m default; disabling belongs
+// exclusively to BreaksPerHour.
 func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Duration {
-	const fallback = 5 * time.Minute
+	var channelMs int64
 	if pol.BreakDuration != nil {
-		if d := pol.BreakDuration.Std(); d >= 30*time.Second {
-			return d
-		}
-		return fallback
+		channelMs = pol.BreakDuration.Std().Milliseconds()
 	}
-	if global >= 30*time.Second {
-		return global
-	}
-	return fallback
+	return time.Duration(filler.ResolveBreakDurationMs(channelMs, global.Milliseconds())) * time.Millisecond
 }
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.

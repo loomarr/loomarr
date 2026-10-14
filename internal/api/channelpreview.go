@@ -458,10 +458,12 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 
 	// ⚠ ONE resolved selection feeds both the pod and the meter (V51f). Resolving it twice would
 	// reintroduce, inside a single handler, exactly the drift this pairing exists to remove.
-	sel := fillerSelectionToDomain(in.Body.Filler, ch.Policy, ch.Lineup)
-	if in.Body.BreakDuration != nil {
-		sel.BreakDurationMs = in.Body.BreakDuration.Std().Milliseconds()
-	}
+	// The draft's break length stands in for the saved one (nil = the install setting, as the
+	// field documents); everything else the draft does not carry — the commercial spacing — is the
+	// channel's SAVED value, because that is what airs alongside the draft until it is applied.
+	draft := ch.Policy
+	draft.BreakDuration = in.Body.BreakDuration
+	sel := fillerSelectionToDomain(in.Body.Filler, draft, ch.Lineup)
 
 	pod, err := s.pods.PreviewDraft(ctx, in.ID, sel)
 	if err != nil {
@@ -486,6 +488,12 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 // adapter downstream re-applied it, so two copies cancelled out. That accident stops working the
 // moment "explicitly any era" is reachable: a fallback keyed on `Era == 0` cannot tell an unset
 // era from a chosen one. `scopeEra` comes from the channel the handler already loads.
+//
+// ⚠ Through `channels.SelectionForPolicy`, so the draft carries the policy's break length and
+// commercial spacing exactly as the saved channel does. It used to stop at the filler selection,
+// which assembled draft previews with the install's break length and spacing while the channel
+// aired its own.
 func fillerSelectionToDomain(f schedule.FillerSelection, policy schedule.ChannelPolicy, lineup []schedule.LineupEntry) filler.Selection {
-	return channels.SelectionFrom(&f, policy.Scope, schedule.DeriveFiller(policy, lineup))
+	policy.Filler = &f
+	return channels.SelectionForPolicy(policy, lineup)
 }
