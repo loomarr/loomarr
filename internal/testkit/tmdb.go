@@ -231,20 +231,22 @@ func (m *TMDB) AddKeywordMovie(id int, name string, year int, genreIDs []int, ov
 	}
 }
 
-// NewTMDB starts a mock TMDB with a fixed small catalog (Speed/The Rock movies,
-// one series) — enough to exercise search + exists + the fabricated-id path.
+// NewTMDB starts a mock TMDB with a fixed small catalog (three movies, one
+// series) — enough to exercise search + exists + the fabricated-id path. The
+// titles come from the invented demo catalogue (internal/demolibrary) and the
+// ids sit above its ProviderIDBase, so none names a real title (#1592).
 func NewTMDB(t testing.TB) *TMDB {
 	t.Helper()
 	m := &TMDB{
 		keywords:      map[int]string{},
 		nextKeywordID: 5000,
 		movies: map[int]tmdbTitle{
-			100: {ID: 100, Name: "Speed", Year: 1994, Date: "1994-06-10", GenreIDs: []int{28, 53}, Overview: "A cop must keep a bus above 50mph or a bomb detonates."},
-			101: {ID: 101, Name: "The Rock", Year: 1996, Date: "1996-06-07", GenreIDs: []int{28, 12, 53}, Overview: "A chemist and an ex-con storm Alcatraz to stop a rogue general."},
-			603: {ID: 603, Name: "The Matrix", Year: 1999, Date: "1999-03-31", GenreIDs: []int{28, 878}, Overview: "A hacker learns reality is a simulation and joins a rebellion."},
+			90000100: {ID: 90000100, Name: "Quiet Engines", Year: 1994, Date: "1994-06-10", GenreIDs: []int{28, 53}, Overview: "A mechanic must keep a runaway tram moving or the bridge gives way."},
+			90000101: {ID: 90000101, Name: "Lemon Tree Heist", Year: 1996, Date: "1996-06-07", GenreIDs: []int{28, 12, 53}, Overview: "Retirees storm a walled orchard to steal a prize-winning lemon tree."},
+			90000603: {ID: 90000603, Name: "Marigold Protocol", Year: 1999, Date: "1999-03-31", GenreIDs: []int{28, 878}, Overview: "A florist learns her orders are coded messages and joins a rebellion."},
 		},
 		series: map[int]tmdbTitle{
-			1396: {ID: 1396, Name: "Breaking Bad", Year: 2008, Date: "2008-01-20", GenreIDs: []int{18, 80}, Overview: "A chemistry teacher turns to making meth."},
+			90001396: {ID: 90001396, Name: "Copperline Foundry", Year: 2008, Date: "2008-01-20", GenreIDs: []int{18, 80}, Overview: "Three generations run a family foundry in a town that has stopped buying iron."},
 		},
 		people:      map[int]string{},
 		networks:    map[int]tmdbNetwork{},
@@ -265,7 +267,7 @@ func NewTMDB(t testing.TB) *TMDB {
 			}
 		}
 		// Include a person result to prove it's filtered out.
-		results = append(results, map[string]any{"id": 9999, "media_type": "person", "name": "Some Actor"})
+		results = append(results, map[string]any{"id": 90009999, "media_type": "person", "name": "Some Actor"})
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
 	mux.HandleFunc("GET /search/keyword", func(w http.ResponseWriter, r *http.Request) {

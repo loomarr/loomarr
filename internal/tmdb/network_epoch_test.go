@@ -14,20 +14,20 @@ import (
 
 func TestDiscover_NetworkEditorialEpochFindsOlderPoolIncludingEarlierPremieres(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddNetwork(49, "History", "US")
+	mock.AddNetwork(90000049, "Almanac", "US")
 	for _, title := range []struct {
 		id, year int
 		name     string
 	}{
-		{20001, 1988, "Earlier documentary"},
-		{20002, 1993, "Era documentary"},
-		{20003, 2009, "Later reality show"},
+		{90020001, 1988, "Earlier documentary"},
+		{90020002, 1993, "Era documentary"},
+		{90020003, 2009, "Later reality show"},
 	} {
 		mock.AddSeries(title.id, title.name, title.year, []int{99}, "A network title.")
-		mock.SetSeriesNetwork(title.id, 49)
+		mock.SetSeriesNetwork(title.id, 90000049)
 	}
 	client := tmdb.NewWithBase(mock.URL, "key")
-	got, err := client.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "History", EditorialEpochEnd: 1999}, 20)
+	got, err := client.Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac", EditorialEpochEnd: 1999}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestDiscover_NetworkEditorialEpochFindsOlderPoolIncludingEarlierPremieres(t
 		t.Fatalf("epoch pool = %+v, want earlier and era titles only", got)
 	}
 	for _, candidate := range got {
-		if candidate.Year > 1999 || len(candidate.Networks) != 1 || candidate.Networks[0] != "History" {
+		if candidate.Year > 1999 || len(candidate.Networks) != 1 || candidate.Networks[0] != "Almanac" {
 			t.Fatalf("unbacked epoch candidate: %+v", candidate)
 		}
 	}
@@ -55,9 +55,9 @@ func TestDiscover_NetworkEditorialEpochFindsOlderPoolIncludingEarlierPremieres(t
 
 func TestDiscover_UnmatchedNetworkBrandOffersSourceNameWithoutResolvingAlias(t *testing.T) {
 	mock := testkit.NewTMDB(t)
-	mock.AddNetwork(49, "History", "US")
-	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "History Channel"}, 20)
-	if err == nil || !strings.Contains(err.Error(), `source catalog names to try: ["History"]`) {
+	mock.AddNetwork(90000049, "Almanac", "US")
+	_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), catalog.DiscoveryQuery{MediaType: provision.Series, Network: "Almanac Channel"}, 20)
+	if err == nil || !strings.Contains(err.Error(), `source catalog names to try: ["Almanac"]`) {
 		t.Fatalf("source-backed name hint missing: %v", err)
 	}
 	for _, request := range mock.Requests() {
@@ -69,9 +69,9 @@ func TestDiscover_UnmatchedNetworkBrandOffersSourceNameWithoutResolvingAlias(t *
 
 func TestDiscover_NetworkEditorialEpochRejectsUnsupportedContextBeforeHTTP(t *testing.T) {
 	for _, query := range []catalog.DiscoveryQuery{
-		{MediaType: provision.Movie, Network: "History", EditorialEpochEnd: 1999},
+		{MediaType: provision.Movie, Network: "Almanac", EditorialEpochEnd: 1999},
 		{MediaType: provision.Series, EditorialEpochEnd: 1999},
-		{MediaType: provision.Series, Network: "History", EditorialEpochEnd: 2100},
+		{MediaType: provision.Series, Network: "Almanac", EditorialEpochEnd: 2100},
 	} {
 		mock := testkit.NewTMDB(t)
 		_, err := tmdb.NewWithBase(mock.URL, "key").Discover(context.Background(), query, 20)
