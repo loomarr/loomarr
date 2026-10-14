@@ -52,12 +52,12 @@ func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:562"), Title: "Die Hard", Year: 1988},
-		{Key: provision.Key("movie:tmdb:218"), Title: "The Terminator", Year: 1984},
+		{Key: provision.Key("movie:tmdb:90000562"), Title: "Tower Forty", Year: 1988},
+		{Key: provision.Key("movie:tmdb:90000218"), Title: "The Iron Courier", Year: 1984},
 	})
 
 	adj := &fakeAdjacencer{out: []catalog.Adjacency{{
-		Candidate: catalog.Candidate{MediaType: provision.Movie, TMDBID: 280, Name: "Terminator 2", Year: 1991},
+		Candidate: catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000280, Name: "Iron Lullaby", Year: 1991},
 		Votes:     3,
 	}}}
 	ref := &fakeRefiner{}
@@ -71,18 +71,18 @@ func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
 		t.Fatalf("walked with %d seeds, want 2 (the channel's lineup)", len(adj.seeds))
 	}
 	// The channel's own titles must be excluded — a neighbour it already has is not a find.
-	if !adj.exclude[provision.Key("movie:tmdb:562")] {
+	if !adj.exclude[provision.Key("movie:tmdb:90000562")] {
 		t.Error("the channel's existing titles must be excluded from the walk")
 	}
 	got := ref.intents["job-1"].Adjacent
-	if len(got) != 1 || got[0].Name != "Terminator 2" {
+	if len(got) != 1 || got[0].Name != "Iron Lullaby" {
 		t.Fatalf("adjacency did not reach the refine intent: %+v", got)
 	}
 	if got[0].Votes != 3 {
 		t.Errorf("votes = %d, want 3 (the consensus that explains the pick)", got[0].Votes)
 	}
-	if got[0].Key != "movie:tmdb:280" {
-		t.Errorf("key = %q, want movie:tmdb:280 (grounded identity)", got[0].Key)
+	if got[0].Key != "movie:tmdb:90000280" {
+		t.Errorf("key = %q, want movie:tmdb:90000280 (grounded identity)", got[0].Key)
 	}
 }
 
@@ -93,7 +93,7 @@ func TestRunner_AdjacencyFailureStillRefines(t *testing.T) {
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:562"), Title: "Die Hard", Year: 1988},
+		{Key: provision.Key("movie:tmdb:90000562"), Title: "Tower Forty", Year: 1988},
 	})
 
 	ref := &fakeRefiner{}
@@ -118,7 +118,7 @@ func TestRunner_NoAdjacencyCorpusIsUnchangedBehaviour(t *testing.T) {
 	st := newStore(t)
 	seedJob(t, st, "job-1", "80s action")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:562"), Title: "Die Hard", Year: 1988},
+		{Key: provision.Key("movie:tmdb:90000562"), Title: "Tower Forty", Year: 1988},
 	})
 
 	ref := &fakeRefiner{}
@@ -141,7 +141,7 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 	st := newStore(t)
 	seedJob(t, st, "job-1", "classic tv")
 	seedChannelWithLineup(t, st, "ch-1", "job-1", []schedule.LineupEntry{
-		{Key: provision.Key("series:tvdb:71470"), Title: "Star Trek", Year: 1966},
+		{Key: provision.Key("series:tvdb:90071470"), Title: "Orbit of Quiet Machines", Year: 1966},
 	})
 
 	adj := &fakeAdjacencer{}
@@ -157,8 +157,8 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 // ── The unscored-adjacency floor (§8.3) ──────────────────────────────────────────────────
 
 // adjItem is an acquisition candidate that came from the adjacency corpus.
-func adjItem(tmdbID int, name string, confidence float64) suggest.ProposalItem {
-	it := acqItem(tmdbID, name, confidence)
+func adjItem(n int, name string, confidence float64) suggest.ProposalItem {
+	it := acqItem(n, name, confidence)
 	it.Source = string(catalog.ScopeAdjacent)
 	return it
 }
@@ -173,7 +173,7 @@ func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
-		adjItem(9659, "Mad Max", 0), // model returned no score for a title it was handed
+		adjItem(9659, "Rust Road Courier", 0), // model returned no score for a title it was handed
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 

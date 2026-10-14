@@ -21,16 +21,16 @@ func traceHas(facts []schedule.ScheduleFact, stage schedule.ScheduleStage, reaso
 
 func TestComputeDesiredAt_TraceComesFromTheDecisionSeams(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "Available", "TV-Y7", 1994),
-		ratedEntry("movie:tmdb:2", "Coming soon", "TV-Y7", 1995),
-		ratedEntry("movie:tmdb:3", "Too adult", "TV-MA", 1996),
+		ratedEntry("movie:tmdb:90000001", "Available", "TV-Y7", 1994),
+		ratedEntry("movie:tmdb:90000002", "Coming soon", "TV-Y7", 1995),
+		ratedEntry("movie:tmdb:90000003", "Too adult", "TV-MA", 1996),
 	}
 	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 	}}
 
 	got := schedule.ComputeDesiredAt(policyChannel(), entries,
-		mapAvail{"movie:tmdb:1": "lib-1"}, schedule.PodFill, policy, time.Time{})
+		mapAvail{"movie:tmdb:90000001": "lib-1"}, schedule.PodFill, policy, time.Time{})
 
 	if got.Trace.Version != schedule.ScheduleTraceVersion {
 		t.Fatalf("trace version = %d, want %d", got.Trace.Version, schedule.ScheduleTraceVersion)
@@ -47,11 +47,11 @@ func TestComputeDesiredAt_TraceComesFromTheDecisionSeams(t *testing.T) {
 		reason schedule.ScheduleReason
 		key    provision.Key
 	}{
-		{schedule.StageHardFilter, schedule.ReasonEligible, "movie:tmdb:1"},
-		{schedule.StageAvailability, schedule.ReasonAvailable, "movie:tmdb:1"},
-		{schedule.StagePlacement, schedule.ReasonSequential, "movie:tmdb:1"},
-		{schedule.StageAvailability, schedule.ReasonUnavailablePodFill, "movie:tmdb:2"},
-		{schedule.StageHardFilter, schedule.ReasonOverCeiling, "movie:tmdb:3"},
+		{schedule.StageHardFilter, schedule.ReasonEligible, "movie:tmdb:90000001"},
+		{schedule.StageAvailability, schedule.ReasonAvailable, "movie:tmdb:90000001"},
+		{schedule.StagePlacement, schedule.ReasonSequential, "movie:tmdb:90000001"},
+		{schedule.StageAvailability, schedule.ReasonUnavailablePodFill, "movie:tmdb:90000002"},
+		{schedule.StageHardFilter, schedule.ReasonOverCeiling, "movie:tmdb:90000003"},
 	}
 	for _, check := range checks {
 		if !traceHas(got.Trace.Facts, check.stage, check.reason, check.key) {
@@ -64,7 +64,7 @@ func TestComputeDesiredAt_TraceComesFromTheDecisionSeams(t *testing.T) {
 }
 
 func TestComputeDesiredAt_TraceExplainsEpisodeSelection(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
 	for episode, rating := range []float64{6.1, 9.4, 6.3, 8.9, 6.0, 9.1, 6.2, 8.8} {
 		episodes = append(episodes, schedule.ResolvedProgram{
@@ -73,7 +73,7 @@ func TestComputeDesiredAt_TraceExplainsEpisodeSelection(t *testing.T) {
 		})
 	}
 	got := schedule.ComputeDesiredAt(policyChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
 		schedule.ChannelPolicy{}, time.Time{})
@@ -87,9 +87,9 @@ func TestComputeDesiredAt_TraceExplainsEpisodeSelection(t *testing.T) {
 }
 
 func TestComputeDesiredAt_TraceNamesEditorialFullRunFallback(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	got := schedule.ComputeDesiredAt(policyChannel(), []schedule.LineupEntry{{
-		Key: key, Title: "The Simpsons",
+		Key: key, Title: "The Mudpuddles",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): {
 		{LibraryItemID: "ep-1", Title: "Episode 1", Season: 1, Episode: 1},
@@ -105,7 +105,7 @@ func TestComputeDesiredAt_TraceExplainsWindowPlacement(t *testing.T) {
 	entries := make([]schedule.LineupEntry, 0, entriesN)
 	avail := make(mapAvail, entriesN)
 	for i := range entriesN {
-		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", i+1))
+		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i+1))
 		entries = append(entries, schedule.LineupEntry{Key: key, Title: fmt.Sprintf("Movie %d", i+1), DurationMs: int64(time.Hour / time.Millisecond)})
 		avail[key] = fmt.Sprintf("lib-%d", i+1)
 	}
@@ -116,7 +116,7 @@ func TestComputeDesiredAt_TraceExplainsWindowPlacement(t *testing.T) {
 	if got.Trace.WindowMs != int64(time.Hour/time.Millisecond) || got.Trace.WindowIndex != 4 {
 		t.Fatalf("window metadata = %dms/index %d", got.Trace.WindowMs, got.Trace.WindowIndex)
 	}
-	if !traceHas(got.Trace.Facts, schedule.StagePlacement, schedule.ReasonWindowedOut, "movie:tmdb:1") {
+	if !traceHas(got.Trace.Facts, schedule.StagePlacement, schedule.ReasonWindowedOut, "movie:tmdb:90000001") {
 		t.Fatalf("trace does not explain the rotated-out deck head")
 	}
 	if got.Trace.Truncated {
@@ -129,7 +129,7 @@ func TestComputeDesiredAt_TraceIsBounded(t *testing.T) {
 	entries := make([]schedule.LineupEntry, 0, entriesN)
 	avail := make(mapAvail, entriesN)
 	for i := range entriesN {
-		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", i+1))
+		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_000+i+1))
 		entries = append(entries, schedule.LineupEntry{Key: key, Title: fmt.Sprintf("Movie %d", i+1)})
 		avail[key] = fmt.Sprintf("lib-%d", i+1)
 	}

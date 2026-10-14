@@ -49,14 +49,17 @@ func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineu
 	}
 }
 
-// movie builds a proposal item (an acquisition candidate) with a confidence.
-func acqItem(tmdbID int, name string, confidence float64) suggest.ProposalItem {
-	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name, Confidence: confidence}
+// demoTMDBID is film n's provider id, above every real TMDB id (#1592).
+func demoTMDBID(n int) int { return 90_000_000 + n }
+
+// movie builds a proposal item (an acquisition candidate) for film n with a confidence.
+func acqItem(n int, name string, confidence float64) suggest.ProposalItem {
+	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, Confidence: confidence}
 }
 
-// inLibItem builds an in-library lineup pick (already available).
-func inLibItem(tmdbID int, name, libID string) suggest.ProposalItem {
-	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name, InLibrary: true, LibraryItemID: libID}
+// inLibItem builds an in-library lineup pick (already available) for film n.
+func inLibItem(n int, name, libID string) suggest.ProposalItem {
+	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: libID}
 }
 
 // seedProposal writes a submitted proposal for jobID with the given picks.
@@ -75,14 +78,14 @@ func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquis
 	return p
 }
 
-func movieKey(tmdbID int) provision.Key {
-	k, _ := provision.Title{MediaType: provision.Movie, TMDBID: tmdbID}.Key()
+func movieKey(n int) provision.Key {
+	k, _ := provision.Title{MediaType: provision.Movie, TMDBID: demoTMDBID(n)}.Key()
 	return k
 }
 
-func titleState(t *testing.T, st store.Store, tmdbID int) provision.State {
+func titleState(t *testing.T, st store.Store, n int) provision.State {
 	t.Helper()
-	rec, err := st.GetTitle(context.Background(), movieKey(tmdbID))
+	rec, err := st.GetTitle(context.Background(), movieKey(n))
 	if err != nil {
 		return "" // not found
 	}

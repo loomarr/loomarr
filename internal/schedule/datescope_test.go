@@ -22,9 +22,9 @@ func eraCorpus() ([]schedule.LineupEntry, schedule.Availability, map[string]int,
 		premiere int
 		episodes map[string]int
 	}{
-		{"series:tmdb:1", 1989, map[string]int{"s1-1988": 1988, "s1-1993": 1993, "s1-2022": 2022, "s1-0": 0}},
-		{"series:tmdb:2", 1995, map[string]int{"s2-1995": 1995, "s2-2003": 2003}},
-		{"series:tmdb:3", 0, map[string]int{"s3-1991": 1991, "s3-2010": 2010}},
+		{"series:tmdb:90000001", 1989, map[string]int{"s1-1988": 1988, "s1-1993": 1993, "s1-2022": 2022, "s1-0": 0}},
+		{"series:tmdb:90000002", 1995, map[string]int{"s2-1995": 1995, "s2-2003": 2003}},
+		{"series:tmdb:90000003", 0, map[string]int{"s3-1991": 1991, "s3-2010": 2010}},
 	}
 	avail := seriesAvail{
 		movies: map[provision.Key]struct {

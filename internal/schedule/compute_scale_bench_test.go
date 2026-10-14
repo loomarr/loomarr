@@ -54,7 +54,7 @@ func movieLineup(n int) []LineupEntry {
 	out := make([]LineupEntry, 0, n)
 	for i := 0; i < n; i++ {
 		out = append(out, LineupEntry{
-			Key:            provision.Key(fmt.Sprintf("movie:tmdb:%d", 1000+i)),
+			Key:            provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_001_000+i)),
 			Title:          fmt.Sprintf("Film %d", i),
 			DurationMs:     5_400_000,
 			OfficialRating: Rating("PG-13"),
@@ -98,12 +98,12 @@ func BenchmarkComputeDesiredAt_ByLineupSize(b *testing.B) {
 }
 
 // A SERIES channel, which is the expensive shape: one entry expands to hundreds of episodes.
-// The maintainer's Springfield Classics is exactly this (1 lineup entry → 64 slots).
+// The maintainer's one-cartoon classics channel is exactly this (1 lineup entry → 64 slots).
 func BenchmarkComputeDesiredAt_SeriesExpansion(b *testing.B) {
 	at := time.Date(2026, 7, 26, 21, 0, 0, 0, time.UTC)
 	for _, eps := range []int{50, 200, 800} {
 		entries := []LineupEntry{{
-			Key: provision.Key("series:tvdb:71663"), Title: "Bench Series",
+			Key: provision.Key("series:tvdb:90071663"), Title: "Bench Series",
 			OfficialRating: Rating("TV-PG"), Genres: []string{"Animation"}, Year: 1991,
 		}}
 		ch := benchChannel("ch-series")
@@ -136,7 +136,7 @@ func BenchmarkComputeDesiredAt_200Channels(b *testing.B) {
 		if i%4 == 0 {
 			specs = append(specs, chSpec{
 				ch:      benchChannel(fmt.Sprintf("ch-%d", i)),
-				entries: []LineupEntry{{Key: provision.Key("series:tvdb:71663"), Title: "Series", OfficialRating: Rating("TV-PG")}},
+				entries: []LineupEntry{{Key: provision.Key("series:tvdb:90071663"), Title: "Series", OfficialRating: Rating("TV-PG")}},
 				av:      benchAvail{episodesPerSeries: 200},
 			})
 			continue

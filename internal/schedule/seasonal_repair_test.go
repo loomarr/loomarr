@@ -44,7 +44,7 @@ func seriesLike(ordinary int, specials ...special) libraryfixture.Availability {
 	k := 0
 	for i := range ordinary {
 		eps = append(eps, schedule.ResolvedProgram{
-			LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Bart's day %d", i),
+			LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Pip's day %d", i),
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs,
 		})
 		for ; k < len(specials) && k*ordinary/len(specials) <= i; k++ {
@@ -53,11 +53,11 @@ func seriesLike(ordinary int, specials ...special) libraryfixture.Availability {
 				Season: i/20 + 1, Episode: 40 + k, DurationMs: episodeMs})
 		}
 	}
-	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{simpsonsKey: {Programs: eps}}}
+	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 }
 
 func channelWithWindow(w time.Duration, zone *time.Location) schedule.Channel {
-	ch := simpsonsChannel()
+	ch := mudpuddlesChannel()
 	ch.DefaultWindow, ch.WindowZone = w, zone
 	return ch
 }
@@ -109,7 +109,7 @@ func assertNoRepeatInADay(t *testing.T, label string, byDay map[string][]airing)
 func TestHolidayEpisodes_SubDayWindowsNeverRepeatInADay(t *testing.T) {
 	for _, w := range []time.Duration{12 * time.Hour, 6 * time.Hour} {
 		for _, placement := range []schedule.HolidayPlacement{schedule.HolidayPlacementAnytime, schedule.HolidayPlacementEvenings} {
-			byDay := airedOn(t, channelWithWindow(w, nil), simpsonsLike(9), seasonalPolicy(schedule.SeasonalPolicy{Placement: placement}),
+			byDay := airedOn(t, channelWithWindow(w, nil), mudpuddlesLike(9), seasonalPolicy(schedule.SeasonalPolicy{Placement: placement}),
 				day(time.October, 13, 0), day(time.October, 14, 0))
 			assertNoRepeatInADay(t, fmt.Sprintf("%s window, %s", w, placement), byDay)
 			if n := len(holidayAirings(byDay["2026-10-13"])); n != 3 {
@@ -122,7 +122,7 @@ func TestHolidayEpisodes_SubDayWindowsNeverRepeatInADay(t *testing.T) {
 func halloweenSpecials(n int) []special {
 	var out []special
 	for i := range n {
-		out = append(out, special{fmt.Sprintf("thoh-%02d", i), fmt.Sprintf("Treehouse of Horror %d", i+1), "The family's annual Halloween special."})
+		out = append(out, special{fmt.Sprintf("thoh-%02d", i), fmt.Sprintf("Puddlehouse of Horror %d", i+1), "The family's annual Halloween special."})
 	}
 	return out
 }
@@ -135,7 +135,7 @@ func TestHolidayEpisodes_ConsecutiveWindowsShareNothing(t *testing.T) {
 		window time.Duration
 		avail  libraryfixture.Availability
 	}{
-		{24 * time.Hour, simpsonsLike(40)},
+		{24 * time.Hour, mudpuddlesLike(40)},
 		{72 * time.Hour, seriesLike(600, halloweenSpecials(40)...)},
 	} {
 		w := tc.window
@@ -166,8 +166,8 @@ func TestHolidayEpisodes_OutOfSeasonShortWindowsNeverBench(t *testing.T) {
 	off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
 	dealt := 0
 	for at := schedule.WindowStart(day(time.November, 5, 0), ch.DefaultWindow, nil); at.Before(day(time.November, 21, 0)); at = at.Add(ch.DefaultWindow) {
-		all := arrange(t, ch, simpsonsLike(30), evenings, at)
-		got, want := holidayAirings(all), holidayAirings(arrange(t, ch, simpsonsLike(30), off, at))
+		all := arrange(t, ch, mudpuddlesLike(30), evenings, at)
+		got, want := holidayAirings(all), holidayAirings(arrange(t, ch, mudpuddlesLike(30), off, at))
 		dealt += len(want)
 		if len(got) != len(want) {
 			t.Fatalf("window opening %s: %d holiday episodes air where the deck deals %d", at.Format(time.Stamp), len(got), len(want))
@@ -201,7 +201,7 @@ func TestHolidayEpisodes_OutOfSeasonEveningIsChannelLocal(t *testing.T) {
 	ch := channelWithWindow(24*time.Hour, ny)
 	seen := 0
 	for d := 2; d <= 12; d++ {
-		for _, a := range holidayAirings(arrange(t, ch, simpsonsLike(30), seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 11, d, 9, 0, 0, 0, ny))) {
+		for _, a := range holidayAirings(arrange(t, ch, mudpuddlesLike(30), seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 11, d, 9, 0, 0, 0, ny))) {
 			seen++
 			if inEvening(a, ny) {
 				t.Fatalf("Nov %d: out-of-season %s airs at %s New York time, in the evening", d, a.id, a.start.In(ny).Format(time.Kitchen))
@@ -248,7 +248,7 @@ func TestHolidayEpisodes_HolidayDateNeighboursShareNothing(t *testing.T) {
 
 // Heavy's holiday night is a marathon: the whole pool back to back in the evening.
 func TestHolidayEpisodes_HeavyHolidayNightIsBackToBack(t *testing.T) {
-	got := arrange(t, simpsonsChannel(), simpsonsLike(9), seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy}), day(time.October, 31, 9))
+	got := arrange(t, mudpuddlesChannel(), mudpuddlesLike(9), seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy}), day(time.October, 31, 9))
 	first, run := -1, 0
 	for i, a := range got {
 		if strings.HasPrefix(a.id, "thoh-") {
@@ -270,7 +270,7 @@ func TestHolidayEpisodes_HeavyHolidayNightIsBackToBack(t *testing.T) {
 func TestHolidayEpisodes_TwoPartStoryStaysWhole(t *testing.T) {
 	var eps []schedule.ResolvedProgram
 	for i := range 200 {
-		eps = append(eps, schedule.ResolvedProgram{LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Bart's day %d", i),
+		eps = append(eps, schedule.ResolvedProgram{LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Pip's day %d", i),
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs})
 	}
 	for k := range 4 {
@@ -280,10 +280,10 @@ func TestHolidayEpisodes_TwoPartStoryStaysWhole(t *testing.T) {
 	eps = append(eps,
 		schedule.ResolvedProgram{LibraryItemID: "xmas-carol-1", Title: "A Carol (1)", Overview: "A Christmas Eve ghost story.", Season: 20, Episode: 10, DurationMs: episodeMs},
 		schedule.ResolvedProgram{LibraryItemID: "xmas-carol-2", Title: "A Carol (2)", Overview: "The ghosts return.", Season: 20, Episode: 11, DurationMs: episodeMs})
-	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{simpsonsKey: {Programs: eps}}}
+	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 	aired := 0
 	for d := 1; d <= 25; d++ {
-		got := arrange(t, simpsonsChannel(), avail, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.December, d, 9))
+		got := arrange(t, mudpuddlesChannel(), avail, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.December, d, 9))
 		for i, a := range got {
 			if a.id == "xmas-carol-1" {
 				aired++
@@ -311,7 +311,7 @@ func TestHolidayEpisodes_DSTDayArrangesCleanly(t *testing.T) {
 	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthLight})
 	var prev map[string]bool
 	for d := 23; d <= 27; d++ {
-		got := arrange(t, ch, simpsonsLike(40), policy, time.Date(2026, 10, d, 9, 0, 0, 0, london))
+		got := arrange(t, ch, mudpuddlesLike(40), policy, time.Date(2026, 10, d, 9, 0, 0, 0, london))
 		for _, a := range got {
 			if prev[a.id] {
 				t.Fatalf("Oct %d (London): %s re-aired from the day before", d, a.id)
@@ -331,8 +331,8 @@ func TestHolidayEpisodes_HolidayWindowIsChannelLocal(t *testing.T) {
 		t.Skip("no tzdata")
 	}
 	ch := channelWithWindow(24*time.Hour, ny)
-	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
-		simpsonsLike(9), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 10, 31, 21, 0, 0, 0, ny))
+	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}},
+		mudpuddlesLike(9), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 10, 31, 21, 0, 0, 0, ny))
 	if len(d.HolidayEpisodes) == 0 || d.HolidayEpisodes[0].Holiday != "halloween" || !d.HolidayEpisodes[0].Active {
 		t.Fatalf("9 pm New York on Oct 31: summary %+v, want Halloween active", d.HolidayEpisodes)
 	}
@@ -342,8 +342,8 @@ func TestHolidayEpisodes_HolidayWindowIsChannelLocal(t *testing.T) {
 func TestHolidayEpisodes_SummaryNamesIdenticalStrengths(t *testing.T) {
 	summary := func(pool int, s schedule.HolidayStrength) schedule.HolidayEpisodes {
 		t.Helper()
-		d := schedule.ComputeDesiredAt(simpsonsChannel(), []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
-			simpsonsLike(pool), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{Strength: s}), day(time.October, 13, 9))
+		d := schedule.ComputeDesiredAt(mudpuddlesChannel(), []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}},
+			mudpuddlesLike(pool), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{Strength: s}), day(time.October, 13, 9))
 		if len(d.HolidayEpisodes) == 0 || d.HolidayEpisodes[0].Holiday != "halloween" {
 			t.Fatalf("pool %d: no Halloween summary", pool)
 		}
@@ -370,18 +370,18 @@ func TestHolidayEpisodes_MarathonLongerThanTheWindowNeverEmpties(t *testing.T) {
 	for _, w := range []time.Duration{time.Hour, 2 * time.Hour} {
 		ch := channelWithWindow(w, nil)
 		for at := day(time.October, 31, 0); at.Before(day(time.November, 1, 0)); at = at.Add(w) {
-			if len(arrange(t, ch, simpsonsLike(9), heavy, at)) == 0 {
+			if len(arrange(t, ch, mudpuddlesLike(9), heavy, at)) == 0 {
 				t.Fatalf("%s window at %s arranges nothing", w, at.Format(time.Kitchen))
 			}
 		}
-		byDay := airedOn(t, ch, simpsonsLike(9), heavy, day(time.October, 31, 0), day(time.November, 1, 0))
+		byDay := airedOn(t, ch, mudpuddlesLike(9), heavy, day(time.October, 31, 0), day(time.November, 1, 0))
 		assertNoRepeatInADay(t, fmt.Sprintf("%s window", w), byDay)
 		if n := len(holidayAirings(byDay["2026-10-31"])); n != 9 {
 			t.Fatalf("%s window: the marathon aired %d of 9", w, n)
 		}
 	}
 	// A pool longer than the whole day fills the date with holiday episodes, back to back.
-	got := arrange(t, simpsonsChannel(), seriesLike(400, halloweenSpecials(80)...), heavy, day(time.October, 31, 9))
+	got := arrange(t, mudpuddlesChannel(), seriesLike(400, halloweenSpecials(80)...), heavy, day(time.October, 31, 9))
 	var n int
 	for _, a := range got {
 		if isHoliday(a.id) {
@@ -525,7 +525,7 @@ func BenchmarkHolidayPlanner_ShuffledSeason(b *testing.B) {
 	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
 	policy.Ordering = schedule.OrderShuffle
 	at := day(time.October, 30, 0)
-	lineup := []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}
+	lineup := []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}
 	for b.Loop() {
 		schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, at)
 	}

@@ -32,7 +32,7 @@ func renderOne(t *testing.T, g Guide) string {
 func TestRenderXMLTV_IsWellFormedWithADoctype(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels:   []GuideChannel{{ID: "ch1", Name: "Classic Sci-Fi", Number: 50}},
-		Programmes: map[string][]Broadcast{"ch1": {programme("Heat", guideNow, 60)}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Midnight at the Mapleton", guideNow, 60)}},
 	})
 
 	if !strings.Contains(got, `<!DOCTYPE tv SYSTEM "xmltv.dtd">`) {
@@ -63,15 +63,15 @@ func TestRenderXMLTV_IsWellFormedWithADoctype(t *testing.T) {
 // silent — every channel plays and every guide is empty — so it is asserted rather than trusted.
 func TestRenderXMLTV_ChannelIDMatchesTheTunerID(t *testing.T) {
 	got := renderOne(t, Guide{
-		Channels:   []GuideChannel{{ID: "classic-simpsons", Name: "Classic Simpsons", Number: 52}},
-		Programmes: map[string][]Broadcast{"classic-simpsons": {programme("Bart the Genius", guideNow, 22)}},
+		Channels:   []GuideChannel{{ID: "classic-mudpuddles", Name: "Classic Mudpuddles", Number: 52}},
+		Programmes: map[string][]Broadcast{"classic-mudpuddles": {programme("Pip the Inventor", guideNow, 22)}},
 	})
 
-	// The tuner writes tvg-id="classic-simpsons"; the guide must use the identical string.
-	if !strings.Contains(got, `<channel id="classic-simpsons">`) {
+	// The tuner writes tvg-id="classic-mudpuddles"; the guide must use the identical string.
+	if !strings.Contains(got, `<channel id="classic-mudpuddles">`) {
 		t.Errorf("channel id does not match the tuner's tvg-id:\n%s", got)
 	}
-	if !strings.Contains(got, `channel="classic-simpsons"`) {
+	if !strings.Contains(got, `channel="classic-mudpuddles"`) {
 		t.Errorf("programme is not attributed to the channel id:\n%s", got)
 	}
 }
@@ -86,7 +86,7 @@ func TestRenderXMLTV_TimestampsAreXMLTVFormatInUTC(t *testing.T) {
 
 	got := renderOne(t, Guide{
 		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
-		Programmes: map[string][]Broadcast{"ch1": {programme("Heat", start, 60)}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Midnight at the Mapleton", start, 60)}},
 	})
 
 	if !strings.Contains(got, `start="20260725203000 +0000"`) {
@@ -107,10 +107,10 @@ func TestRenderXMLTV_DoesNotAdvertiseBreaks(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels: []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
 		Programmes: map[string][]Broadcast{"ch1": {
-			programme("Heat", guideNow, 60),
+			programme("Midnight at the Mapleton", guideNow, 60),
 			{Kind: schedule.SlotFiller, Title: "commercials", Start: guideNow.Add(60 * time.Minute), Stop: guideNow.Add(61 * time.Minute)},
 			{Kind: schedule.SlotFlex, Title: "flex", Start: guideNow.Add(61 * time.Minute), Stop: guideNow.Add(62 * time.Minute)},
-			programme("Predator", guideNow.Add(62*time.Minute), 30),
+			programme("Emberfall Canyon", guideNow.Add(62*time.Minute), 30),
 		}},
 	})
 
@@ -118,7 +118,7 @@ func TestRenderXMLTV_DoesNotAdvertiseBreaks(t *testing.T) {
 		t.Errorf("a break was advertised in the EPG (#12):\n%s", got)
 	}
 	// …but the real programmes on either side survive.
-	for _, want := range []string{"Heat", "Predator"} {
+	for _, want := range []string{"Midnight at the Mapleton", "Emberfall Canyon"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("dropped the real programme %q:\n%s", want, got)
 		}
@@ -131,10 +131,10 @@ func TestRenderXMLTV_DoesNotAdvertisePendingAcquisitions(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels: []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
 		Programmes: map[string][]Broadcast{"ch1": {
-			{Kind: schedule.SlotPending, Title: "Con Air", Start: guideNow, Stop: guideNow.Add(time.Hour)},
+			{Kind: schedule.SlotPending, Title: "Smoke over Calloway", Start: guideNow, Stop: guideNow.Add(time.Hour)},
 		}},
 	})
-	if strings.Contains(got, "Con Air") {
+	if strings.Contains(got, "Smoke over Calloway") {
 		t.Errorf("advertised a title that has not been acquired:\n%s", got)
 	}
 }
@@ -145,12 +145,12 @@ func TestRenderXMLTV_EscapesOperatorAndLibraryText(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels: []GuideChannel{{ID: "ch1", Name: `Rock & "Roll" <Hits>`, Number: 7}},
 		Programmes: map[string][]Broadcast{"ch1": {
-			programme(`Truffaut's "Jules & Jim" <1962>`, guideNow, 105),
+			programme(`Pellingham's "Moth & Moonbeam" <1962>`, guideNow, 105),
 		}},
 	})
 
 	// Raw metacharacters would end the element early.
-	if strings.Contains(got, `"Jules & Jim"`) {
+	if strings.Contains(got, `"Moth & Moonbeam"`) {
 		t.Errorf("title was not escaped:\n%s", got)
 	}
 	if !strings.Contains(got, "&amp;") {
@@ -165,7 +165,7 @@ func TestRenderXMLTV_EscapesOperatorAndLibraryText(t *testing.T) {
 	if err := xml.Unmarshal([]byte(got), &doc); err != nil {
 		t.Fatalf("escaped document does not parse: %v", err)
 	}
-	if len(doc.Programmes) != 1 || doc.Programmes[0].Title != `Truffaut's "Jules & Jim" <1962>` {
+	if len(doc.Programmes) != 1 || doc.Programmes[0].Title != `Pellingham's "Moth & Moonbeam" <1962>` {
 		t.Errorf("title did not round-trip: %+v", doc.Programmes)
 	}
 }
@@ -213,7 +213,7 @@ func TestRenderXMLTV_OmitsAnAbsentIcon(t *testing.T) {
 // Season/episode numbers reach the guide in xmltv_ns format, which is ZERO-BASED: S1E5 is
 // "0.4.". A media server that understands it renders "S1E5"; one that does not ignores it.
 func TestRenderXMLTV_EpisodeNumbersAreZeroBasedXmltvNs(t *testing.T) {
-	b := programme("Bart the Genius", guideNow, 22)
+	b := programme("Pip the Inventor", guideNow, 22)
 	b.Season, b.Episode = 1, 5
 
 	got := renderOne(t, Guide{
@@ -232,28 +232,28 @@ func TestRenderXMLTV_EpisodeNumbersAreZeroBasedXmltvNs(t *testing.T) {
 // "clean" answers loses half the information in the guide GRID — the surface a viewer actually
 // reads:
 //
-//	episode in <title>   grid: "Bart the Mother"  — no idea which show
-//	series  in <title>   grid: "The Simpsons"     — no idea which episode
+//	episode in <title>   grid: "Pip the Babysitter"  — no idea which show
+//	series  in <title>   grid: "The Mudpuddles"      — no idea which episode
 //
 // Emby parses both correctly (Name / EpisodeTitle in its API), but the grid renders `Name`
 // alone, and with no `<desc>` there is no second surface. So one field carries both.
 func TestRenderXMLTV_EpisodeTitleCarriesSeriesAndEpisode(t *testing.T) {
-	b := programme("Life on the Fast Lane", guideNow, 22)
-	b.SeriesTitle = "The Simpsons"
+	b := programme("Puddle Jumping Day", guideNow, 22)
+	b.SeriesTitle = "The Mudpuddles"
 	b.Season, b.Episode = 1, 9
 
 	got := renderOne(t, Guide{
-		Channels:   []GuideChannel{{ID: "ch1", Name: "Classic Simpsons", Number: 52}},
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Classic Mudpuddles", Number: 52}},
 		Programmes: map[string][]Broadcast{"ch1": {b}},
 	})
 
-	if !strings.Contains(got, "<title>The Simpsons: Life on the Fast Lane</title>") {
+	if !strings.Contains(got, "<title>The Mudpuddles: Puddle Jumping Day</title>") {
 		t.Errorf("the title does not carry BOTH names — a single-field grid shows half the "+
 			"information:\n%s", got)
 	}
 	// sub-title still carries the episode alone, so a client that reads it, or that groups a
 	// series, keeps working.
-	if !strings.Contains(got, "<sub-title>Life on the Fast Lane</sub-title>") {
+	if !strings.Contains(got, "<sub-title>Puddle Jumping Day</sub-title>") {
 		t.Errorf("sub-title lost the episode name:\n%s", got)
 	}
 }
@@ -262,9 +262,9 @@ func TestRenderXMLTV_EpisodeTitleCarriesSeriesAndEpisode(t *testing.T) {
 func TestRenderXMLTV_MovieTitleIsNotDemotedToSubTitle(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
-		Programmes: map[string][]Broadcast{"ch1": {programme("Last Action Hero", guideNow, 130)}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Beacon of the Hollow Moon", guideNow, 130)}},
 	})
-	if !strings.Contains(got, "<title>Last Action Hero</title>") {
+	if !strings.Contains(got, "<title>Beacon of the Hollow Moon</title>") {
 		t.Errorf("a movie lost its title:\n%s", got)
 	}
 	if strings.Contains(got, "sub-title") {
@@ -276,8 +276,8 @@ func TestRenderXMLTV_MovieTitleIsNotDemotedToSubTitle(t *testing.T) {
 // client shows verbatim when it does not parse the zero-based xmltv_ns form — emitting only
 // xmltv_ns is why a guide can carry episode numbers and still display none.
 func TestRenderXMLTV_EmitsBothEpisodeNumberSystems(t *testing.T) {
-	b := programme("Radioactive Man", guideNow, 22)
-	b.SeriesTitle = "The Simpsons"
+	b := programme("Captain Drizzle", guideNow, 22)
+	b.SeriesTitle = "The Mudpuddles"
 	b.Season, b.Episode = 7, 2
 
 	got := renderOne(t, Guide{
@@ -297,8 +297,8 @@ func TestRenderXMLTV_EmitsBothEpisodeNumberSystems(t *testing.T) {
 // The metadata that turns a bare title into a listing worth reading. `<desc>` is the one that
 // matters most — its absence is why the series/episode split had to collapse into the title.
 func TestRenderXMLTV_EmitsDescriptionGenresYearAndRating(t *testing.T) {
-	b := programme("Last Action Hero", guideNow, 130)
-	b.Description = "After his father's death, a young boy finds solace in action movies."
+	b := programme("Beacon of the Hollow Moon", guideNow, 130)
+	b.Description = "After the lighthouse goes dark, a young keeper finds the way home."
 	b.Genres = []string{"Fantasy", "Action", "Comedy"}
 	b.Year = 1993
 	b.Rating = "PG-13"
@@ -308,7 +308,7 @@ func TestRenderXMLTV_EmitsDescriptionGenresYearAndRating(t *testing.T) {
 		Programmes: map[string][]Broadcast{"ch1": {b}},
 	})
 
-	if !strings.Contains(got, "<desc>After his father") {
+	if !strings.Contains(got, "<desc>After the lighthouse") {
 		t.Errorf("no description — the detail pane has nothing to show:\n%s", got)
 	}
 	for _, g := range []string{"Fantasy", "Action", "Comedy"} {
@@ -358,7 +358,7 @@ func TestRenderXMLTV_OmitsAbsentMetadataCleanly(t *testing.T) {
 func TestRenderXMLTV_MoviesGetNoEpisodeNumber(t *testing.T) {
 	got := renderOne(t, Guide{
 		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
-		Programmes: map[string][]Broadcast{"ch1": {programme("Heat", guideNow, 170)}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Midnight at the Mapleton", guideNow, 170)}},
 	})
 	if strings.Contains(got, "episode-num") {
 		t.Errorf("a movie got an episode number:\n%s", got)

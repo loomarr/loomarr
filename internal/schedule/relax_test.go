@@ -20,8 +20,8 @@ func TestRelax_LadderDescendsAndRecords(t *testing.T) {
 		{LibraryItemID: "e1", Title: "E1", DurationMs: 60000, Season: 1},
 		{LibraryItemID: "e2", Title: "E2", DurationMs: 60000, Season: 1},
 	}
-	entries := []schedule.LineupEntry{{Key: "series:tvdb:1", Title: "Show"}}
-	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:1": eps})
+	entries := []schedule.LineupEntry{{Key: "series:tvdb:90000001", Title: "Show"}}
+	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:90000001": eps})
 
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	ch := schedule.Channel{ID: "r", Name: "R", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 3}}
@@ -54,15 +54,15 @@ func TestRelax_UnRelaxesWhenPoolRecovers(t *testing.T) {
 	ch := schedule.Channel{ID: "u", Name: "U", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 1}}
 
 	entries := []schedule.LineupEntry{
-		{Key: "series:tvdb:1", Title: "S1"}, {Key: "series:tvdb:2", Title: "S2"},
-		{Key: "series:tvdb:3", Title: "S3"}, {Key: "series:tvdb:4", Title: "S4"},
+		{Key: "series:tvdb:90000001", Title: "S1"}, {Key: "series:tvdb:90000002", Title: "S2"},
+		{Key: "series:tvdb:90000003", Title: "S3"}, {Key: "series:tvdb:90000004", Title: "S4"},
 	}
 	eps := func(id string) []schedule.ResolvedProgram {
 		return []schedule.ResolvedProgram{{LibraryItemID: id + "a", Title: id, DurationMs: 3600000, Season: 1}}
 	}
 	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tvdb:1": eps("1"), "series:tvdb:2": eps("2"),
-		"series:tvdb:3": eps("3"), "series:tvdb:4": eps("4"),
+		"series:tvdb:90000001": eps("1"), "series:tvdb:90000002": eps("2"),
+		"series:tvdb:90000003": eps("3"), "series:tvdb:90000004": eps("4"),
 	})
 	d := schedule.ComputeDesiredAt(ch, entries, sav, schedule.PodFill, p, time.Time{})
 	if len(d.Applied) != 0 {
@@ -76,13 +76,13 @@ func TestRelax_UnRelaxesWhenPoolRecovers(t *testing.T) {
 // scope side.)
 func TestRelax_NeverRelaxesScope(t *testing.T) {
 	entries := []schedule.LineupEntry{
-		ratedEntry("movie:tmdb:1", "In Era", "", 1994),
-		ratedEntry("movie:tmdb:2", "Out Of Era", "", 1980),
+		ratedEntry("movie:tmdb:90000001", "In Era", "", 1994),
+		ratedEntry("movie:tmdb:90000002", "Out Of Era", "", 1980),
 	}
-	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	avail := mapAvail{"movie:tmdb:90000001": "l1", "movie:tmdb:90000002": "l2"}
 	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	d := schedule.ComputeDesiredAt(policyChannel(), entries, avail, schedule.PodFill, p, time.Time{})
-	if hasKey(programKeys(d), "movie:tmdb:2") {
+	if hasKey(programKeys(d), "movie:tmdb:90000002") {
 		t.Error("scope (era) must NEVER be relaxed to admit an out-of-era title")
 	}
 }

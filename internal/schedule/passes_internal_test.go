@@ -21,7 +21,7 @@ func dealPool(n int, dur time.Duration, seed int64) []Slot {
 	for i := range slots {
 		d := dur + time.Duration(rng.Intn(int(dur/3)))*time.Millisecond/time.Millisecond - dur/6
 		slots[i] = Slot{
-			Kind: SlotProgram, Key: provision.Key("series:tvdb:100"), SeriesTitle: "Show", Season: 1, Episode: i + 1,
+			Kind: SlotProgram, Key: provision.Key("series:tvdb:90000100"), SeriesTitle: "Show", Season: 1, Episode: i + 1,
 			LibraryItemID: fmt.Sprintf("ep-%d", i), Title: fmt.Sprintf("Ep %d", i), DurationMs: d.Milliseconds(),
 		}
 	}
