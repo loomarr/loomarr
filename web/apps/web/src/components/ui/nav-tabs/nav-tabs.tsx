@@ -41,17 +41,26 @@ const NavTabs = ({
   const underline = variant === "underline";
   // One line at every width, scrolling sideways when the tabs don't fit (#1785). At phone width it
   // used to wrap, so a channel's Danger zone or Requests' Done sat on a second row. The active tab
-  // is scrolled into view, sideways only: the page itself never moves.
+  // is scrolled into view, sideways only: the page itself never moves. It is scrolled again when the
+  // tab or the bar changes size: the web font arriving widens every tab after the first paint.
   const bar = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const nav = bar.current;
     const current = nav?.querySelector<HTMLElement>("[aria-current=page]");
     if (!nav || !current) return;
-    const box = current.getBoundingClientRect();
-    const start = box.left - nav.getBoundingClientRect().left + nav.scrollLeft;
-    const end = start + box.width;
-    if (start < nav.scrollLeft) nav.scrollLeft = start;
-    else if (end > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = end - nav.clientWidth;
+    const reveal = () => {
+      const box = current.getBoundingClientRect();
+      const start = box.left - nav.getBoundingClientRect().left + nav.scrollLeft;
+      const end = start + box.width;
+      if (start < nav.scrollLeft) nav.scrollLeft = start;
+      else if (end > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = end - nav.clientWidth;
+    };
+    reveal();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(current);
+    observer.observe(nav);
+    return () => observer.disconnect();
   }, [activeId]);
   return (
     <nav
