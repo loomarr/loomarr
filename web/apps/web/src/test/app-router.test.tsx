@@ -6,6 +6,7 @@ import {
   getRedeemPasswordRecoveryMockHandler,
   getRequestPasswordRecoveryMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -68,9 +69,12 @@ const renderApp = (initialPath: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
+  // LoomarrProvider as main.tsx mounts it: AdminOnly's state comes from @loomarr/ui.
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <LoomarrProvider theme="dark">
+        <RouterProvider router={router} />
+      </LoomarrProvider>
     </QueryClientProvider>,
   );
   // Returned so a test can assert WHERE the router settled — the only way to prove a redirect
@@ -376,42 +380,111 @@ describe("legacy tab links redirect to their new paths", () => {
   });
 });
 
-describe("Filler role boundaries", () => {
-  const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
+// #1977: a member who opens an admin page by URL gets AdminOnly's permission state at the address
+// they asked for, with "Go to Home". Before, Settings showed a bare "Forbidden" and the channel
+// admin tabs rendered editors that 403 on save. Filler's admin pages keep their redirect to the
+// member hub (Library, Manage), which already landed somewhere useful.
+describe("admin-only routes", () => {
+  const ADMIN_ONLY = [
+    "/settings/connections",
+    "/settings/ai",
+    "/settings/defaults",
+    "/settings/access",
+    "/settings/advanced",
+    "/settings/system",
+    "/settings/system/playback",
+    "/settings/system/storage",
+    "/settings/system/backup",
+    "/settings/system/tasks",
+    "/settings/system/diagnostics",
+    "/settings/system/database",
+    "/settings/system/about",
+    "/people",
+    "/filler/splits/sp-1",
+    "/channels/ch-1/programming",
+    "/channels/ch-1/filler",
+    "/channels/ch-1/danger",
+  ];
 
-  it("redirects a member away from Incoming before its private read", async () => {
-    let incomingReads = 0;
+  it.each(ADMIN_ONLY)("a member at %s gets the no-access state and a way Home", async (path) => {
+    stubAuth(true, MEMBER);
+    const router = renderApp(path);
+
+    expect(await screen.findByText("Admins only")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(path);
+    expect(screen.queryByText("Forbidden")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Go to Home" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/dashboard"));
+  });
+
+  // The admin half (every one of these renders its page) is reachability.test.tsx, which mounts
+  // every route in the tree as an admin with the reads each page needs.
+
+  // The gate never mounts the page, so its private reads are never made: the server would 403
+  // them anyway (§19), and the console stays clean.
+  it.each([
+    ["/filler/incoming", "/filler/library"],
+    ["/filler/sources", "/filler/library"],
+    ["/filler/settings/details", "/filler/manage"],
+  ])("a member at %s is sent to the Filler member hub %s", async (path, hub) => {
+    stubAuth(true, MEMBER);
+    const router = renderApp(path);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(hub));
+    expect(screen.queryByText("Forbidden")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/filler/splits/sp-1", "*/v1/filler/splits/:id"],
+    ["/people", "*/v1/users"],
+  ])("a member at %s makes no private read", async (path, endpoint) => {
+    let reads = 0;
     stubAuth(true, MEMBER);
     server.use(
-      http.get("*/v1/filler/incoming", () => {
-        incomingReads += 1;
-        return HttpResponse.json({
-          preparing: { rows: [], total: 0 },
-          needsHelp: { rows: [], total: 0 },
-          recentlyReady: { rows: [], total: 0 },
-        });
+      http.get(endpoint, () => {
+        reads += 1;
+        return HttpResponse.json({}, { status: 403 });
       }),
     );
 
-    const router = renderApp("/filler/incoming");
+    renderApp(path);
 
-    await waitFor(() => expect(at(router)).toBe("/filler/library"));
-    expect(incomingReads).toBe(0);
+    expect(await screen.findByText("Admins only")).toBeInTheDocument();
+    expect(reads).toBe(0);
   });
 
-  it("redirects a member away from Filler settings before its private read", async () => {
-    let settingsReads = 0;
+  it("a member at /settings gets their own Settings, not a bare Forbidden", async () => {
+    // The index reads the settings list (shared with the layout) for everyone, and the server
+    // refuses it to a member, which is what used to replace the page with "Forbidden".
+    let reads = 0;
     stubAuth(true, MEMBER);
     server.use(
       http.get("*/v1/settings", () => {
-        settingsReads += 1;
-        return HttpResponse.json({ settings: [], features: { filler: true } });
+        reads += 1;
+        return HttpResponse.json({ title: "Forbidden", status: 403 }, { status: 403 });
       }),
     );
 
-    const router = renderApp("/filler/settings/details");
+    renderApp("/settings");
 
-    await waitFor(() => expect(at(router)).toBe("/filler/manage"));
-    expect(settingsReads).toBe(0);
+    // The index's one destination for a member: Notifications, by its description line.
+    expect(
+      await screen.findByText("Choose how Loomarr tells you about activity and problems."),
+    ).toBeInTheDocument();
+    // ⚠ Only after the 403 has landed does the absence mean anything: the error arrives a beat
+    // after the index first paints, so checking at once passed with the bug still in place.
+    await waitFor(() => expect(reads).toBe(1));
+    await expect(screen.findByText("Forbidden", {}, { timeout: 300 })).rejects.toThrow();
+    expect(screen.getByText("Choose how Loomarr tells you about activity and problems.")).toBeInTheDocument();
+    expect(screen.queryByText("Admins only")).not.toBeInTheDocument();
+  });
+
+  it("a member at /settings/notifications gets the page", async () => {
+    stubAuth(true, MEMBER);
+    renderApp("/settings/notifications");
+
+    expect(await screen.findByRole("heading", { name: "Notifications", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText("Admins only")).not.toBeInTheDocument();
   });
 });

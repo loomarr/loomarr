@@ -19,6 +19,7 @@ import {
   getSettingsListMockHandler,
   getSyncUsersMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -156,9 +157,12 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+  // LoomarrProvider as main.tsx mounts it: a member's AdminOnly state comes from @loomarr/ui.
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <LoomarrProvider theme="dark">
+        <RouterProvider router={router} />
+      </LoomarrProvider>
     </QueryClientProvider>,
   );
 };
