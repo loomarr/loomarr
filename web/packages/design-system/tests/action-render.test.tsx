@@ -30,6 +30,18 @@ describe("Action variants", () => {
     expect(markup).toContain("color:#0B0C0E");
   });
 
+  it("renders the danger tone as a neutral tile with danger text, never the on-air red fill", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action tone="danger">Disconnect</Action>
+      </LoomarrProvider>,
+    );
+    // surface.elevated #1B1E24 under state.danger #E85A5F text, as an iOS destructive alert button.
+    expect(markup).toContain("background-color:rgba(27,30,36,1.00)");
+    expect(markup).not.toContain("background-color:rgba(232,90,95,1.00)");
+    expect(markup).toContain("color:#E85A5F");
+  });
+
   it("renders outline with a border and no fill", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
@@ -191,9 +203,9 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
   // The primary's fill is amber, so an amber focus border on it was invisible (the tvOS Retry
   // audit, shots 41/42). Focus now adds a foreground ring outside a gap of the surface behind it.
   // Every solid fill gets the ring: an amber border is invisible on amber and under 3:1 on red.
+  // The danger tone is not a fill (a neutral tile with danger text), so it keeps the amber border.
   const fills = [
     { name: "primary", props: { tone: "primary" } },
-    { name: "danger", props: { tone: "danger" } },
     { name: "suggest", props: { variant: "suggest" } },
     { name: "destructive", props: { variant: "destructive" } },
   ] as const;

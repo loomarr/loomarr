@@ -14,9 +14,12 @@ const emptyViewportInsets: ViewportInsets = { bottom: 0, left: 0, right: 0, top:
 /** Android TV's established safe-title margin. It is platform policy, not a spacing token. */
 const TV_OVERSCAN_INSET = 48;
 
+/** A phone screen's side gutter: every iPhone and Android frame of the native mock (5d–5g) sets 16. */
+const PHONE_GUTTER = 16;
+
 const densityGutter: Record<Density, number> = {
   pointer: semanticSpace.screen,
-  touch: semanticSpace.section,
+  touch: PHONE_GUTTER,
   tv: TV_OVERSCAN_INSET,
 };
 
@@ -51,6 +54,7 @@ const useResolvedViewportInsets = (density: Density): ViewportInsets =>
 export type { ViewportInsets };
 export {
   emptyViewportInsets,
+  PHONE_GUTTER,
   resolveViewportInsets,
   TV_OVERSCAN_INSET,
   useResolvedViewportInsets,

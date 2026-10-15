@@ -1,6 +1,6 @@
 import { Text as TamaguiText, View } from "@tamagui/core";
 import { useState } from "react";
-import { Pressable } from "react-native";
+import { Platform, Pressable } from "react-native";
 
 import { Icon } from "../icon";
 import { type IconName, icons } from "../icons";
@@ -82,7 +82,9 @@ const TabBar = <Value extends string>({
             ? `${item.label}, ${item.badge} need attention`
             : item.label
         }
-        accessibilityRole={disclosure ? "button" : "tab"}
+        // iOS has no tab trait: a UITabBar item is a button, which VoiceOver calls a tab inside the
+        // bar's tab-bar trait. Android and the web have a real tab role.
+        accessibilityRole={disclosure || Platform.OS === "ios" ? "button" : "tab"}
         accessibilityState={disclosure ? undefined : { selected: current }}
         aria-expanded={disclosure ? item.ariaExpanded : undefined}
         aria-haspopup={disclosure ? "dialog" : undefined}
@@ -164,7 +166,15 @@ const TabBar = <Value extends string>({
       paddingLeft={insets.left}
       paddingRight={insets.right}
     >
-      <View aria-label={accessibilityLabel} flex={tabItems.length} flexDirection="row" role="tablist">
+      <View
+        aria-label={accessibilityLabel}
+        flex={tabItems.length}
+        flexDirection="row"
+        // iOS has no tab-list trait: VoiceOver announces "Tab, 2 of 3" only for the items of a
+        // container carrying the tab-bar trait, which React Native maps from "tabbar". Android
+        // throws on "tabbar" and reads "tablist" as its TabWidget, as the web reads ARIA's.
+        {...(Platform.OS === "ios" ? { accessibilityRole: "tabbar" as const } : { role: "tablist" as const })}
+      >
         {tabItems.map(renderItem)}
       </View>
       {disclosureItems.map(renderItem)}

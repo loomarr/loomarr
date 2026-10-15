@@ -101,11 +101,12 @@ export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
-export type { Density, TextRole } from "./src/tokens";
+export type { Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
   brandContract,
   iconography,
+  nativeFontFace,
   semanticColors,
   semanticMotion,
   semanticRadius,
@@ -117,6 +118,7 @@ export {
 export type { ViewportInsets } from "./src/viewport";
 export {
   emptyViewportInsets,
+  PHONE_GUTTER,
   resolveViewportInsets,
   TV_OVERSCAN_INSET,
   useResolvedViewportInsets,

@@ -10,6 +10,7 @@ import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { Action, Badge, Field, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
 
+import { ScreenHeader } from "../../screen-header";
 import { StatePanel } from "../../state-panel";
 import { RequestsBack } from "../requests-back";
 import type { RequestChannelProps } from "./request-channel.type";
@@ -83,7 +84,8 @@ const IdeaCard = ({
           disabled={busy}
           onPress={onRequest}
           style={{ flex: 2 }}
-          tone="primary"
+          // Neutral: "Suggest titles" is the screen's one primary action.
+          tone="secondary"
         >
           {busy ? "Requesting…" : "Request channel"}
         </Action>
@@ -207,10 +209,9 @@ const RequestChannel = ({
   return (
     <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
       <RequestsBack onPress={onBack} />
-      <ScrollFrame density="touch">
-        <Text density="touch" textRole="display">
-          Request a channel
-        </Text>
+      {/* The keyboard insets the page rather than covering Suggest titles; a drag puts it away. */}
+      <ScrollFrame automaticallyAdjustKeyboardInsets density="touch" keyboardDismissMode="interactive">
+        <ScreenHeader title="Request a channel" />
         <Text density="touch" textRole="body" tone="secondary">
           Describe what you want to watch. You'll choose the final titles before anything is created.
         </Text>
@@ -243,6 +244,9 @@ const RequestChannel = ({
             setProblem(undefined);
           }}
           placeholder="Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe"
+          // One brief, no paragraphs: the return key is Done and puts the keyboard away.
+          returnKeyType="done"
+          submitBehavior="blurAndSubmit"
           value={description}
         />
         <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" role="group">

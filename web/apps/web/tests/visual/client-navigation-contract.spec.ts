@@ -27,19 +27,20 @@ for (const story of ["touch", "material"]) {
     await page.goto(`/iframe.html?id=loomarr-components-client-navigation--${story}&viewMode=story`);
 
     const guide = page.getByRole("tab", { name: "Guide" });
-    const surf = page.getByRole("tab", { name: "Surf" });
+    const requests = page.getByRole("tab", { name: "Requests" });
     await expect(page.getByRole("tablist", { name: "Primary navigation" })).toBeVisible();
     await expect(guide).toHaveAttribute("aria-selected", "true");
+    // A phone's bar is Watching, Guide and Requests: Surf stays hidden until an iPhone Surf mock is
+    // approved (#1816).
+    await expect(page.getByRole("tab")).toHaveCount(3);
+    await expect(page.getByRole("tab", { name: "Surf" })).toHaveCount(0);
 
-    // Requests sits between Guide and Surf on a phone (#1816), so Surf is the second Tab stop.
     await guide.focus();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("tab", { name: "Requests" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(surf).toBeFocused();
-    await surf.press("Enter");
+    await expect(requests).toBeFocused();
+    await requests.press("Enter");
 
-    await expect(surf).toHaveAttribute("aria-selected", "true");
+    await expect(requests).toHaveAttribute("aria-selected", "true");
     await expect(guide).toHaveAttribute("aria-selected", "false");
   });
 }

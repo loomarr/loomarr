@@ -1,7 +1,7 @@
 import { isWeb, Text as TamaguiText, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactElement, ReactNode } from "react";
 import { cloneElement, forwardRef, isValidElement, useState } from "react";
-import { Pressable, TextInput } from "react-native";
+import { Platform, Pressable, TextInput } from "react-native";
 
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
@@ -10,6 +10,7 @@ import { Surface, Text } from "../primitives";
 import {
   brandChroma,
   type Density,
+  nativeFontFace,
   semanticRadius,
   semanticSpace,
   semanticTargets,
@@ -132,11 +133,14 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     const stacked = layout === "stacked" && icon !== undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
     // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
-    // under 3:1 on the danger, destructive and suggest fills. A focused fill keeps its rest look
+    // under 3:1 on the destructive and suggest fills. A focused fill keeps its rest look
     // and gains a 3px foreground ring outside a gap of the surface behind it, so the ring sits
     // against that surface (about 16:1 in the dark theme) and the gap against the fill (10:1 on
     // amber). The ring is `outline`, which RN 0.86 and react-native-web draw outside the box.
-    const filled = variant ? variant === "suggest" || variant === "destructive" : tone !== "secondary";
+    // A danger tile is not a fill: it is the neutral tile with danger text, as iOS draws a
+    // destructive alert button, because a solid red fill reads as on-air, which the system keeps
+    // for live.
+    const filled = variant ? variant === "suggest" || variant === "destructive" : tone === "primary";
     const focusRing =
       filled && focused
         ? {
@@ -148,13 +152,11 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         : undefined;
     const backgroundColor = look
       ? look.background
-      : tone === "danger"
-        ? theme.stateDanger.val
-        : tone === "primary"
-          ? theme.actionPrimary.val
-          : selected
-            ? theme.surfaceFocus.val
-            : theme.surfaceElevated.val;
+      : tone === "primary"
+        ? theme.actionPrimary.val
+        : selected
+          ? theme.surfaceFocus.val
+          : theme.surfaceElevated.val;
     // Amber is focus, never selection (#1887). A selected secondary action is neutral-pressed
     // (#1909 Q1/Q2): the `surfaceFocus` fill, a foreground border and a heavier label, so the
     // current item reads from across a room while one amber border still marks where the remote is.
@@ -165,25 +167,29 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         : look.border
       : focused && !filled
         ? theme.actionFocus.val
-        : tone === "danger"
-          ? theme.stateDanger.val
-          : tone === "primary"
-            ? theme.actionPrimary.val
-            : pressed
-              ? theme.contentPrimary.val
-              : stacked
-                ? backgroundColor
-                : theme.borderControl.val;
-    const textColor = variant ? variantTextColor(theme, variant) : undefined;
+        : tone === "primary"
+          ? theme.actionPrimary.val
+          : pressed
+            ? theme.contentPrimary.val
+            : stacked
+              ? backgroundColor
+              : theme.borderControl.val;
+    const textColor = variant
+      ? variantTextColor(theme, variant)
+      : tone === "danger"
+        ? theme.stateDanger.val
+        : undefined;
     // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
     const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "secondary"
-        ? selected
-          ? "content"
-          : "secondary"
-        : "inverse";
+      : tone === "danger"
+        ? "danger"
+        : tone === "secondary"
+          ? selected
+            ? "content"
+            : "secondary"
+          : "inverse";
 
     const content =
       stacked && icon ? (
@@ -192,7 +198,15 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             decorative
             glyph={icons[icon]}
             size="default"
-            tone={look ? look.iconTone : tone === "secondary" ? "content" : "inverse"}
+            tone={
+              look
+                ? look.iconTone
+                : tone === "danger"
+                  ? "danger"
+                  : tone === "secondary"
+                    ? "content"
+                    : "inverse"
+            }
           />
           <TamaguiText
             color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
@@ -389,7 +403,10 @@ const Field = ({
             borderRadius: semanticRadius.control,
             borderWidth: focused ? 3 : 2,
             color: theme.contentPrimary.val,
-            fontFamily: typography.family.data.native,
+            // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
+            fontFamily: isWeb
+              ? typography.family.data.web
+              : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
             fontSize: typography[density].body.size,
             minHeight: semanticTargets[density],
             opacity: disabled ? 0.62 : 1,

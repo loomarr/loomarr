@@ -8,6 +8,10 @@ import type { KnipConfig } from "knip";
 // outside the TypeScript import graph really uses it (a string path, a native build, a
 // generated file), and write down what. docs/contributing/code-hygiene.md has the procedure.
 
+// Each native app's app.json runs scripts/with-loomarr-fonts.cjs, which resolves the font packages
+// by name from the app and hands their files to expo-font's config plugin at prebuild.
+const nativeFontDependencies = ["@expo-google-fonts/geist", "@expo-google-fonts/geist-mono", "expo-font"];
+
 const config: KnipConfig = {
   // A stale allowance fails the gate too: knip reports an ignore that no longer matches an
   // issue, and an entry that is redundant, as a configuration hint, and this makes hints errors.
@@ -74,12 +78,12 @@ const config: KnipConfig = {
       // app.json sets updates.enabled=false; the app ships no OTA updates.
       // Expo's dynamic config, loaded by the Expo CLI.
       entry: ["app.config.cjs"],
-      ignoreDependencies: ["@loomarr/fixtures", "expo-updates"],
+      ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
     },
     "apps/tv": {
       // Expo's dynamic config, loaded by the Expo CLI.
       entry: ["app.config.cjs"],
-      ignoreDependencies: ["@loomarr/fixtures", "expo-updates"],
+      ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
     },
     "packages/api": {
       // Used by the Orval-generated client (model-*, endpoint-*, zod-*, msw, generated/), which

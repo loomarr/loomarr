@@ -24,9 +24,10 @@ describe("shared overlay composition", () => {
     expect(markup).toContain("left:0");
     expect(markup).toContain("right:0");
     expect(markup).toContain("bottom:0");
-    expect(markup).toContain("padding-left:28px");
-    expect(markup).toContain("padding-right:30px");
-    expect(markup).toContain("padding-bottom:44px");
+    // The 16 pt phone gutter inside each safe-area inset.
+    expect(markup).toContain("padding-left:20px");
+    expect(markup).toContain("padding-right:22px");
+    expect(markup).toContain("padding-bottom:36px");
   });
 
   it("marks the current choice among an overlay's actions as selected", () => {

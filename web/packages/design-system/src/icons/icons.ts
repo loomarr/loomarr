@@ -17,6 +17,7 @@ import LoaderCircle from "lucide-react-native/icons/loader-circle";
 import Menu from "lucide-react-native/icons/menu";
 import Pause from "lucide-react-native/icons/pause";
 import Play from "lucide-react-native/icons/play";
+import Plus from "lucide-react-native/icons/plus";
 import Search from "lucide-react-native/icons/search";
 import Settings from "lucide-react-native/icons/settings";
 import SkipBack from "lucide-react-native/icons/skip-back";
@@ -49,6 +50,8 @@ const icons = {
   pause: Pause,
   people: Users,
   play: Play,
+  // A phone tab header's plain "add" button (#1840's Requests app bar).
+  plus: Plus,
   previous: SkipBack,
   // Requests on every client (#1816's native mock; the web rail and bar draw the same Inbox).
   requests: Inbox,

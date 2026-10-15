@@ -57,7 +57,7 @@ const Focused: Story = {
 const TouchFocused: Story = {
   args: { density: "touch" },
   play: async ({ canvas }) => {
-    canvas.getByRole("tab", { name: "Surf" }).focus();
+    canvas.getByRole("tab", { name: "Requests" }).focus();
   },
 };
 

@@ -122,8 +122,8 @@ describe("phone chrome", () => {
       </Screen>,
     );
     expect(markup.indexOf("content")).toBeLessThan(markup.indexOf("bar"));
-    expect(markup).not.toContain("padding-bottom:58px");
-    expect(render(<Screen density="touch" />)).toContain("padding-bottom:58px");
+    expect(markup).not.toContain("padding-bottom:50px");
+    expect(render(<Screen density="touch" />)).toContain("padding-bottom:50px");
   });
 
   it("draws the sheet's grabber only when asked, and never announces it", () => {

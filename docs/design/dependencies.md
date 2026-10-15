@@ -78,6 +78,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Native runtime | Expo + React Native, `react-native-tvos`, Expo Router, `expo-video` | one toolchain for phones and TVs ([0024](decisions/0024-react-native-clients.md)) |
 | Native credentials | `expo-secure-store` | the device token stays in Keystore/Keychain |
 | Phone pairing approval | `expo-web-browser` | a phone approves itself on the server's `/pair` page in an SFSafariViewController (Android: Custom Tab) sheet that closes once paired, instead of a QR code meant for a second device |
+| Native type | `expo-font` (config plugin), `@expo-google-fonts/geist`, `@expo-google-fonts/geist-mono` | the native mock sets Geist, with Geist Mono for numbers and times. iOS has no `monospace` family and neither platform ships Geist, so each app embeds the seven static weights the type scale draws at build time (`web/scripts/with-loomarr-fonts.cjs`, OFL-1.1). The web's woff2 files don't load on iOS |
 | Native session ids | `expo-crypto` | Hermes has no `crypto.randomUUID`; the playback session id needs a cryptographically secure source, never `Math.random()` |
 | Server discovery | `grandcat/zeroconf` (server), Android `NsdManager`, Apple `Network.framework` (`NWBrowser`) | find a local server without typing a URL from a TV or an iPhone; system APIs only, manual entry stays |
 | Android tooling | ccache (pinned), `bundletool` (pinned) | compiler cache; installing split APKs from the exact CI bundle |

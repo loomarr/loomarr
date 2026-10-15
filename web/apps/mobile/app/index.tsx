@@ -5,7 +5,7 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
-import { BottomSheet, Text } from "@loomarr/design-system";
+import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   NativePlayerView,
@@ -22,6 +22,7 @@ import {
   GuideJourney,
   PairingShell,
   RequestsJourney,
+  ScreenHeader,
   StatePanel,
   WatchingPanel,
   watchingPanelFromGuide,
@@ -157,14 +158,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     return () => subscription.remove();
   }, [active]);
   return (
-    <ClientShell
-      active={active}
-      density="touch"
-      onDisconnect={() => session.disconnect()}
-      onNavigate={setActive}
-      requestsBadge={requests.needsYouCount}
-      serverName={credential.serverUrl}
-    >
+    <ClientShell active={active} onNavigate={setActive} requestsBadge={requests.needsYouCount}>
       {active === "requests" ? (
         // The journey docks its review sheet directly above the tab bar, so it draws the footer itself.
         (navigation) => (
@@ -176,10 +170,8 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
         )
       ) : active === "guide" ? (
         <View style={{ flex: 1 }}>
-          <View style={{ paddingBottom: 8, paddingHorizontal: 16, paddingTop: 12 }}>
-            <Text accessibilityRole="header" density="touch" textRole="title">
-              Guide
-            </Text>
+          <View style={{ paddingHorizontal: PHONE_GUTTER }}>
+            <ScreenHeader title="Guide" />
           </View>
           <GuideJourney
             controller={guide}
@@ -200,9 +192,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             }}
           />
         </View>
-      ) : active === "watching" ? (
+      ) : (
         <WatchingScreen client={client} />
-      ) : undefined}
+      )}
     </ClientShell>
   );
 };

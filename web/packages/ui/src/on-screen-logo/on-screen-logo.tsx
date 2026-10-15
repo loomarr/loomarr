@@ -5,6 +5,7 @@ import {
   Field,
   FieldHint,
   LogoScene,
+  nativeFontFace,
   RadioGroup,
   RadioItem,
   SelectControl,
@@ -678,7 +679,10 @@ const OnScreenLogoSection = ({
             placeholder={autoCallsign ? `Auto: ${autoCallsign}` : "Auto"}
             // The mock's .input is the body face; Field defaults to the data (mono) face.
             style={{
-              fontFamily: Platform.OS === "web" ? typography.family.body.web : typography.family.body.native,
+              fontFamily:
+                Platform.OS === "web"
+                  ? typography.family.body.web
+                  : nativeFontFace("body", Platform.OS === "android" ? "android" : "ios"),
             }}
             value={callsign}
           />
