@@ -198,7 +198,15 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             decorative
             glyph={icons[icon]}
             size="default"
-            tone={look ? look.iconTone : tone === "danger" ? "danger" : tone === "secondary" ? "content" : "inverse"}
+            tone={
+              look
+                ? look.iconTone
+                : tone === "danger"
+                  ? "danger"
+                  : tone === "secondary"
+                    ? "content"
+                    : "inverse"
+            }
           />
           <TamaguiText
             color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
