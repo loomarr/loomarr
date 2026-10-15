@@ -59,7 +59,9 @@ const DETERMINISM = {
   // raster noise and zero flake across two full CI runs. It still cannot see adjacent dark
   // steps (static-950/900/800, delta 41); refresh those with the baselines workflow's `force`.
   // docs/contributing/testing.md carries the full table.
-  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.001, threshold: 0.05, animations: "disabled" as const } },
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001, threshold: 0.05, animations: "disabled" as const },
+  },
   use: {
     reducedMotion: "reduce" as const,
     // ⚠ **TIMEZONE, and it is not a nicety.** Fixtures pin instants with `Date.UTC(...)`,
