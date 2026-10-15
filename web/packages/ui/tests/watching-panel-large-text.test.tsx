@@ -10,7 +10,6 @@ vi.mock("react-native", async (importOriginal) => {
 });
 
 import { WatchingPanel, type WatchingPanelProps } from "../index";
-import { isLargeText } from "../src/watching-surface/watching-panel/use-large-text";
 
 const CONTROLS = ["Previous", "Channel −", "Pause", "Channel +"];
 
@@ -53,13 +52,6 @@ const clips = (html: string, text: string) => classOf(html, text).includes("_tex
 describe("WatchingPanel at an accessibility text size", () => {
   beforeEach(() => {
     window.fontScale = 1;
-  });
-
-  it("starts at AX1, not at the largest ordinary size", () => {
-    expect(isLargeText(1)).toBe(false);
-    expect(isLargeText(1.24)).toBe(false);
-    expect(isLargeText(1.65)).toBe(true);
-    expect(isLargeText(3.1)).toBe(true);
   });
 
   it("keeps the four one-line tiles in a single row at an ordinary size, even the largest", () => {

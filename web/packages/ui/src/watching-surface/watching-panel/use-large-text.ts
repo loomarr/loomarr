@@ -11,4 +11,4 @@ const isLargeText = (fontScale: number) => fontScale >= LARGE_TEXT_FONT_SCALE;
 
 const useLargeText = () => isLargeText(useWindowDimensions().fontScale);
 
-export { isLargeText, LARGE_TEXT_FONT_SCALE, useLargeText };
+export { useLargeText };
