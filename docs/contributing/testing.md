@@ -591,6 +591,34 @@ Pod assembly and shuffling take an explicit seed. The visual suite pins the time
 Baselines are Linux-only, generated in the pinned Docker image; local macOS or Windows runs
 write differently-suffixed files that are gitignored.
 
+### Reduced motion
+
+Both Playwright suites run with `prefers-reduced-motion: reduce`, set as
+`contextOptions.reducedMotion` in `web/apps/web/playwright.shared.ts`. It must stay in
+`contextOptions`: Playwright has no `reducedMotion` fixture, so a `reducedMotion` key beside
+`timezoneId`, or in `test.use`, is dropped without a warning. Until #2004 both suites ran with
+motion on that way. The gallery now asserts the media query on every story it shoots, and
+`tests/e2e/reduced-motion.spec.ts` does the same in the SPA.
+
+Reduced motion freezes the JS-driven loops (`ActivityIndicator`, `SignalLoader`, skeletons) that
+the gallery's `animation: none` style can't reach. It also hides the idle `TvStatic` snow. A
+story that exists to show motion opts out with the `motion` tag:
+
+```tsx
+const meta = { title: "Setup/LoginShell", tags: ["route", "motion"] /* … */ };
+```
+
+The gallery calls `page.emulateMedia({ reducedMotion: "no-preference" })` for that story before
+it loads, and its test carries `@motion` for `--grep`. It is a tag, not a story parameter, because
+`index.json` lists tags, and the preference has to be set before the story mounts. The style tag
+still freezes CSS animation at frame 0, so a `motion` story must be still in every other way: a
+seeded tile, and no JS-driven loop. Prove that with repeat renders in the pinned image before you
+tag a story (`--grep @motion --repeat-each 3`). The `LoginShell`, `WizardShell`,
+`Password recovery`, `Invitation join` and `TvStatic` Default stories carry it.
+
+`motion-only` is different: it keeps a story out of the gallery entirely, and `motion.spec.ts`
+checks its behaviour frame to frame instead of its pixels.
+
 ### Updating visual baselines
 
 Regenerate a pull request's baselines with the **Visual baselines** workflow, not a local

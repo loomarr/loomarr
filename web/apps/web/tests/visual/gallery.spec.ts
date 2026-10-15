@@ -55,10 +55,28 @@ const analyzeWhenFree = async (page: Page) => {
 
 // A story whose meta carries `tags: ["route"]` renders a whole page or shell; the phone project
 // shoots only those (playwright.config.ts).
+//
+// Every story is shot under the shared kit's reduced motion, except one tagged `motion`: a story that
+// exists to show motion (the idle snow behind the login and setup surfaces), which reduced motion
+// would hide. It gets `no-preference` before it loads, because TvStatic and the design system read
+// the preference once, at mount. A tag rather than a story parameter, because index.json carries
+// tags and a parameter is only readable after the story has rendered under the wrong preference.
+// The style tag below still freezes its CSS animation at frame 0, so the story must be still in
+// every other way (a seeded tile, no JS-driven loop) — docs/contributing/testing.md.
 for (const story of stories) {
-  const tag = story.tags?.includes("route") ? ["@route"] : [];
+  const showsMotion = story.tags?.includes("motion") ?? false;
+  const tag = [...(story.tags?.includes("route") ? ["@route"] : []), ...(showsMotion ? ["@motion"] : [])];
   test(`${story.title} — ${story.name}`, { tag }, async ({ page }) => {
+    if (showsMotion) await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto(`/iframe.html?id=${story.id}&viewMode=story`);
+    // The preference this story is shot under, read in the page itself: the kit's setting was once
+    // dropped without a word (#2004), and only the browser can say what it received.
+    expect(
+      await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+      showsMotion
+        ? "a `motion` story must load with motion allowed"
+        : "the gallery must load with reduced motion",
+    ).toBe(!showsMotion);
     // Wait for the story to actually render content (not just the root to attach), then
     // for self-hosted Geist to finish loading — otherwise a screenshot can race a
     // fallback-font paint and drift at the strict 0.001 threshold (§5.2).
@@ -97,7 +115,8 @@ for (const story of stories) {
     });
     // TvStatic's snow is a tile rendered after the first frame (the content paints first), so a
     // shown snow layer is still `data-snow-pending` for a moment after mount — the same race as
-    // fonts. An idle layer hidden by reduced motion never renders one, so only visible ones count.
+    // fonts. An idle layer hidden by reduced motion never renders one, so only visible ones count;
+    // a `motion` story shows its idle snow and waits here.
     await page.waitForFunction(() =>
       Array.from(document.querySelectorAll("[data-snow-pending]")).every((el) => !el.checkVisibility()),
     );
