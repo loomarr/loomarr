@@ -23,6 +23,12 @@ const HAS_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
 const normalizeServerUrl = (input: string): string | undefined => {
   const value = input.trim();
   if (!value) return undefined;
+  // React Native's URL polyfill neither range-checks a port nor rejects "http//bad" (host "http",
+  // path "//bad"), so judge the text itself rather than trusting `new URL` to throw.
+  const [authority = "", ...rest] = value.replace(HAS_SCHEME, "").split(/(?=[/?#])/);
+  const port = /:(\d+)$/.exec(authority)?.[1];
+  if (port !== undefined && Number(port) > 65_535) return undefined;
+  if (rest.join("").startsWith("//")) return undefined;
   try {
     const url = new URL(HAS_SCHEME.test(value) ? value : `http://${value}`);
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;

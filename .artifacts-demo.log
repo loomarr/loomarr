@@ -1,0 +1,2 @@
+time=2026-10-14T23:24:34.837-04:00 level=INFO msg="demo assets ready" dir=.agent-data/demo-library generated=0 total=168
+time=2026-10-14T23:24:34.838-04:00 level=INFO msg="demo library serving" url=http://127.0.0.1:22072 token=loomarr-demo-library titles=70
