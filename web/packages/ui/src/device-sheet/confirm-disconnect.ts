@@ -1,4 +1,9 @@
-import { ActionSheetIOS, Alert, Platform } from "react-native";
+import * as ReactNative from "react-native";
+
+const { Alert, Platform } = ReactNative;
+// react-native-web has no ActionSheetIOS, and a named import of it fails the web bundle; read it off the
+// namespace instead (it is only ever touched on iOS).
+const { ActionSheetIOS } = ReactNative as unknown as { ActionSheetIOS: typeof ReactNative.ActionSheetIOS };
 
 // Disconnecting revokes the device's credential, so it asks first, in the platform's own words: iOS's
 // action sheet with a destructive button above Cancel, Android's alert dialog.
