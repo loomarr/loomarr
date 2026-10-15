@@ -5,13 +5,15 @@ const { alert, platform, showActionSheet } = vi.hoisted(() => ({
   platform: { OS: "ios" },
   showActionSheet: vi.fn(),
 }));
-vi.mock("react-native", () => ({
+// Only the three platform seams are faked; the rest of react-native stays real so the package entrypoint loads.
+vi.mock("react-native", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-native")>()),
   ActionSheetIOS: { showActionSheetWithOptions: showActionSheet },
   Alert: { alert },
   Platform: platform,
 }));
 
-const { confirmDisconnect } = await import("../src/device-sheet/confirm-disconnect");
+const { confirmDisconnect } = await import("../index");
 
 beforeEach(() => {
   alert.mockReset();
