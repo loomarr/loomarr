@@ -28,7 +28,7 @@ const normalizeServerUrl = (input: string): string | undefined => {
   const [authority = "", ...rest] = value.replace(HAS_SCHEME, "").split(/(?=[/?#])/);
   const port = /:(\d+)$/.exec(authority)?.[1];
   if (port !== undefined && Number(port) > 65_535) return undefined;
-  if (rest.join("").startsWith("//")) return undefined;
+  if (/^\/\/+[^/?#]/.test(rest.join(""))) return undefined;
   try {
     const url = new URL(HAS_SCHEME.test(value) ? value : `http://${value}`);
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
