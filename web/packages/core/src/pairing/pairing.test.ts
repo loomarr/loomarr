@@ -156,6 +156,8 @@ describe("pairing contract", () => {
     ["javascript:alert(1)", undefined],
     ["localhost:abc", undefined],
     ["localhost:99999", undefined],
+    ["localhost:999999", undefined],
+    ["http//bad", undefined],
     ["not an address", undefined],
     ["localhost:8080?x=1", undefined],
     ["localhost:8080#frag", undefined],

@@ -123,7 +123,8 @@ describe("TV pairing offer", () => {
 
     expect(markup).toContain("Find your Loomarr server");
     expect(markup).toContain("Connect to Loomarr on media-box");
-    expect(markup).toContain("http://192.0.2.10:8080");
+    expect(markup).toContain("192.0.2.10:8080");
+    expect(markup).not.toContain("http://192.0.2.10");
     expect(markup).toContain("Enter address manually");
     expect(markup).not.toContain("EXPO_PUBLIC_LOOMARR_URL");
   });
