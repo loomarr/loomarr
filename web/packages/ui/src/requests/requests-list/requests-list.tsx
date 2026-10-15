@@ -249,14 +249,21 @@ const RequestsBody = ({
 // The list screen owns its large title and the app bar's "Request a channel" icon button, above the
 // segments in every state (loading, error, empty and ready), so no host or story has to add them. The
 // approved mock puts it in the app bar on both phones (Android has no FAB), as a plain icon button.
-const RequestsList = (props: RequestsListProps) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
-    <ScreenHeader
-      action={{ accessibilityLabel: "Request a channel", icon: "plus", onPress: props.onRequestChannel }}
-      title="Requests"
-    />
-    <RequestsBody {...props} />
-  </Surface>
-);
+const RequestsList = (props: RequestsListProps) => {
+  const request = {
+    accessibilityLabel: "Request a channel",
+    icon: "plus",
+    onPress: props.onRequestChannel,
+  } as const;
+  return (
+    <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
+      <ScreenHeader
+        actions={props.headerAction ? [request, props.headerAction] : [request]}
+        title="Requests"
+      />
+      <RequestsBody {...props} />
+    </Surface>
+  );
+};
 
 export { RequestsList };

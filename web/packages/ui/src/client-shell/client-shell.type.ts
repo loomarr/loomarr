@@ -12,6 +12,8 @@ type ClientShellProps = {
   onNavigate(destination: ClientDestination): void;
   /** What needs this person on the Requests tab; 0 draws no badge. */
   requestsBadge?: number;
+  /** A host sheet (the Device sheet) docked directly above the tab bar, on whichever tab is active. */
+  sheet?: ReactNode;
 };
 
 export type { ClientShellProps };

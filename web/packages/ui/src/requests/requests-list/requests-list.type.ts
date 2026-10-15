@@ -6,6 +6,7 @@ import type {
   RequestTab,
 } from "@loomarr/core/requests";
 
+import type { ScreenHeaderAction } from "../../screen-header";
 import type { RequestChannelName } from "../request-done-row";
 import type { ReviewAction, ReviewState } from "../review";
 
@@ -17,6 +18,8 @@ type RequestsListProps = {
   onApprove: (proposal: ProposalDTO) => void;
   onApproveFiller: (pull: PullDTO) => void;
   /** Edit and try again: resumes the failed request in the form. */
+  /** The host's own header button after the "+", e.g. the Device sheet's account button. */
+  headerAction?: ScreenHeaderAction;
   onFix: (entry: RequestEntry) => void;
   onOpen: (jobId: string) => void;
   onOpenChannel: (channelId: string) => void;

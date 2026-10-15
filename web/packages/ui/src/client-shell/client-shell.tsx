@@ -9,9 +9,17 @@ import { DestinationBoundary } from "./destination-boundary";
 // it. Each destination sets its own gutters, so a picture can run edge to edge (#1659 mock 5e). A
 // destination that throws shows its own error with the tab bar still under it, so the other tabs stay
 // reachable.
-const ClientShell = ({ active, children, onNavigate, requestsBadge }: ClientShellProps) => {
+const ClientShell = ({ active, children, onNavigate, requestsBadge, sheet }: ClientShellProps) => {
   const navigation = (
-    <ClientNavigation active={active} density="touch" onNavigate={onNavigate} requestsBadge={requestsBadge} />
+    <>
+      {sheet}
+      <ClientNavigation
+        active={active}
+        density="touch"
+        onNavigate={onNavigate}
+        requestsBadge={requestsBadge}
+      />
+    </>
   );
   return (
     <DestinationBoundary

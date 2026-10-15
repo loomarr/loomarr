@@ -1,6 +1,7 @@
 export * from "../native-event-stream";
 export * from "../native-playback-diagnostics";
 export * from "../native-player-lifecycle";
+export * from "../paired-account";
 export * from "../paired-client";
 export * from "../paired-requests";
 export * from "../playback-marks";
