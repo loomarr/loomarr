@@ -639,11 +639,12 @@ comparison and rewrites nothing (#1956).
 #### Forcing a refresh under the threshold
 
 For an intended change too subtle to fail the comparison, pass `force`, a Playwright `--grep`
-regex of the story or test names to refresh:
+regex of the test titles to refresh. A gallery test is titled `<story title> — <story name>`, for
+example `Loomarr Foundations/Selection — Light`. Match that, not the snapshot file name:
 
 ```sh
 gh workflow run visual-baselines.yml --repo loomarr/loomarr -f pr=<number> \
-  -f force='selection--.*--light|guide-surface--.*--light'
+  -f force='(Foundations/Selection|Components/Guide Surface) — Light'
 ```
 
 The render then runs only the matching tests, with `--update-snapshots=all`, and the workflow
