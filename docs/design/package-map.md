@@ -51,7 +51,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`buildinfo`** · 3 importers
   Carries the version stamped into the binary at build time.
-- **`clipcatalog`** · 2 importers
+- **`clipcatalog`** · 3 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`config`** · 2 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
@@ -287,7 +287,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 14
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `clipcatalog`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 15
