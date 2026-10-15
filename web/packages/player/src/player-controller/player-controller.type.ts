@@ -85,6 +85,11 @@ interface PlayerSnapshot {
   previousChannelId?: string;
   reconnecting?: PlayerReconnecting;
   recentChannelIds: readonly string[];
+  /**
+   * On an idle controller (`initialTune: "none"`), the channel the device last watched if it is still
+   * in the catalog: where the Guide starts and what Watching tunes first. Absent once a channel is tuned.
+   */
+  restoredChannelId?: string;
   status: PlayerStatus;
   /** Signed address of the tuning channel's latest still, present only when it was prefetched with the warm. */
   stillUri?: string;
@@ -115,6 +120,11 @@ interface PlayerControllerOptions {
   prefetchStill?: (uri: string) => void;
   profile: DevicePlaybackProfile;
   recovery?: PlayerRecoveryOptions;
+  /**
+   * Reads the channel the device last watched. The first tune of a catalog goes there when that
+   * channel is still playable, and otherwise to the catalog's first channel, as without this option.
+   */
+  restoreChannelId?: () => Promise<string | undefined>;
   source: PlayerSourcePort;
   transport: PlayerTransport;
   /** Channels warmed each side of the current one (default 1, the server's retained warm-session limit). The server bounds admission. */

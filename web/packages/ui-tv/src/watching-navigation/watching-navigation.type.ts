@@ -5,13 +5,13 @@ type TvRemoteDigit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 type TvWatchingRemoteEvent =
   | { atMs: number; digit: TvRemoteDigit; key: "digit" }
   | { atMs: number; key: "timeout" }
-  | { key: "back" | "down" | "left" | "menu" | "right" | "select" | "up" }
+  | { key: "back" | "down" | "left" | "longSelect" | "menu" | "playPause" | "right" | "select" | "up" }
   | { direction: "down" | "up"; key: "channel" };
 
 type TvWatchingRemoteIntent =
   | { direction: -1 | 1; kind: "step" }
   | { digits: string; kind: "tune-number" }
-  | { kind: "open-guide" | "open-surf" };
+  | { kind: "open-guide" | "open-surf" | "toggle-pause" };
 
 type TvWatchingRemoteState = {
   numberEntry?: {

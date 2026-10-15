@@ -291,7 +291,11 @@ test("routes the native remote through TV adapters and preserves platform-home B
     appSource,
     /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
   );
-  assert.match(appSource, /onOpenGuide=\{\(\) => dispatchRemoteEvent\(\{ key: "select" \}\)\}/);
+  // Watching's OK opens the Guide, except the press tvOS sends when a long press of Select lifts.
+  assert.match(
+    appSource,
+    /onOpenGuide=\{\(\) => \{[\s\S]*?tvPressIsLongSelectRelease\(longSelectAtMs\.current, Date\.now\(\)\)[\s\S]*?else dispatchRemoteEvent\(\{ key: "select" \}\);\s*\}\}/,
+  );
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
   assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);

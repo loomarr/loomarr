@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
-import type { PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
+import type { LastChannelStore, PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -80,7 +80,7 @@ type PairedClient = ReturnType<typeof usePairedClient>;
 const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as PairingCredential;
 const session = { revoked: () => undefined } as unknown as PairingSession;
 
-const mountClient = async (diagnostics?: { platform: string }) => {
+const mountClient = async (diagnostics?: { platform: string }, lastChannel?: LastChannelStore) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   fakes.transport = {
     dispose: vi.fn(),
@@ -104,6 +104,7 @@ const mountClient = async (diagnostics?: { platform: string }) => {
       credential,
       diagnostics: diagnostics as never,
       initialTune: "first",
+      lastChannel,
       session,
     });
     return null;
@@ -146,6 +147,20 @@ describe("paired client", () => {
     await act(async () => client().controller.tuneChannel("twenty"));
     await settle("first-frame");
     expect(recordTune.mock.calls).toEqual([["ten"], ["twenty"]]);
+    await act(async () => root.unmount());
+  });
+
+  it("saves the last channel when a tune settles, not while it is still tuning", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { client, root, settle } = await mountClient(undefined, {
+      load: () => Promise.resolve(undefined),
+      save,
+    });
+    expect(client().snapshot.status).toBe("tuning");
+    expect(save).not.toHaveBeenCalled();
+
+    await settle("first-frame");
+    expect(save.mock.calls).toEqual([["ten"]]);
     await act(async () => root.unmount());
   });
 

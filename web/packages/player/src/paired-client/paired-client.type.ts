@@ -4,6 +4,7 @@ import type { MyChannelsController, MyChannelsSnapshot } from "@loomarr/core/my-
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
 
 import type { CatalogRefreshState } from "../catalog-refresher";
+import type { LastChannelStore } from "../last-channel";
 import type { NativePlayerTransport } from "../native/native";
 import type { PlaybackMarks } from "../playback-marks";
 import type { PlayerController, PlayerSnapshot, PlayerTuneReport } from "../player-controller";
@@ -22,6 +23,12 @@ interface PairedClientOptions {
    * viewer asks (the phone, opening on its Guide) passes "none" so no stream starts unwatched.
    */
   initialTune?: "first" | "none";
+  /**
+   * Where the device remembers the channel it last watched. A settled tune is saved to it, and the
+   * first tune (or, on a client that tunes nothing unasked, the Guide's start) goes to that channel
+   * while it is still in the catalog. Keep it stable across renders.
+   */
+  lastChannel?: LastChannelStore;
   /** Shield certification marks (#1037): the transport and the tunes write them when enabled. */
   marks?: PlaybackMarks;
   /** Every tune the controller starts; the latest function is always called. */

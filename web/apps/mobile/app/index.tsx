@@ -8,6 +8,7 @@ import {
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
+  createLastChannelStore,
   NativePlayerView,
   type PairedClient,
   PairedNativeImage,
@@ -35,6 +36,12 @@ import { AppState, BackHandler, Platform, ScrollView, View } from "react-native"
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
+  getItem: SecureStore.getItemAsync,
+  setItem: SecureStore.setItemAsync,
+});
+
+// The channel last watched (#23): the Guide starts on it and Watching tunes it first.
+const lastChannel = createLastChannelStore({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
@@ -133,8 +140,19 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
-  const client = usePairedClient({ credential, guideWindowMinutes: 120, initialTune: "none", session });
+  const client = usePairedClient({
+    credential,
+    guideWindowMinutes: 120,
+    initialTune: "none",
+    lastChannel,
+    session,
+  });
   const { controller, guide, myChannelsSnapshot, snapshot } = client;
+  // Opening Watching with nothing tuned yet resumes the channel the device last watched.
+  const { restoredChannelId } = snapshot;
+  useEffect(() => {
+    if (active === "watching" && restoredChannelId) void controller.tuneChannel(restoredChannelId);
+  }, [active, controller, restoredChannelId]);
   // Requests loads with the app so an admin's tab badge counts before they open it.
   const requests = usePairedRequests({ credential, session });
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
@@ -180,7 +198,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             dock={guideDock}
             myChannels={myChannelsSnapshot}
             onTune={watchChannel}
-            preferredChannelId={snapshot.channel?.id}
+            preferredChannelId={snapshot.channel?.id ?? restoredChannelId}
             renderArtwork={(airing) => {
               const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
               return uri ? (

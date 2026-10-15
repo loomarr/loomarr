@@ -36,6 +36,8 @@ const tvWatchingRemoteEventFromNative = (
     case "select":
     case "menu":
     case "back":
+    case "longSelect":
+    case "playPause":
       return { key: eventType };
     case "channelUp":
       return { direction: "up", key: "channel" };
@@ -76,6 +78,12 @@ const reduceTvWatchingRemote = (
       return state.numberEntry
         ? numberEntryIntent(state, true)
         : { handled: true, intent: { kind: "open-guide" }, state };
+    case "playPause":
+      return { handled: true, intent: { kind: "toggle-pause" }, state };
+    // The Watching screen has no programme details panel yet, so a long press only wakes the chrome
+    // (a handled key with no intent). It is the seam where the panel opens once it has a mock.
+    case "longSelect":
+      return { handled: true, state };
     case "left":
     case "menu":
       return { handled: true, intent: { kind: "open-surf" }, state };

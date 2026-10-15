@@ -8,6 +8,7 @@ import {
 import { BrandLaunch, LoomarrProvider, Surface, Text } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
+  createLastChannelStore,
   createPlaybackMarks,
   NativePlayerView,
   PairedNativeImage,
@@ -90,6 +91,12 @@ const autoTuneSetting = createTvAutoTuneSetting({
   setItem: SecureStore.setItemAsync,
 });
 
+// The channel last watched (#23): a relaunch resumes it instead of the first channel.
+const lastChannel = createLastChannelStore({
+  getItem: SecureStore.getItemAsync,
+  setItem: SecureStore.setItemAsync,
+});
+
 const tvDiagnostics = { clientVersion, platform: "android_tv", source: "android_tv" } as const;
 
 // The Siri Remote has no number keys, so Apple TV has no digit entry: no "0–9 jump" hint and no
@@ -129,6 +136,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   } = usePairedClient({
     credential,
     diagnostics: tvDiagnostics,
+    lastChannel,
     marks: certMarks,
     onTune: ({ attemptId, channel, reason, warm }) => {
       const keyAtMs = lastKeyAtMs.current;
@@ -195,6 +203,14 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         case "open-surf":
           setActive("surf");
           break;
+        case "toggle-pause": {
+          // The Watching controls' own transport: Play when paused, Pause otherwise.
+          const { channel, status } = controller.getSnapshot();
+          if (!channel) break;
+          if (status === "paused") void controller.play();
+          else controller.pause();
+          break;
+        }
       }
     },
     [controller],
@@ -253,7 +269,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     setActive("watching");
   };
   useTVEventHandler(({ eventKeyAction, eventType }) => {
-    if (active !== "watching" && eventType === "longSelect") longSelectAtMs.current = Date.now();
+    if (eventType === "longSelect") longSelectAtMs.current = Date.now();
     if (active === "watching" || !isTvLongSelect(eventType, eventKeyAction)) return;
     const guideSelection = guide.getSnapshot().selection;
     const channelId =
@@ -309,7 +325,12 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         onChangeServer={() => session.chooseServer()}
         onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
-        onOpenGuide={() => dispatchRemoteEvent({ key: "select" })}
+        onOpenGuide={() => {
+          // The release of a long press on Watching is not an OK press.
+          if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now()))
+            longSelectAtMs.current = undefined;
+          else dispatchRemoteEvent({ key: "select" });
+        }}
         onOpenSurf={() => setActive("surf")}
         onPause={controller.pause}
         onPlay={() => void controller.play()}
