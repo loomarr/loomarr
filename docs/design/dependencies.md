@@ -78,6 +78,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Native runtime | Expo + React Native, `react-native-tvos`, Expo Router, `expo-video` | one toolchain for phones and TVs ([0024](decisions/0024-react-native-clients.md)) |
 | Native credentials | `expo-secure-store` | the device token stays in Keystore/Keychain |
 | Phone pairing approval | `expo-web-browser` | a phone approves itself on the server's `/pair` page in an SFSafariViewController (Android: Custom Tab) sheet that closes once paired, instead of a QR code meant for a second device |
+| Phone crash reports | `expo-file-system` | the global JS error handler must persist a fatal report synchronously before React Native ends the app; first-party Expo, already shipped inside `expo`, pinned with it. Reports go only to the paired server, never a third-party crash service, and native iOS crashes come from Apple's MetricKit |
 | Native session ids | `expo-crypto` | Hermes has no `crypto.randomUUID`; the playback session id needs a cryptographically secure source, never `Math.random()` |
 | Server discovery | `grandcat/zeroconf` (server), Android `NsdManager`, Apple `Network.framework` (`NWBrowser`) | find a local server without typing a URL from a TV or an iPhone; system APIs only, manual entry stays |
 | Android tooling | ccache (pinned), `bundletool` (pinned) | compiler cache; installing split APKs from the exact CI bundle |

@@ -147,6 +147,27 @@ test("fails closed when a TestFlight build has an invalid channel or version met
     expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "" })),
     /requires LOOMARR_IOS_RELEASE_CHANNEL/,
   );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ EXPO_PUBLIC_LOOMARR_CRASH_TEST: "1" })),
+    /must not set EXPO_PUBLIC_LOOMARR_CRASH_TEST/,
+  );
+});
+
+test("captures crashes for the paired server, with MetricKit linked into the iPhone app only", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.dependencies["@loomarr/crash-reports-native"], "workspace:*");
+  // The synchronous file API the fatal handler writes with; first-party Expo, pinned with expo.
+  assert.equal(manifest.dependencies["expo-file-system"], manifest.dependencies.expo);
+  assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
+  assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
+
+  const layout = await readFile(new URL("../app/_layout.tsx", import.meta.url), "utf8");
+  assert.match(layout, /^startCrashReporting\(\);$/m);
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /useCrashReportUpload\(credential, session\)/);
+  // The test trigger is gated on a bundle-time variable, never on a runtime value.
+  const capture = await readFile(new URL("../src/crash-reports.ts", import.meta.url), "utf8");
+  assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && /);
 });
 
 test("keeps unused animation modules out of Android without breaking Apple pods", async () => {

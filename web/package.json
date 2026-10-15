@@ -20,7 +20,7 @@
     "native-storybook:check": "sb-rn-get-stories -c .rnstorybook && tsc -p .rnstorybook/tsconfig.json",
     "dev": "pnpm --filter @loomarr/web dev",
     "lint": "biome check && pnpm imports:check && pnpm legacy:check && pnpm lint:boundaries",
-    "lint:boundaries": "depcruise apps/web/src apps/mobile/app apps/tv/src packages/*/*.ts packages/*/src packages/*/tests",
+    "lint:boundaries": "depcruise apps/web/src apps/mobile/app apps/mobile/src apps/tv/src packages/*/*.ts packages/*/src packages/*/tests",
     "knip": "knip --no-progress",
     "imports:check": "node --test scripts/*.test.mjs scripts/*.test.cjs && node scripts/check-imports.mjs",
     "legacy:check": "node scripts/check-legacy-usage.mjs",
