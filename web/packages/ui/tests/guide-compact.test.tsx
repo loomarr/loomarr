@@ -100,14 +100,16 @@ describe("GuideCompact", () => {
     expect(onNow).toContain("8:00–8:30 PM · 4m left");
   });
 
-  it("rings the selected cell in amber but draws the selected row's number in the foreground", () => {
+  it("draws the selected cell and its row's number in the foreground, never amber", () => {
     const html = markup({
       dock: BottomSheet,
       selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" },
     });
-    // Tamagui names the theme token in the class: amber ($actionPrimary) is the cell's border, never a
-    // text colour. The selected programme's Watch is the one amber fill.
-    expect(html).toContain("_btc-actionPrima");
+    // Tamagui names the theme token in the class. The selected cell's border is the foreground
+    // ($contentPrimary, #1909 Q2), and amber ($actionPrimary) is neither a border nor a text colour.
+    // The selected programme's Watch is the one amber fill.
+    expect(html).toContain("_btc-contentPrim");
+    expect(html).not.toContain("_btc-actionPrima");
     expect(html).not.toContain("_col-actionPrima");
     expect(html.match(/background-color:rgba\(255,176,32,1\.00\)/g)).toHaveLength(1);
   });

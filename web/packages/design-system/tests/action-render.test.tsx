@@ -203,9 +203,9 @@ describe("Action primary focus (WCAG 2.4.7)", () => {
   // The primary's fill is amber, so an amber focus border on it was invisible (the tvOS Retry
   // audit, shots 41/42). Focus now adds a foreground ring outside a gap of the surface behind it.
   // Every solid fill gets the ring: an amber border is invisible on amber and under 3:1 on red.
+  // The danger tone is not a fill (a neutral tile with danger text), so it keeps the amber border.
   const fills = [
     { name: "primary", props: { tone: "primary" } },
-    { name: "danger", props: { tone: "danger" } },
     { name: "suggest", props: { variant: "suggest" } },
     { name: "destructive", props: { variant: "destructive" } },
   ] as const;
