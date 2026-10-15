@@ -59,8 +59,12 @@ fi
 echo "Regenerating baselines for #$PR: $branch at $sha" >> "$GITHUB_STEP_SUMMARY"`
 
 const visualBaselinesRenderDispatchCommand = `set -euo pipefail
-if ! gh workflow run visual-baselines-render.yml --repo "$REPO" --ref "$BRANCH" \
-  -f sha="$HEAD_SHA" -f request="$REQUEST"; then
+inputs=(-f sha="$HEAD_SHA" -f request="$REQUEST")
+if [ -n "$FORCE" ]; then
+  inputs+=(-f force="$FORCE")
+  echo "Forcing a rewrite of every baseline of the tests matching: $FORCE" >> "$GITHUB_STEP_SUMMARY"
+fi
+if ! gh workflow run visual-baselines-render.yml --repo "$REPO" --ref "$BRANCH" "${inputs[@]}"; then
   echo "::error::could not dispatch the render on $BRANCH; rebase it onto the default branch so it has visual-baselines-render.yml"
   exit 1
 fi
@@ -190,6 +194,10 @@ printf '%s\n' \
   "Baselines only: $count PNGs rewritten by the Visual baselines workflow," \
   "run $RUN_URL (attempt $RUN_ATTEMPT), rendered from $HEAD_SHA by render run $RENDER_RUN." \
   > "$RUNNER_TEMP/commit-message.txt"
+if [ -n "$FORCE" ]; then
+  printf '%s\n' "" "Forced: every baseline of the tests matching this regex was rewritten:" "$FORCE" \
+    >> "$RUNNER_TEMP/commit-message.txt"
+fi
 git -c user.name='github-actions[bot]' \
   -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
   commit --quiet --no-verify --file="$RUNNER_TEMP/commit-message.txt"
@@ -242,14 +250,21 @@ type visualBaselinesJob struct {
 	steps       []visualBaselinesStep
 }
 
+// visualBaselinesInput is one string dispatch input. A required one has no default; an optional one
+// defaults to empty, so a dispatch that omits it behaves as it did before the input existed.
+type visualBaselinesInput struct {
+	name     string
+	optional bool
+}
+
 // visualBaselinesWorkflow is one workflow's audited shape: its top-level keys, its name and run
-// name, its required string inputs, its exact workflow-level maps, and its jobs in order.
+// name, its string inputs, its exact workflow-level maps, and its jobs in order.
 type visualBaselinesWorkflow struct {
 	label   string
 	keys    []string
 	name    string
 	runName string
-	inputs  []string
+	inputs  []visualBaselinesInput
 	maps    map[string]map[string]string
 	jobs    []visualBaselinesJob
 }
@@ -261,7 +276,7 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 		label:  "Visual baselines workflow",
 		keys:   []string{"name", "on", "permissions", "concurrency", "jobs"},
 		name:   "Visual baselines",
-		inputs: []string{"pr"},
+		inputs: []visualBaselinesInput{{name: "pr"}, {name: "force", optional: true}},
 		maps: map[string]map[string]string{
 			"permissions": {"contents": "read"},
 			"concurrency": {"group": "visual-baselines-${{ inputs.pr }}", "cancel-in-progress": "false"},
@@ -300,6 +315,7 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 						"HEAD_SHA":   "${{ needs.resolve.outputs.sha }}",
 						"REQUEST":    visualBaselinesRequest,
 						"SERVER_URL": "${{ github.server_url }}",
+						"FORCE":      "${{ inputs.force }}",
 					},
 				}},
 			},
@@ -334,6 +350,7 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 							"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
 							"RUN_ATTEMPT": "${{ github.run_attempt }}",
 							"RENDER_RUN":  "${{ needs.render.outputs.run_id }}",
+							"FORCE":       "${{ inputs.force }}",
 						},
 					},
 				},
@@ -365,7 +382,7 @@ func visualBaselinesRender() visualBaselinesWorkflow {
 		keys:    []string{"name", "run-name", "on", "permissions", "env", "jobs"},
 		name:    "Visual baselines render",
 		runName: "Render visual baselines ${{ inputs.request }}",
-		inputs:  []string{"sha", "request"},
+		inputs:  []visualBaselinesInput{{name: "sha"}, {name: "request"}, {name: "force", optional: true}},
 		maps: map[string]map[string]string{
 			"permissions": {"contents": "read"},
 			"env":         {"NODE_VERSION": "22"},
@@ -390,7 +407,10 @@ func visualBaselinesRender() visualBaselinesWorkflow {
 				{action: "actions/cache/restore"},
 				{run: "make fe-install"},
 				{run: "make fe-codegen"},
-				{run: "make fe-visual-update", name: visualBaselinesUpdateStepName},
+				{
+					run: "make fe-visual-update", name: visualBaselinesUpdateStepName,
+					env: map[string]string{"LOOMARR_PLAYWRIGHT_FORCE": "${{ inputs.force }}"},
+				},
 				{run: visualBaselinesCollectCommand, name: "Collect the rewritten baselines", shell: "bash"},
 				{action: "actions/upload-artifact"},
 			},
@@ -483,19 +503,34 @@ func verifyVisualBaselinesTrigger(root *yaml.Node, want visualBaselinesWorkflow)
 	if err != nil {
 		return err
 	}
-	if err := verifyOnlyKeys(inputs, want.label+" inputs", want.inputs...); err != nil {
+	names := make([]string, 0, len(want.inputs))
+	for _, input := range want.inputs {
+		names = append(names, input.name)
+	}
+	if err := verifyOnlyKeys(inputs, want.label+" inputs", names...); err != nil {
 		return err
 	}
-	for _, name := range want.inputs {
-		input, err := requiredMap(inputs, name)
+	for _, spec := range want.inputs {
+		input, err := requiredMap(inputs, spec.name)
 		if err != nil {
 			return err
 		}
-		if err := verifyOnlyKeys(input, want.label+" "+name+" input", "description", "required", "type"); err != nil {
+		label := want.label + " " + spec.name + " input"
+		if !spec.optional {
+			if err := verifyOnlyKeys(input, label, "description", "required", "type"); err != nil {
+				return err
+			}
+			if scalarValue(input, "type") != "string" || scalarValue(input, "required") != "true" {
+				return fmt.Errorf("%s input %s must be a required string", want.label, spec.name)
+			}
+			continue
+		}
+		if err := verifyOnlyKeys(input, label, "description", "required", "default", "type"); err != nil {
 			return err
 		}
-		if scalarValue(input, "type") != "string" || scalarValue(input, "required") != "true" {
-			return fmt.Errorf("%s input %s must be a required string", want.label, name)
+		if _, ok := mappingValue(input, "default"); !ok || scalarValue(input, "default") != "" ||
+			scalarValue(input, "type") != "string" || scalarValue(input, "required") != "false" {
+			return fmt.Errorf("%s input %s must be an optional string that defaults to empty", want.label, spec.name)
 		}
 	}
 	return nil

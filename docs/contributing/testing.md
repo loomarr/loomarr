@@ -633,6 +633,30 @@ branch cut before it landed onto `main` before you dispatch.
 GitHub only offers a dispatch for a workflow that exists on `main`, so the run always comes from
 main's copy, and it refuses to run from any other ref. The update only rewrites a baseline whose
 comparison failed. A change smaller than the suite's pixel tolerance leaves the old PNG in place.
+Playwright's per-pixel `threshold` is 0.2, so a subtle recolour such as a pastel fill passes every
+comparison and rewrites nothing (#1956).
+
+#### Forcing a refresh under the threshold
+
+For an intended change too subtle to fail the comparison, pass `force`, a Playwright `--grep`
+regex of the story or test names to refresh:
+
+```sh
+gh workflow run visual-baselines.yml --repo loomarr/loomarr -f pr=<number> \
+  -f force='selection--.*--light|guide-surface--.*--light'
+```
+
+The render then runs only the matching tests, with `--update-snapshots=all`, and the workflow
+commits every one of their PNGs that comes out different, even when it's within the threshold. The
+commit message records the regex. A regex that matches no test fails the render, so a typo pushes
+nothing. Every other rail is unchanged: the merge queue, fork and default-branch refusals, the
+render-run check, and the bot-commit approval. Leave `force` empty for the normal update. A forced
+run doesn't touch any baseline outside the regex, so dispatch a normal run too if the change also
+moves other stories. Read the rewritten PNGs before you merge: under `force`, the workflow accepts
+pixels that the comparison can't tell apart.
+
+Locally, `LOOMARR_PLAYWRIGHT_FORCE='<regex>' make fe-visual-update` runs the same
+grep-scoped update in the pinned image.
 
 ## Fixtures
 

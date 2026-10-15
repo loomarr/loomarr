@@ -19,6 +19,11 @@ on:
         description: The dispatching run's id and attempt, which names this run so it can find it
         required: true
         type: string
+      force:
+        description: Playwright --grep regex of tests whose snapshots are all rewritten; empty for a normal update
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -74,8 +79,12 @@ jobs:
       # fresh checkout, so no stale storybook-static exists to serve old pixels, then the pinned
       # Playwright image through scripts/run-playwright-container.sh, in visual-update mode. One
       # unsharded run: the update rewrites only failed or missing snapshots, so the whole suite
-      # must see the build, and it still fails on an axe violation or a crashing story.
+      # must see the build, and it still fails on an axe violation or a crashing story. A `force`
+      # regex narrows the run to the tests it matches and rewrites all of their snapshots, even
+      # those under the pixel threshold; it reaches the runner only through env.
       - name: Regenerate the baselines in the pinned Playwright image
+        env:
+          LOOMARR_PLAYWRIGHT_FORCE: ${{ inputs.force }}
         run: make fe-visual-update
       # Only a rewritten or new PNG under a visual snapshot directory may leave this job. Any other
       # change to the tree fails it, so a build that edits a tracked file cannot ride along.
