@@ -7464,9 +7464,10 @@ components:
             - interstitial
           type: string
         name:
+          description: The clip's display name. On member-readable routes (the Guide, a channel's pods) it is viewer copy and empty when the catalogue name is only a filename (#1980); clients then show the break's own label. The admin draft preview keeps the filename.
           type: string
         path:
-          description: The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card; clients address real clips by hash.
+          description: The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on member-readable routes (#1980); clients address real clips by hash.
           type: string
         quality:
           description: Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only

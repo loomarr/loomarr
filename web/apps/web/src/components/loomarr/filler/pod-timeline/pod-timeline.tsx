@@ -1,6 +1,7 @@
 import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
+import { guideFillerEntryLabel } from "@loomarr/core/guide";
 import { Badge } from "@/components/ui/badge";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,10 @@ const MATCH: Record<PodPoolDTOMatchLevel, { label: string; variant: "caution" | 
   audience: { label: "Any era", variant: "caution" },
   bumper_card: { label: "Bumper only", variant: "neutral" },
 };
+
+// A member-readable pod withholds a name that is only a filename (#1980); the segment then reads
+// as its kind ("Commercial").
+const clipName = (entry: PodEntryDTO): string => entry.name.trim() || guideFillerEntryLabel(entry);
 
 const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
   bumper: "bg-tune-tint-30",
@@ -91,25 +96,25 @@ const PodTimeline = ({
             // which is the reordering case the rule guards against.
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
             key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
-            title={`${entry.name} · ${formatClipDuration(entry.durationMs)}`}
+            title={`${clipName(entry)} · ${formatClipDuration(entry.durationMs)}`}
             style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
             className={cn("min-w-0 border-border border-r last:border-r-0", SEGMENT_FILL[entry.kind])}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
               <button
                 type="button"
-                aria-label={`Preview ${entry.name}`}
+                aria-label={`Preview ${clipName(entry)}`}
                 className="flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                 onClick={() => onPreview(entry)}
               >
-                <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
+                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Caption tone="strong" shout className="truncate">
                   {SEGMENT_ABBR[entry.kind]}
                 </Caption>
               </button>
             ) : (
               <span className="flex h-full min-w-0 items-center justify-center px-1">
-                <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
+                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Caption tone="strong" shout className="truncate">
                   {SEGMENT_ABBR[entry.kind]}
                 </Caption>

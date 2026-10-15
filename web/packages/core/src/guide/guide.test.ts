@@ -11,6 +11,8 @@ import {
   guideAiringLabel,
   guideChannelForTypeahead,
   guideChannelState,
+  guideFillerEntryLabel,
+  guideFillerNowLabel,
   guideSelectionForChannel,
   guideWindow,
   LOOKBACK_MINUTES,
@@ -97,6 +99,21 @@ describe("guide presentation facts", () => {
         stopMs: 1,
       }),
     ).toBe("Coming soon");
+  });
+
+  it("labels a break from the clip's viewer name, or the break's own label without one (#1980)", () => {
+    expect(guideFillerNowLabel({ name: "Fizzbolt" })).toBe("Commercials · Fizzbolt");
+    expect(guideFillerNowLabel({ name: "  " })).toBe("Commercials");
+    expect(guideFillerNowLabel()).toBe("Commercials");
+    expect(guideFillerEntryLabel({ kind: "station_id", name: "Fizzbolt" })).toBe("Fizzbolt · station id");
+    expect(guideFillerEntryLabel({ kind: "commercial", name: "" })).toBe("Commercial");
+    // The client never invents a name: what the server withheld stays withheld.
+    for (const label of [
+      guideFillerNowLabel({ name: "" }),
+      guideFillerEntryLabel({ kind: "bumper", name: "" }),
+    ]) {
+      expect(label).not.toMatch(/^[a-z0-9]+(?:[-_.][a-z0-9]+)+$|\.(?:mp4|mkv)$/);
+    }
   });
 
   it("keeps on-air truth separate from channel health", () => {

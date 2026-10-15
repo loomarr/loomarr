@@ -306,7 +306,8 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 				}
 				if b.Kind == schedule.SlotFiller {
 					if pod := podAt[i]; len(pod.Entries) > 0 {
-						dto := podToPoolDTO(pod)
+						// Every now/next line, dock and cell reads these names (#1980).
+						dto := viewerPoolDTO(pod)
 						a.Pod = &dto
 						for _, entry := range pod.Entries {
 							if entry.Hash != "" {

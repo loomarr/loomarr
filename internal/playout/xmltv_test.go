@@ -110,11 +110,15 @@ func TestRenderXMLTV_DoesNotAdvertiseBreaks(t *testing.T) {
 			programme("Midnight at the Mapleton", guideNow, 60),
 			{Kind: schedule.SlotFiller, Title: "commercials", Start: guideNow.Add(60 * time.Minute), Stop: guideNow.Add(61 * time.Minute)},
 			{Kind: schedule.SlotFlex, Title: "flex", Start: guideNow.Add(61 * time.Minute), Stop: guideNow.Add(62 * time.Minute)},
-			programme("Emberfall Canyon", guideNow.Add(62*time.Minute), 30),
+			// #1980: a break that carries a clip's filename stem never reaches the media server.
+			{Kind: schedule.SlotFiller, Title: "commercial-widgetmax-1991", SeriesTitle: "Commercials",
+				Start: guideNow.Add(62 * time.Minute), Stop: guideNow.Add(62*time.Minute + 30*time.Second)},
+			programme("Emberfall Canyon", guideNow.Add(63*time.Minute), 30),
 		}},
 	})
 
-	if strings.Contains(got, "commercials") || strings.Contains(got, ">flex<") {
+	if strings.Contains(got, "commercials") || strings.Contains(got, ">flex<") ||
+		strings.Contains(got, "widgetmax") || strings.Contains(got, "Commercials") {
 		t.Errorf("a break was advertised in the EPG (#12):\n%s", got)
 	}
 	// …but the real programmes on either side survive.

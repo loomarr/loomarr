@@ -28,9 +28,9 @@ import (
 // PodEntryDTO is one clip placed in the previewed pool, in play order.
 type PodEntryDTO struct {
 	Hash            string `json:"hash,omitempty" doc:"The Clip content hash used by the media route. Empty only for the embedded fallback card."`
-	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card; clients address real clips by hash."`
+	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on member-readable routes (#1980); clients address real clips by hash."`
 	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
-	Name            string `json:"name"`
+	Name            string `json:"name" doc:"The clip's display name. On member-readable routes (the Guide, a channel's pods) it is viewer copy and empty when the catalogue name is only a filename (#1980); clients then show the break's own label. The admin draft preview keeps the filename."`
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
@@ -427,10 +427,21 @@ func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
 	return out
 }
 
-// podToPreviewOutput renders an assembled pod into the preview response — shared by the
-// saved (GET) and draft (POST) preview handlers so their shapes cannot drift.
+// podToPreviewOutput renders the saved pod for the member-readable preview (GET).
 func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
-	return &previewPodsOutput{Body: podToPoolDTO(pod)}
+	return &previewPodsOutput{Body: viewerPoolDTO(pod)}
+}
+
+// viewerPoolDTO is podToPoolDTO for a member-readable route (the Guide, a channel's Breaks): a
+// file-shaped catalogue name is sent as "" and the file's location not at all (#1980). Clients
+// address clips by hash. The admin draft sandbox keeps the filename an operator searches by.
+func viewerPoolDTO(pod filler.Pod) PodPoolDTO {
+	dto := podToPoolDTO(pod)
+	for i := range dto.Entries {
+		dto.Entries[i].Name = filler.ViewerName(dto.Entries[i].Name)
+		dto.Entries[i].Path = ""
+	}
+	return dto
 }
 
 // podToPoolDTO maps an assembled pod to its DTO. Shared by the pods endpoints and the
