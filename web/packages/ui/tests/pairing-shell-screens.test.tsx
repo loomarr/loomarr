@@ -9,7 +9,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { PairingShell } from "../index";
-import { serverAddressLabel } from "../src/pairing-shell/server-row";
 
 // Records which Action asks for the TV's initial focus; react-native-web drops the prop from the DOM.
 const preferredFocus = vi.hoisted(() => ({ labels: [] as string[] }));
@@ -64,13 +63,10 @@ const awaitingTv = async () => {
 };
 
 describe("server address display", () => {
-  it("shows host[:port] without a scheme or trailing slash", () => {
-    expect(serverAddressLabel("https://loomarr.example.test")).toBe("loomarr.example.test");
-    expect(serverAddressLabel("http://192.0.2.10:8080/")).toBe("192.0.2.10:8080");
-    expect(serverAddressLabel("192.0.2.10:8080")).toBe("192.0.2.10:8080");
-  });
-
-  it("lists a discovered server the same way on the TV", async () => {
+  const discoveredMarkup = async (
+    density: "touch" | "tv",
+    servers: { id: string; name: string; url: string }[],
+  ) => {
     const session = new PairingSession({
       createTransport: vi.fn(),
       deviceName: "Living Room TV",
@@ -78,19 +74,16 @@ describe("server address display", () => {
     });
     await session.initialize(undefined);
     const discovery: ServerDiscovery = {
-      snapshot: () => ({
-        servers: [{ id: "a", name: "Loomarr on media-box", url: "https://media-box.example.test:8443" }],
-        status: "searching",
-      }),
+      snapshot: () => ({ servers, status: "searching" }),
       start: vi.fn(),
       stop: vi.fn(),
       subscribe: () => () => undefined,
     };
-    const markup = renderToStaticMarkup(
+    return renderToStaticMarkup(
       <LoomarrProvider theme="dark">
         <PairingShell
           allowServerEntry
-          density="tv"
+          density={density}
           discovery={discovery}
           discoveryForeground
           renderPaired={() => null}
@@ -98,6 +91,24 @@ describe("server address display", () => {
         />
       </LoomarrProvider>,
     );
+  };
+
+  it("shows host[:port] without a scheme or trailing slash", async () => {
+    const markup = await discoveredMarkup("touch", [
+      { id: "a", name: "Loomarr on media-box", url: "https://loomarr.example.test" },
+      { id: "b", name: "Loomarr on attic", url: "http://192.0.2.10:8080/" },
+    ]);
+    expect(markup).toContain("loomarr.example.test");
+    expect(markup).toContain("192.0.2.10:8080");
+    expect(markup).not.toContain("https://loomarr");
+    expect(markup).not.toContain("http://192.0.2.10");
+    expect(markup).not.toContain("192.0.2.10:8080/");
+  });
+
+  it("lists a discovered server the same way on the TV", async () => {
+    const markup = await discoveredMarkup("tv", [
+      { id: "a", name: "Loomarr on media-box", url: "https://media-box.example.test:8443" },
+    ]);
     expect(markup).toContain("media-box.example.test:8443");
     expect(markup).not.toContain("https://media-box");
   });
