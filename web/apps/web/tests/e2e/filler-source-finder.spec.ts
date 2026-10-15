@@ -2,7 +2,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
 
+// ⚠ Wait out the phone tab bar's lazy chunk. Its Suspense placeholder is an empty row of the bar's
+// height, so a page that is otherwise still can settle on it and the shot loses the bar. Once the
+// suite really ran with reduced motion (#2004), a loaded run shot that empty row. Desktop never
+// renders the placeholder.
 const sourceReadinessShot = async (page: Page, name: string) => {
+  await expect(page.getByTestId("phone-bottom-bar-placeholder")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
 };
