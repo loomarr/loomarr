@@ -1,7 +1,7 @@
 import { Icon, icons, StatusDot, Surface, Text } from "@loomarr/design-system";
 import { Pressable } from "react-native";
 
-import { serverAddressLabel } from "./server-address";
+import { serverAddressLabel } from "../server-address";
 import type { ServerRowProps } from "./server-row.type";
 
 // A found server on a phone: an iOS list row (name over a grey host, a disclosure chevron), the way

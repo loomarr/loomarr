@@ -19,7 +19,8 @@ import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, type ScrollView 
 
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
 import { PhoneApproval } from "./phone-approval";
-import { ServerRow, serverAddressLabel } from "./server-row";
+import { serverAddressLabel } from "./server-address";
+import { ServerRow } from "./server-row";
 
 const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
 const subscribeToNothing = () => () => undefined;
