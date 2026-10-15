@@ -295,6 +295,8 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               type="button"
               onClick={() => setSort(value)}
               aria-pressed={sort === value}
+              // 23 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
+              data-touch-target
               className={cn(
                 "cursor-pointer rounded-md border px-2.5 py-0.5 font-mono text-2xs transition-colors",
                 // Pressed is neutral (#1909 Q2), like the Guide's span picker.

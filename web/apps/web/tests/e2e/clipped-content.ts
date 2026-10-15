@@ -16,7 +16,7 @@ interface ClippedContent {
 // A scroll container is not a clip: what it hides is reachable by scrolling, so once the walk up
 // passes a scroller on an axis, that axis stops counting. Text an ellipsis truncates is shown as
 // truncated, so it passes too. Visually hidden content (a box of a pixel
-// or less, aria-hidden, inert) is skipped.
+// or less, aria-hidden, inert, inside a closed <details>) is skipped.
 //
 // Runs in the browser, so it is self-contained: no imports, no closures over this module.
 const findClippedContent = (page: Page): Promise<ClippedContent[]> =>
@@ -32,10 +32,41 @@ const findClippedContent = (page: Page): Promise<ClippedContent[]> =>
     }
 
     const found: ClippedContent[] = [];
+    // A field's value is not a text node: it scrolls inside the field, which hides it from the
+    // ancestor walk below. A value wider than its field is cut at the field's edge, as the
+    // channel name was in the channel page's header (#1785).
+    for (const field of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      "input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]),textarea",
+    )) {
+      if (!field.value || field === document.activeElement || field.closest("[aria-hidden=true],[inert]"))
+        continue;
+      const px = field.scrollWidth - field.clientWidth;
+      if (px > 1 && !(field instanceof HTMLTextAreaElement)) {
+        found.push({
+          element: field.tagName.toLowerCase(),
+          text: (field.getAttribute("aria-label") ?? field.name ?? "")
+            .concat(` = ${field.value}`)
+            .slice(0, 60),
+          side: "right",
+          px,
+          clippedBy: "its own field",
+        });
+      }
+    }
+    // A closed <details> still lays out its content (Chromium hides it with content-visibility, not
+    // display), so those boxes overhang the card while nobody can see them. Only its summary shows.
+    const insideClosedDetails = (element: Element) => {
+      for (let details = element.closest("details:not([open])"); details; ) {
+        const summary = details.querySelector(":scope > summary");
+        if (!summary?.contains(element)) return true;
+        details = details.parentElement?.closest("details:not([open])") ?? null;
+      }
+      return false;
+    };
     for (const element of candidates) {
       const style = getComputedStyle(element);
       if (style.visibility === "hidden" || style.display === "none") continue;
-      if (element.closest("[aria-hidden=true],[inert]")) continue;
+      if (element.closest("[aria-hidden=true],[inert]") || insideClosedDetails(element)) continue;
       const box = element.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
 

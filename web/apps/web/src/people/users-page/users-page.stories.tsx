@@ -83,6 +83,7 @@ const UsersPageStory = ({ roster }: UsersPageStoryProps) => {
 const meta = {
   title: "People/UsersPage",
   component: UsersPageStory,
+  tags: ["route"],
   args: { roster: "mixed" },
   decorators: [withRouter("/people")],
   parameters: { layout: "fullscreen" },

@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { NavTabsProps } from "./nav-tabs.type";
 
@@ -38,11 +39,36 @@ const NavTabs = ({
   className,
 }: NavTabsProps) => {
   const underline = variant === "underline";
+  // One line at every width, scrolling sideways when the tabs don't fit (#1785). At phone width it
+  // used to wrap, so a channel's Danger zone or Requests' Done sat on a second row. The active tab
+  // is scrolled into view, sideways only: the page itself never moves. It is scrolled again when the
+  // tab or the bar changes size: the web font arriving widens every tab after the first paint.
+  const bar = useRef<HTMLElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeId IS the dependency; the effect reads the DOM it marks
+  useLayoutEffect(() => {
+    const nav = bar.current;
+    const current = nav?.querySelector<HTMLElement>("[aria-current=page]");
+    if (!nav || !current) return;
+    const reveal = () => {
+      const box = current.getBoundingClientRect();
+      const start = box.left - nav.getBoundingClientRect().left + nav.scrollLeft;
+      const end = start + box.width;
+      if (start < nav.scrollLeft) nav.scrollLeft = start;
+      else if (end > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = end - nav.clientWidth;
+    };
+    reveal();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(current);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [activeId]);
   return (
     <nav
+      ref={bar}
       aria-label={label}
       className={cn(
-        "flex shrink-0 flex-wrap gap-1 border-border border-b sm:flex-nowrap sm:overflow-x-auto",
+        "flex shrink-0 gap-1 overflow-x-auto border-border border-b",
         !underline && "pb-2",
         className,
       )}

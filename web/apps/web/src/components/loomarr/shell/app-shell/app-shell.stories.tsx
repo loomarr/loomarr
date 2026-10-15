@@ -16,6 +16,7 @@ const body = (
 const meta = {
   title: "Shell/AppShell",
   component: AppShell,
+  tags: ["route"],
   parameters: { layout: "fullscreen" },
   decorators: [withRouter("/guide")],
   args: { onOpenCommand: noop, onLogout: noop, children: body },

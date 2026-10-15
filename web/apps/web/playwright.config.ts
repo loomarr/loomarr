@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { DESKTOP, DETERMINISM, MOBILE, VISUAL_WORKERS } from "./playwright.shared";
+import { DESKTOP, DETERMINISM, MOBILE, PHONE, VISUAL_WORKERS } from "./playwright.shared";
 
 // Visual + a11y suite (frontend-design §5) over the OFFLINE storybook-static build —
 // Chromatic rejected. Deterministic by construction via the shared kit in
@@ -33,6 +33,8 @@ export default defineConfig({
   projects: [
     { name: "desktop", use: DESKTOP },
     { name: "mobile", use: MOBILE },
+    // The route-level stories (tagged "route": a whole page or shell) on a touch phone (#1785).
+    { name: "phone", use: PHONE, grep: /@route/ },
   ],
   webServer: {
     // Serve the static gallery via the local http-server bin (no pnpm needed — so this

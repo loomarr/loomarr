@@ -5,21 +5,25 @@ import { useSyncExternalStore } from "react";
 // portrait Watch puts its controls under the picture (#1785, native mock 5e), so the desktop
 // overlay controls aren't mounted there at all. Read during render, so the first paint is right.
 // Without matchMedia (jsdom), nothing is a phone: the desktop layout is the default.
-const QUERY = "(min-width: 48rem)";
+const media = (query: string) =>
+  typeof window.matchMedia === "function" ? window.matchMedia(query) : undefined;
 
-const media = () => (typeof window.matchMedia === "function" ? window.matchMedia(QUERY) : undefined);
-
-const subscribe = (onChange: () => void) => {
-  const list = media();
-  list?.addEventListener("change", onChange);
-  return () => list?.removeEventListener("change", onChange);
-};
-
-const usePhoneWidth = (): boolean =>
+// True while the viewport is narrower than `minWidth` (a `(min-width: …)` query that does not match).
+const useNarrowerThan = (minWidth: string): boolean =>
   useSyncExternalStore(
-    subscribe,
-    () => media()?.matches === false,
+    (onChange) => {
+      const list = media(`(min-width: ${minWidth})`);
+      list?.addEventListener("change", onChange);
+      return () => list?.removeEventListener("change", onChange);
+    },
+    () => media(`(min-width: ${minWidth})`)?.matches === false,
     () => false,
   );
 
-export { usePhoneWidth };
+const usePhoneWidth = (): boolean => useNarrowerThan("48rem");
+
+// useBelowSm — true below Tailwind's `sm` (40rem), for a control that changes what it renders where
+// a layout's `max-sm:` classes rearrange it: the channel header's name field (#1785).
+const useBelowSm = (): boolean => useNarrowerThan("40rem");
+
+export { useBelowSm, usePhoneWidth };

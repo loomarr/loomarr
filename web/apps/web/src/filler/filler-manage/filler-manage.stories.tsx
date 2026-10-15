@@ -110,6 +110,7 @@ const fillerFrame: Decorator = (Story) => (
 const meta = {
   title: "Filler/Manage",
   component: FillerManage,
+  tags: ["route"],
   args: { onEditTags: () => {} },
   decorators: [fillerFrame, withRouter("/filler/manage")],
 } satisfies Meta<typeof FillerManage>;

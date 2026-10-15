@@ -11,6 +11,7 @@ const noop = () => {};
 const meta = {
   title: "Setup/LoginShell",
   component: LoginShell,
+  tags: ["route"],
   parameters: { layout: "fullscreen" },
   args: {
     children: <LoginForm onSubmit={noop} />,

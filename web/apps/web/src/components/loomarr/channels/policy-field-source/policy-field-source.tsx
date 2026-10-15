@@ -40,6 +40,8 @@ const PolicyFieldSource = ({
         type="button"
         variant="link"
         className="h-auto p-0 text-xs underline"
+        // 16 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
+        data-touch-target
         disabled={!overridden}
         onClick={onReset}
       >

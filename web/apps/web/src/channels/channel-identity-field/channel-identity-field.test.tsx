@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelIdentityField } from "./channel-identity-field";
 
 // Purely presentational + a promise-returning onSave — no providers needed. The field owns
@@ -122,5 +122,55 @@ describe("ChannelIdentityField", () => {
     await waitFor(() =>
       expect((screen.getByLabelText("Channel name") as HTMLInputElement).value).toBe("New Name"),
     );
+  });
+
+  // Below `sm` the channel header gives the name its own row, and the field wraps there instead of
+  // cutting a long name (#1785). It is still one line of content.
+  describe("below sm", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      return () => vi.unstubAllGlobals();
+    });
+
+    it("renders the title as a wrapping textarea, and the number stays an input", () => {
+      render(
+        <>
+          <ChannelIdentityField label="Channel name" value="Saturday Morning Cartoons" onSave={vi.fn()} />
+          <ChannelIdentityField
+            label="Channel number"
+            value={7}
+            type="number"
+            variant="compact"
+            onSave={vi.fn()}
+          />
+        </>,
+      );
+      expect(screen.getByLabelText("Channel name").tagName).toBe("TEXTAREA");
+      expect(screen.getByLabelText("Channel number").tagName).toBe("INPUT");
+    });
+
+    it("saves on Enter without breaking the line", async () => {
+      const user = userEvent.setup();
+      const onSave = vi.fn(() => Promise.resolve());
+      render(<ChannelIdentityField label="Channel name" value="Kettle Kids" onSave={onSave} />);
+
+      await user.type(screen.getByLabelText("Channel name"), " Weekend{Enter}");
+      expect(onSave).toHaveBeenCalledWith("Kettle Kids Weekend");
+      expect(screen.getByLabelText("Channel name")).not.toHaveValue(expect.stringContaining("\n"));
+    });
+
+    it("turns a pasted line break into a space", async () => {
+      const user = userEvent.setup();
+      render(<ChannelIdentityField label="Channel name" value="" onSave={vi.fn()} />);
+
+      await user.click(screen.getByLabelText("Channel name"));
+      await user.paste("Harbour Towns\nin the\r\nOff Season");
+      expect(screen.getByLabelText("Channel name")).toHaveValue("Harbour Towns in the Off Season");
+    });
   });
 });

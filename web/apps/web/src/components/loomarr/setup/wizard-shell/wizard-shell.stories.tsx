@@ -18,6 +18,7 @@ const body = <p className="text-muted-foreground text-sm">The step's form render
 const meta = {
   title: "Setup/WizardShell",
   component: WizardShell,
+  tags: ["route"],
   parameters: { layout: "fullscreen" },
   args: {
     steps,
