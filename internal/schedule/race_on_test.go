@@ -1,7 +1,8 @@
 //go:build race
 
-package schedule_test
+package schedule
 
-// raceEnabled is true when the tests run under -race. The CI lanes always do, where the detector
-// costs the planner walks several times their plain run, so the sweeps walk a sample there (#2007).
+// raceEnabled is true when the tests run under -race. CI runs this package twice, with and without
+// it (scripts/go-race-policy.sh RACE_AND_PLAIN, #2007): the plain run carries every assertion,
+// and the race run only the tests that run in parallel (skipSerialUnderRace, sampleSweeps).
 const raceEnabled = true

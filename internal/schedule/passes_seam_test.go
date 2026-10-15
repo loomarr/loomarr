@@ -17,7 +17,8 @@ import (
 // episode back to back. A seeded sample of 120 origins of a year is walked over the four days around
 // an ordinary March day for every deck shape the seam tests use; that crosses an anchor at some
 // origin of every shape (all 365, measured: 70 short on 80 episodes a day, 21 on 9 an hour).
-// Under -race the first 40 of the sample are walked; -args -holiday-sweep walks all 365 (#2007).
+// Under -race it walks days 180 and 182 of 2025, which between them failed every case that failed
+// before #1976's fix; -args -holiday-sweep walks all 365 (#2007).
 func TestDealer_RepeatSpacingHoldsForEveryDealOrigin(t *testing.T) {
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	seam := day(time.March, 10, 0)
@@ -25,7 +26,7 @@ func TestDealer_RepeatSpacingHoldsForEveryDealOrigin(t *testing.T) {
 	switch {
 	case *holidaySweep:
 	case sampleSweeps():
-		origins = origins[:40]
+		origins = []int{180, 182}
 	default:
 		origins = origins[:120]
 	}

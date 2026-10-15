@@ -73,6 +73,7 @@ func TestShuffle_EachPassIsAFreshPermutation(t *testing.T) {
 }
 
 func TestShuffle_NoRepeatInsideSpacingAcrossTheSeam(t *testing.T) {
+	schedule.SkipSerialUnderRace(t)
 	// 7d default spacing is far beyond a 24h pool, so it caps at a third of the pool: 16 episodes.
 	const spacing = 16
 	for _, eps := range []int{48, 50} {

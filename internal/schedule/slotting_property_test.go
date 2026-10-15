@@ -157,6 +157,7 @@ func TestSlotByPolicy_NoProgramSlots_PassThrough(t *testing.T) {
 // existing suite only pins syndication). Two independent calls on equal inputs must
 // agree slot-for-slot.
 func TestSlotByPolicy_Deterministic_AllModes_Property(t *testing.T) {
+	skipSerialUnderRace(t)
 	for _, mode := range allOrderingModes {
 		mode := mode
 		t.Run(string(mode), func(t *testing.T) {

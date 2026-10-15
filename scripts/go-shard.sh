@@ -134,10 +134,18 @@ ordinary_packages() {
 # package path for work ordering, then the lowest shard number for placement. Output stays in that
 # descending-cost work order so the bounded `go test -p` scheduler starts the critical packages
 # first instead of creating a several-minute tail after the aggregate split was already balanced.
+#
+# A package the race policy runs in both phases (RACE_AND_PLAIN) costs its lane twice, as the
+# worker model counts it, so it is placed at twice its weight.
 partition() {
-  local mode="$1" index="$2" total="$3" module
+  local mode="$1" index="$2" total="$3" module ordinary race plain twice
   module="$(go list -m)"
-  ordinary_packages | awk -v mode="$mode" -v target="$index" -v n="$total" -v module="$module" -v weights_file="$WEIGHTS" '
+  # Captured first, as in ordinary_packages: a failure inside `<(...)` reaches no exit status.
+  ordinary="$(ordinary_packages)"
+  race="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --race | sort)"
+  plain="$(printf '%s\n' "$ordinary" | "$RACE_POLICY" --no-race | sort)"
+  twice="$(comm -12 <(printf '%s\n' "$race") <(printf '%s\n' "$plain") | tr '\n' ' ')"
+  printf '%s\n' "$ordinary" | awk -v mode="$mode" -v target="$index" -v n="$total" -v module="$module" -v weights_file="$WEIGHTS" -v twice="$twice" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
         if (line ~ /^[[:space:]]*(#|$)/) continue
@@ -150,6 +158,8 @@ partition() {
         weight[part[1]] = part[2] + 0
       }
       close(weights_file)
+      split(twice, both, " ")
+      for (i in both) if (both[i] != "") in_both[both[i]] = 1
     }
     {
       count++
@@ -158,6 +168,7 @@ partition() {
       prefix = module "/"
       if (index(relative, prefix) == 1) relative = substr(relative, length(prefix) + 1)
       cost[count] = (relative in weight) ? weight[relative] : 1
+      if ($0 in in_both) cost[count] *= 2
       order[count] = count
     }
     END {
@@ -225,10 +236,11 @@ plan() {
   partition plan 0 "$1"
 }
 
-# Model the package scheduler used by an ordinary lane. The race and non-race groups execute
-# sequentially, each with GOFLAGS=-p=4, so their independent four-worker LPT makespans must be
-# added. Keeping this distinct from aggregate package-seconds lets the coverage plan reject both
-# excessive total work and a latency regression hidden by the bounded package overlap.
+# Model the package scheduler used by an ordinary lane: a four-worker LPT makespan over the
+# packages it is given. The lane's race and non-race groups run at once, each with GOFLAGS=-p=4,
+# on one four-core runner, so ordinary_worker_load models them as one schedule (#2007). Keeping
+# this distinct from aggregate package-seconds lets the coverage plan reject both excessive total
+# work and a latency regression hidden by the bounded package overlap.
 weighted_worker_makespan() {
   local module
   module="$(go list -m)"
@@ -281,17 +293,12 @@ weighted_worker_makespan() {
 
 ordinary_worker_load() {
   local lane="$1" total="$2" shard_packages race_packages plain_packages
-  local race_load=0 plain_load=0
   shard_packages="$(slice "$lane" "$total")"
   race_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --race)"
   plain_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --no-race)"
-  if [[ -n "$race_packages" ]]; then
-    race_load="$(printf '%s\n' "$race_packages" | weighted_worker_makespan)"
-  fi
-  if [[ -n "$plain_packages" ]]; then
-    plain_load="$(printf '%s\n' "$plain_packages" | weighted_worker_makespan)"
-  fi
-  echo $((race_load + plain_load))
+  # An ordinary lane runs its race and plain phases at once (go-test-lane.sh), so they share the
+  # runner's four workers: one makespan over both lists, a RACE_AND_PLAIN package in each.
+  printf '%s\n%s\n' "$race_packages" "$plain_packages" | grep -v '^$' | weighted_worker_makespan
 }
 
 worker_plan() {
