@@ -459,21 +459,32 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
       holiday feature's start, which would air that unit later. Of the units that qualify, the
       one with the most slack over its spacing takes the episode's place. A multi-part story is
       never split.
+    - **Failing that, the swap goes the other way (#1971).** The episode swaps places with an
+      ordinary unit that starts **before** 17:00 in the same window. The episode moves earlier,
+      which widens the gap to its own next airing. That gap is what stops most swaps after the
+      band. The unit moves later. This happens only far from a season, where every window the
+      spacing reaches airs its deal. The swap must also keep the window's programme count and
+      leave every other unit on its side of the band.
     - When no unit qualifies, the episode is deferred as before, but only when every unit it
       brings forward still rests the spacing from its last airing, and the episode still rests
       it before its next airing. Otherwise it airs in place, in the evening. So does an episode
-      the window cannot carry past the band, because the window closes inside it. The checks read
-      the windows around as dealt, without arranging them. Away from a season that is exact.
-      Arrange moves only a holiday episode later and an ordinary unit only earlier, and a moved
-      episode leaves a slot of room for each episode its next window could defer from ahead of
-      it. Near a season the simulation and the hand-off check what really aired.
+      the window cannot carry past the band, because the window closes inside it.
+    - **The checks stay exact.** They read the windows around as dealt, without arranging them,
+      and bound how far a neighbour can move what they read. A unit moved earlier is checked
+      against its last airing as dealt, because a neighbour moves an ordinary unit later only by
+      a swap before the band. That swap checked the unit against the earliest its next window
+      can bring its next airing: the first holiday episode that window deals at or after the band
+      ahead of it. An episode moved later leaves a slot of room for each episode its next window
+      could defer from ahead of it. An episode swapped earlier than that room is checked against
+      the latest its last window can air its last airing. That is as dealt if the airing was dealt
+      before the band, otherwise that window's last programme. The full argument is at `swapOut`.
+      Near a season, the simulation and the hand-off check what really aired.
     - **The cost.** Some off-season holiday episodes stay in the evening on these channels.
       Measured over 30 deal origins in March, these are the holiday episodes dealt into the
-      evening that still air there: 51% on an 80-episode deck in 6-hour windows, 38% in 12-hour
-      and 70% in daily windows, and 23% on a 400-episode deck in daily windows. The dealer
-      rests a holiday episode only a little past its spacing, so moving it to after the band
-      often brings its own next airing too close. A daily window has only 23:00–24:00 after the
-      band.
+      evening that still air there: 33% on an 80-episode deck in 6-hour windows, 25% in 12-hour
+      and 31% in daily windows, and 17% on a 400-episode deck in daily windows. The dealer rests
+      a holiday episode only a little past its spacing. Moving it after the band brings its next
+      airing too close, and moving it before the band brings its last one too close.
     - **In order** the dealer promises no spacing, and every episode leaves the band. If the
       window ends inside the band (a short window), the deferred episodes move, as one run, to
       just before that band. They go at the latest point where each still starts before 17:00.
