@@ -499,14 +499,15 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 // broke the spacing: 16 (the hand-off's swap for a unit held past the close, 12-hour windows), 50
 // (the origin #2001 was traced on) and 269 (settle's hold-back). A one-show deck deals shuffle and
 // syndication alike, so only shuffle is walked. -args -holiday-sweep walks every origin, both ways.
-// Under -race the sample is four seeded origins and the three pinned ones, two on the 400-episode
-// deck (#2007).
+// Under -race the 80-episode decks on 12- and 24-hour windows, the two that broke, walk four seeded
+// origins and the three pinned ones; the decks that never broke walk two (#2007).
 func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	seeded, large := 12, 4
 	if sampleSweeps() {
 		seeded, large = 4, 2
 	}
+	broke := func(pool seamPool) bool { return pool.ordinary == 80 && pool.window >= 12*time.Hour }
 	origins := append(rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:seeded], 16, 50, 269)
 	orders := []schedule.OrderingMode{schedule.OrderShuffle}
 	if *holidaySweep {
@@ -527,8 +528,8 @@ func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 				off.Ordering = order
 				stretch := [2]time.Time{end.Add(-max(24*time.Hour, pool.window)), end.Add(32 * pool.window)}
 				walked := origins
-				if pool.ordinary == 400 && !*holidaySweep {
-					walked = origins[:large] // it costs several times the others, and never broke
+				if pool.ordinary == 400 && !*holidaySweep || sampleSweeps() && !broke(pool) {
+					walked = origins[:large] // the 400-episode deck costs several times the others; none of these broke
 				}
 				short, worst, first := 0, spacing, ""
 				for _, o := range walked {
@@ -598,7 +599,8 @@ func sampleSweeps() bool { return raceEnabled && !*holidaySweep }
 // before-band swaps: they must not reach the season, and away from it that arrangement keeps the
 // deal's gaps (#1970), so the oracle is no looser. Each deck walks Halloween's end at a seeded
 // origin, and March is walked at the three origins (days of 2025) where dropping one of the checks
-// broke the spacing. -args -holiday-sweep walks Halloween's end at every origin.
+// broke the spacing. -args -holiday-sweep walks Halloween's end at every origin. Under -race
+// Halloween's end is not walked on the 400-episode and 6-hour decks (#2007).
 func TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing(t *testing.T) {
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	march := [2]time.Time{day(time.March, 2, 0), day(time.March, 16, 0)}
@@ -622,6 +624,9 @@ func TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing(t *testing.T) {
 		walks = nil
 	}
 	for i, pool := range seamPools {
+		if sampleSweeps() && (pool.ordinary == 400 || pool.window == 6*time.Hour) {
+			continue // the costliest two decks; the checks are caught on March and the 12-hour deck (#2007)
+		}
 		if !*holidaySweep {
 			walks = append(walks, walk{pool, origins[i], true})
 			continue
@@ -900,9 +905,10 @@ func TestHolidayEpisodes_InSeasonWindowsNeverRepeatBackToBackWithHistory(t *test
 // walkHolidaySeasons airs Oct 1 → Jan 10 window by window, looped as playout airs it, and counts the
 // episodes that air twice in a row.
 //
-// Under -race each deck walks one order, rotated so that every order is walked and the decks with a
-// history to trade (pools 1.2 and 1.5) walk the two shuffled ones; -args -holiday-sweep walks every
-// order (#2007).
+// Under -race each deck is walked once between the two tests: the walk with the history takes the
+// decks with a history to trade (pools 1.2 and 1.5) and two fitting ones, the other the rest. Each
+// walks one order, rotated so that every order is walked and pools 1.2 and 1.5 walk the two
+// shuffled ones; -args -holiday-sweep walks every deck and order in both (#2007).
 func walkHolidaySeasons(t *testing.T, withHistory bool) {
 	specials := func(n int) []special {
 		return append(append(halloweenSpecials(n), thanksgivingSpecials(n)...), christmasSpecials(n)...)
@@ -927,6 +933,9 @@ func walkHolidaySeasons(t *testing.T, withHistory bool) {
 		{"fitting 15", 15, 24 * time.Hour, [3]int{}, [3]int{}, 0},
 		{"fitting 10", 10, 6 * time.Hour, [3]int{}, [3]int{}, 0},
 	} {
+		if sampleSweeps() && slices.Contains([]int{2, 3, 5, 7}, d) != withHistory {
+			continue
+		}
 		perHoliday := max(1, tc.episodes/25)
 		avail := seriesLike(tc.episodes-3*perHoliday, specials(perHoliday)...)
 		for o, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
