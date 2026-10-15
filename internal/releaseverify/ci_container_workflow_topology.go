@@ -39,7 +39,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
 		"ci-tuner.yml":               {jobs: map[string]int{"run": 10}},
 		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 9}},
-		"playout-bench.yml":          {jobs: map[string]int{"macos": 5, "gpu-t4": 8, "arc": 3, "geforce": 3}},
+		"playout-bench.yml":          {jobs: map[string]int{"macos": 6, "gpu-t4": 9, "arc": 4, "geforce": 4, "coverage": 2}},
 		"codeql.yml": {jobs: map[string]int{
 			"changes": 2, "analyze-actions": 3, "analyze-go": 3,
 			"analyze-javascript-typescript": 3, "analyze-python": 3,

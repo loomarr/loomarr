@@ -6,6 +6,10 @@ name: Playout bench (hardware)
 # a pull request from a fork must not be able to schedule work on the maintainer's GPU machines. The
 # self-hosted jobs run only on `workflow_dispatch`, which needs write access, and additionally check
 # the event themselves. The per-PR software bench lives in ci-playout-bench.yml.
+#
+# A leg whose gate is unset is skipped, and the `coverage` job says so in the run summary instead of
+# letting the run go green by omission (#1566). Coverage fails only when a leg whose gate is set did
+# not pass or wrote no bench report; a homelab without a T4 or a self-hosted GPU runner stays green.
 on:
   workflow_dispatch:
     inputs:
@@ -44,6 +48,8 @@ jobs:
     if: github.event_name == 'schedule' || inputs.run_macos
     runs-on: macos-15
     timeout-minutes: 40
+    outputs:
+      reported: ${{ steps.report.outputs.reported }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -73,6 +79,10 @@ jobs:
             ${{ runner.temp }}/playout-bench/playout-bench-*.md
           if-no-files-found: ignore
           retention-days: 30
+      - name: Record whether the bench reported
+        id: report
+        if: always()
+        run: ./scripts/playout-bench-coverage.sh record "$RUNNER_TEMP/playout-bench"
 
   gpu-t4:
     name: GitHub T4 GPU — NVENC
@@ -82,6 +92,8 @@ jobs:
     if: vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ${{ vars.PLAYOUT_BENCH_T4_RUNNER }}
     timeout-minutes: 40
+    outputs:
+      reported: ${{ steps.report.outputs.reported }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -120,6 +132,10 @@ jobs:
             ${{ runner.temp }}/playout-bench/playout-bench-*.md
           if-no-files-found: ignore
           retention-days: 30
+      - name: Record whether the bench reported
+        id: report
+        if: always()
+        run: ./scripts/playout-bench-coverage.sh record "$RUNNER_TEMP/playout-bench"
 
   arc:
     name: Self-hosted — Intel Arc (VAAPI)
@@ -127,6 +143,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.run_arc
     runs-on: loomarr-playout-arc
     timeout-minutes: 60
+    outputs:
+      reported: ${{ steps.report.outputs.reported }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Bench the VAAPI pipeline
@@ -146,12 +164,18 @@ jobs:
             docs/engineering/playout-bench/vaapi.json
           if-no-files-found: ignore
           retention-days: 90
+      - name: Record whether the bench reported
+        id: report
+        if: always()
+        run: ./scripts/playout-bench-coverage.sh record "$RUNNER_TEMP/playout-bench"
 
   geforce:
     name: Self-hosted — NVIDIA GeForce (NVENC)
     if: github.event_name == 'workflow_dispatch' && inputs.run_geforce
     runs-on: loomarr-playout-geforce
     timeout-minutes: 60
+    outputs:
+      reported: ${{ steps.report.outputs.reported }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Bench the NVENC pipeline
@@ -171,3 +195,26 @@ jobs:
             docs/engineering/playout-bench/nvenc.json
           if-no-files-found: ignore
           retention-days: 90
+      - name: Record whether the bench reported
+        id: report
+        if: always()
+        run: ./scripts/playout-bench-coverage.sh record "$RUNNER_TEMP/playout-bench"
+
+  coverage:
+    name: Hardware coverage
+    # Always runs, so a skipped leg is reported rather than silently absent from a green run. Each
+    # PLAYOUT_BENCH_EXPECT_* is the same expression as that leg's `if:` (pinned by releaseverify).
+    if: always()
+    needs: [macos, gpu-t4, arc, geforce]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Summarise which hardware legs ran
+        env:
+          PLAYOUT_BENCH_NEEDS: ${{ toJSON(needs) }}
+          PLAYOUT_BENCH_EXPECT_MACOS: ${{ github.event_name == 'schedule' || inputs.run_macos }}
+          PLAYOUT_BENCH_EXPECT_T4: ${{ vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+          PLAYOUT_BENCH_EXPECT_ARC: ${{ github.event_name == 'workflow_dispatch' && inputs.run_arc }}
+          PLAYOUT_BENCH_EXPECT_GEFORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_geforce }}
+        run: ./scripts/playout-bench-coverage.sh summarise

@@ -136,6 +136,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "playout-bench.yml", job: "gpu-t4", step: 0}:           `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "playout-bench.yml", job: "arc", step: 0}:              `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "playout-bench.yml", job: "geforce", step: 0}:          `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
+		{workflow: "playout-bench.yml", job: "coverage", step: 0}:         `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "playout-bench.yml", job: "macos", step: 1}:            `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"cache":false,"go-version":"1.27"}}`,
 		{workflow: "playout-bench.yml", job: "gpu-t4", step: 1}:           `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"cache":false,"go-version":"1.27"}}`,
 		{workflow: "playout-bench.yml", job: "gpu-t4", step: 3}:           `{"name":"Cache production FFmpeg archive","id":"ffmpeg-cache","uses":"actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.cache/loomarr-ffmpeg","key":"ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}"}}`,

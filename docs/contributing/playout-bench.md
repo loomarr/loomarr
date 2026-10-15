@@ -108,6 +108,15 @@ tied to the schema and corpus version; bumping either forces a re-accept.
 | `macos-15 — VideoToolbox` (`playout-bench.yml`) | `workflow_dispatch` and nightly | VideoToolbox family; correctness thresholds only, since the runner is virtualised |
 | `GitHub T4 GPU — NVENC` | `workflow_dispatch` and nightly, **only when the repository variable `PLAYOUT_BENCH_T4_RUNNER` is set** | needs a paid GPU larger runner (about $0.052/min); set the variable to its label to enable |
 | `Self-hosted — Intel Arc`, `Self-hosted — NVIDIA GeForce` | `workflow_dispatch` only | the maintainer's machines |
+| `Hardware coverage` (`playout-bench.yml`) | every run, after the legs | lists which legs ran in the run summary; red only when a leg whose gate is set did not pass or wrote no report |
+
+A skipped leg is not a pass. The `Hardware coverage` job writes one line per leg, such as `NVENC leg
+(GitHub T4) skipped: PLAYOUT_BENCH_T4_RUNNER unset`, and repeats it as a run annotation. A leg whose
+gate is unset is a notice, so a homelab without a T4 subscription or a self-hosted GPU runner stays
+green on purpose. A leg whose gate is set but that was skipped, failed, or passed without writing its
+`playout-bench-<family>.json` report turns the run red (#1566). The self-hosted legs' gate is the
+`run_arc` / `run_geforce` dispatch input: the nightly run never uses the household GPUs, and a token
+that could check whether a runner is online would need admin rights the workflow does not have.
 
 `macos-15` arm64 runners expose VideoToolbox hardware encode; `macos-14` does not.
 
