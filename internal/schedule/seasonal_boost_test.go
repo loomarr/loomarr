@@ -322,6 +322,36 @@ func TestHolidayEpisodes_OutOfSeasonShuffledSwapsWithOneUnit(t *testing.T) {
 	}
 }
 
+// #1971: in a daily window there is little after the band, and an episode moved there comes back
+// too soon. Failing a swap after the band, the episode swaps with an ordinary unit before it: the
+// episode airs earlier, outside the band, and the unit takes its evening slot.
+func TestHolidayEpisodes_OutOfSeasonShuffledSwapsEarlier(t *testing.T) {
+	ch := channelWithWindow(24*time.Hour, nil)
+	ch.DealOrigin = time.Date(2025, time.March, 1, 0, 0, 0, 0, time.UTC) // deals episodes into evenings
+	avail := seriesLike(80, halloweenSpecials(4)...)
+	evenings := seasonalPolicy(schedule.SeasonalPolicy{})
+	evenings.Ordering = schedule.OrderShuffle
+	anytime := seasonalPolicy(schedule.SeasonalPolicy{Placement: schedule.HolidayPlacementAnytime})
+	anytime.Ordering = schedule.OrderShuffle
+	swaps := 0
+	for at := day(time.March, 2, 0); at.Before(day(time.March, 16, 0)); at = at.Add(ch.DefaultWindow) {
+		dealt, aired := arrange(t, ch, avail, anytime, at), arrange(t, ch, avail, evenings, at)
+		for e := range dealt {
+			if !isHoliday(dealt[e].id) || !inEvening(dealt[e], nil) {
+				continue
+			}
+			for u := range e {
+				if aired[u].id == dealt[e].id && aired[e].id == dealt[u].id && !isHoliday(dealt[u].id) && aired[u].start.Hour() < 17 {
+					swaps++
+				}
+			}
+		}
+	}
+	if swaps == 0 {
+		t.Fatal("no holiday episode swapped earlier out of an evening in two weeks")
+	}
+}
+
 func TestHolidayEpisodes_DeterministicWithinAWindow(t *testing.T) {
 	policy := seasonalPolicy(schedule.SeasonalPolicy{})
 	morning := arrange(t, mudpuddlesChannel(), mudpuddlesLike(9), policy, day(time.October, 20, 1))
