@@ -118,29 +118,33 @@ func quoteExcerpt(words []string, sentenceCase bool) string {
 //
 // A clip with no source title and no grounded name keeps its filename stem as its catalogue name
 // (scan.go), which helps an operator find the file and means nothing to a household. A name is
-// file-shaped when it carries a path separator or a clip extension, is an opaque content hash,
-// contains an underscore, or is one lowercase-hyphenated token ("commercial-sneakers-1993"). A
-// spaced or capitalised name ("Coca-Cola", "Sneakers commercial 1993") is viewer copy and passes.
+// file-shaped when it carries a clip extension, is an opaque content hash, contains an
+// underscore, or is one lowercase token joined by hyphens, dots or path separators
+// ("commercial-sneakers-1993", "ads/sneakers"). A spaced or capitalised name ("Coca-Cola",
+// "ZX/QT", "Sneakers commercial 1993") is viewer copy and passes.
 func ViewerName(name string) string {
 	name = strings.TrimSpace(name)
-	if name == "" || strings.ContainsAny(name, `/\_`) || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
+	if name == "" || strings.Contains(name, "_") || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
 		isHashDisplayName(name) || lowerSlug(name) {
 		return ""
 	}
 	return name
 }
 
-// lowerSlug reports a single lowercase token joined by hyphens or dots: a filename stem's shape.
+// lowerSlug reports a single lowercase token joined by hyphens, dots or path separators: a
+// filename stem's or a relative path's shape.
 func lowerSlug(name string) bool {
-	if !strings.ContainsAny(name, "-.") {
-		return false
-	}
+	letter := false
 	for _, r := range name {
-		if !unicode.IsLower(r) && !unicode.IsDigit(r) && r != '-' && r != '.' {
+		switch {
+		case unicode.IsLower(r):
+			letter = true
+		case unicode.IsDigit(r), r == '-', r == '.', r == '/', r == '\\':
+		default:
 			return false
 		}
 	}
-	return true
+	return letter && strings.ContainsAny(name, `-./\`)
 }
 
 // stripCues removes bracketed and parenthesised cues and music notes from a transcript.

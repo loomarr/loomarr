@@ -83,4 +83,11 @@ describe("PodTimeline", () => {
     expect(onPreview).toHaveBeenCalledWith(ad);
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });
+
+  it("names a clip the server withheld by its kind, never a blank (#1980)", () => {
+    render(<PodTimeline entries={[entry("", "commercial", 30000)]} />);
+    const segment = screen.getByRole("listitem");
+    expect(segment).toHaveAttribute("title", expect.stringMatching(/^Commercial · /));
+    expect(segment).toHaveTextContent(/^Commercial, /);
+  });
 });

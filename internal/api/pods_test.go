@@ -3,10 +3,12 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,6 +206,34 @@ func TestPreviewPods_VisibleToAnyAuthenticatedUser(t *testing.T) {
 	srv, _, _ := newPodsServer(t)
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member preview → %d, want 200 (preview is read-only)", resp.StatusCode)
+	}
+}
+
+// #1980: a channel's Breaks panel is member-readable, so a clip known only by its filename stem
+// reaches it with no name and no file location. The admin draft sandbox keeps both, because
+// that is what an operator searches the filler library by.
+func TestPreviewPods_MemberRouteWithholdsFileSlug(t *testing.T) {
+	const slug = "commercial-widgetmax-1991"
+	srv, _, fp := newPodsServer(t)
+	fp.pod = filler.Pod{Entries: []filler.PodEntry{
+		{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Kind: filler.Commercial, DurationMs: 30000},
+	}, TotalMs: 30000, MatchLevel: filler.MatchExact}
+
+	read := func(method, path, body string) string {
+		t.Helper()
+		resp := do(t, srv, method, path, adminToken, body)
+		defer func() { _ = resp.Body.Close() }()
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s %s → %d (%v)", method, path, resp.StatusCode, err)
+		}
+		return string(raw)
+	}
+	if got := read(http.MethodGet, "/v1/channels/ch-1/pods", ""); strings.Contains(got, "widgetmax") {
+		t.Errorf("the member-readable pod sent the file slug:\n%s", got)
+	}
+	if got := read(http.MethodPost, "/v1/channels/ch-1/pods/preview", `{"filler":{}}`); !strings.Contains(got, `"name":"`+slug+`"`) {
+		t.Errorf("the admin draft sandbox lost the filename an operator searches by:\n%s", got)
 	}
 }
 

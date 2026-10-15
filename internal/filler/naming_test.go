@@ -62,6 +62,9 @@ func TestViewerName_WithholdsFileShapedNames(t *testing.T) {
 	for _, name := range []string{
 		"Fizzbolt",
 		"Zip-Zap",
+		"ZX/QT",
+		"24/7 Fitness",
+		"Bolt/Volt",
 		"Widgetmax commercial 1991",
 		"Acme Tires — 1994",
 		"“True tales of the canyon patrol”",
