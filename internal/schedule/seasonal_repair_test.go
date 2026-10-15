@@ -469,18 +469,30 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 
 // #2001: the season simulation hands a channel back to the dealer over the windows after a season
 // ends, past the two days the seam tests walk. On an 80-episode daily deck the windows of 6–13
-// November re-aired ordinary episodes inside the spacing at most deal origins. This walks every
-// window from the season's last day until well past the hand-off (24 windows, more than twice the
-// simulation's horizon and the spacing on every deck here) at sampled origins, and holds each unit
-// to the spacing, or to its closest gap as dealt with the season off where the dealer gives it less.
-// A holiday episode's in-season airings follow the rotation, not the spacing, so only gaps that
-// open after the season count.
+// November re-aired ordinary episodes inside the spacing at 106 of these 120 origins (worst 37
+// programmes against 66), and an 80-episode deck on 12-hour windows at 2. This walks every window
+// from the season's last day until past where the hand-off settles (32 windows: the simulation's
+// horizon, up to 15 windows of hand-off and the spacing's reach on every deck here) and holds each
+// unit to the spacing, or to its closest gap as dealt with the season off where the dealer gives it
+// less. A holiday episode's in-season airings follow the rotation, not the spacing, so only gaps
+// that open after the season count.
+//
+// It walks a seeded sample of origins (four on the 400-episode deck, which costs several times the
+// others and never broke), and the days of 2025 where dropping one part of the fix
+// broke the spacing: 16 (the hand-off's swap for a unit held past the close, 12-hour windows), 50
+// (the origin #2001 was traced on) and 269 (settle's hold-back). A one-show deck deals shuffle and
+// syndication alike, so only shuffle is walked. -args -holiday-sweep walks every origin, both ways.
 func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	origins := rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:120]
+	origins := append(rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:12], 16, 50, 269)
+	orders := []schedule.OrderingMode{schedule.OrderShuffle}
+	if *holidaySweep {
+		origins = rand.New(rand.NewPCG(2001, 1967)).Perm(365)
+		orders = append(orders, schedule.OrderSyndication)
+	}
 	end := day(time.November, 1, 0) // Halloween's season is Oct 1–31
 	for _, pool := range []seamPool{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {400, 24 * time.Hour}} {
-		for _, order := range []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication} {
+		for _, order := range orders {
 			t.Run(fmt.Sprintf("%d episodes/%s window/%s", pool.ordinary, pool.window, order), func(t *testing.T) {
 				t.Parallel() // origins share one chain, so a case walks them in turn
 				specials := max(3, pool.ordinary/20)
@@ -490,9 +502,13 @@ func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 				policy.Ordering = order
 				off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
 				off.Ordering = order
-				stretch := [2]time.Time{end.Add(-max(24*time.Hour, pool.window)), end.Add(24 * pool.window)}
+				stretch := [2]time.Time{end.Add(-max(24*time.Hour, pool.window)), end.Add(32 * pool.window)}
+				walked := origins
+				if pool.ordinary == 400 && !*holidaySweep {
+					walked = origins[:4] // it costs several times the others, and never broke
+				}
 				short, worst, first := 0, spacing, ""
-				for _, o := range origins {
+				for _, o := range walked {
 					ch := channelWithWindow(pool.window, nil)
 					ch.DealOrigin = year.AddDate(0, 0, o)
 					if gap, at := closestAfter(t, ch, avail, policy, off, stretch, end, spacing); at != "" {
@@ -506,7 +522,7 @@ func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 					}
 				}
 				if short > 0 {
-					t.Errorf("%d of %d origins air a unit inside its spacing (%d programmes) after the season, worst %d (first: %s)", short, len(origins), spacing, worst, first)
+					t.Errorf("%d of %d origins air a unit inside its spacing (%d programmes) after the season, worst %d (first: %s)", short, len(walked), spacing, worst, first)
 				}
 			})
 		}
@@ -514,8 +530,9 @@ func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 }
 
 // closestAfter walks the windows of stretch as playout airs them, on the seasonal policy and on
-// `off`, and returns the shortest gap that opens at or after `from` and is less than the spacing
-// and the closest the unit airs as dealt with the season off, with where it happened ("" if none).
+// `off`, and returns the shortest gap between two airings of a unit that opens at or after `from`
+// and is less than both the spacing and that unit's shortest gap with the season off, with where
+// it happened ("" if none).
 func closestAfter(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy, off schedule.ChannelPolicy, stretch [2]time.Time, from time.Time, spacing int) (int, string) {
 	t.Helper()
 	dealt := map[string]int{}
@@ -541,7 +558,7 @@ func closestAfter(t *testing.T, ch schedule.Channel, avail libraryfixture.Availa
 	return closest, where
 }
 
-var holidaySweep = flag.Bool("holiday-sweep", false, "TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing walks all 365 deal origins")
+var holidaySweep = flag.Bool("holiday-sweep", false, "TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing and TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds walk all 365 deal origins")
 
 // #1971: out of season, a shuffled channel favouring evenings swaps a holiday episode with an
 // ordinary unit after the band or, failing that, before it. A swap before the band moves the unit
@@ -765,6 +782,22 @@ func BenchmarkHolidayPlanner_ShuffledSeason(b *testing.B) {
 	lineup := []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}
 	for b.Loop() {
 		schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, at)
+	}
+}
+
+// BenchmarkHolidayPlanner_SeasonHandOff prices the week after a season on an 80-episode shuffled
+// deck in daily windows: the simulation's last windows and the hand-off, which repairs each deal
+// against what aired until it settles (#2001).
+func BenchmarkHolidayPlanner_SeasonHandOff(b *testing.B) {
+	ch := channelWithWindow(24*time.Hour, nil)
+	avail := seriesLike(80, halloweenSpecials(4)...)
+	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+	policy.Ordering = schedule.OrderShuffle
+	lineup := []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}
+	for b.Loop() {
+		for d := 5; d <= 11; d++ {
+			schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, day(time.November, d, 0))
+		}
 	}
 }
 
