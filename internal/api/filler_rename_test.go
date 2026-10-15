@@ -112,6 +112,36 @@ func TestPatchClip_RenameRefusals(t *testing.T) {
 	}
 }
 
+// The 120-character limit counts the trimmed name in characters, not bytes or raw input.
+func TestPatchClip_RenameLengthCountsTheTrimmedName(t *testing.T) {
+	h, _ := renameFixture(t)
+	for _, name := range []string{" " + strings.Repeat("w", 120) + " ", strings.Repeat("é", 120)} {
+		resp := h.Do(http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"h-widgetmax","name":"`+name+`"}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("rename to a 120-character name (%d bytes raw) → %d, want 200", len(name), resp.StatusCode)
+		}
+	}
+}
+
+// A sidecar that cannot be updated refuses the whole edit: neither the name nor the era is saved.
+func TestPatchClip_RenameWithAnUnreadableSidecarSavesNothing(t *testing.T) {
+	h, dir := renameFixture(t)
+	if err := os.WriteFile(filepath.Join(dir, "Widgetmax Ad 1991.info.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resp := h.Do(http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"h-widgetmax","era":1991,"name":"Widgetmax Turbo Blender"}`)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("rename over an unreadable sidecar → %d, want 500", resp.StatusCode)
+	}
+	got, err := h.Store.GetClip(context.Background(), "h-widgetmax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clipcatalog.NameFromFilename || got.Era != 0 {
+		t.Errorf("after the refused edit = %q (%q) era %d, want the clip untouched", got.Name, got.NameSource, got.Era)
+	}
+}
+
 // storePods assembles a break from the catalog rows as they are now, the way the real assembler
 // carries each clip's name and provenance into the pod.
 type storePods struct {

@@ -93,6 +93,21 @@ describe("optional clip detail correction", () => {
     expect(payload).not.toHaveProperty("name");
   });
 
+  it("does not send an untouched name that the catalog stores with surrounding spaces", async () => {
+    let payload: unknown;
+    const onSaved = vi.fn();
+    server.use(
+      getTagFillerClipMockHandler(async ({ request }) => {
+        payload = await request.json();
+        return clip;
+      }),
+    );
+    render(<ClipDetailsEditor clip={{ ...clip, name: " Ready clip " }} onSaved={onSaved} />, { wrapper });
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(payload).not.toHaveProperty("name");
+  });
+
   it("saves a renamed clip's trimmed name", async () => {
     let payload: unknown;
     const onSaved = vi.fn();

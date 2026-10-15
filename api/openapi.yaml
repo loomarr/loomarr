@@ -7188,8 +7188,7 @@ components:
             - ""
           type: string
         name:
-          description: A name for viewers, trimmed, 1–120 characters. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990).
-          maxLength: 120
+          description: "A name for viewers: 1–120 characters after trimming. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990)."
           type: string
         tags:
           description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).

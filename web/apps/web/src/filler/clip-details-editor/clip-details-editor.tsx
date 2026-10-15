@@ -95,7 +95,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         hash: clip.hash,
         // Sent only when changed: a sent name is recorded as curated (#1990), and saving another
         // detail must not vouch for a filename. An emptied name is sent so the server refuses it.
-        ...(name.trim() === clip.name ? {} : { name: name.trim() }),
+        ...(name.trim() === clip.name.trim() ? {} : { name: name.trim() }),
         // Unclassified means the optional role is unknown, not that this Ready clip needs approval.
         // Omit kind rather than asserting a role the operator has not selected.
         ...(kind === "unclassified" ? {} : { kind: kind as PatchClipInputBodyKind }),
