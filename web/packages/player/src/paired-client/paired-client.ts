@@ -31,6 +31,7 @@ const usePairedClient = ({
   diagnostics,
   guideWindowMinutes,
   initialTune,
+  lastChannel,
   marks,
   onTune,
   session,
@@ -64,10 +65,11 @@ const usePairedClient = ({
         // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
         prefetchStill: (uri) => void Image.prefetch(uri).catch(() => undefined),
         profile: {},
+        restoreChannelId: lastChannel?.load,
         source: createPlayUrlSourcePort({ baseUrl: credential.serverUrl, fetch: request }),
         transport,
       }),
-    [credential.serverUrl, initialTune, reporting, request, transport],
+    [credential.serverUrl, initialTune, lastChannel, reporting, request, transport],
   );
   const catalogRefresher = useMemo(
     () => createCatalogRefresher({ controller, list: createChannelCatalogPort(request).list }),
@@ -175,7 +177,9 @@ const usePairedClient = ({
     if (!settledChannelId || settledChannelId === recordedChannelId.current) return;
     recordedChannelId.current = settledChannelId;
     void myChannels.recordTune(settledChannelId).catch(() => undefined);
-  }, [myChannels, settledChannelId]);
+    // An unwritable store only means the next launch starts on the first channel.
+    void lastChannel?.save(settledChannelId).catch(() => undefined);
+  }, [lastChannel, myChannels, settledChannelId]);
   useEffect(() => {
     const createStream = createNativeEventStreamFactory({
       headers: { Authorization: `Bearer ${credential.token}` },

@@ -31,6 +31,7 @@ const createPlayerController = ({
   prefetchStill,
   profile,
   recovery,
+  restoreChannelId,
   source,
   transport,
   warmRadius,
@@ -263,6 +264,17 @@ const createPlayerController = ({
     }
   };
 
+  /** The remembered channel, if the device has one and it is still in `catalog`. */
+  const restoredChannel = async (catalog: readonly PlayerChannel[]) => {
+    try {
+      const id = await restoreChannelId?.();
+      return catalog.find((channel) => channel.id === id);
+    } catch {
+      // An unreadable store is the same as nothing remembered.
+      return undefined;
+    }
+  };
+
   const findAdjacent = (direction: TuneDirection) => {
     const catalog = snapshot.catalog;
     if (catalog.length === 0) return undefined;
@@ -361,17 +373,30 @@ const createPlayerController = ({
         return;
       }
       if (!snapshot.channel && initialTune === "none") {
+        const restored = restoreChannelId ? await restoredChannel(catalog) : undefined;
+        if (disposed) return;
+        // The viewer tuned while the stored channel was being read: theirs wins.
+        if (snapshot.channel) {
+          publish({ ...snapshot, catalog });
+          return;
+        }
         publish({
           catalog,
           recentChannelIds: snapshot.recentChannelIds,
+          restoredChannelId: restored?.id,
           status: "idle",
         });
         return;
       }
 
       publish({ ...snapshot, catalog });
-      const first = catalog[0];
-      if (first) await tune(first, "catalog");
+      // Only a controller that restores waits here; any other tunes in the same turn as before.
+      const restoring = restoreChannelId !== undefined && !snapshot.channel;
+      const restored = restoring ? await restoredChannel(catalog) : undefined;
+      // A concurrent reconcile already tuned while the stored channel was being read.
+      if (disposed || (restoring && snapshot.channel)) return;
+      const target = restored ?? catalog[0];
+      if (target) await tune(target, "catalog");
     },
     retry: async () => {
       if (snapshot.channel) await tune(snapshot.channel, "retry", true);

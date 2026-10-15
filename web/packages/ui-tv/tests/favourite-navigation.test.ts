@@ -25,16 +25,18 @@ describe("TV long-press Select", () => {
 });
 
 describe("the press that ends a long-press", () => {
-  // Measured on the Apple TV simulator, 1.5 s hold on a Guide row: longSelect (the toggle) first, then
-  // the row's own onPress ~0.7 s later. Only the toggle may happen.
-  it("is not a tune, once", () => {
+  // Measured on the Apple TV simulator, 1.5 s hold: on a Guide row longSelect (the toggle) first, then
+  // the row's own onPress ~0.7 s later; on Watching longSelect action 1 and the Select press arrive in
+  // the same millisecond. Only the long-press may happen.
+  it("is not a tune or an OK, once", () => {
+    expect(tvPressIsLongSelectRelease(10_000, 10_000)).toBe(true);
     expect(tvPressIsLongSelectRelease(10_000, 10_700)).toBe(true);
-    expect(tvPressIsLongSelectRelease(10_000, 14_900)).toBe(true);
+    expect(tvPressIsLongSelectRelease(10_000, 11_500)).toBe(true);
   });
 
-  it("lets a short press tune when no hold came before it, or a long time ago", () => {
+  it("lets a real press through when no hold came before it, or a moment ago", () => {
     expect(tvPressIsLongSelectRelease(undefined, 10_700)).toBe(false);
-    expect(tvPressIsLongSelectRelease(10_000, 15_100)).toBe(false);
+    expect(tvPressIsLongSelectRelease(10_000, 11_501)).toBe(false);
   });
 });
 

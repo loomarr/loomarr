@@ -4,6 +4,8 @@ export type {
   CatalogRefreshState,
 } from "./src/catalog-refresher";
 export { createCatalogRefresher } from "./src/catalog-refresher";
+export type { LastChannelStorage, LastChannelStore } from "./src/last-channel";
+export { createLastChannelStore } from "./src/last-channel";
 export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export type { NeighbourWarmer, NeighbourWarmerOptions } from "./src/neighbour-warmer";
