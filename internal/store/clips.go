@@ -1080,6 +1080,22 @@ func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedA
 	return nil
 }
 
+// RenameClip sets a clip's name and its provenance together (#1990): name_source travels with
+// name, as in UpsertClip.
+func (s *sqlStore) RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET name = ?, name_source = ?, updated_at = ? WHERE hash = ?`),
+		name, string(source), epoch(updatedAt), hash)
+	if err != nil {
+		return fmt.Errorf("rename clip %s: %w", hash, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *sqlStore) UpdateClipGeography(ctx context.Context, hash, scope, country, market, network, station, airDate, evidence string, updatedAt time.Time) error {
 	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE clips SET geographic_scope = ?, country = ?, market = ?,
 		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ? WHERE hash = ?`),

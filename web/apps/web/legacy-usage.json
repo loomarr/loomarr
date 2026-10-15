@@ -566,7 +566,7 @@
       "legacyUi": 5
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 88,
+      "tailwindClasses": 91,
       "legacyUi": 4
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {

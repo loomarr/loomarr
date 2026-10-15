@@ -7187,6 +7187,9 @@ components:
             - interstitial
             - ""
           type: string
+        name:
+          description: "A name for viewers: 1–120 characters after trimming. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990)."
+          type: string
         tags:
           description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
           items:
@@ -15423,7 +15426,7 @@ paths:
         - filler
   /v1/filler/tags:
     patch:
-      description: Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).
+      description: Admin only. Corrects name, kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a). A name is the operator's curated name for viewers (#1990).
       operationId: tag-filler-clip
       requestBody:
         content:

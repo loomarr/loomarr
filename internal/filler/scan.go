@@ -192,7 +192,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		if sidecarState == SidecarValid && tags.DisplayName != "" {
 			name = tags.DisplayName // derived from grounded evidence (#1452), or a segment's name
 		}
-		if title := SidecarTitle(path); title != "" {
+		// An operator's rename (#1990) outranks the source title it replaced.
+		if title := SidecarTitle(path); title != "" && nameSource != clipcatalog.NameFromCurated {
 			name, nameSource = title, clipcatalog.NameFromSidecar
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
@@ -316,6 +317,14 @@ func carryNameProvenance(tags *SidecarTags, name string, source clipcatalog.Name
 	case !source.Known():
 		tags.NameProvenance = string(clipcatalog.NameFromUnknown)
 	}
+}
+
+// WriteCuratedName records an operator's name for a clip in its sidecar (#1990), as displayName
+// with curated provenance, so the next scan restores it ahead of the filename and a source title.
+func WriteCuratedName(mediaPath, name string) error {
+	return WriteSidecarTags(mediaPath, SidecarTags{
+		DisplayName: name, NameProvenance: string(clipcatalog.NameFromCurated),
+	}, false)
 }
 
 // FFprobe returns a media file's duration and video height.
