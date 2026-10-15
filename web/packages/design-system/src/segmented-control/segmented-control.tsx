@@ -1,6 +1,6 @@
 import { Text as TamaguiText, View } from "@tamagui/core";
 import { useState } from "react";
-import { View as NativeView, Pressable } from "react-native";
+import { View as NativeView, Platform, Pressable } from "react-native";
 
 type SegmentOption<Value extends string> = {
   /** What the segment counts, shown beside its label and read with it; omitted draws and says nothing. */
@@ -39,10 +39,17 @@ const SegmentedControl = <Value extends string>({
 }: SegmentedControlProps<Value>) => {
   const [focused, setFocused] = useState<Value | null>(null);
   // Tamagui's `role="tablist"` never reaches a native view, so VoiceOver read the track as a generic
-  // element. The tab list is a plain React Native View, which both iOS and Android take the role from
-  // (and react-native-web renders as role="tablist"); the track inside only draws.
+  // element. The tab list is a plain React Native View (the track inside only draws). React Native
+  // maps iOS's "tab" and "tablist" roles to no trait at all (a device showed a bare generic element),
+  // so iOS gets what its own tab bar uses: a "tabbar" container of selected-aware buttons, which
+  // VoiceOver reads as tabs. Android and the web have the real roles.
+  const ios = Platform.OS === "ios";
   return (
-    <NativeView accessibilityLabel={accessibilityLabel} accessibilityRole="tablist" style={{ width: "100%" }}>
+    <NativeView
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={ios ? "tabbar" : "tablist"}
+      style={{ width: "100%" }}
+    >
       <View
         backgroundColor="$surfaceRaised"
         borderColor="$borderDecorative"
@@ -58,7 +65,7 @@ const SegmentedControl = <Value extends string>({
           return (
             <Pressable
               accessibilityLabel={segmentLabel(option)}
-              accessibilityRole="tab"
+              accessibilityRole={ios ? "button" : "tab"}
               accessibilityState={{ disabled: option.disabled ?? false, selected }}
               aria-selected={selected}
               disabled={option.disabled}

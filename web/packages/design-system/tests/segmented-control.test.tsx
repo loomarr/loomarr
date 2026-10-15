@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Platform } from "react-native";
 import { describe, expect, it, vi } from "vitest";
 
 import { LoomarrProvider, SegmentedControl } from "../index";
@@ -59,6 +60,25 @@ describe("segmented control", () => {
     const list = markup.slice(markup.indexOf('role="tablist"'));
     expect(list.match(/role="tab"/g)).toHaveLength(3);
     expect(list.match(/aria-selected="true"/g)).toHaveLength(1);
+  });
+
+  it("on iOS is a tab-bar container of selected-aware buttons, because React Native gives iOS's tab roles no trait", () => {
+    const platform = Platform as { OS: string };
+    const web = platform.OS;
+    platform.OS = "ios";
+    try {
+      nativeViewProps.length = 0;
+      const markup = control();
+      const bars = nativeViewProps.filter((props) => props.accessibilityRole === "tabbar");
+      expect(bars).toHaveLength(1);
+      expect(bars[0]?.accessibilityLabel).toBe("Requests sections");
+      expect(nativeViewProps.some((props) => props.accessibilityRole === "tablist")).toBe(false);
+      expect(markup.match(/role="button"/g)).toHaveLength(3);
+      expect(markup).not.toContain('role="tab"');
+      expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
+    } finally {
+      platform.OS = web;
+    }
   });
 
   it("puts the count in each segment's accessible label as well as beside its text", () => {
