@@ -130,6 +130,9 @@ importers:
       expo-font:
         specifier: 58.0.0-canary-20260812-27f94d4
         version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)(react-native-tvos@0.86.2-0)(react@19.2.3)
+      expo-haptics:
+        specifier: 58.0.0-canary-20260812-27f94d4
+        version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)
       expo-linking:
         specifier: 58.0.0-canary-20260812-27f94d4
         version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)(react-native-tvos@0.86.2-0)(react@19.2.3)
@@ -511,6 +514,9 @@ importers:
       '@types/react-dom':
         specifier: 19.2.5
         version: 19.2.5(@types/react@19.2.18)
+      expo-haptics:
+        specifier: 58.0.0-canary-20260812-27f94d4
+        version: 58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)
       jsdom:
         specifier: 30.0.1
         version: 30.0.1
@@ -4591,6 +4597,11 @@ packages:
       expo: 58.0.0-canary-20260812-27f94d4
       react: 19.2.3
       react-native: '*'
+
+  expo-haptics@58.0.0-canary-20260812-27f94d4:
+    resolution: {integrity: sha512-1K6UBhGXc/vEwMjk5uvNsf0giRFxI4uTJ10vDuWZQlkxjavbdo6HgT1FzpaFJUafWOReEDGthNNyJcuH3hp0rg==}
+    peerDependencies:
+      expo: 58.0.0-canary-20260812-27f94d4
 
   expo-keep-awake@58.0.0-canary-20260812-27f94d4:
     resolution: {integrity: sha512-a/lPScR63kJF3anl59XetkXsjWl8Ewu8Mzkpq9wjmjwovBgL42Q3jLigLbCTRG3NlYKv+vRNwdXssdIGpYN70g==}
@@ -11274,6 +11285,10 @@ snapshots:
       expo: 58.0.0-canary-20260812-27f94d4(@babel/core@7.29.7)(@expo/dom-webview@58.0.0-canary-20260812-27f94d4)(@expo/metro-runtime@58.0.0-canary-20260812-27f94d4)(expo-router@58.0.0-canary-20260812-27f94d4)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@7.0.2)
       react: 19.2.3
       react-native: react-native-tvos@0.86.2-0(patch_hash=afaab095bfa4adc1b01becc48d211daafeb2f07a5d6e07f8db1d0d581951a028)(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react-native-tvos@0.86.2-0)(react@19.2.3)
+
+  expo-haptics@58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4):
+    dependencies:
+      expo: 58.0.0-canary-20260812-27f94d4(@babel/core@7.29.7)(@expo/dom-webview@58.0.0-canary-20260812-27f94d4)(@expo/metro-runtime@58.0.0-canary-20260812-27f94d4)(expo-router@58.0.0-canary-20260812-27f94d4)(react-dom@19.2.3(react@19.2.3))(react-native-tvos@0.86.2-0)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3)(typescript@7.0.2)
 
   expo-keep-awake@58.0.0-canary-20260812-27f94d4(expo@58.0.0-canary-20260812-27f94d4)(react@19.2.3):
     dependencies:
