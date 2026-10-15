@@ -47,7 +47,14 @@ type Banner = {
 // The phone's Requests, end to end: the list, one request, and the "Request a channel" form. It reads
 // one RequestsController (the host owns its lifetime and disposes it), so the badge, the tab counts and
 // every list agree. Admin controls appear only for the role `/v1/auth/me` reports, as on Web.
-const RequestsJourney = ({ channels, controller, footer, nowMs, onOpenChannel }: RequestsJourneyProps) => {
+const RequestsJourney = ({
+  channels,
+  controller,
+  footer,
+  headerAction,
+  nowMs,
+  onOpenChannel,
+}: RequestsJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [route, setRoute] = useState<Route>({ view: "list" });
   // A list already read when the screen opens (the host loads it with the app) draws on its section at once.
@@ -214,6 +221,7 @@ const RequestsJourney = ({ channels, controller, footer, nowMs, onOpenChannel }:
       >
         <RequestsList
           channels={channels}
+          headerAction={headerAction}
           nowMs={nowMs}
           onApprove={(proposal) => void approve(proposal)}
           onApproveFiller={(pull) => void approveFiller(pull)}

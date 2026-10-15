@@ -12,6 +12,7 @@ import {
   NativePlayerView,
   type PairedClient,
   PairedNativeImage,
+  usePairedAccount,
   usePairedClient,
   usePairedRequests,
   useShellPause,
@@ -20,6 +21,7 @@ import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,
   clientBackDestination,
+  DeviceSheet,
   GuideJourney,
   PairingShell,
   RequestsJourney,
@@ -28,6 +30,7 @@ import {
   WatchingPanel,
   watchingPanelFromGuide,
 } from "@loomarr/ui";
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
@@ -139,6 +142,17 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
+  // The Device sheet: opened from the Guide's and Requests' header buttons, docked above the tab bar.
+  const [deviceOpen, setDeviceOpen] = useState(false);
+  const account = usePairedAccount({ credential, session });
+  // The version and build app.config.cjs stamps into the binary (expo-constants has no native-version field).
+  const appVersion = Constants.expoConfig?.version;
+  const appBuild = Constants.expoConfig?.ios?.buildNumber;
+  const deviceAction = {
+    accessibilityLabel: "Device and account",
+    icon: "account",
+    onPress: () => setDeviceOpen(true),
+  } as const;
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const client = usePairedClient({
     credential,
@@ -176,7 +190,26 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     return () => subscription.remove();
   }, [active]);
   return (
-    <ClientShell active={active} onNavigate={setActive} requestsBadge={requests.needsYouCount}>
+    <ClientShell
+      active={active}
+      onNavigate={(destination) => {
+        setDeviceOpen(false);
+        setActive(destination);
+      }}
+      requestsBadge={requests.needsYouCount}
+      sheet={
+        deviceOpen ? (
+          <DeviceSheet
+            account={account}
+            appVersion={appVersion ? (appBuild ? `${appVersion} (${appBuild})` : appVersion) : undefined}
+            onDisconnect={() => session.disconnect()}
+            onDismiss={() => setDeviceOpen(false)}
+            serverUrl={credential.serverUrl}
+            serverVersion={client.serverVersion}
+          />
+        ) : undefined
+      }
+    >
       {active === "requests" ? (
         // The journey docks its review sheet directly above the tab bar, so it draws the footer itself.
         (navigation) => (
@@ -184,13 +217,14 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             channels={snapshot.catalog}
             controller={requests.controller}
             footer={navigation}
+            headerAction={deviceAction}
             onOpenChannel={watchChannel}
           />
         )
       ) : active === "guide" ? (
         <View style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: PHONE_GUTTER }}>
-            <ScreenHeader title="Guide" />
+            <ScreenHeader actions={[deviceAction]} title="Guide" />
           </View>
           <GuideJourney
             controller={guide}

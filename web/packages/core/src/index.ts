@@ -1,6 +1,7 @@
 // Complete @loomarr/core catalog for tests and tooling. Runtime code imports one module subpath at
 // a time (frontend-design §4.4). The modules remain platform-agnostic: no DOM/web-only surface beyond
 // the swappable EventSource construction, so the Expo app reuses them verbatim.
+export * from "./account";
 export * from "./anchor";
 export * from "./client-diagnostics";
 export * from "./clip-thumb";

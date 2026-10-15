@@ -6,6 +6,7 @@ import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
+import CircleUserRound from "lucide-react-native/icons/circle-user-round";
 import Clapperboard from "lucide-react-native/icons/clapperboard";
 import Clock3 from "lucide-react-native/icons/clock-3";
 import Ellipsis from "lucide-react-native/icons/ellipsis";
@@ -29,6 +30,8 @@ import VolumeX from "lucide-react-native/icons/volume-x";
 import X from "lucide-react-native/icons/x";
 
 const icons = {
+  // A phone tab header's "this device and who it's signed in as" button (the Device sheet).
+  account: CircleUserRound,
   back: ChevronLeft,
   channelDown: ChevronDown,
   channelUp: ChevronUp,

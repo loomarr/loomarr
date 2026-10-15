@@ -7,8 +7,11 @@ type ScreenHeaderAction = {
 };
 
 type ScreenHeaderProps = {
-  /** At most one plain icon button at the trailing edge (#1840's Requests "+"). */
-  action?: ScreenHeaderAction;
+  /**
+   * Up to two plain icon buttons at the trailing edge, in reading order, the last one flush with the
+   * gutter: Requests' "+" (#1840) and the Device sheet's account button.
+   */
+  actions?: readonly [ScreenHeaderAction] | readonly [ScreenHeaderAction, ScreenHeaderAction];
   title: string;
 };
 
