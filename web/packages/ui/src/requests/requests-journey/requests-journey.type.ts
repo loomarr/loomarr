@@ -1,7 +1,11 @@
 import type { RequestsController } from "@loomarr/core/requests";
 import type { ReactNode } from "react";
 
+import type { RequestChannelName } from "../request-done-row";
+
 type RequestsJourneyProps = {
+  /** The guide's channels, so a finished request's row names its channel by number and name. */
+  channels?: readonly RequestChannelName[];
   controller: RequestsController;
   /** The host's tab bar, docked under the screen. */
   footer?: ReactNode;

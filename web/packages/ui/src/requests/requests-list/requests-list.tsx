@@ -11,6 +11,7 @@ import { ScreenHeader } from "../../screen-header";
 import { StatePanel } from "../../state-panel";
 import { ApprovalGroup, type ApprovalRow } from "../approval-group";
 import { RequestCard } from "../request-card";
+import { RequestDoneRow } from "../request-done-row";
 import type { RequestsListProps } from "./requests-list.type";
 
 // The phone's Requests list, in Web's words and order: Needs you, In progress, Done. Needs you holds
@@ -65,6 +66,7 @@ const pullRow = ({ estimateClips, id, proposedBy, sources, title }: PullDTO): Ap
 });
 
 const RequestsBody = ({
+  channels = [],
   onApprove,
   onApproveFiller,
   onFix,
@@ -203,12 +205,19 @@ const RequestsBody = ({
         <StatePanel action={ask} density="touch" kind="empty" {...tabEmpty[tab]} />
       ) : (
         entries.map((entry) => {
-          const channel = tab === "done" ? entry.journey.channel : undefined;
-          return (
+          const channelId = tab === "done" ? entry.journey.channel?.id : undefined;
+          // A request that reached a channel is one row that opens it; a declined one has none, so it
+          // stays a card that opens the request and its reason.
+          return channelId ? (
+            <RequestDoneRow
+              channel={channels.find((candidate) => candidate.id === channelId)}
+              entry={entry}
+              key={entry.journey.jobId}
+              nowMs={nowMs}
+              onOpen={() => onOpenChannel(channelId)}
+            />
+          ) : (
             <RequestCard
-              action={
-                channel ? { label: "Open channel", onPress: () => onOpenChannel(channel.id) } : undefined
-              }
               entry={entry}
               key={entry.journey.jobId}
               nowMs={nowMs}

@@ -6,9 +6,12 @@ import type {
   RequestTab,
 } from "@loomarr/core/requests";
 
+import type { RequestChannelName } from "../request-done-row";
 import type { ReviewAction, ReviewState } from "../review";
 
 type RequestsListProps = {
+  /** The guide's channels, so a Done row can name its channel by number and name. */
+  channels?: readonly RequestChannelName[];
   /** Wall-clock now for relative dates; fixed in stories and tests. */
   nowMs?: number;
   onApprove: (proposal: ProposalDTO) => void;

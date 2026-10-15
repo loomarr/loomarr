@@ -141,10 +141,14 @@ describe("requests list", () => {
     expect(markup).toContain("min-height:48px");
   });
 
-  it("lists done requests with Open channel, and a declined one", () => {
-    const markup = list({ tab: "done" });
-    expect(markup).toContain(">On your channel<");
-    expect(markup).toContain(">Open channel<");
+  it("lists a finished request as one row that opens its channel, and a declined one as a card", () => {
+    const markup = list({
+      channels: [{ id: "channel-rainy", name: "Rainy Day Detectives", number: 14 }],
+      nowMs: Date.UTC(2026, 9, 1),
+      tab: "done",
+    });
+    expect(markup).toContain('aria-label="Channel 14, Rainy Day Detectives. Requested 5 days ago"');
+    expect(markup).not.toContain(">Open channel<");
     expect(markup).toContain(">Not approved<");
   });
 
@@ -625,11 +629,21 @@ describe("request a channel", () => {
   // the ideas out for an admin; the phone offers an admin the brief only.
   it("gives an admin the brief without channel ideas", () => {
     const markup = form({ viewer: "admin" });
-    expect(markup).not.toContain("Channel ideas");
+    expect(markup).not.toContain("Or try one of these");
     expect(markup).not.toContain("Fireside Mysteries");
     expect(markup).not.toContain("Request channel");
     expect(markup).toContain("Describe the channel");
     expect(markup).toContain(">Suggest titles<");
+  });
+
+  it("puts the typed brief first and the idea cards after it, under Or try one of these", () => {
+    const markup = form();
+    const at = (text: string) => markup.indexOf(text);
+    expect(at("Describe your own")).toBeGreaterThan(-1);
+    expect(at("Describe your own")).toBeLessThan(at("Describe the channel"));
+    expect(at("Describe the channel")).toBeLessThan(at(">Suggest titles<"));
+    expect(at(">Suggest titles<")).toBeLessThan(at("Or try one of these"));
+    expect(at("Or try one of these")).toBeLessThan(at("Fireside Mysteries"));
   });
 
   it("keeps amber for its one primary action: Suggest titles, not every idea card or the back link", () => {
