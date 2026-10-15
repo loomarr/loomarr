@@ -202,7 +202,6 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             footer={navigation}
             onOpenChannel={watchChannel}
           />
-
         )
       ) : active === "guide" ? (
         <View style={{ flex: 1 }}>
