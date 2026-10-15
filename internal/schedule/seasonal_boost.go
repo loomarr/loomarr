@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"maps"
 	"math"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -212,6 +213,7 @@ type holidayPlanner struct {
 	base        map[int64][]Slot        // the ring's ordinary-day picks, before neighbour drops
 	full        map[int64][]Slot        // what the date features after its holiday-date top-up
 	dealtAt     map[int64]windowAirings // dealtIn's memo
+	lastAt      map[int64]int64         // lastInSeason's memo
 }
 
 // newHolidayPlanner prepares the pass. breakFactor stretches programme runtime by the channel's
@@ -222,7 +224,7 @@ func newHolidayPlanner(ring *dealtRing, f holidayFeature, window time.Duration, 
 	}
 	deck := ring.d.deck(0)
 	p := &holidayPlanner{deck: deck, ring: ring, f: f, window: window, loc: zone, breakFactor: breakFactor,
-		raw: map[int64]*dayPlan{}, plans: map[int64]*dayPlan{}, base: map[int64][]Slot{}, full: map[int64][]Slot{}, dealtAt: map[int64]windowAirings{}}
+		raw: map[int64]*dayPlan{}, plans: map[int64]*dayPlan{}, base: map[int64][]Slot{}, full: map[int64][]Slot{}, dealtAt: map[int64]windowAirings{}, lastAt: map[int64]int64{}}
 	var n int
 	var sum int64
 	for _, s := range deck {
@@ -452,22 +454,20 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 	if !p.enabled() || p.ring.stride == 0 {
 		return dealt
 	}
-	h := p.horizon()
-	last := w // the latest in-season window at or before w
-	for ; last >= w-2*h && len(p.pooled(last)) == 0; last-- {
-	}
+	h, last := p.horizon(), p.lastInSeason(w)
+	after := p.simAfter()
 	switch {
-	case last < w-2*h:
+	case last < w-after-p.handOffReach():
 		return dealt
-	case last < w-h:
-		return p.handOff(last+h, w, dealt)
+	case last < w-after:
+		return p.handOff(last+after, w, dealt)
 	case programRuntime(p.deck) <= p.window.Milliseconds():
 		return p.fitted(w, dealt)
 	}
 	// The anchor and the end are the same for every window of the season, so each window reads
 	// the same simulation: two seasons closer than the horizon are one.
 	back := int64(seasonLookback / p.window)
-	anchor, end := last, last+h
+	anchor, end := last, last+after
 	for v := last - 1; v >= anchor-h-1 && v > w-back; v-- {
 		if len(p.pooled(v)) > 0 {
 			anchor = v
@@ -475,7 +475,7 @@ func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
 	}
 	for v := last + 1; v <= end && v < w+back; v++ {
 		if len(p.pooled(v)) > 0 {
-			end = v + h
+			end = v + after
 		}
 	}
 	return slices.Clone(p.simulate(anchor, end)[w]) // the run is shared: never hand out its slices
@@ -495,64 +495,155 @@ func (p *holidayPlanner) fitted(w int64, dealt []Slot) []Slot {
 		}
 	}
 	prev := p.arrange(p.tile(w-1, p.ring.tile(w-1)), w-1)
-	return p.repairArranged(loopedWindow(prev, p.window.Milliseconds()), tile, w)
+	return p.repairArranged(loopedWindow(prev, p.window.Milliseconds()), tile, p.arrangeTile(tile, w))
 }
 
-// handOff is window w's tile in the horizon after the season simulation, walked from `from`, the
-// season's last decided window. The dealer repaired each deal's seam against the deal before it,
-// but the season aired its own tiles, so a window is repaired again against the windows before it
-// as they really aired while any of them aired otherwise than its deal (#1939). Once the season's
-// last tile has passed out of the spacing, windows air their deals as dealt.
+// handOff is window w's tile, in the order it airs, in the windows after the season simulation,
+// walked from `from`, the season's last decided window. The dealer repaired each deal's seam
+// against the deal before it, but the season aired its own tiles, so while any window the spacing
+// reaches aired otherwise than the dealer alone would have aired it, a window's deal is arranged
+// and its seam then repaired against those windows as they really aired (#1939). The repaired order
+// is what airs, and arrange leaves it alone (handingOff): arranging it again let a swap bring a unit
+// the repair held back to its window's evening, checked against the windows around as dealt, which
+// here they are not (#2001). Once every window the spacing reaches has aired as the dealer alone
+// would, the hand-off is done, and this window and every one after it air as the dealer arranges
+// them. That can take longer than the horizon: a repair holds units back, which can leave the next
+// deal too soon in turn.
 //
-// The repair reads back over every window the repeat spacing spans, not only the window before: a
+// The repair reads back over every window arrange's checks reach, not only the window before: a
 // 12-hour spacing on a 6-hour window reaches two windows back (#1960).
 func (p *holidayPlanner) handOff(from, w int64, dealt []Slot) []Slot {
-	span := p.spanWindows()
-	var hist [][]Slot  // the last `span` windows as they aired, oldest first
-	var offDeal []bool // whether each aired a tile other than its deal
-	for v := from - int64(span) + 1; v <= from; v++ {
-		tile := p.tile(v, p.ring.tile(v))
-		hist, offDeal = append(hist, p.arrange(tile, v)), append(offDeal, !sameProgrammes(tile, p.ring.tile(v)))
+	reach := p.spacingWindows()
+	var hist [][]Slot  // the last `reach` windows as they aired, oldest first
+	var offDeal []bool // whether each aired otherwise than the dealer alone would
+	for v := from - reach + 1; v <= from; v++ {
+		deal := p.ring.tile(v)
+		aired := p.arrange(p.tile(v, deal), v)
+		hist, offDeal = append(hist, aired), append(offDeal, !sameProgrammes(aired, p.arrangeTile(deal, v)))
 	}
 	for v := from + 1; ; v++ {
+		if !slices.Contains(offDeal, true) {
+			if os.Getenv("TRACECONV") != "" {
+				fmt.Printf("CONV origin %d converged at %d windows past from (reach %d)\n", p.ring.origin, v-from, reach)
+			}
+			return p.arrangeTile(dealt, w)
+		}
 		deal := dealt
 		if v < w {
 			deal = p.ring.tile(v)
 		}
-		tile := deal
-		if slices.Contains(offDeal, true) {
-			var prev []Slot
-			for _, a := range hist {
-				prev = append(prev, loopedWindow(a, p.window.Milliseconds())...)
-			}
-			tile = p.repairArranged(prev, deal, v)
+		arranged := p.arrangeTile(deal, v)
+		var prev []Slot
+		for _, a := range hist {
+			prev = append(prev, loopedWindow(a, p.window.Milliseconds())...)
 		}
+		tile := p.skipUnrested(prev, p.repairArranged(prev, deal, arranged), v)
 		if v == w {
 			return tile
 		}
-		hist, offDeal = append(hist[1:], p.arrange(tile, v)), append(offDeal[1:], !sameProgrammes(tile, deal))
+		hist, offDeal = append(hist[1:], tile), append(offDeal[1:], !sameProgrammes(tile, arranged))
 	}
 }
 
-// spanWindows is how many windows the repeat spacing reaches back over, one at least.
-func (p *holidayPlanner) spanWindows() int {
-	w := p.window.Milliseconds()
-	return max(int((p.ring.d.spacing.Milliseconds()+w-1)/w), 1)
+// skipUnrested is a repaired hand-off tile less the units that still air sooner than the spacing
+// after their last airing in prev, the windows before as they aired, topped up as the simulation
+// tops a window up (topUp). The repair holds a unit back until it has rested, but one that cannot
+// rest before the window closes goes out at its end anyway (holdBack's leftovers), and a window
+// cannot simply skip it: one unit short, playout loops its head, which aired a window ago (#2001).
+func (p *holidayPlanner) skipUnrested(prev, tile []Slot, v int64) []Slot {
+	spacing := p.spacingProgrammes()
+	airedAt := map[string]int64{}
+	var n int64
+	for _, s := range prev {
+		if s.IsProgram() {
+			airedAt[unitKey(s)], n = n, n+1
+		}
+	}
+	soon := map[string]bool{}
+	at := maps.Clone(airedAt)
+	i := n
+	for _, s := range loopedWindow(tile, p.window.Milliseconds()) {
+		if !s.IsProgram() {
+			continue
+		}
+		if last, ok := at[unitKey(s)]; ok && i-last < spacing {
+			soon[unitKey(s)] = true
+		}
+		at[unitKey(s)], i = i, i+1
+	}
+	if len(soon) == 0 {
+		return tile
+	}
+	without := slices.DeleteFunc(slices.Clone(tile), func(s Slot) bool { return soon[unitKey(s)] })
+	taken := maps.Clone(soon)
+	for _, s := range without {
+		taken[unitKey(s)] = true
+	}
+	near := map[string]bool{} // aired by the window before, a stride of programmes
+	for key, last := range airedAt {
+		if last >= n-p.ring.stride {
+			near[key] = true
+		}
+	}
+	if short := p.window.Milliseconds() - programRuntime(without); short > 0 {
+		without = p.topUp(without, taken, short, v, v, n+programmesIn(without), spacing, near, p.pooled(v), nil, airedAt)
+	}
+	return without
 }
 
-// repairArranged is window w's `tile` with its seam repaired against `prev`, what aired before it
-// (each window looped as playout airs it). Arrange does not only delay a tile's units: in an
-// evening it defers an off-season holiday episode past the band, which brings the units behind it
-// forward, and so brought a unit held back from the seam to the window's head, next to where the
-// window before closed on it (#1939). The seam is repaired on the order arrange airs the tile in
-// (its features left out); a unit arrange does not air keeps its place at the end.
-func (p *holidayPlanner) repairArranged(prev, tile []Slot, w int64) []Slot {
+// handOffReach is how many windows past the simulation's horizon the hand-off may run before the
+// dealer airs alone.
+func (p *holidayPlanner) handOffReach() int64 {
+	if os.Getenv("TRACECONV") != "" {
+		return 10 * p.horizon()
+	}
+	return 2 * p.horizon()
+}
+
+// lastInSeason is the latest window at or before w that is in season, or one before the earliest
+// window the simulation and the hand-off can reach back from w when none is.
+func (p *holidayPlanner) lastInSeason(w int64) int64 {
+	if got, ok := p.lastAt[w]; ok {
+		return got
+	}
+	floor := w - p.simAfter() - p.handOffReach()
+	last := w
+	for ; last >= floor && len(p.pooled(last)) == 0; last-- {
+	}
+	p.lastAt[w] = last
+	return last
+}
+
+// handingOff reports whether window w is in the hand-off after a season (handOff), whose tile is
+// already in the order it airs.
+func (p *holidayPlanner) handingOff(w int64) bool {
+	if !p.enabled() || p.ring.stride == 0 {
+		return false
+	}
+	h, last := p.simAfter(), p.lastInSeason(w)
+	return last < w-h && last >= w-h-p.handOffReach()
+}
+
+func (p *holidayPlanner) simAfter() int64 {
+	if os.Getenv("EXP_AFTER0") != "" {
+		return 0
+	}
+	return p.horizon()
+}
+
+// repairArranged is `tile` with its seam repaired against `prev`, what aired before it (each window
+// looped as playout airs it), given `arranged`, the order arrange airs it in. Arrange does not only
+// delay a tile's units: in an evening it defers an off-season holiday episode past the band, which
+// brings the units behind it forward, and so brought a unit held back from the seam to the window's
+// head, next to where the window before closed on it (#1939). The seam is repaired on the arranged
+// order (its features left out); a unit arrange does not air keeps its place at the end.
+func (p *holidayPlanner) repairArranged(prev, tile, arranged []Slot) []Slot {
 	inTile := map[string]bool{}
 	for _, s := range tile {
 		inTile[unitKey(s)] = true
 	}
 	order := make([]Slot, 0, len(tile))
-	for _, s := range p.arrange(tile, w) {
+	for _, s := range arranged {
 		if inTile[unitKey(s)] {
 			order = append(order, s)
 			delete(inTile, unitKey(s))
@@ -611,7 +702,7 @@ func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
 	}
 	var prev map[string]bool
 	for v := anchor - (spacing+stride-1)/stride - 1; v < anchor; v++ {
-		prev = record(p.arrange(p.ring.tile(v), v))
+		prev = record(p.arrangeTile(p.ring.tile(v), v))
 	}
 	run := map[int64][]Slot{}
 	var owed []Slot // dealt in season but cut for the features, in deal order
@@ -662,8 +753,30 @@ func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
 		if acc < need {
 			tile = p.topUp(tile, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
 		}
+		pre := slices.Clone(tile)
+		if dbg := os.Getenv("TRACE2001"); dbg != "" {
+			fmt.Printf("PRE w=%d pos=%d of %d in tile; dealt pos=%d\n", v, slices.IndexFunc(tile, func(d Slot) bool { return unitKey(d) == dbg }), len(tile),
+				slices.IndexFunc(p.ring.tile(v), func(d Slot) bool { return unitKey(d) == dbg }))
+		}
 		tile = p.settle(tile, need, v, end, a, spacing, prev, pooled, owed, airedAt)
 		run[v] = tile
+		if dbg := os.Getenv("TRACE2001"); dbg != "" {
+			var i int64
+			for _, s := range p.arrange(tile, v) {
+				if s.IsProgram() {
+					if unitKey(s) == dbg {
+						last, ok := airedAt[unitKey(s)]
+						src := "deal"
+						if !slices.ContainsFunc(p.ring.tile(v), func(d Slot) bool { return unitKey(d) == dbg }) {
+							src = "topUp"
+						}
+						fmt.Printf("TRACE w=%d open=%s a=%d i=%d idx=%d last=%d(ok=%v) gap=%d src=%s inPre=%v anchor=%d end=%d\n", v, windowOpening(v, p.window, p.loc).Format(time.Stamp), a, i, a+i, last, ok, a+i-last, src,
+							slices.ContainsFunc(pre, func(d Slot) bool { return unitKey(d) == dbg }), anchor, end)
+					}
+					i++
+				}
+			}
+		}
 		prev = record(p.arrange(tile, v))
 		owed = slices.DeleteFunc(owed, func(s Slot) bool { return prev[unitKey(s)] })
 		for k := range prev {
@@ -699,6 +812,7 @@ func (p *holidayPlanner) restsBeyond(key string, v, end, spacing int64) bool {
 // most-rested units it has rather than a near-empty tile looped all day (#1939).
 func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, prev, pooled map[string]bool, owed []Slot, airedAt map[string]int64) []Slot {
 	dropped, kept := map[string]bool{}, map[string]bool{}
+	held := 0 // units held back: each moves one later, so a window's worth bounds the loop
 	for {
 		mine := map[string]bool{}
 		for _, s := range tile {
@@ -706,7 +820,7 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 				mine[unitKey(s)] = true
 			}
 		}
-		var i int64
+		var i, short int64
 		soon := ""
 		for _, s := range p.arrange(tile, v) {
 			if !s.IsProgram() {
@@ -714,7 +828,7 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 			}
 			key := unitKey(s)
 			if last, ok := airedAt[key]; ok && mine[key] && !kept[key] && a+i-last < spacing {
-				soon = key
+				soon, short = key, spacing-(a+i-last)
 				break
 			}
 			i++
@@ -738,11 +852,40 @@ func (p *holidayPlanner) settle(tile []Slot, need, v, end, a, spacing int64, pre
 			without = p.topUp(without, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
 		}
 		if aired := programRuntime(without); aired < need && aired < programRuntime(tile) && programmesIn(p.arrange(without, v)) < spacing {
+			// No rested unit can take its place, so it waits in the window until it has rested, as the
+			// dealer holds a unit back at a seam (holdBack), and stays put only once it cannot (#2001).
+			if later, ok := holdLater(tile, soon, short); ok && held < len(tile)*len(tile) {
+				tile, held = later, held+1
+				continue
+			}
+			if os.Getenv("TRACE2001") != "" {
+				fmt.Printf("SETTLE w=%d kept %s: without airs %d of need %d (tile %d), %d programmes\n", v, soon, aired, need, programRuntime(tile), programmesIn(p.arrange(without, v)))
+			}
 			kept[soon] = true
 			continue
 		}
 		tile = without
 	}
+}
+
+// holdLater is tile with key's unit moved `by` programmes later, the units it passes each moving
+// one earlier, or false when it is already the last programme.
+func holdLater(tile []Slot, key string, by int64) ([]Slot, bool) {
+	i := slices.IndexFunc(tile, func(s Slot) bool { return s.IsProgram() && unitKey(s) == key })
+	if i < 0 {
+		return nil, false
+	}
+	at := i
+	for j := i + 1; j < len(tile) && by > 0; j++ {
+		if tile[j].IsProgram() {
+			at, by = j, by-1
+		}
+	}
+	if at == i {
+		return nil, false
+	}
+	out := slices.Delete(slices.Clone(tile), i, i+1)
+	return slices.Insert(out, at, tile[i]), true
 }
 
 // programmesIn counts the programmes among slots.
@@ -793,13 +936,15 @@ func (p *holidayPlanner) topUp(tile []Slot, taken map[string]bool, short, v, end
 				future, dealt = min(future, q-from), min(dealt, q)
 			}
 		}
-		c := candidate{s: s, dist: min(past, future), near: prev[key] || next[key], owed: i < len(owed), tier: 2}
+		c := candidate{s: s, dist: min(past, future), near: prev[key] || next[key], owed: i < len(owed), tier: 3}
 		switch {
 		case past >= spacing && future >= spacing:
 			c.tier = 0
 		case past >= spacing && dealt < simulated:
 			// Too soon for its next deal, which the simulation will skip: a skip, not a repeat.
 			c.tier = 1
+		case past >= spacing && os.Getenv("EXP_TIER") != "":
+			c.tier = 2
 		}
 		cands = append(cands, c)
 	}
@@ -937,7 +1082,17 @@ func cmpBool(a, b bool) int {
 // In order, the dealer promises no spacing: an episode the window cannot defer past the band is
 // moved, with any others, to just before the band (beforeBand); what does not fit there airs at
 // the window's end.
+//
+// A window in the hand-off after a season (handOff) is already in the order it airs, and stays so.
 func (p *holidayPlanner) arrange(tile []Slot, w int64) []Slot {
+	if p.handingOff(w) {
+		return tile
+	}
+	return p.arrangeTile(tile, w)
+}
+
+// arrangeTile is arrange for a window outside the hand-off.
+func (p *holidayPlanner) arrangeTile(tile []Slot, w int64) []Slot {
 	if !p.enabled() {
 		return tile
 	}

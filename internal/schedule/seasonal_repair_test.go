@@ -465,6 +465,95 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 	}
 }
 
+// #2001: the season simulation hands a channel back to the dealer over the windows after a season
+// ends, past the two days the seam tests walk. On an 80-episode daily deck the windows of 6–13
+// November re-aired ordinary episodes inside the spacing at most deal origins. This walks every
+// window from the season's last day until well past the hand-off (24 windows, more than twice the
+// simulation's horizon and the spacing on every deck here) at sampled origins, and holds each unit
+// to the spacing, or to its closest gap as dealt with the season off where the dealer gives it less.
+// A holiday episode's in-season airings follow the rotation, not the spacing, so only gaps that
+// open after the season count.
+func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
+	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+	origins := rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:120]
+	end := day(time.November, 1, 0) // Halloween's season is Oct 1–31
+	for _, pool := range []seamPool{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {400, 24 * time.Hour}} {
+		for _, order := range []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication} {
+			t.Run(fmt.Sprintf("%d episodes/%s window/%s", pool.ordinary, pool.window, order), func(t *testing.T) {
+				t.Parallel() // origins share one chain, so a case walks them in turn
+				specials := max(3, pool.ordinary/20)
+				avail := seriesLike(pool.ordinary, halloweenSpecials(specials)...)
+				spacing := repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
+				policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+				policy.Ordering = order
+				off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
+				off.Ordering = order
+				stretch := [2]time.Time{end.Add(-max(24*time.Hour, pool.window)), end.Add(24 * pool.window)}
+				short, worst, first := 0, spacing, ""
+				for _, o := range origins {
+					ch := channelWithWindow(pool.window, nil)
+					ch.DealOrigin = year.AddDate(0, 0, o)
+					if gap, at := closestAfter(t, ch, avail, policy, off, stretch, end, spacing); at != "" {
+						short++
+						if gap < worst {
+							worst = gap
+						}
+						if first == "" {
+							first = fmt.Sprintf("origin %s: %s", ch.DealOrigin.Format(time.DateOnly), at)
+						}
+					}
+				}
+				if short > 0 {
+					t.Errorf("%d of %d origins air a unit inside its spacing (%d programmes) after the season, worst %d (first: %s)", short, len(origins), spacing, worst, first)
+				}
+			})
+		}
+	}
+}
+
+// closestAfter walks the windows of stretch as playout airs them, on the seasonal policy and on
+// `off`, and returns the shortest gap that opens at or after `from` and is less than the spacing
+// and the closest the unit airs as dealt with the season off, with where it happened ("" if none).
+func closestAfter(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy, off schedule.ChannelPolicy, stretch [2]time.Time, from time.Time, spacing int) (int, string) {
+	t.Helper()
+	dealt := map[string]int{}
+	for id, at := range programmeIndices(t, ch, avail, off, stretch) {
+		dealt[id] = spacing
+		for k := 1; k < len(at); k++ {
+			dealt[id] = min(dealt[id], at[k]-at[k-1])
+		}
+	}
+	closest, where := spacing, ""
+	last := map[string]airing{}
+	at := map[string]int{}
+	n := 0
+	for open := stretch[0]; open.Before(stretch[1]); open = open.Add(ch.DefaultWindow) {
+		for _, a := range airedLooped(t, ch, avail, policy, open) {
+			if k, ok := at[a.id]; ok && n-k < min(spacing, dealt[a.id]) && !a.start.Before(from) && (!isHoliday(a.id) || !last[a.id].start.Before(from)) && n-k < closest {
+				closest, where = n-k, fmt.Sprintf("%s at %s and again %d programmes later at %s", a.id, last[a.id].start.Format(time.Stamp), n-k, a.start.Format(time.Stamp))
+			}
+			last[a.id], at[a.id] = a, n
+			n++
+		}
+	}
+	return closest, where
+}
+
+// programmeIndices walks the windows of [stretch[0], stretch[1]) as playout airs them and returns,
+// for each unit, the programme indices it airs at.
+func programmeIndices(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, stretch [2]time.Time) map[string][]int {
+	t.Helper()
+	out := map[string][]int{}
+	n := 0
+	for open := stretch[0]; open.Before(stretch[1]); open = open.Add(ch.DefaultWindow) {
+		for _, a := range airedLooped(t, ch, avail, policy, open) {
+			out[a.id] = append(out[a.id], n)
+			n++
+		}
+	}
+	return out
+}
+
 var holidayStrengths = []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy}
 
 type seamCase struct {
