@@ -544,6 +544,23 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(within(sectionBar).getByRole("link", { name: "Filler" })).toHaveAttribute("aria-current", "page");
   });
 
+  // An admin's bar has every section and marks the one on screen (#1987 changed only what a
+  // member's bar marks on a section it doesn't list; that half is in app-router.test.tsx).
+  it.each([
+    ["watch", "Watch"],
+    ["info", "Channel info"],
+    ["programming", "Programming"],
+    ["filler", "Filler"],
+    ["danger", "Danger zone"],
+  ])("/channels/ch-1/%s marks %s as the current section", async (section, label) => {
+    stubReachable();
+    renderAt(`/channels/ch-1/${section}`);
+    const sectionBar = await screen.findByRole("navigation", { name: /channel sections/i });
+    await waitFor(() => expect(within(sectionBar).getAllByRole("link")).toHaveLength(5));
+    expect(within(sectionBar).getAllByRole("link", { current: "page" })).toHaveLength(1);
+    expect(within(sectionBar).getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+  });
+
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only
   // proves a URL works for someone who already knows it. This is the V1/V17a/V23 failure in tab
   // form — a panel that exists at an address nobody can navigate to.

@@ -276,13 +276,16 @@ const ChannelDetailLayout = () => {
         // One reachable section ⇒ no bar (a lone tab is chrome, not navigation). True only if an
         // install ever hides Watch; today a viewer always has Overview + Watch.
         if (visible.length < 2) return null;
+        // ⚠ No fallback tab. A member who opens Programming, Filler or Danger zone by URL sees
+        // "Admins only", and their bar has only Watch and Channel info: lighting Channel info
+        // there (the old `?? "info"`) said they were on a page they weren't (#1987).
         return (
           <div className="px-4 pt-2 sm:px-6">
             <NavTabs
               label="Channel sections"
               linkComponent={Link}
               tabs={visible.map((s) => ({ id: s.id, label: s.label, to: s.to.replace("$id", id) }))}
-              activeId={visible.find((s) => pathname.endsWith(`/${s.id}`))?.id ?? "info"}
+              activeId={visible.find((s) => pathname.endsWith(`/${s.id}`))?.id}
             />
           </div>
         );
