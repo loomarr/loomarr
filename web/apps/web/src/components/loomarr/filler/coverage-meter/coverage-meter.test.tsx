@@ -251,6 +251,10 @@ describe("CoverageMeter", () => {
     // The healthy settings are still listed, with their counts — the contrast is what makes the
     // zero legible as the culprit rather than as one number among six.
     expect(screen.getByText("214 clips")).toBeInTheDocument();
+    // The COMPUTED colour, not a class: a `text-onair-300` class on Caption rendered grey for
+    // weeks because Caption's inline colour beats any class (#1850, found by #1956).
+    expect(screen.getByText("nothing matches")).toHaveStyle({ color: "#E85A5F" });
+    expect(screen.getByText("214 clips")).toHaveStyle({ color: "#8B93A3" });
   });
 
   it("pluralises the heading when more than one setting is empty", async () => {

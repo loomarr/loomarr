@@ -22,6 +22,12 @@ import type { CaptionProps } from "./caption.type";
 //
 // "If it came from a machine, it's mono" — a duration, a clock time, a channel number, an id,
 // an era. Prose that a person wrote is not a caption, however small it renders.
+const toneColor: Record<NonNullable<CaptionProps["tone"]>, string> = {
+  muted: semanticColors.content.secondary,
+  strong: semanticColors.content.primary,
+  danger: semanticColors.state.danger,
+};
+
 const Caption = ({
   tone = "muted",
   shout = false,
@@ -33,7 +39,7 @@ const Caption = ({
   <Tag
     className={cn(shout && "tracking-wide", className)}
     style={{
-      color: tone === "muted" ? semanticColors.content.secondary : semanticColors.content.primary,
+      color: toneColor[tone],
       fontFamily: "var(--font-mono)",
       // No explicit line-height: the legacy `text-2xs` utility set none either, so this keeps
       // the browser's own normal metric rather than inventing a value that wasn't there before.

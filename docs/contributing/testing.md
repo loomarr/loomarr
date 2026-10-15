@@ -632,9 +632,37 @@ branch cut before it landed onto `main` before you dispatch.
 
 GitHub only offers a dispatch for a workflow that exists on `main`, so the run always comes from
 main's copy, and it refuses to run from any other ref. The update only rewrites a baseline whose
-comparison failed. A change smaller than the suite's pixel tolerance leaves the old PNG in place.
-Playwright's per-pixel `threshold` is 0.2, so a subtle recolour such as a pastel fill passes every
-comparison and rewrites nothing (#1956).
+comparison failed. A change smaller than the suite's pixel tolerance leaves the old PNG in place;
+[the per-pixel threshold](#the-per-pixel-threshold) says which changes that is.
+
+#### The per-pixel threshold
+
+A screenshot fails when more than 0.1% of its pixels differ (`maxDiffPixelRatio: 0.001`). The
+per-pixel `threshold` decides whether one pixel "differs". Playwright compares two pixels by their
+YIQ colour distance, and a pixel counts only when the distance exceeds `35215 × threshold²`. The
+suite sets `threshold: 0.05`, a limit of 88, in `web/apps/web/playwright.shared.ts`.
+
+It used to be Playwright's default, 0.2, a limit of 1408. That let whole token recolours through.
+When it was tightened (#1956), 121 baselines had drifted from the code without failing a
+comparison. Every one traced to a merged change. Two full CI runs on the same commit failed the
+same 121 snapshots and nothing else, so 0.05 adds no anti-aliasing noise and no flake.
+
+| Change                                                    | YIQ distance | Caught at 0.2 | at 0.1 | at 0.05 |
+| --------------------------------------------------------- | -----------: | :-----------: | :----: | :-----: |
+| amber `#FFB020` → control border `#666970`                |        6,104 |      yes      |  yes   |   yes   |
+| `static-500` `#5A6170` vs `static-800` `#1B1E24`          |        2,266 |      yes      |  yes   |   yes   |
+| amber tint `#5A431B` → `static-700` `#2A2E37`             |          599 |      no       |  yes   |   yes   |
+| light focus cream `#FFF3D6` → grey `#D2D6DE`              |          592 |      no       |  yes   |   yes   |
+| disabled control border `#1A1D22` → `#383A3F`             |          434 |      no       |  yes   |   yes   |
+| `static-700` `#2A2E37` → `static-800` `#1B1E24`           |          131 |      no       |   no   |   yes   |
+| 15% amber wash `#2F2410` → `static-800`                   |          115 |      no       |   no   |   yes   |
+| airing `#282C34` vs `static-800`                          |           99 |      no       |   no   |   yes   |
+| adjacent darks: `static-950`↔`900`, `static-900`↔`800`    |           41 |      no       |   no   |   no    |
+| control border step `#61646B` → `#666970`                 |           13 |      no       |   no   |   no    |
+
+The suite still can't see a change between adjacent dark steps, or a one-step tweak to a token's
+value. Seeing those would need a threshold near 0.03, which no measurement backs. When you make
+such a change on purpose, refresh its stories with [`force`](#forcing-a-refresh-under-the-threshold).
 
 #### Forcing a refresh under the threshold
 
