@@ -18,6 +18,14 @@ on:
         description: Pull request number whose branch gets regenerated baselines
         required: true
         type: string
+      # Empty, the render rewrites only the baselines whose comparison failed. A regex narrows the
+      # render to the matching tests and rewrites all of their baselines, for an intended change too
+      # subtle to fail the comparison (#1956).
+      force:
+        description: Optional Playwright --grep regex of story or test names to re-render and commit even under the threshold
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -107,7 +115,9 @@ jobs:
     steps:
       # The render run is named after this run's id and attempt, so it is found by that name and
       # not by whichever run on the branch happens to be newest. A branch cut before the render
-      # workflow existed cannot run it and must be rebased onto the default branch first.
+      # workflow existed cannot run it and must be rebased onto the default branch first. `force`
+      # is passed only when set, so an unforced dispatch still works on a branch whose render
+      # workflow predates that input.
       - name: Dispatch the render and wait for it
         id: render
         shell: bash
@@ -118,10 +128,15 @@ jobs:
           HEAD_SHA: ${{ needs.resolve.outputs.sha }}
           REQUEST: ${{ github.run_id }}-${{ github.run_attempt }}
           SERVER_URL: ${{ github.server_url }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          if ! gh workflow run visual-baselines-render.yml --repo "$REPO" --ref "$BRANCH" \
-            -f sha="$HEAD_SHA" -f request="$REQUEST"; then
+          inputs=(-f sha="$HEAD_SHA" -f request="$REQUEST")
+          if [ -n "$FORCE" ]; then
+            inputs+=(-f force="$FORCE")
+            echo "Forcing a rewrite of every baseline of the tests matching: $FORCE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if ! gh workflow run visual-baselines-render.yml --repo "$REPO" --ref "$BRANCH" "${inputs[@]}"; then
             echo "::error::could not dispatch the render on $BRANCH; rebase it onto the default branch so it has visual-baselines-render.yml"
             exit 1
           fi
@@ -216,6 +231,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           RENDER_RUN: ${{ needs.render.outputs.run_id }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
           in="$RUNNER_TEMP/visual-baselines"
@@ -265,6 +281,10 @@ jobs:
             "Baselines only: $count PNGs rewritten by the Visual baselines workflow," \
             "run $RUN_URL (attempt $RUN_ATTEMPT), rendered from $HEAD_SHA by render run $RENDER_RUN." \
             > "$RUNNER_TEMP/commit-message.txt"
+          if [ -n "$FORCE" ]; then
+            printf '%s\n' "" "Forced: every baseline of the tests matching this regex was rewritten:" "$FORCE" \
+              >> "$RUNNER_TEMP/commit-message.txt"
+          fi
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit --quiet --no-verify --file="$RUNNER_TEMP/commit-message.txt"

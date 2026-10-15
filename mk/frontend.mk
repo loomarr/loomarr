@@ -140,6 +140,10 @@ ensure-playwright-image: ## use a cached Playwright image or pull it with bounde
 fe-visual: storybook-build ensure-playwright-image ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
 	./scripts/run-playwright-container.sh visual
 
+# LOOMARR_PLAYWRIGHT_FORCE is the Visual baselines workflow's `force` input, environment-only like
+# the shard. Empty, the update rewrites only failed or missing snapshots. Set to a Playwright
+# --grep regex, the update runs only the matching tests and rewrites every one of their snapshots
+# (--update-snapshots=all), so a change under the pixel threshold still refreshes its baselines.
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ensure-playwright-image ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
 	./scripts/run-playwright-container.sh visual-update

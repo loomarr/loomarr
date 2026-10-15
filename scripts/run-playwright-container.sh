@@ -43,8 +43,16 @@ case "$mode" in
     exec "${playwright_args[@]}"
     ;;
   visual-update)
+    update_args=(--update-snapshots)
+    if [[ -n ${LOOMARR_PLAYWRIGHT_FORCE:-} ]]; then
+      if [[ $LOOMARR_PLAYWRIGHT_FORCE == *[[:cntrl:]]* ]]; then
+        echo "invalid LOOMARR_PLAYWRIGHT_FORCE: it holds a control character" >&2
+        exit 2
+      fi
+      update_args=(--update-snapshots=all "--grep=$LOOMARR_PLAYWRIGHT_FORCE")
+    fi
     exec docker "${docker_args[@]}" -v "$repo_root/web:/work" -w /work/apps/web "$image" \
-      node_modules/.bin/playwright test --update-snapshots
+      node_modules/.bin/playwright test "${update_args[@]}"
     ;;
   e2e)
     exec docker "${docker_args[@]}" -v "$repo_root:/work" -w /work/web/apps/web "$image" \
