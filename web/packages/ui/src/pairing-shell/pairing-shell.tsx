@@ -19,19 +19,27 @@ import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, type ScrollView 
 
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
 import { PhoneApproval } from "./phone-approval";
-import { ServerRow } from "./server-row";
+import { ServerRow, serverAddressLabel } from "./server-row";
 
 const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
 const subscribeToNothing = () => () => undefined;
 const readEmptyDiscovery = () => emptyDiscovery;
 
 /**
+ * A typo'd address is rejected before any request (#1966), so it isn't a failed connection: the
+ * server-choice screen stays up with the text kept in its field and the message under it.
+ */
+const isInvalidAddress = (state: PairingState) =>
+  state.status === "failed" && state.kind === "invalid-address";
+
+/**
  * Whether Back leaves this pairing screen for server choice: the code screen and a failed connection
  * both offer "another server". The other screens are a root, where Back leaves the app. An Apple TV
  * hands its Menu key to the app only while this holds, so Menu still goes Home from server choice.
+ * A rejected address is already on server choice, so it is not one of them.
  */
 const pairingBackAvailable = (state: PairingState) =>
-  state.status === "awaiting-approval" || state.status === "failed";
+  state.status === "awaiting-approval" || (state.status === "failed" && !isInvalidAddress(state));
 
 const PairingShell = ({
   allowServerEntry = false,
@@ -78,14 +86,21 @@ const PairingShell = ({
     if (state.status !== "awaiting-approval" || !approvalBrowser) return undefined;
     return () => approvalBrowser.close();
   }, [approvalBrowser, state.status]);
+  const invalidAddress = isInvalidAddress(state);
+  // The rejected text goes back into the field, so the viewer fixes it rather than retypes it.
+  const rejectedInput = state.status === "failed" ? state.input : undefined;
   useEffect(() => {
-    if (state.status !== "needs-server" || !discovery || !discoveryForeground) {
+    if (rejectedInput !== undefined) setServerUrl(rejectedInput);
+  }, [rejectedInput]);
+  const choosingServer = state.status === "needs-server" || invalidAddress;
+  useEffect(() => {
+    if (!choosingServer || !discovery || !discoveryForeground) {
       discovery?.stop();
       return undefined;
     }
     discovery.start();
     return () => discovery.stop();
-  }, [discovery, discoveryForeground, state.status]);
+  }, [choosingServer, discovery, discoveryForeground]);
   const chooseAnotherServer = useCallback(() => {
     setManualEntry(false);
     session.chooseServer();
@@ -185,7 +200,8 @@ const pairingContent = (
         </Text>
       </>
     );
-  if (state.status === "needs-server")
+  if (state.status === "needs-server" || isInvalidAddress(state)) {
+    const addressError = state.status === "failed" ? state.message : undefined;
     return (
       <>
         <Text density={density} textRole="title">
@@ -204,7 +220,7 @@ const pairingContent = (
               key={server.id}
               onPress={() => void session.pair(server.url)}
             >
-              {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
+              {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${serverAddressLabel(server.url)}`}
             </Action>
           ),
         )}
@@ -226,13 +242,14 @@ const pairingContent = (
           </Text>
         ) : null}
         {allowServerEntry ? (
-          manualEntry ? (
+          manualEntry || addressError ? (
             <>
               <Field
                 accessibilityLabel="Loomarr server address"
                 autoCapitalize="none"
                 autoCorrect={false}
                 density={density}
+                error={addressError}
                 hasTVPreferredFocus={density === "tv"}
                 keyboardType="url"
                 onChangeText={setServerUrl}
@@ -262,6 +279,7 @@ const pairingContent = (
         )}
       </>
     );
+  }
   if (state.status === "awaiting-approval") {
     const seconds = Math.max(0, Math.ceil((state.expiresAtMs - Date.now()) / 1_000));
     // Maintainer decision (#1817, pairing states): urgent under 60s, danger + semibold.
@@ -280,6 +298,11 @@ const pairingContent = (
       );
     return (
       <>
+        {density === "tv" ? (
+          <Text density={density} textRole="title">
+            Approve this TV
+          </Text>
+        ) : null}
         <Surface
           backgroundColor="$transparent"
           borderWidth={0}
@@ -382,15 +405,17 @@ const pairingContent = (
               {countdownLabel}
             </Text>
           )}
+          {/* "Get a new code" replaces the code being typed on another device, so one stray click
+              must not land on it: focus starts on the harmless "Use a different server" (#10). */}
+          <Action density={density} onPress={() => void session.pair(state.serverUrl)} tone="secondary">
+            Get a new code
+          </Action>
           <Action
             density={density}
             hasTVPreferredFocus={density === "tv"}
-            onPress={() => void session.pair(state.serverUrl)}
+            onPress={chooseAnotherServer}
             tone="secondary"
           >
-            Get a new code
-          </Action>
-          <Action density={density} onPress={chooseAnotherServer} tone="secondary">
             Use a different server
           </Action>
         </Surface>
