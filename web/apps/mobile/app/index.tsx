@@ -47,17 +47,11 @@ const approvalBrowser: ApprovalBrowser = {
   close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
   name: Platform.OS === "ios" ? "Safari" : "your browser",
   open: (url) => {
-    approvalOpened = true;
     void WebBrowser.openBrowserAsync(url, {
       presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
     });
   },
 };
-// Set when the viewer opens the approval sheet. The shell mounts as soon as the app is paired, but
-// only a pairing the viewer just approved earns the success tap: a launch with a saved credential
-// mounts it too, with nothing pressed.
-let approvalOpened = false;
-
 // A request decided (approved or denied) taps success; a refused one stays silent.
 const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedback): RequestsController => {
   const tapWhenDone =
@@ -176,11 +170,6 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     () => withDecisionHaptic(requests.controller, haptic),
     [haptic, requests.controller],
   );
-  useEffect(() => {
-    if (!approvalOpened) return;
-    approvalOpened = false;
-    haptic.success();
-  }, [haptic]);
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
@@ -267,6 +256,17 @@ const Index = () => {
       }),
     [],
   );
+  // The success tap belongs to the moment pairing completes: awaiting approval, then paired. A launch
+  // that restores a saved credential goes loading → paired with nothing pressed, so it stays silent.
+  const haptic = useHaptic();
+  useEffect(() => {
+    let previous = session.snapshot().status;
+    const unsubscribe = session.subscribe((state) => {
+      if (previous === "awaiting-approval" && state.status === "paired") haptic.success();
+      previous = state.status;
+    });
+    return () => void unsubscribe();
+  }, [haptic, session]);
   return (
     <>
       <PairingShell
