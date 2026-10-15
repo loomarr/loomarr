@@ -1,7 +1,22 @@
+import { forwardRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { LoomarrProvider, SegmentedControl } from "../index";
+
+// Records the props of every React Native View. Tamagui's own `role` prop never reaches a native view,
+// so the roles VoiceOver reads must be on these, not only in the web markup below.
+const nativeViewProps = vi.hoisted(() => [] as Record<string, unknown>[]);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  const Original = actual.View;
+  const Recording = forwardRef<unknown, Record<string, unknown>>((props, ref) => {
+    nativeViewProps.push(props);
+    // biome-ignore lint/suspicious/noExplicitAny: a pass-through to the real View.
+    return <Original {...(props as any)} ref={ref as any} />;
+  });
+  return { ...actual, View: Recording };
+});
 
 const render = (node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
@@ -31,6 +46,19 @@ describe("segmented control", () => {
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
     expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
     expect(markup.match(/aria-selected="false"/g)).toHaveLength(2);
+  });
+
+  it("gives a native view the tablist role and each segment the tab role and its selected state", () => {
+    nativeViewProps.length = 0;
+    control();
+    const tablists = nativeViewProps.filter((props) => props.accessibilityRole === "tablist");
+    expect(tablists).toHaveLength(1);
+    expect(tablists[0]?.accessibilityLabel).toBe("Requests sections");
+    // The tab list contains the tabs: it is the only native View between the page and the Pressables.
+    const markup = control();
+    const list = markup.slice(markup.indexOf('role="tablist"'));
+    expect(list.match(/role="tab"/g)).toHaveLength(3);
+    expect(list.match(/aria-selected="true"/g)).toHaveLength(1);
   });
 
   it("puts the count in each segment's accessible label as well as beside its text", () => {

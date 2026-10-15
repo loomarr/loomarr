@@ -3,11 +3,15 @@ import {
   type Intent,
   type ProposalDTO,
   type PullDTO,
+  type RequestsController,
+  type RequestsSnapshot,
   type RequestTab,
   requestsInTab,
+  requestsNeedsYouCount,
 } from "@loomarr/core/requests";
 import { Action, PHONE_GUTTER, Screen, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useReducer, useState, useSyncExternalStore } from "react";
+import { RefreshControl } from "react-native";
 import type { BriefState } from "../request-channel";
 import { RequestChannel } from "../request-channel";
 import { RequestDetail } from "../request-detail";
@@ -17,9 +21,22 @@ import { ReviewSheet } from "../review-sheet";
 import type { RequestsJourneyProps } from "./requests-journey.type";
 
 type Route =
-  | { tab: RequestTab; view: "list" }
+  | { view: "list" }
   | { jobId: string; view: "detail" }
   | { initialIntent?: Intent; view: "request" };
+
+// The section a person last picked outlives this screen (the host unmounts it when they visit another
+// tab), so it is kept per controller: the host creates one for the app's lifetime, and a new one,
+// as after pairing again, starts over.
+const lastPickedTab = new WeakMap<RequestsController, RequestTab>();
+
+// Opens on the first section with something in it, in the order they're drawn: Needs you, In progress, Done.
+const firstFilledTab = (snapshot: RequestsSnapshot): RequestTab =>
+  requestsNeedsYouCount(snapshot) > 0
+    ? "needs-you"
+    : requestsInTab(snapshot, "in-progress").length === 0 && requestsInTab(snapshot, "done").length > 0
+      ? "done"
+      : "in-progress";
 
 type Banner = {
   action?: { label: string; onPress: () => void };
@@ -30,9 +47,14 @@ type Banner = {
 // The phone's Requests, end to end: the list, one request, and the "Request a channel" form. It reads
 // one RequestsController (the host owns its lifetime and disposes it), so the badge, the tab counts and
 // every list agree. Admin controls appear only for the role `/v1/auth/me` reports, as on Web.
-const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJourneyProps) => {
+const RequestsJourney = ({ channels, controller, footer, nowMs, onOpenChannel }: RequestsJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const [route, setRoute] = useState<Route>({ tab: "in-progress", view: "list" });
+  const [route, setRoute] = useState<Route>({ view: "list" });
+  // A list already read when the screen opens (the host loads it with the app) draws on its section at once.
+  const [tab, setTab] = useState<RequestTab>(
+    () => lastPickedTab.get(controller) ?? firstFilledTab(controller.getSnapshot()),
+  );
+  const [refreshing, setRefreshing] = useState(false);
   const [brief, setBrief] = useState<BriefState>({ kind: "idle" });
   const [approved, setApproved] = useState<Banner>();
   const [review, dispatchReview] = useReducer(reviewReducer, initialReview);
@@ -46,17 +68,30 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
     if (requestingIdeas) void controller.refreshIdeas();
   }, [controller, requestingIdeas]);
 
-  // Land on Needs you when something is waiting for this person, as Web's badge invites.
-  const needsYou =
-    requestsInTab(snapshot, "needs-you").length +
-    (snapshot.role === "admin" ? snapshot.approvals.length + snapshot.fillerPulls.length : 0);
-  const [landed, setLanded] = useState(false);
+  // Land once on the section the person last picked, else the first with something in it. Later
+  // refreshes never move them off the section they are reading.
+  const [landed, setLanded] = useState(
+    () => lastPickedTab.has(controller) || controller.getSnapshot().status === "ready",
+  );
   useEffect(() => {
     if (snapshot.status === "ready" && !landed) {
       setLanded(true);
-      if (needsYou > 0) setRoute({ tab: "needs-you", view: "list" });
+      setTab(firstFilledTab(snapshot));
     }
-  }, [landed, needsYou, snapshot.status]);
+  }, [landed, snapshot]);
+  const pickTab = (picked: RequestTab) => {
+    lastPickedTab.set(controller, picked);
+    setTab(picked);
+  };
+  // Pull-to-refresh spins until the list has been read again, whatever the read's outcome.
+  const refreshList = async () => {
+    setRefreshing(true);
+    try {
+      await controller.refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const banner: Banner | undefined = snapshot.notice
     ? { message: snapshot.notice, tone: "danger" }
@@ -66,9 +101,12 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
     setApproved(undefined);
   };
 
-  const goList = (tab: RequestTab = "in-progress") => {
+  // Back on the list, on the section the person was reading. A refusal the form showed (an idea that
+  // couldn't be requested) belongs to the form, so it goes with it rather than greeting the list.
+  const goList = () => {
+    if (route.view === "request") controller.dismissNotice();
     setBrief({ kind: "idle" });
-    setRoute({ tab, view: "list" });
+    setRoute({ view: "list" });
   };
 
   const approve = async (proposal: ProposalDTO, edit?: ApprovalEditDTO) => {
@@ -157,6 +195,7 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
           setBrief({ kind: "sending" });
           const result = await controller.submitBrief(intent);
           if (result.kind === "started") {
+            controller.dismissNotice();
             setBrief({ kind: "idle" });
             setRoute({ jobId: result.jobId, view: "detail" });
           } else if (result.kind === "unavailable") setBrief(result);
@@ -169,8 +208,12 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
     );
   } else {
     body = (
-      <ScrollFrame density="touch">
+      <ScrollFrame
+        density="touch"
+        refreshControl={<RefreshControl onRefresh={() => void refreshList()} refreshing={refreshing} />}
+      >
         <RequestsList
+          channels={channels}
           nowMs={nowMs}
           onApprove={(proposal) => void approve(proposal)}
           onApproveFiller={(pull) => void approveFiller(pull)}
@@ -180,13 +223,13 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
           onRequestChannel={() => setRoute({ view: "request" })}
           onReview={dispatchReview}
           onRetry={() => void controller.refresh()}
-          onTabChange={(tab) => {
+          onTabChange={(picked) => {
             dispatchReview({ type: "close-sheet" });
-            setRoute({ tab, view: "list" });
+            pickTab(picked);
           }}
           review={review}
           snapshot={snapshot}
-          tab={route.view === "list" ? route.tab : "in-progress"}
+          tab={tab}
         />
       </ScrollFrame>
     );

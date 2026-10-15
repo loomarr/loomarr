@@ -112,7 +112,7 @@ const ChannelIdeas = ({
   return (
     <>
       <Text density="touch" textRole="headline">
-        Channel ideas
+        Or try one of these
       </Text>
       {hiddenIdea ? (
         <Surface
@@ -170,9 +170,9 @@ const ChannelIdeas = ({
   );
 };
 
-// "Request a channel" on the phone, with both of Web's ways in. Channel ideas are the server's cards
-// and work with AI off; the typed brief goes to the suggester and, when AI or TMDB isn't set up, keeps
-// the draft and says who can fix it. Either way the request then waits for an admin. An admin gets the
+// "Request a channel" on the phone, with both of Web's ways in. The typed brief comes first and goes to
+// the suggester and, when AI or TMDB isn't set up, keeps the draft and says who can fix it; the server's
+// idea cards follow under "Or try one of these" and work with AI off. Either way the request then waits for an admin. An admin gets the
 // brief only: the server refuses an admin's idea request ("Channel ideas are for members"), and Web's
 // Home leaves the ideas out for an admin the same way.
 const RequestChannel = ({
@@ -216,20 +216,6 @@ const RequestChannel = ({
           Describe what you want to watch. You'll choose the final titles before anything is created.
         </Text>
 
-        {viewer === "admin" ? null : (
-          <ChannelIdeas
-            hiddenIdea={hiddenIdea}
-            ideas={ideas}
-            ideasStatus={ideasStatus}
-            nowMs={nowMs}
-            onHideIdea={onHideIdea}
-            onRequestIdea={onRequestIdea}
-            onRetryIdeas={onRetryIdeas}
-            onUndoHide={onUndoHide}
-            requestingIdeaId={requestingIdeaId}
-          />
-        )}
-
         <Text density="touch" textRole="headline">
           Describe your own
         </Text>
@@ -251,7 +237,7 @@ const RequestChannel = ({
         />
         <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" role="group">
           <Text density="touch" textRole="caption" tone="secondary">
-            Or start from one of these
+            Start from a template
           </Text>
           {CHANNEL_TEMPLATES.map((template) => (
             <Action
@@ -287,6 +273,20 @@ const RequestChannel = ({
         <Action accessibilityRole="button" density="touch" disabled={sending} onPress={submit} tone="primary">
           {sending ? "Sending…" : "Suggest titles"}
         </Action>
+
+        {viewer === "admin" ? null : (
+          <ChannelIdeas
+            hiddenIdea={hiddenIdea}
+            ideas={ideas}
+            ideasStatus={ideasStatus}
+            nowMs={nowMs}
+            onHideIdea={onHideIdea}
+            onRequestIdea={onRequestIdea}
+            onRetryIdeas={onRetryIdeas}
+            onUndoHide={onUndoHide}
+            requestingIdeaId={requestingIdeaId}
+          />
+        )}
       </ScrollFrame>
     </Surface>
   );

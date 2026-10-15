@@ -163,6 +163,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
         // The journey docks its review sheet directly above the tab bar, so it draws the footer itself.
         (navigation) => (
           <RequestsJourney
+            channels={snapshot.catalog}
             controller={requests.controller}
             footer={navigation}
             onOpenChannel={watchChannel}

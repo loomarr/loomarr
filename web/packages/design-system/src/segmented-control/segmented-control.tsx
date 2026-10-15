@@ -1,6 +1,6 @@
 import { Text as TamaguiText, View } from "@tamagui/core";
 import { useState } from "react";
-import { Pressable } from "react-native";
+import { View as NativeView, Pressable } from "react-native";
 
 type SegmentOption<Value extends string> = {
   /** What the segment counts, shown beside its label and read with it; omitted draws and says nothing. */
@@ -38,72 +38,75 @@ const SegmentedControl = <Value extends string>({
   value,
 }: SegmentedControlProps<Value>) => {
   const [focused, setFocused] = useState<Value | null>(null);
+  // Tamagui's `role="tablist"` never reaches a native view, so VoiceOver read the track as a generic
+  // element. The tab list is a plain React Native View, which both iOS and Android take the role from
+  // (and react-native-web renders as role="tablist"); the track inside only draws.
   return (
-    <View
-      aria-label={accessibilityLabel}
-      backgroundColor="$surfaceRaised"
-      borderColor="$borderDecorative"
-      borderRadius="$control"
-      borderWidth={1}
-      flexDirection="row"
-      gap={TRACK_PADDING}
-      padding={TRACK_PADDING}
-      role="tablist"
-      width="100%"
-    >
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            accessibilityLabel={segmentLabel(option)}
-            accessibilityRole="tab"
-            accessibilityState={{ disabled: option.disabled ?? false, selected }}
-            aria-selected={selected}
-            disabled={option.disabled}
-            key={option.value}
-            onBlur={() => setFocused(null)}
-            onFocus={() => setFocused(option.value)}
-            onPress={() => onValueChange(option.value)}
-            style={{ flex: 1, minHeight: SEGMENT_HEIGHT }}
-          >
-            <View
-              alignItems="center"
-              backgroundColor={selected ? "$borderDecorative" : "$transparent"}
-              borderColor={focused === option.value ? "$actionFocus" : "$transparent"}
-              borderRadius={8}
-              borderWidth={2}
-              flex={1}
-              flexDirection="row"
-              gap={4}
-              justifyContent="center"
-              minHeight={SEGMENT_HEIGHT}
-              opacity={option.disabled ? 0.4 : 1}
-              paddingHorizontal={4}
+    <NativeView accessibilityLabel={accessibilityLabel} accessibilityRole="tablist" style={{ width: "100%" }}>
+      <View
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRadius="$control"
+        borderWidth={1}
+        flexDirection="row"
+        gap={TRACK_PADDING}
+        padding={TRACK_PADDING}
+        width="100%"
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              accessibilityLabel={segmentLabel(option)}
+              accessibilityRole="tab"
+              accessibilityState={{ disabled: option.disabled ?? false, selected }}
+              aria-selected={selected}
+              disabled={option.disabled}
+              key={option.value}
+              onBlur={() => setFocused(null)}
+              onFocus={() => setFocused(option.value)}
+              onPress={() => onValueChange(option.value)}
+              style={{ flex: 1, minHeight: SEGMENT_HEIGHT }}
             >
-              <TamaguiText
-                color={selected ? "$contentPrimary" : "$contentSecondary"}
-                fontFamily="$body"
-                fontSize={13}
-                fontWeight={selected ? "600" : "500"}
-                numberOfLines={1}
+              <View
+                alignItems="center"
+                backgroundColor={selected ? "$borderDecorative" : "$transparent"}
+                borderColor={focused === option.value ? "$actionFocus" : "$transparent"}
+                borderRadius={8}
+                borderWidth={2}
+                flex={1}
+                flexDirection="row"
+                gap={4}
+                justifyContent="center"
+                minHeight={SEGMENT_HEIGHT}
+                opacity={option.disabled ? 0.4 : 1}
+                paddingHorizontal={4}
               >
-                {option.label}
-              </TamaguiText>
-              {option.count === undefined ? null : (
                 <TamaguiText
                   color={selected ? "$contentPrimary" : "$contentSecondary"}
                   fontFamily="$body"
                   fontSize={13}
-                  fontWeight="500"
+                  fontWeight={selected ? "600" : "500"}
+                  numberOfLines={1}
                 >
-                  {option.count}
+                  {option.label}
                 </TamaguiText>
-              )}
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
+                {option.count === undefined ? null : (
+                  <TamaguiText
+                    color={selected ? "$contentPrimary" : "$contentSecondary"}
+                    fontFamily="$body"
+                    fontSize={13}
+                    fontWeight="500"
+                  >
+                    {option.count}
+                  </TamaguiText>
+                )}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </NativeView>
   );
 };
 
