@@ -174,6 +174,7 @@ func TestHolidayEpisodes_StrengthOrdersLightFeaturedHeavy(t *testing.T) {
 }
 
 func TestHolidayEpisodes_NeverRepeatWithinTwoDays(t *testing.T) {
+	schedule.SkipSerialUnderRace(t)
 	last := map[string]time.Time{}
 	for d := 1; d <= 30; d++ { // Oct 31 is the documented marathon exception
 		seen := map[string]bool{}
@@ -252,6 +253,7 @@ func TestHolidayEpisodes_OutOfSeasonKeptOutOfTheEvening(t *testing.T) {
 // would cost the repeat spacing (TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin holds that
 // side). It is still never benched, and the evening still moves the ones that cost nothing.
 func TestHolidayEpisodes_OutOfSeasonShuffledLeavesTheEveningWhereSpacingAllows(t *testing.T) {
+	schedule.SkipSerialUnderRace(t)
 	evenings := seasonalPolicy(schedule.SeasonalPolicy{})
 	anytime := seasonalPolicy(schedule.SeasonalPolicy{Placement: schedule.HolidayPlacementAnytime})
 	off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
@@ -286,6 +288,7 @@ func TestHolidayEpisodes_OutOfSeasonShuffledLeavesTheEveningWhereSpacingAllows(t
 // with one ordinary unit after the band, so every programme between keeps its place. Deferring it
 // instead would bring each of them forward a slot.
 func TestHolidayEpisodes_OutOfSeasonShuffledSwapsWithOneUnit(t *testing.T) {
+	schedule.SkipSerialUnderRace(t)
 	ch := channelWithWindow(12*time.Hour, nil)
 	avail := seriesLike(80, halloweenSpecials(4)...)
 	evenings := seasonalPolicy(schedule.SeasonalPolicy{})

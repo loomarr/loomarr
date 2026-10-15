@@ -124,6 +124,7 @@ func TestHistory_NoUnitReturnsSoonerThanWithoutIt(t *testing.T) {
 	} {
 		for _, mode := range shuffled {
 			t.Run(fmt.Sprintf("%dx%v/%v/%s", tc.n, tc.dur, tc.window, mode), func(t *testing.T) {
+				t.Parallel()
 				durs := []time.Duration{tc.dur}
 				windows := int(60 * 24 * time.Hour / tc.window)
 				unwatched := statsOf(airWithHistory(tc.n, durs, tc.window, mode, windows, false), tc.window)
@@ -152,6 +153,7 @@ func TestHistory_FittingDeckNeverAirsBackToBack(t *testing.T) {
 			dur := window * 9 / time.Duration(10*n) // the deck fills 90% of the window
 			for _, mode := range shuffled {
 				t.Run(fmt.Sprintf("%dx%v/%v/%s", n, dur, window, mode), func(t *testing.T) {
+					t.Parallel()
 					windows := int(20 * 24 * time.Hour / window)
 					unwatched := statsOf(airWithHistory(n, []time.Duration{dur}, window, mode, windows, false), window)
 					watched := statsOf(airWithHistory(n, []time.Duration{dur}, window, mode, windows, true), window)

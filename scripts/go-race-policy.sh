@@ -6,7 +6,11 @@
 #   ./scripts/go-shard.sh 1/3 | ./scripts/go-race-policy.sh --race     -> this shard's race pkgs
 #   ./scripts/go-shard.sh 1/3 | ./scripts/go-race-policy.sh --no-race  -> this shard's non-race pkgs
 #   ./scripts/go-race-policy.sh --verify
-#       -> assert every RACE_OFF entry is a real package in `go list ./...` (CI red on drift)
+#       -> assert every RACE_OFF and RACE_AND_PLAIN entry is a real package in `go list ./...`
+#          (CI red on drift), and that no package is on both lists
+#
+# A package on RACE_AND_PLAIN is in BOTH outputs, so it runs twice: under -race and without it.
+# See that list below for why.
 #
 # ⚠ FAIL-SAFE BY INVERSION. This is an OPT-OUT list, never an opt-in one. Race stays ON for every
 # package by default; RACE_OFF names the few proven to have no concurrency worth checking. The
@@ -53,14 +57,31 @@ RACE_OFF=(
 	docs
 )
 
+# Packages that run under -race AND without it. Race stays ON for them, so this list cannot
+# shrink race coverage. It exists for a package whose tests sweep pure planning logic over many
+# cases and also share memoised state across parallel tests: the race detector is needed for the
+# shared state, but it costs the sweeps several times their plain run. Such a package's tests read
+# a `race` build-tag constant: under -race they walk a small sample that keeps the pinned
+# regression cases and the parallel paths through the shared state, and without it they walk
+# the full sample, so every assertion still runs in CI.
+#
+# internal/schedule (#2007): the full sample took 1021s under -race on four cores and 113s
+# without it, and shard 1 hit its 15-minute limit on every run from #1939 on.
+#
+# Each entry runs in both phases of its lane, so its one measured weight in
+# scripts/go-race-weights.tsv (the median of its race and plain samples) is counted in both.
+RACE_AND_PLAIN=(
+	internal/schedule
+)
+
 module_path() { go list -m; }
 
-# The RACE_OFF entries as fully-qualified import paths, one per line, sorted.
-race_off_paths() {
+# The given entries as fully-qualified import paths, one per line, sorted.
+import_paths() {
 	local mod
 	mod="$(module_path)"
 	local p
-	for p in "${RACE_OFF[@]}"; do
+	for p in "$@"; do
 		# Allow entries written either as full import paths or as module-relative (./internal/x).
 		case "$p" in
 			"$mod"/*) printf '%s\n' "$p" ;;
@@ -72,31 +93,39 @@ race_off_paths() {
 
 usage() {
 	echo "usage: go-race-policy.sh --race|--no-race   (reads package list on stdin)" >&2
-	echo "       go-race-policy.sh --verify           (checks RACE_OFF against go list ./...)" >&2
+	echo "       go-race-policy.sh --verify           (checks RACE_OFF and RACE_AND_PLAIN against go list ./...)" >&2
 	exit 2
 }
 
 mode="${1:-}"
 [ -n "$mode" ] || usage
 
+off_paths="$(import_paths "${RACE_OFF[@]}")"
+both_paths="$(import_paths "${RACE_AND_PLAIN[@]}")"
+
 if [ "$mode" = "--verify" ]; then
-	# Every RACE_OFF entry must resolve to a package the module actually contains. A ghost entry
-	# (typo, renamed, deleted) would otherwise silently opt nothing out — harmless for coverage,
-	# but it means the list is lying about what it excludes, so we fail loud.
+	# Every entry must resolve to a package the module actually contains. A ghost entry (typo,
+	# renamed, deleted) would otherwise silently select nothing — harmless for coverage, but it
+	# means the list is lying about what it names, so we fail loud.
 	all="$(go list ./... | sort)"
-	off="$(race_off_paths)"
-	if [ -z "$off" ]; then
-		echo "go-race-policy: OK — RACE_OFF is empty, every package runs under -race"
-		exit 0
-	fi
-	# Entries present in RACE_OFF but absent from `go list ./...`.
-	ghosts="$(comm -23 <(printf '%s\n' "$off") <(printf '%s\n' "$all"))"
-	if [ -n "$ghosts" ]; then
-		echo "go-race-policy: RACE_OFF names packages that do not exist in go list ./..." >&2
-		printf '  %s\n' "$ghosts" >&2
+	for list in RACE_OFF RACE_AND_PLAIN; do
+		if [ "$list" = RACE_OFF ]; then paths="$off_paths"; else paths="$both_paths"; fi
+		[ -n "$paths" ] || continue
+		ghosts="$(comm -23 <(printf '%s\n' "$paths") <(printf '%s\n' "$all"))"
+		if [ -n "$ghosts" ]; then
+			echo "go-race-policy: $list names packages that do not exist in go list ./..." >&2
+			printf '  %s\n' "$ghosts" >&2
+			exit 1
+		fi
+	done
+	# A package cannot both opt out of -race and run under it.
+	clash="$(comm -12 <(printf '%s\n' "$off_paths") <(printf '%s\n' "$both_paths"))"
+	if [ -n "$clash" ]; then
+		echo "go-race-policy: packages on both RACE_OFF and RACE_AND_PLAIN:" >&2
+		printf '  %s\n' "$clash" >&2
 		exit 1
 	fi
-	echo "go-race-policy: OK — all $(printf '%s\n' "$off" | wc -l | tr -d ' ') RACE_OFF entries are real packages"
+	echo "go-race-policy: OK — all $(printf '%s\n' "$off_paths" "$both_paths" | grep -c .) RACE_OFF and RACE_AND_PLAIN entries are real packages"
 	exit 0
 fi
 
@@ -112,26 +141,17 @@ if [ -z "$stdin_pkgs" ]; then
 	exit 2
 fi
 
-off_paths="$(race_off_paths)"
-
-if [ -z "$off_paths" ]; then
-	# Empty opt-out list: everything runs under -race, nothing runs without it.
-	case "$mode" in
-		--race) printf '%s\n' "$stdin_pkgs" | awk 'NF && !seen[$0]++' ;;
-		--no-race) : ;; # emit nothing
-	esac
-	exit 0
-fi
-
-case "$mode" in
-	# Preserve the sharder's descending-cost order. Sorting here used to undo its LPT schedule and
-	# made heavy packages start minutes late even though the aggregate lane weights were balanced.
-	--race)
-		awk 'NR == FNR { off[$0] = 1; next } NF && !seen[$0]++ && !($0 in off)' \
-			<(printf '%s\n' "$off_paths") <(printf '%s\n' "$stdin_pkgs")
-		;;
-	--no-race)
-		awk 'NR == FNR { off[$0] = 1; next } NF && !seen[$0]++ && ($0 in off)' \
-			<(printf '%s\n' "$off_paths") <(printf '%s\n' "$stdin_pkgs")
-		;;
-esac
+# Preserve the sharder's descending-cost order. Sorting here used to undo its LPT schedule and
+# made heavy packages start minutes late even though the aggregate lane weights were balanced.
+# The lists go in as variables, not as a first input file: an empty file breaks awk's NR == FNR.
+# Space-separated, since BSD awk rejects a newline in a -v value (import paths hold no spaces).
+printf '%s\n' "$stdin_pkgs" | awk -v mode="$mode" -v off="$(printf '%s' "$off_paths" | tr '\n' ' ')" \
+	-v both="$(printf '%s' "$both_paths" | tr '\n' ' ')" '
+	BEGIN {
+		n = split(off, o, " "); for (i = 1; i <= n; i++) if (o[i] != "") is_off[o[i]] = 1
+		n = split(both, b, " "); for (i = 1; i <= n; i++) if (b[i] != "") is_both[b[i]] = 1
+	}
+	NF && !seen[$0]++ {
+		if (mode == "--race" && !($0 in is_off)) print
+		if (mode == "--no-race" && ($0 in is_off || $0 in is_both)) print
+	}'

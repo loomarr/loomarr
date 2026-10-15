@@ -66,5 +66,20 @@ run_packages() {
     "$package_runner" "$mode" 25m "${package_args[@]}"
 }
 
-run_packages race "$race_packages"
-run_packages plain "$plain_packages"
+case "$lane" in
+  [1-2]/2)
+    # An ordinary lane runs its two phases at once, so a package the race policy runs in both
+    # (RACE_AND_PLAIN, #2007) does not add its plain run as a tail after the race phase. The plain
+    # phase is otherwise a few cheap packages. Certification lanes stay one package at a time.
+    run_packages race "$race_packages" &
+    race_pid=$!
+    status=0
+    run_packages plain "$plain_packages" || status=$?
+    wait "$race_pid" || status=$?
+    exit "$status"
+    ;;
+  *)
+    run_packages race "$race_packages"
+    run_packages plain "$plain_packages"
+    ;;
+esac

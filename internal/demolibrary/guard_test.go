@@ -2,15 +2,18 @@ package demolibrary
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -555,9 +558,9 @@ func TestMigratedGoTestsStayInvented(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatalf("no Go file under %q; the guard is scanning nothing", migratedGo)
 	}
-	for _, rel := range files {
-		if hits := realHits(mustRead(t, filepath.Join(root, rel))); len(hits) != 0 {
-			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", rel, hits)
+	for i, hits := range realHitsIn(t, root, files) {
+		if len(hits) != 0 {
+			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", files[i], hits)
 		}
 	}
 	for rel := range realDataGo {
@@ -599,9 +602,10 @@ func TestCIRunsTheGuardWheneverAScannedFileChanges(t *testing.T) {
 
 func TestFixturesCarryNoRealTitles(t *testing.T) {
 	root := repoRoot(t)
-	for _, rel := range fixtureFiles(t, root) {
-		if hits := realHits(mustRead(t, filepath.Join(root, rel))); len(hits) != 0 {
-			t.Errorf("%s carries real titles or ids %q; use the demo catalogue (internal/demolibrary)", rel, hits)
+	files := fixtureFiles(t, root)
+	for i, hits := range realHitsIn(t, root, files) {
+		if len(hits) != 0 {
+			t.Errorf("%s carries real titles or ids %q; use the demo catalogue (internal/demolibrary)", files[i], hits)
 		}
 	}
 }
@@ -617,11 +621,40 @@ func TestMigratedFixturesStayInvented(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatalf("no fixture file matched the migrated paths %q; the guard is scanning nothing", migrated)
 	}
-	for _, rel := range append(files, migratedTestFiles(t, root)...) {
-		if hits := realHits(mustRead(t, filepath.Join(root, rel))); len(hits) != 0 {
-			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", rel, hits)
+	files = append(files, migratedTestFiles(t, root)...)
+	for i, hits := range realHitsIn(t, root, files) {
+		if len(hits) != 0 {
+			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", files[i], hits)
 		}
 	}
+}
+
+// realHitsIn is realHits for each of files under root, in order. The files are scanned in
+// parallel: one at a time, the scans were this package's whole time under -race and its CI lane's
+// longest pole (#2007).
+func realHitsIn(t *testing.T, root string, files []string) [][]string {
+	t.Helper()
+	hits := make([][]string, len(files))
+	errs := make([]error, len(files))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range runtime.GOMAXPROCS(0) {
+		wg.Go(func() {
+			for i := range next {
+				raw, err := os.ReadFile(filepath.Join(root, files[i]))
+				hits[i], errs[i] = realHits(string(raw)), err
+			}
+		})
+	}
+	for i := range files {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		t.Fatal(err)
+	}
+	return hits
 }
 
 func mustRead(t *testing.T, p string) string {

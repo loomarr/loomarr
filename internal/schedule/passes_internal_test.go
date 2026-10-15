@@ -61,6 +61,7 @@ func startsOf(deck []Slot) map[string]int64 {
 // Across every seam, a unit airs at least `spacing` after it last aired, measured from where it
 // started in the pass before to where it starts in this one, the anchors of a chained walk included.
 func TestRepairSeam_EveryUnitRestsTheSpacing(t *testing.T) {
+	skipSerialUnderRace(t)
 	for _, tc := range []struct {
 		name   string
 		slots  []Slot
@@ -220,6 +221,7 @@ func TestChainBound_ScalesDownWithThePool(t *testing.T) {
 // The tail-stable shortcut (two deals, any age) must give exactly the deck a full walk from pass 0
 // gives: that equality is the claim the regime rests on, so it is checked, not assumed.
 func TestDealChain_TailStableShortcutEqualsTheFullWalk(t *testing.T) {
+	skipSerialUnderRace(t)
 	for _, tc := range []struct {
 		name   string
 		slots  []Slot

@@ -19,6 +19,7 @@ import (
 // Sabotage-verified: forcing placementInputsChanged to always return false fails this with
 // "ARRANGEMENT differs", so it genuinely guards the invariant rather than passing by luck.
 func TestRelaxAndSlotMatchesAlwaysReplace(t *testing.T) {
+	skipSerialUnderRace(t)
 	for _, shows := range []int{1, 2, 3, 4, 6} {
 		for _, each := range []int{3, 12, 25} {
 			for _, block := range []int{0, 1, 2, 3} {

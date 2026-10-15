@@ -4,13 +4,14 @@
 #   - CPU-heavy packages whose own parallel tests need a runner to themselves (#1570).
 # Separate runners overlap the two lanes without allowing package concurrency inside either.
 1	internal/app
+# internal/integration is here for balance. Its tests are serial, so it gains little from a runner
+# of its own and keeps the lanes balanced when measured at -p=1. Weighed from real runs (#2007),
+# app, api and playout came to 530s against store and integration's 369s, over the lane budget;
+# app with integration and the rest together are 459s and 440s.
+1	internal/integration
 # internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
-1	internal/api
-1	internal/playout
+2	internal/api
+2	internal/playout
 # internal/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel (#1631), and
 # beside three other packages in an ordinary -p=4 lane they only competed for the same cores.
 2	internal/store
-# internal/integration is here for balance: alone, store measured 171s (run 36366596157) against lane
-# 1's 405s, and no split of the four packages above fits the 125% bound. Its tests are serial, so it
-# gains little from a runner of its own and keeps the lanes balanced when measured at -p=1.
-2	internal/integration

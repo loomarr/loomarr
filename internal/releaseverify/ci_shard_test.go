@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -94,7 +95,7 @@ func TestGoRacePolicyPreservesSharderWorkOrder(t *testing.T) {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-race-policy.sh"), mode)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-		cmd.Stdin = strings.NewReader("example.invalid/z\nexample.invalid/internal/config\nexample.invalid/a\nexample.invalid/z\nexample.invalid/internal/setup\n")
+		cmd.Stdin = strings.NewReader("example.invalid/z\nexample.invalid/internal/config\nexample.invalid/internal/schedule\nexample.invalid/a\nexample.invalid/z\nexample.invalid/internal/setup\n")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("race policy %s: %v\n%s", mode, err, output)
@@ -102,10 +103,11 @@ func TestGoRacePolicyPreservesSharderWorkOrder(t *testing.T) {
 		return strings.TrimSpace(string(output))
 	}
 
-	if got, want := run("--race"), "example.invalid/z\nexample.invalid/a"; got != want {
+	// internal/schedule is on RACE_AND_PLAIN (#2007): it runs in both phases, in the sharder's order.
+	if got, want := run("--race"), "example.invalid/z\nexample.invalid/internal/schedule\nexample.invalid/a"; got != want {
 		t.Fatalf("race work order =\n%s\nwant\n%s", got, want)
 	}
-	if got, want := run("--no-race"), "example.invalid/internal/config\nexample.invalid/internal/setup"; got != want {
+	if got, want := run("--no-race"), "example.invalid/internal/config\nexample.invalid/internal/schedule\nexample.invalid/internal/setup"; got != want {
 		t.Fatalf("plain work order =\n%s\nwant\n%s", got, want)
 	}
 }
@@ -229,8 +231,15 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "2/2|-p=4|race 25m example.invalid/race\n" +
-		"2/2|-p=4|plain 25m example.invalid/plain\n" +
+	// An ordinary lane runs its race and plain phases at once (#2007), so its two invocations may
+	// log in either order; every other lane runs them in turn.
+	lines := strings.SplitAfter(string(contents), "\n")
+	if len(lines) >= 2 {
+		slices.Sort(lines[:2])
+	}
+	contents = []byte(strings.Join(lines, ""))
+	want := "2/2|-p=4|plain 25m example.invalid/plain\n" +
+		"2/2|-p=4|race 25m example.invalid/race\n" +
 		"certification-1/2|-p=1|race 25m example.invalid/race\n" +
 		"certification-1/2|-p=1|plain 25m example.invalid/plain\n" +
 		"certification-2/2|-p=1|race 25m example.invalid/race\n" +
@@ -265,8 +274,8 @@ func TestGoShardVerificationRejectsAggregateAndWorkerLatencyDrift(t *testing.T) 
 
 	bin := t.TempDir()
 	fakeGo := filepath.Join(bin, "go")
-	// internal/config is on the race policy's opt-out list, so it runs in the plain group after the
-	// race group and adds to the lane's makespan.
+	// internal/config is on the race policy's opt-out list, so it runs in the plain group, which
+	// shares the lane's four workers with the race group (#2007) and adds to the least loaded one.
 	const packages = `example.invalid/a
 example.invalid/b
 example.invalid/c
@@ -309,7 +318,7 @@ example.invalid/cert-two`
 			fmt.Sprintf("exceeds the %ds per-package cap", lane)},
 		{"aggregate over four workers' lane budget", fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\ninternal/config 5\n%[2]s", lane, certs),
 			"modeled aggregate split exceeds"},
-		{"plain group pushes a lane past the lane budget", fmt.Sprintf("a %d\ninternal/config 20\n%s", lane-10, certs),
+		{"plain group pushes a lane past the lane budget", fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\ninternal/config 20\n%[2]s", lane-10, certs),
 			fmt.Sprintf("shard 1: %ds (budget %ds)", lane+10, lane)},
 		{"serial certification lane past the lane budget", fmt.Sprintf("cert-one %[1]d\ncert-three %[1]d\ncert-two %[2]d\n", lane/2+10, lane-1),
 			fmt.Sprintf("certification lane 1/2: %ds (budget %ds)", 2*(lane/2+10), lane)},
@@ -331,11 +340,11 @@ example.invalid/cert-two`
 	}
 	t.Run("lane exactly at its test step", func(t *testing.T) {
 		t.Parallel()
-		output, err := verify(t, fmt.Sprintf("a %d\n%s", lane-1, certs))
+		output, err := verify(t, fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\n%[2]s", lane-1, certs))
 		if err != nil {
 			t.Fatalf("go shard verification rejected a lane at its budget: %v\n%s", err, output)
 		}
-		// +1: internal/config's one-second floor runs in the plain group after the race group.
+		// +1: internal/config's one-second floor lands on a worker the race group already filled.
 		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane, lane); !strings.Contains(output, want) {
 			t.Fatalf("verification output =\n%s\nwant %q", output, want)
 		}
@@ -474,10 +483,10 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	}
 	want := []string{
 		"1 internal/app",
-		"1 internal/api",
-		"1 internal/playout",
+		"1 internal/integration",
+		"2 internal/api",
+		"2 internal/playout",
 		"2 internal/store",
-		"2 internal/integration",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
