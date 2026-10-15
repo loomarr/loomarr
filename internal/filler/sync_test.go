@@ -1252,6 +1252,22 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if !ok || tags.OriginalName != "Sparkra-Cola — 1992" {
 		t.Errorf("repaired sidecar = %+v ok=%v, want preserved display title", tags, ok)
 	}
+	// #1988: the repaired name keeps its provenance beside the bytes. Without it the next scan
+	// reads originalName as the arrival filename and withholds a grounded name from viewers.
+	if got.NameSource != clipcatalog.NameFromGrounded || tags.DisplayName != "Sparkra-Cola — 1992" ||
+		tags.NameProvenance != string(clipcatalog.NameFromGrounded) {
+		t.Errorf("repaired provenance = row %q, sidecar %q/%q; want grounded on both", got.NameSource,
+			tags.DisplayName, tags.NameProvenance)
+	}
+	rescanned, _, err := filler.ScanDir(context.Background(), dir, func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: 30_000}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rescanned) != 1 || rescanned[0].NameSource != clipcatalog.NameFromGrounded {
+		t.Errorf("rescan after repair = %+v, want the grounded name still grounded", rescanned)
+	}
 }
 
 func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testing.T) {

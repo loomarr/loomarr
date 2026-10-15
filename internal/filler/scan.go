@@ -301,6 +301,23 @@ func scannedNameSource(tags SidecarTags, state SidecarReadState) clipcatalog.Nam
 	}
 }
 
+// carryNameProvenance records a catalogue name's provenance in a sidecar that otherwise holds the
+// name only as originalName (#1988), so the next scan does not read it as the arrival filename.
+// A viewer-visible name goes to displayName beside its provenance; an info-JSON title needs
+// nothing, since it travels in the same file; an unrecorded one is marked unknown. A sidecar
+// that already names the clip keeps its own record.
+func carryNameProvenance(tags *SidecarTags, name string, source clipcatalog.NameSource) {
+	if tags.DisplayName != "" || tags.NameProvenance != "" {
+		return
+	}
+	switch {
+	case source.ShownToViewers() && source != clipcatalog.NameFromSidecar:
+		tags.DisplayName, tags.NameProvenance = name, string(source)
+	case !source.Known():
+		tags.NameProvenance = string(clipcatalog.NameFromUnknown)
+	}
+}
+
 // FFprobe returns a media file's duration and video height.
 //
 // JSON output rather than the `-show_entries … -of csv` form: csv silently yields "N/A" for a

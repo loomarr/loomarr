@@ -12,8 +12,9 @@ import (
 
 // Migration 00134 backfills a clip's name provenance from what its row already records (#1988):
 // a name that is the path's stem, a hash, or a segment's filename fallback is 'filename'; a name
-// that is exactly a grounded rendering of the row's own facts is 'grounded'; everything else, a
-// spaced stem taken from a sidecar's originalName included, stays 'unknown' rather than guessed.
+// that is exactly a decorated grounded rendering of the row's own facts is 'grounded'; everything
+// else, a spaced stem taken from a sidecar's originalName included, stays 'unknown' rather than
+// guessed.
 func TestClipNameSourceMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -48,13 +49,16 @@ func testClipNameSourceMigration(t *testing.T, s *sqlStore, migrationDir string)
 		{hash: hashA, path: "a1/a1/" + hashA + ".mp4", name: hashA, want: "filename"},
 		{hash: "fallback", path: "c3/c3/fallback.mp4", name: "Clip 2 from widgetmax tape", parent: "tape", want: "filename"},
 		{hash: "brand", path: "d4/d4/brand.mp4", name: "Fizzbolt — 1993", brand: "Fizzbolt", era: 1993, want: "grounded"},
-		{hash: "brand-bare", path: "d4/d4/brand-bare.mp4", name: "Fizzbolt", brand: "Fizzbolt", want: "grounded"},
 		{hash: "quote", path: "e5/e5/quote.mp4", name: "“True tales of the canyon patrol”", want: "grounded"},
 		{hash: "quote-era", path: "e5/e5/quote-era.mp4", name: "“Zap goes the cola” — 1988", era: 1988, want: "grounded"},
 		{hash: "category", path: "f6/f6/category.mp4", name: "Soft drink commercial — 1991", category: "soft_drink",
 			era: 1991, want: "grounded"},
-		{hash: "era", path: "07/07/era.mp4", name: "1994 station id", kind: "station_id", era: 1994, want: "grounded"},
-		{hash: "untitled", path: "08/08/untitled.mp4", name: "Untitled commercial", want: "grounded"},
+		// Undecorated grounded renderings read like filenames, so they are not trusted as grounded.
+		{hash: "brand-bare", path: "d4/d4/brand-bare.mp4", name: "Fizzbolt", brand: "Fizzbolt", want: "unknown"},
+		{hash: "category-bare", path: "f6/f6/category-bare.mp4", name: "Soft drink commercial", category: "soft_drink",
+			want: "unknown"},
+		{hash: "era", path: "07/07/era.mp4", name: "1994 station id", kind: "station_id", era: 1994, want: "unknown"},
+		{hash: "untitled", path: "08/08/untitled.mp4", name: "Untitled Ad 1991", want: "unknown"},
 		// Intake filed this one as its hash; its filename lived only in the sidecar's originalName.
 		{hash: hashB, path: "b2/b2/" + hashB + ".mp4", name: "Widgetmax Ad 1991", want: "unknown"},
 		{hash: "title", path: "09/09/title.mp4", name: "Zap Cola Summer", want: "unknown"},

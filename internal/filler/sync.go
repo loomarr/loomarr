@@ -773,6 +773,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	tags, _ := ReadSidecarTags(full)
 	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 		tags.OriginalName = rc.Name
+		carryNameProvenance(&tags, rc.Name, rc.NameSource)
 		if found {
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
@@ -823,6 +824,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		tags, _ := ReadSidecarTags(oldFull)
 		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 			tags.OriginalName = repairName
+			carryNameProvenance(&tags, repairName, repairSource)
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)

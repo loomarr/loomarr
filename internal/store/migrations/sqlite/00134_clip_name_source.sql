@@ -10,9 +10,12 @@
 --
 -- * filename: the name is the stem of the row's path, or an opaque 40/64-hex hash, or a split
 --   segment's fallback `Clip N from <recording>` (built from the parent's filename).
--- * grounded: the name is a filler.GroundedName rendering of the row's own facts: the brand
---   (with ` — <era>`), a quoted transcript or on-screen excerpt (“…”), `<Category> commercial`,
---   `<era> <kind>`, or the neutral `Untitled <kind>`.
+-- * grounded: the name is a filler.GroundedName rendering of the row's own facts that a filename
+--   cannot plausibly carry: a quoted transcript or on-screen excerpt (“…”), or `<brand> — <era>`
+--   and `<Category> commercial — <era>` with their em dash. The undecorated renderings (a bare
+--   brand, `<Category> commercial`, `<era> <kind>`, `Untitled <kind>`) read like ordinary
+--   filenames (`Untitled Ad 1991`, `1994 commercial`), so they stay 'unknown' rather than risk
+--   showing a filename to viewers.
 --
 -- NOT backfillable in SQL: a sidecar or source title, and a filename stem taken from the sidecar's
 -- `originalName`. Intake files clips as `<hash>.<ext>`, so most filename-named clips have a path
@@ -33,14 +36,10 @@ WHERE name <> '' AND (
 
 UPDATE clips SET name_source = 'grounded'
 WHERE name_source = 'unknown' AND name <> '' AND (
-  (brand <> '' AND (name = brand OR (era > 0 AND name = brand || ' — ' || CAST(era AS TEXT))))
-  OR (substr(name, 1, 1) = '“' AND (substr(name, -1) = '”' OR instr(name, '” — ') > 0))
-  OR (category <> '' AND (
-    name = upper(substr(replace(category, '_', ' '), 1, 1)) || substr(replace(category, '_', ' '), 2) || ' commercial'
-    OR (era > 0 AND name = upper(substr(replace(category, '_', ' '), 1, 1)) || substr(replace(category, '_', ' '), 2)
-      || ' commercial — ' || CAST(era AS TEXT))))
-  OR (era > 0 AND name = CAST(era AS TEXT) || ' ' || replace(kind, '_', ' '))
-  OR substr(name, 1, 9) = 'Untitled '
+  (substr(name, 1, 1) = '“' AND (substr(name, -1) = '”' OR instr(name, '” — ') > 0))
+  OR (era > 0 AND brand <> '' AND name = brand || ' — ' || CAST(era AS TEXT))
+  OR (era > 0 AND category <> '' AND name = upper(substr(replace(category, '_', ' '), 1, 1))
+    || substr(replace(category, '_', ' '), 2) || ' commercial — ' || CAST(era AS TEXT))
 );
 
 -- Forward-only (§16).
