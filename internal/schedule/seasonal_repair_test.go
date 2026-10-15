@@ -424,12 +424,22 @@ func newYearSpecials(n int) []special {
 // re-aired the episodes the season's last window had just aired, minutes apart. The walk is now
 // capped where windowSlice starts the next window, and the airtime it cannot fill comes from half
 // a lap away: a seam only skips, and an in-season re-air is about half a cycle from either airing.
+//
+// Under -race it walks every seam on every deck, with the order and strength rotated so that each
+// pairing comes up at least three times; -args -holiday-sweep walks all of them (#2007).
 func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
+	cell := 0
 	for _, seam := range seamCases {
 		for _, pool := range seamPools {
 			for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
 				for _, strength := range holidayStrengths {
+					pairing, deck := cell%9, cell/9 // nine pairings per seam and deck
+					cell++
+					if sampleSweeps() && pairing != deck%9 {
+						continue
+					}
 					t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s/%s", seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
+						t.Parallel()
 						assertSeamGuarantee(t, channelWithWindow(pool.window, nil), seam, pool, order, strength)
 					})
 				}
@@ -482,9 +492,15 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 // broke the spacing: 16 (the hand-off's swap for a unit held past the close, 12-hour windows), 50
 // (the origin #2001 was traced on) and 269 (settle's hold-back). A one-show deck deals shuffle and
 // syndication alike, so only shuffle is walked. -args -holiday-sweep walks every origin, both ways.
+// Under -race the sample is four seeded origins and the three pinned ones, two on the 400-episode
+// deck (#2007).
 func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	origins := append(rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:12], 16, 50, 269)
+	seeded, large := 12, 4
+	if sampleSweeps() {
+		seeded, large = 4, 2
+	}
+	origins := append(rand.New(rand.NewPCG(2001, 1967)).Perm(365)[:seeded], 16, 50, 269)
 	orders := []schedule.OrderingMode{schedule.OrderShuffle}
 	if *holidaySweep {
 		origins = rand.New(rand.NewPCG(2001, 1967)).Perm(365)
@@ -505,7 +521,7 @@ func TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds(t *testing.T) {
 				stretch := [2]time.Time{end.Add(-max(24*time.Hour, pool.window)), end.Add(32 * pool.window)}
 				walked := origins
 				if pool.ordinary == 400 && !*holidaySweep {
-					walked = origins[:4] // it costs several times the others, and never broke
+					walked = origins[:large] // it costs several times the others, and never broke
 				}
 				short, worst, first := 0, spacing, ""
 				for _, o := range walked {
@@ -558,7 +574,13 @@ func closestAfter(t *testing.T, ch schedule.Channel, avail libraryfixture.Availa
 	return closest, where
 }
 
-var holidaySweep = flag.Bool("holiday-sweep", false, "TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing and TestHolidayEpisodes_SpacingHoldsAfterTheSeasonEnds walk all 365 deal origins")
+var holidaySweep = flag.Bool("holiday-sweep", false, "the holiday and dealer sweeps walk all 365 deal origins, and the seam and in-season grids every case, under -race too")
+
+// sampleSweeps reports whether the sweeps walk their -race sample. The race detector costs the
+// planner walks several times their plain run, and the whole package then outran its CI lane
+// (#2007), so under -race the sweeps keep their pinned regression origins and a smaller seeded
+// sample; -args -holiday-sweep still walks everything.
+func sampleSweeps() bool { return raceEnabled && !*holidaySweep }
 
 // #1971: out of season, a shuffled channel favouring evenings swaps a holiday episode with an
 // ordinary unit after the band or, failing that, before it. A swap before the band moves the unit
@@ -870,11 +892,15 @@ func TestHolidayEpisodes_InSeasonWindowsNeverRepeatBackToBackWithHistory(t *test
 
 // walkHolidaySeasons airs Oct 1 → Jan 10 window by window, looped as playout airs it, and counts the
 // episodes that air twice in a row.
+//
+// Under -race each deck walks one order, rotated so that every order is walked and the decks with a
+// history to trade (pools 1.2 and 1.5) walk the two shuffled ones; -args -holiday-sweep walks every
+// order (#2007).
 func walkHolidaySeasons(t *testing.T, withHistory bool) {
 	specials := func(n int) []special {
 		return append(append(halloweenSpecials(n), thanksgivingSpecials(n)...), christmasSpecials(n)...)
 	}
-	for _, tc := range []struct {
+	for d, tc := range []struct {
 		name     string
 		episodes int // ordinary and holiday, 22 minutes each
 		window   time.Duration
@@ -897,9 +923,13 @@ func walkHolidaySeasons(t *testing.T, withHistory bool) {
 		perHoliday := max(1, tc.episodes/25)
 		avail := seriesLike(tc.episodes-3*perHoliday, specials(perHoliday)...)
 		for o, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
+			if sampleSweeps() && o != (d+2)%3 {
+				continue
+			}
 			policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
 			policy.Ordering = order
 			t.Run(fmt.Sprintf("%s/%v/%s", tc.name, tc.window, order), func(t *testing.T) {
+				t.Parallel()
 				ch := channelWithWindow(tc.window, nil)
 				maxRepeats := tc.maxRepeats[o]
 				recent := map[string]bool{} // aired the day before the walk opens, on record

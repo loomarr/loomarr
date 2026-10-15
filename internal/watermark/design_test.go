@@ -55,21 +55,32 @@ func cmpOr(s, def string) string {
 // WATERMARK_DESIGN_DIR to also write each PNG for review.
 func TestRenderDesign_Golden(t *testing.T) {
 	dir := os.Getenv("WATERMARK_DESIGN_DIR")
-	var got []string
-	for _, c := range designCases() {
-		bug, err := RenderDesign(c.design, c.height, testLook)
-		if err != nil {
-			t.Fatalf("%s: %v", c.name, err)
+	cases := designCases()
+	got := make([]string, len(cases))
+	// The renders are independent, so they run in parallel, each into its own line: one at a time
+	// they were most of this package's time under -race, on one of a CI lane's four cores (#2007).
+	t.Run("render", func(t *testing.T) {
+		for i, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				bug, err := RenderDesign(c.design, c.height, testLook)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w, h := bug.Size()
+				if w%2 != 0 || h%2 != 0 {
+					t.Errorf("odd size %dx%d", w, h)
+				}
+				sum := sha256.Sum256(append(bug.Straight.Pix, byte(w), byte(w>>8), byte(h), byte(h>>8)))
+				got[i] = fmt.Sprintf("%s %dx%d %s", c.name, w, h, hex.EncodeToString(sum[:12]))
+				if dir != "" {
+					writePNG(t, filepath.Join(dir, c.name+".png"), bug.Straight)
+				}
+			})
 		}
-		w, h := bug.Size()
-		if w%2 != 0 || h%2 != 0 {
-			t.Errorf("%s: odd size %dx%d", c.name, w, h)
-		}
-		sum := sha256.Sum256(append(bug.Straight.Pix, byte(w), byte(w>>8), byte(h), byte(h>>8)))
-		got = append(got, fmt.Sprintf("%s %dx%d %s", c.name, w, h, hex.EncodeToString(sum[:12])))
-		if dir != "" {
-			writePNG(t, filepath.Join(dir, c.name+".png"), bug.Straight)
-		}
+	})
+	if t.Failed() {
+		return
 	}
 	path := filepath.Join("testdata", "looks.golden")
 	text := strings.Join(got, "\n") + "\n"
