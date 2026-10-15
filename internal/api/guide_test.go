@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -456,6 +457,49 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	}
 	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
 		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	}
+}
+
+// #1980: a clip with no curated title keeps its filename stem as its catalogue name. The Guide
+// feeds every viewer now/next line, so that stem, and the clip's file location, never reach the
+// wire; a curated name in the same break still does.
+func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
+	const slug = "commercial-widgetmax-1991"
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		MatchLevel: filler.MatchExact,
+		TotalMs:    60000,
+		Entries: []filler.PodEntry{
+			{Hash: "h-slug", Path: slug + ".mp4", Name: slug, Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h-curated", Path: "ab/cd/h-curated.mp4", Name: "Fizzbolt", Kind: filler.Commercial, DurationMs: 30000},
+		},
+	}}
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	seedGridChannel(t, harness.Store, "ch1", 1)
+
+	resp := do(t, harness.Server, http.MethodGet, "/v1/guide", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/guide → %d, want 200", resp.StatusCode)
+	}
+	for _, leaked := range []string{slug, ".mp4", "ab/cd"} {
+		if strings.Contains(string(raw), leaked) {
+			t.Errorf("the guide sent a viewer the file identity %q:\n%s", leaked, raw)
+		}
+	}
+	var body guideBody
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	entries := body.Channels[0].Airings[0].Pod.Entries
+	if entries[0].Name != "" || entries[1].Name != "Fizzbolt" {
+		t.Errorf("names = %q, %q; want the slug blanked and the curated name kept", entries[0].Name, entries[1].Name)
 	}
 }
 

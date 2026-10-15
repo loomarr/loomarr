@@ -2,6 +2,7 @@ package filler
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -110,6 +111,36 @@ func quoteExcerpt(words []string, sentenceCase bool) string {
 		text += "…"
 	}
 	return "“" + text + "”"
+}
+
+// ViewerName is the clip name a viewer may see in a programme line, or "" when the name is a
+// file identity rather than viewer copy (#1980).
+//
+// A clip with no source title and no grounded name keeps its filename stem as its catalogue name
+// (scan.go), which helps an operator find the file and means nothing to a household. A name is
+// file-shaped when it carries a path separator or a clip extension, is an opaque content hash,
+// contains an underscore, or is one lowercase-hyphenated token ("commercial-sneakers-1993"). A
+// spaced or capitalised name ("Coca-Cola", "Sneakers commercial 1993") is viewer copy and passes.
+func ViewerName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, `/\_`) || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
+		isHashDisplayName(name) || lowerSlug(name) {
+		return ""
+	}
+	return name
+}
+
+// lowerSlug reports a single lowercase token joined by hyphens or dots: a filename stem's shape.
+func lowerSlug(name string) bool {
+	if !strings.ContainsAny(name, "-.") {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsLower(r) && !unicode.IsDigit(r) && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 // stripCues removes bracketed and parenthesised cues and music notes from a transcript.

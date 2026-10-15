@@ -207,6 +207,51 @@ describe("Surf data", () => {
     });
   });
 
+  it("reads just Commercials when the server withholds a clip known only by its file (#1980)", () => {
+    const breakLayout = layoutGuide(
+      {
+        channels: [
+          {
+            airings: [
+              {
+                kind: "filler",
+                pod: {
+                  entries: [
+                    {
+                      brand: "Widgetmax",
+                      durationMs: 2_000,
+                      isFallbackCard: false,
+                      kind: "commercial",
+                      name: "",
+                    },
+                  ],
+                  matchLevel: "exact",
+                  totalMs: 2_000,
+                },
+                scheduleBlockId: "unnamed-break",
+                startMs: 1_000,
+                stopMs: 3_000,
+                title: "",
+              },
+            ],
+            channelId: "seven",
+            name: "Science Fiction",
+            number: 7,
+            pendingCount: 0,
+            status: "live",
+          },
+        ],
+        fromMs: 1_000,
+        toMs: 3_000,
+      },
+      2_000,
+    );
+
+    expect(watchingScheduleFromGuide(breakLayout, "seven", 2_000)).toMatchObject({
+      now: { facts: ["Widgetmax"], title: "Commercials" },
+    });
+  });
+
   it("populates Favourites only from authoritative membership and preserves Channel order", () => {
     expect(groups(["blocked", "nine", "seven"])[0]?.channels.map(({ id }) => id)).toEqual(["seven", "nine"]);
   });

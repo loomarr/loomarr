@@ -307,6 +307,13 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 				if b.Kind == schedule.SlotFiller {
 					if pod := podAt[i]; len(pod.Entries) > 0 {
 						dto := podToPoolDTO(pod)
+						// The Guide is a viewer surface: every now/next line, dock and cell reads
+						// these names, so a file-shaped catalogue name is sent as "" and the file's
+						// location not at all (#1980). Clients address clips by hash.
+						for j := range dto.Entries {
+							dto.Entries[j].Name = filler.ViewerName(dto.Entries[j].Name)
+							dto.Entries[j].Path = ""
+						}
 						a.Pod = &dto
 						for _, entry := range pod.Entries {
 							if entry.Hash != "" {

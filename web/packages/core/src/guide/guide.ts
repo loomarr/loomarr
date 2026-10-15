@@ -1,6 +1,7 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
+import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type {
   GuideAiringLayout,
   GuideChannelLayout,
@@ -115,6 +116,22 @@ const guideAiringLabel = (airing: GuideAiring): string => {
   const title = airing.title.trim();
   if (!title) return GUIDE_KIND_LABEL[airing.kind];
   return airing.series ? `${airing.series} · ${title}` : title;
+};
+
+/**
+ * The now line during a break: "Commercials", or "Commercials · <clip>" when the clip has a
+ * viewer name. The server sends an empty name for a clip known only by its file (#1980).
+ */
+const guideFillerNowLabel = (entry?: Pick<PodEntryDTO, "name">): string => {
+  const name = entry?.name.trim();
+  return name ? `${GUIDE_KIND_LABEL.filler} · ${name}` : GUIDE_KIND_LABEL.filler;
+};
+
+/** One clip in a break's composition: "Fizzbolt · commercial", or just "Commercial" when unnamed. */
+const guideFillerEntryLabel = (entry: Pick<PodEntryDTO, "kind" | "name">): string => {
+  const kind = entry.kind.replaceAll("_", " ");
+  const name = entry.name.trim();
+  return name ? `${name} · ${kind}` : kind.charAt(0).toUpperCase() + kind.slice(1);
 };
 
 /** Broadcast and health answer different questions and must not collapse into one status. */
@@ -326,6 +343,8 @@ export {
   guideAiringLabel,
   guideChannelForTypeahead,
   guideChannelState,
+  guideFillerEntryLabel,
+  guideFillerNowLabel,
   guideSelectionForChannel,
   guideTimeFormatter,
   guideWindow,

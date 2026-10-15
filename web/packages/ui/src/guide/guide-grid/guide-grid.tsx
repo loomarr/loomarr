@@ -209,7 +209,7 @@ const Block = ({
                     overflow="hidden"
                     paddingHorizontal={3}
                   >
-                    {px * share > CLIP_LABEL_MIN ? (
+                    {entry.name && px * share > CLIP_LABEL_MIN ? (
                       <Text numberOfLines={1} textAlign="left" textRole="guideClip">
                         {entry.name}
                       </Text>

@@ -5,6 +5,7 @@ import {
   type GuideAiringLayout,
   type GuideLayout,
   guideAiringLabel,
+  guideFillerNowLabel,
 } from "@loomarr/core/guide";
 
 import type { SurfChannelData, SurfGroupData, SurfSelection } from "../surf-rail.type";
@@ -34,8 +35,7 @@ const fillerFacts = (entry: NonNullable<ReturnType<typeof activeFillerEntry>>) =
 
 const watchingAiringTitle = (airing: GuideAiringLayout, nowMs: number): string => {
   const entry = activeFillerEntry(airing, nowMs);
-  const name = entry?.name.trim();
-  return name ? `Commercials · ${name}` : guideAiringLabel(airing.source);
+  return entry ? guideFillerNowLabel(entry) : guideAiringLabel(airing.source);
 };
 
 const progressPercentAt = (airing: GuideAiringLayout, nowMs: number): number | undefined => {

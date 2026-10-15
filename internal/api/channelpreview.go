@@ -28,9 +28,9 @@ import (
 // PodEntryDTO is one clip placed in the previewed pool, in play order.
 type PodEntryDTO struct {
 	Hash            string `json:"hash,omitempty" doc:"The Clip content hash used by the media route. Empty only for the embedded fallback card."`
-	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card; clients address real clips by hash."`
+	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on the Guide (#1980); clients address real clips by hash."`
 	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
-	Name            string `json:"name"`
+	Name            string `json:"name" doc:"The clip's display name. On the Guide it is viewer copy and empty when the catalogue name is only a filename (#1980); clients then show the break's own label."`
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`

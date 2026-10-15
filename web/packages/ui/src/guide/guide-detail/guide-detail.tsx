@@ -3,6 +3,7 @@ import {
   formatGuideTimeRange,
   type GuideAiringLayout,
   guideAiringLabel,
+  guideFillerEntryLabel,
 } from "@loomarr/core/guide";
 import { type BadgeTone, Surface, Text } from "@loomarr/design-system";
 
@@ -83,7 +84,7 @@ const GuideProgrammeDetail = ({
             // A clip can repeat within a break; its position distinguishes each airing.
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity within the pod
             <Text key={index} textRole="body">
-              {entry.name} · {entry.kind.replaceAll("_", " ")}
+              {guideFillerEntryLabel(entry)}
             </Text>
           ))}
         </Surface>
