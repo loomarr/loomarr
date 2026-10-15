@@ -5,7 +5,9 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
+import type { RequestsController } from "@loomarr/core/requests";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
+import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   createLastChannelStore,
@@ -54,10 +56,29 @@ const lastChannel = createLastChannelStore({
 const approvalBrowser: ApprovalBrowser = {
   close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
   name: Platform.OS === "ios" ? "Safari" : "your browser",
-  open: (url) =>
+  open: (url) => {
     void WebBrowser.openBrowserAsync(url, {
       presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-    }),
+    });
+  },
+};
+// A request decided (approved or denied) taps success; a refused one stays silent.
+const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedback): RequestsController => {
+  const tapWhenDone =
+    <Args extends unknown[], Result extends { kind: string }>(decide: (...args: Args) => Promise<Result>) =>
+    async (...args: Args) => {
+      const result = await decide(...args);
+      if (result.kind === "done") haptic.success();
+      return result;
+    };
+  return {
+    ...controller,
+    approve: tapWhenDone(controller.approve),
+    approveFillerPull: tapWhenDone(controller.approveFillerPull),
+    approveFillerPulls: tapWhenDone(controller.approveFillerPulls),
+    approveMany: tapWhenDone(controller.approveMany),
+    deny: tapWhenDone(controller.deny),
+  };
 };
 
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
@@ -76,6 +97,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
     snapshot,
     transport,
   } = client;
+  const haptic = useHaptic();
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -121,8 +143,14 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
             favourites={panel.favourites}
             isFavourite={isFavourite}
             live={snapshot.livePlayback ?? { lagSeconds: 0, mode: "live" }}
-            onChannelDown={() => void controller.step(-1)}
-            onChannelUp={() => void controller.step(1)}
+            onChannelDown={() => {
+              haptic.selection();
+              void controller.step(-1);
+            }}
+            onChannelUp={() => {
+              haptic.selection();
+              void controller.step(1);
+            }}
             onGoLive={() => void controller.goLive()}
             onPause={controller.pause}
             onPlay={() => void controller.play()}
@@ -169,11 +197,17 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   }, [active, controller, restoredChannelId]);
   // Requests loads with the app so an admin's tab badge counts before they open it.
   const requests = usePairedRequests({ credential, session });
+  const haptic = useHaptic();
+  const requestsController = useMemo(
+    () => withDecisionHaptic(requests.controller, haptic),
+    [haptic, requests.controller],
+  );
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {
+    haptic.selection();
     // Another channel replaces the stream the shell paused, so resuming it would only blip its
     // audio; the paused channel itself is not re-tuned, so Watching resumes it.
     forgetShellPause(channelId);
@@ -215,7 +249,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
         (navigation) => (
           <RequestsJourney
             channels={snapshot.catalog}
-            controller={requests.controller}
+            controller={requestsController}
             footer={navigation}
             headerAction={deviceAction}
             onOpenChannel={watchChannel}
@@ -273,6 +307,17 @@ const Index = () => {
       }),
     [],
   );
+  // The success tap belongs to the moment pairing completes: awaiting approval, then paired. A launch
+  // that restores a saved credential goes loading → paired with nothing pressed, so it stays silent.
+  const haptic = useHaptic();
+  useEffect(() => {
+    let previous = session.snapshot().status;
+    const unsubscribe = session.subscribe((state) => {
+      if (previous === "awaiting-approval" && state.status === "paired") haptic.success();
+      previous = state.status;
+    });
+    return () => void unsubscribe();
+  }, [haptic, session]);
   return (
     <>
       <PairingShell

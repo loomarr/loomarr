@@ -1,6 +1,7 @@
 import { Action, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import { Pressable, View } from "react-native";
 import { behindLabel } from "../watching-surface-state";
+import { useLargeText } from "./use-large-text";
 import type { WatchingPanelProps } from "./watching-panel.type";
 
 // WatchingPanel — what sits UNDER the picture on a portrait phone (#1659 native mock 5e, maintainer
@@ -45,13 +46,95 @@ const WatchingPanel = ({
   const parts = now ? programmeParts(now) : undefined;
   // The mock's line is episode · year · time: one fact (the year, first when known), not all of them.
   const meta = now ? [now.episodeLabel, now.facts?.[0], now.timeLabel].filter(Boolean).join(" · ") : "";
+  const largeText = useLargeText();
+  const controlStyle = { flex: 1 };
+  const controlLayout = largeText ? "inline" : "stacked";
+  const controls = [
+    <Action
+      density={density}
+      disabled={!canPrevious}
+      icon="previous"
+      fitLabel={largeText}
+      key="previous"
+      layout={controlLayout}
+      onPress={onPrevious}
+      style={controlStyle}
+      tone="secondary"
+    >
+      Previous
+    </Action>,
+    <Action
+      density={density}
+      disabled={!canSurf}
+      icon="channelDown"
+      fitLabel={largeText}
+      key="channelDown"
+      layout={controlLayout}
+      onPress={onChannelDown}
+      style={controlStyle}
+      tone="secondary"
+    >
+      Channel −
+    </Action>,
+    live.mode === "paused" ? (
+      <Action
+        density={density}
+        icon="play"
+        fitLabel={largeText}
+        key="play"
+        layout={controlLayout}
+        onPress={onPlay}
+        style={controlStyle}
+        tone="secondary"
+      >
+        Play
+      </Action>
+    ) : (
+      <Action
+        density={density}
+        icon="pause"
+        fitLabel={largeText}
+        key="pause"
+        layout={controlLayout}
+        onPress={onPause}
+        style={controlStyle}
+        tone="secondary"
+      >
+        Pause
+      </Action>
+    ),
+    <Action
+      density={density}
+      disabled={!canSurf}
+      icon="channelUp"
+      fitLabel={largeText}
+      key="channelUp"
+      layout={controlLayout}
+      onPress={onChannelUp}
+      style={controlStyle}
+      tone="secondary"
+    >
+      Channel +
+    </Action>,
+  ];
   return (
     <Surface backgroundColor="$transparent" borderWidth={0} gap={6} paddingHorizontal={16} paddingTop={16}>
-      <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
+      {/* At an accessibility text size the Go Live group wraps under the channel instead of squeezing
+          the name out of the row, and the name wraps rather than clips. Wrapping is off otherwise: a
+          wrapping row would drop the Live group below a long name that shrinks to fit today. */}
+      <View
+        style={{
+          alignItems: "center",
+          columnGap: 8,
+          flexDirection: "row",
+          flexWrap: largeText ? "wrap" : "nowrap",
+          rowGap: 4,
+        }}
+      >
         <Text density={density} textRole="cardTime" tone="primary">
           {channel.number}
         </Text>
-        <Text density={density} flexShrink={1} numberOfLines={1} textRole="cardMeta">
+        <Text density={density} flexShrink={1} numberOfLines={largeText ? undefined : 1} textRole="cardMeta">
           {channel.name}
         </Text>
         {onToggleFavourite ? (
@@ -69,7 +152,16 @@ const WatchingPanel = ({
             </Text>
           </Pressable>
         ) : null}
-        <View style={{ alignItems: "center", flexDirection: "row", gap: 8, marginLeft: "auto" }}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: 8,
+            marginLeft: "auto",
+            // A wrapped line is only as wide as the row: let the group wrap too, not run off the screen.
+            ...(largeText ? { flexShrink: 1, flexWrap: "wrap", maxWidth: "100%" } : {}),
+          }}
+        >
           {live.mode === "live" ? (
             <>
               <Surface backgroundColor="$guideOnAir" borderRadius={3} borderWidth={0} height={6} width={6} />
@@ -104,7 +196,7 @@ const WatchingPanel = ({
 
       {now ? (
         <>
-          <Text density={density} numberOfLines={2} textRole="title">
+          <Text density={density} numberOfLines={largeText ? undefined : 2} textRole="title">
             {parts?.heading}
             {parts?.episode ? (
               <Text density={density} textRole="headline" tone="secondary">
@@ -133,69 +225,22 @@ const WatchingPanel = ({
         </>
       ) : null}
 
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-        <Action
-          density={density}
-          disabled={!canPrevious}
-          icon="previous"
-          layout="stacked"
-          onPress={onPrevious}
-          style={{ flex: 1 }}
-          tone="secondary"
-        >
-          Previous
-        </Action>
-        <Action
-          density={density}
-          disabled={!canSurf}
-          icon="channelDown"
-          layout="stacked"
-          onPress={onChannelDown}
-          style={{ flex: 1 }}
-          tone="secondary"
-        >
-          Channel −
-        </Action>
-        {live.mode === "paused" ? (
-          <Action
-            density={density}
-            icon="play"
-            layout="stacked"
-            onPress={onPlay}
-            style={{ flex: 1 }}
-            tone="secondary"
-          >
-            Play
-          </Action>
-        ) : (
-          <Action
-            density={density}
-            icon="pause"
-            layout="stacked"
-            onPress={onPause}
-            style={{ flex: 1 }}
-            tone="secondary"
-          >
-            Pause
-          </Action>
-        )}
-        <Action
-          density={density}
-          disabled={!canSurf}
-          icon="channelUp"
-          layout="stacked"
-          onPress={onChannelUp}
-          style={{ flex: 1 }}
-          tone="secondary"
-        >
-          Channel +
-        </Action>
-      </View>
+      {largeText ? (
+        // At an accessibility text size four tiles cannot share a row, and the stacked tile's label is
+        // one line (it would read "Pre", "Ch"): two rows of two, each an icon beside a label that wraps
+        // rather than clips, as Control Center lays out its controls.
+        <View style={{ gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>{controls.slice(0, 2)}</View>
+          <View style={{ flexDirection: "row", gap: 8 }}>{controls.slice(2)}</View>
+        </View>
+      ) : (
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>{controls}</View>
+      )}
 
       {schedule?.next ? (
         <Text
           density={density}
-          numberOfLines={1}
+          numberOfLines={largeText ? undefined : 1}
           paddingBottom={4}
           paddingTop={14}
           textRole="caption"
@@ -228,18 +273,28 @@ const WatchingPanel = ({
                 borderWidth={0}
                 flexDirection="row"
                 gap={12}
-                height={57}
+                {...(largeText ? { minHeight: 57, paddingVertical: 8 } : { height: 57 })}
               >
                 <Text density={density} textRole="time" width={32}>
                   {favourite.channelNumber}
                 </Text>
                 <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
                   {/* The row is a <button> on the web, which centres its text; the mock's rows read left. */}
-                  <Text density={density} numberOfLines={1} textAlign="left" textRole="cardTitle">
+                  <Text
+                    density={density}
+                    numberOfLines={largeText ? undefined : 1}
+                    textAlign="left"
+                    textRole="cardTitle"
+                  >
                     {favourite.channelName}
                   </Text>
                   {favourite.now ? (
-                    <Text density={density} numberOfLines={1} textAlign="left" textRole="cardMeta">
+                    <Text
+                      density={density}
+                      numberOfLines={largeText ? undefined : 1}
+                      textAlign="left"
+                      textRole="cardMeta"
+                    >
                       {programmeLine(favourite.now)}
                     </Text>
                   ) : null}
