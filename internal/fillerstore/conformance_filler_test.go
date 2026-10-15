@@ -2520,6 +2520,21 @@ func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
 	if len(listed) != 1 || listed[0].Name != "Fizzbolt Summer Sale" || listed[0].NameSource != clipcatalog.NameFromSidecar {
 		t.Fatalf("after re-upsert = %+v, want the sidecar title with its provenance", listed)
 	}
+
+	// An operator rename (#1990) writes the name and 'curated' together; a missing clip is ErrNotFound.
+	if err := s.RenameClip(ctx, "named.mp4", "Fizzbolt Midnight Special", clipcatalog.NameFromCurated, now); err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := s.GetClip(ctx, "named.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Name != "Fizzbolt Midnight Special" || renamed.NameSource != clipcatalog.NameFromCurated {
+		t.Fatalf("after rename = %q (%q), want the curated name", renamed.Name, renamed.NameSource)
+	}
+	if err := s.RenameClip(ctx, "missing.mp4", "Nobody", clipcatalog.NameFromCurated, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("rename of a missing clip = %v, want ErrNotFound", err)
+	}
 }
 
 // testClipHeld covers the clip lifecycle on BOTH backends: a held clip is recorded but is not in

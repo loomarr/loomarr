@@ -82,6 +82,9 @@ operator edit `curated`), else `originalName` or the bare filename stem (`filena
 surfaces never show a `filename` name, however it reads. Migration 00134 backfilled only what SQL
 could prove and left the rest `unknown`. The next scan relabels every clip it finds. A segment cut
 before #1988 stays `unknown`, because its sidecar never said where its name came from.
+An admin may rename a clip (`name` on `PATCH /v1/filler/tags`, #1990): the name is trimmed,
+1–120 characters, recorded as `curated`, and written to the sidecar's `displayName` with
+`nameProvenance: curated`, which the scan prefers even over the info-JSON `title`.
 
 **Sidecars carry metadata with the clip.** Loomarr writes era, audience, category, kind, the
 diagnostic score, `originalName` and the derived name with its provenance into the existing

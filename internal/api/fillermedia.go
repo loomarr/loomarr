@@ -176,6 +176,23 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 // under `.loomarr-thumbs`. It does not need to, and adding the check would imply the containment
 // test is the only thing standing between a caller and those files. Two other gates already
 // refuse them — a thumbnail is not a catalog row, and `.jpg` is not in `mediaTypes`.
+// clipFileOnDisk resolves a catalogue path to its media file in the applied drop-folder, and
+// reports false when there is no drop-folder or no file there.
+func (s *Server) clipFileOnDisk(rel string) (string, bool) {
+	dir := s.fillerLayout.ClipDir()
+	if dir == "" {
+		return "", false
+	}
+	full, ok := safeFillerPath(dir, rel)
+	if !ok {
+		return "", false
+	}
+	if _, err := os.Stat(full); err != nil {
+		return "", false
+	}
+	return full, true
+}
+
 func safeFillerPath(fillerDir, rel string) (string, bool) {
 	if rel == "" || strings.Contains(rel, "\x00") {
 		return "", false

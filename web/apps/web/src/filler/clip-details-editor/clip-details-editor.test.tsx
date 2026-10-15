@@ -89,5 +89,26 @@ describe("optional clip detail correction", () => {
       geography: { scope: "national", country: "US" },
     });
     expect(payload).not.toHaveProperty("kind");
+    // An unchanged name is not sent: saving another detail must not record it as curated (#1990).
+    expect(payload).not.toHaveProperty("name");
+  });
+
+  it("saves a renamed clip's trimmed name", async () => {
+    let payload: unknown;
+    const onSaved = vi.fn();
+    server.use(
+      getTagFillerClipMockHandler(async ({ request }) => {
+        payload = await request.json();
+        return { ...clip, name: "Fizzbolt Summer Sale" };
+      }),
+    );
+    render(<ClipDetailsEditor clip={clip} onSaved={onSaved} />, { wrapper });
+    const name = screen.getByLabelText("Name");
+    expect(name).toHaveValue("Ready clip");
+    await userEvent.clear(name);
+    await userEvent.type(name, "  Fizzbolt Summer Sale ");
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(payload).toMatchObject({ hash: "correction-clip", name: "Fizzbolt Summer Sale" });
   });
 });

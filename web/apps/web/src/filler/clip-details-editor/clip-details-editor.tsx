@@ -55,6 +55,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
   useEffect(() => {
     editorRef.current?.focus();
   }, []);
+  const [name, setName] = useState(clip?.name ?? "");
   const [kind, setKind] = useState(clip?.kind ?? "commercial");
   const [era, setEra] = useState(clip?.era ? String(clip.era) : "");
   // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
@@ -92,6 +93,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       data: {
         // The clip is identified by `hash` in the body (§10 V45a) — no {id} URL segment.
         hash: clip.hash,
+        // Sent only when changed: a sent name is recorded as curated (#1990), and saving another
+        // detail must not vouch for a filename. An emptied name is sent so the server refuses it.
+        ...(name.trim() === clip.name ? {} : { name: name.trim() }),
         // Unclassified means the optional role is unknown, not that this Ready clip needs approval.
         // Omit kind rather than asserting a role the operator has not selected.
         ...(kind === "unclassified" ? {} : { kind: kind as PatchClipInputBodyKind }),
@@ -133,6 +137,17 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       {patch.error != null && <ErrorState error={patch.error} />}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="tag-name">Name</Label>
+          <Input
+            id="tag-name"
+            maxLength={120}
+            placeholder="Clip name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <p className="mt-1 text-muted-foreground text-xs">The name viewers see during a break.</p>
+        </div>
         <div>
           <Label htmlFor="tag-kind">Type</Label>
           <Select value={kind} onValueChange={(v) => setKind(v as ClipDTO["kind"])}>

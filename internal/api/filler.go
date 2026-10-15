@@ -12,6 +12,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
@@ -76,7 +77,7 @@ func (s *Server) registerFiller(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
-		Summary: "Edit a clip's classification", Description: "Admin only. Corrects kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a).", Tags: []string{"filler"},
+		Summary: "Edit a clip's classification", Description: "Admin only. Corrects name, kind, era, audience, brand, and directly asserted taxonomy tags. The clip is identified by content `hash` in the body (§10 V45a). A name is the operator's curated name for viewers (#1990).", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
@@ -733,9 +734,12 @@ type patchClipInput struct {
 		// Hash is the clip's identity (its content hash, V38c). ⚠ In the BODY (§10 V45a): the wire
 		// identity is the hash — hex, no slashes — so it needs no encoding and no {id} URL segment.
 		// Required.
-		Hash     string `json:"hash" doc:"The clip's content hash (its identity)"`
-		Era      int    `json:"era,omitempty"`
-		Audience string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
+		Hash string `json:"hash" doc:"The clip's content hash (its identity)"`
+		// Name is an operator's rename (#1990). Pointer semantics: omission leaves the name alone,
+		// and an empty name is rejected rather than read as "clear", since a clip always has one.
+		Name     *string `json:"name,omitempty" maxLength:"120" doc:"A name for viewers, trimmed, 1–120 characters. Recorded as curated and written to the clip's sidecar, so a rescan keeps it. Omit to leave unchanged; an empty name is rejected (#1990)."`
+		Era      int     `json:"era,omitempty"`
+		Audience string  `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 		// Tags is the operator's chosen taxonomy tag set (§10 V45a) — REPLACES the old single
 		// `category` string. Each is grounded against the live taxonomy on write (an unknown slug is
 		// rejected), and `category` is DERIVED from the accepted set (the primary product leaf). A nil
@@ -774,6 +778,13 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	var operatorGeography *fillerenrichment.Value
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
+	}
+	name := ""
+	if in.Body.Name != nil {
+		name = strings.TrimSpace(*in.Body.Name)
+		if name == "" {
+			return nil, errUnprocessable("Name is empty", "A clip needs a name. Enter one, or leave the name out to keep the current one.")
+		}
 	}
 	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/classification update/
 	// `UpdateClipKind`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
@@ -882,6 +893,22 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Brand != nil {
 		brand := strings.TrimSpace(*in.Body.Brand)
 		if err := s.store.SetClipBrand(ctx, clip.Path, brand, now); err != nil {
+			return nil, err
+		}
+	}
+	if name != "" {
+		// The sidecar first: a name only the database holds would be lost to the next scan. A clip
+		// with no file in the drop-folder is never rescanned, so the row alone is enough for it.
+		if full, ok := s.clipFileOnDisk(clip.Path); ok {
+			if err := filler.WriteCuratedName(full, name); err != nil {
+				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the name",
+					"The clip's metadata file could not be updated, so the name was not changed. Try again.", err)
+			}
+		}
+		if err := s.store.RenameClip(ctx, clip.Hash, name, clipcatalog.NameFromCurated, now); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+			}
 			return nil, err
 		}
 	}

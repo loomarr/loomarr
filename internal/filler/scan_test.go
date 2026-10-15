@@ -144,6 +144,10 @@ func TestScanDir_RecordsNameSource(t *testing.T) {
 		{"segment before provenance", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Zap Cola.mp4","splitPublicationToken":"tok"}}`,
 			"Zap Cola", clipcatalog.NameFromUnknown},
+		// An operator's rename (#1990) outranks the source title it replaced.
+		{"renamed over an info-JSON title", "ab/cd/hash.mp4",
+			`{"title":"fizzbolt_upload_v2","loomarr":{"originalName":"fizzbolt-1991.mp4","displayName":"Fizzbolt Summer Sale","nameProvenance":"curated"}}`,
+			"Fizzbolt Summer Sale", clipcatalog.NameFromCurated},
 		{"unrecognised provenance reads as grounded", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"spot.mp4","displayName":"Zap Cola","nameProvenance":"bogus"}}`,
 			"Zap Cola", clipcatalog.NameFromGrounded},
@@ -165,6 +169,33 @@ func TestScanDir_RecordsNameSource(t *testing.T) {
 				t.Fatalf("clips = %+v, want %q from %s", clips, tc.wantName, tc.wantSource)
 			}
 		})
+	}
+}
+
+// An operator's rename (#1990) survives a rescan: WriteCuratedName's sidecar reads back as the
+// curated name, over both the filename and the info-JSON title, and keeps the yt-dlp keys.
+func TestScanDir_KeepsACuratedRename(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ab/cd/hash.mp4")
+	side := filepath.Join(dir, "ab/cd/hash.info.json")
+	if err := os.WriteFile(side, []byte(`{"title":"fizzbolt_upload_v2","loomarr":{"originalName":"fizzbolt-1991.mp4"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := filler.WriteCuratedName(filepath.Join(dir, "ab/cd/hash.mp4"), "Fizzbolt Summer Sale"); err != nil {
+		t.Fatal(err)
+	}
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Name != "Fizzbolt Summer Sale" || clips[0].NameSource != clipcatalog.NameFromCurated {
+		t.Fatalf("clips = %+v, want the curated rename", clips)
+	}
+	if clips[0].Era != 1991 {
+		t.Errorf("era = %d, want 1991 still grounded from the arrival filename", clips[0].Era)
+	}
+	if filler.SidecarTitle(filepath.Join(dir, "ab/cd/hash.mp4")) != "fizzbolt_upload_v2" {
+		t.Error("the rename dropped the source's info-JSON title")
 	}
 }
 
