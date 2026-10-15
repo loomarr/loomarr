@@ -373,12 +373,31 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     independently. They are **simulated in order** from the season's *anchor*: its first in-season
     window, found by walking back over in-season windows and gaps no longer than the horizon, at
     most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
-    the dealer's tile (`windowSliceDealt`), arranged. In the horizon after the simulation (the
-    *hand-off*, `handOff`), the season's tiles still sit inside the repeat spacing. The dealer
-    repaired each seam against the deal before it, so while any window the spacing reaches back
-    over aired a tile other than its deal, the next window is repaired again against what really
-    aired. That repair reads back over every window the spacing spans, not only the window
-    before: a 12-hour spacing on a 6-hour window reaches two windows back (#1960).
+    the dealer's tile (`windowSliceDealt`), arranged. After the simulation comes the *hand-off*
+    (`handOff`), where the season's tiles still sit inside the repeat spacing. The dealer repaired
+    each seam against the deal before it, so while any window the spacing reaches back over aired
+    otherwise than the dealer alone would, the next window's deal is arranged and then repaired
+    against what really aired (#2001):
+    - Each unit is owed the spacing, or the gap the dealer's own arrangement gives it when that is
+      less. Holding every unit to the full spacing moved units the dealer rests less, so the
+      hand-off never settled.
+    - A unit that has not rested what it is owed is held back in the window until it has. One
+      that cannot rest before the window closes is swapped, in its slot, for a unit that has
+      rested the spacing, preferring one that also rests it before its next deal. The window keeps
+      its length: a window one unit short loops its head, which aired a window ago. An off-season
+      holiday episode is only ever held back, never swapped out, so it is still never benched.
+    - The repaired order is what airs. Arrange does not move it again: a swap out of the evening,
+      checked against the windows around as dealt, brought a unit the repair had held back into
+      the evening, inside the spacing.
+    - The hand-off ends once every window the spacing reaches has aired as the dealer alone would.
+      Over 120 deal origins that took up to 15 windows (a 400-episode deck in daily windows), more
+      than the horizon, so it runs until it settles, for at most four horizons. It reads back over
+      every window the spacing spans, not only the window before: a 12-hour spacing on a 6-hour
+      window reaches two windows back (#1960).
+    - The simulation's last windows prefer, when topping up, a unit that has rested since its last
+      airing but is due again soon after the simulation over one that has not rested: the
+      hand-off holds the first back, and nothing can save the second. Its `settle` step holds a
+      unit that rested too little back in the window before keeping it where it is.
     The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
     features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
     repeat spacing. For each window in turn:
@@ -463,7 +482,8 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
       ordinary unit that starts **before** 17:00 in the same window. The episode moves earlier,
       which widens the gap to its own next airing. That gap is what stops most swaps after the
       band. The unit moves later. This happens only far from a season, where every window the
-      spacing reaches airs its deal. The swap must also keep the window's programme count and
+      spacing reaches airs its deal: none is in season, in the simulation or in the hand-off
+      (#2001). The swap must also keep the window's programme count and
       leave every other unit on its side of the band.
     - When no unit qualifies, the episode is deferred as before, but only when every unit it
       brings forward still rests the spacing from its last airing, and the episode still rests
