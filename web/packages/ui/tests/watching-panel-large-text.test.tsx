@@ -61,22 +61,20 @@ describe("WatchingPanel at an accessibility text size", () => {
     expect(html.match(/style="flex-direction:row;gap:8px;margin-top:8px"/g)).toHaveLength(1);
   });
 
-  it("lays the controls out as a two-by-two grid whose full labels do not clip", () => {
+  // A tile label stays one line and shrinks to fit on native (`adjustsFontSizeToFit`), so a word is
+  // never broken ("Previou/s"); the static markup can only show the full label is rendered.
+  it("lays the controls out as a two-by-two grid with every full label", () => {
     const html = markupAt(1.65);
-    for (const label of CONTROLS) {
-      expect(html).toContain(`>${label}</`);
-      expect(clips(html, label)).toBe(false);
-    }
+    for (const label of CONTROLS) expect(html).toContain(`>${label}</`);
     // Two rows of two under one column, and no row of four.
     expect(html.match(/style="flex-direction:row;gap:8px"/g)).toHaveLength(2);
     expect(html).not.toContain("margin-top:8px;flex-direction:row");
   });
 
-  it("offers Play in the grid while paused, with its label unclipped", () => {
+  it("offers Play in the grid while paused", () => {
     const html = markupAt(1.65, { live: { lagSeconds: 20, mode: "paused" } });
     expect(html).toContain(">Play</");
     expect(html).not.toContain(">Pause</");
-    expect(clips(html, "Play")).toBe(false);
   });
 
   it("lets the channel name wrap and keeps Go Live in view", () => {

@@ -54,6 +54,7 @@ const WatchingPanel = ({
       density={density}
       disabled={!canPrevious}
       icon="previous"
+      fitLabel={largeText}
       key="previous"
       layout={controlLayout}
       onPress={onPrevious}
@@ -66,6 +67,7 @@ const WatchingPanel = ({
       density={density}
       disabled={!canSurf}
       icon="channelDown"
+      fitLabel={largeText}
       key="channelDown"
       layout={controlLayout}
       onPress={onChannelDown}
@@ -78,6 +80,7 @@ const WatchingPanel = ({
       <Action
         density={density}
         icon="play"
+        fitLabel={largeText}
         key="play"
         layout={controlLayout}
         onPress={onPlay}
@@ -90,6 +93,7 @@ const WatchingPanel = ({
       <Action
         density={density}
         icon="pause"
+        fitLabel={largeText}
         key="pause"
         layout={controlLayout}
         onPress={onPause}
@@ -103,6 +107,7 @@ const WatchingPanel = ({
       density={density}
       disabled={!canSurf}
       icon="channelUp"
+      fitLabel={largeText}
       key="channelUp"
       layout={controlLayout}
       onPress={onChannelUp}
@@ -147,7 +152,16 @@ const WatchingPanel = ({
             </Text>
           </Pressable>
         ) : null}
-        <View style={{ alignItems: "center", flexDirection: "row", gap: 8, marginLeft: "auto" }}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: 8,
+            marginLeft: "auto",
+            // A wrapped line is only as wide as the row: let the group wrap too, not run off the screen.
+            ...(largeText ? { flexShrink: 1, flexWrap: "wrap", maxWidth: "100%" } : {}),
+          }}
+        >
           {live.mode === "live" ? (
             <>
               <Surface backgroundColor="$guideOnAir" borderRadius={3} borderWidth={0} height={6} width={6} />

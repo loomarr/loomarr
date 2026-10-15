@@ -31,6 +31,11 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   density?: Density;
   icon?: IconName;
   /**
+   * Keep an inline label on one line by shrinking it to the room beside the icon, rather than
+   * breaking a word that cannot fit (a 2×2 tile at an accessibility text size).
+   */
+  fitLabel?: boolean;
+  /**
    * `stacked` puts the icon over a small label, on a tile with no outline until focused: the row of
    * player controls under a phone's picture (#1659 native mock 5e). Give it an icon.
    */
@@ -108,6 +113,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
       children,
       density = "pointer",
       disabled = false,
+      fitLabel = false,
       icon,
       layout = "inline",
       onBlur,
@@ -220,7 +226,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           </TamaguiText>
         </View>
       ) : icon ? (
-        <View alignItems="center" flexDirection="row" gap="$inline">
+        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="$inline">
           <Icon
             decorative
             glyph={icons[icon]}
@@ -231,8 +237,10 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
             fontFamily="$body"
             fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+            flexShrink={fitLabel ? 1 : undefined}
             fontWeight={labelWeight}
             textDecorationLine={variant === "link" ? "underline" : undefined}
+            {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
           >
             {children}
           </TamaguiText>
