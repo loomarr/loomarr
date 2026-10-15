@@ -3,6 +3,7 @@ package filler_test
 import (
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
@@ -40,9 +41,32 @@ func TestGroundedName_Ladder(t *testing.T) {
 	}
 }
 
-// #1980: a filename stem is an operator's handle, not viewer copy. Every file-shaped name is
-// withheld; a spaced, capitalised or grounded name passes unchanged.
-func TestViewerName_WithholdsFileShapedNames(t *testing.T) {
+// #1988: provenance decides, not shape. A filename-sourced name is withheld even when it is spaced
+// and capitalised like a title; every other recorded source shows, slug-shaped or not.
+func TestViewerName_ProvenanceDecides(t *testing.T) {
+	for _, name := range []string{"Widgetmax Ad 1991", "Fizzbolt Summer Sale", "commercial-widgetmax-1991"} {
+		if got := filler.ViewerName(name, clipcatalog.NameFromFilename); got != "" {
+			t.Errorf("ViewerName(%q, filename) = %q, want it withheld", name, got)
+		}
+	}
+	for _, source := range []clipcatalog.NameSource{
+		clipcatalog.NameFromSource, clipcatalog.NameFromSidecar, clipcatalog.NameFromGrounded, clipcatalog.NameFromCurated,
+	} {
+		for _, name := range []string{"Widgetmax Ad 1991", "zx-qt"} {
+			if got := filler.ViewerName(name, source); got != name {
+				t.Errorf("ViewerName(%q, %s) = %q, want it shown", name, source, got)
+			}
+		}
+		if got := filler.ViewerName("  ", source); got != "" {
+			t.Errorf("ViewerName(blank, %s) = %q, want empty", source, got)
+		}
+	}
+}
+
+// #1980: with no recorded provenance ('unknown', or "" from an older caller), a filename stem is
+// recognised by its shape. Every file-shaped name is withheld; a spaced, capitalised or grounded
+// name passes unchanged. This is the fallback #1988 keeps for rows nothing has classified.
+func TestViewerName_UnknownProvenanceWithholdsFileShapedNames(t *testing.T) {
 	for _, name := range []string{
 		"commercial-widgetmax-1991",
 		"commercial_widgetmax_1991",
@@ -55,8 +79,10 @@ func TestViewerName_WithholdsFileShapedNames(t *testing.T) {
 		"   ",
 		"",
 	} {
-		if got := filler.ViewerName(name); got != "" {
-			t.Errorf("ViewerName(%q) = %q, want it withheld", name, got)
+		for _, unknown := range []clipcatalog.NameSource{clipcatalog.NameFromUnknown, ""} {
+			if got := filler.ViewerName(name, unknown); got != "" {
+				t.Errorf("ViewerName(%q, %q) = %q, want it withheld", name, unknown, got)
+			}
 		}
 	}
 	for _, name := range []string{
@@ -71,8 +97,8 @@ func TestViewerName_WithholdsFileShapedNames(t *testing.T) {
 		"Dr. Fizz",
 		"Loomarr — We'll be right back",
 	} {
-		if got := filler.ViewerName(name); got != name {
-			t.Errorf("ViewerName(%q) = %q, want the curated name unchanged", name, got)
+		if got := filler.ViewerName(name, clipcatalog.NameFromUnknown); got != name {
+			t.Errorf("ViewerName(%q, unknown) = %q, want the curated name unchanged", name, got)
 		}
 	}
 }

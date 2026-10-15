@@ -35,6 +35,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipFingerprintCache", func(t *testing.T) { testClipFingerprintCache(t, newStore) })
 		t.Run("ClipCounts", func(t *testing.T) { testClipCounts(t, newStore) })
 		t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
+		t.Run("ClipNameSource", func(t *testing.T) { testClipNameSource(t, newStore) })
 		t.Run("ClipHeldLifecycle", func(t *testing.T) { testClipHeld(t, newStore) })
 		t.Run("ClipPaging", func(t *testing.T) { testClipPaging(t, newStore) })
 		t.Run("ClipSearchWidened", func(t *testing.T) { testClipSearchWidened(t, newStore) })

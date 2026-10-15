@@ -81,9 +81,12 @@ type PodEntry struct {
 	// any install without Tunarr.
 	TunarrProgramID string
 	Name            string
-	Kind            Kind
-	DurationMs      int64
-	IsFallbackCard  bool // the embedded default bumper card (bottom of the ladder)
+	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
+	// it is not a filename (ViewerName).
+	NameSource     clipcatalog.NameSource
+	Kind           Kind
+	DurationMs     int64
+	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
 	// Era and Quality are carried purely so the guide's hover card can EXPLAIN a break
 	// (§12) — "1994 · 480p" tells a viewer the grain is authentic rather than broken.
 	// Assembly never reads them; they ride along from the catalog row.
@@ -198,6 +201,7 @@ type Policy struct {
 // ladder exists on day one. Operators can replace it per channel.
 var FallbackCard = PodEntry{
 	Name:           "Loomarr — We'll be right back",
+	NameSource:     clipcatalog.NameFromCurated, // product copy, written by a person
 	Kind:           Bumper,
 	DurationMs:     5000, // 5s card
 	IsFallbackCard: true,
@@ -453,7 +457,7 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 	tier, _ := rotationRank(c, w, policy)
 	return PodEntry{
 		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
-		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
+		Name: c.Name, NameSource: c.NameSource, Kind: c.Kind, DurationMs: c.DurationMs,
 		// Display-only passengers (see PodEntry) — every entry gets them from one place, so
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,

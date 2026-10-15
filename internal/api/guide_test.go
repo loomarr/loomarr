@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -500,6 +501,51 @@ func TestGuide_FillerPodNeverSendsAFileSlug(t *testing.T) {
 	entries := body.Channels[0].Airings[0].Pod.Entries
 	if entries[0].Name != "" || entries[1].Name != "Fizzbolt" {
 		t.Errorf("names = %q, %q; want the slug blanked and the curated name kept", entries[0].Name, entries[1].Name)
+	}
+}
+
+// #1988: the Guide decides by provenance, not shape. A filename stem that is spaced and capitalised
+// like a title never reaches a member; an operator's segment name and a sidecar title do, even a
+// slug-shaped one, because their recorded source says they are copy.
+func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotFiller, "", 0, 4)},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		MatchLevel: filler.MatchExact,
+		TotalMs:    90000,
+		Entries: []filler.PodEntry{
+			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clipcatalog.NameFromFilename,
+				Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h-curated", Name: "Zap Cola", NameSource: clipcatalog.NameFromCurated,
+				Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clipcatalog.NameFromSidecar,
+				Kind: filler.Commercial, DurationMs: 30000},
+		},
+	}}
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Pods: fp})
+	seedGridChannel(t, harness.Store, "ch1", 1)
+
+	resp := do(t, harness.Server, http.MethodGet, "/v1/guide", memberToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/guide as a member → %d, want 200", resp.StatusCode)
+	}
+	if strings.Contains(string(raw), "Widgetmax") {
+		t.Errorf("the guide sent a member a filename-sourced name:\n%s", raw)
+	}
+	var body guideBody
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	entries := body.Channels[0].Airings[0].Pod.Entries
+	if entries[0].Name != "" || entries[1].Name != "Zap Cola" || entries[2].Name != "zx-qt" {
+		t.Errorf("names = %q, %q, %q; want the filename withheld and both titles kept",
+			entries[0].Name, entries[1].Name, entries[2].Name)
 	}
 }
 

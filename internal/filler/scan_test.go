@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
@@ -114,6 +115,56 @@ func TestScanDir_ShowsDerivedNameButGroundsEraFromOriginalName(t *testing.T) {
 	}
 	if len(clips) != 1 || clips[0].Name != "“True tales of the canyon patrol”" || clips[0].Era != 1993 {
 		t.Fatalf("clips = %+v, want the derived display name and the filename's 1993", clips)
+	}
+}
+
+// #1988: the scan records where each name came from. A spaced, capitalised filename is still a
+// filename; a sidecar title, a grounded name and a segment's recorded provenance are not. A
+// segment cut before provenance existed stays unknown rather than guessed.
+func TestScanDir_RecordsNameSource(t *testing.T) {
+	for _, tc := range []struct {
+		name, file, sidecar string
+		wantName            string
+		wantSource          clipcatalog.NameSource
+	}{
+		{"bare filename", "Widgetmax Ad 1991.mp4", "", "Widgetmax Ad 1991", clipcatalog.NameFromFilename},
+		{"arrival filename", "ab/cd/hash.mp4", `{"loomarr":{"originalName":"Widgetmax Ad 1991.mp4"}}`,
+			"Widgetmax Ad 1991", clipcatalog.NameFromFilename},
+		{"info-JSON title", "ab/cd/hash.mp4", `{"title":"Fizzbolt Summer Sale","loomarr":{"originalName":"fizzbolt-1991.mp4"}}`,
+			"Fizzbolt Summer Sale", clipcatalog.NameFromSidecar},
+		{"grounded before provenance", "ab/cd/hash.mp4",
+			`{"loomarr":{"originalName":"spot 1993.mp4","displayName":"Fizzbolt — 1993","nameSource":"brand"}}`,
+			"Fizzbolt — 1993", clipcatalog.NameFromGrounded},
+		{"operator-named segment", "ab/cd/hash.mp4",
+			`{"loomarr":{"originalName":"Zap Cola.mp4","displayName":"Zap Cola","nameProvenance":"curated","splitPublicationToken":"tok"}}`,
+			"Zap Cola", clipcatalog.NameFromCurated},
+		{"fallback segment", "ab/cd/hash.mp4",
+			`{"loomarr":{"originalName":"Clip 2 from widgetmax tape.mp4","nameProvenance":"filename","splitPublicationToken":"tok"}}`,
+			"Clip 2 from widgetmax tape", clipcatalog.NameFromFilename},
+		{"segment before provenance", "ab/cd/hash.mp4",
+			`{"loomarr":{"originalName":"Zap Cola.mp4","splitPublicationToken":"tok"}}`,
+			"Zap Cola", clipcatalog.NameFromUnknown},
+		{"unrecognised provenance reads as grounded", "ab/cd/hash.mp4",
+			`{"loomarr":{"originalName":"spot.mp4","displayName":"Zap Cola","nameProvenance":"bogus"}}`,
+			"Zap Cola", clipcatalog.NameFromGrounded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, tc.file)
+			if tc.sidecar != "" {
+				side := strings.TrimSuffix(tc.file, filepath.Ext(tc.file)) + ".info.json"
+				if err := os.WriteFile(filepath.Join(dir, side), []byte(tc.sidecar), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(clips) != 1 || clips[0].Name != tc.wantName || clips[0].NameSource != tc.wantSource {
+				t.Fatalf("clips = %+v, want %q from %s", clips, tc.wantName, tc.wantSource)
+			}
+		})
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -1329,22 +1330,36 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	const transcript = "true tales of the canyon patrol. troopers close in on a desperate gunman"
 	untitled, untitledRel := write("untitled", "untitled spot", filler.SidecarTags{OriginalName: "Untitled commercial"})
 	named, namedRel := write("named", "operator named spot", filler.SidecarTags{OriginalName: "Summer Sale Spot"})
+	// #1988: an operator named this segment in split review. Its name reads like the placeholder,
+	// but its recorded provenance says a person chose it, so it is not Loomarr's to improve.
+	segment, segmentRel := write("segment", "operator named segment", filler.SidecarTags{
+		OriginalName: "Untitled commercial.mp4", DisplayName: "Untitled commercial",
+		NameProvenance: string(clipcatalog.NameFromCurated), SplitPublicationToken: "tok",
+	})
 	source := &fakeSource{clips: []filler.RawClip{
-		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000},
+		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clipcatalog.NameFromFilename,
+			Kind: filler.Commercial, DurationMs: 30_000},
 		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000},
+		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clipcatalog.NameFromCurated,
+			Kind: filler.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
 	st.clips[untitled] = filler.StoreClip{Clip: filler.Clip{Hash: untitled, Path: untitledRel,
 		Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
 	st.clips[named] = filler.StoreClip{Clip: filler.Clip{Hash: named, Path: namedRel,
 		Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[segment] = filler.StoreClip{Clip: filler.Clip{Hash: segment, Path: segmentRel,
+		Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
 
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	const want = "“True tales of the canyon patrol”"
-	if got := st.clips[untitled].Name; got != want {
-		t.Fatalf("untitled clip name = %q, want %q", got, want)
+	if got := st.clips[untitled]; got.Name != want || got.NameSource != clipcatalog.NameFromGrounded {
+		t.Fatalf("untitled clip name = %q (%s), want %q (grounded)", got.Name, got.NameSource, want)
+	}
+	if got := st.clips[segment]; got.Name != "Untitled commercial" || got.NameSource != clipcatalog.NameFromCurated {
+		t.Fatalf("operator-named segment = %q (%s), want its name kept as curated", got.Name, got.NameSource)
 	}
 	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
 	if !ok || tags.DisplayName != want || tags.NameSource != string(filler.NameFromTranscript) {

@@ -1097,6 +1097,15 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 				IntendedEndMs:           seg.EndMs,
 			},
 		}
+		// The segment's name and where it came from travel beside the bytes, so a catalog rebuild
+		// still knows a chapter title or an operator's edit from the filename fallback (#1988).
+		// originalName keeps the name too: era grounding reads it as the clip's text.
+		if nameSource := segmentNameSource(seg.NameOrigin); nameSource.Known() {
+			childTags.NameProvenance = string(nameSource)
+			if nameSource.ShownToViewers() {
+				childTags.DisplayName = seg.Name
+			}
+		}
 		if err := WriteSidecarTags(tmp, childTags, false); err != nil {
 			return nil, fmt.Errorf("split confirm: stage segment provenance: %w", err)
 		}
@@ -1157,7 +1166,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// pinned, and V51a adds the case.
 		nc.Hash = c.hash
 		nc.Path = c.path
-		nc.Name = c.segment.Name
+		nc.Name, nc.NameSource = c.segment.Name, segmentNameSource(c.segment.NameOrigin)
 		nc.Kind = c.kind
 		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
 		nc.Era = c.segment.Era

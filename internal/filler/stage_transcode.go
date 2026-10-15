@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -648,6 +649,17 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	tags, _ = ReadSidecarTags(stageFull)
 	if tags.OriginalName == "" {
 		tags.OriginalName = c.Name
+		if tags.DisplayName == "" && !c.NameSource.Known() {
+			// The seeded originalName is a catalogue name, not an arrival filename (#1988).
+			tags.NameProvenance = string(clipcatalog.NameFromUnknown)
+		}
+	}
+	// A viewer-visible name the sidecar cannot rebuild goes beside the new bytes with its
+	// provenance, so the next scan does not demote it to the filename (#1988). An info-JSON title
+	// already travels with the copied sidecar.
+	if tags.DisplayName == "" && tags.NameProvenance == "" && c.NameSource.ShownToViewers() &&
+		c.NameSource != clipcatalog.NameFromSidecar {
+		tags.DisplayName, tags.NameProvenance = c.Name, string(c.NameSource)
 	}
 	tags.Kind = string(c.Kind)
 	tags.Era = c.Era

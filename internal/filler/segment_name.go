@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 )
 
 const (
@@ -17,6 +19,25 @@ const (
 	maxSegmentNameWords         = 10
 	maxSegmentNameEvidenceRunes = 160
 )
+
+// segmentNameSource is the catalogue provenance of a split segment's name (#1988). A chapter title
+// is the source's, a model name tied to on-screen text is grounded, and an operator's edit is
+// curated. The fallback names the segment after its recording's file. A proposal saved before
+// NameOrigin existed does not say, so its segments stay unknown.
+func segmentNameSource(origin string) clipcatalog.NameSource {
+	switch origin {
+	case SplitNameSourceAuthored:
+		return clipcatalog.NameFromSource
+	case SplitNameModelProposed:
+		return clipcatalog.NameFromGrounded
+	case SplitNameOperatorEdited:
+		return clipcatalog.NameFromCurated
+	case SplitNameFallback:
+		return clipcatalog.NameFromFilename
+	default:
+		return clipcatalog.NameFromUnknown
+	}
+}
 
 var segmentNameDescriptors = map[string]struct{}{
 	"ad": {}, "advert": {}, "advertisement": {}, "bumper": {}, "commercial": {},

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -185,13 +186,14 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			}
 		}
 		// Display name: the clean sidecar title when present, else the heuristic (filename) name —
-		// so a clip that lost its sidecar stays readable rather than showing a hash.
-		name := heuristicName
+		// so a clip that lost its sidecar stays readable rather than showing a hash. Each choice
+		// records its provenance (#1988), which is what viewer surfaces decide on.
+		name, nameSource := heuristicName, scannedNameSource(tags, sidecarState)
 		if sidecarState == SidecarValid && tags.DisplayName != "" {
-			name = tags.DisplayName // derived from grounded evidence (#1452)
+			name = tags.DisplayName // derived from grounded evidence (#1452), or a segment's name
 		}
 		if title := SidecarTitle(path); title != "" {
-			name = title
+			name, nameSource = title, clipcatalog.NameFromSidecar
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
 		// which is the same call the probe above makes about a file with no duration.
@@ -228,6 +230,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			ID:               id,
 			Path:             rel,
 			Name:             name,
+			NameSource:       nameSource,
 			Source:           tags.SourceID,
 			ParentHash:       parentHash,
 			LineageInvalid:   lineageInvalid,
@@ -267,6 +270,35 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		return nil, skipped, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
 	}
 	return clips, skipped, nil
+}
+
+// scannedNameSource is the provenance of the name the scan takes from Loomarr's own sidecar or the
+// filename, before a source title in the info-JSON overrides it (#1988).
+//
+// A DisplayName carries its provenance in NameProvenance; one without it predates #1988 and was
+// grounded, the only kind #1452 wrote. Without a DisplayName the name is the filename stem or the
+// sidecar's originalName, which is the filename the clip arrived with. The exceptions say so in
+// NameProvenance ("unknown", written when the transcode seeded originalName from a catalogue name
+// of unrecorded origin), or are a split segment cut before #1988: the splitter put the segment's
+// name in originalName without saying whether a chapter, a model, an operator or the fallback
+// produced it. Both stay unknown rather than guessed.
+func scannedNameSource(tags SidecarTags, state SidecarReadState) clipcatalog.NameSource {
+	if state != SidecarValid {
+		return clipcatalog.NameFromFilename
+	}
+	recorded := clipcatalog.NameSource(tags.NameProvenance)
+	switch {
+	case tags.DisplayName != "" && recorded.Known():
+		return recorded
+	case tags.DisplayName != "":
+		return clipcatalog.NameFromGrounded
+	case recorded == clipcatalog.NameFromFilename, recorded == clipcatalog.NameFromUnknown:
+		return recorded
+	case tags.SplitPublicationToken != "":
+		return clipcatalog.NameFromUnknown
+	default:
+		return clipcatalog.NameFromFilename
+	}
 }
 
 // FFprobe returns a media file's duration and video height.

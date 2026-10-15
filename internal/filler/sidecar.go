@@ -129,10 +129,15 @@ type SidecarTags struct {
 	// reads a derived name as if it were the clip's own filename.
 	DisplayName string `json:"displayName,omitempty"`
 	NameSource  string `json:"nameSource,omitempty"`
-	Kind        string `json:"kind,omitempty"`
-	Era         int    `json:"era,omitempty"`
-	Audience    string `json:"audience,omitempty"`
-	Category    string `json:"category,omitempty"`
+	// NameProvenance is the catalogue provenance (clipcatalog.NameSource, #1988) of the name this
+	// sidecar gives the clip, so a catalog rebuild restores it with the name. The splitter writes
+	// it for each segment: source, grounded or curated beside DisplayName, or filename for a
+	// fallback name. "" beside a DisplayName means grounded (#1452 wrote only grounded names).
+	NameProvenance string `json:"nameProvenance,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	Era            int    `json:"era,omitempty"`
+	Audience       string `json:"audience,omitempty"`
+	Category       string `json:"category,omitempty"`
 	// Brand is the GROUNDED advertiser (§10 V44) — carried here so a catalog rebuild restores it
 	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
 	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first
