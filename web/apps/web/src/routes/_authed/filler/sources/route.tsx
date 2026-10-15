@@ -1,24 +1,19 @@
-import { createFileRoute, Outlet, redirect, useParams } from "@tanstack/react-router";
-import { meQueryOptions } from "@/auth/me-query";
+import { createFileRoute, Outlet, useParams } from "@tanstack/react-router";
+import { AdminOnly } from "@/auth/admin-only";
 import { FillerPage } from "@/filler/filler-page";
 
+// Admin-only: a member gets AdminOnly's no-access state, and the sources page never mounts.
 const FillerSourcesLayout = () => {
   const { sourceId } = useParams({ strict: false });
   return (
-    <>
+    <AdminOnly>
       <FillerPage tab="sources" sourceID={sourceId} />
       <Outlet />
-    </>
+    </AdminOnly>
   );
 };
 
 const Route = createFileRoute("/_authed/filler/sources")({
-  beforeLoad: async ({ context }) => {
-    const me = await context.queryClient.ensureQueryData(meQueryOptions());
-    if (me.status !== 200 || me.data.role !== "admin") {
-      throw redirect({ to: "/filler/library" });
-    }
-  },
   component: FillerSourcesLayout,
 });
 

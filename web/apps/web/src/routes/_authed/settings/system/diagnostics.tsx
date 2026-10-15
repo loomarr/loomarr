@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "@/auth/use-auth";
-import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { DEFAULT_APPLICATION_FILTERS, DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
 import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
 import { ServerStatus } from "@/diagnostics/server-status";
@@ -50,7 +48,6 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
 });
 
 const DiagnosticsRoute = () => {
-  const { isAdmin } = useAuth();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const normalized: DiagnosticsSearch = {
@@ -63,16 +60,7 @@ const DiagnosticsRoute = () => {
     ...DEFAULT_APPLICATION_FILTERS,
     ...search,
   };
-  if (!isAdmin) {
-    return (
-      <div className="p-6">
-        <EmptyState
-          title="Diagnostics are for admins"
-          description="This surface contains machine state and technical logs."
-        />
-      </div>
-    );
-  }
+  // A member never reaches this: the Settings layout puts every admin page behind AdminOnly.
   return (
     <DiagnosticsPage
       search={normalized}

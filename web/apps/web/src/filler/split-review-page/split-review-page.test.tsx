@@ -36,7 +36,6 @@ const ADMIN = {
   disabled: false,
   quota: 0,
 };
-const MEMBER = { ...ADMIN, role: "member" as const };
 
 const PROPOSAL = {
   id: "sp-1",
@@ -104,14 +103,7 @@ const languageSetting = (value: string) => ({
 // before `/v1/filler/splits/`, which had to precede `/v1/filler`. A prefix that also matches its
 // own sibling is a bug waiting for someone to reorder the list. Route-bound handlers have no
 // order at all.
-//
-// ⚠ `fetchedProposal` / `confirms` replace assertions over `fetchMock.mock.calls`. The NEGATIVE
-// one matters most here (§19's member case): "the proposal was never fetched" used to mean "no
-// recorded url contained that substring", which is only as good as the substring. Now the handler
-// simply never fires — AND, if the member path ever did fetch something unmodelled, the
-// unhandled-request guard fails the test by name rather than letting a catch-all answer it.
 const stubSplit = (me: MeBody = ADMIN, language = "en") => {
-  let fetchedProposal = false;
   const confirms: unknown[] = [];
   const rewinds: unknown[] = [];
   const composite = {
@@ -130,10 +122,7 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
   server.use(
     getMeMockHandler({ ...me }),
     getSettingsListMockHandler({ settings: [languageSetting(language)], features: {} }),
-    getGetFillerSplitMockHandler(() => {
-      fetchedProposal = true;
-      return PROPOSAL;
-    }),
+    getGetFillerSplitMockHandler(() => PROPOSAL),
     getListFillerMockHandler(({ request }) => {
       const params = new URL(request.url).searchParams;
       // Match the real catalog boundary: composites are non-airable and invisible unless the
@@ -151,7 +140,7 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
       rewinds.push(await request.json());
     }),
   );
-  return { wasFetched: () => fetchedProposal, confirms, rewinds };
+  return { confirms, rewinds };
 };
 
 const renderPage = (initialEntry = "/filler/splits/sp-1") => {
@@ -282,13 +271,5 @@ describe("SplitReviewPage", () => {
     expect(validateSplitReviewSearch({ from: "/channels" })).toEqual({});
     expect(validateSplitReviewSearch({})).toEqual({});
   });
-
-  // §19's negative half, on the UI side: a member gets the explanation, and the proposal
-  // query never fires (the server would 403 it anyway — the gate keeps the console clean).
-  it("explains rather than fetching for a member", async () => {
-    const { wasFetched } = stubSplit(MEMBER);
-    renderPage();
-    expect(await screen.findByText(/admins only/i)).toBeInTheDocument();
-    expect(wasFetched()).toBe(false);
-  });
+  // §19's member case lives at the route now (AdminOnly, #1977): test/app-router.test.tsx.
 });

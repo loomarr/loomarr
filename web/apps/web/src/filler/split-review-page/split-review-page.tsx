@@ -8,8 +8,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth/use-auth";
-import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
 import { Button } from "@/components/ui/button";
@@ -73,12 +71,11 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   const backTo = from === "incoming" ? "/filler/incoming" : "/filler/library";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAdmin, isLoading: authLoading } = useAuth();
 
-  // Admin-gated as a courtesy — every split route 403s for a member server-side anyway
-  // (§11, §19); the gate turns a page of failed requests into an explanation.
-  const proposal = fillerApi.useGetFillerSplit(proposalId, { query: { enabled: isAdmin } });
-  const settings = settingsApi.useSettingsList({ query: { enabled: isAdmin, retry: false } });
+  // Admin-only: the route mounts this page inside AdminOnly, so a member never reaches these reads
+  // (every split route 403s for a member server-side anyway — §11, §19).
+  const proposal = fillerApi.useGetFillerSplit(proposalId);
+  const settings = settingsApi.useSettingsList({ query: { retry: false } });
   const persistedProposal = unwrap(proposal.data);
   // Resolve the composite through the existing exact-hash catalog read. Composites are deliberately
   // absent from the airable catalog by default, so omitting includeComposites would turn a valid
@@ -89,7 +86,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
       includeComposites: true,
       limit: 1,
     },
-    { query: { enabled: isAdmin && Boolean(persistedProposal) } },
+    { query: { enabled: Boolean(persistedProposal) } },
   );
 
   const confirm = fillerApi.useConfirmFillerSplit({
@@ -115,16 +112,6 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't start the recheck"),
     },
   });
-
-  if (authLoading) return null;
-  if (!isAdmin) {
-    return (
-      <EmptyState
-        title="Admins only"
-        description="Reviewing compilation splits decides what enters the catalog, so it's an admin action. Ask an admin to review this proposal."
-      />
-    );
-  }
 
   if (proposal.error != null) {
     return <ErrorState error={proposal.error} onRetry={() => proposal.refetch()} />;
