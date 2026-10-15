@@ -751,9 +751,6 @@
     "src/routes/_authed/settings/system/database.tsx": {
       "tailwindClasses": 8
     },
-    "src/routes/_authed/settings/system/diagnostics.tsx": {
-      "tailwindClasses": 1
-    },
     "src/routes/_authed/settings/system/index.tsx": {
       "tailwindClasses": 54
     },

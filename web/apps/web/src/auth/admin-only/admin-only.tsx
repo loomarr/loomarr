@@ -1,3 +1,4 @@
+import { Surface } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "../use-auth";
@@ -16,14 +17,14 @@ const AdminOnly = ({ children }: AdminOnlyProps) => {
   if (isLoading) return null;
   if (isAdmin) return children;
   return (
-    <div className="p-6">
+    <Surface backgroundColor="$transparent" borderWidth={0} padding="$section">
       <StatePanel
         kind="permission"
         title="Admins only"
         description="Only an admin can open this page. Ask one if you need something changed here."
         action={{ label: "Go to Home", onPress: () => void navigate({ to: "/dashboard" }) }}
       />
-    </div>
+    </Surface>
   );
 };
 
