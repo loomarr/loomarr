@@ -75,9 +75,17 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
   filler is a synced cache. Sidecars restore tags; play counts and pins do not survive, and the app
   says so.
 
+**A clip's name records where it came from** (`name_source`, #1988). The scan takes the
+source's info-JSON `title` (`sidecar`), else the sidecar's derived `displayName` with its
+`nameProvenance` (`grounded` from evidence, or a split segment's chapter title `source` or
+operator edit `curated`), else `originalName` or the bare filename stem (`filename`). Viewer
+surfaces never show a `filename` name, however it reads. Migration 00134 backfilled only what SQL
+could prove and left the rest `unknown`. The next scan relabels every clip it finds. A segment cut
+before #1988 stays `unknown`, because its sidecar never said where its name came from.
+
 **Sidecars carry metadata with the clip.** Loomarr writes era, audience, category, kind, the
-diagnostic score and `originalName` into the existing yt-dlp-style `*.info.json`, so tagging
-survives a database reset or a move. Loomarr may create or update only `*.info.json` in the media
+diagnostic score, `originalName` and the derived name with its provenance into the existing
+yt-dlp-style `*.info.json`, so tagging survives a database reset or a move. Loomarr may create or update only `*.info.json` in the media
 folders; media files stay byte-for-byte untouched. JSON rather than `.nfo`: nothing consumes `.nfo`
 here, and its schema has no place for these fields. The sidecar's `"fetchedBy": "loomarr"` is
 portable provenance, never admission authority.

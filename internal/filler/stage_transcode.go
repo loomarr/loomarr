@@ -646,8 +646,15 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		return StageResult{}, fmt.Errorf("transcode %s: copy sidecar: %w", oldRel, err)
 	}
 	tags, _ = ReadSidecarTags(stageFull)
-	if tags.OriginalName == "" {
+	// A viewer-visible name the sidecar cannot rebuild goes beside the new bytes with its
+	// provenance, so the next scan does not demote it to the filename (#1988). A seeded
+	// originalName of unrecorded origin is marked so; an arrival filename is left as one.
+	seeded := tags.OriginalName == ""
+	if seeded {
 		tags.OriginalName = c.Name
+	}
+	if seeded || c.NameSource.ShownToViewers() {
+		carryNameProvenance(&tags, c.Name, c.NameSource)
 	}
 	tags.Kind = string(c.Kind)
 	tags.Era = c.Era

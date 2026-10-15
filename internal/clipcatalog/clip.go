@@ -45,6 +45,44 @@ const (
 	LateNight Audience = "late_night"
 )
 
+// NameSource records where a clip's catalogue Name came from (#1988), so a viewer-facing surface
+// can decide from provenance rather than from the name's shape whether it is copy or a file.
+type NameSource string
+
+const (
+	// NameFromSource is a title the clip's source authored inside the media itself: a chapter
+	// title that named a split segment.
+	NameFromSource NameSource = "source"
+	// NameFromSidecar is the title the source declared in the info-JSON sidecar beside the file.
+	NameFromSidecar NameSource = "sidecar"
+	// NameFromGrounded is a name Loomarr derived from grounded evidence: a brand, a quoted
+	// transcript or on-screen excerpt, a category or era, or a model name tied to on-screen text.
+	NameFromGrounded NameSource = "grounded"
+	// NameFromCurated is a name a person wrote: an operator's edit in split review, or product copy.
+	NameFromCurated NameSource = "curated"
+	// NameFromFilename is the filename stem, or a name built from it. It identifies a file for an
+	// operator and is never shown to viewers.
+	NameFromFilename NameSource = "filename"
+	// NameFromUnknown is a row whose provenance was never recorded: one migration 00134 could not
+	// classify and no scan has relabelled since. "" reads the same way.
+	NameFromUnknown NameSource = "unknown"
+)
+
+// Known reports whether the provenance was recorded as one of the values above. A value read
+// from a hand-edited sidecar that is none of them is not.
+func (s NameSource) Known() bool {
+	switch s {
+	case NameFromSource, NameFromSidecar, NameFromGrounded, NameFromCurated, NameFromFilename:
+		return true
+	default:
+		return false
+	}
+}
+
+// ShownToViewers reports whether a name with this provenance is viewer copy. A filename never is.
+// An unrecorded provenance is not either; ViewerName falls back to the name's shape for it.
+func (s NameSource) ShownToViewers() bool { return s.Known() && s != NameFromFilename }
+
 // Clip is one filler item in the catalog (§10), scanned from FILLER_DIR.
 //
 // IDENTITY IS `Hash` (see the field below). This has moved three times, and the reasons
@@ -84,7 +122,10 @@ type Clip struct {
 	// while an install with no Tunarr simply has none. One catalog serves both backends —
 	// internal playout reads Path, Tunarr reads this.
 	TunarrProgramID string
-	Name            string    // display name (from the filename)
+	Name            string // display name: a source or sidecar title, a grounded name, or the filename stem
+	// NameSource is where Name came from (#1988). Every writer of Name sets it; viewer surfaces
+	// show Name only when it is not a filename (NameSource.ShownToViewers).
+	NameSource      NameSource
 	Kind            Kind      // descriptive role; unclassified means unknown
 	Placement       Placement // break_body | bookend | not_playable; committed by terminal readiness
 	Era             int       // decade/year, e.g. 1994; 0 = untagged

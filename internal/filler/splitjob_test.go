@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -1848,6 +1849,16 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 			t.Errorf("confirmed segment %q taxonomy = category %q / asserted %v", seg.Name, seg.Category, seg.AssertedTags)
 		}
 		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, seg.Path))
+		// #1988: a chapter title is the source's and the operator's edit is curated, in the catalog
+		// row and beside the bytes, so a rebuild restores both.
+		wantSource := map[string]clipcatalog.NameSource{
+			"Burger Barn": clipcatalog.NameFromSource, "Brickle": clipcatalog.NameFromSource,
+			"Edited boundary": clipcatalog.NameFromCurated,
+		}[seg.Name]
+		if seg.NameSource != wantSource || tags.DisplayName != seg.Name || tags.NameProvenance != string(wantSource) {
+			t.Errorf("confirmed segment %q name source = %q, sidecar %q/%q; want %q", seg.Name, seg.NameSource,
+				tags.DisplayName, tags.NameProvenance, wantSource)
+		}
 		if !ok || tags.ConditioningLineage == nil || tags.ConditioningLineage.ChildHash != seg.Hash {
 			t.Errorf("confirmed segment %q child identity binding = %+v, ok=%v", seg.Name, tags.ConditioningLineage, ok)
 		} else if tags.ConditioningLineage.ParentAssetRole != string(filler.SplitSourceLegacyPlayback) ||

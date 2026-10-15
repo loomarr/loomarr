@@ -139,9 +139,12 @@ the user's home-screen ordering.
   enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
-  never shown. The Guide supplies a clip title only when it is viewer copy: a catalogue name that
-  is only a filename stem (`commercial-sneakers-1993`, an underscore or extension, a hash) is sent
-  empty and the label reads just `Commercials` (#1980). Operator surfaces keep the filename.
+  never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where
+  its name came from (`name_source`: source, sidecar, grounded, curated or filename), and a name
+  from the filename is sent empty however it reads, `Widgetmax Ad 1991` included, so the label
+  reads just `Commercials` (#1980, #1988). A clip whose provenance was never recorded (`unknown`)
+  falls back to the name's shape: a filename stem (`commercial-sneakers-1993`, an underscore or
+  extension, a hash) is withheld. Operator surfaces keep the filename.
   Nothing the server did not supply (codec, captions, resolution) is invented.
 - **Surf** overlays the still-mounted player: the person's favourites and recents (see
   [Favourites and recents](#favourites-and-recents)), then every playable Channel. Its footer shows

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -2471,6 +2472,53 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.License != "" {
 		t.Errorf("a clip with no declared licence has %q, want empty", got.License)
+	}
+}
+
+// testClipNameSource pins that a name's provenance round-trips on BOTH backends and travels with
+// the name on a re-upsert (#1988), and that a writer which records none stores 'unknown', the same
+// value migration 00134 gives a row it cannot classify.
+func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	named := Clip{Clip: filler.Clip{
+		Hash: "named.mp4", Path: "named.mp4", Name: "Widgetmax Ad 1991", NameSource: clipcatalog.NameFromFilename,
+		Kind: filler.Commercial, DurationMs: 30000,
+	}, UpdatedAt: now}
+	unrecorded := Clip{Clip: filler.Clip{
+		Hash: "unrecorded.mp4", Path: "unrecorded.mp4", Name: "Unrecorded", Kind: filler.Commercial, DurationMs: 30000,
+	}, UpdatedAt: now}
+	for _, c := range []Clip{named, unrecorded} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for hash, want := range map[string]clipcatalog.NameSource{
+		"named.mp4": clipcatalog.NameFromFilename, "unrecorded.mp4": clipcatalog.NameFromUnknown,
+	} {
+		got, err := s.GetClip(ctx, hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.NameSource != want {
+			t.Errorf("%s name source = %q, want %q", hash, got.NameSource, want)
+		}
+	}
+
+	// A sidecar title found by a later scan replaces the name AND its provenance.
+	named.Name, named.NameSource = "Fizzbolt Summer Sale", clipcatalog.NameFromSidecar
+	if err := s.UpsertClip(ctx, named); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := s.ListClips(ctx, ClipFilter{Hashes: []string{"named.mp4"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].Name != "Fizzbolt Summer Sale" || listed[0].NameSource != clipcatalog.NameFromSidecar {
+		t.Fatalf("after re-upsert = %+v, want the sidecar title with its provenance", listed)
 	}
 }
 

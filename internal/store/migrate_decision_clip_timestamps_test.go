@@ -29,8 +29,10 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 	decidedAt := time.Date(2026, 9, 13, 2, 1, 0, 0, time.UTC)
 	untouchedAt := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	for _, hash := range []string{"decided", "untouched"} {
-		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{Hash: hash, Path: hash + ".mp4", Name: hash,
-			Kind: filler.Commercial}, UpdatedAt: untouchedAt}); err != nil {
+		// Seeded through the schema as it stood at 00130: current UpsertClip writes later columns.
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO clips (hash, path, name, kind, duration_ms, created_at, updated_at)
+			VALUES (?, ?, ?, ?, 0, ?, ?)`, hash, hash+".mp4", hash, string(filler.Commercial),
+			untouchedAt.Unix(), untouchedAt.Unix()); err != nil {
 			t.Fatal(err)
 		}
 		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageID("admission"),
@@ -47,7 +49,8 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 131); err != nil {
+	// Through to the current schema, so the rows read back through the current GetClip.
+	if _, err := provider.Up(ctx); err != nil {
 		t.Fatalf("apply decision timestamp repair: %v", err)
 	}
 	for hash, want := range map[string]struct{ updated, removed time.Time }{

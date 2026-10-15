@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/logchange"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -61,6 +62,8 @@ type RawClip struct {
 	// install with no Tunarr, which is a supported configuration, not a degraded one.
 	TunarrProgramID string
 	Name            string
+	// NameSource is where the scan found Name (#1988); the catalog row takes it with the name.
+	NameSource      clipcatalog.NameSource
 	DurationMs      int64
 	Kind            Kind
 	Era             int // initial era from filename; 0 if none
@@ -460,7 +463,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.ParentHash = rc.ParentHash
 		merged.IsComposite = rc.IsComposite
 		// Scan-owned fields (always taken fresh — the filesystem is source of truth).
-		merged.Name = rc.Name
+		merged.Name, merged.NameSource = rc.Name, rc.NameSource
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
 		merged.GeographicScope = rc.GeographicScope
@@ -762,7 +765,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	if found {
 		grounded = existing.Clip
 	}
-	rc.Name = groundedRepairName(grounded)
+	rc.Name, rc.NameSource = groundedRepairName(grounded), clipcatalog.NameFromGrounded
 	if rc.SidecarInvalid {
 		return rc, true, nil
 	}
@@ -770,6 +773,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	tags, _ := ReadSidecarTags(full)
 	if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 		tags.OriginalName = rc.Name
+		carryNameProvenance(&tags, rc.Name, rc.NameSource)
 		if found {
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
@@ -809,17 +813,18 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 
 	// If the durable row still has a useful title, put it beside the bytes before moving. This is
 	// the last automatic chance to prevent the next scan from replacing it with the stale hash.
-	repairName := ""
+	repairName, repairSource := "", clipcatalog.NameFromUnknown
 	if found {
-		repairName = existing.Name
+		repairName, repairSource = existing.Name, existing.NameSource
 		if isHashDisplayName(repairName) {
-			repairName = groundedRepairName(existing.Clip)
+			repairName, repairSource = groundedRepairName(existing.Clip), clipcatalog.NameFromGrounded
 		}
 	}
 	if repairName != "" {
 		tags, _ := ReadSidecarTags(oldFull)
 		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 			tags.OriginalName = repairName
+			carryNameProvenance(&tags, repairName, repairSource)
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
@@ -831,7 +836,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 			if err := WriteSidecarTags(oldFull, tags, false); err != nil {
 				return rc, false, err
 			}
-			rc.Name = repairName
+			rc.Name, rc.NameSource = repairName, repairSource
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(newFull), 0o755); err != nil {
@@ -913,6 +918,11 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	if state == SidecarInvalid {
 		return rc, false, nil
 	}
+	// A segment's chapter title or operator edit is not Loomarr's to improve, and neither is the
+	// filename fallback it records explicitly (#1988).
+	if recorded := clipcatalog.NameSource(tags.NameProvenance); recorded.Known() && recorded != clipcatalog.NameFromGrounded {
+		return rc, false, nil
+	}
 	legacy := existing.Clip
 	legacy.Transcript, legacy.VisibleText = "", ""
 	legacyName, _ := GroundedName(legacy)
@@ -928,7 +938,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	if err := WriteSidecarTags(full, tags, false); err != nil {
 		return rc, false, err
 	}
-	rc.Name = name
+	rc.Name, rc.NameSource = name, clipcatalog.NameFromGrounded
 	return rc, true, nil
 }
 
@@ -972,8 +982,12 @@ func isLowerHex(value string) bool {
 //
 // The rule for anything added later: if `syncClips` assigns it from `rc`, compare it here.
 func serverFieldsUnchanged(a, b Clip) bool {
+	// ⚠ NameSource is compared with Name: an unchanged name whose provenance the scan has just
+	// learned (a row migration 00134 left 'unknown') must still be written, or it stays unknown.
+	// "" and 'unknown' are one state, so neither spelling forces a write on every pass.
+	sameNameSource := a.NameSource == b.NameSource || !a.NameSource.Known() && !b.NameSource.Known()
 	return a.Path == b.Path && a.TunarrProgramID == b.TunarrProgramID &&
-		a.Name == b.Name && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
+		a.Name == b.Name && sameNameSource && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
 		a.Quality == b.Quality && a.License == b.License &&
 		a.Thumbnail == b.Thumbnail && a.Preview == b.Preview
 }

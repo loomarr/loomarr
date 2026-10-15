@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 )
 
 // NameSource records which evidence produced a clip's derived display name (#1452). It is written
@@ -114,21 +116,35 @@ func quoteExcerpt(words []string, sentenceCase bool) string {
 }
 
 // ViewerName is the clip name a viewer may see in a programme line, or "" when the name is a
-// file identity rather than viewer copy (#1980).
+// file identity rather than viewer copy (#1980, #1988).
 //
 // A clip with no source title and no grounded name keeps its filename stem as its catalogue name
-// (scan.go), which helps an operator find the file and means nothing to a household. A name is
-// file-shaped when it carries a clip extension, is an opaque content hash, contains an
-// underscore, or is one lowercase token joined by hyphens, dots or path separators
-// ("commercial-sneakers-1993", "ads/sneakers"). A spaced or capitalised name ("Coca-Cola",
-// "ZX/QT", "Sneakers commercial 1993") is viewer copy and passes.
-func ViewerName(name string) string {
+// (scan.go), which helps an operator find the file and means nothing to a household. Provenance
+// decides: a name whose recorded source is the filename is withheld however it reads
+// ("Widgetmax Ad 1991"), and every other recorded source shows.
+//
+// ⚠ The shape test below is ONLY the fallback for a name whose provenance was never recorded:
+// a row migration 00134 could not classify and no scan has relabelled, which a split segment cut
+// before #1988 stays for good. It withholds a name that carries a clip extension, is an opaque
+// content hash, contains an underscore, or is one lowercase token joined by hyphens, dots or path
+// separators ("commercial-sneakers-1993"). A spaced or capitalised stem passes it, which is why
+// provenance replaced it everywhere provenance exists.
+func ViewerName(name string, source clipcatalog.NameSource) string {
 	name = strings.TrimSpace(name)
-	if name == "" || strings.Contains(name, "_") || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
-		isHashDisplayName(name) || lowerSlug(name) {
+	switch {
+	case name == "":
 		return ""
+	case source.Known():
+		if source.ShownToViewers() {
+			return name
+		}
+		return ""
+	case strings.Contains(name, "_") || clipExtensions[strings.ToLower(filepath.Ext(name))] ||
+		isHashDisplayName(name) || lowerSlug(name):
+		return ""
+	default:
+		return name
 	}
-	return name
 }
 
 // lowerSlug reports a single lowercase token joined by hyphens, dots or path separators: a

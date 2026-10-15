@@ -267,15 +267,16 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, placement, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, market, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
 		     THEN clips.enrichment_revision + 1 ELSE clips.enrichment_revision END,
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
-		   name=excluded.name, kind=excluded.kind,
+		   -- name_source travels with name: every writer of a name says where it came from (#1988).
+		   name=excluded.name, name_source=excluded.name_source, kind=excluded.kind,
 		   era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
@@ -290,7 +291,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
-		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
+		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
 		clipGeographicScope(c), c.Country, c.Market, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
@@ -491,12 +492,12 @@ func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, 
 			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
-			(name, kind, era, audience, category, rating, source, ai_tagged, license,
+			(name, name_source, kind, era, audience, category, rating, source, ai_tagged, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
 			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
 			 created_at, reaped_at) =
-			(SELECT name, kind, era, audience, category, rating, source, ai_tagged, license,
+			(SELECT name, name_source, kind, era, audience, category, rating, source, ai_tagged, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
 			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
@@ -622,6 +623,15 @@ func clipCreatedAt(c Clip) time.Time {
 	return c.UpdatedAt
 }
 
+// clipNameSource stores an unset provenance as 'unknown', the value migration 00134 gives a row it
+// could not classify, so the column never holds a second spelling of "not recorded".
+func clipNameSource(c Clip) string {
+	if !c.NameSource.Known() {
+		return string(clipcatalog.NameFromUnknown)
+	}
+	return string(c.NameSource)
+}
+
 func clipGeographicScope(c Clip) string {
 	if c.GeographicScope == "" {
 		return string(clipcatalog.GeographicUnknown)
@@ -638,7 +648,7 @@ func clipPlacement(c Clip) clipcatalog.Placement {
 	return c.EffectivePlacement()
 }
 
-const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, placement, era, audience, category, duration_ms,
+const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, duration_ms,
 	geographic_scope, country, market, network, station, air_date, geo_evidence,
 	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
@@ -1196,7 +1206,7 @@ func scanClip(sc scannable) (Clip, error) {
 		// dialect split every epoch value here follows, and both are 64-bit.
 		createdAt int64
 	)
-	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Placement, &c.Era, &audience, &c.Category,
+	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &c.NameSource, &kind, &c.Placement, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Market, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
 		&c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
