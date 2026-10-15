@@ -138,7 +138,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The Device sheet: opened from the Guide's and Requests' header buttons, docked above the tab bar.
   const [deviceOpen, setDeviceOpen] = useState(false);
   const account = usePairedAccount({ credential, session });
-  const { nativeApplicationVersion: appVersion, nativeBuildVersion: appBuild } = Constants;
+  // The version and build app.config.cjs stamps into the binary (expo-constants has no native-version field).
+  const appVersion = Constants.expoConfig?.version;
+  const appBuild = Constants.expoConfig?.ios?.buildNumber;
   const deviceAction = {
     accessibilityLabel: "Device and account",
     icon: "account",
