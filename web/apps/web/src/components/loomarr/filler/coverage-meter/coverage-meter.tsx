@@ -160,13 +160,13 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
               <li key={c.criterion} className="flex items-center gap-2 text-xs">
                 <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
                 <Caption
-                  className={cn(
-                    "shrink-0 tabular-nums",
-                    // ⚠ `onair` is this palette's "a human is needed" red; a zero here IS the
-                    // thing to act on. The non-zero rows stay muted so the eye lands on the
-                    // one row that matters rather than scanning six equal-weight numbers.
-                    c.clips === 0 && "font-medium text-onair-300",
-                  )}
+                  // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
+                  // thing to act on. The non-zero rows stay muted so the eye lands on the
+                  // one row that matters rather than scanning six equal-weight numbers. A tone,
+                  // not a `text-*` class: Caption's colour is inline style since #1850, which
+                  // silently turned a `text-onair-300` class here grey (#1956).
+                  tone={c.clips === 0 ? "danger" : "muted"}
+                  className={cn("shrink-0 tabular-nums", c.clips === 0 && "font-medium")}
                 >
                   {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
                 </Caption>

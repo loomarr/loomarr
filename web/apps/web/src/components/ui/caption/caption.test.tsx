@@ -22,6 +22,10 @@ describe("Caption", () => {
     rerender(<Caption tone="strong">ch 4</Caption>);
     // text-static-100 === semanticColors.content.primary
     expect(screen.getByText("ch 4")).toHaveStyle({ color: "#E7EAF0" });
+
+    rerender(<Caption tone="danger">ch 4</Caption>);
+    // text-onair-300 === semanticColors.state.danger
+    expect(screen.getByText("ch 4")).toHaveStyle({ color: "#E85A5F" });
   });
 
   // `shout` is the section-label voice ("POD · 1:10"); plain is metadata sitting quietly

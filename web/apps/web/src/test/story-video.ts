@@ -9,7 +9,11 @@ const pauseStoryVideo = async (canvasElement: HTMLElement) => {
     if (video.readyState < 2) throw new Error("Waiting for the offline clip fixture");
   });
   video.pause();
+  // A seek is asynchronous: the clock shows wherever playback had reached (0:01 on a slow
+  // runner) until `seeked` fires, so a shot taken before it is not frame-stable (#1956).
+  const seeked = new Promise((resolve) => video.addEventListener("seeked", resolve, { once: true }));
   video.currentTime = 0;
+  await seeked;
 };
 
 export { pauseStoryVideo };

@@ -52,7 +52,16 @@ const DETERMINISM = {
   // Retries de-flake that WITHOUT masking real regressions — a genuine diff reproduces
   // and still fails every attempt.
   retries: 2,
-  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.001, animations: "disabled" as const } },
+  // ⚠ `threshold` is pixelmatch's PER-PIXEL colour tolerance, and its default of 0.2 counted a
+  // whole token recolour as "the same pixel": cream #FFF3D6 → grey #D2D6DE is a YIQ delta of
+  // 592, under 0.2's limit of 1408, so 121 baselines lagged the code unnoticed (#1956). 0.05
+  // (limit 88) catches a 15% accent wash or a static-700 → static-800 step, and measured zero
+  // raster noise and zero flake across two full CI runs. It still cannot see adjacent dark
+  // steps (static-950/900/800, delta 41); refresh those with the baselines workflow's `force`.
+  // docs/contributing/testing.md carries the full table.
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001, threshold: 0.05, animations: "disabled" as const },
+  },
   use: {
     reducedMotion: "reduce" as const,
     // ⚠ **TIMEZONE, and it is not a nicety.** Fixtures pin instants with `Date.UTC(...)`,
