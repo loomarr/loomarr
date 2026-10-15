@@ -16,8 +16,6 @@ export type { BriefState, RequestChannelProps } from "./request-channel";
 export { RequestChannel } from "./request-channel";
 export type { RequestDetailProps } from "./request-detail";
 export { RequestDetail } from "./request-detail";
-export type { RequestChannelName, RequestDoneRowProps } from "./request-done-row";
-export { RequestDoneRow } from "./request-done-row";
 export type { RequestsJourneyProps } from "./requests-journey";
 export { RequestsJourney } from "./requests-journey";
 export type { RequestsListProps } from "./requests-list";
