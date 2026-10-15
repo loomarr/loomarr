@@ -48,7 +48,12 @@ type LinkLike = (props: {
 
 interface NavTabsProps {
   tabs: NavTab[];
-  activeId: string;
+  /**
+   * The tab for the page being shown. `undefined` when the page is none of them, for example a
+   * member who opened an admin-only channel section by URL: no tab is current then, because
+   * `aria-current` on one would claim a page the viewer is not on (#1987).
+   */
+  activeId: string | undefined;
   /**
    * The router's `Link`. Injected rather than imported so this stays router-agnostic — the
    * component owns the LOOK, the caller owns navigation.
