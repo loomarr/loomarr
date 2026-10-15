@@ -14,11 +14,12 @@ const steps = [
 const body = <p className="text-muted-foreground text-sm">The step's form renders here.</p>;
 
 // The operator first-run frame (§13): the rail is resume-safe — it renders whatever the
-// caller derived from GET /v1/setup/status, so a refresh loses nothing.
+// caller derived from GET /v1/setup/status, so a refresh loses nothing. Tagged `motion`, as
+// LoginShell is, so the gallery keeps the idle snow that reduced motion hides.
 const meta = {
   title: "Setup/WizardShell",
   component: WizardShell,
-  tags: ["route"],
+  tags: ["route", "motion"],
   parameters: { layout: "fullscreen" },
   args: {
     steps,

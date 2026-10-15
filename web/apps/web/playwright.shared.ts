@@ -63,7 +63,15 @@ const DETERMINISM = {
     toHaveScreenshot: { maxDiffPixelRatio: 0.001, threshold: 0.05, animations: "disabled" as const },
   },
   use: {
-    reducedMotion: "reduce" as const,
+    // ⚠ **REDUCED MOTION LIVES IN `contextOptions`, not beside `timezoneId`.** Playwright has a
+    // `colorScheme` fixture but no `reducedMotion` one, so a top-level `reducedMotion` key is
+    // dropped without a word (and a spread object escapes the excess-property check). Both suites
+    // ran with motion ON until #2004. The gallery asserts the media query on every story it shoots,
+    // and e2e's reduced-motion.spec.ts does the same in the SPA, so that cannot silently return.
+    //
+    // A story tagged `motion` opts back out for its own page (gallery.spec.ts), and a test that
+    // sets its own `contextOptions` replaces this object whole (motion.spec.ts).
+    contextOptions: { reducedMotion: "reduce" as const },
     // ⚠ **TIMEZONE, and it is not a nicety.** Fixtures pin instants with `Date.UTC(...)`,
     // but anything rendering a WALL-CLOCK time formats it in the browser's zone — so the
     // same story shot on an EDT laptop and in the UTC container disagree by four hours.

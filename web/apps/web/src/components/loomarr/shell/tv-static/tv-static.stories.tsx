@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { TvStatic } from "./tv-static";
 
 // The CRT snow (§1). It is absolute inset-0, so the story frames it in a relative box on
-// the app background. Note: under the visual suite's reduced-motion pin it renders EMPTY
-// by design — the gallery baseline for this component is intentionally the bare frame.
+// the app background. The idle snow renders nothing under reduced motion, so Default is tagged
+// `motion`: the gallery shoots it with motion allowed, its seeded tile frozen at frame 0.
 const meta = {
   title: "Shell/TvStatic",
   component: TvStatic,
@@ -18,7 +18,7 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Default: Story = {};
+const Default: Story = { tags: ["motion"] };
 
 // The tuner's channel-switch snow (#1620): dense and soft at half strength. Unlike the idle snow it
 // is present under reduced motion, as a still (seeded) field, so the baseline shows it.

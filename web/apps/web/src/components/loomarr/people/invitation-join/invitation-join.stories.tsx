@@ -2,9 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LoginShell } from "@/components/loomarr/setup/login-shell";
 import { InvitationJoin } from "./invitation-join";
 
+// Tagged `motion`, as LoginShell is, so the gallery keeps the shell's idle snow.
 const meta = {
   title: "People/Invitation join",
   component: InvitationJoin,
+  tags: ["motion"],
   args: {
     preview: {
       kind: "local",

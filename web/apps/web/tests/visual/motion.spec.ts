@@ -14,11 +14,20 @@ import { expect, test } from "@playwright/test";
 //
 // These tests assert BEHAVIOUR, never pixels — computed animation names and frame-to-frame
 // difference. Nothing here writes a snapshot, so it cannot flake a diff.
-test.use({ reducedMotion: "no-preference" });
+//
+// ⚠ `contextOptions`, because Playwright has no `reducedMotion` fixture: a bare
+// `test.use({ reducedMotion })` is dropped without a word, and this file once passed only because the
+// kit's own setting was dropped the same way (#2004). The first test proves the override lands.
+test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 
 test.describe("idle-surface motion", () => {
+  test("the page is told motion is allowed", async ({ page }) => {
+    await page.goto(story("shell-tvstatic--default"));
+    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(false);
+  });
+
   test("loading indicators animate when motion is enabled", async ({ page }) => {
     await page.goto(story("loomarr-foundations-loading--animated"));
     await page.locator("#storybook-root > *").first().waitFor({ state: "visible" });
