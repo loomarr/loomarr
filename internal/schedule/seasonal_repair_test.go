@@ -166,6 +166,7 @@ func TestHolidayEpisodes_ConsecutiveWindowsShareNothing(t *testing.T) {
 func TestHolidayEpisodes_OutOfSeasonShortWindowsNeverBench(t *testing.T) {
 	for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle} {
 		t.Run(string(order), func(t *testing.T) {
+			t.Parallel()
 			assertShortWindowsNeverBench(t, order)
 		})
 	}
@@ -456,10 +457,13 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 // deck in an hour's window on 78. Out of season, deferring a holiday episode out of the evening
 // brought the units behind it forward. This samples origins, seeds, orderings and strengths, and
 // asserts the guarantee at every seam, including a date far from any season.
+//
+// Under -race it walks the first four draws and the five whose walks failed before #1967's fix
+// (7, 12, 15, 19, 20); -args -holiday-sweep walks them all (#2007).
 func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1960, 1676))
 	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	for range 24 { // 120 seam walks, ~40 s under -race on four cores; main fails 6 of them
+	for draw := range 24 { // 120 seam walks; before #1967's fix 6 of them failed
 		ch := channelWithWindow(0, nil)
 		ch.DealOrigin = year.AddDate(0, 0, rng.IntN(365))
 		ch.Shuffle.Seed = []int64{42, 7, 1960, 0}[rng.IntN(4)] // 0 derives the seed from the channel id
@@ -467,6 +471,9 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 		strength := holidayStrengths[rng.IntN(len(holidayStrengths))]
 		pool := seamPools[rng.IntN(len(seamPools))]
 		ch.DefaultWindow = pool.window
+		if sampleSweeps() && draw >= 4 && !slices.Contains([]int{7, 12, 15, 19, 20}, draw) {
+			continue // drawn all the same, so every walk keeps its channel
+		}
 		for _, seam := range seamCases {
 			t.Run(fmt.Sprintf("origin %s/seed %d/%s/%d episodes/%s window/%s/%s",
 				ch.DealOrigin.Format(time.DateOnly), ch.Shuffle.Seed, seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
