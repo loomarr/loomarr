@@ -1,11 +1,13 @@
 package schedule_test
 
 import (
+	"flag"
 	"fmt"
 	"maps"
 	"math/rand/v2"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -461,6 +463,129 @@ func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
 				t.Parallel()
 				assertSeamGuarantee(t, ch, seam, pool, order, strength)
 			})
+		}
+	}
+}
+
+var holidaySweep = flag.Bool("holiday-sweep", false, "TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing walks all 365 deal origins")
+
+// #1971: out of season, a shuffled channel favouring evenings swaps a holiday episode with an
+// ordinary unit after the band or, failing that, before it. A swap before the band moves the unit
+// later and the episode earlier, so the checks bound where the neighbouring windows can air them
+// (swapOut). Every unit, holiday episodes included, must then air no closer to its last airing than
+// the spacing and what it would have aired without the move. In March the oracle is the deal
+// (Anytime moves nothing out of season). From Halloween's end it is the arrangement without
+// before-band swaps: they must not reach the season, and away from it that arrangement keeps the
+// deal's gaps (#1970), so the oracle is no looser. Each deck walks Halloween's end at a seeded
+// origin, and March is walked at the three origins (days of 2025) where dropping one of the checks
+// broke the spacing. -args -holiday-sweep walks Halloween's end at every origin.
+func TestHolidayEpisodes_SwapsKeepEveryUnitsSpacing(t *testing.T) {
+	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+	march := [2]time.Time{day(time.March, 2, 0), day(time.March, 16, 0)}
+	seasonEnd := [2]time.Time{day(time.October, 28, 0), day(time.November, 22, 0)}
+	evenings := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+	evenings.Ordering = schedule.OrderShuffle
+	anytime := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured, Placement: schedule.HolidayPlacementAnytime})
+	anytime.Ordering = schedule.OrderShuffle
+	type walk struct {
+		pool      seamPool
+		origin    int
+		seasonEnd bool // also walk Halloween's end
+	}
+	walks := []walk{
+		{seamPool{80, 24 * time.Hour}, 230, false}, // unitTooLate dropped: 26 of 365 short
+		{seamPool{80, 12 * time.Hour}, 45, false},  // episodeTooEarly dropped: 52 of 365 short
+		{seamPool{80, 24 * time.Hour}, 268, false}, // costsSpacing's swap fallback dropped: 13 of 365 short
+	}
+	origins := rand.New(rand.NewPCG(1971, 1970)).Perm(365)
+	if *holidaySweep {
+		walks = nil
+	}
+	for i, pool := range seamPools {
+		if !*holidaySweep {
+			walks = append(walks, walk{pool, origins[i], true})
+			continue
+		}
+		for _, o := range origins {
+			walks = append(walks, walk{pool, o, true})
+		}
+	}
+	channel := func(c walk) (schedule.Channel, libraryfixture.Availability) {
+		ch := channelWithWindow(c.pool.window, nil)
+		ch.DealOrigin = year.AddDate(0, 0, c.origin)
+		return ch, seriesLike(c.pool.ordinary, halloweenSpecials(max(3, c.pool.ordinary/20))...)
+	}
+	name := func(c walk) string {
+		return fmt.Sprintf("%d episodes/%s window/origin %s", c.pool.ordinary, c.pool.window, year.AddDate(0, 0, c.origin).Format(time.DateOnly))
+	}
+
+	var mu sync.Mutex
+	without := map[walk]map[string][]int{}
+	restore := schedule.SetBeforeBandSwaps(false)
+	t.Run("without before-band swaps", func(t *testing.T) {
+		for _, c := range walks {
+			if !c.seasonEnd {
+				continue
+			}
+			t.Run(name(c), func(t *testing.T) {
+				t.Parallel()
+				ch, avail := channel(c)
+				got := programmeIndices(t, ch, avail, evenings, seasonEnd)
+				mu.Lock()
+				defer mu.Unlock()
+				without[c] = got
+			})
+		}
+	})
+	restore()
+
+	for _, c := range walks {
+		t.Run(name(c), func(t *testing.T) {
+			t.Parallel()
+			ch, avail := channel(c)
+			specials := max(3, c.pool.ordinary/20)
+			spacing := repeatSpacingProgrammes(c.pool.ordinary+specials, c.pool.window)
+			if time.Duration(c.pool.ordinary+specials)*episodeMs*time.Millisecond < c.pool.window {
+				spacing = 2 // the deck loops in its window
+			}
+			if c.seasonEnd {
+				assertNoCloserThan(t, "Halloween's end", programmeIndices(t, ch, avail, evenings, seasonEnd), without[c], spacing)
+				return
+			}
+			assertNoCloserThan(t, "March", programmeIndices(t, ch, avail, evenings, march), programmeIndices(t, ch, avail, anytime, march), spacing)
+		})
+	}
+}
+
+// programmeIndices walks the windows of [stretch[0], stretch[1]) as playout airs them and returns,
+// for each unit, the programme indices it airs at.
+func programmeIndices(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, stretch [2]time.Time) map[string][]int {
+	t.Helper()
+	out := map[string][]int{}
+	n := 0
+	for open := stretch[0]; open.Before(stretch[1]); open = open.Add(ch.DefaultWindow) {
+		for _, a := range airedLooped(t, ch, avail, policy, open) {
+			out[a.id] = append(out[a.id], n)
+			n++
+		}
+	}
+	return out
+}
+
+// assertNoCloserThan asserts that every unit airs as often in `got` as in `oracle`, and each airing
+// comes no closer to the one before than the spacing and the oracle's gap for it.
+func assertNoCloserThan(t *testing.T, label string, got, oracle map[string][]int, spacing int) {
+	t.Helper()
+	for id, want := range oracle {
+		at := got[id]
+		if len(at) != len(want) {
+			t.Fatalf("%s: %s airs %d times, %d without the move", label, id, len(at), len(want))
+		}
+		for k := 1; k < len(at); k++ {
+			if gap, was := at[k]-at[k-1], want[k]-want[k-1]; gap < min(spacing, was) {
+				t.Errorf("%s: %s airs %d programmes after its last airing, %d without the move, want at least %d",
+					label, id, gap, was, min(spacing, was))
+			}
 		}
 	}
 }
