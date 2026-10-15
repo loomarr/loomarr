@@ -144,10 +144,12 @@ fi
 # Preserve the sharder's descending-cost order. Sorting here used to undo its LPT schedule and
 # made heavy packages start minutes late even though the aggregate lane weights were balanced.
 # The lists go in as variables, not as a first input file: an empty file breaks awk's NR == FNR.
-printf '%s\n' "$stdin_pkgs" | awk -v mode="$mode" -v off="$off_paths" -v both="$both_paths" '
+# Space-separated, since BSD awk rejects a newline in a -v value (import paths hold no spaces).
+printf '%s\n' "$stdin_pkgs" | awk -v mode="$mode" -v off="$(printf '%s' "$off_paths" | tr '\n' ' ')" \
+	-v both="$(printf '%s' "$both_paths" | tr '\n' ' ')" '
 	BEGIN {
-		n = split(off, o, "\n"); for (i = 1; i <= n; i++) if (o[i] != "") is_off[o[i]] = 1
-		n = split(both, b, "\n"); for (i = 1; i <= n; i++) if (b[i] != "") is_both[b[i]] = 1
+		n = split(off, o, " "); for (i = 1; i <= n; i++) if (o[i] != "") is_off[o[i]] = 1
+		n = split(both, b, " "); for (i = 1; i <= n; i++) if (b[i] != "") is_both[b[i]] = 1
 	}
 	NF && !seen[$0]++ {
 		if (mode == "--race" && !($0 in is_off)) print
