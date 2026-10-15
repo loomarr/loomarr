@@ -380,10 +380,10 @@ describe("legacy tab links redirect to their new paths", () => {
   });
 });
 
-// #1977: a member who opens an admin page by URL gets one answer everywhere: AdminOnly's
-// permission state at the address they asked for, with "Go to Home". Before, Settings showed a
-// bare "Forbidden", Filler bounced silently to a sibling, and the channel admin tabs rendered
-// editors that 403 on save.
+// #1977: a member who opens an admin page by URL gets AdminOnly's permission state at the address
+// they asked for, with "Go to Home". Before, Settings showed a bare "Forbidden" and the channel
+// admin tabs rendered editors that 403 on save. Filler's admin pages keep their redirect to the
+// member hub (Library, Manage), which already landed somewhere useful.
 describe("admin-only routes", () => {
   const ADMIN_ONLY = [
     "/settings/connections",
@@ -400,9 +400,6 @@ describe("admin-only routes", () => {
     "/settings/system/database",
     "/settings/system/about",
     "/people",
-    "/filler/incoming",
-    "/filler/sources",
-    "/filler/settings/details",
     "/filler/splits/sp-1",
     "/channels/ch-1/programming",
     "/channels/ch-1/filler",
@@ -427,8 +424,18 @@ describe("admin-only routes", () => {
   // The gate never mounts the page, so its private reads are never made: the server would 403
   // them anyway (§19), and the console stays clean.
   it.each([
-    ["/filler/incoming", "*/v1/filler/incoming"],
-    ["/filler/settings/details", "*/v1/settings"],
+    ["/filler/incoming", "/filler/library"],
+    ["/filler/sources", "/filler/library"],
+    ["/filler/settings/details", "/filler/manage"],
+  ])("a member at %s is sent to the Filler member hub %s", async (path, hub) => {
+    stubAuth(true, MEMBER);
+    const router = renderApp(path);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(hub));
+    expect(screen.queryByText("Forbidden")).not.toBeInTheDocument();
+  });
+
+  it.each([
     ["/filler/splits/sp-1", "*/v1/filler/splits/:id"],
     ["/people", "*/v1/users"],
   ])("a member at %s makes no private read", async (path, endpoint) => {
