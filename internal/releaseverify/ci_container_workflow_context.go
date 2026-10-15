@@ -98,6 +98,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "playout-bench.yml", job: "gpu-t4"}:        {name: "GitHub T4 GPU — NVENC", runsOn: "${{ vars.PLAYOUT_BENCH_T4_RUNNER }}", timeoutMinutes: 40},
 		{workflow: "playout-bench.yml", job: "arc"}:           {name: "Self-hosted — Intel Arc (VAAPI)", runsOn: "loomarr-playout-arc", timeoutMinutes: 60},
 		{workflow: "playout-bench.yml", job: "geforce"}:       {name: "Self-hosted — NVIDIA GeForce (NVENC)", runsOn: "loomarr-playout-geforce", timeoutMinutes: 60},
+		{workflow: "playout-bench.yml", job: "coverage"}:      {name: "Hardware coverage", runsOn: "ubuntu-latest", needsList: playoutBenchHardwareLegs(), timeoutMinutes: 5},
 		{workflow: "pages.yml", job: "build"}:                 {name: "Build", runsOn: "ubuntu-latest"},
 		{workflow: "pages.yml", job: "deploy"}:                {name: "Deploy", runsOn: "ubuntu-latest", needs: "build", environmentName: "github-pages", environmentURL: "${{ steps.deployment.outputs.page_url }}"},
 		{workflow: "release-notes.yml", job: "publish-notes"}: {name: "Publish GitHub Release notes", runsOn: "ubuntu-latest"},

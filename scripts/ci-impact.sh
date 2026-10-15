@@ -150,6 +150,11 @@ classify() {
       ;;
   esac
   case "$path" in
+    scripts/playout-bench-coverage*)
+      # The hardware bench's coverage summary; releaseverify runs its contract test.
+      known=true
+      select_gate policy
+      ;;
     scripts/playout-bench-*|docs/engineering/playout-bench/*)
       known=true
       select_gate playout_bench

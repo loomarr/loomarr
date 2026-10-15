@@ -162,6 +162,7 @@ spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	doc
 playout-bench-command	cmd/playout-bench/main.go	contracts,go,postgres,image,playout_bench
 playout-bench-package	internal/playoutbench/compare.go	contracts,go,postgres,image,playout_bench
 playout-bench-corpus-script	scripts/playout-bench-open-films.sh	docs,playout_bench
+playout-bench-coverage-script	scripts/playout-bench-coverage.sh	policy
 playout-bench-baseline	docs/engineering/playout-bench/README.md	docs,playout_bench
 playout-bench-guide	docs/contributing/playout-bench.md	docs
 playout-bench-pr-workflow	.github/workflows/ci-playout-bench.yml	policy,playout_bench

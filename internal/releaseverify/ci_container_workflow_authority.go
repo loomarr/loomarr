@@ -465,8 +465,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{
 				"macos": {
-					condition: "github.event_name == 'schedule' || inputs.run_macos",
+					condition: playoutBenchMacOSGate,
 					steps: map[string]workflowStepAuthority{
+						playoutBenchRecordReport: playoutBenchRecordStep(5),
 						"./scripts/playout-bench-macos-ffmpeg.sh \"$RUNNER_TEMP/loomarr-ffmpeg\"": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
 						"make playout-bench": exactWorkflowStep(3, "Bench the VideoToolbox pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
@@ -482,8 +483,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					},
 				},
 				"gpu-t4": {
-					condition: "vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+					condition: playoutBenchT4Gate,
 					steps: map[string]workflowStepAuthority{
+						playoutBenchRecordReport: playoutBenchRecordStep(8),
 						"make playout-bench": exactWorkflowStep(6, "Bench the NVENC pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
 							environment: map[string]string{
@@ -496,8 +498,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					},
 				},
 				"arc": {
-					condition: "github.event_name == 'workflow_dispatch' && inputs.run_arc",
+					condition: playoutBenchArcGate,
 					steps: map[string]workflowStepAuthority{
+						playoutBenchRecordReport: playoutBenchRecordStep(3),
 						"make playout-bench": exactWorkflowStep(1, "Bench the VAAPI pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
 							environment: map[string]string{
@@ -509,14 +512,29 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					},
 				},
 				"geforce": {
-					condition: "github.event_name == 'workflow_dispatch' && inputs.run_geforce",
+					condition: playoutBenchGeForceGate,
 					steps: map[string]workflowStepAuthority{
+						playoutBenchRecordReport: playoutBenchRecordStep(3),
 						"make playout-bench": exactWorkflowStep(1, "Bench the NVENC pipeline", workflowStepAuthority{
 							targets: []string{"playout-bench"},
 							environment: map[string]string{
 								"LOOMARR_ARTIFACT_DIR": "${{ runner.temp }}/playout-bench",
 								"PLAYOUT_BENCH_FAMILY": "nvenc",
 								"PLAYOUT_BENCH_ACCEPT": "${{ inputs.accept && '1' || '' }}",
+							},
+						}),
+					},
+				},
+				"coverage": {
+					condition: "always()",
+					steps: map[string]workflowStepAuthority{
+						"./scripts/playout-bench-coverage.sh summarise": exactWorkflowStep(1, "Summarise which hardware legs ran", workflowStepAuthority{
+							environment: map[string]string{
+								"PLAYOUT_BENCH_NEEDS":          "${{ toJSON(needs) }}",
+								"PLAYOUT_BENCH_EXPECT_MACOS":   "${{ " + playoutBenchMacOSGate + " }}",
+								"PLAYOUT_BENCH_EXPECT_T4":      "${{ " + playoutBenchT4Gate + " }}",
+								"PLAYOUT_BENCH_EXPECT_ARC":     "${{ " + playoutBenchArcGate + " }}",
+								"PLAYOUT_BENCH_EXPECT_GEFORCE": "${{ " + playoutBenchGeForceGate + " }}",
 							},
 						}),
 					},
@@ -657,6 +675,23 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 	}
+}
+
+// The hardware bench legs' gates. Each is both the leg's `if:` and its PLAYOUT_BENCH_EXPECT_* in the
+// coverage job, so a gate cannot change on one side only and turn a skip back into silence (#1566).
+const (
+	playoutBenchMacOSGate    = "github.event_name == 'schedule' || inputs.run_macos"
+	playoutBenchT4Gate       = "vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
+	playoutBenchArcGate      = "github.event_name == 'workflow_dispatch' && inputs.run_arc"
+	playoutBenchGeForceGate  = "github.event_name == 'workflow_dispatch' && inputs.run_geforce"
+	playoutBenchRecordReport = `./scripts/playout-bench-coverage.sh record "$RUNNER_TEMP/playout-bench"`
+)
+
+// playoutBenchHardwareLegs is every hardware leg the coverage job must account for.
+func playoutBenchHardwareLegs() []string { return []string{"macos", "gpu-t4", "arc", "geforce"} }
+
+func playoutBenchRecordStep(index int) workflowStepAuthority {
+	return exactWorkflowStep(index, "Record whether the bench reported", workflowStepAuthority{condition: "always()"})
 }
 
 func exactWorkflowStep(index int, name string, authority workflowStepAuthority) workflowStepAuthority {
