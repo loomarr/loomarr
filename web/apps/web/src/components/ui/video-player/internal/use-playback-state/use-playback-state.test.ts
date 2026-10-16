@@ -45,6 +45,23 @@ describe("usePlaybackState", () => {
     expect(result.current.duration).toBe(0);
   });
 
+  it("takes a length that arrives after the metadata, from durationchange (#2006)", () => {
+    // A WebM muxed to a pipe has no duration in its header: Infinity at loadedmetadata, and the real
+    // length once the browser has parsed to the end.
+    const ref = { current: fakeVideo() };
+    const { result } = renderHook(() => usePlaybackState(ref));
+
+    act(() => result.current.mediaHandlers.onLoadedMetadata(evt(0, Number.POSITIVE_INFINITY)));
+    expect(result.current.duration).toBe(0);
+
+    act(() => result.current.mediaHandlers.onDurationChange(evt(0, 1.875)));
+    expect(result.current.duration).toBe(1.875);
+
+    // A live stream going back to Infinity stays out of `duration`, as at loadedmetadata.
+    act(() => result.current.mediaHandlers.onDurationChange(evt(0, Number.POSITIVE_INFINITY)));
+    expect(result.current.duration).toBe(0);
+  });
+
   it("toggle plays a paused element and pauses a playing one", () => {
     const paused = { current: fakeVideo({ paused: true }) };
     const { result: r1 } = renderHook(() => usePlaybackState(paused));

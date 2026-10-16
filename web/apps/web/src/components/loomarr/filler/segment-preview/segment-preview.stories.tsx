@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
+import { pauseStoryVideo } from "@/test/story-video";
 import { TINY_WEBM } from "@/test/video-fixture";
 import { SegmentPreview } from "./segment-preview";
 
@@ -49,7 +50,8 @@ const Collapsed: Story = {
 // storybook-static render this offline and deterministically — the trick `clip-player.stories`
 // documents at length. A fixture hash would 404 in the static build.
 //
-// The span matches the fixture's own length so the window does not over-run it.
+// The span is the fixture's nominal two seconds. The file really holds 1.875s, so the player
+// clamps the window to it and reads "0:00 / 0:01".
 const Expanded: Story = {
   args: {
     ...Collapsed.args,
@@ -59,6 +61,7 @@ const Expanded: Story = {
     open: true,
   },
   decorators: Collapsed.decorators,
+  play: async ({ canvasElement }) => pauseStoryVideo(canvasElement.ownerDocument.body),
 };
 
 const MediaUnavailable: Story = {

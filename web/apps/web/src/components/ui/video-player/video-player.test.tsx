@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { useHoldControls } from "./internal/hold-controls-context";
 import { VideoPlayer } from "./video-player";
 
@@ -72,6 +72,37 @@ describe("VideoPlayer", () => {
     expect(screen.queryByText(/\d+:\d+ \/ \d+:\d+/)).not.toBeInTheDocument();
     expect(screen.queryByText("–:–– / –:––")).not.toBeInTheDocument();
   });
+
+  // ⚠ A file whose header carries no duration reports Infinity at loadedmetadata; the length comes
+  // in a later durationchange. Reading it only at loadedmetadata pinned "0:00 / 0:00" (#2006).
+  // Under both motion preferences, because the issue first looked like a reduced-motion bug. The
+  // player reads no motion preference, and this pins that it never starts to.
+  it.each(["reduce", "no-preference"])(
+    "shows the length that arrives after the metadata (motion: %s)",
+    (pref) => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query.includes(pref),
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { container } = render(<VideoPlayer src={SRC} />);
+      const video = container.querySelector("video") as HTMLVideoElement;
+      const reportDuration = (d: number) =>
+        Object.defineProperty(video, "duration", { configurable: true, value: d });
+
+      reportDuration(Number.POSITIVE_INFINITY);
+      fireEvent.loadedMetadata(video);
+      expect(screen.getByText("/ 0:00")).toBeInTheDocument();
+
+      reportDuration(31.875);
+      fireEvent.durationChange(video);
+      expect(screen.getByText("/ 0:31")).toBeInTheDocument();
+    },
+  );
 
   // `leading` is how a dialog puts its close button ON the frame rather than above it. The
   // primitive itself has no opinion about dismissal.

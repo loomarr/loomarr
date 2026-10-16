@@ -7,7 +7,8 @@ import type { LivePlaybackTransport } from "../../live-playback-transport.type";
 // left composing.
 //
 // The truth always flows FROM the element: `playing` follows the element's play/pause events (not our
-// button), `duration` is read off the element on loadedmetadata, never from a caller.
+// button), `duration` is read off the element on loadedmetadata and durationchange, never from a
+// caller.
 
 // PlaybackWindow restricts playback to a slice of the source (§10 V54). Seconds of media time —
 // the unit the element and everything here already speaks.
@@ -118,8 +119,8 @@ const usePlaybackState = (
     if (el.currentTime < lo || (endAt !== undefined && el.currentTime > endAt)) el.currentTime = lo;
   }, [startAt, endAt, videoRef]);
 
-  // Handlers to spread onto the <video>: `playing` follows the element's own events, and metadata load
-  // guards against a live stream's Infinity duration (a bar computed from it would be NaN%).
+  // Handlers to spread onto the <video>: `playing` follows the element's own events, and the duration
+  // handlers guard against a live stream's Infinity duration (a bar computed from it would be NaN%).
   const mediaHandlers = {
     onPlay: () => setPlaying(true),
     onPause: () => setPlaying(false),
@@ -136,6 +137,14 @@ const usePlaybackState = (
         return;
       }
       setRawCurrent(el.currentTime);
+    },
+    // ⚠ The length can arrive AFTER the metadata. A file whose header carries no duration (a WebM
+    // muxed to a pipe, like the story fixture) reports Infinity at loadedmetadata, and the browser
+    // fires durationchange once it has parsed to the end. Reading it only at loadedmetadata left
+    // the readout at "0:00 / 0:00" for good (#2006).
+    onDurationChange: (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const d = e.currentTarget.duration;
+      setRawDuration(Number.isFinite(d) ? d : 0);
     },
     onLoadedMetadata: (e: React.SyntheticEvent<HTMLVideoElement>) => {
       const el = e.currentTarget;
