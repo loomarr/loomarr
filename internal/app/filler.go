@@ -1358,8 +1358,8 @@ func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (fille
 // The SAME call both consumers make, for the §10 one-assembler reason: if the guide computed
 // a break independently, the hover card would eventually list clips that are not the ones
 // playing, and nobody would be able to reproduce the discrepancy on demand.
-func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error) {
-	pods, err := a.PreviewAtMany(ctx, channelID, []int64{breakStartMs})
+func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error) {
+	pods, err := a.PreviewAtMany(ctx, channelID, []filler.BreakSlot{slot})
 	if err != nil {
 		return filler.Pod{}, err
 	}
@@ -1368,15 +1368,16 @@ func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, brea
 
 // PreviewAtMany is PreviewAt for every break of one channel in a window (#1420): the channel is
 // read once and the batch shares one catalog and exposure read, while each break keeps its own
-// seed and snapshot — pod for pod what PreviewAt returns.
-func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, breakStartsMs []int64) ([]filler.Pod, error) {
+// seed, snapshot and slot length — pod for pod what PreviewAt returns.
+func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, slots []filler.BreakSlot) ([]filler.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return nil, err
 	}
-	breaks := make([]filler.Break, len(breakStartsMs))
-	for i, ms := range breakStartsMs {
-		breaks[i] = filler.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC()}
+	breaks := make([]filler.Break, len(slots))
+	for i, s := range slots {
+		ms := s.Start.UnixMilli()
+		breaks[i] = filler.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC(), Length: s.Length}
 	}
 	return a.pods.PreviewAtMany(ctx, ch.ID, channels.SelectionForChannel(ch), breaks)
 }

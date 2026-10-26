@@ -57,27 +57,78 @@ func TestPostgresPlayoutLifecyclePreservesCommittedPausePayload(t *testing.T) {
 	}
 }
 
-func TestPostgresPlayoutLifecycleRestartsOnlyChangedInternalSchedule(t *testing.T) {
+// A peer replica applies reconcile's stop rule (playout.OnAirChanged): a committed cycle restarts
+// the channel's stream only when it changes what is on air. A new version that re-sizes a break
+// later in the cycle reaches the packager at its next lookup; restarting on every version re-tuned
+// every viewer at every re-size (2026-10-24).
+func TestPostgresPlayoutLifecycleRestartsOnlyWhenOnAirChanges(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
+	st := testkit.MigratedSQLiteStore(t)
+	seedLifecycleChannel(t, st, "mudpuddles", 1, schedule.StatusLive, nil)
+	anchor := time.Unix(1_800_000_000, 0).UTC()
+	commit := func(edit func([]schedule.Slot)) store.Invalidation {
+		t.Helper()
+		ch, err := st.GetChannel(ctx, "mudpuddles")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ch.PlayoutAnchor = anchor
+		ch.Desired = []schedule.Slot{
+			{Kind: schedule.SlotProgram, LibraryItemID: "a", Title: "A", DurationMs: 600_000},
+			{Kind: schedule.SlotFiller, DurationMs: 113_366},
+			{Kind: schedule.SlotProgram, LibraryItemID: "b", Title: "B", DurationMs: 600_000},
+			{Kind: schedule.SlotFiller, DurationMs: 113_366},
+		}
+		edit(ch.Desired)
+		if ch, err = st.SaveChannel(ctx, ch); err != nil {
+			t.Fatal(err)
+		}
+		return store.Invalidation{
+			Kind: store.InvalidationChannel, ChannelID: ch.ID, Status: schedule.StatusLive,
+			ScheduleVersion: store.ChannelScheduleVersion(ch),
+		}
+	}
 	origin := &testkit.Playout{}
 	lifecycle := &postgresPlayoutLifecycle{
+		store: st,
 		checkpoint: testkit.Snapshotter[backendtransition.Snapshot]{Result: backendtransition.Snapshot{
 			Applied: schedule.PlayoutBackendInternal, PublishedInternal: true,
 		}},
 		origin: origin,
+		now:    func() time.Time { return anchor.Add(5 * time.Minute) }, // A is on air
 	}
-	lifecycle.rememberSchedule("mudpuddles", "old-cycle")
+	accepted := commit(func([]schedule.Slot) {})
+	if err := lifecycle.reconcileAll(ctx); err != nil {
+		t.Fatal(err)
+	}
 
-	for _, version := range []string{"old-cycle", "new-cycle", "new-cycle"} {
-		if err := lifecycle.apply(context.Background(), store.Invalidation{
-			Kind: store.InvalidationChannel, ChannelID: "mudpuddles", Status: schedule.StatusLive,
-			ScheduleVersion: version,
-		}); err != nil {
+	for _, step := range []struct {
+		name string
+		edit func([]schedule.Slot)
+	}{
+		{"same version", func([]schedule.Slot) {}},
+		{"break re-sized after A", func(s []schedule.Slot) { s[3].DurationMs = 113_866 }},
+		{"programme replaced after A", func(s []schedule.Slot) { s[2].LibraryItemID = "c" }},
+		{"the same later change, resent", func(s []schedule.Slot) { s[2].LibraryItemID = "c" }},
+	} {
+		event := accepted
+		if step.name != "same version" {
+			event = commit(step.edit)
+		}
+		if err := lifecycle.apply(ctx, event); err != nil {
 			t.Fatal(err)
 		}
+		if got := origin.StoppedChannels(); len(got) != 0 {
+			t.Fatalf("%s: stopped %v, but nothing on air changed", step.name, got)
+		}
+	}
+
+	if err := lifecycle.apply(ctx, commit(func(s []schedule.Slot) { s[0].LibraryItemID = "a2" })); err != nil {
+		t.Fatal(err)
 	}
 	if got := origin.StoppedChannels(); len(got) != 1 || got[0] != "mudpuddles" {
-		t.Fatalf("schedule cutover stops = %v, want exactly one for the changed version", got)
+		t.Fatalf("on-air change stops = %v, want exactly one", got)
 	}
 }
 

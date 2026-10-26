@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -67,7 +68,8 @@ type postgresPlayoutLifecycle struct {
 		func(context.Context, store.Invalidation) error,
 	) error
 	schedulesMu sync.Mutex
-	schedules   map[string]string
+	schedules   map[string]acceptedTimeline
+	now         func() time.Time // nil is time.Now
 }
 
 func (l *postgresPlayoutLifecycle) Start(ctx context.Context) error {
@@ -162,7 +164,7 @@ func (l *postgresPlayoutLifecycle) reconcileAll(ctx context.Context) error {
 		return fmt.Errorf("list channels: %w", err)
 	}
 	for _, channel := range channels {
-		l.rememberSchedule(channel.ID, store.ChannelScheduleVersion(channel))
+		l.rememberSchedule(channel)
 		if !schedule.InternalTransportPlayable(
 			channel.Status, channel.Policy, snapshot.PublishedInternal,
 		) {
@@ -178,7 +180,7 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 		if event.ChannelID == "" {
 			return fmt.Errorf("channel invalidation has no channel id")
 		}
-		scheduleChanged := l.rememberSchedule(event.ChannelID, event.ScheduleVersion)
+		scheduleChanged := l.onAirMoved(ctx, event.ChannelID, event.ScheduleVersion)
 		// Payload state preserves an off-air transition even if a later resume is already
 		// durable by the time this notification is handled.
 		if !event.Status.Reconcilable() || event.Status == schedule.StatusEmpty ||
@@ -229,19 +231,66 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 	}
 }
 
-// rememberSchedule records the latest committed cycle fingerprint and reports a
-// change only when an earlier version is known. Initial catch-up primes the map;
-// an empty version from an older sender is not evidence of a changed cycle.
-func (l *postgresPlayoutLifecycle) rememberSchedule(channelID, version string) bool {
+// acceptedTimeline is a channel's committed cycle as this replica last saw it: its fingerprint,
+// and the cycle and anchor the encoder walks, so a new version can be judged by what it airs.
+type acceptedTimeline struct {
+	version string
+	slots   []schedule.Slot
+	anchor  time.Time
+}
+
+// rememberSchedule records a channel's latest committed cycle. Initial catch-up primes the map
+// from the rows it lists.
+func (l *postgresPlayoutLifecycle) rememberSchedule(ch store.Channel) {
+	l.schedulesMu.Lock()
+	defer l.schedulesMu.Unlock()
+	if l.schedules == nil {
+		l.schedules = make(map[string]acceptedTimeline)
+	}
+	l.schedules[ch.ID] = acceptedTimeline{store.ChannelScheduleVersion(ch), ch.Desired, ch.PlayoutAnchor}
+}
+
+// onAirMoved applies reconcile's stop rule on this replica (playout.OnAirChanged): a committed
+// cycle with a new fingerprint stops the channel only when it changes what is on air now. A
+// re-size or an edit later in the cycle reaches the packager at its next lookup. A change is
+// reported only when an earlier version is known; an empty version from an older sender is not
+// evidence of a changed cycle. A row that cannot be read fails closed, as a stop.
+func (l *postgresPlayoutLifecycle) onAirMoved(ctx context.Context, channelID, version string) bool {
 	if channelID == "" || version == "" {
 		return false
 	}
 	l.schedulesMu.Lock()
-	defer l.schedulesMu.Unlock()
-	if l.schedules == nil {
-		l.schedules = make(map[string]string)
-	}
 	previous, known := l.schedules[channelID]
-	l.schedules[channelID] = version
-	return known && previous != version
+	l.schedulesMu.Unlock()
+	if known && previous.version == version {
+		return false
+	}
+	var ch store.Channel
+	var err error
+	if l.store != nil {
+		ch, err = l.store.GetChannel(ctx, channelID)
+	}
+	if l.store == nil || err != nil {
+		l.schedulesMu.Lock()
+		if l.schedules == nil {
+			l.schedules = make(map[string]acceptedTimeline)
+		}
+		l.schedules[channelID] = acceptedTimeline{version: version}
+		l.schedulesMu.Unlock()
+		return known
+	}
+	l.rememberSchedule(ch)
+	if !known {
+		return false
+	}
+	now := l.clock()
+	return playout.OnAirChanged(previous.slots, previous.anchor, ch.Desired, ch.PlayoutAnchor,
+		now, now.Add(playout.OnAirLookahead))
+}
+
+func (l *postgresPlayoutLifecycle) clock() time.Time {
+	if l.now != nil {
+		return l.now()
+	}
+	return time.Now()
 }

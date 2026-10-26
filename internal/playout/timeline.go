@@ -3,9 +3,11 @@ package playout
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -390,6 +392,107 @@ func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[strin
 		pins[b.LibraryItemID] = cuts
 	}
 	return pins
+}
+
+// KeepAcceptedBreaks is what a re-size must not change (§10 breaks): the length of every break
+// that, on the accepted cycle walked from epoch, starts before `until`. Every later airing is
+// found by walking the cycle from its anchor, so re-sizing one break that has aired moves the
+// programme on air by the difference, and re-sizing a day of them moved it by up to minutes
+// (2026-10-24). Breaks from `until` on take next's length: nothing there has aired.
+//
+// It holds lengths only, and only up to the first slot whose TIMING differs (a programme removed,
+// added or re-timed): what airs before that edit stays where it was, and the edit and everything
+// after it are committed as computed. A change that moves nothing (a file re-identified, a title
+// healed) does not end the hold; ending it there re-sized every aired break and brought the jump
+// back. A cycle that has aired whole holds every break.
+func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) []schedule.Slot {
+	total := cycleDuration(accepted)
+	if total <= 0 || !until.After(epoch) {
+		return next
+	}
+	aired := len(accepted)
+	if elapsed := until.Sub(epoch); elapsed < total {
+		aired = 0
+		for _, s := range accepted {
+			if elapsed <= 0 {
+				break
+			}
+			elapsed -= slotDuration(s)
+			aired++
+		}
+	}
+	hold := min(aired, len(next))
+	for i := range hold {
+		if !sameTiming(accepted[i], next[i]) {
+			hold = i
+			break
+		}
+	}
+	if hold == 0 {
+		return next
+	}
+	out := slices.Clone(next)
+	for i := range hold {
+		if isBreak(out[i]) {
+			out[i].DurationMs = accepted[i].DurationMs
+		}
+	}
+	return out
+}
+
+// sameTiming reports whether two slots occupy the walk alike apart from a break's length: the same
+// kind of slot, and for anything but a break the same length. Identity and display fields move
+// nothing.
+func sameTiming(a, b schedule.Slot) bool {
+	if isBreak(a) || isBreak(b) {
+		return isBreak(a) && isBreak(b)
+	}
+	return a.Kind == b.Kind && slotDuration(a) == slotDuration(b)
+}
+
+// isBreak reports a commercial break slot. A keyed filler slot stands in for an unavailable
+// programme and keeps that programme's runtime; it is not a break.
+func isBreak(s schedule.Slot) bool { return s.Kind == schedule.SlotFiller && s.Key == "" }
+
+// BreakLength is the slot length a commercial break's pod is assembled to: the whole slot (Offset
+// plus Remaining) for a break, and 0 (the configured break length) for anything else, including a
+// keyed placeholder airing filler at a missing programme's runtime.
+func (a Airing) BreakLength() time.Duration {
+	if a.Kind != schedule.SlotFiller || a.Key != "" {
+		return 0
+	}
+	return a.Offset + a.Remaining
+}
+
+// BreakLength is Airing.BreakLength for a guide block, so a break's card is assembled to the same
+// slot its airing is.
+func (b Broadcast) BreakLength() time.Duration {
+	if b.Kind != schedule.SlotFiller || b.Key != "" {
+		return 0
+	}
+	return b.Duration()
+}
+
+// OnAirLookahead is how far past now a channel's stream may already be encoded: the packager's
+// run-ahead. A schedule change inside it is on air; one after it reaches the next lookup.
+const OnAirLookahead = packager.DefaultRunAhead
+
+// OnAirChanged reports whether the cycle `next` walked from nextEpoch airs anything different from
+// `accepted` walked from epoch over [from, to): a different item, or the same item at a different
+// position. It is THE stop rule for a channel's live stream: only such a change needs the packager
+// restarted, and a change after `to` reaches it at its next lookup without one.
+func OnAirChanged(accepted []schedule.Slot, epoch time.Time, next []schedule.Slot, nextEpoch, from, to time.Time) bool {
+	for at := from; at.Before(to); {
+		a, b := AiringAt(accepted, epoch, at), AiringAt(next, nextEpoch, at)
+		if a != b {
+			return true
+		}
+		if a.Remaining <= 0 {
+			return false // nothing with a duration airs: both are empty from here
+		}
+		at = at.Add(a.Remaining)
+	}
+	return false
 }
 
 func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {

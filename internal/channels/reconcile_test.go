@@ -379,6 +379,8 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	guide.pokes, guide.rescans = 0, 0
 	stopsAfterMaterialization := len(playout.StoppedChannels())
 
+	// B lands after A, which is on air: the guide refreshes, and the stream keeps playing. The
+	// packager reaches B at its next lookup; a restart would only re-tune every viewer.
 	avail["movie:tmdb:90000002"] = "lib-2"
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
 		t.Fatal(err)
@@ -387,8 +389,17 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 		t.Fatalf("internal desired change freshness = %d rescans/%d pokes, want 0/1",
 			guide.rescans, guide.pokes)
 	}
+	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization {
+		t.Fatalf("a change after what is on air produced %d total session stops, want %d", got, stopsAfterMaterialization)
+	}
+
+	// A, on air now, is replaced by another file: what airs changes, so the stream restarts once.
+	avail["movie:tmdb:90000001"] = "lib-1b"
+	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
+		t.Fatal(err)
+	}
 	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization+1 {
-		t.Fatalf("changed internal cycle produced %d total session stops, want %d", got, stopsAfterMaterialization+1)
+		t.Fatalf("a change to what is on air produced %d total session stops, want %d", got, stopsAfterMaterialization+1)
 	}
 
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {

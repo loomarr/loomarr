@@ -31,8 +31,9 @@ func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, err
 }
 
 type stubPods struct {
-	pod filler.Pod
-	err error
+	pod   filler.Pod
+	err   error
+	asked *[]filler.BreakSlot // when set, records each break slot PreviewAt received
 }
 
 func (s stubPods) Preview(context.Context, string) (filler.Pod, error) { return s.pod, s.err }
@@ -40,12 +41,15 @@ func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (fille
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) {
+func (s stubPods) PreviewAt(_ context.Context, _ string, slot filler.BreakSlot) (filler.Pod, error) {
+	if s.asked != nil {
+		*s.asked = append(*s.asked, slot)
+	}
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAtMany(_ context.Context, _ string, starts []int64) ([]filler.Pod, error) {
-	pods := make([]filler.Pod, len(starts))
+func (s stubPods) PreviewAtMany(_ context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
+	pods := make([]filler.Pod, len(slots))
 	for i := range pods {
 		pods[i] = s.pod
 	}
@@ -251,6 +255,53 @@ func TestAiringNow_FillerCannotCrossTheScheduledBreakBoundary(t *testing.T) {
 	}
 	if airing.Offset != 5*time.Second || airing.Remaining != 25*time.Second {
 		t.Fatalf("filler Airing = %+v, want offset 5s and the scheduled break's 25s remainder", airing)
+	}
+}
+
+// The pod that airs is assembled to the break's own slot (its start, and Offset+Remaining), so a
+// slot reconcile cut shorter than the configured break is never overrun by its last ad.
+func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
+	t.Parallel()
+	var asked []filler.BreakSlot
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
+	}}, asked: &asked}
+	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFiller, DurationMs: 113_366},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	base := testPlayoutAnchor()
+	r.now = func() time.Time { return base.Add(40 * time.Second) }
+
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	want := filler.BreakSlot{Start: base, Length: 113_366 * time.Millisecond}
+	if len(asked) != 1 || !asked[0].Start.Equal(want.Start) || asked[0].Length != want.Length {
+		t.Fatalf("pod asked for %+v, want the break's own slot %+v", asked, want)
+	}
+}
+
+// A keyed filler slot stands in for a programme that has not landed, at that programme's runtime:
+// it is not a break, so its pod keeps the configured break length rather than a 90 minute budget
+// that would draw (and record as aired) most of the catalog.
+func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
+	t.Parallel()
+	var asked []filler.BreakSlot
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
+	}}, asked: &asked}
+	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000009", DurationMs: (90 * time.Minute).Milliseconds()},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0].Length != 0 {
+		t.Fatalf("placeholder pod asked for %+v, want the configured break length (Length 0)", asked)
 	}
 }
 

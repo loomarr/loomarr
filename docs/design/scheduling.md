@@ -199,7 +199,11 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `policy.breakDuration` per channel,
   minimum 30 s because Tunarr clamps smaller flex gaps). `policy.breaksPerHour = 0` is the only off
   switch. On internal playout the break length is a ceiling: a break slot is capped at its pod's
-  playable duration, so the programme resumes when the clips end. **One function owns the length**
+  playable duration, so the programme resumes when the clips end. That pod is sized from the
+  catalog, the selection and the policy alone, **never the play history**: sized from the live
+  rotation, every commercial that aired re-sized every break, and the timeline walked from the
+  anchor moved by tens of seconds to minutes at each reconcile (2026-10-24). Each break that airs
+  is then assembled to its own slot's length, which is its hard budget. **One function owns the length**
   (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
   setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
   the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
@@ -218,10 +222,27 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   so a break ends within the shortest unused clip of its slot, not 18 s early. `FILLER_POD_MAX` is
   a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
   break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
+- **A re-size never moves what is on air.** Every airing is found by walking the accepted cycle
+  from its anchor, so a break that has aired keeps its length. On a reconcile that re-sizes breaks
+  (the catalog changed), each break that has aired or starts within `channels.MidRollFreezeHorizon`
+  keeps its accepted length, and only later breaks take the new one (`playout.KeepAcceptedBreaks`).
+  The hold runs up to the first slot whose timing changed (a programme added, removed or
+  re-timed), so what airs before an edit stays put; a change that moves nothing (a re-identified
+  file, a healed title) does not end it. It never outlasts the break length: a shorter
+  `breakDuration` is an edit and applies to every break at once, aired ones included, so it can
+  move what is on air and restart the stream once. A smaller catalog stays held,
+  and those breaks air what fits, then the card. A placeholder (a keyed filler slot at a missing
+  programme's runtime) is not a break: its pod keeps the configured break length.
+- **A schedule change restarts a stream only when it changes what is on air.** The packager reads
+  the accepted cycle at every item boundary, so a change from its next lookup on reaches the stream
+  by itself. Reconcile stops a channel's packager only when the new cycle airs something different
+  over the packager's run-ahead (`playout.OnAirChanged`), and Postgres peer replicas apply the same
+  rule to each committed version. A rolling-window turn keeps stop-on-change.
 - **Previews are the break that airs.** The saved preview, the guide's per-break cards and both
   draft previews (`pods/preview`, `programming/preview`) build their selection through
   `channels.SelectionForPolicy`, which carries the policy's `breakDuration` and
-  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value.
+  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value. The
+  guide's card for a break is assembled to that break's slot, exactly as playout assembles it.
 - **Placement** walks program durations and inserts a break after the program that crosses each
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.

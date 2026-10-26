@@ -54,6 +54,9 @@ type Slot struct {
 // Config.SlateRetry of slate before the packager asks again.
 type Schedule func(ctx context.Context, at time.Time) (Item, error)
 
+// DefaultRunAhead is Config.RunAhead's default: how far the encoded timeline may lead the clock.
+const DefaultRunAhead = 12 * time.Second
+
 type Config struct {
 	// FPS is the output frame rate; 90000 must divide by it (24, 25, 30, 50, 60).
 	FPS int
@@ -99,7 +102,7 @@ func (c *Config) defaults() error {
 			*d = v
 		}
 	}
-	def(&c.RunAhead, 12*time.Second)
+	def(&c.RunAhead, DefaultRunAhead)
 	def(&c.ListAhead, 6*time.Second)
 	def(&c.FirstManifest, 4*time.Second)
 	def(&c.DVR, 15*time.Minute)

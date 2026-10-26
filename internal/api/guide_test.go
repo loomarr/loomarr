@@ -762,9 +762,16 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 	if len(fp.atAsked) != 2 {
 		t.Fatalf("asked for %d pods, want one per break", len(fp.atAsked))
 	}
-	if fp.atAsked[0] == fp.atAsked[1] {
+	if fp.atAsked[0].Start.Equal(fp.atAsked[1].Start) {
 		t.Error("both breaks were resolved at the same instant — every break would show the " +
 			"same clips regardless of when it airs")
+	}
+	// Each card is assembled to its own slot, as airtime assembles it: a card built to the
+	// configured break length would list an ad that the slot cuts off.
+	for i, slot := range fp.atAsked {
+		if slot.Length != 4*time.Minute {
+			t.Errorf("break %d resolved for a %v slot, want the block's own 4m", i, slot.Length)
+		}
 	}
 	// #1420: resolved per break, but in ONE batch for the channel row. Each per-break call
 	// re-read the channel, the whole catalog and the play history.

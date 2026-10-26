@@ -150,16 +150,16 @@ type storePods struct {
 	hashes []string
 }
 
-func (p *storePods) PreviewAt(ctx context.Context, _ string, _ int64) (filler.Pod, error) {
+func (p *storePods) PreviewAt(ctx context.Context, _ string, _ filler.BreakSlot) (filler.Pod, error) {
 	return p.pod(ctx)
 }
 
-func (p *storePods) PreviewAtMany(ctx context.Context, _ string, starts []int64) ([]filler.Pod, error) {
+func (p *storePods) PreviewAtMany(ctx context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
 	pod, err := p.pod(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Pod, len(starts))
+	out := make([]filler.Pod, len(slots))
 	for i := range out {
 		out[i] = pod
 	}
