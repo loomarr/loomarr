@@ -74,7 +74,7 @@ postgres="$(
 		--profile postgres config 2>/dev/null
 )"
 printf '%s\n' "$postgres" | grep -q "image: ghcr.io/loomarr/loomarr:$VERSION"
-printf '%s\n' "$postgres" | grep -q 'image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94'
+printf '%s\n' "$postgres" | grep -q 'image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'
 printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable'
 if printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: sqlite:'; then
 	echo 'compose-verify: postgres deployment resolved Loomarr to SQLite' >&2
