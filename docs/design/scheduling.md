@@ -229,7 +229,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   The hold runs up to the first slot whose timing changed (a programme added, removed or
   re-timed), so what airs before an edit stays put; a change that moves nothing (a re-identified
   file, a healed title) does not end it. It never outlasts the break length: a shorter
-  `breakDuration` is an edit and applies to every break at once. A smaller catalog stays held,
+  `breakDuration` is an edit and applies to every break at once, aired ones included, so it can
+  move what is on air and restart the stream once. A smaller catalog stays held,
   and those breaks air what fits, then the card. A placeholder (a keyed filler slot at a missing
   programme's runtime) is not a break: its pod keeps the configured break length.
 - **A schedule change restarts a stream only when it changes what is on air.** The packager reads
