@@ -404,10 +404,17 @@ fi
 sleep 5
 readonly SCREENSHOT_PATH="${ARTIFACTS_DIR}/${APP_NAME}.png"
 capture_screenshot() {
-  local attempt
+  local attempt display_args=() error
   for attempt in 1 2 3; do
-    if xcrun simctl io "${simulator_id}" screenshot "$SCREENSHOT_PATH"; then
+    if error="$(xcrun simctl io "${simulator_id}" screenshot ${display_args[@]+"${display_args[@]}"} \
+      "$SCREENSHOT_PATH" 2>&1)"; then
       return
+    fi
+    printf '%s\n' "$error" >&2
+    # Xcode 27 simulators can expose more than one display, and simctl then refuses to guess.
+    # Its error lists them; capture the device's own screen, the one named "(primary)".
+    if [[ "$error" =~ --display=([0-9]+)[[:space:]][^$'\n']*\(primary\) ]]; then
+      display_args=("--display=${BASH_REMATCH[1]}")
     fi
     if (( attempt < 3 )); then
       printf 'apple-client: screenshot attempt %d failed; retrying\n' "$attempt" >&2
