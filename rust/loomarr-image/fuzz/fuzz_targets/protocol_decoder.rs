@@ -40,7 +40,7 @@ fuzz_target!(|data: &[u8]| {
     let source = source_bytes(data);
     let (source_path, staging_dir) = workspace();
     fs::write(source_path, &source).expect("write fuzz source");
-    let digest = format!("{:x}", Sha256::digest(&source));
+    let digest: String = Sha256::digest(&source).iter().map(|byte| format!("{byte:02x}")).collect();
     let request = json!({
         "protocol": 1,
         "requestId": "fuzz",

@@ -17,5 +17,5 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.93.0 --profile minimal
+        run: rustup toolchain install 1.99.1 --profile minimal
       - run: make rust-check

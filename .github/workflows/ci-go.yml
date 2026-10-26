@@ -78,7 +78,7 @@ jobs:
       # checks and release certification still run once in `go-contracts`.
       #
       # GitHub-hosted images ship rustup on PATH; the self-hosted loomarr-go runner (#1570) does
-      # not. Bootstrap rustup there with no default toolchain — rust-toolchain.toml selects 1.93.0
+      # not. Bootstrap rustup there with no default toolchain — rust-toolchain.toml selects 1.99.1
       # — and put Cargo's bin directory on PATH for later steps, because a persistent runner keeps
       # ~/.cargo between jobs but a fresh job's PATH never includes it. The C compiler that
       # libwebp-sys and `go test -race` need is a host package, not something this step installs.
@@ -97,7 +97,7 @@ jobs:
             echo "$cargo_bin" >> "$GITHUB_PATH"
             export PATH="$cargo_bin:$PATH"
           fi
-          rustup toolchain install 1.93.0 --profile minimal
+          rustup toolchain install 1.99.1 --profile minimal
       # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
       # run in `go-contracts`, so restoring their caches here would spend time and storage on
       # inputs this job never reads.

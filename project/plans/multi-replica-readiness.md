@@ -1,7 +1,7 @@
 # Multi-replica readiness
 
 - Status: investigation required; **one Loomarr replica is the beta support boundary**
-- Edge: Traefik 3.7.1
+- Edge: Traefik 3.7.16
 - Database under test: Postgres only
 
 Traefik gives the Docker deployment a health-aware load-balancer seam. It does not make Loomarr's
