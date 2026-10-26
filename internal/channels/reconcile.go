@@ -267,6 +267,9 @@ func (e *Engine) reconcileOnce(
 		if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
 			desired.Slots = playout.KeepAcceptedBreaks(acceptedSlots, desired.Slots, acceptedAnchor,
 				e.now().Add(MidRollFreezeHorizon))
+			// The hold never outlasts the operator's break length: a shorter setting is an edit and
+			// applies to every break at once. A smaller catalog stays held; its breaks air what fits.
+			desired.Slots = capCommercialBreaks(desired.Slots, chDomain.BreakDurationMs)
 		}
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:

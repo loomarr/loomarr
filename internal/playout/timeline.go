@@ -400,9 +400,11 @@ func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[strin
 // programme on air by the difference, and re-sizing a day of them moved it by up to minutes
 // (2026-10-24). Breaks from `until` on take next's length: nothing there has aired.
 //
-// It holds lengths only: when anything else in the aired stretch differs (a programme replaced,
-// removed or re-timed), next is returned as computed, because that is an edit to the schedule and
-// not a re-size. A cycle that has aired whole holds every break.
+// It holds lengths only, and only up to the first slot whose TIMING differs (a programme removed,
+// added or re-timed): what airs before that edit stays where it was, and the edit and everything
+// after it are committed as computed. A change that moves nothing (a file re-identified, a title
+// healed) does not end the hold; ending it there re-sized every aired break and brought the jump
+// back. A cycle that has aired whole holds every break.
 func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) []schedule.Slot {
 	total := cycleDuration(accepted)
 	if total <= 0 || !until.After(epoch) {
@@ -419,20 +421,18 @@ func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) 
 			aired++
 		}
 	}
-	if len(next) < aired {
+	hold := min(aired, len(next))
+	for i := range hold {
+		if !sameTiming(accepted[i], next[i]) {
+			hold = i
+			break
+		}
+	}
+	if hold == 0 {
 		return next
 	}
-	for i := range aired {
-		a, n := accepted[i], next[i]
-		if isBreak(a) && isBreak(n) {
-			a.DurationMs, n.DurationMs = 0, 0
-		}
-		if a != n {
-			return next
-		}
-	}
 	out := slices.Clone(next)
-	for i := range aired {
+	for i := range hold {
 		if isBreak(out[i]) {
 			out[i].DurationMs = accepted[i].DurationMs
 		}
@@ -440,9 +440,38 @@ func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) 
 	return out
 }
 
+// sameTiming reports whether two slots occupy the walk alike apart from a break's length: the same
+// kind of slot, and for anything but a break the same length. Identity and display fields move
+// nothing.
+func sameTiming(a, b schedule.Slot) bool {
+	if isBreak(a) || isBreak(b) {
+		return isBreak(a) && isBreak(b)
+	}
+	return a.Kind == b.Kind && slotDuration(a) == slotDuration(b)
+}
+
 // isBreak reports a commercial break slot. A keyed filler slot stands in for an unavailable
 // programme and keeps that programme's runtime; it is not a break.
 func isBreak(s schedule.Slot) bool { return s.Kind == schedule.SlotFiller && s.Key == "" }
+
+// BreakLength is the slot length a commercial break's pod is assembled to: the whole slot (Offset
+// plus Remaining) for a break, and 0 (the configured break length) for anything else, including a
+// keyed placeholder airing filler at a missing programme's runtime.
+func (a Airing) BreakLength() time.Duration {
+	if a.Kind != schedule.SlotFiller || a.Key != "" {
+		return 0
+	}
+	return a.Offset + a.Remaining
+}
+
+// BreakLength is Airing.BreakLength for a guide block, so a break's card is assembled to the same
+// slot its airing is.
+func (b Broadcast) BreakLength() time.Duration {
+	if b.Kind != schedule.SlotFiller || b.Key != "" {
+		return 0
+	}
+	return b.Duration()
+}
 
 // OnAirLookahead is how far past now a channel's stream may already be encoded: the packager's
 // run-ahead. A schedule change inside it is on air; one after it reaches the next lookup.

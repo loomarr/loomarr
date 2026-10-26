@@ -2,6 +2,7 @@ package playout
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -53,19 +54,43 @@ func TestKeepAcceptedBreaksHoldsTheAiredTimeline(t *testing.T) {
 	}
 }
 
-// A real edit to what has already aired (a programme changed, added or removed) is not a re-size:
-// the new schedule is returned as computed, and the channel takes the existing restart path.
-func TestKeepAcceptedBreaksLeavesARealEditAlone(t *testing.T) {
+// An edit that changes no timing (a file re-identified, a title healed) keeps every aired break
+// held: nothing it changes moves the walk. One that changes timing (a programme removed or
+// re-timed) holds the breaks before it, so what airs up to the edit stays where it was, and
+// commits the rest as computed.
+func TestKeepAcceptedBreaksHoldsUpToTheFirstTimingChange(t *testing.T) {
 	accepted := breakCycle(113_366)
-	for name, edit := range map[string]func([]schedule.Slot) []schedule.Slot{
-		"programme replaced": func(s []schedule.Slot) []schedule.Slot { s[4].LibraryItemID = "other"; return s },
-		"programme removed":  func(s []schedule.Slot) []schedule.Slot { return append(s[:4:4], s[6:]...) },
-		"programme re-timed": func(s []schedule.Slot) []schedule.Slot { s[2].DurationMs += 1000; return s },
+	held := func(slots []schedule.Slot) int {
+		n := 0
+		for _, s := range slots {
+			if isBreak(s) && s.DurationMs == 113_366 {
+				n++
+			}
+		}
+		return n
+	}
+	aired := held(KeepAcceptedBreaks(accepted, breakCycle(113_866), breakEpoch, breakNow))
+	if aired < 50 {
+		t.Fatalf("precondition: %d breaks aired by 21:10, want about 53", aired)
+	}
+	for _, tc := range []struct {
+		name string
+		edit func([]schedule.Slot) []schedule.Slot
+		held int // breaks held, counting from the cycle start
+	}{
+		{"file re-identified", func(s []schedule.Slot) []schedule.Slot { s[4].LibraryItemID = "other"; return s }, aired},
+		{"title healed", func(s []schedule.Slot) []schedule.Slot { s[4].Title = "Pilot"; return s }, aired},
+		// An episode and its break swapped for the next ones moves no timing, only which episode airs
+		// where (OnAirChanged sees that); a longer programme inserted moves everything after it.
+		{"episode and break removed", func(s []schedule.Slot) []schedule.Slot { return append(s[:4:4], s[6:]...) }, aired},
+		{"film inserted", func(s []schedule.Slot) []schedule.Slot {
+			film := schedule.Slot{Kind: schedule.SlotProgram, LibraryItemID: "film", DurationMs: (95 * time.Minute).Milliseconds()}
+			return slices.Insert(s, 4, film)
+		}, 2},
+		{"programme re-timed", func(s []schedule.Slot) []schedule.Slot { s[2].DurationMs += 1000; return s }, 1},
 	} {
-		next := edit(breakCycle(113_866))
-		kept := KeepAcceptedBreaks(accepted, next, breakEpoch, breakNow)
-		if len(kept) != len(next) || kept[1].DurationMs != 113_866 {
-			t.Errorf("%s: breaks were held although the aired programmes changed", name)
+		if got := held(KeepAcceptedBreaks(accepted, tc.edit(breakCycle(113_866)), breakEpoch, breakNow)); got != tc.held {
+			t.Errorf("%s: %d breaks held, want %d", tc.name, got, tc.held)
 		}
 	}
 }

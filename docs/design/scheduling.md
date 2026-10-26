@@ -226,7 +226,12 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   from its anchor, so a break that has aired keeps its length. On a reconcile that re-sizes breaks
   (the catalog changed), each break that has aired or starts within `channels.MidRollFreezeHorizon`
   keeps its accepted length, and only later breaks take the new one (`playout.KeepAcceptedBreaks`).
-  Anything else changed in that stretch is an edit, not a re-size, and is committed as computed.
+  The hold runs up to the first slot whose timing changed (a programme added, removed or
+  re-timed), so what airs before an edit stays put; a change that moves nothing (a re-identified
+  file, a healed title) does not end it. It never outlasts the break length: a shorter
+  `breakDuration` is an edit and applies to every break at once. A smaller catalog stays held,
+  and those breaks air what fits, then the card. A placeholder (a keyed filler slot at a missing
+  programme's runtime) is not a break: its pod keeps the configured break length.
 - **A schedule change restarts a stream only when it changes what is on air.** The packager reads
   the accepted cycle at every item boundary, so a change from its next lookup on reaches the stream
   by itself. Reconcile stops a channel's packager only when the new cycle airs something different

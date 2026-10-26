@@ -283,7 +283,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 				for i, b := range bs {
 					if b.Kind == schedule.SlotFiller {
 						idx = append(idx, i)
-						slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.Duration()})
+						slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
 					}
 				}
 				if len(slots) > 0 {

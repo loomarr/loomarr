@@ -11,6 +11,43 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+// The hold never outlasts the operator's break length: lowering it is an edit, and every break,
+// aired or not, takes the shorter length at once (the stream may restart once). Only a catalog
+// re-size is held.
+func TestReconcile_ShorterBreakSettingIsNotHeld(t *testing.T) {
+	st := newStore(t)
+	now := time.Unix(1_800_000_000, 0).UTC()
+	breakLen := 2 * time.Minute
+	pods := &fakePods{ids: []string{"clip"}, duration: 113_366}
+	e := channels.New(st, nil, hourAvail{
+		"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2", "movie:tmdb:90000003": "lib-3",
+	}, nil, channels.Config{
+		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 1,
+		ResolveBreakDuration:         func() time.Duration { return breakLen },
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
+	}, func() time.Time { return now }, testkit.Logger()).WithPods(pods)
+	seedChannel(t, st, "shorter", 10,
+		entry("movie:tmdb:90000001", "First"), entry("movie:tmdb:90000002", "Second"), entry("movie:tmdb:90000003", "Third"))
+	if err := e.Reconcile(context.Background(), "shorter"); err != nil {
+		t.Fatal(err)
+	}
+
+	now = now.Add(150 * time.Minute)
+	breakLen, pods.duration = time.Minute, 58_000
+	if err := e.Reconcile(context.Background(), "shorter"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetChannel(context.Background(), "shorter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range got.Desired {
+		if s.Kind == schedule.SlotFiller && s.DurationMs > time.Minute.Milliseconds() {
+			t.Fatalf("break %d is %d ms after the break length was lowered to 1m", i, s.DurationMs)
+		}
+	}
+}
+
 // The household's 2026-10-24 evening, reduced: a channel on air for hours, whose breaks the next
 // reconcile sizes differently. Before the fix, every break on the channel took the new length,
 // the timeline walked from the anchor moved, and the stream was stopped: the viewer re-tuned into

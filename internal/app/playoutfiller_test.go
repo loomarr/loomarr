@@ -283,6 +283,28 @@ func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
 	}
 }
 
+// A keyed filler slot stands in for a programme that has not landed, at that programme's runtime:
+// it is not a break, so its pod keeps the configured break length rather than a 90 minute budget
+// that would draw (and record as aired) most of the catalog.
+func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
+	t.Parallel()
+	var asked []filler.BreakSlot
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
+	}}, asked: &asked}
+	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000009", DurationMs: (90 * time.Minute).Milliseconds()},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0].Length != 0 {
+		t.Fatalf("placeholder pod asked for %+v, want the configured break length (Length 0)", asked)
+	}
+}
+
 // No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
 func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 	t.Parallel()
