@@ -20,10 +20,13 @@ const reactNativeWeb = fileURLToPath(new URL("./node_modules/react-native-web", 
 const reactNativeSvgWeb = fileURLToPath(
   new URL("./node_modules/react-native-svg/lib/module/elements.web.js", import.meta.url),
 );
-// react-native-svg's web build imports React Native's asset registry package, which React Native
-// 0.88 no longer installs. On the web the registry is react-native-web's.
+// react-native-svg's web build needs two React Native modules react-native-web lacks: the asset
+// registry package React Native 0.88 no longer installs, and an Android-only TurboModule.
 const reactNativeWebAssetRegistry = fileURLToPath(
   new URL("./node_modules/react-native-web/dist/modules/AssetRegistry/index.js", import.meta.url),
+);
+const reactNativeSvgSoundModule = fileURLToPath(
+  new URL("../../react-native-svg-sound-module.web.js", import.meta.url),
 );
 const proxied = [
   // /v1 covers the whole versioned surface INCLUDING /v1/playout (§9.1 V47: the playout streaming
@@ -106,6 +109,7 @@ export default defineConfig({
       { find: /^react-native$/, replacement: reactNativeWeb },
       { find: /^react-native-svg$/, replacement: reactNativeSvgWeb },
       { find: /^@react-native\/assets-registry\/registry$/, replacement: reactNativeWebAssetRegistry },
+      { find: /^\.\.\/fabric\/NativeSvgSoundModule$/, replacement: reactNativeSvgSoundModule },
     ],
     dedupe: ["react", "react-dom", "react-native"],
     extensions: [".web.mjs", ".web.js", ".web.ts", ".web.tsx", ".mjs", ".js", ".ts", ".tsx", ".json"],
