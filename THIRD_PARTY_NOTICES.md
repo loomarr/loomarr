@@ -164,13 +164,21 @@ in the public domain. The image satisfies the license's notice condition by reta
 
 The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n9.0` series. The
 [`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
-`autobuild-2026-08-31-13-27`, build `n9.0.1-11-ge47273f4d9`, verified by per-architecture SHA256
+`autobuild-2026-09-30-13-08`, build `n9.0.2-17-g2a571b6068`, verified by per-architecture SHA256
 (`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
 bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
 The evidence manifest also binds BtbN's pruning policy at the release commit: ordinary daily
 archives expire after the newest 14, while one archive per month is retained for 24 months.
 
-The August build replaces July because its original upstream dependency download cache and build
+The September build (`n9.0.2-17-g2a571b6068`, FFmpeg source commit
+`2a571b606854520cf89804d8030c8b328e621689`, BtbN build scripts and retention policy at
+`6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b`) replaces the August n9.0 build. Its
+[retention record](project/evidence/ffmpeg-september-source-retention.md) binds the binary and source
+archives to the pins. ⚠ Unlike August, BtbN's original dependency download cache for this build had
+already expired (run artifacts are kept 14 days), and the source release for this pin is **not yet
+published**; the record states what remains. The August record below describes the previous pin.
+
+The August build replaced July because its original upstream dependency download cache and build
 logs were retained before expiry. The [retention record](project/evidence/ffmpeg-august-source-retention.md)
 binds those archives to the new pins and records the remaining distribution and validation work.
 The n9.0 build (#1549) comes from the same release, the same BtbN build scripts and the same

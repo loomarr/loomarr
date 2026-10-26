@@ -5,22 +5,22 @@
     {
       "name": "ffmpeg",
       "assets": [
-        {"architecture": "amd64", "asset": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz", "sha256": "182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a"},
-        {"architecture": "arm64", "asset": "ffmpeg-n9.0.1-11-ge47273f4d9-linuxarm64-gpl-9.0.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linuxarm64-gpl-9.0.tar.xz", "sha256": "e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1"}
+        {"architecture": "amd64", "asset": "ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz", "sha256": "68ee646831adaae2495618346f3bba94ff207ff83bbd34d643e7004730d66269"},
+        {"architecture": "arm64", "asset": "ffmpeg-n9.0.2-17-g2a571b6068-linuxarm64-gpl-9.0.tar.xz", "asset_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linuxarm64-gpl-9.0.tar.xz", "sha256": "91afcd7695d4bbbb9e0057aa10baaf9875ec4e1a97303f9059ec971336a2ab46"}
       ],
       "upstream": {
-        "release_url": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27",
-        "release_revision": "autobuild-2026-08-31-13-27",
-        "release_commit": "8267213e26c1031621e6e1210fe3aa4867214f6a",
-        "source_url": "https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9227152dcbf543cebaf9e2430ddbcc4",
-        "source_revision": "e47273f4d9227152dcbf543cebaf9e2430ddbcc4",
-        "build_url": "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a",
-        "build_revision": "8267213e26c1031621e6e1210fe3aa4867214f6a",
-        "build_id": "n9.0.1-11-ge47273f4d9",
+        "release_url": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-30-13-08",
+        "release_revision": "autobuild-2026-09-30-13-08",
+        "release_commit": "6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b",
+        "source_url": "https://github.com/FFmpeg/FFmpeg/commit/2a571b606854520cf89804d8030c8b328e621689",
+        "source_revision": "2a571b606854520cf89804d8030c8b328e621689",
+        "build_url": "https://github.com/BtbN/FFmpeg-Builds/tree/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b",
+        "build_revision": "6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b",
+        "build_id": "n9.0.2-17-g2a571b6068",
         "retention_class": "monthly",
-        "retention_policy_url": "https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/util/prunetags.sh",
-        "retention_policy_revision": "8267213e26c1031621e6e1210fe3aa4867214f6a",
-        "license_urls": ["https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/e47273f4d9227152dcbf543cebaf9e2430ddbcc4/COPYING.GPLv3"]
+        "retention_policy_url": "https://github.com/BtbN/FFmpeg-Builds/blob/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b/util/prunetags.sh",
+        "retention_policy_revision": "6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b",
+        "license_urls": ["https://github.com/BtbN/FFmpeg-Builds/blob/6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/2a571b606854520cf89804d8030c8b328e621689/COPYING.GPLv3"]
       }
     },
     {

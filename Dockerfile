@@ -156,16 +156,16 @@ ARG DENO_ARM64_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361
 # 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
 # pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
 #
-# This pin is `n9.0.1-11-ge47273f4d9`, the n9.0 GPL build in the retained monthly release below (the
-# same release that carried the previous n8.1 pin). To bump: choose BtbN's retained monthly release
+# This pin is `n9.0.2-17-g2a571b6068`, the n9.0 GPL build in September 2026's retained monthly release
+# below (the final autobuild of that month). To bump: choose BtbN's retained monthly release
 # for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
 # still keeps it, take its exact GPL asset filename for the series, download both architecture
 # archives, and update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence
 # together — never choose an ordinary daily archive or point any value at `latest`.
-ARG FFMPEG_RELEASE=autobuild-2026-08-31-13-27
-ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9
-ARG FFMPEG_AMD64_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
-ARG FFMPEG_ARM64_SHA256=e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1
+ARG FFMPEG_RELEASE=autobuild-2026-09-30-13-08
+ARG FFMPEG_BUILD_ID=n9.0.2-17-g2a571b6068
+ARG FFMPEG_AMD64_SHA256=68ee646831adaae2495618346f3bba94ff207ff83bbd34d643e7004730d66269
+ARG FFMPEG_ARM64_SHA256=91afcd7695d4bbbb9e0057aa10baaf9875ec4e1a97303f9059ec971336a2ab46
 # ⚠ Since v1.9.3 whisper.cpp's version releases carry NO binaries: the Ubuntu archives are attached
 # to the ggml-style build release cut from the SAME commit, which the version release links as its
 # "Nightly build". WHISPER_VERSION is the human version; WHISPER_BUILD is the release the archives
@@ -224,7 +224,7 @@ RUN set -eux; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
-    # (ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz — build id `n9.0.1-11-ge47273f4d9`,
+    # (ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz — build id `n9.0.2-17-g2a571b6068`,
     # suffix `9.0`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
     # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
     # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0).
