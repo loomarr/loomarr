@@ -44,7 +44,9 @@ type Item struct {
 // the input to its end and exited cleanly) from one that was stopped or failed. A source that ran
 // out before its slot filled has nothing more to give: asking the schedule again would reopen the
 // same airing at its last frame, start an encoder that produces nothing, and slate anyway. The
-// packager slates the rest of the slot instead. Any other early end rejoins through the schedule.
+// packager slates the rest of the slot instead, at most SlateRetry, so a file that ended long
+// before its runtime (ffmpeg also exits 0 on a truncated or unreadable input) still rejoins as a
+// failure would. Any other early end rejoins through the schedule at once.
 type SourceEnd interface {
 	// SourceEnded reports a clean end of input. It is asked once, after the stream's last
 	// fragment and before the item's context is cancelled.
@@ -374,6 +376,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 
 	var nv, na int64
 	first := true
+	drained := false // the stream closed on its own: its reader is done, so its end can be asked
 	for ; frag != nil; first = false {
 		keep := map[uint32]int64{videoTrack: slot.Frames - nv, audioTrack: slot.AudioFrames - na}
 		c, err := p.forward(ctx, frag, first, keep)
@@ -391,6 +394,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		}
 		f, ok := <-stream.frags
 		if !ok {
+			drained = true
 			break
 		}
 		frag = f
@@ -402,7 +406,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	// shorter than its listed runtime) ends with the slot unfilled. Asked before cancel, which
 	// would stop an encoder still finishing.
 	ranOut := false
-	if end, ok := rc.(SourceEnd); ok && nv < slot.Frames && stream.err == nil && ctx.Err() == nil {
+	if end, ok := rc.(SourceEnd); ok && drained && nv < slot.Frames && stream.err == nil && ctx.Err() == nil {
 		ranOut = end.SourceEnded()
 	}
 	cancel()
@@ -410,7 +414,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		p.cfg.Log.Warn("packager: item ended early", "item", item.Label, "frames", nv, "want", slot.Frames, "err", stream.err)
 	}
 	if ranOut {
-		left := time.Duration(slot.Frames-nv) * time.Second / time.Duration(p.cfg.FPS)
+		left := min(time.Duration(slot.Frames-nv)*time.Second/time.Duration(p.cfg.FPS), p.cfg.SlateRetry)
 		p.cfg.Log.Info("packager: item's source ended before its slot; slate", "item", item.Label, "frames", nv,
 			"want", slot.Frames, "slate_ms", left.Milliseconds())
 		return p.fillSlate(ctx, p.slotFor(p.airAt(p.v), left))

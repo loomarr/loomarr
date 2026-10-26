@@ -882,8 +882,6 @@ func TestMasterPlaylistNamesEachVariant(t *testing.T) {
 	}
 }
 
-// boxCut passes whole top-level boxes and, stopped, ends the stream cleanly at the next box
-// boundary: the packager never reads a partial fragment of an encoder it is replacing.
 // An encoder's source ran out only when its own output ended and it then exited 0: a failed
 // encoder, or one a ladder step cut at a box boundary while it still runs, did not read its input
 // to the end, and its airing must rejoin through the schedule.
@@ -923,6 +921,8 @@ func TestEncoderOutputReportsASourceThatRanOut(t *testing.T) {
 	}
 }
 
+// boxCut passes whole top-level boxes and, stopped, ends the stream cleanly at the next box
+// boundary: the packager never reads a partial fragment of an encoder it is replacing.
 func TestBoxCutEndsAtABoxBoundary(t *testing.T) {
 	box := func(typ string, body int) []byte {
 		b := make([]byte, 8+body)

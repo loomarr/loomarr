@@ -1140,8 +1140,9 @@ func (e *encoderOutput) Read(p []byte) (int, error) {
 }
 
 // sourceEndWait bounds how long SourceEnded waits for an encoder whose output ended to exit. An
-// ffmpeg that has written its last fragment exits at once; one that does not is not trusted.
-const sourceEndWait = 2 * time.Second
+// ffmpeg that has written its last fragment exits at once; one that does not is not trusted, and
+// its airing rejoins through the schedule. Short, because the channel's timeline waits on it.
+const sourceEndWait = 500 * time.Millisecond
 
 // SourceEnded implements packager.SourceEnd: the encoder's output ended on its own (not cut for a
 // ladder step) and the process then exited 0, so it read its input to the end. A commercial whose

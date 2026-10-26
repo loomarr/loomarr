@@ -155,28 +155,37 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 
 // A source that ran out before its slot filled (2026-10-24: a commercial whose audio runs half a
 // second past its picture) is not reopened at its last frame: the rest of its slot is slate, and the
-// next item airs at the slot's end. An encoder that stopped any other way still rejoins through the
-// schedule, which in this harness hands out the next plan at once.
+// next item airs at the slot's end. The slate is held to SlateRetry, so a file that ended long
+// before its runtime rejoins as a failure would. An encoder that stopped any other way still rejoins
+// through the schedule at once; in this harness the schedule hands out the next plan.
 func TestSourceThatRanOutSlatesTheRestOfItsSlot(t *testing.T) {
-	for _, ended := range []bool{true, false} {
-		h := runPlans(t, Config{}, []plan{
-			{"ad", 2 * time.Second, synth{label: "ad", frames: 40, sourceEnded: &ended}}, // 40 of 60 frames
-			{"prog", time.Second, synth{label: "prog"}},
+	ranOut := 40 * time.Second / testFPS // the ad delivers 40 of its slot's 60 frames
+	retry := 10 * time.Second / testFPS  // shorter than the 20 frames left, and whole frames
+	for _, tc := range []struct {
+		name       string
+		ended      bool
+		retry      time.Duration
+		wantNextAt time.Duration
+		wantSlates int
+	}{
+		{"ran out", true, 0, 2 * time.Second, 1},
+		{"ran out longer than the retry", true, retry, ranOut + retry, 1},
+		{"stopped", false, 0, ranOut, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := runPlans(t, Config{SlateRetry: tc.retry}, []plan{
+				{"ad", 2 * time.Second, synth{label: "ad", frames: 40, sourceEnded: &tc.ended}},
+				{"prog", time.Second, synth{label: "prog"}},
+			})
+			payloads, _ := assertGapless(t, h)
+			if got := countPrefix(payloads, "ad"); got != 40 {
+				t.Fatalf("ad put %d frames on the timeline, want the 40 it had", got)
+			}
+			v, _ := h.opened.Load("prog")
+			if at, slates := v.(Slot).Offset, h.p.Stats().Slates; at != tc.wantNextAt || slates != tc.wantSlates {
+				t.Errorf("next item at %v after %d slates, want at %v after %d", at, slates, tc.wantNextAt, tc.wantSlates)
+			}
 		})
-		payloads, _ := assertGapless(t, h)
-		if got := countPrefix(payloads, "ad"); got != 40 {
-			t.Fatalf("ended=%v: ad put %d frames on the timeline, want the 40 it had", ended, got)
-		}
-		v, _ := h.opened.Load("prog")
-		slates := h.p.Stats().Slates
-		switch {
-		case ended && (v.(Slot).Offset != 2*time.Second || slates != 1):
-			t.Errorf("ran out: next item at %v after %d slates, want at the ad's slot end (2s) after one",
-				v.(Slot).Offset, slates)
-		case !ended && (v.(Slot).Offset != 40*time.Second/testFPS || slates != 0):
-			t.Errorf("stopped: next item at %v after %d slates, want the schedule asked at once (1.333s)",
-				v.(Slot).Offset, slates)
-		}
 	}
 }
 
