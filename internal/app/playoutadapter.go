@@ -1058,9 +1058,11 @@ func (r *playoutResolver) airingFiller(
 	// breaks play different adverts — and the guide's hover card, which calls the same
 	// method with the same start, lists exactly what will air here.
 	//
-	// gap.Offset is how far into the break we are, so the break began that long ago.
-	breakStart := now.Add(-gap.Offset).UnixMilli()
-	pod, err := r.pods.PreviewAt(ctx, channelID, breakStart)
+	// gap.Offset is how far into the break we are, so the break began that long ago, and the slot
+	// is Offset+Remaining long: the pod is assembled to that slot, never past it.
+	pod, err := r.pods.PreviewAt(ctx, channelID, filler.BreakSlot{
+		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.Offset + gap.Remaining,
+	})
 	if err != nil || len(pod.Entries) == 0 {
 		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
 		// bottoms out at "nothing matched", and a channel must not fail to tune because it has

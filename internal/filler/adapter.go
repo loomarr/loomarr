@@ -137,11 +137,23 @@ func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, 
 	return false
 }
 
-// PlayableDurationMs reports the duration of real files in the deterministic pod.
-// The embedded fallback card deliberately contributes nothing: it is generated at
-// playout time and must not extend a commercial break after the selected clips end.
+// PlayableDurationMs reports the duration of real files in the deterministic pod: the length
+// reconcile gives every break on the channel's timeline. The embedded fallback card deliberately
+// contributes nothing: it is generated at playout time and must not extend a commercial break
+// after the selected clips end.
+//
+// ⚠ It is sized WITHOUT the play history, so only the catalog, the selection and the policy move
+// it. Sized from the live rotation, every commercial that aired re-sized every break, the
+// timeline walked from the anchor shifted by tens of seconds or minutes at each reconcile, and
+// the viewer was thrown back into the programme or into the same break again (live smoke,
+// 2026-10-24). Rotation still decides WHICH clips air: PreviewAt assembles each break to this
+// length from its own history snapshot.
 func (a *PodAdapter) PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel Selection) int64 {
-	pod, err := a.Preview(ctx, channelID, seed, sel)
+	clips, err := a.catalog.AllClips(ctx)
+	var pod Pod
+	if err == nil && len(clips) > 0 {
+		pod = a.assemble(clips, nil, channelID, Break{Seed: seed}, sel, a.pol())
+	}
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler duration check failed (channel stays break-free)", "channel", channelID, "err", err)
@@ -205,10 +217,19 @@ func (a *PodAdapter) PreviewAt(ctx context.Context, channelID string, seed int64
 	return a.previewAt(ctx, channelID, seed, sel, breakStart)
 }
 
-// Break names one break to assemble: its start and the seed derived from it.
+// BreakSlot is one break on a channel's timeline as its callers know it: when it starts and how
+// long its scheduled slot is. The seed is derived from the start by whoever owns the channel.
+type BreakSlot struct {
+	Start  time.Time
+	Length time.Duration
+}
+
+// Break names one break to assemble: its start, the seed derived from it, and the length of its
+// scheduled slot. A zero Length is the configured break length (a break not yet on a timeline).
 type Break struct {
-	Seed  int64
-	Start time.Time
+	Seed   int64
+	Start  time.Time
+	Length time.Duration
 }
 
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
@@ -238,7 +259,7 @@ func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Se
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
 	for i, b := range breaks {
-		pods[i] = a.assemble(clips, records, channelID, b.Seed, sel, b.Start, pol)
+		pods[i] = a.assemble(clips, records, channelID, b, sel, pol)
 	}
 	return pods, nil
 }
@@ -251,9 +272,16 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 	return pods[0], nil
 }
 
-// assemble is the one per-break assembly every preview path runs, over inputs already loaded.
-func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, seed int64, sel Selection, breakStart time.Time, pol Policy) Pod {
+// assemble is the one per-break assembly every preview path runs, over inputs already loaded. A
+// break on a timeline is assembled to its slot's own length, which is the hard budget: the slot
+// may be shorter than the configured break (reconcile caps it at the playable pod), and a pod
+// assembled to the setting would run past the slot's end and lose its last ad mid-spot.
+func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, b Break, sel Selection, pol Policy) Pod {
+	seed, breakStart := b.Seed, b.Start
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
+	if b.Length > 0 {
+		breakDurationMs = b.Length.Milliseconds()
+	}
 	if sel.Spacing != nil && *sel.Spacing >= 0 {
 		pol.Cooldown = *sel.Spacing
 	}

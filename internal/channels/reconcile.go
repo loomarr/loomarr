@@ -256,8 +256,18 @@ func (e *Engine) reconcileOnce(
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
+	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
+		// A re-sized break must not move what has aired (2026-10-24: each re-size threw the viewer
+		// back into the programme, or into the same break again). Breaks that have aired or air
+		// within the freeze horizon keep their accepted length; a turned window starts a new slice
+		// from its own anchor, so there is nothing to hold.
+		if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
+			desired.Slots = playout.KeepAcceptedBreaks(acceptedSlots, desired.Slots, acceptedAnchor,
+				e.now().Add(MidRollFreezeHorizon))
+		}
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
@@ -404,13 +414,20 @@ func (e *Engine) reconcileOnce(
 	if run.qualityEligible && (ch.Status == schedule.StatusLive || ch.Status == schedule.StatusDrifted) {
 		run.qualityScheduled = true
 	}
-	// A shared encoder is reading the previously accepted cycle until it is retired.
-	// Guide freshness alone cannot switch its current playout session: live proof was a
-	// newly constrained Simpsons guide advertising S10 while the Shield reattached to a
-	// nine-minute-stale pre-edit stream. Stop only after the replacement Desired cycle is
-	// durable, and only when it actually changed; the next request starts at the correct
-	// wall-clock offset. Postgres lifecycle invalidations repeat this on peer replicas.
-	if playsInternally && desiredChangedLocally && e.scheduleInvalidator != nil {
+	// The channel packager reads the accepted cycle at every item boundary, so a change from the
+	// next lookup on reaches the stream by itself. Only a change to what is on air now (an item the
+	// packager may already be encoding, up to its run-ahead) needs the stream stopped, and only
+	// after the replacement Desired cycle is durable; the next request starts at the correct
+	// wall-clock offset. Stopping on ANY change restarted every viewer at every re-size
+	// (2026-10-24). A turned window aired its new slice before this commit, from the preview this
+	// reconcile computes again, so it keeps the stop-on-change rule. Postgres lifecycle
+	// invalidations apply the same rule on peer replicas (playout.OnAirChanged).
+	onAirChanged := desiredChangedLocally
+	if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
+		onAirChanged = playout.OnAirChanged(acceptedSlots, acceptedAnchor, ch.Desired, ch.PlayoutAnchor,
+			e.now(), e.now().Add(playout.OnAirLookahead))
+	}
+	if playsInternally && onAirChanged && e.scheduleInvalidator != nil {
 		e.scheduleInvalidator.StopChannel(ch.ID)
 	}
 

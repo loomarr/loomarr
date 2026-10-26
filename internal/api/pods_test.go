@@ -29,8 +29,8 @@ type fakePods struct {
 	// the SAME selection — which is the property V51f added CoverageDraft for. One shared slice
 	// would make "both got the draft" indistinguishable from "one got it twice".
 	draftCoverageAsked []filler.Selection
-	atAsked            []int64 // the break starts PreviewAt / PreviewAtMany received
-	batches            int     // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
+	atAsked            []filler.BreakSlot // the break slots PreviewAt / PreviewAtMany received
+	batches            int                // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
 	pod                filler.Pod
 	coverage           filler.CoverageReport
 	pool               filler.PoolReport
@@ -52,21 +52,21 @@ func (f *fakePods) PreviewDraft(_ context.Context, channelID string, sel filler.
 	return f.pod, f.err
 }
 
-// PreviewAt records the BREAK START it was asked for, so a test can prove the guide resolves
+// PreviewAt records the BREAK SLOT it was asked for, so a test can prove the guide resolves
 // each break individually rather than reusing one channel-wide pod.
-func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs int64) (filler.Pod, error) {
+func (f *fakePods) PreviewAt(_ context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error) {
 	f.asked = append(f.asked, channelID)
-	f.atAsked = append(f.atAsked, breakStartMs)
+	f.atAsked = append(f.atAsked, slot)
 	return f.pod, f.err
 }
 
-// PreviewAtMany records the batch and every break start in it, so a test can prove the guide
+// PreviewAtMany records the batch and every break slot in it, so a test can prove the guide
 // asks once per channel row and still resolves each break individually.
-func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, breakStartsMs []int64) ([]filler.Pod, error) {
+func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, slots []filler.BreakSlot) ([]filler.Pod, error) {
 	f.batches++
 	f.asked = append(f.asked, channelID)
-	f.atAsked = append(f.atAsked, breakStartsMs...)
-	pods := make([]filler.Pod, len(breakStartsMs))
+	f.atAsked = append(f.atAsked, slots...)
+	pods := make([]filler.Pod, len(slots))
 	for i := range pods {
 		pods[i] = f.pod
 	}

@@ -3,9 +3,11 @@ package playout
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -390,6 +392,78 @@ func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[strin
 		pins[b.LibraryItemID] = cuts
 	}
 	return pins
+}
+
+// KeepAcceptedBreaks is what a re-size must not change (§10 breaks): the length of every break
+// that, on the accepted cycle walked from epoch, starts before `until`. Every later airing is
+// found by walking the cycle from its anchor, so re-sizing one break that has aired moves the
+// programme on air by the difference, and re-sizing a day of them moved it by up to minutes
+// (2026-10-24). Breaks from `until` on take next's length: nothing there has aired.
+//
+// It holds lengths only: when anything else in the aired stretch differs (a programme replaced,
+// removed or re-timed), next is returned as computed, because that is an edit to the schedule and
+// not a re-size. A cycle that has aired whole holds every break.
+func KeepAcceptedBreaks(accepted, next []schedule.Slot, epoch, until time.Time) []schedule.Slot {
+	total := cycleDuration(accepted)
+	if total <= 0 || !until.After(epoch) {
+		return next
+	}
+	aired := len(accepted)
+	if elapsed := until.Sub(epoch); elapsed < total {
+		aired = 0
+		for _, s := range accepted {
+			if elapsed <= 0 {
+				break
+			}
+			elapsed -= slotDuration(s)
+			aired++
+		}
+	}
+	if len(next) < aired {
+		return next
+	}
+	for i := range aired {
+		a, n := accepted[i], next[i]
+		if isBreak(a) && isBreak(n) {
+			a.DurationMs, n.DurationMs = 0, 0
+		}
+		if a != n {
+			return next
+		}
+	}
+	out := slices.Clone(next)
+	for i := range aired {
+		if isBreak(out[i]) {
+			out[i].DurationMs = accepted[i].DurationMs
+		}
+	}
+	return out
+}
+
+// isBreak reports a commercial break slot. A keyed filler slot stands in for an unavailable
+// programme and keeps that programme's runtime; it is not a break.
+func isBreak(s schedule.Slot) bool { return s.Kind == schedule.SlotFiller && s.Key == "" }
+
+// OnAirLookahead is how far past now a channel's stream may already be encoded: the packager's
+// run-ahead. A schedule change inside it is on air; one after it reaches the next lookup.
+const OnAirLookahead = packager.DefaultRunAhead
+
+// OnAirChanged reports whether the cycle `next` walked from nextEpoch airs anything different from
+// `accepted` walked from epoch over [from, to): a different item, or the same item at a different
+// position. It is THE stop rule for a channel's live stream: only such a change needs the packager
+// restarted, and a change after `to` reaches it at its next lookup without one.
+func OnAirChanged(accepted []schedule.Slot, epoch time.Time, next []schedule.Slot, nextEpoch, from, to time.Time) bool {
+	for at := from; at.Before(to); {
+		a, b := AiringAt(accepted, epoch, at), AiringAt(next, nextEpoch, at)
+		if a != b {
+			return true
+		}
+		if a.Remaining <= 0 {
+			return false // nothing with a duration airs: both are empty from here
+		}
+		at = at.Add(a.Remaining)
+	}
+	return false
 }
 
 func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {

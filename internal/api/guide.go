@@ -279,15 +279,15 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			podAt := map[int]filler.Pod{}
 			if s.pods != nil {
 				var idx []int
-				var starts []int64
+				var slots []filler.BreakSlot
 				for i, b := range bs {
 					if b.Kind == schedule.SlotFiller {
 						idx = append(idx, i)
-						starts = append(starts, b.Start.UnixMilli())
+						slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.Duration()})
 					}
 				}
-				if len(starts) > 0 {
-					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, starts); perr == nil {
+				if len(slots) > 0 {
+					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, slots); perr == nil {
 						for j, pod := range pods {
 							podAt[idx[j]] = pod
 						}
