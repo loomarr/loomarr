@@ -882,6 +882,45 @@ func TestMasterPlaylistNamesEachVariant(t *testing.T) {
 	}
 }
 
+// An encoder's source ran out only when its own output ended and it then exited 0: a failed
+// encoder, or one a ladder step cut at a box boundary while it still runs, did not read its input
+// to the end, and its airing must rejoin through the schedule.
+func TestEncoderOutputReportsASourceThatRanOut(t *testing.T) {
+	const box = `printf '\000\000\000\020free12345678'`
+	for _, tc := range []struct {
+		name, tail string
+		cut, want  bool
+	}{
+		{"read to the end", "exit 0", false, true},
+		{"failed", "exit 3", false, false},
+		// The step's encoder would go on to exit 0; it still did not air its source to the end.
+		{"cut for a ladder step", "sleep 0.3; exit 0", true, false},
+	} {
+		ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+		if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\n"+box+"\n"+tc.tail+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		rc, err := startFragmentEncoder(t.Context(), ffmpeg, nil, slog.New(slog.DiscardHandler), nil, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := rc.(*encoderOutput)
+		if _, err := io.ReadFull(out, make([]byte, 16)); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if tc.cut {
+			out.cut.stop.Store(true)
+		}
+		if _, err := io.ReadAll(out); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := out.SourceEnded(); got != tc.want {
+			t.Errorf("%s: SourceEnded = %v, want %v", tc.name, got, tc.want)
+		}
+		_ = out.Close()
+	}
+}
+
 // boxCut passes whole top-level boxes and, stopped, ends the stream cleanly at the next box
 // boundary: the packager never reads a partial fragment of an encoder it is replacing.
 func TestBoxCutEndsAtABoxBoundary(t *testing.T) {
