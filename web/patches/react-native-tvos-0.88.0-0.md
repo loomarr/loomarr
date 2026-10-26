@@ -7,7 +7,8 @@ unchanged. Hermes was re-cut: 0.88 dropped the nightly snapshot path and now fal
 `250829098.0.0-stable` branch, which the patch replaces with the pinned release selection as before.
 0.88 also added a React Native Maven mirror (`repo.reactnative.dev`) tried before Maven Central by
 an HTTP HEAD probe in all three helpers. The patch selects the authoritative repository instead
-(`ENTERPRISE_REPOSITORY` when set, otherwise Maven Central) without probing, so the selection and
+(`ENTERPRISE_REPOSITORY` when set, otherwise Maven Central; Core alone also honours the fork's
+test-only `RNTV_TESTONLY_LOCAL_RNCORE_REPOSITORY`) without probing, so the selection and
 the regression below stay network-free.
 
 pnpm binds this source patch into the exact existing package pin. No React Native, Hermes,
