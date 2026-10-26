@@ -7,6 +7,12 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+// The installed SDK's catalog of native module versions, which expo-doctor also enforces.
+const bundledNativeModules = async () =>
+  JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
+  );
+
 const autolinkedNativeModules = async (platform) => {
   const autolinking = fileURLToPath(
     new URL("../node_modules/.bin/expo-modules-autolinking", import.meta.url),
@@ -197,15 +203,17 @@ test("pauses the picture off Watching and forgets the pause before tuning from t
 test("builds the Expo modules core from source on iOS, against react-native-tvos", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-  // The canary's precompiled ExpoModulesCore sizes React's ShadowNodeFamily 64 bytes smaller
-  // than react-native-tvos 0.86.2-0 does, so every Expo view overflowed the heap (#1816).
-  // Building it from source also builds every Expo pod that depends on it from source.
-  assert.ok(manifest.expo.autolinking.ios.buildFromSource.includes("expo-modules-core"));
+  // Expo's precompiled ExpoModulesCore is built against upstream React Native, not
+  // react-native-tvos. The SDK 58 canary's sized React's ShadowNodeFamily 64 bytes smaller than
+  // react-native-tvos did, so every Expo view overflowed the heap (#1816). Building it from
+  // source also builds every Expo pod that depends on it (expo-video included) from source.
+  assert.deepEqual(manifest.expo.autolinking.ios.buildFromSource, ["expo-modules-core"]);
 });
 
-test("pins the native modules the shared player imports to the expo version", async () => {
+test("pins the native modules the shared player imports to the versions the SDK bundles", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const bundled = await bundledNativeModules();
 
-  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
+  assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
+  assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
 });

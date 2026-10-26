@@ -1,6 +1,14 @@
-# React Native TV 0.86.2-0 pinned Apple acquisition correction
+# React Native TV 0.88.0-0 pinned Apple acquisition correction
 
 Tracking: [#1170](https://github.com/loomarr/loomarr/issues/1170).
+
+Carried forward from 0.86.2-0 for the Expo SDK 58 stable move. The Core and Dependencies hunks apply
+unchanged. Hermes was re-cut: 0.88 dropped the nightly snapshot path and now falls back to a moving
+`250829098.0.0-stable` branch, which the patch replaces with the pinned release selection as before.
+0.88 also added a React Native Maven mirror (`repo.reactnative.dev`) tried before Maven Central by
+an HTTP HEAD probe in all three helpers. The patch selects the authoritative repository instead
+(`ENTERPRISE_REPOSITORY` when set, otherwise Maven Central) without probing, so the selection and
+the regression below stay network-free.
 
 pnpm binds this source patch into the exact existing package pin. No React Native, Hermes,
 compiler, Expo, or native framework version changes. Hermes, React Native Core, and React Native Dependencies select the

@@ -1,5 +1,12 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ComponentRef, ReactElement, ReactNode } from "react";
+import type {
+  ComponentProps,
+  ComponentRef,
+  ForwardRefExoticComponent,
+  ReactElement,
+  ReactNode,
+  RefAttributes,
+} from "react";
 import { cloneElement, forwardRef, isValidElement, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 
@@ -107,7 +114,14 @@ const mergeRenderProps = (
   return merged;
 };
 
-const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
+type ActionRef = ComponentRef<typeof Pressable>;
+
+// Annotated so the exported declaration names Pressable's instance type rather than React Native's
+// internal element class.
+const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> = forwardRef<
+  ActionRef,
+  ActionProps
+>(
   (
     {
       accessibilityState,

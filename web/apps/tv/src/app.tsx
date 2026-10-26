@@ -101,7 +101,13 @@ const tvDiagnostics = { clientVersion, platform: "android_tv", source: "android_
 
 // The Siri Remote has no number keys, so Apple TV has no digit entry: no "0–9 jump" hint and no
 // channel-number wait to tune (#1500 audit #3; maintainer, 2026-10-13: "It doesn't need tuning").
-const remoteHasDigits = !Platform.isTVOS;
+// react-native-tvos 0.88's types no longer declare Platform.isTVOS; tvOS is iOS on a TV.
+const isTvOS = Platform.OS === "ios" && Platform.isTV;
+const remoteHasDigits = !isTvOS;
+
+// react-native-tvos 0.88 types useTVEventHandler's eventKeyAction as a string, but the native
+// module sends the key action as a number (its TVEventHandler declares `?number`).
+const keyActionOf = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 
 /**
  * tvOS gives the Menu key to the app only while it is enabled, and then nothing else acts on it, so
@@ -111,7 +117,7 @@ const remoteHasDigits = !Platform.isTVOS;
  */
 const useTvMenuKey = (enabled: boolean) => {
   useEffect(() => {
-    if (!enabled || !Platform.isTVOS) return undefined;
+    if (!enabled || !isTvOS) return undefined;
     TVEventControl.enableTVMenuKey();
     return () => TVEventControl.disableTVMenuKey();
   }, [enabled]);
@@ -232,7 +238,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   );
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
-    const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), eventKeyAction);
+    const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), keyActionOf(eventKeyAction));
     if (event && event.key !== "select") dispatchRemoteEvent(event);
   });
   // A long-press of Select on a Guide or Surf row stars or unstars that row's channel (a short
@@ -270,7 +276,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   };
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (eventType === "longSelect") longSelectAtMs.current = Date.now();
-    if (active === "watching" || !isTvLongSelect(eventType, eventKeyAction)) return;
+    if (active === "watching" || !isTvLongSelect(eventType, keyActionOf(eventKeyAction))) return;
     const guideSelection = guide.getSnapshot().selection;
     const channelId =
       active === "guide"

@@ -2,10 +2,11 @@
 # Fail when CocoaPods installed a precompiled framework that was not built from this app's React
 # Native.
 #
-# Prebuilt C++ that includes React Native headers bakes in the layout of React types. The Expo
-# canary's precompiled ExpoModulesCore was compiled against an older React Native whose
-# ShadowNodeFamily is 64 bytes smaller than react-native-tvos 0.86.2-0's: every Expo view that
-# mounted overflowed the heap, and the phone crashed later in unrelated code (#1816). The only
+# Prebuilt C++ that includes React Native headers bakes in the layout of React types. The Expo SDK
+# 58 canary's precompiled ExpoModulesCore was compiled against an older React Native whose
+# ShadowNodeFamily was 64 bytes smaller than react-native-tvos 0.86.2-0's: every Expo view that
+# mounted overflowed the heap, and the phone crashed later in unrelated code (#1816). Expo's
+# prebuilds still target upstream React Native, not react-native-tvos. The only
 # frameworks allowed are React Native's own release archives, which the react-native-tvos patch
 # checksum-verifies. Everything else builds from source (`expo.autolinking.ios.buildFromSource`).
 set -euo pipefail

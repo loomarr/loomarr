@@ -1,4 +1,4 @@
-# expo-video 58.0.0-canary-20260812-27f94d4: one HTTP client per process
+# expo-video 58.0.12: one HTTP client per process
 
 Tracking: [#1037](https://github.com/loomarr/loomarr/issues/1037) (G3 warm surf).
 
@@ -18,13 +18,13 @@ expo-video ships a precompiled Android AAR, which a source patch cannot reach, s
 this package out of prebuilt modules (`expo.autolinking.android.buildFromSource` in
 `web/apps/tv/package.json`). Remove both together when upstream reuses its client.
 
-## iOS: the precompiled xcframework links Swift Testing
+## iOS: Swift Testing linkage (retired)
 
-Separate from the patch, `web/apps/mobile/package.json` also sets
-`expo.autolinking.ios.buildFromSource` for expo-video. The canary's precompiled
-`ExpoVideo.xcframework` (`prebuilds/output/{debug,release}`) compiles its `CachePolicyTests` Swift
-Testing suite into the framework, so `otool -L` lists `@rpath/Testing.framework/Testing` as a
-required load. No app bundles Testing.framework, so the phone died in dyld at launch. Built from the
-podspec, which excludes `Tests`, ExpoVideo does not link Testing. The xcframework has no tvOS slice,
-so the TV app already builds from source. Drop the iOS opt-out once
-`otool -L` on the shipped xcframework no longer lists Testing.
+The SDK 58 canary's precompiled `ExpoVideo.xcframework` compiled its `CachePolicyTests` Swift Testing
+suite into the framework, so `otool -L` listed `@rpath/Testing.framework/Testing` and the phone died
+in dyld at launch; the phone therefore listed expo-video in `expo.autolinking.ios.buildFromSource`.
+`llvm-otool -L` on all four 58.0.12 slices (`prebuilds/output/{debug,release}`, device and
+Simulator) lists no Testing framework, while the canary's release device slice still does. The
+explicit entry is gone. ExpoVideo still builds from source on iOS, because it depends on
+ExpoModulesCore, which the phone builds from source, and Expo's precompiled-module resolver keeps
+interdependent pods all prebuilt or all from source (`dependency_unavailable`).
