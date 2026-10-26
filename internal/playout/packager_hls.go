@@ -1157,6 +1157,9 @@ func (e *encoderOutput) SourceEnded() bool {
 	case <-e.reap():
 		return e.waitErr == nil
 	case <-time.After(sourceEndWait):
+		if e.log != nil {
+			e.log.Warn("packager hls: encoder still running after its output ended; rejoining", "wait_ms", sourceEndWait.Milliseconds())
+		}
 		return false
 	}
 }
