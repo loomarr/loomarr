@@ -74,7 +74,7 @@ tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tre
 # the tree — one of those WOULD be dropped by this flag, silently creating the blind spot this
 # change exists to close. Re-check before adding a negated tag.
 lint: ## golangci-lint v2 (run via `go run` so no global install needed)
-	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --build-tags '$(TAGS_CSV)' $(PKG)
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --build-tags '$(TAGS_CSV)' $(PKG)
 
 .PHONY: vuln
 # Untagged on purpose: the release image builds ./cmd/loomarr with no build tags, so this scans the
@@ -82,7 +82,7 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 # library ones are judged against the toolchain running the scan — go.mod's `toolchain` line and the
 # Dockerfile's golang image must move together. Needs network (vuln.go.dev).
 vuln: ## govulncheck: known vulnerabilities reachable from Loomarr code, stdlib included
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.8.0 $(PKG)
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $(PKG)
 
 .PHONY: deadcode
 deadcode: ## functions no ./cmd binary reaches, per package (report only; not a PR gate)
