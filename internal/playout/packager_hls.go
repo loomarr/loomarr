@@ -1118,8 +1118,14 @@ type encoderOutput struct {
 	// (Lease.ObserveCPU, #1520); the schedule divides it by the frames the packager took.
 	done     func(cpu time.Duration)
 	produced bool // read on the packager's reader goroutine, then by Close after it
-	log      *slog.Logger
-	once     sync.Once
+	// eof: the encoder's own output ended, not a ladder step's cut (boxCut.stop). Read on the
+	// packager's reader goroutine, then by SourceEnded after it.
+	eof     bool
+	log     *slog.Logger
+	once    sync.Once
+	reaping sync.Once
+	reaped  chan struct{} // closed once cmd.Wait has returned waitErr
+	waitErr error
 }
 
 func (e *encoderOutput) Read(p []byte) (int, error) {
@@ -1127,16 +1133,57 @@ func (e *encoderOutput) Read(p []byte) (int, error) {
 	if n > 0 {
 		e.produced = true
 	}
+	if errors.Is(err, io.EOF) && !e.cut.stop.Load() {
+		e.eof = true
+	}
 	return n, err
+}
+
+// sourceEndWait bounds how long SourceEnded waits for an encoder whose output ended to exit. An
+// ffmpeg that has written its last fragment exits at once; one that does not is not trusted.
+const sourceEndWait = 2 * time.Second
+
+// SourceEnded implements packager.SourceEnd: the encoder's output ended on its own (not cut for a
+// ladder step) and the process then exited 0, so it read its input to the end. A commercial whose
+// audio runs past its picture ends this way before its slot fills; reopening it there would start
+// an encoder at the last frame, which produces nothing and fails (on VAAPI: "A hardware frames
+// reference is required", the misleading error of 2026-10-24).
+func (e *encoderOutput) SourceEnded() bool {
+	if !e.eof {
+		return false
+	}
+	select {
+	case <-e.reap():
+		return e.waitErr == nil
+	case <-time.After(sourceEndWait):
+		return false
+	}
+}
+
+// reap waits for the encoder once, for SourceEnded and Close alike.
+func (e *encoderOutput) reap() <-chan struct{} {
+	e.reaping.Do(func() {
+		e.reaped = make(chan struct{})
+		go func() {
+			e.waitErr = e.cmd.Wait()
+			close(e.reaped)
+		}()
+	})
+	return e.reaped
 }
 
 func (e *encoderOutput) Close() error {
 	e.once.Do(func() {
 		_ = e.ReadCloser.Close()
-		if e.cmd.Process != nil {
-			_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
+		select {
+		case <-e.reap():
+		default:
+			if e.cmd.Process != nil {
+				_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
+			}
+			<-e.reaped
 		}
-		err := e.cmd.Wait()
+		err := e.waitErr
 		// Every encoder that produced reports its CPU, however it ended (the packager cancels the
 		// item's context before closing it): the schedule counts it only over the frames the
 		// packager reported delivered.

@@ -59,7 +59,16 @@ type synth struct {
 	wrote       *atomic.Int64   // counts fragments written
 	// audioJitter stamps AAC frames ±16 around 1024 samples (a Matroska-timed DTS source, live).
 	audioJitter bool
+	// sourceEnded, if set, makes the stream a SourceEnd reporting it.
+	sourceEnded *bool
 }
+
+type sourceEndStream struct {
+	io.ReadCloser
+	ended bool
+}
+
+func (s sourceEndStream) SourceEnded() bool { return s.ended }
 
 func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadCloser {
 	pr, pw := io.Pipe()
@@ -138,7 +147,37 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 		}
 	}()
 	go func() { <-ctx.Done(); pr.CloseWithError(ctx.Err()) }()
+	if s.sourceEnded != nil {
+		return sourceEndStream{ReadCloser: pr, ended: *s.sourceEnded}
+	}
 	return pr
+}
+
+// A source that ran out before its slot filled (2026-10-24: a commercial whose audio runs half a
+// second past its picture) is not reopened at its last frame: the rest of its slot is slate, and the
+// next item airs at the slot's end. An encoder that stopped any other way still rejoins through the
+// schedule, which in this harness hands out the next plan at once.
+func TestSourceThatRanOutSlatesTheRestOfItsSlot(t *testing.T) {
+	for _, ended := range []bool{true, false} {
+		h := runPlans(t, Config{}, []plan{
+			{"ad", 2 * time.Second, synth{label: "ad", frames: 40, sourceEnded: &ended}}, // 40 of 60 frames
+			{"prog", time.Second, synth{label: "prog"}},
+		})
+		payloads, _ := assertGapless(t, h)
+		if got := countPrefix(payloads, "ad"); got != 40 {
+			t.Fatalf("ended=%v: ad put %d frames on the timeline, want the 40 it had", ended, got)
+		}
+		v, _ := h.opened.Load("prog")
+		slates := h.p.Stats().Slates
+		switch {
+		case ended && (v.(Slot).Offset != 2*time.Second || slates != 1):
+			t.Errorf("ran out: next item at %v after %d slates, want at the ad's slot end (2s) after one",
+				v.(Slot).Offset, slates)
+		case !ended && (v.(Slot).Offset != 40*time.Second/testFPS || slates != 0):
+			t.Errorf("stopped: next item at %v after %d slates, want the schedule asked at once (1.333s)",
+				v.(Slot).Offset, slates)
+		}
+	}
 }
 
 // readySlate is the SlateSource of a slate already in hand.

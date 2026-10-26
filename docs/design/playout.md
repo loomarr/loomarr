@@ -45,6 +45,11 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   through the same builder tail as items and so matches their sample descriptions. After at most
   `SlateRetry` (10 s) the schedule is asked again and the programme rejoins in progress at the right
   offset. A decoder-configuration mismatch between items is logged with both sample descriptions.
+  An item whose source **ran out** before its slot filled (its encoder read the input to the end
+  and exited 0: a commercial whose audio outlasts its picture, a file shorter than its listed
+  runtime) is not reopened: the rest of its slot is slate (`packager.SourceEnd`). Reopening it at
+  its last frame started an encoder that produced nothing and failed, which on VAAPI reads as a GPU
+  fault (`A hardware frames reference is required`, 2026-10-24). Any other early end rejoins.
 - **Two audiences, one timeline.** A browser tunes a **master playlist** naming a `<format>.m3u8`
   variant, with `BANDWIDTH`, `CODECS` (read from the channel init), `RESOLUTION` and `FRAME-RATE`.
   Asset names are flat: `<format>-init.mp4` and `<format>-segNNNNNNNN.m4s`. A media server's tuner

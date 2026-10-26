@@ -40,6 +40,17 @@ type Item struct {
 	Wait time.Duration
 }
 
+// SourceEnd is implemented by an item stream that can tell a source that ran out (its encoder read
+// the input to its end and exited cleanly) from one that was stopped or failed. A source that ran
+// out before its slot filled has nothing more to give: asking the schedule again would reopen the
+// same airing at its last frame, start an encoder that produces nothing, and slate anyway. The
+// packager slates the rest of the slot instead. Any other early end rejoins through the schedule.
+type SourceEnd interface {
+	// SourceEnded reports a clean end of input. It is asked once, after the stream's last
+	// fragment and before the item's context is cancelled.
+	SourceEnded() bool
+}
+
 // Slot is one item's place on the channel timeline, fixed before its encoder starts.
 type Slot struct {
 	// AirAt is the wall-clock instant the slot's first frame airs.
@@ -387,9 +398,22 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	if item.Delivered != nil && ctx.Err() == nil {
 		item.Delivered(nv) // before the encoder is stopped and reaped
 	}
+	// A source shorter than its slot (a commercial whose audio runs past its picture, a file
+	// shorter than its listed runtime) ends with the slot unfilled. Asked before cancel, which
+	// would stop an encoder still finishing.
+	ranOut := false
+	if end, ok := rc.(SourceEnd); ok && nv < slot.Frames && stream.err == nil && ctx.Err() == nil {
+		ranOut = end.SourceEnded()
+	}
 	cancel()
 	if nv < slot.Frames && stream.err != nil && ctx.Err() == nil {
 		p.cfg.Log.Warn("packager: item ended early", "item", item.Label, "frames", nv, "want", slot.Frames, "err", stream.err)
+	}
+	if ranOut {
+		left := time.Duration(slot.Frames-nv) * time.Second / time.Duration(p.cfg.FPS)
+		p.cfg.Log.Info("packager: item's source ended before its slot; slate", "item", item.Label, "frames", nv,
+			"want", slot.Frames, "slate_ms", left.Milliseconds())
+		return p.fillSlate(ctx, p.slotFor(p.airAt(p.v), left))
 	}
 	return nil
 }
