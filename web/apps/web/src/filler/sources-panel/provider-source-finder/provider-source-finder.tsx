@@ -259,7 +259,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
       </form>
 
       {!enabled && (
-        <p className="mt-2 text-muted-foreground text-xs">Resume this service to find a source.</p>
+        <p className="text-muted-foreground mt-2 text-xs">Resume this service to find a source.</p>
       )}
 
       {showSuggestions && (
@@ -267,15 +267,15 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
           id={listID}
           role="listbox"
           aria-label={`${copy.label} results`}
-          className="mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-border bg-popover p-1"
+          className="border-border bg-popover mt-1 max-h-72 w-full overflow-y-auto rounded-lg border p-1"
         >
           {suggestionsQuery.isFetching && suggestions.length === 0 && (
-            <p className="px-3 py-2 text-muted-foreground text-sm">Searching…</p>
+            <p className="text-muted-foreground px-3 py-2 text-sm">Searching…</p>
           )}
           {!suggestionsQuery.isFetching &&
             suggestions.length === 0 &&
             debounced.length >= minimumQueryLength && (
-              <p className="px-3 py-2 text-muted-foreground text-sm">
+              <p className="text-muted-foreground px-3 py-2 text-sm">
                 {kind === "archive"
                   ? "No collections found. Paste the exact URL to check it."
                   : "No channels found. Paste a channel or playlist URL to check it."}
@@ -296,12 +296,12 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
               onClick={() => choose(suggestion)}
             >
               <span className="min-w-0">
-                <span className="block truncate font-medium text-sm">{suggestion.title}</span>
-                <span className="block truncate text-muted-foreground text-xs">
+                <span className="block truncate text-sm font-medium">{suggestion.title}</span>
+                <span className="text-muted-foreground block truncate text-xs">
                   {suggestion.description || suggestion.canonicalId}
                 </span>
               </span>
-              <span className="shrink-0 text-muted-foreground text-xs">
+              <span className="text-muted-foreground shrink-0 text-xs">
                 {suggestion.alreadyAdded ? "Added" : targetLabel(suggestion)}
               </span>
             </button>
@@ -310,10 +310,10 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
       )}
 
       {selected && (
-        <div className="mt-2 rounded-lg bg-muted/35 px-3 py-2">
+        <div className="bg-muted/35 mt-2 rounded-lg px-3 py-2">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="truncate font-medium text-sm">{selected.title}</p>
+              <p className="truncate text-sm font-medium">{selected.title}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="text-muted-foreground text-xs">
@@ -333,7 +333,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
           {verified &&
             !selected.alreadyAdded &&
             (!selected.previewItems || selected.previewItems.length === 0) && (
-              <p className="mt-2 text-muted-foreground text-xs">
+              <p className="text-muted-foreground mt-2 text-xs">
                 Loomarr checks a few new items at a time, and reviews every clip before it can play.
               </p>
             )}
@@ -341,7 +341,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
       )}
 
       {problem && (
-        <p className="mt-2 text-onair-300 text-sm">
+        <p className="text-onair-300 mt-2 text-sm">
           {problem.detail ??
             problem.title ??
             `${kind === "archive" ? "Archive.org" : "YouTube"} is not responding right now. Try again in a moment.`}

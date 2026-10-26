@@ -166,8 +166,8 @@ const WizardScreen = () => {
   // and then yank the operator forward — hold the paint instead of flashing.
   if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background" aria-busy="true">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Checking your setup" />
+      <main className="bg-background flex min-h-screen items-center justify-center" aria-busy="true">
+        <Loader2 className="text-muted-foreground size-6 animate-spin" aria-label="Checking your setup" />
       </main>
     );
   }
@@ -178,7 +178,7 @@ const WizardScreen = () => {
   // retry local to this idempotent read instead.
   if (isAuthenticated && settings.error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <main className="bg-background flex min-h-screen items-center justify-center p-6">
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
       </main>
     );

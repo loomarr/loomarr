@@ -6,15 +6,15 @@ import type { PageHeaderProps } from "./page-header.type";
 const PageHeader = ({ title, description, status, actions, className, ...rest }: PageHeaderProps) => (
   <header
     className={cn(
-      "flex shrink-0 flex-col gap-4 border-border border-b px-6 py-4 sm:flex-row sm:items-start sm:justify-between",
+      "border-border flex shrink-0 flex-col gap-4 border-b px-6 py-4 sm:flex-row sm:items-start sm:justify-between",
       className,
     )}
     data-page-header=""
     {...rest}
   >
     <div className="min-w-0 flex-1">
-      <h1 className="font-semibold text-xl">{title}</h1>
-      {description ? <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{description}</p> : null}
+      <h1 className="text-xl font-semibold">{title}</h1>
+      {description ? <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{description}</p> : null}
       {status}
     </div>
     {actions ? (

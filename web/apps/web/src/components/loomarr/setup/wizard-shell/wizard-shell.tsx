@@ -40,7 +40,7 @@ const WizardShell = ({
   className,
 }: WizardShellProps) => (
   <main
-    className={cn("relative grid min-h-screen grid-cols-1 bg-background md:grid-cols-[17rem_1fr]", className)}
+    className={cn("bg-background relative grid min-h-screen grid-cols-1 md:grid-cols-[17rem_1fr]", className)}
   >
     {/* Behind everything: the static is a positioned layer, so content siblings need an
         explicit stacking context above it (relative z-10) — otherwise a position:absolute
@@ -49,11 +49,11 @@ const WizardShell = ({
 
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
-    <aside className="relative z-10 flex flex-col gap-6 border-border border-b bg-card px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
+    <aside className="border-border bg-card relative z-10 flex flex-col gap-6 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
       <div className="flex flex-col gap-1">
         <BrandLockup variant="compact" />
-        <p className="mt-2 font-semibold text-base">Let's get you on the air</p>
-        <p className="font-mono text-muted-foreground text-xs">First-run setup · saved as you go</p>
+        <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
+        <p className="text-muted-foreground font-mono text-xs">First-run setup · saved as you go</p>
       </div>
 
       <ol aria-label="Setup steps" className="flex flex-col gap-1">
@@ -79,11 +79,11 @@ const WizardShell = ({
                 {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
               </span>
               <span
-                className={cn("text-sm", isCurrent ? "font-medium text-foreground" : "text-muted-foreground")}
+                className={cn("text-sm", isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}
               >
                 {step.title}
               </span>
-              {status === "skipped" && <span className="ml-auto text-static-400 text-xs">skipped</span>}
+              {status === "skipped" && <span className="text-static-400 ml-auto text-xs">skipped</span>}
             </>
           );
           return (
@@ -103,7 +103,7 @@ const WizardShell = ({
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
                 // step. The vertical guide line ties them to their parent.
-                <ul className="mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-border border-l pl-3">
+                <ul className="border-border mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-l pl-3">
                   {subItems.map((sub) => {
                     const active = sub.id === activeSubItem;
                     return (
@@ -115,7 +115,7 @@ const WizardShell = ({
                           className={cn(
                             "w-full cursor-pointer rounded px-2 py-1 text-left text-sm transition-colors",
                             active
-                              ? "font-semibold text-foreground"
+                              ? "text-foreground font-semibold"
                               : "text-muted-foreground hover:text-foreground",
                           )}
                         >
@@ -136,7 +136,7 @@ const WizardShell = ({
     <div className="relative z-10 flex min-w-0 flex-col">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
         <div className="flex flex-col gap-1">
-          <h1 className="font-semibold text-2xl">{title}</h1>
+          <h1 className="text-2xl font-semibold">{title}</h1>
           {description && <p className="text-muted-foreground text-sm">{description}</p>}
         </div>
 

@@ -33,13 +33,13 @@ const InstallationLocation = ({
     <section
       className={cn(
         "flex flex-col gap-4",
-        card && "rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6",
+        card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
       )}
     >
       {showHeading && (
         <div>
-          <h2 className="font-semibold text-lg">Your area and language</h2>
-          <p className="mt-1 max-w-xl text-muted-foreground text-sm">
+          <h2 className="text-lg font-semibold">Your area and language</h2>
+          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
             Loomarr uses these to find commercials that fit your home.
           </p>
         </div>

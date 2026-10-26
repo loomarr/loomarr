@@ -80,7 +80,7 @@ const SettingsFields = ({
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline sm:col-span-2"
+          className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm underline-offset-4 hover:underline sm:col-span-2"
         >
           {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
         </button>

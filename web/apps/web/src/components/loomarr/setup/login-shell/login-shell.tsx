@@ -11,7 +11,7 @@ import type { LoginShellProps } from "./login-shell.type";
 const LoginShell = ({ children, className }: LoginShellProps) => (
   <main
     className={cn(
-      "relative flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6",
+      "bg-background relative flex min-h-screen flex-col items-center justify-center gap-8 p-6",
       className,
     )}
   >

@@ -162,7 +162,7 @@ const SourceSearch = ({
                 <li
                   key={clip.id}
                   data-clip-id={clip.id}
-                  className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2"
+                  className="border-border flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
                 >
                   {/* Archive's own thumbnail service — a stable URL, no API call. Rendered only
                       when present, following the clip card: a grid of identical grey
@@ -173,7 +173,7 @@ const SourceSearch = ({
                       // Empty alt: the title is the very next element, so describing the frame
                       // would make a screen reader announce the same item twice.
                       alt=""
-                      className="h-10 w-16 shrink-0 rounded bg-static-800 object-cover"
+                      className="bg-static-800 h-10 w-16 shrink-0 rounded object-cover"
                       loading="lazy"
                     />
                   )}
@@ -214,12 +214,12 @@ const SourceSearch = ({
                       </Button>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <span className="flex shrink-0 items-center gap-1 text-signal text-sm">
+                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
                         <Loader2 className="size-4 animate-spin" aria-hidden />
                         Downloading…
                       </span>
                     ) : acquisition === "success" ? (
-                      <span className="flex shrink-0 items-center gap-1 text-signal text-sm">
+                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
                         <Check className="size-4" aria-hidden />
                         Added · being checked
                       </span>

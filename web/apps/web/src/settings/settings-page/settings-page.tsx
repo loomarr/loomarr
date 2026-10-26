@@ -180,8 +180,8 @@ const SettingsPage = ({
     <div className={cn("flex flex-col", !embedded && "h-full")}>
       {embedded ? (
         <div>
-          <h2 className="font-semibold text-xl">{title}</h2>
-          {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {description && <p className="text-muted-foreground mt-1 text-sm">{description}</p>}
         </div>
       ) : (
         <PageHeader title={title} description={description} />
@@ -252,11 +252,11 @@ const SettingsPage = ({
               key={block.title}
               className={cn(
                 "flex flex-col gap-4",
-                block.surface === "card" && "rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6",
+                block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
               )}
             >
               <div>
-                <h2 className="font-semibold text-lg">{block.title}</h2>
+                <h2 className="text-lg font-semibold">{block.title}</h2>
                 {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
               </div>
               <SettingsFields

@@ -67,7 +67,7 @@ const AdvancedSettingsTable = ({
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-64 flex-1">
           <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-static-400"
+            className="text-static-400 pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
             aria-hidden
           />
           <Input
@@ -80,14 +80,14 @@ const AdvancedSettingsTable = ({
         </div>
         {/* The count is the feedback that a search DID something — without it, a query that
             matches nothing looks identical to a page that failed to load. */}
-        <span className="font-mono text-muted-foreground text-xs">
+        <span className="text-muted-foreground font-mono text-xs">
           {`${rows.length} of ${entries.length} shown`}
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="border-border overflow-x-auto rounded-lg border">
         <div className="min-w-[780px]">
-          <div className="grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-border border-b px-4 py-2 font-mono text-2xs text-muted-foreground uppercase tracking-wide">
+          <div className="border-border text-2xs text-muted-foreground grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2 font-mono tracking-wide uppercase">
             <div>Key</div>
             <div>Value</div>
             <div>Owner</div>
@@ -96,7 +96,7 @@ const AdvancedSettingsTable = ({
           </div>
 
           {rows.length === 0 && (
-            <p className="px-4 py-6 text-center text-muted-foreground text-sm">
+            <p className="text-muted-foreground px-4 py-6 text-center text-sm">
               {`No setting matches “${query}”.`}
             </p>
           )}
@@ -115,7 +115,7 @@ const AdvancedSettingsTable = ({
             return (
               <div
                 key={entry.key}
-                className="grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-border border-b px-4 py-2 last:border-b-0"
+                className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
@@ -130,7 +130,7 @@ const AdvancedSettingsTable = ({
                   {entry.advanced && (
                     <span
                       title="advanced: also shown behind its home page's disclosure"
-                      className="shrink-0 rounded-sm border border-border px-1 font-mono text-2xs text-muted-foreground"
+                      className="border-border text-2xs text-muted-foreground shrink-0 rounded-sm border px-1 font-mono"
                     >
                       ADV
                     </span>
@@ -139,7 +139,7 @@ const AdvancedSettingsTable = ({
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
                 {pickerOwned ? (
-                  <span className="truncate font-mono text-muted-foreground text-xs">
+                  <span className="text-muted-foreground truncate font-mono text-xs">
                     {(values[entry.key] ?? entry.value) || "Not selected"}
                   </span>
                 ) : (
@@ -155,23 +155,23 @@ const AdvancedSettingsTable = ({
                 {home ? (
                   <a
                     href={home.path}
-                    className="truncate text-muted-foreground text-xs underline-offset-4 hover:text-foreground hover:underline"
+                    className="text-muted-foreground hover:text-foreground truncate text-xs underline-offset-4 hover:underline"
                   >
                     {home.label}
                   </a>
                 ) : (
-                  <span className="truncate text-muted-foreground text-xs">{entry.group}</span>
+                  <span className="text-muted-foreground truncate text-xs">{entry.group}</span>
                 )}
                 <span
                   className={cn(
-                    "w-fit rounded-sm px-1.5 py-0.5 font-mono text-2xs uppercase tracking-wide",
+                    "text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase",
                     prov.className,
                   )}
                 >
                   {prov.label}
                 </span>
                 {pickerOwned ? (
-                  <Link to="/settings/ai" className="w-fit text-signal text-xs underline underline-offset-4">
+                  <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">
                     Choose model
                   </Link>
                 ) : (
@@ -179,7 +179,7 @@ const AdvancedSettingsTable = ({
                     type="button"
                     disabled={entry.provenance !== SettingEntryProvenance.db || !onClear}
                     onClick={() => onClear?.(entry)}
-                    className="w-fit text-muted-foreground text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:text-foreground enabled:hover:underline disabled:opacity-40"
+                    className="text-muted-foreground enabled:hover:text-foreground w-fit text-xs underline-offset-4 enabled:cursor-pointer enabled:hover:underline disabled:opacity-40"
                   >
                     Use default
                   </button>

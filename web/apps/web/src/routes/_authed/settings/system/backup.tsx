@@ -60,9 +60,9 @@ const BackupPage = () => {
       ]}
       footer={
         <div className="flex flex-col gap-3">
-          <aside className="rounded-lg border border-caution/40 bg-caution/5 p-4 text-sm">
+          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
             <h2 className="font-medium">The image volume is separate</h2>
-            <p className="mt-1 text-muted-foreground">
+            <p className="text-muted-foreground mt-1">
               This backup contains the database, including settings, channels, people, and generated secrets.
               It does not copy image files or operator-uploaded artwork.
             </p>

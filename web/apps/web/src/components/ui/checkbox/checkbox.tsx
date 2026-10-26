@@ -30,7 +30,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HT
       type="checkbox"
       ref={ref}
       className={cn(
-        "checked:bg-(image:--checkbox-mark) size-6 cursor-pointer appearance-none rounded-sm border border-(--checkbox-border) bg-background transition-colors checked:border-(--checkbox-checked-border) checked:bg-(--checkbox-checked-fill) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 forced-colors:appearance-auto",
+        "bg-background focus-visible:ring-ring focus-visible:ring-offset-background size-6 cursor-pointer appearance-none rounded-sm border border-(--checkbox-border) transition-colors checked:border-(--checkbox-checked-border) checked:bg-(--checkbox-checked-fill) checked:bg-(image:--checkbox-mark) focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 forced-colors:appearance-auto",
         className,
       )}
       // The mark's placement never changes with state, so it is inline; the colours stay classes

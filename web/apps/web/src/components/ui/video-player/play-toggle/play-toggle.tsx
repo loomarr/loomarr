@@ -15,7 +15,7 @@ const PlayToggle = ({ playing, onToggle }: PlayToggleProps) => (
     onClick={onToggle}
     aria-label={playing ? "Pause" : "Play"}
     // hover grows the glyph, active dips it — a tactile press. motion-reduce disables it.
-    className="size-8 shrink-0 rounded-full text-signal transition-transform hover:scale-110 hover:bg-transparent hover:text-signal-400 active:scale-95 motion-reduce:transition-none"
+    className="text-signal hover:text-signal-400 size-8 shrink-0 rounded-full transition-transform hover:scale-110 hover:bg-transparent active:scale-95 motion-reduce:transition-none"
   >
     {playing ? <Pause className="fill-current" aria-hidden /> : <Play className="fill-current" aria-hidden />}
   </Button>

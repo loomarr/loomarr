@@ -40,7 +40,7 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-[2px]",
+        "bg-background/70 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-[2px]",
         // Transparent to pointer events ONLY once the app is usable again, so a stray
         // click during the confirmation moment cannot land on a control behind it.
         restarting || failed ? "cursor-progress" : "pointer-events-none",
@@ -56,17 +56,17 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
       // implicit role, which supports no label at all.
       role={failed ? "alert" : "status"}
     >
-      <div className="flex max-w-sm items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-lg">
+      <div className="border-border bg-card flex max-w-sm items-center gap-3 rounded-lg border p-4 shadow-lg">
         {restarting ? (
-          <Loader2 className="size-5 shrink-0 animate-spin text-signal" aria-hidden />
+          <Loader2 className="text-signal size-5 shrink-0 animate-spin" aria-hidden />
         ) : failed ? null : (
-          <Check className="size-5 shrink-0 text-lock" aria-hidden />
+          <Check className="text-lock size-5 shrink-0" aria-hidden />
         )}
         <div className="min-w-0">
-          <p className="font-medium text-sm">
+          <p className="text-sm font-medium">
             {restarting ? "Restarting Loomarr" : failed ? "Loomarr hasn't come back" : "Loomarr is back"}
           </p>
-          <p className="mt-0.5 text-muted-foreground text-sm leading-snug">
+          <p className="text-muted-foreground mt-0.5 text-sm leading-snug">
             {restarting
               ? "This takes a few seconds. The app will pick up where it left off."
               : (failed ?? "Everything is back to normal.")}

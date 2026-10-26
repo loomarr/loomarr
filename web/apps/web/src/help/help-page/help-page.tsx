@@ -73,8 +73,8 @@ const HelpPage = () => {
                     onClick={() => navigate({ to: "/help", search: { page: d.slug } })}
                     className={
                       d.slug === active
-                        ? "w-full cursor-pointer rounded-md bg-static-800 px-2 py-1.5 text-left text-sm"
-                        : "w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-muted-foreground text-sm hover:bg-static-900"
+                        ? "bg-static-800 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
+                        : "text-muted-foreground hover:bg-static-900 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
                     }
                   >
                     {d.title}
@@ -82,7 +82,7 @@ const HelpPage = () => {
                 </li>
               ))}
               {visible.length === 0 && (
-                <li className="px-2 py-1.5 text-muted-foreground text-sm">No pages match.</li>
+                <li className="text-muted-foreground px-2 py-1.5 text-sm">No pages match.</li>
               )}
             </ul>
           </Card>

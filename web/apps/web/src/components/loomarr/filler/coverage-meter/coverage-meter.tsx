@@ -107,12 +107,12 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   const isThin = coverage.level !== "exact";
 
   return (
-    <section className={cn("flex flex-col gap-3 rounded-lg border border-border p-4", className)}>
+    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
       <div className="flex items-start gap-2">
         <StatusDot tone={level.tone} label="" className="mt-1.5" />
         <div className="min-w-0">
-          <p className="font-medium text-sm">{level.label}</p>
-          <p className="mt-0.5 text-muted-foreground text-xs">{level.hint}</p>
+          <p className="text-sm font-medium">{level.label}</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>
         </div>
       </div>
 
@@ -124,7 +124,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             return (
               <li key={rung.level} className="flex items-center gap-2">
                 <span className="w-44 shrink-0 truncate text-xs">{RUNG_LABEL[rung.level] ?? rung.level}</span>
-                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-static-800">
+                <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
                   <span
                     className={cn(
                       "block h-full rounded-full",
@@ -149,7 +149,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rather than reporting whichever predicate happened to run first. A cumulative funnel
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
-        <div className="flex flex-col gap-1.5 border-border/60 border-t pt-3">
+        <div className="border-border/60 flex flex-col gap-1.5 border-t pt-3">
           <Caption>
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"

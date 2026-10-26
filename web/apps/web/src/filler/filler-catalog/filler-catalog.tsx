@@ -148,8 +148,8 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-3 p-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">Compilation segments</p>
-              <p className="font-mono text-muted-foreground text-xs">
+              <p className="text-sm font-medium">Compilation segments</p>
+              <p className="text-muted-foreground font-mono text-xs">
                 {formatClipDuration(clip.durationMs)} source reel
               </p>
             </div>
@@ -167,7 +167,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
             {children.error ? (
               <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
             ) : rows.length > 0 ? (
-              <div className="overflow-hidden rounded-lg border border-border">{rows.map(renderChild)}</div>
+              <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
             ) : children.isFetching ? null : (
               <p className="text-muted-foreground text-sm">
                 No filed segments remain under this compilation.
@@ -561,9 +561,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
       {parentHash ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
+        <div className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border p-3">
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm">{parentName || "Compilation segments"}</p>
+            <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
             <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setFilters({ parent: undefined })}>
@@ -573,7 +573,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       ) : null}
 
       {taxon || unclassified || withoutAxis ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/30 bg-signal/5 p-3">
+        <div className="border-signal/30 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
           <p className="min-w-0 flex-1 text-sm">
             {unclassified
               ? "Showing clips with no directly assigned taxonomy tags"
@@ -595,8 +595,8 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               rather than floating over it: a bar that covers the cards hides the very thing the
               operator is deciding about. */}
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/40 bg-signal/5 p-3">
-          <span className="font-mono text-signal text-xs">{pluralize(selected.size, "clip")} selected</span>
+        <div className="border-signal/40 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
+          <span className="text-signal font-mono text-xs">{pluralize(selected.size, "clip")} selected</span>
 
           {BULK_TAG_FIELDS.map((field) => (
             <Select
@@ -677,7 +677,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                 viewport — a text field far wider than anything typed into it, which reads
                 as a layout bug rather than a generous input. It still grows on narrow
                 screens (min-w-48) and stops being silly on wide ones. */}
-        <div className={cn("min-w-0 flex-1", !phone && "min-w-48 max-w-md")}>
+        <div className={cn("min-w-0 flex-1", !phone && "max-w-md min-w-48")}>
           <Label htmlFor="clip-search" className={cn(phone && "sr-only")}>
             Search
           </Label>
@@ -827,7 +827,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             )}
           </div>
           {view === "list" ? (
-            <div className="overflow-hidden rounded-lg border border-border">
+            <div className="border-border overflow-hidden rounded-lg border">
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
             </div>
           ) : (
@@ -930,7 +930,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                       clip={inspectedClip}
                       {...(isAdmin ? { onEdit: () => setEditing(true) } : {})}
                     />
-                    <details className="rounded-lg border border-border p-4 text-sm">
+                    <details className="border-border rounded-lg border p-4 text-sm">
                       <summary className="cursor-pointer font-medium">More about this clip</summary>
                       <dl className="mt-3 space-y-2">
                         {videoLine ? (
@@ -978,7 +978,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                                 {inspectedClip.enrichment.facts.map((fact) => (
                                   <li key={fact.axis} className="flex justify-between gap-4">
                                     <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
-                                    <span className="text-right text-muted-foreground">
+                                    <span className="text-muted-foreground text-right">
                                       {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
                                     </span>
                                   </li>

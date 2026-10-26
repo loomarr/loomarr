@@ -41,7 +41,7 @@ const AllTones: Story = {
         <div key={tone} className="flex items-center gap-2">
           <StatusDot tone={tone} label={label} />
           <span className="text-sm">{label}</span>
-          <span className="ml-auto font-mono text-2xs text-static-400">{tone}</span>
+          <span className="text-2xs text-static-400 ml-auto font-mono">{tone}</span>
         </div>
       ))}
     </div>

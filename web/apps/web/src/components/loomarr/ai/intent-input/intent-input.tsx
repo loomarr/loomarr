@@ -36,7 +36,7 @@ const IntentInput = ({
         rows={3}
         disabled={submitting}
         aria-label="Channel intent"
-        className="w-full resize-none rounded-lg border border-input bg-transparent px-4 py-3 text-base leading-relaxed shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-suggest focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+        className="border-input placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:ring-suggest focus-visible:ring-offset-background w-full resize-none rounded-lg border bg-transparent px-4 py-3 text-base leading-relaxed shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       />
 
       {templates.length > 0 && (
@@ -47,7 +47,7 @@ const IntentInput = ({
               type="button"
               disabled={submitting}
               onClick={() => onValueChange(t.value)}
-              className="cursor-pointer rounded-full border border-border bg-static-800 px-3 py-1 text-static-400 text-xs transition-colors hover:border-suggest hover:text-suggest-300 disabled:opacity-50"
+              className="border-border bg-static-800 text-static-400 hover:border-suggest hover:text-suggest-300 cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-50"
             >
               {t.label}
             </button>

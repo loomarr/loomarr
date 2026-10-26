@@ -130,7 +130,7 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
           <TooltipPrimitive.Positioner anchor={anchor} side="top" sideOffset={8} className="z-20">
             <TooltipPrimitive.Popup
               id={descId}
-              className="pointer-events-none w-64 overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
+              className="border-border bg-popover pointer-events-none w-64 overflow-hidden rounded-lg border shadow-2xl"
             >
               {hover && (
                 <>
@@ -160,7 +160,7 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
                         <img src={hover.block.thumbUrl} alt="" className="size-full object-contain" />
                       )}
                       {episodeTag(hover.block) && (
-                        <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-static-0 backdrop-blur-sm">
+                        <span className="text-static-0 absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] backdrop-blur-sm">
                           {episodeTag(hover.block)}
                         </span>
                       )}
@@ -170,22 +170,22 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
                     {/* Series/movie name (top). When there is NO thumbnail, the S/E badge rides here instead
                 of on the image, so it is never lost. */}
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-popover-foreground text-sm leading-snug">
+                      <p className="text-popover-foreground text-sm leading-snug font-semibold">
                         {showName(hover.block)}
                       </p>
                       {!hover.block.thumbUrl && episodeTag(hover.block) && (
-                        <span className="shrink-0 rounded bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                        <span className="bg-static-800 text-2xs text-muted-foreground shrink-0 rounded px-1.5 py-0.5 font-mono">
                           {episodeTag(hover.block)}
                         </span>
                       )}
                     </div>
                     {/* Episode title — wraps to two lines rather than truncating, so a long name is readable. */}
                     {episodeName(hover.block) && (
-                      <p className="line-clamp-2 text-popover-foreground/90 text-xs leading-snug">
+                      <p className="text-popover-foreground/90 line-clamp-2 text-xs leading-snug">
                         {episodeName(hover.block)}
                       </p>
                     )}
-                    <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground mt-0.5 font-mono">
                       {clockTime(hover.block.startMs)}–{clockTime(hover.block.stopMs)} ·{" "}
                       {durationLabel(hover.block.stopMs - hover.block.startMs)}
                     </p>
@@ -200,7 +200,7 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
       {/* The strip: proportional blocks, a live playhead, inspect-on-hover. */}
       <div
         ref={trackRef}
-        className="group relative flex h-2 w-full cursor-default overflow-hidden rounded-full bg-static-800"
+        className="group bg-static-800 relative flex h-2 w-full cursor-default overflow-hidden rounded-full"
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
         aria-describedby={hover ? descId : undefined}
@@ -214,7 +214,7 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
               // within one strip, so no array index is needed.
               key={`${a.startMs}-${a.kind}`}
               className={cn(
-                "h-full border-static-900 border-r transition-opacity last:border-r-0",
+                "border-static-900 h-full border-r transition-opacity last:border-r-0",
                 // The airing block is a neutral tone step (#1909 Q3), short of the white playhead.
                 isBreak(a)
                   ? "bg-static-700"
@@ -228,7 +228,7 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
         })}
         {/* The live playhead — a white tick at "now", the one point that is real rather than inspected. */}
         <div
-          className="pointer-events-none absolute -top-0.5 -bottom-0.5 w-0.5 rounded-full bg-static-0"
+          className="bg-static-0 pointer-events-none absolute -top-0.5 -bottom-0.5 w-0.5 rounded-full"
           style={{ left: `${(playheadFrac * 100).toFixed(3)}%` }}
           aria-hidden
         />

@@ -146,7 +146,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
-          <p className="mt-1 text-muted-foreground text-xs">The name viewers see during a break.</p>
+          <p className="text-muted-foreground mt-1 text-xs">The name viewers see during a break.</p>
         </div>
         <div>
           <Label htmlFor="tag-kind">Type</Label>
@@ -203,12 +203,12 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             value={brand}
             onChange={(event) => setBrand(event.target.value)}
           />
-          <p className="mt-1 text-muted-foreground text-xs">The advertiser or sponsor shown in the clip.</p>
+          <p className="text-muted-foreground mt-1 text-xs">The advertiser or sponsor shown in the clip.</p>
         </div>
       </div>
 
-      <details className="rounded-lg border border-border p-3">
-        <summary className="cursor-pointer font-medium text-sm">Location and broadcast details</summary>
+      <details className="border-border rounded-lg border p-3">
+        <summary className="cursor-pointer text-sm font-medium">Location and broadcast details</summary>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label htmlFor="tag-geographic-scope">Applies to</Label>
@@ -281,8 +281,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             REPLACES the free-text category input — a tag must be a real taxon, so a checklist of the
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
-      <details className="rounded-lg border border-border p-3">
-        <summary className="cursor-pointer font-medium text-sm">Topics and tags</summary>
+      <details className="border-border rounded-lg border p-3">
+        <summary className="cursor-pointer text-sm font-medium">Topics and tags</summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
           {vocab.error != null && <ErrorState error={vocab.error} />}
@@ -294,7 +294,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               if (inAxis.length === 0) return null;
               return (
                 <div key={axis} className="flex flex-col gap-1.5">
-                  <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                  <span className="text-muted-foreground text-xs tracking-wide uppercase">
                     {AXIS_LABEL[axis]}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -310,8 +310,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                           className={
                             // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                             on
-                              ? "rounded-full border border-foreground bg-static-800 px-2.5 py-0.5 font-semibold text-foreground text-xs"
-                              : "rounded-full border border-border px-2.5 py-0.5 text-muted-foreground text-xs hover:border-static-500"
+                              ? "border-foreground bg-static-800 text-foreground rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                              : "border-border text-muted-foreground hover:border-static-500 rounded-full border px-2.5 py-0.5 text-xs"
                           }
                         >
                           {depth > 0 ? `${"↳ ".repeat(Math.min(depth, 2))}${t.label}` : t.label}
@@ -327,12 +327,12 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       </details>
 
       {derivedTags.length > 0 ? (
-        <section className="rounded-md border border-border bg-surface/40 p-3" aria-label="Derived matches">
-          <p className="font-medium text-sm">Derived matches — read only</p>
-          <p className="mt-1 text-muted-foreground text-xs">
+        <section className="border-border bg-surface/40 rounded-md border p-3" aria-label="Derived matches">
+          <p className="text-sm font-medium">Derived matches — read only</p>
+          <p className="text-muted-foreground mt-1 text-xs">
             Inherited from the observed facts above and updated automatically when the hierarchy changes.
           </p>
-          <p className="mt-2 break-words text-sm">{derivedLabels.join(", ")}</p>
+          <p className="mt-2 text-sm break-words">{derivedLabels.join(", ")}</p>
         </section>
       ) : null}
 

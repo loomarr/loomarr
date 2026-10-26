@@ -354,13 +354,13 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         {from === "filler" ? (
           <Link
             to="/filler"
-            className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
           >
             <ArrowLeft className="size-3.5" aria-hidden />
             Filler overview
           </Link>
         ) : null}
-        <h2 className="font-semibold text-lg">Filler</h2>
+        <h2 className="text-lg font-semibold">Filler</h2>
         <p className="text-muted-foreground text-sm">
           This channel picks its commercials and clips automatically. Only change these settings if it needs
           something different.
@@ -371,9 +371,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           works before meeting the controls that can make its pool narrower. This is intentionally
           not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
           sentences on this page are the web mock's. */}
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
         <div>
-          <h3 className="font-semibold text-base">What this channel can play</h3>
+          <h3 className="text-base font-semibold">What this channel can play</h3>
           <p className="text-muted-foreground text-sm">
             {poolSummary(coverage) ?? "Clips that fit this channel's settings right now."}
           </p>
@@ -393,9 +393,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         )}
       </section>
 
-      <section className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5">
+      <section className="border-border bg-card flex flex-col gap-5 rounded-lg border p-5">
         <div>
-          <h3 className="font-semibold text-base">Choose what fits</h3>
+          <h3 className="text-base font-semibold">Choose what fits</h3>
           <p className="text-muted-foreground text-sm">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
             <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
@@ -474,8 +474,8 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       </CollapsibleSection>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-5">
-        <h3 className="font-semibold text-base">Preview break</h3>
+      <section className="border-border bg-card flex flex-col gap-2 rounded-lg border p-5">
+        <h3 className="text-base font-semibold">Preview break</h3>
         {previewError ? (
           <p className="text-onair-300 text-sm">
             Couldn't assemble a preview for this selection. Adjust the criteria and try again.
@@ -498,7 +498,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
-            <p className="mt-2 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-2 text-sm">
               {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
             </p>
           </div>
@@ -508,14 +508,14 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
-        <div className="sticky bottom-0 flex items-center gap-2 rounded-lg border border-border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
           <Button variant="suggest" size="sm" disabled={isApplying} onClick={apply}>
             {isApplying ? "Applying…" : "Apply filler"}
           </Button>
           <Button variant="ghost" size="sm" disabled={isApplying} onClick={discard}>
             Discard
           </Button>
-          <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
+          <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
         </div>
       )}
 
@@ -527,7 +527,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <SheetDescription>Preview from this assembled break</SheetDescription>
             </SheetHeader>
             <div className="p-6">
-              <div className="overflow-hidden rounded-lg border border-border">
+              <div className="border-border overflow-hidden rounded-lg border">
                 <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
               </div>
             </div>

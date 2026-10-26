@@ -178,7 +178,7 @@ const ChannelDetailLayout = () => {
     );
   }
   const ch = unwrap(channel.data);
-  if (!ch) return <p className="p-6 text-muted-foreground text-sm">Loading channel…</p>;
+  if (!ch) return <p className="text-muted-foreground p-6 text-sm">Loading channel…</p>;
 
   const air = airStateOf(ch);
   const onNow = nowNextBody?.channels.find((entry) => entry.channelId === id)?.now;
@@ -204,16 +204,16 @@ const ChannelDetailLayout = () => {
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
-      <header className="flex flex-wrap items-center gap-3 border-border border-b px-4 py-4 sm:px-6">
+      <header className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:px-6">
         <Link
           to="/guide"
           aria-label="Back to channels"
-          className="-ml-1 flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
         >
           <ArrowLeft className="size-4" aria-hidden />
         </Link>
         {ch.logo ? (
-          <div className="relative size-12 shrink-0 overflow-hidden rounded-lg border border-border bg-static-800">
+          <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">
             <img src={ch.logo} alt="" className="size-full object-cover" />
           </div>
         ) : (
@@ -235,9 +235,9 @@ const ChannelDetailLayout = () => {
                 onSave={saveName}
               />
             ) : (
-              <h1 className="font-semibold text-xl leading-tight">{ch.name}</h1>
+              <h1 className="text-xl leading-tight font-semibold">{ch.name}</h1>
             )}
-            <span className="flex items-center gap-1.5 text-muted-foreground text-sm">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
               <span
                 aria-hidden
                 className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
@@ -245,8 +245,8 @@ const ChannelDetailLayout = () => {
               {airLine.text}
             </span>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
-            <span className="font-mono uppercase tracking-wide">Ch</span>
+          <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
+            <span className="font-mono tracking-wide uppercase">Ch</span>
             {isAdmin ? (
               <ChannelIdentityField
                 label="Channel number"
@@ -261,7 +261,7 @@ const ChannelDetailLayout = () => {
                 onSave={saveNumber}
               />
             ) : (
-              <span className="px-1.5 py-0.5 font-mono text-foreground">{channelNumber(ch.number)}</span>
+              <span className="text-foreground px-1.5 py-0.5 font-mono">{channelNumber(ch.number)}</span>
             )}
           </div>
         </div>
@@ -294,7 +294,7 @@ const ChannelDetailLayout = () => {
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto flex w-full max-w-detail flex-col gap-4 p-6">
+        <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
           <ChannelDetailProvider
             value={{
               id,

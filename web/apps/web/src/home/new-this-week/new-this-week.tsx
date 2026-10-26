@@ -60,19 +60,19 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         <Link
           to="/channels/$id/watch"
           params={{ id: lead.id }}
-          className="flex flex-wrap items-center gap-3 rounded-md border border-static-700 bg-static-900 p-3.5 text-foreground hover:border-static-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
         >
           <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
           <div className="min-w-0 flex-1">
-            <span className="block text-static-400 text-xs">New channel</span>
-            <span className="mt-0.5 block break-words font-semibold text-[15px]">
-              <span className="font-mono text-foreground">{lead.number}</span> {lead.name}
+            <span className="text-static-400 block text-xs">New channel</span>
+            <span className="mt-0.5 block text-[15px] font-semibold break-words">
+              <span className="text-foreground font-mono">{lead.number}</span> {lead.name}
             </span>
-            <span className="mt-0.5 block text-static-400 text-xs">
+            <span className="text-static-400 mt-0.5 block text-xs">
               {addedLine(lead, viewerName, timeZone)}
             </span>
           </div>
-          <span className="inline-flex h-7 shrink-0 items-center self-start rounded-md border border-static-500 px-2.5 font-medium text-xs">
+          <span className="border-static-500 inline-flex h-7 shrink-0 items-center self-start rounded-md border px-2.5 text-xs font-medium">
             Watch
           </span>
         </Link>
@@ -80,12 +80,12 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,
         // as a container query so it holds whatever chrome shares the viewport.
-        <div className="grid @max-[284px]:grid-cols-1 grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
           {titles.slice(0, POSTERS).map((t) => (
             <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
               <div
                 data-home-poster-art=""
-                className="aspect-[2/3] w-full overflow-hidden rounded-md border border-static-700"
+                className="border-static-700 aspect-[2/3] w-full overflow-hidden rounded-md border"
               >
                 <ArtworkFallback
                   channel={
@@ -93,9 +93,9 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   }
                 />
               </div>
-              <span className="break-words font-medium text-sm">{t.name ?? t.key}</span>
+              <span className="text-sm font-medium break-words">{t.name ?? t.key}</span>
               {t.channels?.[0] && (
-                <span className="truncate text-static-400 text-xs">{t.channels[0].name}</span>
+                <span className="text-static-400 truncate text-xs">{t.channels[0].name}</span>
               )}
             </div>
           ))}

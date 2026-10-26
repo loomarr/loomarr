@@ -22,14 +22,14 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
         const isConfirming = confirming === secret.name;
 
         return (
-          <li key={secret.name} className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
+          <li key={secret.name} className="border-border bg-card flex flex-col gap-2 rounded-md border p-3">
             <div>
-              <p className="font-medium text-sm">{secret.label}</p>
+              <p className="text-sm font-medium">{secret.label}</p>
               <p className="text-muted-foreground text-sm">{secret.purpose}</p>
             </div>
 
             <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded-md border border-input bg-static-800 px-3 py-1.5 font-mono text-sm">
+              <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
                 {value ?? "••••••••••••••••"}
               </code>
               <Button
@@ -50,7 +50,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
             </div>
 
             {isConfirming ? (
-              <div className="flex flex-col gap-2 rounded-md border border-onair-tint-30 bg-onair-tint-8 p-3">
+              <div className="border-onair-tint-30 bg-onair-tint-8 flex flex-col gap-2 rounded-md border p-3">
                 <p className="text-onair-300 text-sm">{secret.consequence}</p>
                 <div className="flex items-center gap-2">
                   <Button

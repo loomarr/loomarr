@@ -14,7 +14,7 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const body = (
-  <div className="flex flex-col gap-3 text-muted-foreground text-sm">
+  <div className="text-muted-foreground flex flex-col gap-3 text-sm">
     <p>The body slides open from the header — height-agnostic, reduced-motion aware.</p>
     <p>Everything inside stays fully interactive once expanded.</p>
   </div>

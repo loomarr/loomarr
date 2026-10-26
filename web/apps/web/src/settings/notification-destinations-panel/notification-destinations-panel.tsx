@@ -68,7 +68,7 @@ const FieldInput = ({
       {field.kind === "select" ? (
         <select
           id={inputId}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
           value={value}
           aria-invalid={error ? "true" : undefined}
           aria-describedby={error ? errorId : undefined}
@@ -83,7 +83,7 @@ const FieldInput = ({
       ) : field.kind === "textarea" ? (
         <textarea
           id={inputId}
-          className="min-h-28 rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
+          className="border-input min-h-28 rounded-md border bg-transparent px-3 py-2 font-mono text-sm"
           value={value}
           disabled={cleared}
           autoComplete={field.sensitive ? "new-password" : undefined}
@@ -110,7 +110,7 @@ const FieldInput = ({
         </p>
       ) : null}
       {field.sensitive && configured ? (
-        <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
           <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
           <Button type="button" variant="ghost" size="sm" onClick={onClear}>
             {cleared ? "Keep saved value" : `Clear ${field.label}`}
@@ -205,7 +205,7 @@ const ProviderForm = ({
             <h3 className="font-semibold">
               {provider ? `Edit ${provider.label}` : `Add ${definition.name}`}
             </h3>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               Enter the provider settings, choose events, and save.
             </p>
           </div>
@@ -279,7 +279,7 @@ const ProviderForm = ({
         <form.Field name="events">
           {(field) => (
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 font-medium text-sm">Events *</legend>
+              <legend className="mb-2 text-sm font-medium">Events *</legend>
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
@@ -450,7 +450,7 @@ const WebPushForm = ({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               Loomarr asks this browser for permission only when you enable it below.
             </p>
           </div>
@@ -487,7 +487,7 @@ const WebPushForm = ({
         <form.Field name="events">
           {(field) => (
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 font-medium text-sm">Events *</legend>
+              <legend className="mb-2 text-sm font-medium">Events *</legend>
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
@@ -636,9 +636,9 @@ const ProviderRow = ({
               </Badge>
               <Badge variant="neutral">{definition?.name ?? words(provider.type)}</Badge>
             </div>
-            <p className="mt-1 text-muted-foreground text-sm">{provider.events.map(words).join(", ")}</p>
+            <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
             {provider.health ? (
-              <p className="mt-2 text-muted-foreground text-xs">
+              <p className="text-muted-foreground mt-2 text-xs">
                 {provider.health.queuedCount} queued · {provider.health.terminalFailureCount} failed
                 {provider.health.lastFailureOutcome
                   ? ` · Last failure: ${words(provider.health.lastFailureOutcome)}`
@@ -679,10 +679,10 @@ const ProviderRow = ({
           ) : null}
         </div>
         {confirmingDelete ? (
-          <div className="mt-4 grid gap-3 rounded-md border border-onair-tint-15 bg-onair-tint-15 p-3">
+          <div className="border-onair-tint-15 bg-onair-tint-15 mt-4 grid gap-3 rounded-md border p-3">
             <div>
               <p className="text-sm">Delete {provider.label} and stop sending its notifications?</p>
-              <p className="mt-1 text-onair-300 text-xs">This can't be undone.</p>
+              <p className="text-onair-300 mt-1 text-xs">This can't be undone.</p>
             </div>
             <div className="grid max-w-sm gap-1.5">
               <Label htmlFor={`${idPrefix}-delete-confirmation`}>Type {provider.label} to confirm</Label>
@@ -756,14 +756,14 @@ const NotificationDestinationsPanel = () => {
     <section className="grid gap-4" aria-labelledby="notification-providers-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-signal/10 text-signal">
+          <span className="bg-signal/10 text-signal flex size-9 shrink-0 items-center justify-center rounded-lg">
             <BellRing className="size-4" aria-hidden />
           </span>
           <div>
-            <h2 id="notification-providers-title" className="font-semibold text-lg">
+            <h2 id="notification-providers-title" className="text-lg font-semibold">
               Notification providers
             </h2>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
             </p>
           </div>
@@ -784,7 +784,7 @@ const NotificationDestinationsPanel = () => {
         </p>
       ) : null}
       {!providersQuery.isLoading && providers.length === 0 ? (
-        <p className="rounded-lg border border-border border-dashed p-4 text-muted-foreground text-sm">
+        <p className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
           No notification providers yet.
         </p>
       ) : null}
@@ -805,7 +805,7 @@ const NotificationDestinationsPanel = () => {
             <Label htmlFor="provider-type">Provider</Label>
             <select
               id="provider-type"
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="border-input h-9 rounded-md border bg-transparent px-3 text-sm"
               value={definition?.type ?? ""}
               onChange={(event) => setSelectedType(event.target.value)}
             >

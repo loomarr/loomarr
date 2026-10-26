@@ -11,7 +11,7 @@ import type { SectionHeaderActionProps, SectionHeaderProps } from "./section-hea
 // word-per-line column.
 const SectionHeader = ({ title, meta, children, id, className }: SectionHeaderProps) => (
   <div className={cn("mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1", className)}>
-    <h2 id={id} className="m-0 font-semibold text-lg">
+    <h2 id={id} className="m-0 text-lg font-semibold">
       {title}
     </h2>
     {meta != null && <span className="text-static-400 text-xs">{meta}</span>}
@@ -29,7 +29,7 @@ const SectionHeaderAction = ({ className, render, children, icon, ...props }: Se
     props: mergeProps<"button">(
       {
         className: cn(
-          "cursor-pointer border-none bg-transparent p-0 text-sm text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "text-static-400 hover:text-foreground focus-visible:ring-ring cursor-pointer border-none bg-transparent p-0 text-sm focus-visible:ring-2 focus-visible:outline-none",
           icon != null && "flex items-center gap-1.5",
           className,
         ),

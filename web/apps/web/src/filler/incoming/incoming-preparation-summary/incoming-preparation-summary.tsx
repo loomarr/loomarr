@@ -54,17 +54,17 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
   return (
     <section
       aria-labelledby="incoming-preparation-heading"
-      className="space-y-2.5 rounded-lg bg-muted/30 p-4"
+      className="bg-muted/30 space-y-2.5 rounded-lg p-4"
     >
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0">
-          <h3 id="incoming-preparation-heading" className="font-medium text-sm">
+          <h3 id="incoming-preparation-heading" className="text-sm font-medium">
             {message.title}
           </h3>
-          <p className="mt-0.5 text-muted-foreground text-xs">{message.detail}</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">{message.detail}</p>
         </div>
         {preparation.percent != null ? (
-          <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{preparation.percent}%</span>
+          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{preparation.percent}%</span>
         ) : null}
       </div>
       {showBar ? <Progress value={preparation.percent} label="Clip preparation" /> : null}

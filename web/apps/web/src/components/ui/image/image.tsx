@@ -88,7 +88,7 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
         // with the original alt text would announce artwork that is not being shown.
         role="presentation"
         style={{ aspectRatio: aspect, backgroundColor: image.dominantHex || undefined }}
-        className={cn("w-full bg-static-800", className)}
+        className={cn("bg-static-800 w-full", className)}
       />
     );
   }

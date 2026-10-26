@@ -45,12 +45,12 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
       remarkPlugins={[remarkGfm]}
       components={{
         h1: ({ children }) => (
-          <h2 id={headingId(children)} className="font-semibold text-xl">
+          <h2 id={headingId(children)} className="text-xl font-semibold">
             {children}
           </h2>
         ),
         h2: ({ children }) => (
-          <h3 id={headingId(children)} className="mt-4 scroll-mt-20 font-semibold text-lg">
+          <h3 id={headingId(children)} className="mt-4 scroll-mt-20 text-lg font-semibold">
             {children}
           </h3>
         ),
@@ -64,16 +64,16 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
         ol: ({ children }) => <ol className="ml-5 flex list-decimal flex-col gap-1.5 text-sm">{children}</ol>,
         li: ({ children }) => <li className="leading-relaxed">{children}</li>,
         code: ({ children }) => (
-          <code className="rounded-sm bg-static-800 px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
+          <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
         pre: ({ children }) => (
-          <pre className="overflow-x-auto rounded-md border border-border bg-static-900 p-3 font-mono text-xs">
+          <pre className="border-border bg-static-900 overflow-x-auto rounded-md border p-3 font-mono text-xs">
             {children}
           </pre>
         ),
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
         blockquote: ({ children }) => (
-          <blockquote className="border-static-700 border-l-2 pl-3 text-muted-foreground text-sm">
+          <blockquote className="border-static-700 text-muted-foreground border-l-2 pl-3 text-sm">
             {children}
           </blockquote>
         ),
@@ -86,7 +86,7 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           onNavigate && isInternal(href) ? (
             <button
               type="button"
-              className="cursor-pointer text-suggest-300 underline underline-offset-2"
+              className="text-suggest-300 cursor-pointer underline underline-offset-2"
               onClick={() => {
                 const { page, section } = parseDocHref(href);
                 if (page) onNavigate(page, section);

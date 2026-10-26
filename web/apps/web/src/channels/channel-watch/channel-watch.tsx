@@ -390,7 +390,7 @@ const ChannelWatch = ({
   // CHANNEL".
   const numberReadout = entry.digits ? (
     <div className="absolute top-14 right-7 text-right" role="status">
-      <div className="font-mono font-semibold text-[52px] text-signal tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
+      <div className="text-signal font-mono text-[52px] font-semibold tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
         {entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
       </div>
       <div
@@ -409,8 +409,8 @@ const ChannelWatch = ({
   // fetched here; the channel identity is what a viewer needs.
   const topBar = (
     <>
-      <span className="shrink-0 font-mono text-static-300 text-xs">CH {channel.number}</span>
-      <span className="min-w-0 truncate text-static-200 text-xs">{channel.name}</span>
+      <span className="text-static-300 shrink-0 font-mono text-xs">CH {channel.number}</span>
+      <span className="text-static-200 min-w-0 truncate text-xs">{channel.name}</span>
     </>
   );
 
@@ -426,7 +426,7 @@ const ChannelWatch = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            className="text-static-200 hover:bg-static-700 hover:text-static-50 size-8"
             aria-label="Channel down"
             disabled={!tuner.canSurf}
             onClick={() => tuner.step(-1)}
@@ -437,7 +437,7 @@ const ChannelWatch = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
+            className="text-static-200 hover:bg-static-700 hover:text-static-50 size-8"
             aria-label="Channel up"
             disabled={!tuner.canSurf}
             onClick={() => tuner.step(1)}
@@ -453,10 +453,10 @@ const ChannelWatch = ({
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen((open) => !open)}
           className={cn(
-            "flex h-9 shrink-0 items-center gap-[7px] rounded-lg border px-[13px] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "focus-visible:ring-ring flex h-9 shrink-0 items-center gap-[7px] rounded-lg border px-[13px] text-xs focus-visible:ring-2 focus-visible:outline-none",
             // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
             drawerOpen
-              ? "border-foreground bg-static-800 font-semibold text-foreground"
+              ? "border-foreground bg-static-800 text-foreground font-semibold"
               : "border-static-0/14 bg-static-0/6 text-foreground hover:bg-static-0/12",
           )}
         >
@@ -523,7 +523,7 @@ const ChannelWatch = ({
       }
       hints={
         tuner && drawer ? (
-          <p className="hidden justify-center font-mono text-[11px] text-muted-foreground tracking-[.08em] lg:flex">
+          <p className="text-muted-foreground hidden justify-center font-mono text-[11px] tracking-[.08em] lg:flex">
             0–9 TUNE DIRECT · ⌃⌄ CHANNEL · SPACE PAUSE · G CHANNELS · M MUTE
           </p>
         ) : undefined
@@ -532,7 +532,7 @@ const ChannelWatch = ({
       attach={attach}
       onChannelStep={tuner?.step}
       chrome={!onPhone}
-      className={cn("bg-black", !onPhone && "overflow-hidden rounded-xl border border-border")}
+      className={cn("bg-black", !onPhone && "border-border overflow-hidden rounded-xl border")}
     />
   );
 
@@ -573,7 +573,7 @@ const ChannelWatch = ({
       {/* On a phone the section drops its card and cancels the page's gutter, so the picture runs
           edge to edge under the tabs (the channel page pads its content by 24 px). */}
       <section
-        className={onPhone ? "-mx-6 -mt-6" : "overflow-hidden rounded-xl border border-border bg-card"}
+        className={onPhone ? "-mx-6 -mt-6" : "border-border bg-card overflow-hidden rounded-xl border"}
       >
         {paused ? (
           <IdleFrame
@@ -625,14 +625,14 @@ const ChannelWatch = ({
           <button
             type="button"
             onClick={() => setActive(true)}
-            className="group relative flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-3 bg-radial from-static-800 to-black text-center"
+            className="group from-static-800 relative flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-3 bg-radial to-black text-center"
             aria-label={`Watch ${channel.name} live`}
           >
-            <span className="flex size-14 items-center justify-center rounded-full bg-signal/90 text-black shadow-lg transition-transform group-hover:scale-105">
+            <span className="bg-signal/90 flex size-14 items-center justify-center rounded-full text-black shadow-lg transition-transform group-hover:scale-105">
               <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />
             </span>
             <span className="flex flex-col gap-1">
-              <span className="font-semibold text-lg">Watch live</span>
+              <span className="text-lg font-semibold">Watch live</span>
               <span className="text-muted-foreground text-sm">Join {channel.name} mid-programme.</span>
             </span>
           </button>
@@ -640,7 +640,7 @@ const ChannelWatch = ({
 
         {/* Footer: the "open in your media server" hand-off. Audio lives in the player's
             control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
-        <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
+        <div className="border-border bg-static-900/40 flex items-center justify-between gap-4 border-t p-4">
           {isAdmin ? (
             <p className="text-muted-foreground text-xs">
               The audio language you pick applies to everyone watching this channel.
@@ -663,8 +663,8 @@ const ChannelWatch = ({
 
 // IdleFrame is the poster shown when there is nothing to play (paused/off air).
 const IdleFrame = ({ title, sub }: { title: string; sub: string }) => (
-  <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-radial from-static-800 to-black px-12 text-center">
-    <p className="font-semibold text-lg">{title}</p>
+  <div className="from-static-800 flex aspect-video w-full flex-col items-center justify-center gap-2 bg-radial to-black px-12 text-center">
+    <p className="text-lg font-semibold">{title}</p>
     <p className="text-muted-foreground text-sm">{sub}</p>
   </div>
 );

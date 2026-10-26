@@ -41,10 +41,10 @@ const RolePicker = ({
   return (
     <section
       aria-labelledby={`role-${title.toLowerCase()}`}
-      className="flex flex-col gap-2 rounded-md border border-border p-3"
+      className="border-border flex flex-col gap-2 rounded-md border p-3"
     >
       <div>
-        <h3 id={`role-${title.toLowerCase()}`} className="font-medium text-sm">
+        <h3 id={`role-${title.toLowerCase()}`} className="text-sm font-medium">
           {title}
         </h3>
         <p className="text-muted-foreground text-sm">{description}</p>
@@ -57,13 +57,13 @@ const RolePicker = ({
               key={option.id}
               type="button"
               variant={selected ? "secondary" : "outline"}
-              className="h-auto min-h-10 justify-start whitespace-normal px-3 py-2 text-left"
+              className="h-auto min-h-10 justify-start px-3 py-2 text-left whitespace-normal"
               onClick={() => onSelect(option.id)}
               disabled={selected}
             >
               <span>
                 <span className="block font-medium">{option.label}</span>
-                <span className="block font-normal text-muted-foreground text-xs">{option.detail}</span>
+                <span className="text-muted-foreground block text-xs font-normal">{option.detail}</span>
               </span>
             </Button>
           );
@@ -369,9 +369,9 @@ const AiModelSettings = ({
         : `hosted:${visionModel}`;
   return (
     <div className="flex flex-col gap-4">
-      <section aria-labelledby="role-lineup" className="flex flex-col gap-3 border-border border-t pt-4">
+      <section aria-labelledby="role-lineup" className="border-border flex flex-col gap-3 border-t pt-4">
         <div>
-          <h3 id="role-lineup" className="font-semibold text-base">
+          <h3 id="role-lineup" className="text-base font-semibold">
             Choose a lineup model
           </h3>
           <p className="text-muted-foreground text-sm">
@@ -381,9 +381,9 @@ const AiModelSettings = ({
         {lineup}
       </section>
       {tmdbConfigured !== undefined && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3">
+        <section className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
           <div>
-            <p className="font-medium text-sm">
+            <p className="text-sm font-medium">
               {tmdbConfigured ? "TMDB key configured" : "TMDB grounding is still needed"}
             </p>
             <p className="text-muted-foreground text-sm">

@@ -53,16 +53,16 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
   return (
     <section
       className={cn(
-        "min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-muted/15 p-3",
+        "border-border bg-muted/15 max-w-full min-w-0 overflow-hidden rounded-lg border p-3",
         className,
       )}
     >
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="font-medium text-sm">Clips Loomarr found</h2>
+          <h2 className="text-sm font-medium">Clips Loomarr found</h2>
           <p className="text-muted-foreground text-xs">Choose a clip to preview it and make changes.</p>
         </div>
-        <span className="font-mono text-muted-foreground text-xs tabular-nums">
+        <span className="text-muted-foreground font-mono text-xs tabular-nums">
           {segments.length} clips · {formatMmSs(reelEnd)}
         </span>
       </div>
@@ -83,7 +83,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
               return (
                 <li
                   key={item.key}
-                  className="rounded-md border border-onair-300/70 border-dashed bg-onair-tint-15"
+                  className="border-onair-300/70 bg-onair-tint-15 rounded-md border border-dashed"
                   aria-label={label}
                   title={label}
                 />
@@ -106,10 +106,10 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         aria-current={activeKey === item.key ? "true" : undefined}
                         onClick={(event) => onSelect?.(item.key, event.currentTarget)}
                         className={cn(
-                          "group relative size-full overflow-hidden rounded-md border border-border bg-static-900 text-left",
-                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
+                          "group border-border bg-static-900 relative size-full overflow-hidden rounded-md border text-left",
+                          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
                           // The current block is neutral (#1909); the amber outline above is focus.
-                          activeKey === item.key && "ring-2 ring-foreground",
+                          activeKey === item.key && "ring-foreground ring-2",
                           item.unsplittable && "border-caution/70",
                         )}
                       />
@@ -118,32 +118,32 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     {item.artwork ? (
                       <Image image={item.artwork} alt="" sizes="240px" className="size-full object-cover" />
                     ) : (
-                      <span className="flex size-full items-center justify-center px-2 text-center text-[10px] text-muted-foreground">
+                      <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
                         Preview unavailable
                       </span>
                     )}
-                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-static-950 via-static-950/85 to-transparent px-2 pt-5 pb-1.5">
-                      <span className="block truncate font-medium text-[11px] text-static-50">{name}</span>
-                      <span className="font-mono text-[9px] text-static-300 tabular-nums">
+                    <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
+                      <span className="text-static-50 block truncate text-[11px] font-medium">{name}</span>
+                      <span className="text-static-300 font-mono text-[9px] tabular-nums">
                         {formatClipDuration(item.durationMs)}
                       </span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent id={tooltipId} className="w-64 p-3" side="bottom" align="start">
-                    <p className="truncate font-medium text-sm">{name}</p>
-                    <p className="mt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
+                    <p className="truncate text-sm font-medium">{name}</p>
+                    <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
                       {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
                       {formatClipDuration(item.durationMs)}
                     </p>
                     {tags.length > 0 || item.language ? (
-                      <p className="mt-2 text-muted-foreground">
+                      <p className="text-muted-foreground mt-2">
                         {[...tags, item.language ? languageName(item.language) : ""]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                     ) : null}
-                    {item.attention ? <p className="mt-2 text-caution">{item.attention}</p> : null}
-                    <p className="mt-2 text-static-300">Click to play this exact clip.</p>
+                    {item.attention ? <p className="text-caution mt-2">{item.attention}</p> : null}
+                    <p className="text-static-300 mt-2">Click to play this exact clip.</p>
                   </TooltipContent>
                 </Tooltip>
               </li>

@@ -85,7 +85,7 @@ const PickRow = ({
   return (
     <li
       className={cn(
-        "flex items-start gap-3 border-border border-b px-1 py-3 last:border-b-0",
+        "border-border flex items-start gap-3 border-b px-1 py-3 last:border-b-0",
         !included && "opacity-55",
       )}
     >
@@ -100,7 +100,7 @@ const PickRow = ({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={cn("font-medium text-sm", !included && "line-through")}>{pick.item.name}</span>
+          <span className={cn("text-sm font-medium", !included && "line-through")}>{pick.item.name}</span>
           {pick.item.year ? <span className="text-muted-foreground text-xs">{pick.item.year}</span> : null}
           {included ? (
             <Badge variant={state.variant}>{state.text}</Badge>
@@ -110,13 +110,13 @@ const PickRow = ({
           {season && <Badge variant="tune">{season}</Badge>}
           {selection && <Badge variant="suggest">{selection}</Badge>}
         </div>
-        <p className="mt-1 text-muted-foreground text-xs">{itemDetails(pick.item)}</p>
+        <p className="text-muted-foreground mt-1 text-xs">{itemDetails(pick.item)}</p>
         {included && pick.item.rationale && (
           <details className="mt-1.5 text-sm">
-            <summary className="w-fit cursor-pointer text-muted-foreground text-xs hover:text-foreground">
+            <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
               Why this title?
             </summary>
-            <p className="mt-1 max-w-prose text-muted-foreground">
+            <p className="text-muted-foreground mt-1 max-w-prose">
               {friendlyTitleRationale(pick.item.rationale)}
             </p>
           </details>
@@ -325,7 +325,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
         )}
       </div>
 
-      <ul aria-label="Titles" className="rounded-md border border-border px-3">
+      <ul aria-label="Titles" className="border-border rounded-md border px-3">
         {picks.map((pick) => (
           <PickRow
             key={pick.key || `unkeyed-${pick.item.name}`}
@@ -434,15 +434,15 @@ const ProposalEdit = (props: ProposalEditProps) => {
       )}
 
       {suggestions.length > 0 && (
-        <details className="rounded-md border border-border px-3 py-2.5">
+        <details className="border-border rounded-md border px-3 py-2.5">
           <summary className="cursor-pointer text-sm">
             <span className="font-medium">More suggestions</span>
-            <span className="ml-2 text-muted-foreground">
+            <span className="text-muted-foreground ml-2">
               {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
             </span>
           </summary>
-          <p className="mt-2 text-muted-foreground text-sm">Add any that belong on your channel.</p>
-          <ul className="mt-2 border-border border-t">
+          <p className="text-muted-foreground mt-2 text-sm">Add any that belong on your channel.</p>
+          <ul className="border-border mt-2 border-t">
             {suggestions.map((pick) => (
               <PickRow
                 key={pick.key || `unkeyed-${pick.item.name}`}

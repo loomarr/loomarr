@@ -59,7 +59,7 @@ const SourceItemPreviewDialog = ({ item, kind, onClose }: SourceItemPreviewDialo
             referrerPolicy="strict-origin-when-cross-origin"
           />
         ) : (
-          <div className="flex aspect-video items-center justify-center rounded-md bg-muted px-6 text-center text-muted-foreground text-sm">
+          <div className="bg-muted text-muted-foreground flex aspect-video items-center justify-center rounded-md px-6 text-center text-sm">
             This provider cannot show the item here. Open the original to preview it.
           </div>
         )}

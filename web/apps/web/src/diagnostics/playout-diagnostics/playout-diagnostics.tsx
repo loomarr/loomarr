@@ -136,13 +136,13 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
 
   if (query.error instanceof OutputError && query.error.status === 410)
     return (
-      <p className="rounded-md border border-border p-4 text-muted-foreground text-sm">
+      <p className="border-border text-muted-foreground rounded-md border p-4 text-sm">
         Output retention expired. Run metadata remains available.
       </p>
     );
   if (query.error instanceof OutputError && query.error.status === 501)
     return (
-      <p className="rounded-md border border-border p-4 text-muted-foreground text-sm">
+      <p className="border-border text-muted-foreground rounded-md border p-4 text-sm">
         Process output is unavailable in this runtime.
       </p>
     );
@@ -196,7 +196,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         </Button>
       </div>
       {(query.data.truncated || query.data.discarded > 0) && (
-        <p className="flex items-center gap-1 text-caution text-xs">
+        <p className="text-caution flex items-center gap-1 text-xs">
           <AlertTriangle aria-hidden className="size-3" /> Output is truncated; {query.data.discarded} earlier
           lines were discarded.
         </p>
@@ -207,7 +207,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
           const output = event.currentTarget;
           if (follow && output.scrollHeight - output.scrollTop - output.clientHeight > 24) setFollow(false);
         }}
-        className={`max-h-[28rem] overflow-auto rounded-md border border-border bg-background p-3 font-mono text-xs ${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
+        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 font-mono text-xs ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
       >
         {visible || "No retained output matches this search."}
       </pre>
@@ -229,7 +229,7 @@ const ProcessDetail = ({
   const latest = detail?.progress.at(-1);
   return (
     <section
-      className="space-y-4 rounded-lg border border-border bg-card p-4"
+      className="border-border bg-card space-y-4 rounded-lg border p-4"
       aria-label="Selected media process"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -292,7 +292,7 @@ const ProcessDetail = ({
       ) : latest ? (
         <div
           role="status"
-          className="flex flex-wrap gap-5 rounded-md bg-muted/30 p-3 text-sm"
+          className="bg-muted/30 flex flex-wrap gap-5 rounded-md p-3 text-sm"
           aria-label="Latest Process progress"
         >
           <span>
@@ -375,7 +375,7 @@ const PlayoutDiagnostics = ({
     <section className="space-y-4" aria-labelledby="media-processes-title">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 id="media-processes-title" className="font-medium text-lg">
+          <h2 id="media-processes-title" className="text-lg font-medium">
             Media processes
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -383,7 +383,7 @@ const PlayoutDiagnostics = ({
           </p>
         </div>
       </div>
-      <div className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-2">
+      <div className="border-border bg-card grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
         <Select
           value={filters.processRange}
           onValueChange={(value) =>
@@ -418,7 +418,7 @@ const PlayoutDiagnostics = ({
           </SelectContent>
         </Select>
         <details className="sm:col-span-2">
-          <summary className="cursor-pointer py-1 text-muted-foreground text-sm">More filters</summary>
+          <summary className="text-muted-foreground cursor-pointer py-1 text-sm">More filters</summary>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             <Input
               aria-label="Process purpose"
@@ -453,11 +453,11 @@ const PlayoutDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
+        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
           Loading media processes…
         </p>
       ) : runs.length === 0 ? (
-        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
+        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
           No media processes match this bounded window.
         </p>
       ) : (
@@ -470,7 +470,7 @@ const PlayoutDiagnostics = ({
           primary={
             <div
               ref={listRef}
-              className="max-h-[55vh] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card xl:max-h-[40rem]"
+              className="border-border bg-card max-h-[55vh] overflow-x-hidden overflow-y-auto rounded-lg border xl:max-h-[40rem]"
               style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
             >
               <ul
@@ -493,7 +493,7 @@ const PlayoutDiagnostics = ({
                     >
                       <button
                         type="button"
-                        className={`grid h-full w-full cursor-pointer gap-1 border-border border-b px-3 py-3 text-left hover:bg-muted/20 ${selected?.id === run.id ? "bg-muted/30" : ""}`}
+                        className={`border-border hover:bg-muted/20 grid h-full w-full cursor-pointer gap-1 border-b px-3 py-3 text-left ${selected?.id === run.id ? "bg-muted/30" : ""}`}
                         aria-pressed={selected?.id === run.id}
                         onClick={() => onFiltersChange({ ...filters, processId: run.id })}
                       >
@@ -504,7 +504,7 @@ const PlayoutDiagnostics = ({
                             {run.status}
                           </span>
                         </span>
-                        <span className="truncate text-muted-foreground text-xs">{run.target ?? run.id}</span>
+                        <span className="text-muted-foreground truncate text-xs">{run.target ?? run.id}</span>
                         <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
                       </button>
                     </li>
@@ -517,7 +517,7 @@ const PlayoutDiagnostics = ({
             selected ? (
               <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
             ) : (
-              <p className="rounded-lg border border-border p-6 text-muted-foreground text-sm">
+              <p className="border-border text-muted-foreground rounded-lg border p-6 text-sm">
                 The selected media process is outside this page. Adjust the filters or return to a newer page.
               </p>
             )

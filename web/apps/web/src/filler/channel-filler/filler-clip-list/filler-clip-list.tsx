@@ -74,7 +74,7 @@ const FillerClipList = ({
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <p className="font-medium text-sm">{label}</p>
+        <p className="text-sm font-medium">{label}</p>
         <p className="text-muted-foreground text-xs">{hint}</p>
       </div>
 
@@ -105,25 +105,25 @@ const FillerClipList = ({
             return (
               <li
                 key={id}
-                className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
+                className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
                   {gone ? (
                     <>
-                      <span className="truncate font-medium text-onair-300 text-sm">
+                      <span className="text-onair-300 truncate text-sm font-medium">
                         This clip is no longer in your catalog
                       </span>
                       {/* The hash still shown, small and secondary: it is the only handle an
                           operator has if they want to work out WHICH clip this was. */}
-                      <span className="ml-2 truncate font-mono text-static-400 text-xs">
+                      <span className="text-static-400 ml-2 truncate font-mono text-xs">
                         {id.slice(0, 12)}…
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="truncate font-medium text-sm">{clip?.name ?? id}</span>
+                      <span className="truncate text-sm font-medium">{clip?.name ?? id}</span>
                       {clip ? (
-                        <span className="ml-2 font-mono text-static-400 text-xs">
+                        <span className="text-static-400 ml-2 font-mono text-xs">
                           {formatClipDuration(clip.durationMs)}
                         </span>
                       ) : null}

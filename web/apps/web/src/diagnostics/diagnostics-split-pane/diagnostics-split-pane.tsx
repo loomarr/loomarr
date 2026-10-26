@@ -151,7 +151,7 @@ const DiagnosticsSplitPane = ({
               aria-valuemax={MAX_DETAIL_WIDTH}
               aria-valuenow={width}
               tabIndex={0}
-              className="absolute inset-0 h-full w-full cursor-col-resize touch-none rounded-sm border-0 outline-none hover:bg-signal-tint-8 focus-visible:ring-2 focus-visible:ring-ring"
+              className="hover:bg-signal-tint-8 focus-visible:ring-ring absolute inset-0 h-full w-full cursor-col-resize touch-none rounded-sm border-0 outline-none focus-visible:ring-2"
               onKeyDown={resizeWithKeyboard}
               onPointerDown={beginDrag}
               onPointerMove={moveDrag}
@@ -164,7 +164,7 @@ const DiagnosticsSplitPane = ({
             />
             <GripVertical
               aria-hidden
-              className="pointer-events-none relative size-4 text-muted-foreground group-hover:text-signal"
+              className="text-muted-foreground group-hover:text-signal pointer-events-none relative size-4"
             />
           </div>
         </div>

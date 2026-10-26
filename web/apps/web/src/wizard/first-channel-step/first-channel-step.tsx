@@ -53,16 +53,16 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
               type="button"
               disabled={complete.isPending}
               onClick={() => start(t.id)}
-              className="flex w-full cursor-pointer items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-suggest disabled:opacity-50"
+              className="border-border bg-card hover:border-suggest flex w-full cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors disabled:opacity-50"
             >
               {complete.isPending && chosen === t.id ? (
-                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-suggest" aria-hidden />
+                <Loader2 className="text-suggest mt-0.5 size-4 shrink-0 animate-spin" aria-hidden />
               ) : (
-                <Sparkles className="mt-0.5 size-4 shrink-0 text-suggest" aria-hidden />
+                <Sparkles className="text-suggest mt-0.5 size-4 shrink-0" aria-hidden />
               )}
               <span className="min-w-0">
-                <span className="block font-medium text-sm">{t.label}</span>
-                <span className="block text-muted-foreground text-sm">{t.description}</span>
+                <span className="block text-sm font-medium">{t.label}</span>
+                <span className="text-muted-foreground block text-sm">{t.description}</span>
               </span>
             </button>
           </li>

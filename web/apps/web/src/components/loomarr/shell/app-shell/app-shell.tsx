@@ -132,18 +132,18 @@ const AppShell = ({
     // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
     // invisible on short pages and breaks anything that needs a real viewport: the Guide's
     // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground md:grid md:grid-cols-[auto_1fr]">
+    <div className="bg-background text-foreground flex h-screen flex-col overflow-hidden md:grid md:grid-cols-[auto_1fr]">
       {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
       <a
         href={`#${MAIN_ID}`}
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:font-medium focus:text-sm focus:text-static-950"
+        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2 focus:text-sm focus:font-medium"
       >
         Skip to content
       </a>
       {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
-      <aside className="hidden flex-col gap-1 border-border border-r bg-card px-3 py-4 md:flex md:w-56">
+      <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
         <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
           <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
@@ -154,11 +154,11 @@ const AppShell = ({
             onClick={onOpenCommand}
             aria-label="Open global search"
             aria-keyshortcuts={commandShortcutAria()}
-            className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
+            className="border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
           >
             <Search className="size-4" aria-hidden />
             <span>Search…</span>
-            <kbd className="ml-auto font-mono text-static-400 text-xs">{commandShortcutLabel()}</kbd>
+            <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
@@ -177,11 +177,11 @@ const AppShell = ({
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
-              "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground",
+              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
               forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:font-medium data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
+                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
-                    "bg-static-800 font-medium text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
+                    "bg-static-800 text-foreground font-medium shadow-[inset_2px_0_0_var(--color-static-100)]",
             );
             const content = (
               <>
@@ -193,7 +193,7 @@ const AppShell = ({
                 {item.to !== "/channels/$id/watch" && (badges?.[item.to] ?? 0) > 0 && (
                   <span
                     data-testid={`nav-badge-${item.to}`}
-                    className="ml-auto rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300"
+                    className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
                   >
                     {badges?.[item.to]}
                   </span>
@@ -225,10 +225,10 @@ const AppShell = ({
                   <Link
                     to="/settings/system/about"
                     aria-label={`Loomarr ${serverVersion} — About`}
-                    className="mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-static-400 text-xs transition-colors hover:bg-accent hover:text-foreground"
+                    className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
                   />
                 ) : (
-                  <span className="mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-static-400 text-xs" />
+                  <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs" />
                 )
               }
             >
@@ -244,20 +244,20 @@ const AppShell = ({
         )}
 
         <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} flex flex-row gap-2 border-border border-t px-2 pt-3 text-sm`}
+          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3 text-sm`}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
               NAV item: it isn't a section of the app, it's you. */}
           <Link
             to="/account"
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent"
+            className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors"
             aria-label="Your account"
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
+            <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
               {userName.slice(0, 2).toUpperCase()}
             </div>
-            <span className="truncate text-muted-foreground">{userName}</span>
+            <span className="text-muted-foreground truncate">{userName}</span>
           </Link>
           {onLogout && (
             <Tooltip>
@@ -267,7 +267,7 @@ const AppShell = ({
                     type="button"
                     onClick={onLogout}
                     aria-label="Sign out"
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+                    className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
                   />
                 }
               >

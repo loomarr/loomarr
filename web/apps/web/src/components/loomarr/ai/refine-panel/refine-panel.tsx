@@ -80,14 +80,14 @@ const RefinePanel = ({
     // review states below are today's; the mock draws neither.
     <section
       aria-labelledby={headingId}
-      className={cn("flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4", className)}
+      className={cn("border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4", className)}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Sparkles className="size-4 shrink-0 text-suggest-300" aria-hidden />
-        <h3 id={headingId} className="font-medium text-sm">
+        <Sparkles className="text-suggest-300 size-4 shrink-0" aria-hidden />
+        <h3 id={headingId} className="text-sm font-medium">
           Refine with AI
         </h3>
-        <span className="ml-auto text-muted-foreground text-xs">
+        <span className="text-muted-foreground ml-auto text-xs">
           Describe what to change. You'll see the result before anything is saved.
         </span>
       </div>
@@ -97,7 +97,7 @@ const RefinePanel = ({
           {generationFailed && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm"
+              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
             >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               {failureCopy ? (
@@ -145,8 +145,8 @@ const RefinePanel = ({
               progress={refine.progress}
             />
           ) : (
-            <p className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin text-suggest-300" aria-hidden />
+            <p className="text-muted-foreground flex items-center gap-2 text-sm">
+              <Loader2 className="text-suggest-300 size-4 animate-spin" aria-hidden />
               Starting…
             </p>
           )}

@@ -46,8 +46,8 @@ const TrackSelectMenu = ({
             variant="ghost"
             size="icon"
             className={cn(
-              "size-8 shrink-0 rounded-full text-static-300",
-              "transition-transform hover:scale-110 hover:bg-transparent hover:text-static-0 active:scale-95 motion-reduce:transition-none",
+              "text-static-300 size-8 shrink-0 rounded-full",
+              "hover:text-static-0 transition-transform hover:scale-110 hover:bg-transparent active:scale-95 motion-reduce:transition-none",
             )}
             aria-label={label}
           />
@@ -77,7 +77,7 @@ const TrackSelectMenu = ({
         {readOnly && (
           <>
             <DropdownMenuSeparator />
-            <p className="px-2 py-1.5 text-2xs text-muted-foreground leading-snug">
+            <p className="text-2xs text-muted-foreground px-2 py-1.5 leading-snug">
               Set for the whole channel — an admin changes it for everyone.
             </p>
           </>

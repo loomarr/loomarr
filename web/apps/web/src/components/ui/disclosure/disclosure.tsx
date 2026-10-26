@@ -50,7 +50,7 @@ const DisclosureTrigger = ({ label, className }: DisclosureTriggerProps) => (
   <Collapsible.Trigger
     aria-label={label}
     className={cn(
-      "group inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-static-800 hover:text-foreground",
+      "group text-muted-foreground hover:bg-static-800 hover:text-foreground inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors",
       className,
     )}
   >
@@ -70,16 +70,16 @@ const DisclosureSectionTrigger = ({
   <Collapsible.Trigger
     aria-label={label}
     className={cn(
-      "group -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-static-800",
+      "group hover:bg-static-800 -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors",
       className,
     )}
   >
     <span className="min-w-0 flex-1">
       <span className="block font-medium">{title}</span>
-      {description && <span className="mt-1 block text-muted-foreground text-sm">{description}</span>}
+      {description && <span className="text-muted-foreground mt-1 block text-sm">{description}</span>}
     </span>
     <ChevronDown
-      className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180"
+      className="text-muted-foreground mt-0.5 size-4 shrink-0 transition-transform group-data-[panel-open]:rotate-180"
       aria-hidden
     />
   </Collapsible.Trigger>

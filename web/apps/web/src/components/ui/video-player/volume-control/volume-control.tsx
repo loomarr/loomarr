@@ -16,7 +16,7 @@ const VolumeControl = ({ volume, muted, onVolumeChange, onMutedChange }: VolumeC
       size="icon"
       onClick={() => onMutedChange(!muted)}
       aria-label={muted ? "Unmute" : "Mute"}
-      className="size-8 rounded-full text-static-300 transition-transform hover:scale-110 hover:bg-transparent hover:text-static-100 active:scale-95 motion-reduce:transition-none"
+      className="text-static-300 hover:text-static-100 size-8 rounded-full transition-transform hover:scale-110 hover:bg-transparent active:scale-95 motion-reduce:transition-none"
     >
       {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
     </Button>
@@ -35,18 +35,18 @@ const VolumeControl = ({ volume, muted, onVolumeChange, onMutedChange }: VolumeC
         onVolumeChange(next);
         onMutedChange(next === 0);
       }}
-      className="relative flex h-4 w-20 shrink-0 cursor-pointer touch-none select-none items-center"
+      className="relative flex h-4 w-20 shrink-0 cursor-pointer touch-none items-center select-none"
     >
       <SliderPrimitive.Control className="flex w-full items-center">
-        <SliderPrimitive.Track className="relative h-1 w-full grow rounded-full bg-static-0/25">
-          <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-static-0" />
+        <SliderPrimitive.Track className="bg-static-0/25 relative h-1 w-full grow rounded-full">
+          <SliderPrimitive.Indicator className="bg-static-0 absolute h-full rounded-full" />
           {/* ⚠ aria-label goes on the THUMB, not the Root. Under Radix that was because Radix put
               role="slider" on the thumb; under Base UI it is because each thumb renders its own
               nested <input type="range">, which is what carries the role. Same placement, different
               reason — re-verified against Base UI rather than copied forward. */}
           <SliderPrimitive.Thumb
             aria-label="Volume"
-            className="block size-2.5 rounded-full bg-static-0 shadow transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal motion-reduce:transition-none"
+            className="bg-static-0 focus-visible:ring-signal block size-2.5 rounded-full shadow transition-transform hover:scale-125 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
           />
         </SliderPrimitive.Track>
       </SliderPrimitive.Control>

@@ -43,7 +43,7 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
     <div
       data-wash={heldFrame ? "draining" : "rest"}
       className={cn(
-        "absolute inset-0 bg-static-950/88 backdrop-contrast-60 backdrop-grayscale",
+        "bg-static-950/88 absolute inset-0 backdrop-contrast-60 backdrop-grayscale",
         heldFrame && "motion-safe:animate-held-drain",
       )}
     />
@@ -62,7 +62,7 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
             // Static, ordered strip — index key is correct and stable here.
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative strip, order is identity
             key={i}
-            className="w-1.5 rounded-[1px] bg-signal-400 motion-safe:animate-signal-lock"
+            className="bg-signal-400 motion-safe:animate-signal-lock w-1.5 rounded-[1px]"
             // Per-index delay is a multiplication, not seven arbitrary classes — inline, like ColorBars.
             style={{ height: "64%", animationDelay: `${i * LOCK_STAGGER_S}s` }}
           />
@@ -71,10 +71,10 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
 
       {channel && (
         <p
-          className="font-sans font-semibold text-[clamp(18px,2.8vw,28px)] text-static-0 tracking-[0.01em]"
+          className="text-static-0 font-sans text-[clamp(18px,2.8vw,28px)] font-semibold tracking-[0.01em]"
           style={{ textShadow: HALO }}
         >
-          <span className="mr-[0.7em] align-[0.18em] font-medium font-mono text-[0.62em] text-signal tracking-[0.16em]">
+          <span className="text-signal mr-[0.7em] align-[0.18em] font-mono text-[0.62em] font-medium tracking-[0.16em]">
             CH {channel.number}
           </span>
           <span>{channel.name}</span>
@@ -83,7 +83,7 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
 
       {/* The readout — mono, tracked-out amber with the blinking cursor as the one extra sign of life. */}
       <p
-        className="font-medium font-mono text-[clamp(11px,1.3vw,13px)] text-signal tracking-[0.24em]"
+        className="text-signal font-mono text-[clamp(11px,1.3vw,13px)] font-medium tracking-[0.24em]"
         style={{ textShadow: READOUT_HALO }}
       >
         <span>{label}</span>

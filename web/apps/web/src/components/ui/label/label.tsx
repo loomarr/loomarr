@@ -16,7 +16,7 @@ const Label = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLL
     // biome-ignore lint/a11y/noLabelWithoutControl: this primitive receives htmlFor at each form call site; the linter cannot see through the prop spread.
     <label
       ref={ref}
-      className={cn("font-medium text-foreground text-sm leading-none", className)}
+      className={cn("text-foreground text-sm leading-none font-medium", className)}
       {...props}
     />
   ),

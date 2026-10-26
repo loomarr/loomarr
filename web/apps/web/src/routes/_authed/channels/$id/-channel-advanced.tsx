@@ -84,7 +84,7 @@ const ChannelAdvanced = ({
         <>
           <Label
             htmlFor="channel-playout-backend"
-            className="self-start pt-2 font-normal text-muted-foreground"
+            className="text-muted-foreground self-start pt-2 font-normal"
           >
             Streamed by
           </Label>
@@ -121,7 +121,7 @@ const ChannelAdvanced = ({
       )}
 
       <span className="text-muted-foreground">Tunarr channel</span>
-      <span className="font-mono text-muted-foreground text-xs">
+      <span className="text-muted-foreground font-mono text-xs">
         {channel.tunarrId
           ? channel.tunarrId
           : channel.inAppPlayable

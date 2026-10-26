@@ -109,7 +109,7 @@ const PersonDetail = ({
           {isSelf && <Badge variant="tune">You</Badge>}
           {user.disabled && <Badge variant="onair">Disabled</Badge>}
         </div>
-        <p className="flex items-center gap-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
           {user.local ? (
             <KeyRound className="size-4" aria-hidden />
           ) : (
@@ -125,7 +125,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-contact"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-contact" className="font-semibold">
@@ -137,10 +137,10 @@ const PersonDetail = ({
         </div>
 
         {user.contactAddress ? (
-          <div className="flex flex-col gap-2 rounded-md border border-static-800 p-3">
+          <div className="border-static-800 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Mail className="size-4 text-muted-foreground" aria-hidden />
-              <span className="break-all text-sm">{user.contactAddress.email}</span>
+              <Mail className="text-muted-foreground size-4" aria-hidden />
+              <span className="text-sm break-all">{user.contactAddress.email}</span>
               <Badge variant={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
               </Badge>
@@ -158,9 +158,9 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <div className="flex flex-col gap-2 rounded-md border border-suggest-700/50 bg-suggest-950/20 p-3">
+          <div className="border-suggest-700/50 bg-suggest-950/20 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="break-all text-sm">{user.contactReplacement.email}</span>
+              <span className="text-sm break-all">{user.contactReplacement.email}</span>
               <Badge variant="suggest">Pending replacement</Badge>
             </div>
             <p className="text-muted-foreground text-xs">
@@ -239,7 +239,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-access"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-access" className="font-semibold">
@@ -268,7 +268,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-requests"
-        className="flex flex-col gap-4 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-4 border-t pt-6"
       >
         <div>
           <h3 id="person-requests" className="font-semibold">
@@ -281,7 +281,7 @@ const PersonDetail = ({
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-4">
           <div>
             <p className="text-sm">Pending acquisitions</p>
-            <p className="font-mono text-muted-foreground text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
+            <p className="text-muted-foreground font-mono text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={quotaId}>Quota</Label>
@@ -313,7 +313,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-sessions"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-sessions" className="font-semibold">
@@ -332,7 +332,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-password"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-password" className="font-semibold">
@@ -388,10 +388,10 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-danger"
-        className="flex flex-col gap-3 rounded-lg border border-onair-700 bg-onair-950/20 p-4"
+        className="border-onair-700 bg-onair-950/20 flex flex-col gap-3 rounded-lg border p-4"
       >
         <div>
-          <h3 id="person-danger" className="font-semibold text-onair-300">
+          <h3 id="person-danger" className="text-onair-300 font-semibold">
             Danger zone
           </h3>
           <p className="text-muted-foreground text-sm">

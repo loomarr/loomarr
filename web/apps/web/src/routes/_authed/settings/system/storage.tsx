@@ -20,9 +20,9 @@ const StorageSettings = () => (
       },
     ]}
     footer={
-      <aside className="rounded-lg border border-caution/40 bg-caution/5 p-4 text-sm">
+      <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
         <h2 className="font-medium">Back up the image volume separately</h2>
-        <p className="mt-1 text-muted-foreground">
+        <p className="text-muted-foreground mt-1">
           Downloaded artwork can be rebuilt, but uploaded channel images cannot. Loomarr's database backup
           does not copy this directory.
         </p>

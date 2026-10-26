@@ -42,26 +42,26 @@ const SystemHome = () => (
           return (
             <section key={group.id} aria-labelledby={`system-group-${group.id}`}>
               <div className="mb-3">
-                <h2 id={`system-group-${group.id}`} className="font-medium text-base">
+                <h2 id={`system-group-${group.id}`} className="text-base font-medium">
                   {group.label}
                 </h2>
-                <p className="mt-0.5 text-muted-foreground text-sm">{group.description}</p>
+                <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>
               </div>
               <div className="grid gap-2 md:grid-cols-2">
                 {destinations.map((item) => (
                   <Link
                     key={item.id}
                     to={item.path}
-                    className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-signal/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block font-medium text-sm">{item.label}</span>
-                      <span className="mt-0.5 block text-muted-foreground text-xs leading-relaxed">
+                      <span className="block text-sm font-medium">{item.label}</span>
+                      <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
                         {item.description}
                       </span>
                     </span>
                     <ArrowRight
-                      className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+                      className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
                       aria-hidden
                     />
                   </Link>

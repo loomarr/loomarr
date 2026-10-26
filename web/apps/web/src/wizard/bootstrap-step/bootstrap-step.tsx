@@ -73,7 +73,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
             "Signed in as ⏎ fictional ⏎ …" with a stray gap around the name. Kept as ONE
             text node inside a <span> so the formatter cannot break it mid-sentence. */}
         <p className="flex items-center gap-2 text-sm">
-          <Check className="size-4 shrink-0 text-signal" aria-hidden />
+          <Check className="text-signal size-4 shrink-0" aria-hidden />
           <span>Your admin account is ready. You&rsquo;re signed in as {ownerName}.</span>
         </p>
         {/* Plain language over mechanism: "bootstrap runs once" is our word for it, not the
@@ -90,7 +90,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm">This Loomarr already has an owner account, so you can sign in instead.</p>
-        <Link to="/login" className="w-fit text-sm text-tune underline-offset-4 hover:underline">
+        <Link to="/login" className="text-tune w-fit text-sm underline-offset-4 hover:underline">
           Sign in instead
         </Link>
       </div>

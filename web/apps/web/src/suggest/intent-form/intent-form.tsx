@@ -83,7 +83,7 @@ const IntentForm = ({
       <button
         type="button"
         onClick={() => setRefining((v) => !v)}
-        className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+        className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm underline-offset-4 hover:underline"
       >
         {refining ? "Hide details" : "Add details"}
       </button>

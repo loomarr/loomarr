@@ -25,17 +25,17 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
     <Card>
       <section aria-label={`Split ${clip.name} into clips`} className="flex flex-col gap-4 p-4">
         <div className="flex items-start gap-3">
-          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-signal" aria-hidden />
+          <TriangleAlert className="text-signal mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-lg">Split “{clip.name}” into clips?</h2>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <h2 className="text-lg font-semibold">Split “{clip.name}” into clips?</h2>
+            <p className="text-muted-foreground mt-1 text-sm">
               Loomarr will decode the whole {formatMmSs(clip.durationMs ?? 0)} recording looking for the
               adverts inside it. That takes <strong>several minutes</strong> and uses the same hardware as
               playback, so a live channel may stutter while it runs.
             </p>
             {/* The reassurance is as load-bearing as the warning: an operator who thinks this
                 might destroy their compilation will not run it at all, and 45 reels stay parked. */}
-            <p className="mt-2 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-2 text-sm">
               Nothing enters the catalog yet — you review the proposed cuts afterwards, and this recording is
               left exactly as it is.
             </p>

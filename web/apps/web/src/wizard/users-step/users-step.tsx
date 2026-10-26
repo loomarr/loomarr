@@ -46,7 +46,7 @@ const UsersStep = () => {
 
   if (candidates.isLoading) {
     return (
-      <p className="flex items-center gap-2 text-muted-foreground text-sm">
+      <p className="text-muted-foreground flex items-center gap-2 text-sm">
         <Loader2 className="size-4 animate-spin" aria-hidden />
         Looking up your media-server accounts…
       </p>
@@ -76,7 +76,7 @@ const UsersStep = () => {
           return (
             <li
               key={c.id}
-              className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5"
+              className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2.5"
             >
               <Checkbox
                 id={id}

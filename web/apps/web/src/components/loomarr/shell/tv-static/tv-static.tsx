@@ -51,7 +51,7 @@ const TvStatic = ({ variant = "idle", className }: TvStaticProps) => {
       <AnalogSnow tile={tile} className="motion-safe:animate-tv-snow" />
       {/* The dark between the snow and the readout: static-950 at 90%, so the snow reads only faintly
           and the text on it stays crisp (the maintainer's pick from the demo). */}
-      <div className="absolute inset-0 bg-static-950/90" />
+      <div className="bg-static-950/90 absolute inset-0" />
       {/* Scanlines: a dark line every third pixel, holding still over the snow. */}
       <div
         className="absolute inset-0"
@@ -70,7 +70,7 @@ const TvStatic = ({ variant = "idle", className }: TvStaticProps) => {
       aria-hidden
     >
       {/* Opacity lives on the snow so the flicker rides a steady, subtle wash (~11%). */}
-      <AnalogSnow tile={tile} className="opacity-[0.11] motion-safe:animate-tv-snow" />
+      <AnalogSnow tile={tile} className="motion-safe:animate-tv-snow opacity-[0.11]" />
       {/* Subtle horizontal scanlines — a faint CRT read layered over the snow. Static (not
           animated): real scanlines hold still while the snow flickers beneath them. */}
       <div

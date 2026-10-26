@@ -38,7 +38,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
     <section aria-labelledby="people-roster-title" className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="min-w-0 flex-1">
-          <h2 id="people-roster-title" className="font-semibold text-lg">
+          <h2 id="people-roster-title" className="text-lg font-semibold">
             People
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -50,7 +50,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             <Label htmlFor={searchId}>Search people</Label>
             <div className="relative">
               <Search
-                className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
+                className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-4"
                 aria-hidden
               />
               <Input
@@ -94,7 +94,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
       {users === undefined ? (
         <div className="grid gap-2" role="status" aria-label="Loading people">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="h-20 animate-pulse rounded-lg border border-border bg-card" />
+            <div key={item} className="border-border bg-card h-20 animate-pulse rounded-lg border" />
           ))}
         </div>
       ) : users.length === 0 ? (
@@ -103,14 +103,14 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           description="Use the actions above to import a media-server account or add a local one."
         />
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
+        <div className="border-border bg-card rounded-lg border p-6 text-center">
           <p className="font-medium">No matching people</p>
           <p className="text-muted-foreground text-sm">Try another name, role, or status.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
           <div
-            className="hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-static-800 border-b px-4 py-2 font-mono text-static-400 text-xs uppercase tracking-wide md:grid"
+            className="border-static-800 text-static-400 hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-b px-4 py-2 font-mono text-xs tracking-wide uppercase md:grid"
             aria-hidden
           >
             <span>Person</span>
@@ -128,7 +128,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   aria-current={selectedId === user.id ? "true" : undefined}
                   onClick={() => onSelect(user)}
                   className={cn(
-                    "grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
+                    "hover:bg-accent focus-visible:ring-ring grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
                     user.disabled && "bg-static-900/40",
                     selectedId === user.id && "bg-accent",
                   )}
@@ -138,7 +138,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                       <span className="truncate font-medium">{user.name}</span>
                       {selfId === user.id && <Badge variant="tune">You</Badge>}
                     </span>
-                    <span className="mt-1 flex items-center gap-1.5 text-static-400 text-xs">
+                    <span className="text-static-400 mt-1 flex items-center gap-1.5 text-xs">
                       {user.local ? (
                         <KeyRound className="size-3" aria-hidden />
                       ) : (
@@ -152,7 +152,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                     <Badge variant={user.role === "admin" ? "tune" : "neutral"}>{user.role}</Badge>
                   </span>
                   <span className="flex items-center justify-between gap-3 font-mono text-sm tabular-nums md:block">
-                    <span className="font-sans text-muted-foreground text-xs md:hidden">Requests</span>
+                    <span className="text-muted-foreground font-sans text-xs md:hidden">Requests</span>
                     {`${user.pendingAcquisitions} / ${user.effectiveQuota}`}
                   </span>
                   <span className="flex items-center justify-between gap-3 md:block">
@@ -163,7 +163,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                       has never signed in (#1667). */}
                   <span className="flex items-center justify-between gap-3 md:block">
                     <span className="text-muted-foreground text-xs md:hidden">Last seen</span>
-                    <span className="font-mono text-muted-foreground text-xs">
+                    <span className="text-muted-foreground font-mono text-xs">
                       {user.lastSeenAt === undefined ? "Never" : formatRelative(user.lastSeenAt, now)}
                     </span>
                   </span>

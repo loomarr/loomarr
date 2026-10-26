@@ -42,7 +42,7 @@ const Failed: Story = {
     tone: "onair",
     hint: "The model took too long. Try again in a moment.",
     action: (
-      <a href="/guide" className="font-medium text-sm underline">
+      <a href="/guide" className="text-sm font-medium underline">
         Try again
       </a>
     ),

@@ -35,7 +35,7 @@ const outcomeHint = (outcome?: string) => {
 const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: InvitationRosterProps) => (
   <section aria-labelledby="invitation-roster-title" className="flex flex-col gap-3">
     <div>
-      <h2 id="invitation-roster-title" className="font-semibold text-lg">
+      <h2 id="invitation-roster-title" className="text-lg font-semibold">
         Invitations
       </h2>
       <p className="text-muted-foreground text-sm">
@@ -45,12 +45,12 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
 
     {invitations === undefined ? (
       <div
-        className="h-24 animate-pulse rounded-lg border border-border bg-card"
+        className="border-border bg-card h-24 animate-pulse rounded-lg border"
         role="status"
         aria-label="Loading invitations"
       />
     ) : invitations.length === 0 ? (
-      <div className="rounded-lg border border-border bg-card p-5 text-muted-foreground text-sm">
+      <div className="border-border bg-card text-muted-foreground rounded-lg border p-5 text-sm">
         No invitations yet. Directly created and imported people continue to appear below.
       </div>
     ) : (
@@ -70,7 +70,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
           const hint = outcomeHint(delivery?.outcome) ?? copy?.hint;
 
           return (
-            <li key={value.id} className="rounded-lg border border-border bg-card p-4">
+            <li key={value.id} className="border-border bg-card rounded-lg border p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -85,10 +85,10 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm text-static-400">
+                  <p className="text-static-400 text-sm">
                     {value.contactAddress?.email ?? "Add a contact address before sending email."}
                   </p>
-                  {hint && <p className="max-w-3xl text-muted-foreground text-sm">{hint}</p>}
+                  {hint && <p className="text-muted-foreground max-w-3xl text-sm">{hint}</p>}
                 </div>
 
                 {pending && (

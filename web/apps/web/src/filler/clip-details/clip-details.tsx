@@ -62,7 +62,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
 
   return (
     <div className="space-y-5">
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="border-border overflow-hidden rounded-lg border">
         {showPreview ? (
           <ClipPreview clip={clip} />
         ) : (
@@ -77,9 +77,9 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         )}
       </div>
       {enrichmentMessage ? (
-        <div className="rounded-lg bg-muted/40 px-4 py-3 text-sm">
+        <div className="bg-muted/40 rounded-lg px-4 py-3 text-sm">
           <p className="font-medium">{enrichmentMessage.title}</p>
-          <p className="mt-1 text-muted-foreground">{enrichmentMessage.detail}</p>
+          <p className="text-muted-foreground mt-1">{enrichmentMessage.detail}</p>
         </div>
       ) : null}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
@@ -104,7 +104,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                       href={source.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-signal underline underline-offset-4"
+                      className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                     >
                       {source.title} <ExternalLink className="size-3.5 shrink-0" aria-hidden />
                     </a>
@@ -124,7 +124,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                   href={sourceURL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-signal underline underline-offset-4"
+                  className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
                 >
                   View original <ExternalLink className="size-3.5 shrink-0" aria-hidden />
                 </a>

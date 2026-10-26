@@ -30,8 +30,8 @@ const useSecondsSince = (startedAt: string | undefined): number | undefined => {
 // A streamed title reads like a row of the lineup it is about to become: name, year, and the
 // same state wording the review uses.
 const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }) => (
-  <li className="flex flex-wrap items-center gap-x-2 gap-y-1 border-border border-b py-2 last:border-b-0">
-    <span className="font-medium text-sm">{pick.name}</span>
+  <li className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-2 last:border-b-0">
+    <span className="text-sm font-medium">{pick.name}</span>
     {pick.year ? <span className="text-muted-foreground text-xs">{pick.year}</span> : null}
     <Badge variant={pick.inLibrary ? "lock" : "tune"}>
       {pick.inLibrary ? "In your library" : "Will be added"}
@@ -54,15 +54,15 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   const line = progress ? progressLine(progress) : (LABELS[phase] ?? LABELS.reasoning);
   const count = progress ? pickCount(progress) : undefined;
   return (
-    <div className={cn("flex items-start gap-3 rounded-lg border border-border bg-muted/35 p-4", className)}>
+    <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
       {!complete && (
         <Loader2
-          className="mt-0.5 size-4 shrink-0 animate-spin text-suggest-300 motion-reduce:animate-none"
+          className="text-suggest-300 mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none"
           aria-hidden
         />
       )}
       <div className="min-w-0 flex-1">
-        <p role="status" aria-live="polite" className="font-medium text-sm">
+        <p role="status" aria-live="polite" className="text-sm font-medium">
           {line}
         </p>
         {progress && progress.picks.length > 0 && (
@@ -72,14 +72,14 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
                 <PickRow key={pick.key} pick={pick} />
               ))}
             </ul>
-            <p className="mt-1 text-muted-foreground text-xs">
+            <p className="text-muted-foreground mt-1 text-xs">
               {count}
               {seconds !== undefined ? ` · ${seconds} s` : ""}
             </p>
           </>
         )}
         {!complete && seconds !== undefined && seconds >= 10 && !(progress && progress.picks.length > 0) && (
-          <p className="mt-1 text-muted-foreground text-sm">
+          <p className="text-muted-foreground mt-1 text-sm">
             This can take a little while. You can leave this page open.
           </p>
         )}

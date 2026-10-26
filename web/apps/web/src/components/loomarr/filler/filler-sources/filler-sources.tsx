@@ -83,7 +83,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           {visible.map(renderRow)}
         </ul>
       ) : (
-        <p className="mt-3 text-muted-foreground text-sm">No sources match your filter.</p>
+        <p className="text-muted-foreground mt-3 text-sm">No sources match your filter.</p>
       )}
 
       {remaining > 0 && (
@@ -151,7 +151,7 @@ const FillerSources = ({
       <>
         <div className="min-w-0 basis-full text-left sm:flex-1 sm:basis-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate font-medium text-sm">
+            <span className="truncate text-sm font-medium">
               {source.id === "folder" ? "Drop folder" : source.target}
             </span>
             {source.readiness === "not_configured" && <Badge variant="caution">Add details</Badge>}
@@ -170,7 +170,7 @@ const FillerSources = ({
                 </Badge>
               )}
           </div>
-          <p className="mt-0.5 truncate text-muted-foreground text-xs">
+          <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"
               ? `Paused with ${source.kind === "archive" ? "Archive.org" : "YouTube"}. Existing clips stay here.`
               : dormant(source)
@@ -182,9 +182,9 @@ const FillerSources = ({
                   : source.detail}
           </p>
         </div>
-        <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">{status}</span>
-        {source.license && <span className="shrink-0 text-muted-foreground text-xs">{source.license}</span>}
-        {onSelect && <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">{status}</span>
+        {source.license && <span className="text-muted-foreground shrink-0 text-xs">{source.license}</span>}
+        {onSelect && <ChevronRight className="text-muted-foreground size-4 shrink-0" aria-hidden />}
       </>
     );
     return (
@@ -216,7 +216,7 @@ const FillerSources = ({
           {onSelect ? (
             <button
               type="button"
-              className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-nowrap"
+              className="hover:bg-muted/50 focus-visible:ring-ring flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:outline-none sm:flex-nowrap"
               aria-label={`Manage ${source.id === "folder" ? "Drop folder" : source.target}`}
               onClick={() => onSelect(source)}
             >
@@ -236,21 +236,21 @@ const FillerSources = ({
     <div className={cn("flex flex-col gap-6", className)}>
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold text-sm">Where filler comes from</h2>
-          <p className="mt-1 max-w-xl text-muted-foreground text-sm">
+          <h2 className="text-sm font-semibold">Where filler comes from</h2>
+          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
             Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
             added.
           </p>
         </div>
-        <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
+        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
         </span>
       </div>
 
       {needsLocation && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-caution/30 bg-caution/5 px-4 py-3">
+        <div className="border-caution/30 bg-caution/5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
           <div>
-            <p className="font-medium text-sm">Add your location</p>
+            <p className="text-sm font-medium">Add your location</p>
             <p className="text-muted-foreground text-sm">
               Loomarr uses it to choose sources that fit your area.
             </p>
@@ -270,11 +270,11 @@ const FillerSources = ({
               <h3 id="local-filler-sources" className="font-medium">
                 Your files
               </h3>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Folders and media-server libraries you already manage.
               </p>
             </div>
-            <span className="shrink-0 text-muted-foreground text-xs">{sourceSummary(localSources)}</span>
+            <span className="text-muted-foreground shrink-0 text-xs">{sourceSummary(localSources)}</span>
           </div>
 
           {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
@@ -305,7 +305,7 @@ const FillerSources = ({
                 <h3 id={`provider-${provider.kind}`} className="font-medium">
                   {provider.target}
                 </h3>
-                <p className="mt-1 text-muted-foreground text-sm">
+                <p className="text-muted-foreground mt-1 text-sm">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`
                     : provider.kind === "archive"
@@ -339,7 +339,7 @@ const FillerSources = ({
                     renderRow={row}
                   />
                 ) : (
-                  <p className="mt-3 text-muted-foreground text-xs">Nothing added yet.</p>
+                  <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
                 )}
               </Disclosure.Panel>
             </Disclosure>

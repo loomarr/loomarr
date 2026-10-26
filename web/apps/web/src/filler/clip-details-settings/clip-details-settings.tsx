@@ -154,19 +154,19 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   const checked = lastChecked(status?.lastSuccessAt);
 
   return (
-    <div className="space-y-4 border-border border-t pt-4">
+    <div className="border-border space-y-4 border-t pt-4">
       {statusQuery.isError || !enabled || configured ? (
-        <div className="rounded-lg bg-muted/40 p-4">
+        <div className="bg-muted/40 rounded-lg p-4">
           <div className="flex items-start gap-3">
             {configured && status?.state === "ready" ? (
-              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-lock" aria-hidden />
+              <CheckCircle2 className="text-lock mt-0.5 size-5 shrink-0" aria-hidden />
             ) : status?.state === "degraded" || status?.state === "limit_reached" ? (
-              <TriangleAlert className="mt-0.5 size-5 shrink-0 text-caution" aria-hidden />
+              <TriangleAlert className="text-caution mt-0.5 size-5 shrink-0" aria-hidden />
             ) : (
-              <Search className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+              <Search className="text-muted-foreground mt-0.5 size-5 shrink-0" aria-hidden />
             )}
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">
+              <p className="text-sm font-medium">
                 {statusQuery.isError
                   ? "Web search status is unavailable"
                   : !enabled
@@ -177,7 +177,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                         ? "Web search needs a check"
                         : "Web search ready"}
               </p>
-              <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
                 {statusQuery.isError
                   ? "Loomarr couldn't check web search. Public-source lookups can still run."
                   : !enabled
@@ -185,7 +185,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     : "Web search is used only when the selected public sources don't find enough information."}
               </p>
               {configured && status ? (
-                <p className="mt-2 text-muted-foreground text-xs">
+                <p className="text-muted-foreground mt-2 text-xs">
                   {providerLabel(status.provider)} · {status.requestCount} of {status.requestLimit} searches
                   this month
                   {checked ? ` · Last checked ${checked}` : ""}
@@ -196,10 +196,10 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         </div>
       ) : null}
 
-      <details className="rounded-lg border border-border p-4">
-        <summary className="cursor-pointer font-medium text-sm">
+      <details className="border-border rounded-lg border p-4">
+        <summary className="cursor-pointer text-sm font-medium">
           <span>Where Loomarr looks</span>
-          <span className="ml-2 font-normal text-muted-foreground">
+          <span className="text-muted-foreground ml-2 font-normal">
             ·{" "}
             {enabled
               ? `${enabledSourceCount} of ${structuredSources.length} sources on`
@@ -209,14 +209,14 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         <div className="mt-5 space-y-6">
           <section className="space-y-3" aria-labelledby="clip-detail-sources-heading">
             <div>
-              <h3 id="clip-detail-sources-heading" className="font-medium text-sm">
+              <h3 id="clip-detail-sources-heading" className="text-sm font-medium">
                 Public sources
               </h3>
-              <p className="mt-1 text-muted-foreground text-xs">
+              <p className="text-muted-foreground mt-1 text-xs">
                 All are on by default. Turn off any source you don't want Loomarr to use.
               </p>
             </div>
-            <div className="divide-y divide-border rounded-lg border border-border">
+            <div className="divide-border border-border divide-y rounded-lg border">
               {structuredSources.map((entry) => {
                 const labelID = `clip-detail-source-${entry.key.replaceAll(".", "-")}`;
                 return (
@@ -224,7 +224,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     key={entry.key}
                     className="flex min-h-12 items-center justify-between gap-4 px-3 py-2.5"
                   >
-                    <span id={labelID} className="font-medium text-sm">
+                    <span id={labelID} className="text-sm font-medium">
                       {entry.label}
                     </span>
                     <SettingField
@@ -245,7 +245,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           </section>
 
           {configured ? (
-            <section className="space-y-5 border-border border-t pt-5" aria-label="Web search controls">
+            <section className="border-border space-y-5 border-t pt-5" aria-label="Web search controls">
               {monthly ? (
                 <SettingField
                   entry={monthly}
@@ -270,10 +270,10 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       </details>
 
       {!configured ? (
-        <div className="flex flex-col gap-3 rounded-lg bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="bg-muted/40 flex flex-col gap-3 rounded-lg p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-medium text-sm">Web search is optional</p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-sm font-medium">Web search is optional</p>
+            <p className="text-muted-foreground mt-1 text-sm">
               Add it if you want Loomarr to search more broadly when these sources come up short.
             </p>
           </div>
@@ -304,8 +304,8 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           </SheetHeader>
           <div className="space-y-6 p-6">
             <fieldset className="space-y-3">
-              <legend className="font-medium text-sm">Choose a provider</legend>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-4 has-[:checked]:border-foreground has-[:checked]:bg-static-800">
+              <legend className="text-sm font-medium">Choose a provider</legend>
+              <label className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 flex cursor-pointer items-start gap-3 rounded-lg border p-4">
                 <input
                   type="radio"
                   name="web-search-provider"
@@ -314,12 +314,12 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   onChange={() => setProvider("brave")}
                 />
                 <span>
-                  <span className="block font-medium text-sm">Brave Search</span>
-                  <span className="mt-1 block text-muted-foreground text-xs">Recommended hosted option.</span>
+                  <span className="block text-sm font-medium">Brave Search</span>
+                  <span className="text-muted-foreground mt-1 block text-xs">Recommended hosted option.</span>
                 </span>
               </label>
-              <details className="rounded-lg border border-border p-4">
-                <summary className="cursor-pointer font-medium text-sm">Advanced / self-hosted</summary>
+              <details className="border-border rounded-lg border p-4">
+                <summary className="cursor-pointer text-sm font-medium">Advanced / self-hosted</summary>
                 <label className="mt-4 flex cursor-pointer items-start gap-3">
                   <input
                     type="radio"
@@ -329,8 +329,8 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     onChange={() => setProvider("searxng")}
                   />
                   <span>
-                    <span className="block font-medium text-sm">SearXNG</span>
-                    <span className="mt-1 block text-muted-foreground text-xs">
+                    <span className="block text-sm font-medium">SearXNG</span>
+                    <span className="text-muted-foreground mt-1 block text-xs">
                       Use a server you operate.
                     </span>
                   </span>
@@ -372,7 +372,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 {message}
               </p>
             ) : null}
-            <div className="flex justify-end gap-2 border-border border-t pt-4">
+            <div className="border-border flex justify-end gap-2 border-t pt-4">
               <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
                 Cancel
               </Button>

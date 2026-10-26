@@ -163,7 +163,7 @@ const RuleRow = ({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2.5",
+        "border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5",
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
@@ -174,11 +174,11 @@ const RuleRow = ({
           {...listeners}
           disabled={disabled}
           aria-label={`Reorder ${label}`}
-          className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+          className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
         >
           <GripVertical className="size-4" aria-hidden />
         </button>
-        <span className="min-w-0 flex-1 truncate font-medium text-sm">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -307,7 +307,7 @@ const ChannelRulesEditor = ({
   return (
     <section className={cn("flex flex-col gap-3", className)}>
       <div>
-        <h3 className="font-semibold text-base">Wall-clock rules</h3>
+        <h3 className="text-base font-semibold">Wall-clock rules</h3>
         <p className="text-muted-foreground text-sm">
           Play different things at different times: weekend marathons, holiday programming, day-parts. The top
           rule wins when more than one matches a moment; drag to reprioritize.
@@ -315,7 +315,7 @@ const ChannelRulesEditor = ({
       </div>
 
       {drafts.length === 0 ? (
-        <div className="rounded-md border border-border border-dashed px-3 py-6 text-center">
+        <div className="border-border rounded-md border border-dashed px-3 py-6 text-center">
           <p className="text-muted-foreground text-sm">
             No rules yet. This channel always follows its base policy above.
           </p>

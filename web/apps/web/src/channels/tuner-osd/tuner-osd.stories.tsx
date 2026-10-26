@@ -10,7 +10,7 @@ const meta = {
   parameters: { layout: "centered" },
   decorators: [
     (Story) => (
-      <div className="relative aspect-video w-[calc(100vw-2rem)] max-w-[720px] overflow-hidden rounded-xl border border-border bg-black">
+      <div className="border-border relative aspect-video w-[calc(100vw-2rem)] max-w-[720px] overflow-hidden rounded-xl border bg-black">
         <Story />
       </div>
     ),

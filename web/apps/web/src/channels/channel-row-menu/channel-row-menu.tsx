@@ -127,7 +127,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           <DropdownMenuItem
             onClick={() => void navigate({ to: "/channels/$id/watch", params: { id: channel.id } })}
           >
-            <Tv className="size-4 text-signal" aria-hidden />
+            <Tv className="text-signal size-4" aria-hidden />
             Watch
           </DropdownMenuItem>
 
@@ -136,7 +136,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           <DropdownMenuItem
             onClick={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
           >
-            <Pencil className="size-4 text-static-400" aria-hidden />
+            <Pencil className="text-static-400 size-4" aria-hidden />
             Edit channel
           </DropdownMenuItem>
 
@@ -162,7 +162,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               Delete…
             </DropdownMenuItem>
           ) : (
-            <div className="flex flex-col gap-2 rounded border border-onair-tint-15 bg-onair-tint-15 p-2">
+            <div className="border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-2 rounded border p-2">
               <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
               <div className="flex items-center gap-2">
                 <Button

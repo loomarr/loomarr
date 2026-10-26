@@ -64,9 +64,9 @@ const ConnectionBlock = ({
       // so `onToggle` takes no argument and Base UI's `(open, details)` is dropped deliberately
       // rather than widened into the public prop type.
       onOpenChange={() => onToggle()}
-      render={<section className="overflow-hidden rounded-lg border border-border" />}
+      render={<section className="border-border overflow-hidden rounded-lg border" />}
     >
-      <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800">
+      <Collapsible.Trigger className="group hover:bg-static-800 flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors">
         {/* Status dot: green + check when the probe passes; red-ringed when it fails;
             neutral (muted, empty) when untested. It carries the resting signal so the
             header alone says "this one's fine" or "look here" — paired with the text
@@ -82,7 +82,7 @@ const ConnectionBlock = ({
         >
           {verdict?.ok ? <Check className="size-3" /> : failing ? <X className="size-3" /> : null}
         </span>
-        <span className="font-medium text-sm">{title}</span>
+        <span className="text-sm font-medium">{title}</span>
         {optional && <span className="text-static-400 text-xs">optional</span>}
         {/* The resting summary, so a COLLAPSED block still says where it stands. The dot
             alone cannot distinguish "failed" from "never tested" for anyone who does not
@@ -99,7 +99,7 @@ const ConnectionBlock = ({
           {summary}
         </span>
         <ChevronDown
-          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180"
+          className="text-muted-foreground size-4 shrink-0 transition-transform group-data-[panel-open]:rotate-180"
           aria-hidden
         />
       </Collapsible.Trigger>
@@ -109,7 +109,7 @@ const ConnectionBlock = ({
           (Base UI's valueless attribute); this now emits the latter. */}
       <Collapsible.Panel hiddenUntilFound className="reveal">
         <div className="reveal-inner">
-          <div className="flex flex-col gap-4 border-border border-t px-4 py-4">
+          <div className="border-border flex flex-col gap-4 border-t px-4 py-4">
             {children}
             {(action || verdict) && (
               <div className="flex flex-wrap items-center gap-3">
@@ -132,7 +132,7 @@ const ConnectionBlock = ({
                       <Link
                         to="/help"
                         search={parseDocHref(docHref)}
-                        className="inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2 hover:text-onair-200"
+                        className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
                       >
                         Fix <ArrowUpRight className="size-3" aria-hidden />
                       </Link>

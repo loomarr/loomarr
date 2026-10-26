@@ -93,12 +93,12 @@ const WizardAiBlock = () => {
       {/* Auto-detect header — only meaningful on the local (Ollama) branch. */}
       {liveProvider !== "openai" &&
         (llm.isLoading ? (
-          <p className="flex items-center gap-2 text-muted-foreground text-sm">
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <Loader2 className="size-4 animate-spin" aria-hidden />
             Looking for a local AI model…
           </p>
         ) : status?.reachable ? (
-          <p className="flex items-center gap-2 text-lock text-sm">
+          <p className="text-lock flex items-center gap-2 text-sm">
             <CheckCircle2 className="size-4" aria-hidden />
             {status.model
               ? `Ollama detected: using ${status.model}.`

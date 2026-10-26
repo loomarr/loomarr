@@ -28,7 +28,7 @@ const SourceContentPreview = ({
   return (
     <>
       <a
-        className="inline-flex items-center gap-1 text-tune text-xs hover:underline"
+        className="text-tune inline-flex items-center gap-1 text-xs hover:underline"
         href={canonicalUrl}
         target="_blank"
         rel="noreferrer"
@@ -38,11 +38,11 @@ const SourceContentPreview = ({
       </a>
 
       {showExamples && (
-        <div className="mt-3 border-border border-t pt-3">
-          <p className="font-medium text-xs">{heading}</p>
+        <div className="border-border mt-3 border-t pt-3">
+          <p className="text-xs font-medium">{heading}</p>
           {loading && (
             <div
-              className="mt-2 flex items-center gap-2 text-muted-foreground text-xs"
+              className="text-muted-foreground mt-2 flex items-center gap-2 text-xs"
               role="status"
               aria-live="polite"
             >
@@ -50,7 +50,7 @@ const SourceContentPreview = ({
               Loading examples…
             </div>
           )}
-          {!loading && error && <p className="mt-2 text-muted-foreground text-xs">{error}</p>}
+          {!loading && error && <p className="text-muted-foreground mt-2 text-xs">{error}</p>}
           {!loading && previewItems && previewItems.length > 0 && (
             <>
               <ul className="mt-1 space-y-1">
@@ -66,7 +66,7 @@ const SourceContentPreview = ({
                       {item.title}
                     </a>
                     {item.durationMs ? (
-                      <span className="shrink-0 text-muted-foreground text-xs">
+                      <span className="text-muted-foreground shrink-0 text-xs">
                         {formatClipDuration(item.durationMs)}
                       </span>
                     ) : null}
@@ -83,7 +83,7 @@ const SourceContentPreview = ({
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-muted-foreground text-xs">A small sample from this source.</p>
+              <p className="text-muted-foreground mt-2 text-xs">A small sample from this source.</p>
             </>
           )}
         </div>
