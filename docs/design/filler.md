@@ -671,6 +671,17 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   records stops the pass rather than treating every clip as unmeasured.
 - **The pass runs with `-noautorotate`.** ffprobe reports the coded frame size, and a rotated
   phone clip decoded upright would not match it.
+- **The household report** (`filler.DefectReports`, `GET /v1/filler/defects`, admin only) shows
+  what the floor would retire on this install and every measured clip's findings, worst first.
+  - The maintainer labels a measured clip pass or fail (`PUT`/`DELETE
+    /v1/filler/defects/{clipId}/label`). The label is stored on the clip's record, in the same
+    statement that stamps it with the era the record was judged against. Measuring again keeps it;
+    a re-key or merge drops it with the record.
+  - The report scores the stored records against the labels per era band (`defects.Score`), the
+    judge's rulings included. A label for an era band the clip is no longer judged in is shown but
+    not scored.
+  - Labels and real clips stay in the install's database: the repository is public, and only the
+    synthetic corpus is committed.
 
 ## Source evidence and playable media
 

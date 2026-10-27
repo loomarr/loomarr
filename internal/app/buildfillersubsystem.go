@@ -36,6 +36,7 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
+	defects   *filler.DefectReports
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
@@ -84,6 +85,7 @@ func buildFillerSubsystem(
 	} else {
 		result.decisions = decisionService
 	}
+	result.defects = filler.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.

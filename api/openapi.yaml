@@ -4062,6 +4062,264 @@ components:
         - action
         - mode
       type: object
+    FillerDefectBandScoreDTO:
+      additionalProperties: false
+      properties:
+        band:
+          enum:
+            - tape
+            - sd
+            - hd
+          type: string
+        borderlinePass:
+          format: int64
+          type: integer
+        caught:
+          description: Share of clips labelled fail that the detectors failed or sent to the judge
+          format: double
+          type: number
+        failed:
+          format: int64
+          type: integer
+        falseFails:
+          format: int64
+          type: integer
+        judgeRight:
+          format: int64
+          type: integer
+        judgeWrong:
+          description: Rulings against the label; an abstention counts here
+          format: int64
+          type: integer
+        judged:
+          format: int64
+          type: integer
+        missed:
+          format: int64
+          type: integer
+        precision:
+          description: Share of the detectors' outright fails labelled fail
+          format: double
+          type: number
+        total:
+          format: int64
+          type: integer
+      required:
+        - band
+        - precision
+        - caught
+        - failed
+        - falseFails
+        - judged
+        - missed
+        - borderlinePass
+        - judgeRight
+        - judgeWrong
+        - total
+      type: object
+    FillerDefectFindingDTO:
+      additionalProperties: false
+      properties:
+        bar:
+          description: The borderline bar for a pass or borderline finding, the fail bar for a fail
+          format: double
+          type: number
+        check:
+          enum:
+            - blocks
+            - blur
+            - dropouts
+            - interlace
+            - windowbox
+            - upscale
+            - clipping
+          type: string
+        measured:
+          format: double
+          type: number
+        outcome:
+          enum:
+            - pass
+            - borderline
+            - fail
+            - undecided
+          type: string
+      required:
+        - check
+        - outcome
+        - measured
+        - bar
+      type: object
+    FillerDefectJudgementDTO:
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+        reason:
+          type: string
+        ruling:
+          enum:
+            - pass
+            - fail
+            - abstain
+            - no_judge
+          type: string
+      required:
+        - ruling
+      type: object
+    FillerDefectLabelDTO:
+      additionalProperties: false
+      properties:
+        current:
+          description: "False once the clip's era was corrected into another band: the label is not scored"
+          type: boolean
+        era:
+          description: The era the label was given for
+          format: int64
+          type: integer
+        label:
+          enum:
+            - pass
+            - fail
+          type: string
+        labelledAt:
+          format: date-time
+          type: string
+      required:
+        - label
+        - era
+        - current
+        - labelledAt
+      type: object
+    FillerDefectReportDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerDefectReportDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        clips:
+          description: Catalog clips, held ones included
+          format: int64
+          type: integer
+        floorVersion:
+          description: The bars every record is judged under once the hourly floor job has caught up
+          type: string
+        labelled:
+          description: Clips labelled for the era band they are judged in now
+          format: int64
+          type: integer
+        rows:
+          description: The requested page, what the floor would retire first
+          items:
+            $ref: "#/components/schemas/FillerDefectRowDTO"
+          type: array
+        scores:
+          description: The floor and its judge against the labels, per era band; a band with no labelled clip is absent
+          items:
+            $ref: "#/components/schemas/FillerDefectBandScoreDTO"
+          type: array
+        total:
+          description: Rows matching the filter
+          format: int64
+          type: integer
+        unmeasured:
+          description: Clips the floor has no readable record for yet
+          format: int64
+          type: integer
+        verdicts:
+          $ref: "#/components/schemas/FillerDefectVerdictCountsDTO"
+      required:
+        - floorVersion
+        - clips
+        - unmeasured
+        - verdicts
+        - labelled
+        - scores
+        - total
+        - rows
+      type: object
+    FillerDefectRowDTO:
+      additionalProperties: false
+      properties:
+        band:
+          enum:
+            - tape
+            - sd
+            - hd
+          type: string
+        clipId:
+          type: string
+        era:
+          description: The era the record was judged against
+          format: int64
+          type: integer
+        findings:
+          items:
+            $ref: "#/components/schemas/FillerDefectFindingDTO"
+          type: array
+        judgement:
+          $ref: "#/components/schemas/FillerDefectJudgementDTO"
+        label:
+          $ref: "#/components/schemas/FillerDefectLabelDTO"
+        measuredAt:
+          format: date-time
+          type: string
+        name:
+          type: string
+        outcome:
+          description: The detectors' outcome
+          enum:
+            - pass
+            - borderline
+            - fail
+            - undecided
+          type: string
+        verdict:
+          description: The final standing, a borderline outcome settled by the judge
+          enum:
+            - pass
+            - fail
+            - undecided
+            - pending
+          type: string
+        verdictReason:
+          type: string
+      required:
+        - clipId
+        - name
+        - era
+        - band
+        - outcome
+        - verdict
+        - findings
+        - measuredAt
+      type: object
+    FillerDefectVerdictCountsDTO:
+      additionalProperties: false
+      properties:
+        fail:
+          description: What the floor would retire once it is enforced (#2036)
+          format: int64
+          type: integer
+        pass:
+          format: int64
+          type: integer
+        pending:
+          format: int64
+          type: integer
+        undecided:
+          format: int64
+          type: integer
+      required:
+        - pass
+        - fail
+        - undecided
+        - pending
+      type: object
     FillerDiagnosticRecoveryInputBody:
       additionalProperties: false
       properties:
@@ -6302,6 +6560,25 @@ components:
         - percent
         - completed
         - total
+      type: object
+    LabelFillerDefectInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LabelFillerDefectInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        label:
+          description: Would a viewer call this clip damaged against a good copy of its era?
+          enum:
+            - pass
+            - fail
+          type: string
+      required:
+        - label
       type: object
     LibraryCollection:
       additionalProperties: false
@@ -14768,6 +15045,115 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Admission decision health and next action
+      tags:
+        - filler
+  /v1/filler/defects:
+    get:
+      description: Admin only (#2034). What the defect floor would retire on this install, every measured clip's findings, and how the floor and its vision judge score against the maintainer's labels, per era band. Labels stay in this install's database; nothing here leaves the machine.
+      operationId: filler-defect-report
+      parameters:
+        - description: Only rows with this verdict
+          explode: false
+          in: query
+          name: verdict
+          schema:
+            description: Only rows with this verdict
+            enum:
+              - pass
+              - fail
+              - undecided
+              - pending
+            type: string
+        - description: Only rows with no current label
+          explode: false
+          in: query
+          name: unlabelled
+          schema:
+            description: Only rows with no current label
+            type: boolean
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerDefectReportDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Defect floor report
+      tags:
+        - filler
+  /v1/filler/defects/{clipId}/label:
+    delete:
+      description: Admin only (#2034).
+      operationId: clear-filler-defect-label
+      parameters:
+        - in: path
+          name: clipId
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Clear a clip's defect floor label
+      tags:
+        - filler
+    put:
+      description: Admin only (#2034). Labels a measured clip pass or fail against a good copy of the era its record was judged for.
+      operationId: label-filler-defect
+      parameters:
+        - in: path
+          name: clipId
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabelFillerDefectInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Label a clip for the defect floor
       tags:
         - filler
   /v1/filler/discover:

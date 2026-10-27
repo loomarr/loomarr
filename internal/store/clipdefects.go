@@ -114,6 +114,66 @@ func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRe
 	return out, nil
 }
 
+// ClipDefectLabel is the maintainer's label on a clip's defect record (#2034 step 4c).
+type ClipDefectLabel struct {
+	Label defects.Label
+	// Era is the era the clip was labelled against. A label for another era band no longer
+	// answers the question the floor is asking.
+	Era        int
+	LabelledAt time.Time
+}
+
+// SetClipDefectLabel labels a clip's defect record for the era the record was judged against, in
+// the same statement, so a concurrent era correction cannot pair a label with the wrong era. An
+// empty label clears it. ErrNotFound when the clip has no record: only a measured clip can be
+// scored against.
+func (s *sqlStore) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
+	if label != "" && label != defects.LabelPass && label != defects.LabelFail {
+		return fmt.Errorf("label clip defects %s: unknown label %q", clipHash, label)
+	}
+	query := `UPDATE filler_clip_defects SET label = ?, label_era = era, labelled_at = ? WHERE clip_hash = ?`
+	args := []any{string(label), epoch(at), clipHash}
+	if label == "" {
+		query = `UPDATE filler_clip_defects SET label = '', label_era = 0, labelled_at = 0 WHERE clip_hash = ?`
+		args = []any{clipHash}
+	}
+	res, err := s.db.ExecContext(ctx, s.ph(query), args...)
+	if err != nil {
+		return fmt.Errorf("label clip defects %s: %w", clipHash, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("label clip defects %s: %w", clipHash, err)
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListClipDefectLabels reads every labelled record's label, keyed by clip hash.
+func (s *sqlStore) ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT clip_hash, label, label_era, labelled_at FROM filler_clip_defects WHERE label <> ''`)
+	if err != nil {
+		return nil, fmt.Errorf("list clip defect labels: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]ClipDefectLabel{}
+	for rows.Next() {
+		var hash, label string
+		var l ClipDefectLabel
+		var at int64
+		if err := rows.Scan(&hash, &label, &l.Era, &at); err != nil {
+			return nil, fmt.Errorf("scan clip defect labels: %w", err)
+		}
+		l.Label, l.LabelledAt = defects.Label(label), fromEpoch(at)
+		out[hash] = l
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list clip defect labels: %w", err)
+	}
+	return out, nil
+}
+
 func (s *sqlStore) pruneOrphanClipDefects(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM filler_clip_defects WHERE NOT EXISTS (
 		SELECT 1 FROM clips c WHERE c.hash = filler_clip_defects.clip_hash)`)
