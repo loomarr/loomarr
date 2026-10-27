@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -156,8 +157,11 @@ test("fails closed when a TestFlight build has an invalid channel or version met
 test("captures crashes for the paired server, with MetricKit linked into the iPhone app only", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["@loomarr/crash-reports-native"], "workspace:*");
-  // The synchronous file API the fatal handler writes with; first-party Expo, pinned with expo.
-  assert.equal(manifest.dependencies["expo-file-system"], manifest.dependencies.expo);
+  // The synchronous file API the fatal handler writes with; first-party Expo, at the version the SDK bundles.
+  assert.equal(
+    `~${manifest.dependencies["expo-file-system"]}`,
+    (await bundledNativeModules())["expo-file-system"],
+  );
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
   assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
 
