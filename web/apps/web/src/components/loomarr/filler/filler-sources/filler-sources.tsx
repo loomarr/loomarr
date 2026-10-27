@@ -216,7 +216,7 @@ const FillerSources = ({
           {onSelect ? (
             <button
               type="button"
-              className="hover:bg-muted/50 focus-visible:ring-ring flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:outline-none sm:flex-nowrap"
+              className="hover:bg-muted/50 focus-visible:ring-ring relative flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:outline-none sm:flex-nowrap"
               onClick={() => onSelect(source)}
             >
               {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);

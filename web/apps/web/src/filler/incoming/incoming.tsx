@@ -57,7 +57,7 @@ const StatusRows = ({
       <button
         key={row.clipHash}
         type="button"
-        className="hover:bg-muted/30 focus-visible:ring-ring flex min-h-16 w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+        className="hover:bg-muted/30 focus-visible:ring-ring relative flex min-h-16 w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
         onClick={(event) => onOpen(row, event.currentTarget)}
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}

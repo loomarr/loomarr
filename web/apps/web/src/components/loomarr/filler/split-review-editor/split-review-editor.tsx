@@ -372,7 +372,7 @@ const SegmentSummaryRow = ({
           type="button"
           aria-current={selected ? "true" : undefined}
           onClick={(event) => onOpen(event.currentTarget)}
-          className="focus-visible:ring-ring flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
+          className="focus-visible:ring-ring relative flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
         >
           {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
           <span className="sr-only">Open clip</span>{" "}

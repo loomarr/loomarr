@@ -626,7 +626,6 @@ const ChannelWatch = ({
             type="button"
             onClick={() => setActive(true)}
             className="group from-static-800 relative flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-3 bg-radial to-black text-center"
-            aria-label={`Watch ${channel.name} live`}
           >
             <span className="bg-signal/90 flex size-14 items-center justify-center rounded-full text-black shadow-lg transition-transform group-hover:scale-105">
               <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />

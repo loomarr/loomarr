@@ -127,7 +127,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   aria-current={selectedId === user.id ? "true" : undefined}
                   onClick={() => onSelect(user)}
                   className={cn(
-                    "hover:bg-accent focus-visible:ring-ring grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
+                    "hover:bg-accent focus-visible:ring-ring relative grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
                     user.disabled && "bg-static-900/40",
                     selectedId === user.id && "bg-accent",
                   )}

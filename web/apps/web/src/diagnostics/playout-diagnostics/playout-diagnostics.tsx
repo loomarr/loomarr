@@ -84,7 +84,7 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
     <Button
       variant="ghost"
       size="sm"
-      className="h-auto max-w-full justify-start px-2 py-1 font-mono text-xs"
+      className="relative h-auto max-w-full justify-start px-2 py-1 font-mono text-xs"
       onClick={() =>
         void navigator.clipboard.writeText(value).then(() => {
           setCopied(true);
