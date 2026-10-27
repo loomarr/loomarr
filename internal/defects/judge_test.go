@@ -3,6 +3,7 @@ package defects
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestDecide_TheJudgeSettlesOnlyTheBorderlineBand(t *testing.T) {
@@ -32,19 +33,43 @@ func TestDecide_TheJudgeSettlesOnlyTheBorderlineBand(t *testing.T) {
 	}
 }
 
-func TestParseJudgement_AnUnreadableReplyIsAnAbstention(t *testing.T) {
+// A garbled reply is an error, worth asking again; only the model declining is an abstention.
+func TestParseJudgement_OnlyADeclineIsAnAbstention(t *testing.T) {
 	for reply, want := range map[string]Ruling{
 		`{"ruling":"pass","reason":"clean"}`:  RulingPass,
 		`{"ruling":" FAIL ","reason":"bars"}`: RulingFail,
 		`{"ruling":"abstain"}`:                RulingAbstain,
-		`{"ruling":"probably fine"}`:          RulingAbstain,
-		`not json`:                            RulingAbstain,
-		`{"ruling":"no_judge"}`:               RulingAbstain, // the model cannot claim there is no judge
+		`{"ruling":"probably fine"}`:          "",
+		`not json`:                            "",
+		``:                                    "",
+		`{"ruling":"no_judge"}`:               "", // the model cannot claim there is no judge
 	} {
-		j := ParseJudgement(reply, "m1")
-		if j.Ruling != want || j.Version != JudgeVersion || j.Model != "m1" {
-			t.Errorf("ParseJudgement(%s) = %+v, want %q", reply, j, want)
+		j, err := ParseJudgement(reply, "m1")
+		if want == "" {
+			if err == nil {
+				t.Errorf("ParseJudgement(%s) = %+v, want an error", reply, j)
+			}
+			continue
 		}
+		if err != nil || j.Ruling != want || j.Version != JudgeVersion || j.Model != "m1" {
+			t.Errorf("ParseJudgement(%s) = %+v %v, want %q", reply, j, err, want)
+		}
+	}
+}
+
+// The reason is stored in a TEXT column Postgres guards: no NUL, no broken UTF-8, cut by runes.
+func TestParseJudgement_TheReasonIsSafeToStore(t *testing.T) {
+	long := strings.Repeat("é", maxReasonRunes+50)
+	j, err := ParseJudgement(`{"ruling":"fail","reason":"bad\u0000 frames\n`+long+`"}`, "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utf8.ValidString(j.Reason) || strings.ContainsAny(j.Reason, "\x00\n") || utf8.RuneCountInString(j.Reason) != maxReasonRunes {
+		t.Fatalf("reason = %q (%d runes), want valid UTF-8 with no control characters, cut to %d runes",
+			j.Reason, utf8.RuneCountInString(j.Reason), maxReasonRunes)
+	}
+	if !strings.HasPrefix(j.Reason, "bad frames é") {
+		t.Fatalf("reason = %q, want the text kept with control characters as spaces", j.Reason[:20])
 	}
 }
 

@@ -11,8 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 )
 
-// Each hosted look is reserved at the per-look ceiling under the daily one and settled at its cost;
-// an unreported hosted charge counts at the reservation; a self-hosted Ollama never waits.
+// Each hosted look is reserved at the per-look ceiling under the daily one and settled at its cost.
+// A hosted look that reported no charge, failed or not, counts at its reservation; an operator-run
+// endpoint never waits, whatever its provider is called.
 func TestFillerDefectJudgeLedger_HoldsHostedLooksAtTheDailyCeiling(t *testing.T) {
 	ctx := t.Context()
 	st, err := fillerstore.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
@@ -21,52 +22,59 @@ func TestFillerDefectJudgeLedger_HoldsHostedLooksAtTheDailyCeiling(t *testing.T)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	ledger := fillerDefectJudgeLedger{st: st, set: visionSet(t, map[string]string{
-		"filler.defects.judge_look_cents": "2", "filler.defects.judge_daily_cents": "5",
+		"filler.defects.judge_look_cents": "2", "filler.defects.judge_daily_cents": "7",
 	})}
+	hosted := filler.DefectJudgeEndpoint{Provider: "openrouter", Model: "m1"}
+	ownServer := filler.DefectJudgeEndpoint{Provider: "custom", Model: "gemma", SelfHosted: true}
 	at := time.Unix(1_800_000_000, 0).UTC()
-	look := func(provider string, a llm.Attribution) bool {
+	look := func(e filler.DefectJudgeEndpoint, a llm.Attribution, failed bool) bool {
 		t.Helper()
-		id, held, err := ledger.ReserveDefectJudge(ctx, "clip-1", provider, "m1", at)
+		id, held, err := ledger.ReserveDefectJudge(ctx, "clip-1", e, at)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !held {
-			if err := ledger.SettleDefectJudge(ctx, id, a, false, at); err != nil {
+			if err := ledger.SettleDefectJudge(ctx, id, e, a, failed, at); err != nil {
 				t.Fatal(err)
 			}
 		}
 		return held
 	}
-	charged := llm.Attribution{RequestedProvider: "openrouter", Charge: &llm.Money{Amount: "0.015", Currency: "USD"}}
-	unreported := llm.Attribution{RequestedProvider: "openrouter"}
-	// 1.5c + 2c (unreported, counted at the reservation) = 3.5c; the next 2c look would pass 5c.
-	if look("openrouter", charged) || look("openrouter", unreported) {
+	charged := llm.Attribution{Charge: &llm.Money{Amount: "0.015", Currency: "USD"}}
+	// 1.5c charged + 2c unreported + 2c for a failed call the provider may still bill = 5.5c; the
+	// next 2c look would pass 7c.
+	if look(hosted, charged, false) || look(hosted, llm.Attribution{}, false) || look(hosted, llm.Attribution{}, true) {
 		t.Fatal("a look inside the daily ceiling was held")
 	}
-	if !look("openrouter", charged) {
-		t.Fatal("a look past the daily ceiling was not held")
+	if !look(hosted, charged, false) {
+		t.Fatal("a look past the daily ceiling was not held: a failed or unreported look was counted as free")
 	}
-	if look("ollama", llm.Attribution{SelfHosted: true}) {
-		t.Fatal("a self-hosted look waited on the hosted ceiling")
+	if look(ownServer, llm.Attribution{}, false) {
+		t.Fatal("an operator-run endpoint named custom waited on the hosted ceiling")
 	}
 
 	off := fillerDefectJudgeLedger{st: st, set: visionSet(t, map[string]string{"filler.defects.judge_look_cents": "0"})}
-	if _, held, err := off.ReserveDefectJudge(ctx, "clip-2", "openrouter", "m1", at); err != nil || !held {
+	if _, held, err := off.ReserveDefectJudge(ctx, "clip-2", hosted, at); err != nil || !held {
 		t.Fatalf("a zero per-look allowance = held %v err %v, want hosted looks held", held, err)
 	}
 }
 
-func TestDefectJudgeRoute_IsTheVisionModelWhenVisionIsOn(t *testing.T) {
-	if _, _, err := defectJudgeRoute(visionSet(t, map[string]string{
+func TestDefectJudgeEndpoint_IsTheVisionModelWhenVisionIsOn(t *testing.T) {
+	off := &hotVisionProvider{set: visionSet(t, map[string]string{
 		"llm.provider": "ollama", "llm.url": "http://localhost:11434", "llm.model": "gemma",
-	}))(); !errors.Is(err, filler.ErrNoDefectJudge) {
+	})}
+	if _, err := off.defectJudgeEndpoint(); !errors.Is(err, filler.ErrNoDefectJudge) {
 		t.Fatalf("vision off = %v, want no judge", err)
 	}
-	provider, model, err := defectJudgeRoute(visionSet(t, map[string]string{
-		"filler.vision.enabled": "true", "llm.provider": "ollama", "llm.url": "http://localhost:11434",
-		"llm.model": "qwen", "filler.vision.model": "gemma",
-	}))()
-	if err != nil || provider != "ollama" || model != "gemma" {
-		t.Fatalf("vision on = %s/%s %v, want ollama/gemma", provider, model, err)
+	unreachable := &hotVisionProvider{set: visionSet(t, map[string]string{"filler.vision.enabled": "true"})}
+	if _, err := unreachable.defectJudgeEndpoint(); !errors.Is(err, filler.ErrNoDefectJudge) {
+		t.Fatalf("vision on with no endpoint = %v, want no judge", err)
+	}
+	on := &hotVisionProvider{set: visionSet(t, map[string]string{
+		"filler.vision.enabled": "true", "filler.vision.provider": "ollama", "filler.vision.model": "gemma",
+	})}
+	e, err := on.defectJudgeEndpoint()
+	if err != nil || e.Provider != "ollama" || e.Model != "gemma" || !e.SelfHosted {
+		t.Fatalf("vision on = %+v %v, want ollama/gemma, self-hosted", e, err)
 	}
 }

@@ -133,35 +133,39 @@ var checkMeaning = map[Check]string{
 	CheckUpscale:   "the picture may be a low-resolution source enlarged",
 }
 
-// ParseJudgement reads the model's reply, already stripped to its JSON object. A reply that names
-// no valid ruling is an abstention, not an error: asking the same model about the same stills
-// again would spend again for the same answer.
-func ParseJudgement(reply, model string) Judgement {
-	j := Judgement{Version: JudgeVersion, Model: model, Ruling: RulingAbstain}
+// maxReasonRunes bounds the model's reason as stored.
+const maxReasonRunes = 200
+
+// ParseJudgement reads the model's reply, already stripped to its JSON object. A reply with no
+// readable ruling is an error, not an abstention: an abstention is the model declining, and is
+// asked again only of another model, while a garbled reply is worth asking again.
+func ParseJudgement(reply, model string) (Judgement, error) {
 	var out struct {
 		Ruling string `json:"ruling"`
 		Reason string `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(reply), &out); err != nil {
-		j.Reason = "the reply was not readable"
-		return j
+		return Judgement{}, fmt.Errorf("unreadable reply: %w", err)
 	}
-	switch r := Ruling(strings.ToLower(strings.TrimSpace(out.Ruling))); r {
-	case RulingPass, RulingFail, RulingAbstain:
-		j.Ruling = r
-		j.Reason = strings.TrimSpace(out.Reason)
-	default:
-		j.Reason = fmt.Sprintf("the reply named no ruling (%q)", truncate(reply, 80))
+	r := Ruling(strings.ToLower(strings.TrimSpace(out.Ruling)))
+	if r != RulingPass && r != RulingFail && r != RulingAbstain {
+		return Judgement{}, fmt.Errorf("the reply named no ruling (%q)", cleanReason(out.Ruling))
 	}
-	if len(j.Reason) > 300 {
-		j.Reason = j.Reason[:300]
-	}
-	return j
+	return Judgement{Version: JudgeVersion, Ruling: r, Reason: cleanReason(out.Reason), Model: model}, nil
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
+// cleanReason makes model text safe to store: valid UTF-8, no control characters (Postgres TEXT
+// refuses NUL), cut by runes rather than bytes.
+func cleanReason(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, strings.ToValidUTF8(s, ""))
+	s = strings.Join(strings.Fields(s), " ")
+	if runes := []rune(s); len(runes) > maxReasonRunes {
+		s = string(runes[:maxReasonRunes])
 	}
-	return s[:n]
+	return s
 }

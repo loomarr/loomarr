@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -19,24 +21,29 @@ const defectJudgeRole = "defect_judge"
 
 const nanoUSDPerCent = 10_000_000
 
-// defectJudgeRoute is the vision model the defect judge would use now (#2034): the same one the
-// vision rung uses, re-read from settings on every call, or ErrNoDefectJudge when vision is off
-// or has no model it can reach.
-func defectJudgeRoute(set resolved) filler.DefectJudgeRoute {
-	return func() (string, string, error) {
-		if !set.boolv("filler.vision.enabled") {
-			return "", "", filler.ErrNoDefectJudge
-		}
-		v := visionEndpoint(set)
-		if v.url == "" || strings.TrimSpace(v.model) == "" || (v.provider != "openai" && v.provider != "ollama") {
-			return "", "", filler.ErrNoDefectJudge
-		}
-		identity := v.identity
-		if identity == "" {
-			identity = v.provider
-		}
-		return identity, v.model, nil
+// defectJudgeEndpoint is the vision model the defect judge would ask now (#2034): the vision rung's,
+// resolved on every call so a settings change applies to the next look. It names the model the
+// endpoint actually serves, and decides "free" from the endpoint rather than the provider's name.
+// Vision switched off, or configured with nothing it can reach, is no judge.
+func (h *hotVisionProvider) defectJudgeEndpoint() (filler.DefectJudgeEndpoint, error) {
+	if !h.set.boolv("filler.vision.enabled") {
+		return filler.DefectJudgeEndpoint{}, filler.ErrNoDefectJudge
 	}
+	p, err := h.resolve()
+	if err != nil {
+		return filler.DefectJudgeEndpoint{}, fmt.Errorf("%w: %w", filler.ErrNoDefectJudge, err)
+	}
+	h.mu.Lock()
+	w := h.last
+	h.mu.Unlock()
+	if strings.TrimSpace(w.model) == "" {
+		return filler.DefectJudgeEndpoint{}, fmt.Errorf("%w: no vision model named", filler.ErrNoDefectJudge)
+	}
+	e := filler.DefectJudgeEndpoint{Provider: cmp.Or(w.identity, w.provider), Model: w.model}
+	if s, ok := p.(interface{ SelfHosted() bool }); ok {
+		e.SelfHosted = s.SelfHosted()
+	}
+	return e, nil
 }
 
 // fillerDefectJudgeLedger meters the judge's looks in the filler inference ledger: each look is
@@ -46,27 +53,29 @@ type fillerDefectJudgeLedger struct {
 	set resolved
 }
 
-func (l fillerDefectJudgeLedger) lookNanoUSD(provider string) int64 {
-	if provider == "ollama" {
-		return 0 // self-hosted: nothing to reserve, and a zero reservation passes every ceiling
+// lookNanoUSD is what one look reserves: nothing on an operator-run endpoint, which also passes
+// every ceiling, and the per-look ceiling on a hosted one.
+func (l fillerDefectJudgeLedger) lookNanoUSD(e filler.DefectJudgeEndpoint) int64 {
+	if e.SelfHosted {
+		return 0
 	}
 	return int64(max(l.set.intv("filler.defects.judge_look_cents"), 0)) * nanoUSDPerCent
 }
 
-func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHash, provider, model string, at time.Time) (string, bool, error) {
-	look := l.lookNanoUSD(provider)
-	if look == 0 && provider != "ollama" {
+func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHash string, e filler.DefectJudgeEndpoint, at time.Time) (string, bool, error) {
+	look := l.lookNanoUSD(e)
+	if look == 0 && !e.SelfHosted {
 		return "", true, nil // a hosted look with no allowance waits
 	}
 	daily := int64(max(l.set.intv("filler.defects.judge_daily_cents"), 0)) * nanoUSDPerCent
-	e, err := l.st.ReserveInferenceEvaluation(ctx, fillerstore.InferenceEvaluation{
+	ev, err := l.st.ReserveInferenceEvaluation(ctx, fillerstore.InferenceEvaluation{
 		ID: newID(), ClipHash: clipHash, Role: defectJudgeRole, Rung: "defects",
-		RequestedProvider: provider, RequestedModel: model, Modalities: []string{"image", "text"},
+		RequestedProvider: e.Provider, RequestedModel: e.Model, Modalities: []string{"image", "text"},
 		ReservedNanoUSD: look,
 		Versions: fillerstore.InferenceVersions{
 			Evidence: defects.MeasurementVersion, Extractor: defects.MeasurementVersion,
 			Prompt: defects.JudgeVersion, Schema: defects.JudgeVersion, Taxonomy: defects.FloorVersion,
-			AdmissionPolicy: defects.FloorVersion, RolePolicy: defectJudgeRole, CapabilitySnapshot: provider + "/" + model,
+			AdmissionPolicy: defects.FloorVersion, RolePolicy: defectJudgeRole, CapabilitySnapshot: e.Name(),
 		},
 		CreatedAt: at,
 	}, fillerstore.InferenceBudget{
@@ -77,12 +86,13 @@ func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHas
 	if err != nil {
 		return "", false, err
 	}
-	return e.ID, e.State == fillerstore.InferenceHeldBudget, nil
+	return ev.ID, ev.State == fillerstore.InferenceHeldBudget, nil
 }
 
-// SettleDefectJudge records what the look cost. A hosted call that reported no charge is counted
-// at its reservation, so the daily ceiling never understates spend.
-func (l fillerDefectJudgeLedger) SettleDefectJudge(ctx context.Context, id string, a llm.Attribution, failed bool, at time.Time) error {
+// SettleDefectJudge records what the look cost. A reported charge is recorded as charged, even on a
+// failed call. A hosted call that reported none counts at its reservation, failed or not: a
+// provider may bill a call that timed out, and the daily ceiling must not understate spend.
+func (l fillerDefectJudgeLedger) SettleDefectJudge(ctx context.Context, id string, e filler.DefectJudgeEndpoint, a llm.Attribution, failed bool, at time.Time) error {
 	s := fillerstore.InferenceSettlement{
 		ResolvedProvider: a.ResolvedProvider, ResolvedModel: a.ResolvedModel,
 		Tokens: fillerstore.InferenceTokens{Prompt: int64(a.Tokens.Prompt), Completion: int64(a.Tokens.Completion),
@@ -90,17 +100,21 @@ func (l fillerDefectJudgeLedger) SettleDefectJudge(ctx context.Context, id strin
 		LatencyMS: a.Latency.Milliseconds(), Attempts: max(a.Attempts, 1), GenerationID: a.GenerationID,
 		State: fillerstore.InferenceCompleted, UpdatedAt: at,
 	}
-	switch {
-	case failed:
+	if failed {
 		s.State, s.FailureReason = fillerstore.InferenceFailed, "provider call failed"
+	}
+	switch {
 	case a.Charge != nil && strings.EqualFold(a.Charge.Currency, "USD"):
 		nano, err := fillereval.USDToNanoCeil(a.Charge.Amount)
 		if err != nil {
 			return err
 		}
 		s.ChargedAmount, s.ChargedCurrency, s.ChargedNanoUSD, s.EstimatedNanoUSD = a.Charge.Amount, "USD", nano, nano
-	case !a.SelfHosted:
-		look := l.lookNanoUSD(a.RequestedProvider)
+	case e.SelfHosted:
+	case failed:
+		s.RetainReservation = true // the ledger keeps the reservation counted
+	default:
+		look := l.lookNanoUSD(e)
 		s.ChargedNanoUSD, s.EstimatedNanoUSD = look, look
 	}
 	_, err := l.st.SettleInferenceEvaluation(ctx, id, s)

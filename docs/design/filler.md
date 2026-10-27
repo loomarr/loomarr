@@ -546,18 +546,29 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   - the judge's pass or fail inside it;
   - **fail when the judge abstains, or when no vision model is configured**, each with a reason that
     says so. A "no judge" record is put to the judge once one is configured; an abstention only to
-    a different model, since the same one would answer the same. An unreadable reply is an
-    abstention, not a retry;
-  - **pending** when the judge was out of reach, out of budget, or out of its six looks for the
-    pass. The next pass asks again (#548).
+    a different model (provider and model), since the same one would answer the same;
+  - **pending** when no ruling came back. The next pass asks again (#548).
 
-  The judge is the vision rung's model (`filler.vision.*`), so it needs vision switched on. Each
-  hosted look is reserved in the filler inference ledger (#551) at
-  `filler.defects.judge_look_cents` before the call and settled at what it cost. A call that
-  reports no charge counts at its reservation. A look waits once the day's metered filler spend
-  would pass `filler.defects.judge_daily_cents`. A self-hosted Ollama reserves nothing. A ruling
-  survives a re-assessment that asks the same question (the same band and borderline checks), so
-  a recalibration that moves no clip in or out of the band costs no new look.
+  The judge is asked after every clip is measured, at most six times a pass, clips with the fewest
+  failed asks first. A failure of the judge itself (an outage, a spent budget) ends the asking for
+  the pass. A failure that belongs to the clip (stills that cannot be read, a garbled reply, no
+  known length) is counted against the clip and the next one is asked, so a clip the judge keeps
+  failing on waits behind the rest instead of taking every turn. A garbled reply is not an
+  abstention: the model did not decline. The model's reason is stored as valid UTF-8 with no
+  control characters, cut to 200 runes.
+
+  The judge is the vision rung's model (`filler.vision.*`), so it needs vision switched on, and a
+  ruling names the model the endpoint actually serves. Each hosted look is reserved in the filler
+  inference ledger (#551) at `filler.defects.judge_look_cents` before the call and settled outside
+  the pass's context, so a shutdown does not lose a paid answer. A reported charge is recorded
+  even on a failed call; a hosted call that reported none counts at its reservation, failed or
+  not, since a provider may bill a call that timed out. The per-look ceiling is what is reserved,
+  not a hard cap: a charge above it is recorded and counts toward the day. A look waits once the
+  day's metered filler spend would pass `filler.defects.judge_daily_cents`. An operator-run
+  endpoint (Ollama, or an OpenAI-compatible server on the operator's network) reserves nothing,
+  whatever its provider is called. A ruling survives a re-assessment that asks the same question
+  (the same band and borderline checks), so a recalibration that moves no clip in or out of the
+  band costs no new look.
 - **Records are versioned** (`filler_clip_defects`). The hourly `filler-defects` job
   (`job.filler_defects.schedule`) handles each kind of staleness differently:
   - no record, or one under an older measurement version: measured, within a bounded decode

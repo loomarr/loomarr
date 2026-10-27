@@ -902,7 +902,7 @@ func declared() []Setting {
 		},
 		{
 			// The defect floor's judge (#2034) reuses the vision model above. Each look is reserved
-			// at this ceiling before the call and settled at what it cost; a self-hosted Ollama
+			// at this ceiling before the call and settled at what it cost; an operator-run endpoint
 			// reserves nothing. Whole cents, because a setting has no decimal kind.
 			Key: "filler.defects.judge_look_cents", Label: "Most one picture-quality check may cost (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_LOOK_CENTS", Group: GroupFiller,
 			Kind: KindInt, Default: 2, Advanced: true,

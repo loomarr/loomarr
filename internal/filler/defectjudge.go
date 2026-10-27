@@ -37,17 +37,31 @@ type DefectJudge interface {
 	Rule(ctx context.Context, req DefectJudgeRequest) (defects.Judgement, error)
 }
 
-// DefectJudgeRoute is the vision model the judge would use now: its provider and model, or
-// ErrNoDefectJudge.
-type DefectJudgeRoute func() (provider, model string, err error)
+// DefectJudgeEndpoint is the vision model the judge would ask now.
+type DefectJudgeEndpoint struct {
+	Provider, Model string
+	// SelfHosted is the endpoint's identity, not the provider's name: an operator-run server is
+	// free whatever it is called.
+	SelfHosted bool
+}
+
+// Name identifies the judge in a ruling: an abstention is asked again only of another name.
+func (e DefectJudgeEndpoint) Name() string { return e.Provider + "/" + e.Model }
+
+// DefectJudgeRoute resolves the judge's endpoint now, or returns ErrNoDefectJudge.
+type DefectJudgeRoute func() (DefectJudgeEndpoint, error)
 
 // DefectJudgeLedger reserves each look against the spend ceilings before the call and settles it
 // with what the call cost (#551).
 type DefectJudgeLedger interface {
 	// ReserveDefectJudge returns held when a ceiling would be passed; nothing is spent then.
-	ReserveDefectJudge(ctx context.Context, clipHash, provider, model string, at time.Time) (id string, held bool, err error)
-	SettleDefectJudge(ctx context.Context, id string, attribution llm.Attribution, failed bool, at time.Time) error
+	ReserveDefectJudge(ctx context.Context, clipHash string, e DefectJudgeEndpoint, at time.Time) (id string, held bool, err error)
+	SettleDefectJudge(ctx context.Context, id string, e DefectJudgeEndpoint, attribution llm.Attribution, failed bool, at time.Time) error
 }
+
+// ErrDefectJudgeClip marks a failure that belongs to the clip rather than the judge: stills that
+// could not be read, or a reply that could not be read. Other clips are still asked this pass.
+var ErrDefectJudgeClip = errors.New("the judge could not rule on this clip")
 
 // VisionDefectJudge shows a vision model stills from the clip with what the detectors found.
 type VisionDefectJudge struct {
@@ -67,25 +81,25 @@ func NewVisionDefectJudge(provider llm.VisionProvider, tools MediaTools, ledger 
 
 // Model implements DefectJudge.
 func (v *VisionDefectJudge) Model(context.Context) (string, error) {
-	_, model, err := v.route()
-	return model, err
+	e, err := v.route()
+	return e.Name(), err
 }
 
 // Rule implements DefectJudge. The stills are taken before the reservation, so a clip whose frames
 // cannot be read spends nothing.
 func (v *VisionDefectJudge) Rule(ctx context.Context, req DefectJudgeRequest) (defects.Judgement, error) {
-	provider, model, err := v.route()
+	e, err := v.route()
 	if err != nil {
 		return defects.Judgement{}, err
 	}
 	frames, err := v.tools.VisionKeyframesIn(ctx, req.File, 0, req.DurationMs, defects.JudgeStills)
+	if err == nil && len(frames) == 0 {
+		err = errors.New("no frames")
+	}
 	if err != nil {
-		return defects.Judgement{}, fmt.Errorf("judge stills %s: %w", req.ClipHash, err)
+		return defects.Judgement{}, fmt.Errorf("%w: stills: %w", ErrDefectJudgeClip, err)
 	}
-	if len(frames) == 0 {
-		return defects.Judgement{}, fmt.Errorf("judge stills %s: no frames", req.ClipHash)
-	}
-	id, held, err := v.ledger.ReserveDefectJudge(ctx, req.ClipHash, provider, model, v.now())
+	id, held, err := v.ledger.ReserveDefectJudge(ctx, req.ClipHash, e, v.now())
 	if err != nil {
 		return defects.Judgement{}, err
 	}
@@ -94,15 +108,19 @@ func (v *VisionDefectJudge) Rule(ctx context.Context, req DefectJudgeRequest) (d
 	}
 	resp, askErr := v.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.defects.judge"),
 		defects.JudgePrompt(req.Assessment, req.Era), frames)
-	// Settled even when the call failed, so a failed look releases its reservation. A failed
-	// settle leaves the reservation counted: the ceiling errs toward spending less.
-	if err := v.ledger.SettleDefectJudge(ctx, id, resp.Attribution, askErr != nil, v.now()); err != nil && v.log != nil {
+	// Settled even when the call failed or the pass is being cancelled: an unsettled look stays
+	// counted at its reservation and its answer would be thrown away and bought again.
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := v.ledger.SettleDefectJudge(settleCtx, id, e, resp.Attribution, askErr != nil, v.now()); err != nil && v.log != nil {
 		v.log.Warn("defects: judge spend not settled", "clip", req.ClipHash, "err", err)
 	}
 	if askErr != nil {
 		return defects.Judgement{}, askErr
 	}
-	// The requested model, not the resolved one: an abstention is asked again only when Model()
-	// changes, and a router that resolves an alias would otherwise look like a new judge each pass.
-	return defects.ParseJudgement(llm.ExtractJSONObject(resp.Content), model), nil
+	j, err := defects.ParseJudgement(llm.ExtractJSONObject(resp.Content), e.Name())
+	if err != nil {
+		return defects.Judgement{}, fmt.Errorf("%w: %w", ErrDefectJudgeClip, err)
+	}
+	return j, nil
 }

@@ -278,9 +278,9 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	ffmpegPath := set.str("playout.ffmpeg_path")
-	defectJudge := filler.NewVisionDefectJudge(&hotVisionProvider{set: set, log: log, metrics: metricRecorder},
-		buildFillerMediaTools(set, metricRecorder), fillerDefectJudgeLedger{st: st, set: set},
-		defectJudgeRoute(set), time.Now, log)
+	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
+	defectJudge := filler.NewVisionDefectJudge(judgeVision, buildFillerMediaTools(set, metricRecorder),
+		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
 	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {

@@ -67,6 +67,9 @@ func (o *Ollama) WithKeepAlive(d string) *Ollama {
 
 func (o *Ollama) Name() string { return "ollama" }
 
+// SelfHosted is always true: Ollama is an operator-run server.
+func (o *Ollama) SelfHosted() bool { return true }
+
 // --- wire types (pinned to the capture) ---
 
 type ollamaChatReq struct {

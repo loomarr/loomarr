@@ -3,6 +3,9 @@
 -- clip's final verdict. Rows written before this carry an empty verdict; the hourly floor job
 -- decides it on its next pass, from the stored readings.
 ALTER TABLE filler_clip_defects ADD COLUMN judgement_json TEXT NOT NULL DEFAULT '';
+-- Asks since the last ruling that brought none back; a clip the judge keeps failing on waits
+-- behind the rest.
+ALTER TABLE filler_clip_defects ADD COLUMN judge_failures INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE filler_clip_defects ADD COLUMN verdict TEXT NOT NULL DEFAULT '';
 ALTER TABLE filler_clip_defects ADD COLUMN verdict_reason TEXT NOT NULL DEFAULT '';
 

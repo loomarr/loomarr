@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,15 +16,17 @@ import (
 // scriptedJudge answers Model with model (or err) and each clip from rulings; asked records who
 // it was asked about.
 type scriptedJudge struct {
-	model   string
-	err     error
-	rulings map[string]func() (defects.Judgement, error)
-	asked   []string
+	model     string
+	err       error
+	rulings   map[string]func() (defects.Judgement, error)
+	asked     []string
+	durations []int64
 }
 
 func (j *scriptedJudge) Model(context.Context) (string, error) { return j.model, j.err }
 func (j *scriptedJudge) Rule(_ context.Context, req DefectJudgeRequest) (defects.Judgement, error) {
 	j.asked = append(j.asked, req.ClipHash)
+	j.durations = append(j.durations, req.DurationMs)
 	if r, ok := j.rulings[req.ClipHash]; ok {
 		return r()
 	}
@@ -57,11 +60,16 @@ func borderlineCatalog(t *testing.T, n int) ([]DefectClip, *defectMemStore) {
 
 func runFloor(t *testing.T, st *defectMemStore, judge DefectJudge) DefectFloorResult {
 	t.Helper()
+	return runFloorProbing(t, st, judge, nil)
+}
+
+func runFloorProbing(t *testing.T, st *defectMemStore, judge DefectJudge, probe Prober) DefectFloorResult {
+	t.Helper()
 	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
 		t.Fatal("a clip with a current measurement was decoded")
 		return defects.Readings{}, nil
 	}
-	res, err := NewDefectFloor(st, nil, measure, judge, t.TempDir(), time.Now, nil).Run(context.Background())
+	res, err := NewDefectFloor(st, probe, measure, judge, t.TempDir(), time.Now, nil).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,27 +117,78 @@ func TestDefectFloor_AnAbstentionIsAskedAgainOnlyOfAnotherModel(t *testing.T) {
 	}
 }
 
-// An outage or a spent budget leaves the clip pending and asks again next pass; a spent budget
-// stops the asking for the rest of the pass.
-func TestDefectFloor_AnOutageOrSpentBudgetLeavesTheClipPending(t *testing.T) {
-	clips, st := borderlineCatalog(t, 3)
-	outage := func() (defects.Judgement, error) { return defects.Judgement{}, errors.New("connection refused") }
-	held := func() (defects.Judgement, error) { return defects.Judgement{}, ErrDefectJudgeHeld }
-	judge := &scriptedJudge{model: "m1", rulings: map[string]func() (defects.Judgement, error){
-		clips[0].Hash: outage, clips[1].Hash: held,
-	}}
-	res := runFloor(t, st, judge)
-	if res.Held != 3 || res.Ruled != 0 || len(judge.asked) != 2 {
-		t.Fatalf("pass = %+v asked %v; want all three held and the third not asked once the budget was spent", res, judge.asked)
+// An outage or a spent budget leaves every waiting clip pending and stops the asking for the pass:
+// six timed-out calls an hour would buy nothing.
+func TestDefectFloor_AnOutageOrSpentBudgetStopsThePass(t *testing.T) {
+	for name, fail := range map[string]error{
+		"outage":       errors.New("connection refused"),
+		"spent budget": ErrDefectJudgeHeld,
+	} {
+		t.Run(name, func(t *testing.T) {
+			clips, st := borderlineCatalog(t, 3)
+			judge := &scriptedJudge{model: "m1", rulings: map[string]func() (defects.Judgement, error){
+				clips[0].Hash: func() (defects.Judgement, error) { return defects.Judgement{}, fail },
+			}}
+			if res := runFloor(t, st, judge); res.Held != 3 || res.Ruled != 0 || len(judge.asked) != 1 {
+				t.Fatalf("pass = %+v asked %v; want one ask, then all three held", res, judge.asked)
+			}
+			for _, c := range clips {
+				if got := st.records[c.Hash]; got.Verdict != defects.VerdictPending {
+					t.Fatalf("%s = %q, want pending", c.Hash, got.Verdict)
+				}
+			}
+			judge.rulings, judge.asked = nil, nil
+			if res := runFloor(t, st, judge); res.Ruled != 3 {
+				t.Fatalf("next pass = %+v, want every pending clip ruled on", res)
+			}
+		})
 	}
-	for _, c := range clips {
-		if got := st.records[c.Hash]; got.Verdict != defects.VerdictPending {
-			t.Fatalf("%s = %q, want pending", c.Hash, got.Verdict)
+}
+
+// A clip the judge keeps failing on is counted, the next clip is still asked, and next pass it
+// waits behind clips that have not failed, so it cannot take every turn.
+func TestDefectFloor_AClipTheJudgeFailsOnFallsBehind(t *testing.T) {
+	clips, st := borderlineCatalog(t, defectJudgeCalls+1)
+	poison := func() (defects.Judgement, error) {
+		return defects.Judgement{}, fmt.Errorf("%w: unreadable reply", ErrDefectJudgeClip)
+	}
+	judge := &scriptedJudge{model: "m1", rulings: map[string]func() (defects.Judgement, error){}}
+	for _, c := range clips[:defectJudgeCalls] {
+		judge.rulings[c.Hash] = poison
+	}
+	if res := runFloor(t, st, judge); len(judge.asked) != defectJudgeCalls || res.Held != defectJudgeCalls+1 {
+		t.Fatalf("pass = %+v asked %d; want every turn taken by the failing clips and all held", res, len(judge.asked))
+	}
+	if got := st.records[clips[0].Hash]; got.JudgeFailures != 1 || got.Verdict != defects.VerdictPending {
+		t.Fatalf("failing clip = %+v, want one failure counted and still pending", got)
+	}
+	last := clips[defectJudgeCalls].Hash
+	judge.asked = nil
+	runFloor(t, st, judge)
+	if len(judge.asked) == 0 || judge.asked[0] != last || st.records[last].Verdict != defects.VerdictPass {
+		t.Fatalf("next pass asked %v first, verdict %q; want the clip that never failed asked first and passed",
+			judge.asked, st.records[last].Verdict)
+	}
+}
+
+// A clip the catalog has no length for is probed; one the probe cannot read is a clip failure,
+// asked of nobody.
+func TestDefectFloor_ProbesALengthTheCatalogLacks(t *testing.T) {
+	clips, st := borderlineCatalog(t, 2)
+	st.clips[0].DurationMs, st.clips[1].DurationMs = 0, 0
+	judge := &scriptedJudge{model: "m1"}
+	probe := func(_ context.Context, file string) (Probed, error) {
+		if strings.Contains(file, clips[1].Hash) {
+			return Probed{}, errors.New("moov atom not found")
 		}
+		return Probed{DurationMs: 12_000}, nil
 	}
-	judge.rulings, judge.asked = nil, nil
-	if res := runFloor(t, st, judge); res.Ruled != 3 {
-		t.Fatalf("next pass = %+v, want every pending clip ruled on", res)
+	res := runFloorProbing(t, st, judge, probe)
+	if len(judge.asked) != 1 || judge.durations[0] != 12_000 || res.Ruled != 1 {
+		t.Fatalf("pass = %+v asked %v at %v; want only the probed clip asked, at its probed length", res, judge.asked, judge.durations)
+	}
+	if got := st.records[clips[1].Hash]; got.JudgeFailures != 1 || got.Verdict != defects.VerdictPending {
+		t.Fatalf("unreadable clip = %+v, want a clip failure, still pending", got)
 	}
 }
 
@@ -166,21 +225,20 @@ func TestDefectFloor_ARulingFollowsTheQuestionItAnswered(t *testing.T) {
 }
 
 type judgeLedger struct {
-	held     bool
-	events   []string
-	failed   bool
-	attrib   llm.Attribution
-	settleOK bool
+	held        bool
+	events      []string
+	failed      bool
+	settleAlive bool // the settle's context was still live
 }
 
-func (l *judgeLedger) ReserveDefectJudge(_ context.Context, clipHash, provider, model string, _ time.Time) (string, bool, error) {
-	l.events = append(l.events, "reserve "+provider+"/"+model)
+func (l *judgeLedger) ReserveDefectJudge(_ context.Context, _ string, e DefectJudgeEndpoint, _ time.Time) (string, bool, error) {
+	l.events = append(l.events, "reserve "+e.Name())
 	return "look-1", l.held, nil
 }
 
-func (l *judgeLedger) SettleDefectJudge(_ context.Context, id string, a llm.Attribution, failed bool, _ time.Time) error {
+func (l *judgeLedger) SettleDefectJudge(ctx context.Context, id string, _ DefectJudgeEndpoint, _ llm.Attribution, failed bool, _ time.Time) error {
 	l.events = append(l.events, "settle "+id)
-	l.attrib, l.failed, l.settleOK = a, failed, true
+	l.failed, l.settleAlive = failed, ctx.Err() == nil
 	return nil
 }
 
@@ -215,7 +273,9 @@ func TestVisionDefectJudge_ReservesAsksAndSettles(t *testing.T) {
 	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 10.5}
 	req := DefectJudgeRequest{ClipHash: "c1", File: filepath.Join("clips", "c1.mp4"), DurationMs: 30_000, Era: 1988,
 		Assessment: defects.Assess(soft, 1988)}
-	route := func() (string, string, error) { return "openrouter", "m1", nil }
+	route := func() (DefectJudgeEndpoint, error) {
+		return DefectJudgeEndpoint{Provider: "openrouter", Model: "m1"}, nil
+	}
 	frames := &judgeFrames{frames: [][]byte{{1}, {2}, {3}, {4}, {5}, {6}}}
 	provider := &judgeProvider{reply: "```json\n{\"ruling\":\"fail\",\"reason\":\"heavy smear\"}\n```"}
 	ledger := &judgeLedger{}
@@ -225,7 +285,7 @@ func TestVisionDefectJudge_ReservesAsksAndSettles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.Ruling != defects.RulingFail || j.Reason != "heavy smear" || j.Model != "m1" || j.Version != defects.JudgeVersion {
+	if j.Ruling != defects.RulingFail || j.Reason != "heavy smear" || j.Model != "openrouter/m1" || j.Version != defects.JudgeVersion {
 		t.Fatalf("judgement = %+v, want the model's fail", j)
 	}
 	if frames.file != req.File || frames.span != [2]int64{0, 30_000} || frames.n != defects.JudgeStills || provider.images != 6 {
@@ -245,18 +305,41 @@ func TestVisionDefectJudge_ReservesAsksAndSettles(t *testing.T) {
 		t.Fatalf("held = %v, asked %v; want ErrDefectJudgeHeld and no call", err, provider.prompt != "")
 	}
 
-	// A failed call is settled as failed, so its reservation is released, and reported.
+	// A garbled reply is the clip's failure, not an abstention: it is worth asking again.
+	garbled := &judgeLedger{}
+	provider.reply = "I think it looks fine overall"
+	if _, err := NewVisionDefectJudge(provider, frames, garbled, route, time.Now, nil).Rule(context.Background(), req); !errors.Is(err, ErrDefectJudgeClip) {
+		t.Fatalf("garbled reply = %v, want a clip failure", err)
+	}
+
+	// A failed call is settled as failed and reported, even when the pass is being cancelled.
 	failing := &judgeLedger{}
 	provider.err = errors.New("502")
-	if _, err := NewVisionDefectJudge(provider, frames, failing, route, time.Now, nil).Rule(context.Background(), req); err == nil || !failing.failed {
-		t.Fatalf("failed call = %v settled-failed %v, want the error and a failed settlement", err, failing.failed)
+	ctx, cancel := context.WithCancel(context.Background())
+	failingProvider := &cancellingProvider{judgeProvider: provider, cancel: cancel}
+	if _, err := NewVisionDefectJudge(failingProvider, frames, failing, route, time.Now, nil).Rule(ctx, req); err == nil ||
+		!failing.failed || !failing.settleAlive {
+		t.Fatalf("failed call = %v settled-failed %v settle-alive %v, want the error and a failed settlement made outside the cancelled pass",
+			err, failing.failed, failing.settleAlive)
 	}
 
 	// No model configured: nothing decoded, nothing reserved.
 	none := &judgeLedger{}
 	frames.n = 0
-	if _, err := NewVisionDefectJudge(provider, frames, none, func() (string, string, error) { return "", "", ErrNoDefectJudge }, time.Now, nil).
+	noJudge := func() (DefectJudgeEndpoint, error) { return DefectJudgeEndpoint{}, ErrNoDefectJudge }
+	if _, err := NewVisionDefectJudge(provider, frames, none, noJudge, time.Now, nil).
 		Rule(context.Background(), req); !errors.Is(err, ErrNoDefectJudge) || frames.n != 0 || len(none.events) != 0 {
 		t.Fatalf("no judge = %v, decoded %v, ledger %v", err, frames.n != 0, none.events)
 	}
+}
+
+// cancellingProvider cancels the pass while the call is in flight, as a shutdown would.
+type cancellingProvider struct {
+	*judgeProvider
+	cancel context.CancelFunc
+}
+
+func (p *cancellingProvider) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (llm.Response, error) {
+	p.cancel()
+	return p.judgeProvider.AskAboutImages(ctx, prompt, jpegs)
 }

@@ -18,6 +18,8 @@ type ClipDefectRecord struct {
 	Assessment defects.Assessment
 	// Judgement is the vision judge's ruling on a borderline assessment; nil until one is had.
 	Judgement *defects.Judgement
+	// JudgeFailures counts asks that brought back no ruling since the last one.
+	JudgeFailures int
 	// Verdict is the final standing: the assessment, with a borderline one settled by the judge.
 	Verdict       defects.Verdict
 	VerdictReason string
@@ -47,15 +49,16 @@ func (s *sqlStore) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) er
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO filler_clip_defects (clip_hash, measurement_version, floor_version, era, outcome,
-		   readings_json, assessment_json, judgement_json, verdict, verdict_reason, measured_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   readings_json, assessment_json, judgement_json, judge_failures, verdict, verdict_reason, measured_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(clip_hash) DO UPDATE SET measurement_version = excluded.measurement_version,
 		   floor_version = excluded.floor_version, era = excluded.era, outcome = excluded.outcome,
 		   readings_json = excluded.readings_json, assessment_json = excluded.assessment_json,
-		   judgement_json = excluded.judgement_json, verdict = excluded.verdict,
-		   verdict_reason = excluded.verdict_reason, measured_at = excluded.measured_at`),
+		   judgement_json = excluded.judgement_json, judge_failures = excluded.judge_failures,
+		   verdict = excluded.verdict, verdict_reason = excluded.verdict_reason, measured_at = excluded.measured_at`),
 		r.ClipHash, r.Readings.Version, r.Assessment.Version, r.Era, string(r.Assessment.Outcome),
-		string(readings), string(assessment), judgement, string(r.Verdict), r.VerdictReason, epoch(r.MeasuredAt))
+		string(readings), string(assessment), judgement, r.JudgeFailures, string(r.Verdict), r.VerdictReason,
+		epoch(r.MeasuredAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip defects %s: %w", r.ClipHash, err)
 	}
@@ -70,8 +73,8 @@ var ErrCorruptClipDefects = errors.New("corrupt clip defect records")
 // ErrCorruptClipDefects, so it is measured again rather than read as a verdict.
 func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT clip_hash, era, readings_json, assessment_json, judgement_json, verdict, verdict_reason,
-		   measured_at FROM filler_clip_defects`)
+		`SELECT clip_hash, era, readings_json, assessment_json, judgement_json, judge_failures, verdict,
+		   verdict_reason, measured_at FROM filler_clip_defects`)
 	if err != nil {
 		return nil, fmt.Errorf("list clip defects: %w", err)
 	}
@@ -82,7 +85,7 @@ func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRe
 		var r ClipDefectRecord
 		var readings, assessment, judgement, verdict string
 		var measuredAt int64
-		if err := rows.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &judgement, &verdict,
+		if err := rows.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &judgement, &r.JudgeFailures, &verdict,
 			&r.VerdictReason, &measuredAt); err != nil {
 			return nil, fmt.Errorf("scan clip defects: %w", err)
 		}
