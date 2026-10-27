@@ -276,6 +276,28 @@ An enabled source is checked on its effective policy and new items download with
   never download automatically. Reset clears both overrides. Filler → Manage presents the global
   policy as **Automatic downloads** (Never, 6 h, 12 h, daily, weekly, custom) and states the
   consequence ("3 sources means at most 30 new clips per check").
+- **Fetching works toward a pool target and stops when it is met** (#2035). The target is
+  per decade window a channel's era uses: enough commercials for the household's longest viewing
+  evening with no repeat.
+  - An evening is a run of watched airings (rotation's history, #2017) with no silence over two
+    hours, across every channel, since an ad rests household-wide. Each decade takes the most
+    airings any evening of the last eight weeks drew from it. An airing on a channel spanning
+    several decades is shared between them, and the channel needs each decade it draws from.
+  - No channel takes fewer than the rotation-spacing minimum: the household's
+    `filler.cooldown_seconds` at about 13 ads an hour, 54 at the default 4 h. A per-channel
+    `commercialSpacing` does not raise it.
+  - Until the household has four weeks of history, every decade takes a default six-hour
+    evening, about 80 ads. After that, a decade nobody watched adds nothing of its own.
+  - A channel is short while its **exact** rung holds fewer clips than its target. Its era then
+    steers the pass, which takes no more than the largest channel shortfall, while still listing
+    as far as an uncapped pass. When no channel is short and no role is missing, an unattended
+    pass asks no source, reports `stoppedBy: target`, and reads the target again after 15
+    minutes. **Look for new clips** is not held to the target.
+  - Clips queued but not yet through the pipeline do not count toward the target. A pass
+    six hours later can queue the same shortfall again, so a slow pipeline can overshoot by up
+    to one pass.
+  - To serve this, airings are kept whole for eight weeks (`clipcatalog.AiringHistoryAge`), not
+    one day; beyond that a clip keeps its newest four.
 
 Unattended fetching can fill a disk, so it is bounded by limits that fail toward doing less:
 

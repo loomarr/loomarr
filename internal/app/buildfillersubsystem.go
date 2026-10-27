@@ -314,12 +314,23 @@ func buildFillerSubsystem(
 			Compilations:      compilationGate(set),
 		}, log,
 	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
-		// The same per-channel coverage readiness and the pool strip report (#749).
+		// The same per-channel coverage readiness and the pool strip report (#749), against a
+		// target sized from the household's watched evenings (#2035).
 		pool, err := result.preview.Pool(ctx)
 		if err != nil {
 			return filler.CoverageGaps{}, err
 		}
-		return filler.CoverageGapsFrom(pool), nil
+		airings, err := st.FillerAirings(ctx)
+		if err != nil {
+			return filler.CoverageGaps{}, err
+		}
+		windows := make(map[string][]filler.EraRange, len(pool.Channels))
+		for _, ch := range pool.Channels {
+			windows[ch.ChannelID] = ch.Report.EraWindows
+		}
+		now := time.Now()
+		spacing := time.Duration(set.intv("filler.cooldown_seconds")) * time.Second
+		return filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year()), nil
 	})
 	adapter.autoFetch = autoFetch
 	result.service = adapter

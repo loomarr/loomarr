@@ -118,9 +118,10 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if report.Bookends != tc.bookends || len(filler.CoverageGapsFrom(report).Roles) != tc.roleGapTo {
+		roles := filler.CoverageGapsFrom(report, filler.PoolTargets{}, 2026).Roles
+		if report.Bookends != tc.bookends || len(roles) != tc.roleGapTo {
 			t.Fatalf("bookends = %d, role gaps = %v; want %d and %d roles", report.Bookends,
-				filler.CoverageGapsFrom(report).Roles, tc.bookends, tc.roleGapTo)
+				roles, tc.bookends, tc.roleGapTo)
 		}
 	}
 }
