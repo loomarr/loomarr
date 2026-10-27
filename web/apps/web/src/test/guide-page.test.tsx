@@ -15,7 +15,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { setting } from "@/test/fixtures/settings";
@@ -136,8 +136,18 @@ const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
   return { enqueued };
 };
 
+// The Guide prefetches neighbouring windows, so a test can end with requests still in flight.
+// Such a request would reach the NEXT test's handlers and be recorded there (the slow-window
+// stub would take it for its own "first" window and gate the real one), so every test drains
+// its clients before it ends.
+const clients: QueryClient[] = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+});
+
 const renderAt = (path: string) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(queryClient);
   const router = createRouter({
     routeTree,
     context: { queryClient },

@@ -5,7 +5,7 @@ import {
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -80,6 +80,9 @@ const policy = (over: Partial<ChannelPolicy> = {}): ChannelPolicy => ({
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => {
+  // Unmount BEFORE flushing timers: a hook a synchronous test left mounted would otherwise fire
+  // its debounced preview here, and that request would land in the NEXT test's handlers.
+  cleanup();
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
