@@ -8,6 +8,7 @@ import {
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
   getFillerDecisionOverviewMockHandler,
+  getFillerDefectReportMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
@@ -246,6 +247,17 @@ const appHandlers = (): RequestHandler[] => [
   }),
   getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
   getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
+  // The defect floor's report (#2034), read by the Manage hub's Quality row: nothing measured yet.
+  getFillerDefectReportMockHandler({
+    floorVersion: "floor-v3-provisional",
+    clips: 0,
+    unmeasured: 0,
+    labelled: 0,
+    verdicts: { pass: 0, fail: 0, undecided: 0, pending: 0 },
+    scores: [],
+    total: 0,
+    rows: [],
+  }),
   // The Channel info page's On-screen logo section. Options are the backend's holiday/era list; the
   // preview is a picture, not JSON, so it has no generated handler — an empty PNG that the header
   // calls undrawable keeps the section on its "nothing to draw" state.

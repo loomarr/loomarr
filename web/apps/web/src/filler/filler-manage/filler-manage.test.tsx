@@ -1,6 +1,7 @@
 import {
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
+  getFillerDefectReportMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getMeMockHandler,
@@ -11,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { readiness } from "@/test/fixtures/filler";
+import { defectReport, readiness } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -40,6 +41,7 @@ describe("FillerManage", () => {
         sourcesTotal: 1,
       }),
       getFillerReadinessMockHandler(readiness()),
+      getFillerDefectReportMockHandler(defectReport()),
     );
   });
 
@@ -94,12 +96,20 @@ describe("FillerManage", () => {
         sourcesTotal: 2,
       }),
       getFillerReadinessMockHandler(readiness({ pool: { ...readiness().pool, untagged: 5 } })),
+      getFillerDefectReportMockHandler(
+        defectReport({ verdicts: { pass: 30, fail: 7, undecided: 0, pending: 3 }, total: 12 }),
+      ),
     );
     render(<FillerManage />, { wrapper });
 
     const tools = await screen.findByRole("region", { name: "Filler tools" });
     expect(await within(tools).findByText("1 of 2 on")).toBeInTheDocument();
     expect(await within(tools).findByText("3 clips need a choice")).toBeInTheDocument();
+    expect(await within(tools).findByText("7 would be retired · 12 clips to label")).toBeInTheDocument();
+    expect(within(tools).getByRole("link", { name: "Open Quality" })).toHaveAttribute(
+      "href",
+      "/filler/quality",
+    );
     expect(
       within(tools).getByText("Product, format, season and audience · 5 clips not tagged yet"),
     ).toBeInTheDocument();
@@ -135,6 +145,7 @@ describe("FillerManage", () => {
     expect(await within(tools).findByText("Tags")).toBeInTheDocument();
     expect(within(tools).getByText("Settings")).toBeInTheDocument();
     expect(within(tools).queryByText("Sources")).not.toBeInTheDocument();
+    expect(within(tools).queryByText("Quality")).not.toBeInTheDocument();
     expect(within(tools).queryByText("Incoming")).not.toBeInTheDocument();
     expect(within(tools).queryByText("Problems")).not.toBeInTheDocument();
     expect(within(tools).queryByRole("link", { name: "Open Settings" })).not.toBeInTheDocument();

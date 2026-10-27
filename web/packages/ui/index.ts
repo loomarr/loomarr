@@ -19,8 +19,8 @@ export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
 export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";
 export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
-export type { ClipSelectProps } from "./src/filler";
-export { ClipSelect, NeedsDetailsChip } from "./src/filler";
+export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
+export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export type {
   GuideArtworkRenderer,
