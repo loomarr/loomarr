@@ -494,6 +494,10 @@ type ClipStore interface {
 	LinkClipVariants(ctx context.Context, a, b string) error
 	ListClipVariants(ctx context.Context) (map[string][]string, error)
 	InferiorCopyHashes(ctx context.Context) (map[string]bool, error)
+	// UpsertClipDefects/ListClipDefects own the defect floor's per-clip record (#2034): the latest
+	// measurement and its verdict. Corrupt rows are omitted with an error so they are measured again.
+	UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error
+	ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error)
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error

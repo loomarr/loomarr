@@ -384,6 +384,8 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 		// Fingerprints describe the OLD bytes. Never re-key derived evidence onto the new content
 		// identity; the first de-dup pass that sees the replacement computes it again.
 		{`DELETE FROM filler_clip_fingerprints WHERE clip_hash = ?`, []any{oldHash}},
+		// So does the defect record (#2034): the new bytes are measured on the next pass.
+		{`DELETE FROM filler_clip_defects WHERE clip_hash = ?`, []any{oldHash}},
 		{`UPDATE clip_tags SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE filler_clip_pipeline SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
 		{`UPDATE filler_split_proposals SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
@@ -1167,7 +1169,7 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
 	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
 	// branches below and cannot disagree with whichever DELETE ran.
-	defer func() { _ = s.pruneOrphanClipFingerprints(ctx) }()
+	defer func() { _ = s.pruneOrphanClipFingerprints(ctx); _ = s.pruneOrphanClipDefects(ctx) }()
 
 	// The pipeline rows and split proposals, the no-foreign-key siblings of `clips`, are the filler
 	// store's: its DeleteClipsNotIn runs this one and then prunes them (internal/fillerstore).
