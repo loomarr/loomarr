@@ -128,7 +128,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
-	chDomain.WindowZone = e.windowZoneFor()
+	chDomain = chDomain.WithCalendar(e.Calendar())
 	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
@@ -167,7 +167,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	return CycleResult{
 		At:     at,
 		Slots:  desired.Slots,
-		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at),
+		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at, e.Calendar()),
 		Window: schedule.ResolveWindow(chDomain, ch.Policy, at),
 		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
 		// a caller: reconcile computes the identical report and discards it, so a title refused

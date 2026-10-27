@@ -231,7 +231,8 @@ red/amber/cyan, the 1990s cyan/pink/green, and every other decade, or no bounded
 **Holiday versions.** While a calendar holiday is on, a generated logo carries a small picture to
 its left: Halloween a pumpkin, bat or ghost; Thanksgiving a leaf; Christmas holly or a snowflake;
 New Year a firework; Valentine's Day a heart (`policy.watermark.motifs` picks where there is a
-choice; the first is the default). While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
+choice; the first is the default). The other calendar holidays (Easter, Mother's Day and the
+rest, see #2030) have no holiday version yet: the logo airs plain through them. While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
 a fixed colour gives way too. `policy.watermark.holiday` false turns it off; omitted is on, except that
 a channel whose seasonal mode is off (Ignore holidays) never shows one and a channel limited to some
 holidays shows only those. An uploaded image airs unchanged (no holiday version). The holiday comes
@@ -244,8 +245,9 @@ at the same local instant as the programming: on a US/Eastern channel 9 pm on Oc
 Halloween. The section's holiday rows (`HonouredHolidays`) use the same zone.
 
 **The channel page's On-screen logo section.** It reads two endpoints and holds no copy of the
-calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours (empty
-when its seasonal mode is Ignore holidays; only the chosen ones when limited), each with its date
+calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours that
+have a holiday version, soonest first (empty when its seasonal mode is Ignore holidays; only the
+chosen ones when limited), each with its date
 window, whether it is in effect today, and its pictures (the first is the default), plus the era label
 and the auto name the logo would carry. The section draws one bordered row per holiday from that list:
 its name, dates and an "In effect now" badge, then its picture chips (a small picture and its name; a

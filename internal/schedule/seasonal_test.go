@@ -1,11 +1,13 @@
 package schedule_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
 )
 
 // Frozen clocks for seasonality assertions (§6): the container wall-clock drives
@@ -93,6 +95,47 @@ func TestSeasonal_Exclusive(t *testing.T) {
 	jul := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14)
 	if len(programKeys(jul)) != 0 {
 		t.Errorf("exclusive+dark out of window should go dark: got %v", programKeys(jul))
+	}
+}
+
+// An exclusive channel is in season only while a holiday it has something for is on (#2030). With
+// every holiday chosen, back-to-school is on in August; a Halloween channel has nothing for it, so
+// it runs its off-season fallback instead of emptying, and October still keeps only Halloween.
+func TestSeasonal_ExclusiveIsInSeasonOnlyForHolidaysItHasContentFor(t *testing.T) {
+	series := provision.Key("series:tmdb:90000003")
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:90000001", "Halloween Night", "", 1994),
+		ratedEntry("movie:tmdb:90000002", "Summer Blockbuster", "", 1994),
+		{Key: series, Title: "A regular series"},
+	}
+	avail := libraryfixture.Availability{
+		Movies: map[provision.Key]schedule.ResolvedProgram{
+			"movie:tmdb:90000001": {LibraryItemID: "l1", DurationMs: 60000},
+			"movie:tmdb:90000002": {LibraryItemID: "l2", DurationMs: 60000},
+		},
+		Series: map[provision.Key]schedule.EpisodeResolution{series: {Programs: []schedule.ResolvedProgram{
+			{LibraryItemID: "ordinary", Title: "An ordinary Tuesday", Season: 1, Episode: 1, DurationMs: 60000},
+			{LibraryItemID: "spooky", Title: "A Halloween party", Season: 1, Episode: 2, DurationMs: 60000},
+		}}},
+	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, OffSeason: schedule.OffSeasonLoop,
+	}}}
+	ids := func(d schedule.DesiredLineup) (out []string) {
+		for _, s := range d.Slots {
+			if s.IsProgram() {
+				out = append(out, s.LibraryItemID)
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	aug20 := time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC)
+	if got, want := ids(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, aug20)), []string{"l1", "l2", "ordinary", "spooky"}; !slices.Equal(got, want) {
+		t.Errorf("back-to-school with nothing for it = %v, want the off-season loop %v", got, want)
+	}
+	if got, want := ids(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, oct15)), []string{"l1", "spooky"}; !slices.Equal(got, want) {
+		t.Errorf("Halloween = %v, want only Halloween's %v", got, want)
 	}
 }
 

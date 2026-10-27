@@ -278,10 +278,11 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 	airings := make([]channelAirings, len(channels))
 	sem := make(chan struct{}, guideConcurrency)
 	var wg sync.WaitGroup
+	cal := s.holidayCalendar()
 	for i, ch := range channels {
 		airings[i].channelID = ch.ID
 		airings[i].shuffledAt = func(at time.Time) bool {
-			return !schedule.OrderingAt(ch.Policy, ch.Strategy, at).AirsInOrder()
+			return !schedule.OrderingAt(ch.Policy, ch.Strategy, at, cal).AirsInOrder()
 		}
 		wg.Add(1)
 		go func(i int, id string) {

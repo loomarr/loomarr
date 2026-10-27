@@ -769,7 +769,7 @@ func declared() []Setting {
 		{
 			Key: "filler.home_country", Label: "Country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalCountryCode,
-			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources.",
+			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty, or a country Loomarr has no holidays for yet, keeps the US calendar.",
 		},
 		{
 			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,

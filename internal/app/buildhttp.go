@@ -66,7 +66,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		}}
 		proposalOutlook = proposaloutlook.New(proposaloutlook.Config{
 			Titles: st, Library: deps.foundation.libraryClient, Episodes: episodeResolver(deps.foundation.libraryClient),
-			Planner: chBinder, Preview: preview, Additions: additionResolver,
+			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}
 	suggestSvc, proposalWorkflow := deps.suggestions.suggest, deps.suggestions.workflow

@@ -205,6 +205,7 @@ type holidayPlanner struct {
 	f           holidayFeature
 	window      time.Duration
 	loc         *time.Location
+	cal         Calendar // the holidays the channel keeps; loc is its zone, defaulted
 	breakFactor float64
 	meanMs      float64 // mean programme runtime in the deck, the base of the day cap
 	raw         map[int64]*dayPlan
@@ -220,12 +221,13 @@ type holidayPlanner struct {
 
 // newHolidayPlanner prepares the pass. breakFactor stretches programme runtime by the channel's
 // break density so the estimated start times land where the guide will show them.
-func newHolidayPlanner(ring *dealtRing, f holidayFeature, window time.Duration, zone *time.Location, breakFactor float64) *holidayPlanner {
+func newHolidayPlanner(ring *dealtRing, f holidayFeature, window time.Duration, cal Calendar, breakFactor float64) *holidayPlanner {
+	zone := cal.Zone
 	if zone == nil {
 		zone = time.UTC
 	}
 	deck := ring.d.deck(0)
-	p := &holidayPlanner{deck: deck, ring: ring, f: f, window: window, loc: zone, breakFactor: breakFactor,
+	p := &holidayPlanner{deck: deck, ring: ring, f: f, window: window, loc: zone, cal: cal, breakFactor: breakFactor,
 		raw: map[int64]*dayPlan{}, plans: map[int64]*dayPlan{}, base: map[int64][]Slot{}, full: map[int64][]Slot{}, dealtAt: map[int64]windowAirings{},
 		tiles: map[int64][]Slot{}, farAt: map[int64]bool{}, lastAt: map[int64]int64{}, handOffs: map[int64]map[int64][]Slot{}}
 	var n int
@@ -269,7 +271,7 @@ func (p *holidayPlanner) rawDay(date time.Time) *dayPlan {
 	}
 	r := &dayPlan{start: time.Date(y, m, d, 0, 0, 0, 0, p.loc), end: time.Date(y, m, d+1, 0, 0, 0, 0, p.loc)}
 	active := map[string]bool{}
-	for _, h := range builtinCalendar {
+	for _, h := range p.cal.holidays() {
 		if p.f.selected(h.id) && holidayActive(h, time.Date(y, m, d, 12, 0, 0, 0, time.UTC)) {
 			active[h.id] = true
 			if hd := h.day(y); hd.Month() == m && hd.Day() == d {
@@ -1880,7 +1882,7 @@ func (p *holidayPlanner) summary(now time.Time) []HolidayEpisodes {
 	today := civilNoon(now, p.loc)
 	dayCap := p.dayCap(24 * time.Hour)
 	var out []HolidayEpisodes
-	for _, w := range UpcomingHolidays(today, 366*24*time.Hour) {
+	for _, w := range UpcomingHolidays(today, 366*24*time.Hour, p.cal) {
 		if !p.f.selected(w.ID) {
 			continue
 		}

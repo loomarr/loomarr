@@ -36,6 +36,8 @@ func (c *countingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.D
 	return c.window, nil
 }
 
+func (c *countingCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (c *countingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil
 }

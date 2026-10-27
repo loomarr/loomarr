@@ -91,7 +91,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := deriveIntentPolicy(test.intent); !reflect.DeepEqual(got, test.want) {
+			if got := deriveIntentPolicy(test.intent, shipped); !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("deriveIntentPolicy() = %#v, want %#v", got, test.want)
 			}
 		})

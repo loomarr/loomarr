@@ -155,7 +155,9 @@ func buildHandler(
 	jobReg, activityRec := foundation.jobs, foundation.activity
 	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
 	// service a custom upload is read from is bound once the suggestions build makes it.
-	watermarks := newChannelWatermarks(rootCtx, st, set, foundation.diagnostics, log)
+	// One household calendar (#2030): the channel engine and the on-screen logo date holidays alike.
+	calendar := householdCalendar(set, foundation.holidays, log)
+	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
 	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
@@ -163,7 +165,7 @@ func buildHandler(
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks,
+		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -173,13 +175,13 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, log)
+	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
-		foundation.metrics,
+		foundation.metrics, foundation.holidays,
 	)
 	if err != nil {
 		return nil, nil, nil, err

@@ -76,8 +76,10 @@ type Input struct {
 	Library   []Item
 	OnChannel map[provision.Key]bool
 	Holidays  []Holiday
-	Hidden    map[string]bool
-	Now       time.Time
+	// Vocabulary judges which titles fit a holiday in Holidays.
+	Vocabulary holidayvocab.Vocabulary
+	Hidden     map[string]bool
+	Now        time.Time
 }
 
 const (
@@ -94,7 +96,7 @@ const (
 func Build(in Input) []Idea {
 	var out []Idea
 	for _, h := range in.Holidays {
-		out = append(out, holidayIdea(h, in.Library))
+		out = append(out, holidayIdea(h, in.Library, in.Vocabulary))
 	}
 	out = append(out, facetIdeas(FacetGenre, in, func(it Item) []string { return it.Genres })...)
 	out = append(out, facetIdeas(FacetDecade, in, decadeOf)...)
@@ -125,10 +127,10 @@ func Build(in Input) []Idea {
 // mood with the genres to back the word up. A genre alone never counts (a horror film is not about
 // Halloween), and neither does a bare mood word (Ghost World is a comedy). Titles already on a
 // channel are kept, since a seasonal channel is its own lineup.
-func holidayIdea(h Holiday, library []Item) Idea {
+func holidayIdea(h Holiday, library []Item, vocab holidayvocab.Vocabulary) Idea {
 	var matched []Item
 	for _, it := range library {
-		if holidayvocab.Judge(h.ID, holidayvocab.Evidence{Title: it.Name, Genres: it.Genres}).Fits() {
+		if vocab.Judge(h.ID, holidayvocab.Evidence{Title: it.Name, Genres: it.Genres}).Fits() {
 			matched = append(matched, it)
 		}
 	}

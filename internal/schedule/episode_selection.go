@@ -25,12 +25,12 @@ const (
 	minHighlightUnits = 8
 )
 
-func selectEpisodes(episodes []ResolvedProgram, policy EpisodeSelection) []ResolvedProgram {
+func selectEpisodes(episodes []ResolvedProgram, policy EpisodeSelection, v holidayvocab.Vocabulary) []ResolvedProgram {
 	switch policy.Mode {
 	case EpisodeHighlights:
 		return selectHighlights(episodes)
 	case EpisodeHoliday:
-		return selectHolidayEpisodes(episodes, policy.Holidays)
+		return selectHolidayEpisodes(episodes, policy.Holidays, v)
 	default:
 		return episodes
 	}
@@ -39,7 +39,7 @@ func selectEpisodes(episodes []ResolvedProgram, policy EpisodeSelection) []Resol
 // selectEpisodesWithTrace applies the same selector and records each keep/drop at the
 // editorial seam. A selector that deliberately falls back to the full run says so instead of
 // claiming every episode positively matched highlights or a holiday.
-func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, trace *scheduleTraceBuilder) []ResolvedProgram {
+func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, v holidayvocab.Vocabulary, trace *scheduleTraceBuilder) []ResolvedProgram {
 	if editorialUnavailable {
 		if entry.EpisodeSelection.Mode == EpisodeHoliday {
 			for _, episode := range episodes {
@@ -52,7 +52,7 @@ func selectEpisodesWithTrace(entry LineupEntry, episodes []ResolvedProgram, edit
 		}
 		return episodes
 	}
-	selected := selectEpisodes(episodes, entry.EpisodeSelection)
+	selected := selectEpisodes(episodes, entry.EpisodeSelection, v)
 	mode := entry.EpisodeSelection.Mode
 	if mode == "" || mode == EpisodeComplete {
 		for _, episode := range selected {
@@ -187,21 +187,21 @@ func validCommunityRating(rating float64) bool {
 	return rating > 0 && rating <= 10
 }
 
-func selectHolidayEpisodes(episodes []ResolvedProgram, holidayIDs []string) []ResolvedProgram {
+func selectHolidayEpisodes(episodes []ResolvedProgram, holidayIDs []string, v holidayvocab.Vocabulary) []ResolvedProgram {
 	selectedHolidays := make(map[string]bool, len(holidayIDs))
 	for _, id := range holidayIDs {
 		selectedHolidays[strings.ToLower(id)] = true
 	}
-	return matchingHolidayEpisodes(episodes, selectedHolidays)
+	return matchingHolidayEpisodes(episodes, selectedHolidays, v)
 }
 
 // matchingHolidayEpisodes preserves complete multipart units with supported
 // holiday evidence. Absence of a match is empty.
-func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[string]bool) []ResolvedProgram {
+func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[string]bool, v holidayvocab.Vocabulary) []ResolvedProgram {
 	groups := make(map[string]bool)
 	selected := make(map[int]bool)
 	for i, episode := range episodes {
-		if episodeMatchesHoliday(episode, selectedHolidays) {
+		if episodeMatchesHoliday(episode, selectedHolidays, v) {
 			selected[i] = true
 			if episode.PartGroup != "" {
 				groups[episode.PartGroup] = true
@@ -217,8 +217,8 @@ func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[st
 	return out
 }
 
-func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bool {
-	for _, id := range episodeHolidays(episode) {
+func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool, v holidayvocab.Vocabulary) bool {
+	for _, id := range episodeHolidays(episode, v) {
 		if len(selected) == 0 || selected[id] {
 			return true
 		}
@@ -229,12 +229,12 @@ func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bo
 // episodeHolidays lists the built-in holidays the §6 judgment says an episode fits (about or
 // adjacent). It is the one episode matcher: Exclusive mode filters on it and the auto-mode
 // holiday-episode feature (seasonal_boost.go) rotates on it.
-func episodeHolidays(episode ResolvedProgram) []string {
+func episodeHolidays(episode ResolvedProgram, v holidayvocab.Vocabulary) []string {
 	evidence := episodeEvidence(episode)
 	var ids []string
-	for _, holiday := range builtinCalendar {
-		if holidayvocab.Judge(holiday.id, evidence).Fits() {
-			ids = append(ids, holiday.id)
+	for _, holiday := range v.Definitions() {
+		if v.Judge(holiday.ID, evidence).Fits() {
+			ids = append(ids, holiday.ID)
 		}
 	}
 	return ids

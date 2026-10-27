@@ -844,6 +844,17 @@ type ChannelService interface {
 	// "now"; horizon ≤ 0 is the channel's schedule window. Read-only.
 	ScheduleDiffDraft(ctx context.Context, channelID string, from time.Time, horizon time.Duration,
 		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.ScheduleDiff, error)
+	// Calendar is the household's holiday calendar the engine arranges with (#2030), so an API
+	// read of "which holiday is on" agrees with what airs.
+	Calendar() schedule.Calendar
+}
+
+// holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
+func (s *Server) holidayCalendar() schedule.Calendar {
+	if s.channels == nil {
+		return schedule.Calendar{}
+	}
+	return s.channels.Calendar()
 }
 
 // LiveTVService backs the Live TV setup status check (§6/§7). Mutating repair belongs to

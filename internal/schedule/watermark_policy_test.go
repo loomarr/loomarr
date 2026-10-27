@@ -74,11 +74,11 @@ func TestWatermarkHoliday(t *testing.T) {
 		{"New Year straddles the year", nil, SeasonalPolicy{}, time.Date(2027, time.January, 1, 12, 0, 0, 0, time.UTC), "newyear", "firework"},
 	} {
 		r := ResolveWatermark(c.p, install)
-		h, m := WatermarkHoliday(c.p, r, c.seasonal, c.at, nil)
+		h, m := WatermarkHoliday(c.p, r, c.seasonal, c.at, Calendar{})
 		if h != c.wantHoliday || m != c.motif {
 			t.Errorf("%s: %q %q, want %q %q", c.name, h, m, c.wantHoliday, c.motif)
 		}
-		if c.wantHoliday != "" && h != ActiveHolidayAt(c.at, c.seasonal, nil) {
+		if c.wantHoliday != "" && h != ActiveHolidayAt(c.at, c.seasonal, Calendar{}) {
 			t.Errorf("%s: the logo's holiday disagrees with the scheduler's", c.name)
 		}
 	}
@@ -129,16 +129,26 @@ func TestHonouredHolidays(t *testing.T) {
 		}
 		return out
 	}
-	got := ids(HonouredHolidays(day(time.March, 1), SeasonalPolicy{}, nil))
-	want := []string{"halloween 2026-10-01..2026-10-31", "thanksgiving 2026-11-15..2026-11-30",
-		"christmas 2026-12-01..2026-12-26", "newyear 2026-12-27..2027-01-02", "valentines 2027-02-01..2027-02-14"}
+	got := ids(HonouredHolidays(day(time.March, 1), SeasonalPolicy{}, Calendar{}))
+	want := []string{"st-patricks 2026-03-10..2026-03-17", "easter 2026-03-24..2026-04-06",
+		"mothers-day 2026-04-27..2026-05-10", "memorial-day 2026-05-19..2026-05-25",
+		"fathers-day 2026-06-08..2026-06-21", "independence-day 2026-06-27..2026-07-04",
+		"back-to-school 2026-08-01..2026-09-15", "halloween 2026-10-01..2026-10-31",
+		"thanksgiving 2026-11-15..2026-11-30", "christmas 2026-12-01..2026-12-26",
+		"newyear 2026-12-27..2027-01-02", "valentines 2027-02-01..2027-02-14"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("all, Mar 1 = %v, want %v", got, want)
 	}
-	if got := ids(HonouredHolidays(day(time.January, 1), SeasonalPolicy{Holidays: []string{"NewYear"}}, nil)); !slices.Equal(got, []string{"newyear 2025-12-27..2026-01-02"}) {
+	// Britain keeps Mothering Sunday three weeks before Easter and Bonfire Night, not the Fourth.
+	gb := ids(HonouredHolidays(day(time.March, 1), SeasonalPolicy{Holidays: []string{"mothers-day", "bonfire-night", "independence-day"}},
+		Calendar{Country: "GB"}))
+	if want := []string{"mothers-day 2026-03-02..2026-03-15", "bonfire-night 2026-10-29..2026-11-05"}; !slices.Equal(gb, want) {
+		t.Fatalf("GB subset, Mar 1 = %v, want %v", gb, want)
+	}
+	if got := ids(HonouredHolidays(day(time.January, 1), SeasonalPolicy{Holidays: []string{"NewYear"}}, Calendar{})); !slices.Equal(got, []string{"newyear 2025-12-27..2026-01-02"}) {
 		t.Fatalf("subset, Jan 1 = %v, want the window on now", got)
 	}
-	if got := HonouredHolidays(day(time.October, 13), SeasonalPolicy{Mode: SeasonalOff}, nil); got != nil {
+	if got := HonouredHolidays(day(time.October, 13), SeasonalPolicy{Mode: SeasonalOff}, Calendar{}); got != nil {
 		t.Fatalf("ignore holidays = %v, want none", got)
 	}
 }

@@ -101,13 +101,17 @@ func TestSeasonalExclusiveKeepsSupportedMultipartUnit(t *testing.T) {
 	}
 }
 
+// A holiday series title is not evidence its episodes fit: with no fitting episode the channel has
+// nothing for Christmas, so even in December it is out of season (#2030), here dark, and says so.
 func TestSeasonalExclusiveHolidaySeriesTitleIsNotEpisodeEvidence(t *testing.T) {
 	key := provision.Key("series:tmdb:90000456")
 	entries := []schedule.LineupEntry{{Key: key, Title: "Christmas stories", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
 	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{
 		{LibraryItemID: "ordinary", Title: "An ordinary Tuesday", Season: 1, Episode: 1, DurationMs: 60000},
 	}}}}
-	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}}}}
+	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}, OffSeason: schedule.OffSeasonDark,
+	}}}
 	d := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, policy, dec20)
 	if len(d.Slots) != 0 || d.PendingCount() != 0 {
 		t.Fatalf("unknown holiday membership became playable/pending: %+v", d)

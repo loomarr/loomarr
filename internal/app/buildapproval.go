@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
@@ -28,6 +29,7 @@ func buildApproval(
 	channelNumbers binder.NumberSource,
 	notifier suggest.ProposalNotifier,
 	libraryClient *library.Client,
+	holidays holidayvocab.Source,
 	log *slog.Logger,
 ) approvalBuild {
 	if st == nil {
@@ -51,7 +53,8 @@ func buildApproval(
 	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
 	approver := suggest.NewApprover(st, channelBinder, time.Now).
 		WithProposalNotifier(notifier).
-		WithDecisionQuality(decisionQuality)
+		WithDecisionQuality(decisionQuality).
+		WithHolidays(holidays)
 	if libraryClient != nil {
 		approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
 			return libraryPresence{lib: libraryClient.Snapshot()}

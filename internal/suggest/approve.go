@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -194,6 +195,14 @@ type Approver struct {
 	notify    ProposalNotifier
 	quality   ProposalApprovalQuality
 	additions ApprovalAdditionResolver
+	holidays  holidayvocab.Source
+}
+
+// WithHolidays re-grounds a proposal's holiday episode selection against the household's holiday
+// definitions (#2030).
+func (a *Approver) WithHolidays(source holidayvocab.Source) *Approver {
+	a.holidays = source
+	return a
 }
 
 func (a *Approver) WithApprovalAdditionResolver(resolver ApprovalAdditionResolver) *Approver {
@@ -274,7 +283,7 @@ func (a *Approver) approveDurably(
 	if err != nil {
 		return ApprovalResult{}, err
 	}
-	p, body, err := PrepareApproval(p, resolvedEdit)
+	p, body, err := PrepareApproval(p, resolvedEdit, a.holidays.Current())
 	if err != nil {
 		return ApprovalResult{}, err
 	}
@@ -387,8 +396,9 @@ func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string)
 
 // PrepareApproval derives the exact proposed decision content without recording an
 // approval, changing status, or touching the store. The coordinator and pre-approval
-// outlook share this edit and trusted episode-selector boundary.
-func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Proposal, error) {
+// outlook share this edit and trusted episode-selector boundary. holidays are the definitions a
+// named holiday in the Intent is read against.
+func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab.Vocabulary) (store.Proposal, Proposal, error) {
 	if p.Status != "submitted" {
 		return store.Proposal{}, Proposal{}, ErrNotSubmitted
 	}
@@ -416,9 +426,9 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit) (store.Proposal, Prop
 	// series from the Proposal's original Intent after additions/drops, at this one approval
 	// boundary shared by manual, bulk, and automatic approval. This also repairs a missing or
 	// crafted selector before either the durable approved JSON or the binder can observe it.
-	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent)
-	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent) || selectionChanged
-	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent) || selectionChanged
+	selectionChanged := stampEpisodeSelection(body.Lineup, body.Intent, holidays)
+	selectionChanged = stampEpisodeSelection(body.Acquisitions, body.Intent, holidays) || selectionChanged
+	selectionChanged = stampEpisodeSelection(body.Alternates, body.Intent, holidays) || selectionChanged
 	if selectionChanged {
 		raw, err := json.Marshal(body)
 		if err != nil {

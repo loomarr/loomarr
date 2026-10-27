@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -19,8 +20,8 @@ import (
 // out-of-window detected-seasonal items are BENCHED (the half viewers notice —
 // Christmas episodes in July break the spell). A zero `now` disables all of it.
 
-// holiday is one entry in the built-in calendar (§6). Windows + vocabulary ship
-// as DATA, not code; custom/regional holidays are future work.
+// holiday is one holiday as the household's country keeps it (§6, #2030). Its dates are data in
+// holidayvocab's per-country table, beside the words that detect it.
 type holiday struct {
 	id string
 	// window reports the holiday's [start, end] for a given year (some windows
@@ -29,65 +30,37 @@ type holiday struct {
 	// day is the holiday's own date in a given year (the night a Heavy channel runs its
 	// holiday-episode marathon, §6 "Holiday episodes"). Only month and day are read.
 	day func(year int) time.Time
+	// vocab is the definitions the holiday came from, which judge whether a title is about it.
+	vocab holidayvocab.Vocabulary
 }
 
-// builtinCalendar is the v1 holiday set (§6). holidayvocab judges membership; a genre
-// is never evidence on its own (see isSeasonal for why).
-var builtinCalendar = []holiday{
-	{
-		id:     "halloween",
-		window: fixedWindow(time.October, 1, time.October, 31),
-		day:    fixedDay(time.October, 31),
-	},
-	{
-		id:     "thanksgiving",
-		window: fixedWindow(time.November, 15, time.November, 30),
-		day:    thanksgivingDay,
-	},
-	{
-		id:     "christmas",
-		window: fixedWindow(time.December, 1, time.December, 26),
-		day:    fixedDay(time.December, 25),
-	},
-	{
-		id:     "newyear",
-		window: newYearWindow,
-		day:    fixedDay(time.December, 31),
-	},
-	{
-		id:     "valentines",
-		window: fixedWindow(time.February, 1, time.February, 14),
-		day:    fixedDay(time.February, 14),
-	},
+// Calendar is the household's holiday calendar: the holiday definitions (Holidays, nil = the
+// shipped ones), the ones its country keeps (filler.home_country, "" = the US), on its wall clock
+// (guide.timezone, nil = UTC). Programming, the on-screen logo and filler all date and judge
+// holidays through one, so they agree on what and when a holiday is. holidayvocab judges
+// membership; a genre is never evidence on its own (see isSeasonal).
+type Calendar struct {
+	Zone     *time.Location
+	Country  string
+	Holidays *holidayvocab.Vocabulary
 }
 
-func fixedDay(month time.Month, day int) func(int) time.Time {
-	return func(year int) time.Time { return time.Date(year, month, day, 0, 0, 0, 0, time.UTC) }
-}
-
-// thanksgivingDay is the fourth Thursday of November (US).
-func thanksgivingDay(year int) time.Time {
-	first := time.Date(year, time.November, 1, 0, 0, 0, 0, time.UTC)
-	offset := (int(time.Thursday) - int(first.Weekday()) + 7) % 7
-	return first.AddDate(0, 0, offset+21)
-}
-
-// fixedWindow builds a same-year [start, end] window (inclusive of the end day).
-func fixedWindow(startMonth time.Month, startDay int, endMonth time.Month, endDay int) func(int) (time.Time, time.Time) {
-	return func(year int) (time.Time, time.Time) {
-		start := time.Date(year, startMonth, startDay, 0, 0, 0, 0, time.UTC)
-		end := time.Date(year, endMonth, endDay+1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
-		return start, end
+// Vocab is the calendar's holiday definitions.
+func (c Calendar) Vocab() holidayvocab.Vocabulary {
+	if c.Holidays == nil {
+		return holidayvocab.Default()
 	}
+	return *c.Holidays
 }
 
-// newYearWindow straddles the year boundary: Dec 27 (year) → Jan 2 (year+1). For a
-// given evaluation year we return the window that could contain a late-Dec or
-// early-Jan date; inWindow checks both the current and prior year's window.
-func newYearWindow(year int) (time.Time, time.Time) {
-	start := time.Date(year, time.December, 27, 0, 0, 0, 0, time.UTC)
-	end := time.Date(year+1, time.January, 3, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
-	return start, end
+func (c Calendar) holidays() []holiday {
+	v := c.Vocab()
+	kept := v.Calendar(c.Country)
+	out := make([]holiday, len(kept))
+	for i, o := range kept {
+		out[i] = holiday{id: o.ID, window: o.Window, day: o.Day, vocab: v}
+	}
+	return out
 }
 
 // HolidayWindow is one built-in holiday's window, inclusive of End.
@@ -96,12 +69,14 @@ type HolidayWindow struct {
 	Start, End time.Time
 }
 
-// UpcomingHolidays lists the built-in holidays whose window is on at `now` or starts within
-// `horizon`, soonest first (#1665 channel ideas). It reads builtinCalendar, so an idea never
-// announces a holiday the seasonal policy wouldn't honour.
-func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
+// UpcomingHolidays lists the calendar's holidays whose window is on at `now` or starts within
+// `horizon`, soonest first (#1665 channel ideas). It reads the same calendar the seasonal policy
+// does, on the same wall clock (civilNoon), so an idea never announces a holiday the seasonal
+// policy wouldn't honour.
+func UpcomingHolidays(now time.Time, horizon time.Duration, cal Calendar) []HolidayWindow {
+	now = civilNoon(now, cal.Zone)
 	var out []HolidayWindow
-	for _, h := range builtinCalendar {
+	for _, h := range cal.holidays() {
 		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
 			start, end := h.window(y)
 			if !end.Before(now) && !start.After(now.Add(horizon)) {
@@ -114,6 +89,10 @@ func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
 	return out
 }
 
+// GenericHolidayTag is the seasonal taxon for a clip that names no one holiday ("happy holidays"):
+// it is in season whenever a winter holiday, Thanksgiving through New Year, is (#2030).
+const GenericHolidayTag = "holiday"
+
 // civilNoon is noon UTC of `now`'s calendar date on zone's wall clock (nil = UTC): the instant a
 // holiday window, which is a run of whole dates, is evaluated at. Evaluating the instant itself
 // would end Halloween at 8 pm on Oct 31 in New York.
@@ -125,19 +104,19 @@ func civilNoon(now time.Time, zone *time.Location) time.Time {
 	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
 }
 
-// HonouredHolidays lists the built-in holidays a channel honours, in calendar order, each with its
+// HonouredHolidays lists the calendar holidays a channel honours, soonest first, each with its
 // window that is on at `now` or comes next (#1659 W2c, the On-screen logo's holiday rows). A channel
 // whose seasonal mode is off (Ignore holidays) honours none; a chosen subset limits the list. Like
-// activeHolidays it dates `now` on zone's wall clock (nil = UTC), so a row is on exactly while
+// activeHolidays it dates `now` on the calendar's wall clock, so a row is on exactly while
 // ActiveHolidayAt names it.
-func HonouredHolidays(now time.Time, seasonal SeasonalPolicy, zone *time.Location) []HolidayWindow {
+func HonouredHolidays(now time.Time, seasonal SeasonalPolicy, cal Calendar) []HolidayWindow {
 	if seasonal.Mode == SeasonalOff {
 		return nil
 	}
-	now = civilNoon(now, zone)
+	now = civilNoon(now, cal.Zone)
 	sel := lowerSet(seasonal.Holidays)
 	var out []HolidayWindow
-	for _, h := range builtinCalendar {
+	for _, h := range cal.holidays() {
 		if _, ok := sel[h.id]; len(sel) > 0 && !ok {
 			continue
 		}
@@ -148,34 +127,34 @@ func HonouredHolidays(now time.Time, seasonal SeasonalPolicy, zone *time.Locatio
 			}
 		}
 	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
 	return out
 }
 
 // ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
-// boosts, through the same calendar, selection and channel-local evaluation (zone = the channel's
-// wall clock, nil = UTC), so the on-screen logo's holiday version (WatermarkHoliday) flips at the
-// same local instant as the programming. A channel whose seasonal mode is off (Ignore holidays)
-// honours none.
-func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy, zone *time.Location) string {
+// boosts, through the same calendar, selection and channel-local evaluation, so the on-screen
+// logo's holiday version (WatermarkHoliday) flips at the same local instant as the programming. A
+// channel whose seasonal mode is off (Ignore holidays) honours none.
+func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy, cal Calendar) string {
 	if seasonal.Mode == SeasonalOff {
 		return ""
 	}
-	if active := activeHolidays(t, zone, seasonal.Holidays); len(active) > 0 {
+	if active := activeHolidays(t, cal, seasonal.Holidays); len(active) > 0 {
 		return active[0].id
 	}
 	return ""
 }
 
-// activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
-// clock, limited to the channel's selected subset (empty subset = all built-in holidays).
-func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {
+// activeHolidays returns the calendar holidays whose window contains `now`'s date on the
+// calendar's wall clock, limited to the channel's selected subset (empty = all it keeps).
+func activeHolidays(now time.Time, cal Calendar, selected []string) []holiday {
 	if now.IsZero() {
 		return nil
 	}
-	now = civilNoon(now, zone)
+	now = civilNoon(now, cal.Zone)
 	sel := lowerSet(selected)
 	var active []holiday
-	for _, h := range builtinCalendar {
+	for _, h := range cal.holidays() {
 		if len(sel) > 0 {
 			if _, ok := sel[h.id]; !ok {
 				continue
@@ -188,11 +167,10 @@ func activeHolidays(now time.Time, zone *time.Location, selected []string) []hol
 	return active
 }
 
-// holidayActive reports whether now falls in h's window, checking both the current
-// and prior evaluation year so a year-straddling window (New Year) matches on both
-// sides of the boundary.
+// holidayActive reports whether now falls in h's window: this year's, last year's (one wrapping
+// into January, New Year), or next year's (one opening in the December before its date).
 func holidayActive(h holiday, now time.Time) bool {
-	for _, y := range []int{now.Year(), now.Year() - 1} {
+	for _, y := range []int{now.Year(), now.Year() - 1, now.Year() + 1} {
 		start, end := h.window(y)
 		if !now.Before(start) && !now.After(end) {
 			return true
@@ -244,14 +222,32 @@ func fitsSeason(e LineupEntry, holidays []holiday) bool {
 }
 
 func judgeEntry(e LineupEntry, h holiday) holidayvocab.Judgment {
-	return holidayvocab.Judge(h.id, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres})
+	return h.vocab.Judge(h.id, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres})
 }
 
-// isSeasonalForAny reports whether an entry is seasonal for ANY built-in holiday
+// benchesForAny reports whether an entry benches for ANY holiday the calendar keeps
 // (regardless of window) — used to decide the OUT-of-window bench: a detected
-// seasonal item that matches no ACTIVE holiday is benched (§6).
-func isSeasonalForAny(e LineupEntry) bool {
-	return isSeasonal(e, builtinCalendar)
+// seasonal item that matches no ACTIVE holiday is benched (§6). A name alone does not
+// bench for a holiday whose name is also an ordinary title (Judgment.Benches, #2030),
+// and a holiday the household's country does not keep never benches anything.
+func benchesForAny(e LineupEntry, cal Calendar) bool {
+	for _, h := range cal.holidays() {
+		if judgeEntry(e, h).Benches() {
+			return true
+		}
+	}
+	return false
+}
+
+// aboutAnyHoliday reports whether an entry is about any built-in holiday, kept by any country: a
+// title that is itself a holiday's, whose episodes are therefore not featured one by one.
+func aboutAnyHoliday(e LineupEntry, v holidayvocab.Vocabulary) bool {
+	for _, d := range v.Definitions() {
+		if v.Judge(d.ID, holidayvocab.Evidence{Title: e.Title, Genres: e.Genres}).Verdict == holidayvocab.VerdictAbout {
+			return true
+		}
+	}
+	return false
 }
 
 // applySeasonal enforces the seasonal policy (§6) over the eligible entries at the
@@ -266,15 +262,62 @@ func isSeasonalForAny(e LineupEntry) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
-	return applySeasonalWithTrace(entries, rp, now, nil, nil)
+	return applySeasonalWithTrace(entries, rp, now, Calendar{}, activeSeason(entries, rp, now, Calendar{}, nil), nil)
 }
 
-func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, zone *time.Location, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
+// activeSeason is the holidays the channel's seasonal policy treats as on at now. For an exclusive
+// channel that is only the active holidays it has something for (#2030): a title that fits, or a
+// series with an episode that does. A holiday it has nothing for leaves it out of season, on its
+// off-season fallback, rather than empty: a Halloween channel with every holiday chosen loops
+// through back-to-school. A series whose episodes cannot be judged (no availability, or stale
+// editorial evidence) may carry the holiday, so it keeps the channel in season as before.
+func activeSeason(entries []LineupEntry, rp ResolvedPolicy, now time.Time, cal Calendar, avail Availability) []holiday {
+	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
+		return nil
+	}
+	active := activeHolidays(now, cal, rp.Seasonal.Holidays)
+	if rp.Seasonal.Mode != SeasonalExclusive {
+		return active
+	}
+	stocked := active[:0:0]
+	for _, h := range active {
+		if hasContentFor(entries, h, avail) {
+			stocked = append(stocked, h)
+		}
+	}
+	return stocked
+}
+
+func hasContentFor(entries []LineupEntry, h holiday, avail Availability) bool {
+	for _, e := range entries {
+		if !e.Key.IsSeries() {
+			if fitsSeason(e, []holiday{h}) {
+				return true
+			}
+			continue
+		}
+		if avail == nil {
+			return true
+		}
+		res := avail.ResolveEpisodes(e.Key)
+		if res.EditorialUnavailable {
+			return true
+		}
+		for _, ep := range res.Programs {
+			if slices.Contains(episodeHolidays(ep, h.vocab), h.id) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// applySeasonalWithTrace applies the policy given the season activeSeason resolved.
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, cal Calendar, active []holiday, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
 	}
-	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
 	inWindow := len(active) > 0
 
 	switch rp.Seasonal.Mode {
@@ -310,7 +353,7 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 		for _, e := range entries {
 			// Bench a detected-seasonal item that is NOT for an active holiday
 			// (Christmas in July). A non-seasonal item always passes.
-			if isSeasonalForAny(e) && !isSeasonal(e, active) {
+			if benchesForAny(e, cal) && !isSeasonal(e, active) {
 				report.add(e, "out_of_season")
 				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfSeason))
 				continue
@@ -326,12 +369,10 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 	}
 }
 
-func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, zone *time.Location) map[string]bool {
-	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
-		return nil
-	}
-	active := activeHolidays(now, zone, rp.Seasonal.Holidays)
-	if len(active) == 0 {
+// exclusiveEpisodeHolidays is the holidays an exclusive channel's episodes must fit: the season
+// activeSeason resolved, so titles and episodes are filtered for the same holidays.
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, active []holiday) map[string]bool {
+	if rp.Seasonal.Mode != SeasonalExclusive || len(active) == 0 {
 		return nil
 	}
 	ids := make(map[string]bool, len(active))
@@ -341,13 +382,13 @@ func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, zone *time.Locat
 	return ids
 }
 
-func filterExclusiveEpisodes(e LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, holidays map[string]bool, report *ExclusionReport, trace *scheduleTraceBuilder) []ResolvedProgram {
+func filterExclusiveEpisodes(e LineupEntry, episodes []ResolvedProgram, editorialUnavailable bool, holidays map[string]bool, v holidayvocab.Vocabulary, report *ExclusionReport, trace *scheduleTraceBuilder) []ResolvedProgram {
 	if len(holidays) == 0 {
 		return episodes
 	}
 	var selected []ResolvedProgram
 	if !editorialUnavailable {
-		selected = matchingHolidayEpisodes(episodes, holidays)
+		selected = matchingHolidayEpisodes(episodes, holidays, v)
 	}
 	kept := make(map[resolvedProgramID]int, len(selected))
 	for _, ep := range selected {

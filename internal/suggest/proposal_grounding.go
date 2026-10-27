@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -130,7 +131,8 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// VALUES; we validate + clamp them (off-ladder ceiling dropped, series
 	// intersected with grounded ids) before they become a ChannelPolicy. A
 	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
-	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent)
+	holidays := s.holidays.Current()
+	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent, holidays)
 	// The validated date meaning is the only source of a proposal's date scope;
 	// the model's policy carries none.
 	if meaning.DateMeaning().Kind == DateMeaningConstraints {
@@ -142,16 +144,16 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// question "will this pick actually air?" has a settled answer. Ask it here, and move the
 	// certain no's out of what the operator is being asked to approve.
 	prop.Lineup, prop.Acquisitions, prop.Refused = refuseUnairable(
-		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, deriveIntentPolicy(intent).safetyCeiling != "",
+		prop.Policy.Audience, prop.Lineup, prop.Acquisitions, intentDeterministicSafetyCeiling(intent) != "",
 	)
 	for _, refused := range prop.Refused {
 		if key, err := refused.Item.Key(); err == nil {
 			traceDecision(trace, DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
 		}
 	}
-	stampEpisodeSelection(prop.Lineup, intent)
-	stampEpisodeSelection(prop.Acquisitions, intent)
-	stampEpisodeSelection(prop.Alternates, intent)
+	stampEpisodeSelection(prop.Lineup, intent, holidays)
+	stampEpisodeSelection(prop.Acquisitions, intent, holidays)
+	stampEpisodeSelection(prop.Alternates, intent, holidays)
 	if requiresMembershipEvidence(intent) {
 		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
 	}
@@ -290,8 +292,8 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 // model can't scope to a series that never surfaced. Explicit child-safety intent and a rating
 // cap written by the user contribute deterministic ceilings even when the model omits or
 // hallucinates the policy. A named holiday similarly determines exclusive mode + holiday subset.
-func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent Intent) schedule.ChannelPolicy {
-	intentPolicy := deriveIntentPolicy(intent)
+func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent Intent, holidays holidayvocab.Vocabulary) schedule.ChannelPolicy {
+	intentPolicy := deriveIntentPolicy(intent, holidays)
 	requestedCeiling := stricterCeiling(intentPolicy.explicitAudienceCeiling, intentPolicy.safetyCeiling)
 	if raw == nil {
 		raw = &pickPolicy{}
@@ -368,7 +370,7 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 
 	// Curation rules (§6.5/§6.6): lower the model's preset tokens into SchedulingRules,
 	// dropping unknowns and clamping (window bound + stricter-only daypart ceiling).
-	p.Rules = groundRules(raw.Rules, lineup, p.Audience.Ceiling)
+	p.Rules = groundRules(raw.Rules, lineup, p.Audience.Ceiling, holidays)
 
 	// Final safety net: if anything slipped through that Validate rejects, drop the
 	// whole policy to defaults rather than persist an invalid one.
@@ -393,7 +395,7 @@ const (
 // rule's audience STRICTER-ONLY against the channel ceiling (§4 — a rule can never raise it,
 // enforced here AND at §4 enforcement, defense in depth). A series WHAT is intersected with
 // the grounded picks. Returns nil when nothing survives (⇒ base whole-policy behavior).
-func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.Rating) []schedule.SchedulingRule {
+func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
 	if len(raw) == 0 {
 		return nil
 	}
@@ -405,7 +407,7 @@ func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.
 	}
 	out := make([]schedule.SchedulingRule, 0, len(raw))
 	for i, r := range raw {
-		when, prio, ok := schedule.LowerWhen(r.When)
+		when, prio, ok := schedule.LowerWhen(r.When, holidays)
 		if !ok {
 			continue // no valid time predicate → drop the whole rule
 		}

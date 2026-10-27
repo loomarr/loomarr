@@ -136,7 +136,7 @@ type Engine struct {
 	breaksPerHourFor  func() int                                        // live §10 commercial-break default
 	breakDurationFor  func() time.Duration                              // live §10 commercial-break length default
 	defaultWindowFor  func() time.Duration                              // live §6.5 rolling-window default
-	windowZoneFor     func() *time.Location                             // wall clock of the window grid (#1675)
+	calendarFor       func() schedule.Calendar                          // window grid's wall clock (#1675) and holidays (#2030)
 	playoutBackendFor func(context.Context) (string, error)             // durable §9.1 transition target
 	naturalBreaks     func(context.Context) schedule.NaturalBreakSource // §10 mid-roll candidates; nil = none
 	now               func() time.Time
@@ -180,9 +180,11 @@ type Config struct {
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
 	DefaultWindow        time.Duration
 	ResolveDefaultWindow func() time.Duration
-	// ResolveWindowZone is the wall clock the rolling-window grid is laid on (guide.timezone,
-	// else the container's zone), so a daily window turns at local midnight (#1675). Nil = UTC.
-	ResolveWindowZone func() *time.Location
+	// ResolveCalendar is the household's calendar: the wall clock the rolling-window grid is laid
+	// on (guide.timezone, else the container's zone), so a daily window turns at local midnight
+	// (#1675), and the holidays its country keeps (filler.home_country, #2030). Nil = the zero
+	// Calendar: UTC, the US, the shipped definitions.
+	ResolveCalendar func() schedule.Calendar
 	// ResolvePlayoutBackendContext reads the durable transition checkpoint once per reconcile
 	// attempt so Postgres replicas observe Prepared. Nil fails closed through the empty backend.
 	ResolvePlayoutBackendContext func(context.Context) (string, error)
@@ -212,8 +214,8 @@ func New(st EngineStore, prog tunarr.Programmer, avail Availability, guide Guide
 	if cfg.ResolveDefaultWindow == nil {
 		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
 	}
-	if cfg.ResolveWindowZone == nil {
-		cfg.ResolveWindowZone = func() *time.Location { return time.UTC }
+	if cfg.ResolveCalendar == nil {
+		cfg.ResolveCalendar = func() schedule.Calendar { return schedule.Calendar{} }
 	}
 	if cfg.ResolvePlayoutBackendContext == nil {
 		cfg.ResolvePlayoutBackendContext = func(context.Context) (string, error) { return "", nil }
@@ -232,7 +234,7 @@ func New(st EngineStore, prog tunarr.Programmer, avail Availability, guide Guide
 		breaksPerHourFor:  cfg.ResolveBreaksPerHour,
 		breakDurationFor:  cfg.ResolveBreakDuration,
 		defaultWindowFor:  cfg.ResolveDefaultWindow,
-		windowZoneFor:     cfg.ResolveWindowZone,
+		calendarFor:       cfg.ResolveCalendar,
 		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
 		naturalBreaks:     cfg.NaturalBreaks,
 		now:               now,
@@ -731,8 +733,14 @@ func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.E
 // resolves. Pure and cheap, so the playout resolver can apply the window turn (#1675) on every
 // airing lookup without arranging a cycle.
 func (e *Engine) RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location) {
-	return schedule.ResolveWindow(schedule.Channel{DefaultWindow: e.defaultWindowFor()}, policy, at), e.windowZoneFor()
+	cal := e.Calendar()
+	ch := schedule.Channel{DefaultWindow: e.defaultWindowFor()}.WithCalendar(cal)
+	return schedule.ResolveWindow(ch, policy, at), cal.Zone
 }
+
+// Calendar is the household's holiday calendar: its country's holidays on the window grid's wall
+// clock, the one every arrangement this engine computes reads (#2030).
+func (e *Engine) Calendar() schedule.Calendar { return e.calendarFor() }
 
 // CarriesOver reports whether the channel's rolling window turns with carry-over (#1675), which
 // only internal playout can do: it walks the accepted cycle from an anchor reconcile moves.

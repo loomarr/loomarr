@@ -50,6 +50,8 @@ type cyclePreviewer interface {
 	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
 	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
 	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
+	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
+	Calendar() schedule.Calendar
 }
 
 // titleReader is the one store method provenance needs.
@@ -710,7 +712,7 @@ func (r *playoutResolver) cycleAt(
 	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
 	// or a later visit reuses the work. See the cycle cache's header.
 	_, zone := r.engine.RollingWindow(ch.Policy, at)
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, zone))
+	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, r.engine.Calendar()))
 	if !ok {
 		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
 		return slots, window, cerr

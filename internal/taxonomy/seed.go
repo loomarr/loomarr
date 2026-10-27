@@ -20,7 +20,23 @@ func progressiveEnrichmentSeed() []Taxon {
 // records each version after inserting only missing slugs; this is the convergence path for an
 // installation whose non-empty, operator-owned taxonomy cannot be reseeded wholesale.
 func SeedRevisions() []SeedRevision {
-	return []SeedRevision{{Version: 2, Taxa: progressiveEnrichmentSeed()}}
+	return []SeedRevision{{Version: 2, Taxa: progressiveEnrichmentSeed()}, {Version: 3, Taxa: holidayCalendarSeed()}}
+}
+
+// holidayCalendarSeed adds the seasonal taxa for the calendar holidays the original seed lacked, so
+// every holiday window has a tag that can match it (#2030).
+func holidayCalendarSeed() []Taxon {
+	return []Taxon{
+		{Slug: "newyear", Label: "New Year", Axis: AxisSeasonal, Synonyms: []string{"new-year", "new-years", "nye"}},
+		{Slug: "valentines", Label: "Valentine's Day", Axis: AxisSeasonal, Synonyms: []string{"valentine", "valentines-day"}},
+		{Slug: "easter", Label: "Easter", Axis: AxisSeasonal},
+		{Slug: "mothers-day", Label: "Mother's Day", Axis: AxisSeasonal, Synonyms: []string{"mothering-sunday"}},
+		{Slug: "fathers-day", Label: "Father's Day", Axis: AxisSeasonal},
+		{Slug: "st-patricks", Label: "St Patrick's Day", Axis: AxisSeasonal, Synonyms: []string{"st-patricks-day", "saint-patricks-day"}},
+		{Slug: "independence-day", Label: "Independence Day", Axis: AxisSeasonal, Synonyms: []string{"fourth-of-july", "july-4th"}},
+		{Slug: "canada-day", Label: "Canada Day", Axis: AxisSeasonal},
+		{Slug: "bonfire-night", Label: "Bonfire Night", Axis: AxisSeasonal, Synonyms: []string{"guy-fawkes"}},
+	}
 }
 
 // The shipped default forest (§10 V45a) — what an install starts with before any operator edit. It
@@ -101,7 +117,10 @@ func SeedForest() []Taxon {
 		{Slug: "family-cue", Label: "Family cue", Axis: AxisAudienceCue, Synonyms: []string{"family-values"}},
 		{Slug: "late-night-cue", Label: "Late-night cue", Axis: AxisAudienceCue, Synonyms: []string{"adult-cue", "late-night-adult"}},
 	}
-	// Keep the full fresh-install seed and the one-time established-install revision sourced from
+	// Keep the full fresh-install seed and the one-time established-install revisions sourced from
 	// the same values. A copied list here would eventually drift from the convergence path.
-	return append(seed, progressiveEnrichmentSeed()...)
+	for _, rev := range SeedRevisions() {
+		seed = append(seed, rev.Taxa...)
+	}
+	return seed
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -60,7 +61,7 @@ func TestWhenPredicate_Matches(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := c.w.Matches(c.now); got != c.want {
+			if got := c.w.Matches(c.now, Calendar{}); got != c.want {
 				t.Errorf("Matches(%v) = %v, want %v", c.now, got, c.want)
 			}
 		})
@@ -74,19 +75,42 @@ func TestWhenPredicate_Matches(t *testing.T) {
 // diverges the two (e.g. changes a window in one place only), this fails. It's the Phase-2
 // "seasonal-as-a-rule" guarantee: one calendar, two consumers, provably in agreement.
 func TestHolidayRuleAndSeasonalShareOneCalendar(t *testing.T) {
-	// Walk every day of a full year; for each builtin holiday, the rule predicate
+	// Walk every day of a full year; for each country's holidays, the rule predicate
 	// (inHoliday) and the seasonal engine (holidayActive) must agree.
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	for _, h := range builtinCalendar {
-		for d := 0; d < 366; d++ {
-			now := base.AddDate(0, 0, d)
-			ruleSide := inHoliday(h.id, now)
-			seasonalSide := holidayActive(h, now)
-			if ruleSide != seasonalSide {
-				t.Fatalf("calendar divergence for %q on %s: rule=%v seasonal=%v",
-					h.id, now.Format("2006-01-02"), ruleSide, seasonalSide)
+	for _, country := range holidayvocab.Default().Countries() {
+		cal := Calendar{Country: country}
+		for _, h := range cal.holidays() {
+			for d := 0; d < 366; d++ {
+				now := base.AddDate(0, 0, d)
+				ruleSide := inHoliday(h.id, now, cal)
+				seasonalSide := holidayActive(h, now)
+				if ruleSide != seasonalSide {
+					t.Fatalf("calendar divergence for %s %q on %s: rule=%v seasonal=%v",
+						country, h.id, now.Format("2006-01-02"), ruleSide, seasonalSide)
+				}
 			}
 		}
+	}
+}
+
+// A season opening in the December before its holiday's date is active on those December days, for
+// rules and the seasonal engine alike.
+func TestASeasonOpeningLastYearIsActiveInDecember(t *testing.T) {
+	vocab, err := holidayvocab.New([]holidayvocab.Holiday{{ID: "epiphany", Label: "Epiphany",
+		Kept: []holidayvocab.Keeping{{Countries: []string{"IE"}, Rule: holidayvocab.Rule{
+			Day:    holidayvocab.DayRule{Kind: holidayvocab.DayFixed, Month: time.January, Day: 6},
+			Window: holidayvocab.WindowRule{Kind: holidayvocab.WindowAround, Before: 10}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cal := Calendar{Country: "IE", Holidays: &vocab}
+	dec27 := time.Date(2026, time.December, 27, 12, 0, 0, 0, time.UTC)
+	if !inHoliday("epiphany", dec27, cal) {
+		t.Error("the Epiphany rule should match Dec 27")
+	}
+	if active := activeHolidays(dec27, cal, nil); len(active) != 1 {
+		t.Errorf("active on Dec 27 = %v, want Epiphany", active)
 	}
 }
 
@@ -98,18 +122,18 @@ func TestHolidayRuleMatchesActiveHolidays(t *testing.T) {
 	jul14 := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 
 	// In December, the christmas rule matches AND christmas is in the seasonal active set.
-	if !inHoliday("christmas", dec20) {
+	if !inHoliday("christmas", dec20, Calendar{}) {
 		t.Error("christmas rule should match Dec 20")
 	}
-	active := activeHolidays(dec20, nil, []string{"christmas"})
+	active := activeHolidays(dec20, Calendar{}, []string{"christmas"})
 	if len(active) != 1 || active[0].id != "christmas" {
 		t.Errorf("seasonal should have christmas active on Dec 20, got %v", active)
 	}
 	// In July, neither fires.
-	if inHoliday("christmas", jul14) {
+	if inHoliday("christmas", jul14, Calendar{}) {
 		t.Error("christmas rule must not match Jul 14")
 	}
-	if len(activeHolidays(jul14, nil, []string{"christmas"})) != 0 {
+	if len(activeHolidays(jul14, Calendar{}, []string{"christmas"})) != 0 {
 		t.Error("seasonal should have no christmas active on Jul 14")
 	}
 }
@@ -120,18 +144,18 @@ func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 	holiday := SchedulingRule{ID: "holiday", Priority: 20, When: WhenPredicate{Holiday: "halloween"}}
 
 	t.Run("no rules → no match", func(t *testing.T) {
-		if _, ok := pickRule(nil, satNoon); ok {
+		if _, ok := pickRule(nil, satNoon, Calendar{}); ok {
 			t.Fatal("expected no match on empty rules")
 		}
 	})
 	t.Run("only base matches on a weekday", func(t *testing.T) {
-		r, ok := pickRule([]SchedulingRule{base, weekend}, thu9am)
+		r, ok := pickRule([]SchedulingRule{base, weekend}, thu9am, Calendar{})
 		if !ok || r.ID != "base" {
 			t.Fatalf("got %q ok=%v, want base", r.ID, ok)
 		}
 	})
 	t.Run("higher-priority weekend beats base on saturday", func(t *testing.T) {
-		r, ok := pickRule([]SchedulingRule{base, weekend}, satNoon)
+		r, ok := pickRule([]SchedulingRule{base, weekend}, satNoon, Calendar{})
 		if !ok || r.ID != "weekend" {
 			t.Fatalf("got %q, want weekend (priority 10 > 0)", r.ID)
 		}
@@ -140,7 +164,7 @@ func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 		// oct15 is a Thursday, so use a holiday that also lands on a weekend. Halloween
 		// window covers all of October; pick a Saturday in it.
 		octSat := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC) // Saturday in Halloween window
-		r, ok := pickRule([]SchedulingRule{base, weekend, holiday}, octSat)
+		r, ok := pickRule([]SchedulingRule{base, weekend, holiday}, octSat, Calendar{})
 		if !ok || r.ID != "holiday" {
 			t.Fatalf("got %q, want holiday (priority 20 > 10)", r.ID)
 		}
@@ -148,7 +172,7 @@ func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 	t.Run("ties break by list order (first wins)", func(t *testing.T) {
 		a := SchedulingRule{ID: "a", Priority: 5, When: WhenPredicate{Weekend: true}}
 		b := SchedulingRule{ID: "b", Priority: 5, When: WhenPredicate{Weekend: true}}
-		r, _ := pickRule([]SchedulingRule{a, b}, satNoon)
+		r, _ := pickRule([]SchedulingRule{a, b}, satNoon, Calendar{})
 		if r.ID != "a" {
 			t.Fatalf("got %q, want a (equal priority → first in list)", r.ID)
 		}
@@ -172,7 +196,7 @@ func TestOrderingAt_RuleThenPolicyThenStrategy(t *testing.T) {
 		{"active rule beats policy", ChannelPolicy{Ordering: OrderSequential, Rules: []SchedulingRule{weekendShuffle}}, Sequential, satNoon, OrderShuffle},
 		{"inactive rule leaves the policy", ChannelPolicy{Ordering: OrderSequential, Rules: []SchedulingRule{weekendShuffle}}, Sequential, thu9am, OrderSequential},
 	} {
-		if got := OrderingAt(tc.policy, tc.strategy, tc.at); got != tc.want {
+		if got := OrderingAt(tc.policy, tc.strategy, tc.at, Calendar{}); got != tc.want {
 			t.Errorf("%s: OrderingAt = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -196,26 +220,26 @@ func TestActiveRuleAt_Attribution(t *testing.T) {
 	rules := []SchedulingRule{weekend, holiday}
 
 	t.Run("no rule matches → base policy, matched false", func(t *testing.T) {
-		a := ActiveRuleAt(rules, thu9am) // Thursday, not a weekend or holiday
+		a := ActiveRuleAt(rules, thu9am, Calendar{}) // Thursday, not a weekend or holiday
 		if a.Matched || a.Label != "Base policy" || a.ID != "" {
 			t.Fatalf("got %+v, want unmatched base policy", a)
 		}
 	})
 	t.Run("weekend matches → attributed to the weekend rule with its label", func(t *testing.T) {
-		a := ActiveRuleAt(rules, satNoon)
+		a := ActiveRuleAt(rules, satNoon, Calendar{})
 		if !a.Matched || a.ID != "w" || a.Label != "Weekend Cold Relay marathon" || a.Priority != 10 {
 			t.Fatalf("got %+v, want the weekend rule", a)
 		}
 	})
 	t.Run("highest priority wins the attribution", func(t *testing.T) {
 		octSat := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC) // Saturday in the Halloween window
-		a := ActiveRuleAt(rules, octSat)
+		a := ActiveRuleAt(rules, octSat, Calendar{})
 		if a.ID != "h" || a.Priority != 20 {
 			t.Fatalf("got %+v, want the higher-priority holiday rule", a)
 		}
 	})
 	t.Run("nil rules → base policy", func(t *testing.T) {
-		if a := ActiveRuleAt(nil, satNoon); a.Matched {
+		if a := ActiveRuleAt(nil, satNoon, Calendar{}); a.Matched {
 			t.Fatalf("nil rules should never match, got %+v", a)
 		}
 	})

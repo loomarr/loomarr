@@ -9,7 +9,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -176,15 +175,17 @@ func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.
 		return nil, nil, err
 	}
 	now := s.clock()
+	cal := s.holidayCalendar()
 	var holidays []ideas.Holiday
-	for _, h := range schedule.UpcomingHolidays(now, ideaHolidayHorizon) {
+	for _, h := range schedule.UpcomingHolidays(now, ideaHolidayHorizon, cal) {
 		holidays = append(holidays, ideas.Holiday{ID: h.ID, Start: h.Start, End: h.End})
 	}
+	vocab := cal.Vocab()
 	labels := map[string]string{}
-	for _, d := range holidayvocab.Definitions() {
+	for _, d := range vocab.Definitions() {
 		labels[d.ID] = d.Label
 	}
-	built := ideas.Build(ideas.Input{Library: items, OnChannel: onChannel, Holidays: holidays, Hidden: hidden, Now: now})
+	built := ideas.Build(ideas.Input{Library: items, OnChannel: onChannel, Holidays: holidays, Vocabulary: vocab, Hidden: hidden, Now: now})
 	return built, labels, nil
 }
 

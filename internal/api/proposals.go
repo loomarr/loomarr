@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -192,7 +193,7 @@ func rfc3339OrEmpty(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func proposalToDTO(p store.Proposal) ProposalDTO {
+func proposalToDTO(p store.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
 	var payload suggest.Proposal
 	// A malformed stored proposal shouldn't 500 a list; leave the payload zero-valued.
 	if len(p.ProposalJSON) > 0 {
@@ -202,7 +203,7 @@ func proposalToDTO(p store.Proposal) ProposalDTO {
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
 		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
-		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent),
+		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent, holidays),
 	}
 }
 
@@ -303,8 +304,9 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 	}
 	out := &listProposalsOutput{}
 	out.Body.Proposals = make([]ProposalDTO, 0, len(props))
+	holidays := s.holidayCalendar().Vocab()
 	for _, p := range props {
-		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p)))
+		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p, holidays)))
 	}
 	return out, nil
 }
@@ -326,7 +328,7 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 	if err != nil {
 		return nil, err
 	}
-	return &proposalOutput{Body: names.apply(proposalToDTO(p))}, nil
+	return &proposalOutput{Body: names.apply(proposalToDTO(p, s.holidayCalendar().Vocab()))}, nil
 }
 
 // --- approve / deny (the approval gate — §8/§11) ---

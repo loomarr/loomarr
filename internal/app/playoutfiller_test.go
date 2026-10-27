@@ -26,6 +26,8 @@ func (stubCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration
 	return 0, nil
 }
 
+func (stubCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -104,7 +105,7 @@ func TestBuild_HolidayAheadMatchesTitlesNotGenres(t *testing.T) {
 	end := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 	got := ideas.Build(ideas.Input{
 		Library: lib, OnChannel: map[provision.Key]bool{"movie:tmdb:90000002": true}, Now: now,
-		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: end}},
+		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: end}}, Vocabulary: holidayvocab.Default(),
 	})
 	if len(got) == 0 || got[0].ID != "holiday:halloween" {
 		t.Fatalf("ideas = %+v, want the holiday first", got)
@@ -129,7 +130,7 @@ func TestBuild_HolidayIdeaNeedsMinimumFittingTitles(t *testing.T) {
 	}
 	start := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	got := ideas.Build(ideas.Input{Library: lib, Now: now,
-		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: start.AddDate(0, 1, 0)}}})
+		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: start.AddDate(0, 1, 0)}}, Vocabulary: holidayvocab.Default()})
 	if _, ok := byID(got)["holiday:halloween"]; ok {
 		t.Fatalf("ideas = %+v, want no Halloween idea from two fitting titles", got)
 	}

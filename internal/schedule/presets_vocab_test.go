@@ -2,23 +2,47 @@ package schedule
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
+
+// The editor offers the holidays the household's country keeps (#2030): a US household is not
+// offered Canada Day, which would never be in season for it, and Britain gets Bonfire Night.
+func TestVocabulary_HolidaysAreTheHouseholdCountrys(t *testing.T) {
+	holidaysIn := func(country string) []string {
+		var out []string
+		for _, w := range BuildVocabulary(Calendar{Country: country}).When {
+			if id, ok := strings.CutPrefix(w.Token, "holiday:"); ok {
+				out = append(out, id)
+			}
+		}
+		return out
+	}
+	us, gb := holidaysIn(""), holidaysIn("GB")
+	if !slices.Contains(us, "independence-day") || slices.Contains(us, "canada-day") || slices.Contains(us, "bonfire-night") {
+		t.Errorf("US holidays = %v, want the Fourth of July and neither Canada Day nor Bonfire Night", us)
+	}
+	if !slices.Contains(gb, "bonfire-night") || slices.Contains(gb, "thanksgiving") || slices.Contains(gb, "independence-day") {
+		t.Errorf("GB holidays = %v, want Bonfire Night and neither Thanksgiving nor the Fourth of July", gb)
+	}
+}
 
 // The vocabulary is only trustworthy if every token it ships lowers, through the SAME Lower*
 // functions the write path uses, to exactly the value it carries. Otherwise the editor would
 // render a picker whose preview disagrees with what the BE stores — the very drift the
 // vocabulary endpoint exists to kill.
 func TestVocabulary_TokensLowerToTheirCarriedValues(t *testing.T) {
-	v := BuildVocabulary()
+	holidays := holidayvocab.Default()
+	v := BuildVocabulary(Calendar{})
 
-	if len(v.When) != len(whenVocabTokens)+len(holidayvocab.Definitions()) {
-		t.Fatalf("WHEN vocab dropped a token: got %d, want %d", len(v.When), len(whenVocabTokens)+len(holidayvocab.Definitions()))
+	if want := len(whenVocabTokens) + len(holidays.Calendar("US")); len(v.When) != want {
+		t.Fatalf("WHEN vocab dropped a token: got %d, want %d", len(v.When), want)
 	}
 	for _, w := range v.When {
-		pred, prio, ok := LowerWhen(w.Token)
+		pred, prio, ok := LowerWhen(w.Token, holidays)
 		if !ok {
 			t.Errorf("WHEN token %q is in the vocabulary but does not lower", w.Token)
 			continue
@@ -53,18 +77,6 @@ func TestVocabulary_TokensLowerToTheirCarriedValues(t *testing.T) {
 		scope, _, _ := LowerWhat(w.Token)
 		if (scope == nil) != (w.Scope == nil) {
 			t.Errorf("WHAT token %q: vocab scope-nil=%v disagrees with LowerWhat scope-nil=%v", w.Token, w.Scope == nil, scope == nil)
-		}
-	}
-}
-
-func TestBuiltinCalendarCoversEveryOwnedHolidayIdentity(t *testing.T) {
-	definitions := holidayvocab.Definitions()
-	if len(builtinCalendar) != len(definitions) {
-		t.Fatalf("calendar has %d windows for %d owned holiday ids", len(builtinCalendar), len(definitions))
-	}
-	for _, definition := range definitions {
-		if !knownHoliday(definition.ID) {
-			t.Fatalf("owned holiday %q has no scheduler calendar window", definition.ID)
 		}
 	}
 }

@@ -755,11 +755,11 @@ func classifyFailure(cause error) string {
 // order + case are normalized so semantically-identical intents collide.
 func IntentHash(i Intent) string {
 	referenceIdentity, _ := reference.URL(referenceIntentText(i))
-	audience := deriveIntentPolicy(i)
+	ceiling, excludeUnrated := intentExplicitAudienceCeiling(i), intentExcludesUnrated(i)
 	audienceConstraint := ""
-	if audience.explicitAudienceCeiling != "" || audience.excludeUnrated {
-		audienceConstraint = string(audience.explicitAudienceCeiling)
-		if audience.excludeUnrated {
+	if ceiling != "" || excludeUnrated {
+		audienceConstraint = string(ceiling)
+		if excludeUnrated {
 			audienceConstraint += ":exclude_unrated"
 		}
 	}

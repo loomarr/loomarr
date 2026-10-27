@@ -3,6 +3,8 @@ package schedule
 import (
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
 
 func TestLowerWhen(t *testing.T) {
@@ -37,7 +39,7 @@ func TestLowerWhen(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.token, func(t *testing.T) {
-			w, p, ok := LowerWhen(c.token)
+			w, p, ok := LowerWhen(c.token, holidayvocab.Default())
 			if ok != c.ok {
 				t.Fatalf("ok = %v, want %v", ok, c.ok)
 			}
@@ -47,7 +49,7 @@ func TestLowerWhen(t *testing.T) {
 			if p != c.priority {
 				t.Errorf("priority = %d, want %d", p, c.priority)
 			}
-			if got := w.Matches(c.matchAt); got != c.matches {
+			if got := w.Matches(c.matchAt, Calendar{}); got != c.matches {
 				t.Errorf("Matches(%v) = %v, want %v", c.matchAt, got, c.matches)
 			}
 		})
