@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // The class probe measures what one stream of each cost class costs this host (#1512 G5). It never
@@ -41,7 +42,9 @@ const (
 	// them for a moment after ffmpeg exits, and the unsettled ramp read 11 or 12 on the dev GeForce.
 	sessionSettlePoll = 200 * time.Millisecond
 	sessionSettleMax  = 3 * time.Second
-	// probeNice is the probe encoders' scheduling priority: the lowest, below every viewer.
+	// probeNice is the probe encoders' scheduling priority: the lowest, below every viewer. The
+	// encoder starts at it (proctree.StartAtNice), not as proctree.LowPriority's batch work: it is
+	// killed outright the moment a viewer tunes in, so its encoder is free for the viewer at once.
 	probeNice = 19
 )
 
@@ -480,7 +483,7 @@ func runProbeCommand(ctx context.Context, cfg ClassProbeConfig, purpose, target 
 	cmd.Stdout = &limitedWriter{w: &stdout, n: 1 << 20}
 	cmd.Stderr = &limitedWriter{w: &stderr, n: 16 << 10}
 	run := cfg.Manager.Begin(diagnostics.ProcessSpec{Purpose: purpose, Target: target, Executable: cfg.FFmpeg, Args: args})
-	err := startLowPriority(cmd)
+	err := proctree.StartAtNice(cmd, probeNice)
 	if err == nil {
 		err = cmd.Wait()
 	}
@@ -557,7 +560,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 		Purpose: "capacity_probe", Target: fmt.Sprintf("%s@%dp", class, height), Executable: cfg.FFmpeg, Args: args,
 	})
 	start := time.Now()
-	if err := startLowPriority(cmd); err != nil {
+	if err := proctree.StartAtNice(cmd, probeNice); err != nil {
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}
@@ -800,7 +803,7 @@ func openHeldSession(
 		return false, err.Error()
 	}
 	run := manager.Begin(diagnostics.ProcessSpec{Purpose: "encoder_session_probe", Target: target, Executable: ffmpeg, Args: args})
-	if err := startLowPriority(cmd); err != nil {
+	if err := proctree.StartAtNice(cmd, probeNice); err != nil {
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}
