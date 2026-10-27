@@ -15,13 +15,13 @@ const ClipControlsStage = ({
 }: ClipSelectProps & { needsDetails: boolean }) => {
   const [on, setOn] = useState(selected);
   return (
-    <Surface gap="$control" level="raised" padding="$control" width={260}>
+    <Surface gap="control" padding="control" width={260} level="raised">
       <Surface
         alignItems="center"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         flexDirection="row"
-        gap="$inline"
+        gap="inline"
       >
         <ClipSelect clipName={clipName} onSelectedChange={setOn} selected={on} />
         <Text numberOfLines={1} textRole="label">

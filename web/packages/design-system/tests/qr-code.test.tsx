@@ -2,13 +2,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { LoomarrProvider, QrCode } from "../index";
+import { withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("Loomarr QR code", () => {
   it("renders an accessible, high-contrast machine-readable pairing payload", () => {
-    const markup = renderToStaticMarkup(
-      <LoomarrProvider>
-        <QrCode size={180} value="https://loomarr.media/pair?code=LOOM-ARRR" />
-      </LoomarrProvider>,
+    const markup = withoutRuntimeMarker(
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <QrCode size={180} value="https://loomarr.media/pair?code=LOOM-ARRR" />
+        </LoomarrProvider>,
+      ),
     );
 
     expect(markup).toContain('aria-label="Pair Loomarr with this QR code"');
@@ -22,10 +25,12 @@ describe("Loomarr QR code", () => {
   });
 
   it("can omit the centre mark when a product surface explicitly requests it", () => {
-    const markup = renderToStaticMarkup(
-      <LoomarrProvider>
-        <QrCode showBrandMark={false} value="https://loomarr.media/pair?code=LOOM-ARRR" />
-      </LoomarrProvider>,
+    const markup = withoutRuntimeMarker(
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <QrCode showBrandMark={false} value="https://loomarr.media/pair?code=LOOM-ARRR" />
+        </LoomarrProvider>,
+      ),
     );
 
     expect(markup).not.toContain('aria-hidden="true"');

@@ -32,13 +32,13 @@ const OverlayActions = ({
   actions?.length ? (
     <Surface
       alignItems="stretch"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       // A phone stacks full-width buttons, as an iOS alert does. Wrapping the column would size every
       // button to the widest label instead.
       flexDirection={density === "touch" ? "column" : "row"}
       flexWrap={density === "touch" ? "nowrap" : "wrap"}
-      gap="$control"
+      gap="control"
     >
       {actions.map((action) => (
         <Action
@@ -68,10 +68,9 @@ const OverlayPanel = ({
   title,
 }: OverlayPanelProps) => (
   <Surface
-    gap="$control"
-    level="overlay"
+    gap="control"
     maxWidth={modal ? (density === "tv" ? 880 : 600) : undefined}
-    padding={density === "tv" ? 32 : "$section"}
+    padding={density === "tv" ? 32 : "section"}
     paddingBottom={contentInsets?.bottom}
     paddingLeft={contentInsets?.left}
     paddingRight={contentInsets?.right}
@@ -79,6 +78,7 @@ const OverlayPanel = ({
     borderRadius={edgeToEdge ? 0 : undefined}
     width="100%"
     zIndex={modal ? 1 : undefined}
+    level="overlay"
   >
     {eyebrow ? (
       <Text density={density} textRole="metadata" tone="info">
@@ -125,12 +125,12 @@ const ModalOverlay = ({
     >
       <Surface
         alignItems="center"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderRadius={0}
         borderWidth={0}
         flex={1}
         justifyContent="center"
-        padding="$section"
+        padding="section"
       >
         <View
           accessibilityElementsHidden
@@ -146,7 +146,7 @@ const ModalOverlay = ({
             top: 0,
           }}
         >
-          <Surface backgroundColor="$artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
+          <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
         </View>
         <ModalLayer visible={visible}>
           <OverlayPanel {...content} modal />
@@ -220,14 +220,14 @@ const TransientOverlay = ({
       }}
     >
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderRadius={0}
         borderWidth={0}
+        pointerEvents="box-none"
         onBlur={() => setInteracting(false)}
         onFocus={() => setInteracting(true)}
         onTouchEnd={() => setInteracting(false)}
         onTouchStart={() => setInteracting(true)}
-        pointerEvents="box-none"
       >
         <OverlayPanel
           {...content}

@@ -12,7 +12,7 @@ const NativeInteractionWorkshop = ({ density = "touch" }: { density?: "touch" | 
         <Text density={density} textRole="title">
           Shared interaction states
         </Text>
-        <Surface gap="$control" padding="$section">
+        <Surface gap="control" padding="section">
           <Action density={density} onPress={() => undefined}>
             Primary
           </Action>
@@ -23,7 +23,7 @@ const NativeInteractionWorkshop = ({ density = "touch" }: { density?: "touch" | 
             Disabled
           </Action>
         </Surface>
-        <Surface gap="$control" padding="$section">
+        <Surface gap="control" padding="section">
           <Field density={density} label="Server address" placeholder="https://loomarr.media" />
           <Field density={density} error="Enter an HTTPS address." label="Invalid address" value="http://" />
           <Toggle checked={artwork} density={density} label="Episode artwork" onCheckedChange={setArtwork} />

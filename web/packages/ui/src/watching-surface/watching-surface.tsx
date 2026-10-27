@@ -42,7 +42,7 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
     return (
       <Surface
         alignItems="center"
-        backgroundColor="$surfaceEntry"
+        backgroundColor="surfaceEntry"
         borderRadius={8}
         flexDirection="row"
         gap={16}
@@ -69,7 +69,7 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
       </Surface>
     );
   return (
-    <Surface gap={4} left={0} level="overlay" padding="$control" position="absolute" top={0}>
+    <Surface gap={4} left={0} padding="control" position="absolute" top={0} level="overlay">
       <Text density={density} textRole="title">
         {`${numberEntry.digits.split("").join(" ")} _`}
       </Text>
@@ -146,7 +146,7 @@ const TouchWatchingSurface = ({
               />
             ) : null}
             {schedule?.now ? (
-              <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+              <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
                 <ProgrammeIdentity density={density} programme={schedule.now} />
                 {schedule.now.progressPercent === undefined ? null : (
                   <ProgressTrack percent={schedule.now.progressPercent} tone="live" width="100%" />
@@ -338,7 +338,7 @@ const TvWatchingSurface = ({
               {snapshot.channel && !numberEntry?.digits ? (
                 <Surface
                   alignItems="center"
-                  backgroundColor="$surfaceIdentity"
+                  backgroundColor="surfaceIdentity"
                   borderRadius={8}
                   borderWidth={1}
                   flexDirection="row"
@@ -359,8 +359,8 @@ const TvWatchingSurface = ({
                   />
                   {snapshot.status === "playing" ? (
                     <Surface
-                      backgroundColor="$stateSuccess"
-                      borderRadius="$round"
+                      backgroundColor="stateSuccess"
+                      borderRadius="round"
                       borderWidth={0}
                       height={8}
                       width={8}
@@ -369,7 +369,7 @@ const TvWatchingSurface = ({
                 </Surface>
               ) : null}
               <Surface
-                backgroundColor="$surfaceChrome"
+                backgroundColor="surfaceChrome"
                 borderRadius={0}
                 borderWidth={0}
                 bottom={0}
@@ -380,10 +380,10 @@ const TvWatchingSurface = ({
                 right={0}
               >
                 {schedule?.now ? (
-                  <Surface backgroundColor="$transparent" borderWidth={0} gap={0}>
+                  <Surface backgroundColor="transparent" borderWidth={0} gap={0}>
                     <Surface
                       alignItems="center"
-                      backgroundColor="$transparent"
+                      backgroundColor="transparent"
                       borderWidth={0}
                       flexDirection="row"
                       gap={12}
@@ -453,7 +453,7 @@ const TvWatchingSurface = ({
                 ) : null}
                 <Surface
                   alignItems="center"
-                  backgroundColor="$transparent"
+                  backgroundColor="transparent"
                   borderWidth={0}
                   flexDirection="row"
                   paddingBottom={16}
@@ -478,10 +478,10 @@ const TvWatchingSurface = ({
                 </Surface>
                 {snapshot.status === "paused" || recoverableFailure ? (
                   <Surface
-                    backgroundColor="$transparent"
+                    backgroundColor="transparent"
                     borderWidth={0}
                     flexDirection="row"
-                    gap="$control"
+                    gap="control"
                     paddingBottom={16}
                     paddingHorizontal={64}
                   >

@@ -8,7 +8,7 @@ import { expect } from "storybook/test";
 const Artwork = () => (
   <Surface
     alignItems="center"
-    backgroundColor="$stateInfoSurface"
+    backgroundColor="stateInfoSurface"
     borderWidth={0}
     flex={1}
     justifyContent="center"
@@ -44,7 +44,7 @@ const SurfWorkshop = ({
         </Text>
       </Surface>
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         bottom={0}
         justifyContent="center"

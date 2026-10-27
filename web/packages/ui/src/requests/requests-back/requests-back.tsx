@@ -17,10 +17,10 @@ const RequestsBack = ({ onPress }: RequestsBackProps) => (
   >
     <Surface
       alignItems="center"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
-      gap="$inline"
+      gap="inline"
       marginLeft={-4}
     >
       <Icon decorative glyph={icons.back} size="control" tone="content" />

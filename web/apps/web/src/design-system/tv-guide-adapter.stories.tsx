@@ -61,10 +61,10 @@ const TvGuideWorkshop = () => {
       // biome-ignore lint/a11y/noNoninteractiveTabindex: role=application is deliberately focusable
       tabIndex={0}
     >
-      <Screen density="tv" gap="$control" justifyContent="center">
+      <Screen density="tv" gap="control" justifyContent="center">
         <Surface
           alignItems="center"
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
           justifyContent="space-between"

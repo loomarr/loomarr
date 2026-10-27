@@ -5,15 +5,15 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 // checkpoint 3), kept in their own file rather than a new row on InteractionWorkshop so this new
 // content doesn't move that story's existing visual baselines.
 const ActionVariantsWorkshop = () => (
-  <Screen gap="$section">
-    <Surface gap="$control" padding="$section">
+  <Screen gap="section">
+    <Surface gap="control" padding="section">
       <Text textRole="title">Button variants</Text>
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         flexDirection="row"
         flexWrap="wrap"
-        gap="$control"
+        gap="control"
       >
         {(["suggest", "destructive", "outline", "secondary", "ghost", "link"] as const).map((variant) => (
           <Action key={variant} onPress={() => undefined} variant={variant}>
@@ -22,7 +22,7 @@ const ActionVariantsWorkshop = () => (
         ))}
       </Surface>
     </Surface>
-    <Surface gap="$control" padding="$section">
+    <Surface gap="control" padding="section">
       <Text textRole="title">Composed as a link (web `render` escape hatch)</Text>
       <Action render={<a href="#action-variants-story" />} variant="outline">
         Go to channels

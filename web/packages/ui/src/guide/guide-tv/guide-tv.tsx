@@ -56,9 +56,9 @@ const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProp
         ref={ref}
       >
         <Surface
-          backgroundColor={selected ? "$stateWarningSurface" : "$surfaceCanvas"}
+          backgroundColor={selected ? "stateWarningSurface" : "surfaceCanvas"}
           // The fill marks the selected filter; amber is focus alone (#1887).
-          borderColor={focused ? "$actionFocus" : "$borderDecorative"}
+          borderColor={focused ? "actionFocus" : "borderDecorative"}
           borderRadius={12}
           borderWidth={focused ? 2 : 1}
           opacity={disabled ? 0.4 : 1}
@@ -147,7 +147,7 @@ const TvGuideSurface = ({
     >
       <Surface
         alignItems="center"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         flexDirection="row"
         gap={12}
@@ -188,7 +188,7 @@ const TvGuideSurface = ({
       </Surface>
 
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderRadius={0}
         borderWidth={0}
         flex={1}
@@ -229,7 +229,7 @@ const TvGuideSurface = ({
                 >
                   <Surface
                     alignItems="center"
-                    backgroundColor={selectedRow ? "$surfaceRaised" : "$surfaceCanvas"}
+                    backgroundColor={selectedRow ? "surfaceRaised" : "surfaceCanvas"}
                     borderRadius={0}
                     borderWidth={0}
                     flexDirection="row"
@@ -311,17 +311,13 @@ const TvGuideSurface = ({
                             // no longer focuses is drawn at rest.
                             backgroundColor={
                               focused
-                                ? "$surfaceFocus"
+                                ? "surfaceFocus"
                                 : airing.isOnNow
-                                  ? "$stateAiringSurface"
-                                  : "$surfaceElevated"
+                                  ? "stateAiringSurface"
+                                  : "surfaceElevated"
                             }
                             borderColor={
-                              focused
-                                ? "$actionFocus"
-                                : airing.isOnNow
-                                  ? "$borderAiring"
-                                  : "$borderDecorative"
+                              focused ? "actionFocus" : airing.isOnNow ? "borderAiring" : "borderDecorative"
                             }
                             borderRadius={4}
                             borderWidth={focused ? 3 : 1}
@@ -352,7 +348,7 @@ const TvGuideSurface = ({
 
         {nowPercent === undefined ? null : (
           <Surface
-            backgroundColor="$stateLive"
+            backgroundColor="stateLive"
             borderRadius={0}
             borderWidth={0}
             bottom={0}
@@ -363,7 +359,7 @@ const TvGuideSurface = ({
           />
         )}
         <Surface
-          backgroundColor="$surfaceCanvas"
+          backgroundColor="surfaceCanvas"
           borderRadius={0}
           borderWidth={0}
           bottom={0}
@@ -374,7 +370,7 @@ const TvGuideSurface = ({
         >
           {layout.channels.length ? (
             <Surface
-              backgroundColor="$borderDecorative"
+              backgroundColor="borderDecorative"
               borderRadius={4}
               borderWidth={0}
               height={`${Math.min(1, 5 / layout.channels.length) * 100}%`}
@@ -417,7 +413,7 @@ const TvGuideSurface = ({
           ) : (
             <Surface
               alignItems="center"
-              backgroundColor="$artworkPlaceholder"
+              backgroundColor="artworkPlaceholder"
               borderRadius={8}
               height={76}
               justifyContent="center"
@@ -428,7 +424,7 @@ const TvGuideSurface = ({
               </Text>
             </Surface>
           )}
-          <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
+          <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
             <Text density="tv" numberOfLines={1} textRole="compact">
               {selectedAiring.source.series ??
                 (selectedAiring.source.title.trim() || guideAiringLabel(selectedAiring.source))}

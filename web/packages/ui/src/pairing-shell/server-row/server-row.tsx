@@ -20,14 +20,14 @@ const ServerRow = ({ onPress, server }: ServerRowProps) => {
       <Surface
         alignItems="center"
         flexDirection="row"
-        gap="$control"
-        level="elevated"
+        gap="control"
         minHeight={64}
-        paddingHorizontal="$control"
-        paddingVertical="$inline"
+        paddingHorizontal="control"
+        paddingVertical="inline"
+        level="elevated"
       >
         <StatusDot label="Found on this network" tone="ok" />
-        <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2}>
+        <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2}>
           {/* `label` is muted by default; the name is the row's title. Two lines, so a long name
               ("Loomarr on <a long hostname>") isn't cut off. */}
           <Text density="touch" numberOfLines={2} textRole="label" tone="primary">

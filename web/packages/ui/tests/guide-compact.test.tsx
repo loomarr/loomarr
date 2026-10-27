@@ -80,7 +80,7 @@ describe("GuideCompact", () => {
   it("draws the selected cell and its row's number without amber", () => {
     const html = markup({ selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" } });
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain("border-top-color:var(--contentPrimary)");
+    expect(html).toContain("border-color:var(--contentPrimary)");
     expect(html).not.toContain("var(--actionPrimary)");
   });
 
@@ -105,12 +105,12 @@ describe("GuideCompact", () => {
       dock: BottomSheet,
       selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" },
     });
-    // Tamagui names the theme token in the class. The selected cell's border is the foreground
-    // ($contentPrimary, #1909 Q2), and amber ($actionPrimary) is neither a border nor a text colour.
+    // Tamagui's rules name the theme token. The selected cell's border is the foreground
+    // (contentPrimary, #1909 Q2), and amber (actionPrimary) is neither a border nor a text colour.
     // The selected programme's Watch is the one amber fill.
-    expect(html).toContain("_btc-contentPrim");
-    expect(html).not.toContain("_btc-actionPrima");
-    expect(html).not.toContain("_col-actionPrima");
+    expect(html).toContain("border-color:var(--contentPrimary)");
+    expect(html).not.toContain("border-color:var(--actionPrimary)");
+    expect(html).not.toContain("color:var(--actionPrimary)");
     expect(html.match(/background-color:rgba\(255,176,32,1\.00\)/g)).toHaveLength(1);
   });
 

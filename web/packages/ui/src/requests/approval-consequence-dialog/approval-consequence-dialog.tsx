@@ -58,8 +58,8 @@ const Detail = ({ children, tone = "secondary" }: { children: string; tone?: "in
 
 const ConsequenceItem = ({ children, title }: { children: React.ReactNode; title: string }) => (
   <Surface
-    backgroundColor="$transparent"
-    borderRadius="$control"
+    backgroundColor="transparent"
+    borderRadius="control"
     gap={4}
     paddingHorizontal={12}
     paddingVertical={10}
@@ -71,7 +71,7 @@ const ConsequenceItem = ({ children, title }: { children: React.ReactNode; title
 );
 
 const Consequences = ({ consequences }: { consequences: BulkApproveConsequences }) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap={8} role="list">
+  <Surface backgroundColor="transparent" borderWidth={0} gap={8} role="list">
     {consequences.group === "channels"
       ? consequences.items.map((item) => (
           <ConsequenceItem key={item.id} title={item.title}>
@@ -143,7 +143,7 @@ const ApprovalConsequenceDialog = ({
   const retryable = (results ?? []).filter((r) => !r.ok && r.retryable);
   // Roles sit on Surface: the design-system Text does not carry one to the web.
   const errorLine = error ? (
-    <Surface backgroundColor="$transparent" borderWidth={0} role="alert">
+    <Surface backgroundColor="transparent" borderWidth={0} role="alert">
       <Text textRole="compact" tone="danger">
         {error}
       </Text>
@@ -162,24 +162,24 @@ const ApprovalConsequenceDialog = ({
         title={`Approved ${results.filter((r) => r.ok).length} of ${results.length}`}
         visible={visible}
       >
-        <Surface aria-live="polite" backgroundColor="$transparent" borderWidth={0} gap={6} role="list">
+        <Surface aria-live="polite" backgroundColor="transparent" borderWidth={0} gap={6} role="list">
           {results.map((r) => (
             <Surface
               alignItems="flex-start"
-              backgroundColor={r.ok ? "$transparent" : "$stateDangerSurface"}
-              borderColor={r.ok ? "$borderDecorative" : "$stateDanger"}
-              borderRadius="$control"
+              backgroundColor={r.ok ? "transparent" : "stateDangerSurface"}
+              borderColor={r.ok ? "borderDecorative" : "stateDanger"}
+              borderRadius="control"
               flexDirection="row"
               gap={8}
-              key={r.id}
               paddingHorizontal={10}
               paddingVertical={8}
+              key={r.id}
               role="listitem"
             >
               {/* The mark is the row's status, so it carries it in words for a screen reader. */}
               <Surface
                 aria-label={r.ok ? "Approved" : "Not approved"}
-                backgroundColor="$transparent"
+                backgroundColor="transparent"
                 borderWidth={0}
                 role="img"
               >
@@ -187,7 +187,7 @@ const ApprovalConsequenceDialog = ({
                   {r.ok ? "✓" : "✕"}
                 </Text>
               </Surface>
-              <Surface backgroundColor="$transparent" borderWidth={0} flex={1} minWidth={0}>
+              <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
                 <Text textRole="compact">{titleOf(r.id)}</Text>
                 <Text textRole="caption" tone="secondary">
                   {outcomeLine(consequences, r)}

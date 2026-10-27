@@ -10,6 +10,7 @@ import {
   signalLoaderMotion,
   skeletonMotion,
 } from "../index";
+import { withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("loading system", () => {
   it("keeps the branded acquisition rhythm stable", () => {
@@ -19,12 +20,14 @@ describe("loading system", () => {
   });
 
   it("renders an accessible static state when motion is reduced", () => {
-    const markup = renderToStaticMarkup(
-      <LoomarrProvider theme="dark">
-        <SignalLoader detail="Connecting to channel" reducedMotion />
-        <ActivityIndicator accessibilityLabel="Saving channel" reducedMotion />
-        <Skeleton reducedMotion width="60%" />
-      </LoomarrProvider>,
+    const markup = withoutRuntimeMarker(
+      renderToStaticMarkup(
+        <LoomarrProvider theme="dark">
+          <SignalLoader detail="Connecting to channel" reducedMotion />
+          <ActivityIndicator accessibilityLabel="Saving channel" reducedMotion />
+          <Skeleton reducedMotion width="60%" />
+        </LoomarrProvider>,
+      ),
     );
 
     expect(markup).toContain("TUNING IN");

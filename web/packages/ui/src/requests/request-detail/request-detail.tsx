@@ -18,7 +18,7 @@ const decidedOn = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : undefined;
 
 const Section = ({ children, title }: { children: React.ReactNode; title: string }) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" role="group">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="inline" role="group">
     <Text density="touch" textRole="headline">
       {title}
     </Text>
@@ -33,7 +33,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
   const back = <RequestsBack onPress={onBack} />;
   if (!entry)
     return (
-      <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
+      <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="control">
         {back}
         <StatePanel
           action={{ label: "Back to Requests", onPress: onBack }}
@@ -54,7 +54,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
   const approvedOn = decidedOn(proposal?.approvedAt);
 
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
+    <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="control">
       {back}
       <ScrollFrame density="touch">
         <Text density="touch" textRole="display">
@@ -68,7 +68,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
         </Badge>
 
         {journey.milestone === "generating" ? (
-          <Surface gap="$inline" level="raised" padding="$control">
+          <Surface gap="inline" padding="control" level="raised">
             <Text density="touch" textRole="body">
               {journey.progress ? progressLine(journey.progress) : "Reading your request…"}
             </Text>
@@ -81,7 +81,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
         ) : null}
 
         {journey.failure ? (
-          <Surface gap="$inline" level="raised" padding="$control">
+          <Surface gap="inline" padding="control" level="raised">
             <Text density="touch" textRole="label">
               {journey.failure.message}
             </Text>
@@ -173,15 +173,15 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
               <Surface
                 alignItems="center"
                 flexDirection="row"
-                gap="$control"
+                gap="control"
                 justifyContent="space-between"
+                minHeight={48}
+                padding="control"
                 // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                 key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
                 level="raised"
-                minHeight={48}
-                padding="$control"
               >
-                <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2}>
+                <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2}>
                   <Text density="touch" textRole="body">
                     {item.year ? `${item.name} (${item.year})` : item.name}
                   </Text>

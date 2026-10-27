@@ -125,7 +125,7 @@ const MoreSheet = ({
         <BottomSheet accessibilityLabel="More destinations" handle={false}>
           <Surface
             alignItems="center"
-            backgroundColor="$transparent"
+            backgroundColor="transparent"
             borderWidth={0}
             flexDirection="row"
             justifyContent="space-between"
@@ -143,7 +143,7 @@ const MoreSheet = ({
               <Icon decorative glyph={icons.close} size="control" tone="secondary" />
             </Pressable>
           </Surface>
-          <Surface backgroundColor="$transparent" borderWidth={0}>
+          <Surface backgroundColor="transparent" borderWidth={0}>
             {destinations.map((destination) => (
               <SheetRow
                 destination={destination}

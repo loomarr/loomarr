@@ -14,8 +14,8 @@ const SelectionWorkshop = ({
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [lastAction, setLastAction] = useState("No menu action");
   return (
-    <Screen density={density} gap="$section">
-      <Surface gap="$control" padding="$section">
+    <Screen density={density} gap="section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Tabs
         </Text>
@@ -32,7 +32,7 @@ const SelectionWorkshop = ({
         />
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Selection and menu
         </Text>
@@ -64,7 +64,7 @@ const SelectionWorkshop = ({
         </Text>
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Adapter-owned hint
         </Text>

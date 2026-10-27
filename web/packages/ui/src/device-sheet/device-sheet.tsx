@@ -12,13 +12,7 @@ const serverAddress = (serverUrl: string) =>
 
 // One fact, read by VoiceOver as a single "label, value" stop in the order they are drawn.
 const Row = ({ label, value }: { label: string; value: string }) => (
-  <Surface
-    accessible
-    aria-label={`${label}, ${value}`}
-    backgroundColor="$transparent"
-    borderWidth={0}
-    gap={2}
-  >
+  <Surface accessible aria-label={`${label}, ${value}`} backgroundColor="transparent" borderWidth={0} gap={2}>
     <Text density="touch" textRole="metadata" tone="secondary">
       {label}
     </Text>

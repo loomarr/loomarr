@@ -59,7 +59,7 @@ const BottomSheet = ({ accessibilityLabel, children, handle = true, onDismiss }:
       style={{ transform: [{ translateY: offset }] }}
     >
       <View
-        backgroundColor="$surfaceRaised"
+        backgroundColor="surfaceRaised"
         borderTopLeftRadius={semanticRadius.cardCompact}
         borderTopRightRadius={semanticRadius.cardCompact}
         gap={14}
@@ -70,11 +70,11 @@ const BottomSheet = ({ accessibilityLabel, children, handle = true, onDismiss }:
         {handle ? (
           <View
             alignSelf="center"
-            aria-hidden
-            backgroundColor="$borderDecorative"
+            backgroundColor="borderDecorative"
             borderRadius={4}
             height={4}
             width={36}
+            aria-hidden
           />
         ) : null}
         {children}

@@ -31,7 +31,7 @@ const AiReconnectBanner = ({
     <Surface
       backgroundColor={withAlpha(SUGGEST, 0.07)}
       borderWidth={0}
-      gap="$inline"
+      gap="inline"
       paddingHorizontal={16}
       paddingVertical={14}
     >
@@ -41,13 +41,7 @@ const AiReconnectBanner = ({
       <Text textRole="compact" tone="secondary">
         {`Your manual lineup (${pickCount} ${pickCount === 1 ? "title" : "titles"}) is still here. Keep building it by hand, or let Loomarr suggest titles for this description — your picks stay in the lineup either way.`}
       </Text>
-      <Surface
-        backgroundColor="$transparent"
-        borderWidth={0}
-        flexDirection="row"
-        flexWrap="wrap"
-        gap="$inline"
-      >
+      <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" flexWrap="wrap" gap="inline">
         <Action
           accessibilityRole="button"
           disabled={busy || tryAiBlockedReason !== undefined}

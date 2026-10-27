@@ -2,12 +2,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { BottomSheet, LoomarrProvider, Screen, TabBar, Text } from "../index";
+import { withoutRuntimeMarker } from "./support/atomic-css";
 
 const render = (node: React.ReactNode) =>
-  renderToStaticMarkup(
-    <LoomarrProvider insets={{ bottom: 34, left: 0, right: 0, top: 47 }} theme="dark">
-      {node}
-    </LoomarrProvider>,
+  withoutRuntimeMarker(
+    renderToStaticMarkup(
+      <LoomarrProvider insets={{ bottom: 34, left: 0, right: 0, top: 47 }} theme="dark">
+        {node}
+      </LoomarrProvider>,
+    ),
   );
 
 // `renderToStaticMarkup` gives us a string, not a DOM — walk its tags to find where the

@@ -13,6 +13,7 @@ import {
   semanticThemes,
   Toggle,
 } from "../index";
+import { stylesOfText } from "./support/atomic-css";
 
 describe("Action variants", () => {
   // react-native-web flattens the Pressable's own style object to inline rgba() (not hex, and
@@ -136,13 +137,18 @@ describe("Action selected vs focused (#1887)", () => {
   it("sets a selected tv label at 600 over its 400 neighbours", () => {
     // The label is Tamagui Text, so its weight arrives as an atomic `_fw-*` class on the span.
     const weight = (selected: boolean) =>
-      renderToStaticMarkup(
-        <LoomarrProvider>
-          <Action density="tv" selected={selected} tone="secondary">
-            Guide
-          </Action>
-        </LoomarrProvider>,
-      ).match(/_fw-(\d+)[^"]*">Guide</)?.[1];
+      /font-weight:(\d+)/.exec(
+        stylesOfText(
+          renderToStaticMarkup(
+            <LoomarrProvider>
+              <Action density="tv" selected={selected} tone="secondary">
+                Guide
+              </Action>
+            </LoomarrProvider>,
+          ),
+          "Guide<",
+        ),
+      )?.[1];
     expect(weight(true)).toBe("600");
     expect(weight(false)).toBe("400");
   });
@@ -346,7 +352,7 @@ describe("Toggle and ChoiceGroup checked (#1909)", () => {
   // The box is a Tamagui Surface, so its colours arrive as token CSS variables, not inline hex.
   const neutralPressed = (markup: string) => {
     expect(markup).toContain("background-color:var(--surfaceElevated)");
-    expect(markup).toContain("border-top-color:var(--contentPrimary)");
+    expect(markup).toContain("border-color:var(--contentPrimary)");
     expect(markup).not.toContain("var(--actionPrimary)");
   };
 

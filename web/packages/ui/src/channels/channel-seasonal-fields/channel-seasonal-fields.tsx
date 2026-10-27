@@ -74,8 +74,8 @@ const ChannelSeasonalFields = ({
   offSeason,
   onOffSeasonChange,
 }: ChannelSeasonalFieldsProps) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$section">
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="section">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
       <ChoiceGroup
         density={density}
         label="Seasonal behavior"
@@ -93,20 +93,20 @@ const ChannelSeasonalFields = ({
     {mode !== "off" ? (
       <Surface
         aria-label="Included holidays"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
-        gap="$inline"
+        gap="inline"
         role="group"
       >
         <Text density={density} textRole="label">
           Included holidays
         </Text>
         <Surface
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
           flexWrap="wrap"
-          gap="$control"
+          gap="control"
         >
           {holidays.map((holiday) => (
             <Toggle
@@ -126,7 +126,7 @@ const ChannelSeasonalFields = ({
 
     {mode === "default" ? (
       <>
-        <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+        <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
           <ChoiceGroup
             density={density}
             label="Holiday strength"
@@ -155,7 +155,7 @@ const ChannelSeasonalFields = ({
     ) : null}
 
     {mode === "exclusive" ? (
-      <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+      <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
         <ChoiceGroup
           density={density}
           label="Out of season"

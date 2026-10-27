@@ -44,7 +44,7 @@ const GuideProgrammeDetail = ({
   );
   if (!selectedAiring || !selectedChannel) {
     return (
-      <Surface alignItems="center" justifyContent="center" minHeight={minHeight} padding="$section">
+      <Surface alignItems="center" justifyContent="center" minHeight={minHeight} padding="section">
         <Text density={density} textAlign="center" textRole="body">
           Choose a programme to see its details.
         </Text>
@@ -56,7 +56,7 @@ const GuideProgrammeDetail = ({
   const channelLogo = renderChannelLogo?.(selectedChannel);
   const source = selectedAiring.source;
   return (
-    <Surface borderWidth={0} backgroundColor="$surfaceRaised" borderRadius="$cardCompact" overflow="hidden">
+    <Surface borderWidth={0} backgroundColor="surfaceRaised" borderRadius="cardCompact" overflow="hidden">
       <ProgrammeCard
         artwork={artwork}
         channelLogo={channelLogo}
@@ -79,7 +79,7 @@ const GuideProgrammeDetail = ({
         }}
       />
       {source.kind === "filler" && source.pod?.entries.length ? (
-        <Surface borderWidth={0} gap="$inline" padding="$control" accessibilityLabel="Break clips">
+        <Surface borderWidth={0} gap="inline" padding="control" accessibilityLabel="Break clips">
           {source.pod.entries.map((entry, index) => (
             // A clip can repeat within a break; its position distinguishes each airing.
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity within the pod

@@ -186,7 +186,7 @@ const LOOKS: readonly LookInfo[] = [
   },
 ];
 const COLORS: readonly { label: string; swatch: string; value: LogoColor }[] = [
-  { value: "era", label: "Match the era", swatch: "$surfaceElevated" },
+  { value: "era", label: "Match the era", swatch: "surfaceElevated" },
   { value: "amber", label: "Amber", swatch: brandChroma[0] },
   { value: "cyan", label: "Cyan", swatch: brandChroma[3] },
   { value: "green", label: "Green", swatch: brandChroma[2] },
@@ -280,8 +280,8 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
             <Surface
               alignItems="center"
               backgroundColor="transparent"
-              borderColor="$borderControl"
-              borderRadius="$round"
+              borderColor="borderControl"
+              borderRadius="round"
               borderWidth={1}
               height={18}
               justifyContent="center"
@@ -352,9 +352,9 @@ const Pick = <V extends string>({ columns, disabled, label, lead, onPick, option
       {({ checked }) => (
         <Surface
           alignItems={columns ? "stretch" : "center"}
-          backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
-          borderColor={checked ? "$contentPrimary" : "$borderControl"}
-          borderRadius="$control"
+          backgroundColor={checked ? "surfaceFocus" : "surfaceRaised"}
+          borderColor={checked ? "contentPrimary" : "borderControl"}
+          borderRadius="control"
           borderWidth={checked ? 2 : 1}
           flexGrow={columns ? 1 : undefined}
           gap={6}
@@ -486,8 +486,8 @@ const SmallButton = ({ label, onPress }: { label: string; onPress?: () => void }
     <Surface
       alignItems="center"
       backgroundColor="transparent"
-      borderColor="$borderControl"
-      borderRadius="$control"
+      borderColor="borderControl"
+      borderRadius="control"
       borderWidth={1}
       justifyContent="center"
       minHeight={32}
@@ -645,8 +645,8 @@ const OnScreenLogoSection = ({
               {({ checked }) => (
                 <Surface
                   backgroundColor={c.swatch}
-                  borderColor={checked ? "$contentPrimary" : "$borderControl"}
-                  borderRadius="$round"
+                  borderColor={checked ? "contentPrimary" : "borderControl"}
+                  borderRadius="round"
                   borderWidth={checked ? 2 : 1}
                   height={32}
                   width={32}
@@ -721,16 +721,16 @@ const OnScreenLogoSection = ({
                   <Surface
                     alignItems="center"
                     backgroundColor="transparent"
-                    borderColor="$borderSubtle"
-                    borderRadius="$control"
+                    borderColor="borderSubtle"
+                    borderRadius="control"
                     borderWidth={1}
                     columnGap={14}
                     flexDirection="row"
                     flexWrap="wrap"
-                    key={h.id}
                     paddingHorizontal={12}
                     paddingVertical={10}
                     rowGap={8}
+                    key={h.id}
                   >
                     <View style={{ minWidth: 108 }}>
                       <Text textRole="label">{h.name}</Text>
@@ -755,11 +755,11 @@ const OnScreenLogoSection = ({
                             {({ checked }) => (
                               <Surface
                                 alignItems="center"
-                                backgroundColor={checked ? "$surfaceFocus" : "transparent"}
-                                borderColor={checked ? "$contentPrimary" : "$borderControl"}
-                                borderRadius="$control"
+                                backgroundColor={checked ? "surfaceFocus" : "transparent"}
+                                borderColor={checked ? "contentPrimary" : "borderControl"}
                                 // The 2px border takes its extra pixel from the padding, so the chip
                                 // keeps its size when chosen.
+                                borderRadius="control"
                                 borderWidth={checked ? 2 : 1}
                                 flexDirection="row"
                                 gap={6}
@@ -824,16 +824,16 @@ const OnScreenLogoSection = ({
                 // The mock's .cell: 56 × 40, the chosen one tinted with a 14 px foreground marker inside.
                 <Surface
                   alignItems="center"
-                  backgroundColor={checked ? "$surfaceFocus" : "transparent"}
-                  borderColor={checked ? "$contentPrimary" : "$borderControl"}
-                  borderRadius="$control"
+                  backgroundColor={checked ? "surfaceFocus" : "transparent"}
+                  borderColor={checked ? "contentPrimary" : "borderControl"}
+                  borderRadius="control"
                   borderWidth={checked ? 2 : 1}
                   height={40}
                   justifyContent="center"
                   width={56}
                 >
                   {checked ? (
-                    <Surface backgroundColor="$contentPrimary" borderRadius={3} height={14} width={14} />
+                    <Surface backgroundColor="contentPrimary" borderRadius={3} height={14} width={14} />
                   ) : null}
                 </Surface>
               )}
@@ -997,9 +997,9 @@ const OnScreenLogoSection = ({
       </View>
       {drawable ? null : (
         <Surface
-          backgroundColor="$stateWarningSurface"
-          borderColor="$stateWarning"
-          borderRadius="$control"
+          backgroundColor="stateWarningSurface"
+          borderColor="stateWarning"
+          borderRadius="control"
           borderWidth={1}
           padding={12}
           role="alert"
@@ -1014,7 +1014,7 @@ const OnScreenLogoSection = ({
   );
 
   return (
-    <Surface aria-label="On-screen logo" backgroundColor="$surfaceRaised" gap={20} padding={20} role="region">
+    <Surface aria-label="On-screen logo" backgroundColor="surfaceRaised" gap={20} padding={20} role="region">
       <View style={{ gap: 4 }}>
         <Text textRole="title">On-screen logo</Text>
         <Text textRole="hint" tone="muted">

@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GuideSurface } from "../index";
+import { declarationsOfElement } from "./support/atomic-css";
 
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
 type GuideNode = {
@@ -67,11 +68,14 @@ const layout = {
   toMs: 3_600_000,
 } satisfies GuideLayout;
 
-// Tamagui draws a token colour as an atomic class (`_btc-actionFocus`, `_col-actionPrima…`).
-const ambers = (host: QueryRoot) =>
-  Array.from(host.querySelectorAll("*")).filter((node) =>
-    /\b(_btc-actionFocus|_col-actionPrima\w*)\b/.test(node.className),
-  );
+// Tamagui draws a token colour as a hashed atomic class; read the declarations it carries.
+const amberBorder = /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/;
+const amberText = /(?<![-\w])color:var\(--actionPrimary\)/;
+const isAmber = (node: Element) => {
+  const styles = declarationsOfElement(node);
+  return amberBorder.test(styles) || amberText.test(styles);
+};
+const ambers = (host: QueryRoot) => Array.from(host.querySelectorAll("*")).filter(isAmber);
 
 describe("TV guide focus (#1887)", () => {
   let host: Host;
@@ -119,7 +123,7 @@ describe("TV guide focus (#1887)", () => {
   const filter = (name: string) => host.querySelector(`[aria-label^="${name},"]`) as GuideNode;
 
   it("lights the selected programme and its channel number while the grid has focus", () => {
-    expect(nowCell().block.className).toMatch(/\b_btc-actionFocus\b/);
+    expect(declarationsOfElement(nowCell().block)).toMatch(amberBorder);
     // The block's border and the row's number: both mark where the remote is.
     expect(ambers(host)).toHaveLength(2);
   });
@@ -127,23 +131,24 @@ describe("TV guide focus (#1887)", () => {
   it("draws a now-airing block as a neutral tone step, not amber", () => {
     act(() => filter("Recent").focus());
     const { block } = nowCell();
-    expect(block.className).toMatch(/\b_backgroundColor-stateAirin\w*/);
-    expect(block.className).toMatch(/\b_btc-borderAirin\w*/);
+    const styles = declarationsOfElement(block);
+    expect(styles).toContain("background-color:var(--stateAiringSurface)");
+    expect(styles).toMatch(/border(?:-top)?-color:var\(--borderAiring\)/);
   });
 
   it("drops the selection to rest when a filter takes focus, leaving the filter as the one amber", () => {
     act(() => filter("Recent").focus());
     const { block } = nowCell();
 
-    expect(block.className).not.toMatch(/\b_btc-actionFocus\b/);
-    expect(block.className).toMatch(/\b_btw-1px\b/);
+    expect(declarationsOfElement(block)).not.toMatch(amberBorder);
+    expect(declarationsOfElement(block)).toMatch(/border(?:-top)?-width:1px/);
     // Only the focused filter's border and label remain amber; the grid has none left.
     const remaining = ambers(host);
     expect(remaining.length).toBeGreaterThan(0);
     expect(remaining.every((node) => node.textContent?.startsWith("Recent"))).toBe(true);
 
     act(() => nowCell().pressable.focus());
-    expect(nowCell().block.className).toMatch(/\b_btc-actionFocus\b/);
+    expect(declarationsOfElement(nowCell().block)).toMatch(amberBorder);
     expect(ambers(host)).toHaveLength(2);
   });
 });

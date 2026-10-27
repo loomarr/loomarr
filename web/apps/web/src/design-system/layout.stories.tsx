@@ -11,7 +11,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 
 const ProgrammeRegion = ({ density }: { density: Density }) => (
-  <Surface gap="$control" padding="$section">
+  <Surface gap="control" padding="section">
     <Text density={density} textRole="metadata" tone="live">
       NOW PLAYING
     </Text>
@@ -28,7 +28,7 @@ const DetailRegion = ({ density }: { density: Density }) => {
   const [episodeInfo, setEpisodeInfo] = useState(false);
   const [technicalInfo, setTechnicalInfo] = useState(false);
   return (
-    <Surface gap="$control" padding="$section">
+    <Surface gap="control" padding="section">
       <Text density={density} textRole="title">
         Programme details
       </Text>
@@ -61,7 +61,7 @@ const DetailRegion = ({ density }: { density: Density }) => {
 const LayoutWorkshop = ({ density = "pointer" }: { density?: Density }) => (
   <Screen density={density}>
     <ScrollFrame density={density}>
-      <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+      <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
         <Text density={density} textRole="metadata" tone="info">
           RESPONSIVE COMPOSITION
         </Text>
