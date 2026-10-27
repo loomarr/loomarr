@@ -6275,4 +6275,26 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	if gotChannel.Policy.Filler == nil || !reflect.DeepEqual(gotChannel.Policy.Filler.Pinned, []string{survivor.Hash}) {
 		t.Errorf("channel pin did not follow the merge: %+v", gotChannel.Policy.Filler)
 	}
+
+	// A transform that files new bytes carries it to the new hash: the cut-down stays a variant,
+	// airings still rest the ad, and copies that lost to it still name a live survivor.
+	conditioned := got
+	conditioned.Hash = "survivor-conditioned"
+	if err := s.ReplaceClipIdentity(ctx, survivor.Hash, conditioned); err != nil {
+		t.Fatal(err)
+	}
+	variants, err = s.ListClipVariants(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(variants[cutDown.Hash], []string{conditioned.Hash}) || len(variants[survivor.Hash]) != 0 {
+		t.Errorf("variant links after re-key = %v, want the cut-down linked to %q", variants, conditioned.Hash)
+	}
+	exposure, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exposure[conditioned.Hash].PlayCount != 2 || exposure[survivor.Hash].PlayCount != 0 {
+		t.Errorf("household rotation after re-key = %+v, want both airings on %q", exposure, conditioned.Hash)
+	}
 }

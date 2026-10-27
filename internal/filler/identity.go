@@ -124,14 +124,21 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 		measured = append(measured, c)
 	}
 
-	// Copies group transitively: two re-uploads that each match the master are one ad.
+	// Copies group transitively, but a copy is merged only into a survivor it matches directly (see
+	// below): Same tolerates a few seconds of difference, so a chain of matches can span more.
 	group := newUnionFind(len(measured))
+	same := map[[2]int]bool{}
 	var variants [][2]int
 	for i := range measured {
+		// Every pair is compared each pass; the job stops cleanly when its lease ends.
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		for j := i + 1; j < len(measured); j++ {
 			switch creative.Compare(fps[measured[i].Hash], fps[measured[j].Hash]) {
 			case creative.Same:
 				group.union(i, j)
+				same[[2]int{i, j}] = true
 			case creative.Variant:
 				variants = append(variants, [2]int{i, j})
 			}
@@ -152,10 +159,12 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 		}
 		best := slices.MinFunc(copies, func(a, b int) int { return ci.compareCopies(measured[a], measured[b]) })
 		for _, loser := range copies {
-			survivorOf[loser] = best
-			if loser == best {
+			if loser == best || !same[[2]int{min(loser, best), max(loser, best)}] {
+				// Only reachable through another copy, e.g. a trimmed edit matching the full one
+				// while the survivor is trimmed the other way. It stays its own clip.
 				continue
 			}
+			survivorOf[loser] = best
 			if err := ci.merge(ctx, measured[loser], measured[best], referenced); err != nil {
 				ci.warn("identity: copy could not be merged", "clip", measured[loser].Hash,
 					"survivor", measured[best].Hash, "err", err)

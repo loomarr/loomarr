@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +73,55 @@ func identitySpot(seed uint64) creative.Fingerprint {
 		}
 	}
 	return creative.Fingerprint{DurationMs: 30_000, Video: video}
+}
+
+// Same tolerates a few seconds of difference, so it does not chain: a dealer tag on B's end and
+// another on C's start leave B matching both A and C while A and C differ by twice that. Only the
+// copy that matches the survivor directly folds into it; C stays its own clip, linked as a version.
+func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	r := rand.New(rand.NewPCG(9, 2033))
+	retag := func(fp creative.Fingerprint, from, to int) creative.Fingerprint {
+		out := creative.Fingerprint{DurationMs: fp.DurationMs, Video: slices.Clone(fp.Video)}
+		for i := from; i < to; i++ {
+			out.Video[i] = r.Uint64() | 1<<63 | 0xff
+		}
+		return out
+	}
+	a := identitySpot(3)
+	b := retag(a, 105, 120)
+	c := retag(b, 0, 15)
+	if creative.Compare(a, b) != creative.Same || creative.Compare(b, c) != creative.Same || creative.Compare(a, c) == creative.Same {
+		t.Fatalf("fixture: want A~B and B~C but not A~C; got %v %v %v",
+			creative.Compare(a, b), creative.Compare(b, c), creative.Compare(a, c))
+	}
+
+	hashes := map[string]creative.Fingerprint{}
+	var clips []IdentityClip
+	for i, spec := range []struct {
+		fp      creative.Fingerprint
+		quality string
+	}{{a, "480p"}, {b, "240p"}, {c, "240p"}} {
+		hash := writeContentAddressedClip(t, dir, []byte{byte(i), 'x'}, ".mp4")
+		hashes[hash] = spec.fp
+		ic := IdentityClip{CreatedAt: t0.Add(time.Duration(i) * time.Hour)}
+		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Kind = hash, ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
+		ic.Placement = PlacementBreakBody
+		clips = append(clips, ic)
+	}
+	st := &identityMemStore{clips: clips, fingerprints: map[string]creative.Fingerprint{}, variants: map[string][]string{}}
+	res, err := NewCreativeIdentity(st, &identityTools{byHash: hashes}, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Merged != 1 || len(st.merges) != 1 || st.merges[0].ClipHash != clips[1].Hash || st.merges[0].SurvivorHash != clips[0].Hash {
+		t.Fatalf("merges = %+v, want only B folded into A", st.merges)
+	}
+	if !reflect.DeepEqual(st.variants[clips[2].Hash], []string{clips[0].Hash}) {
+		t.Fatalf("variants = %v, want C linked to A", st.variants)
+	}
 }
 
 // One pass over a catalog holding an ad twice and a cut-down of it: the sharper copy survives even

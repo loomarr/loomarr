@@ -94,7 +94,10 @@ audio, which a gain change does not move.
   it has not measured and caches each fingerprint by algorithm. It also groups the copies of each
   ad and keeps the best copy: higher resolution first, then the copy needing less air-time loudness
   correction (within 1 dB is a tie), then the longer edit, then the earlier arrival. #2034 adds
-  measured defects ahead of these.
+  measured defects ahead of these. A copy merges only into a survivor it matches directly. Same
+  tolerates a few seconds of difference, so a chain of matches is not one ad.
+- **A transform that files new bytes** (transcode, conditioning) carries the ad's airings, variant
+  links and the copies that lost to it onto the new hash, in the same transaction as the re-key.
 - **Merging an inferior copy is one transaction.** The survivor gains its play count, later
   last-played time and airings, inherits a curated name when its own is machine-derived, and takes
   over its pins, exclusions and variant links. Then the inferior copy's media, sidecar and

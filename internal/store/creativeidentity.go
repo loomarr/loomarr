@@ -48,10 +48,7 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 	}
 	loser, survivor := c.ClipHash, c.SurvivorHash
 	curated := string(clipcatalog.NameFromCurated)
-	steps := []struct {
-		query string
-		args  []any
-	}{
+	steps := []identityStep{
 		// Every airing of either copy was an airing of the ad.
 		{`UPDATE clips SET
 		    play_count = play_count + (SELECT play_count FROM clips WHERE hash = ?),
@@ -63,20 +60,9 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 		  WHERE hash = ? AND name_source <> ?
 		    AND EXISTS (SELECT 1 FROM clips WHERE hash = ? AND name_source = ?)`,
 			[]any{loser, curated, survivor, curated, loser, curated}},
-		{`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
-		  SELECT channel_id, ?, aired_at, recorded_at FROM filler_airings WHERE clip_hash = ?
-		  ON CONFLICT DO NOTHING`, []any{survivor, loser}},
-		{`DELETE FROM filler_airings WHERE clip_hash = ?`, []any{loser}},
-		// The loser's variants are the survivor's, kept in smaller-hash-first order.
-		{`INSERT INTO filler_clip_variants (a_hash, b_hash)
-		  SELECT CASE WHEN other < ? THEN other ELSE ? END, CASE WHEN other < ? THEN ? ELSE other END
-		  FROM (SELECT CASE WHEN a_hash = ? THEN b_hash ELSE a_hash END AS other
-		        FROM filler_clip_variants WHERE a_hash = ? OR b_hash = ?) linked
-		  WHERE other <> ?
-		  ON CONFLICT DO NOTHING`,
-			[]any{survivor, survivor, survivor, survivor, loser, loser, loser, survivor}},
-		{`DELETE FROM filler_clip_variants WHERE a_hash = ? OR b_hash = ?`, []any{loser, loser}},
-		{`UPDATE filler_inferior_copies SET survivor_hash = ? WHERE survivor_hash = ?`, []any{survivor, loser}},
+	}
+	steps = append(steps, identityHistoryMoves(loser, survivor)...)
+	steps = append(steps, []identityStep{
 		{`INSERT INTO filler_inferior_copies (clip_hash, source_hash, survivor_hash, decided_at)
 		  VALUES (?, ?, ?, ?)
 		  ON CONFLICT(clip_hash) DO UPDATE SET source_hash = excluded.source_hash,
@@ -87,7 +73,7 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 		{`DELETE FROM filler_clip_pipeline WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`, []any{"clip", loser}},
 		{`DELETE FROM clips WHERE hash = ?`, []any{loser}},
-	}
+	}...)
 	for _, step := range steps {
 		if _, err := tx.ExecContext(ctx, s.ph(step.query), step.args...); err != nil {
 			return fmt.Errorf("merge inferior copy %s: %w", loser, err)
@@ -100,6 +86,40 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 		return fmt.Errorf("merge inferior copy %s: %w", loser, err)
 	}
 	return nil
+}
+
+// identityStep is one statement of a multi-statement identity transaction.
+type identityStep struct {
+	query string
+	args  []any
+}
+
+// identityHistoryMoves carries what belongs to the ad rather than to its bytes from one hash to
+// another: household airings, variant links (kept smaller-hash first) and copies that lost to it.
+// A merge and a re-key (a transform filing new bytes) both run it, so neither strands a break
+// rule on a hash no clip has any more.
+//
+// ⚠ Nothing for from == to (no caller passes it today): each copy-then-delete pair below would
+// otherwise delete the history it just failed to copy.
+func identityHistoryMoves(from, to string) []identityStep {
+	if from == to {
+		return nil
+	}
+	return []identityStep{
+		{`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
+		  SELECT channel_id, ?, aired_at, recorded_at FROM filler_airings WHERE clip_hash = ?
+		  ON CONFLICT DO NOTHING`, []any{to, from}},
+		{`DELETE FROM filler_airings WHERE clip_hash = ?`, []any{from}},
+		{`INSERT INTO filler_clip_variants (a_hash, b_hash)
+		  SELECT CASE WHEN other < ? THEN other ELSE ? END, CASE WHEN other < ? THEN ? ELSE other END
+		  FROM (SELECT CASE WHEN a_hash = ? THEN b_hash ELSE a_hash END AS other
+		        FROM filler_clip_variants WHERE a_hash = ? OR b_hash = ?) linked
+		  WHERE other <> ?
+		  ON CONFLICT DO NOTHING`,
+			[]any{to, to, to, to, from, from, from, to}},
+		{`DELETE FROM filler_clip_variants WHERE a_hash = ? OR b_hash = ?`, []any{from, from}},
+		{`UPDATE filler_inferior_copies SET survivor_hash = ? WHERE survivor_hash = ?`, []any{to, from}},
+	}
 }
 
 // LinkClipVariants records that two clips are separate ads built from the same footage.
