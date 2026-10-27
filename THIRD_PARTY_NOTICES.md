@@ -116,9 +116,13 @@ binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
 
-The pinned FFmpeg and yt-dlp source materials are available without authentication or charge in two
-Loomarr source releases. The [n9.0 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
-carries the shipped FFmpeg's exact source, BtbN build recipe and original dependency download cache.
+⚠ The source release for the current FFmpeg pin (`n9.0.2-17-g2a571b6068`, see "GPL source
+distribution" below) is **not yet published**; an image with this pin must not be released until it
+is. The releases below are for the previous pins. Their FFmpeg and yt-dlp source materials are
+available without authentication or charge in two Loomarr source releases. The
+[n9.0.1 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
+carries the previous `n9.0.1-11-ge47273f4d9` build's exact source, BtbN build recipe and original
+dependency download cache.
 The [August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31)
 carries yt-dlp, the retained dependency and runtime sources and license texts: download
 `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`. Verify every download against its
