@@ -91,6 +91,10 @@ func TestCompareResolvesCopiesTrimsCutDownsAndStrangers(t *testing.T) {
 	silent.Audio = nil
 	dubbed := spot.copyOf(r, 1, 0, 0)
 	dubbed.Audio = other.copyOf(r, 1, 0, 0).Audio
+	// The same spot with its last three shots (7.5 s) replaced, sound included.
+	ending := spot
+	ending.shots = append(append([]uint64(nil), spot.shots[:9]...), other.shots[9:]...)
+	ending.audio = append(append([]uint32(nil), spot.audio[:len(spot.audio)*3/4]...), other.audio[len(other.audio)*3/4:]...)
 
 	for _, tc := range []struct {
 		name string
@@ -103,6 +107,7 @@ func TestCompareResolvesCopiesTrimsCutDownsAndStrangers(t *testing.T) {
 		{"a copy without its sound", silent, Same},
 		// An alternate voice-over or price tag over the same footage is a separate, linked ad.
 		{"the picture over another soundtrack", dubbed, Variant},
+		{"an alternate ending", ending.copyOf(r, 1, 0, 0), Variant},
 		{"15 s cut-down from its shots", spot.cutDown(r, 0, 3, 4, 7, 9, 11), Variant},
 		{"cut-down too short to stand alone", spot.cutDown(r, 0), Different},
 		{"a different advert", other.copyOf(r, 1, 0, 0), Different},

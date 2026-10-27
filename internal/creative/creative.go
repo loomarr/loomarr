@@ -39,8 +39,13 @@ const (
 	SameMaxDurationGapMs = 2500
 	// MaxEdgeTrimMs is how far one copy's content may be shifted against the other's.
 	MaxEdgeTrimMs = 1500
-	// frameMatchBits is the per-frame Hamming distance at or under which two frames show one picture.
-	frameMatchBits = 10
+	// Unrelated pictures differ in about half of a dHash's 64 bits, while heavy compression spreads
+	// one picture's frames well below that: a CRF 38 re-encode at 160x90 reads 8-20. A copy compares
+	// each frame once, aligned, where a random pair reaches 20 bits about 2 times in 1,000. A variant
+	// searches every frame of the longer clip for each of the shorter's, which multiplies those odds
+	// by its length, so it takes the stricter bar, which a random pair reaches about 3 in 100,000.
+	sameFrameBits    = 20
+	variantFrameBits = 16
 	// sameMatchedFraction is the share of compared frames that must match for a copy.
 	sameMatchedFraction = 0.85
 	// sameMeanBits bounds the mean distance over the compared frames for a copy.
@@ -121,7 +126,7 @@ func sameVideo(a, b []uint64) bool {
 			d := bits.OnesCount64(a[i] ^ b[j])
 			compared++
 			total += d
-			if d <= frameMatchBits {
+			if d <= sameFrameBits {
 				matched++
 			}
 		}
@@ -171,7 +176,7 @@ func containedVideo(shorter, longer []uint64) bool {
 		}
 		compared++
 		for _, g := range longer {
-			if bits.OnesCount64(f^g) <= frameMatchBits {
+			if bits.OnesCount64(f^g) <= variantFrameBits {
 				matched++
 				break
 			}
