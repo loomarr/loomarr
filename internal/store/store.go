@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -480,11 +481,12 @@ type ClipStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
-	// ListClipFingerprints/UpsertClipFingerprint own the persisted derived cache used by
-	// compilation de-duplication (§10). Reads batch the catalog by exact algorithm; corrupt rows
-	// are omitted with an error so valid siblings remain reusable and the bad row is recomputed.
-	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
-	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
+	// ListClipFingerprints/UpsertClipFingerprint own the persisted creative-fingerprint cache used
+	// by creative identity and compilation de-duplication (#2033). Reads batch the catalog by exact
+	// algorithm; corrupt rows are omitted with an error so valid siblings remain reusable and the
+	// bad row is recomputed.
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error

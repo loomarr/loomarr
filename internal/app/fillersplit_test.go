@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
@@ -77,8 +78,8 @@ func (f splitFakeTools) Boundaries(context.Context, string, int64, int64) ([]fil
 func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
 	return nil, fmt.Errorf("no whisper in tests")
 }
-func (f splitFakeTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
-	return nil, fmt.Errorf("no frames in tests")
+func (f splitFakeTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
+	return creative.Fingerprint{}, fmt.Errorf("no fingerprint in tests")
 }
 func (f splitFakeTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil
