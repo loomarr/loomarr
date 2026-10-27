@@ -93,6 +93,31 @@ func UpcomingHolidays(now time.Time, horizon time.Duration, cal Calendar) []Holi
 // it is in season whenever a winter holiday, Thanksgiving through New Year, is (#2030).
 const GenericHolidayTag = "holiday"
 
+// HolidaySeason is the calendar at one instant, as filler reads it (#2030 decision 5): the holidays
+// with a season somewhere, and those in season. A clip tagged only with holidays outside Dated airs
+// year-round.
+type HolidaySeason struct {
+	Dated    map[string]bool
+	InSeason map[string]bool
+}
+
+// SeasonAt is the calendar's HolidaySeason at t's date on its wall clock, in the household's
+// country. A zero t is no date: every dated holiday is out of season.
+func (c Calendar) SeasonAt(t time.Time) HolidaySeason {
+	v := c.Vocab()
+	s := HolidaySeason{Dated: map[string]bool{}, InSeason: map[string]bool{}}
+	for _, h := range v.Holidays() {
+		if !v.Dated(h.ID) {
+			continue
+		}
+		s.Dated[h.ID] = true
+		if !t.IsZero() && v.InSeason(h.ID, c.Country, civilNoon(t, c.Zone)) {
+			s.InSeason[h.ID] = true
+		}
+	}
+	return s
+}
+
 // civilNoon is noon UTC of `now`'s calendar date on zone's wall clock (nil = UTC): the instant a
 // holiday window, which is a run of whole dates, is evaluated at. Evaluating the instant itself
 // would end Halloween at 8 pm on Oct 31 in New York.

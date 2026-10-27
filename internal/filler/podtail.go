@@ -27,7 +27,8 @@ type tailCandidate struct {
 // ceiling, era rungs, geography, quality and duration bounds all apply), the same `used` set (no
 // repeat in a window, exclusions win), and rotation held strictly: a clip resting inside its
 // cooldown is never used here — a short tail beats a repeat — then category variety, relaxed
-// rather than leaving time unused. Ads respect the pod's clip ceiling; bookends do not count against it.
+// rather than leaving time unused. Ads respect the pod's clip ceiling and the in-season half
+// (season.go); bookends count against neither.
 //
 // Among the clips that fit, rotation picks first, exactly as it does for the ads: a clip the
 // household has never seen, then the least recently aired. Equals go to the LONGEST, so the
@@ -36,7 +37,7 @@ type tailCandidate struct {
 //
 // ⚠ Length used to come first, so the same few long clips topped up every break they fitted and
 // a never-aired clip lost to one aired a few hours ago (#2017).
-func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, remainingMs int64, adsPlaced int) {
+func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, remainingMs int64, adsPlaced int, share *seasonShare) {
 	if remainingMs <= 0 {
 		return
 	}
@@ -86,6 +87,9 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 				if resting(c.Clip, w, policy) {
 					continue
 				}
+				if !share.admits(c.Clip, w) {
+					continue // the break already holds its half of in-season clips
+				}
 				if !allowRepeat && c.Category != "" && c.Category == lastCat {
 					continue
 				}
@@ -102,6 +106,7 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 		}
 		c := cands[pick]
 		p.append(clipToEntry(c.Clip, w, policy), used)
+		share.add(c.Clip, w)
 		remainingMs -= c.DurationMs
 		lastCat = c.Category
 		if c.rung >= 0 {

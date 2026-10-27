@@ -85,7 +85,7 @@ Matching a clip to a channel needs several separate facts:
 - **Tags:** what the clip is about (products and topics, format, seasonal and audience cues),
   from the vocabulary under **Filler → Manage**.
 
-A tag describes; it doesn't change where a clip may play. Tags form a hierarchy, so picking a
+A tag describes; apart from a holiday tag (below), it doesn't change where a clip may play. Tags form a hierarchy, so picking a
 broad tag such as Food also matches clips tagged Cereal. A clip stores only the tags chosen for
 it, so reshaping the hierarchy later never rewrites old decisions.
 
@@ -105,3 +105,12 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
   market's local clips. Clips from other countries or markets stay in the library but never
   enter that channel's pool, whatever the fallback. The guide's time zone only changes how times
   are shown; it never sets a country.
+
+### Holidays
+
+A clip tagged with a holiday, such as Christmas or Halloween, plays only in that holiday's season
+as your country keeps it, on your guide's time zone. Out of season it stays in the library but
+never plays, bumpers and station IDs included. In season, a break leads with one holiday
+commercial when one that fits hasn't aired recently, and holiday commercials never fill more than half of
+a break, so the season doesn't crowd out everything else. A holiday tag with no dates yet is just
+a tag: its clips play all year. A clip you pin to a channel plays whatever the season.

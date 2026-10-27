@@ -179,6 +179,19 @@ func (v Vocabulary) InSeason(id, country string, t time.Time) bool {
 	return ok && spans(k.Rule, t)
 }
 
+// Dated reports whether holiday id has a season in some country: its own dates, or, for a group, a
+// member's. An undated holiday's clips air year-round (#2030 decision 30).
+func (v Vocabulary) Dated(id string) bool {
+	h, ok := v.lookup(id)
+	if !ok {
+		return false
+	}
+	if len(h.Members) > 0 {
+		return slices.ContainsFunc(h.Members, v.Dated)
+	}
+	return len(h.Kept) > 0
+}
+
 // spans reports whether r's season contains t's calendar date: last year's season (one that wraps
 // into January), this year's, or next year's (one that opens in the December before its date).
 func spans(r Rule, t time.Time) bool {

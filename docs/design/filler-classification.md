@@ -175,6 +175,8 @@ seeded with a default forest.
   and words, programming-design §6), in the same transaction as the graph edit. A new seasonal
   taxon gets an undated holiday; deleting the taxon, or moving it off the seasonal axis, retires
   the holiday only while it is undated. A dated or group holiday is retired from the holidays.
+  A clip tagged with a dated holiday airs only in its season, at most half of a break
+  ([scheduling](scheduling.md#breaks-and-pods)): the one tag axis that decides where a clip plays.
 - **Edits are previewed through the same prospective-graph contract they commit**: affected clips,
   playable clips, lineage changes, channel selections and resolver terms, computed by the server.
 - **Rollups are stored denormalised** so `WHERE taxon = 'food'` is one index hit. A `taxa_closure`

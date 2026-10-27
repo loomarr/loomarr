@@ -285,6 +285,18 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
+- **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
+  seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
+  half of a break's commercials are in-season clips, and at least one when a rested one fits: the
+  best rested in-season commercial that fits leads the break. A tag counts only where the clip
+  asserts it, never through a rollup ancestor. The season is the household calendar programming
+  reads (`filler.home_country`, the stored holidays, `guide.timezone`), dated at the break's start;
+  a question asked without one (the pool check, coverage, a clip's fit, a Tunarr filler list) is
+  dated now, and the sweep rolls it with the date. A Tunarr list written before midnight on a
+  season's last day can therefore air its clips until the next sweep. A break's length is sized
+  with no seasons, as it is without play history, so a season opening never re-sizes the
+  timeline. A holiday with no dates is not a season: its clips air year-round. Pins skip both
+  rules, and an in-season pin counts toward the half. A clip's fit reports `season` out of season.
 
 **Audience is an allowlist and never weakens** (a kids and teen guardrail):
 
@@ -328,5 +340,6 @@ Formerly `design.md` §19.
   `available` and is re-pushed; `unavailable` substitutes). Dropping the availability event entirely
   still backfills through the periodic sweep. One leader per channel under concurrency.
 - **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
-  category variety, density and no-repeat-in-window; the fallback ladder degrades to a bumper card;
+  category variety, density, no-repeat-in-window and the holiday season and half
+  (`internal/filler/season_test.go`); the fallback ladder degrades to a bumper card;
   filler never appears as a lineup programme; only real catalog clips are placed.
