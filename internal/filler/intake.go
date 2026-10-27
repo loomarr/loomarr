@@ -294,7 +294,7 @@ func copyFileWithStorage(ctx context.Context, src, dst string, governor *storage
 			EstimatedBytes: info.Size(), Mode: storagegovernor.Automatic,
 		})
 		if lease == nil {
-			return storageDecisionError("reserve cross-filesystem intake copy", decision)
+			return storagegovernor.Pause("reserve cross-filesystem intake copy", decision)
 		}
 		defer lease.Release()
 	}
@@ -328,7 +328,7 @@ func copyFileWithStorage(ctx context.Context, src, dst string, governor *storage
 				if !decision.Allowed {
 					_ = out.Close()
 					_ = os.Remove(tmp)
-					return storageDecisionError("revalidate cross-filesystem intake copy", decision)
+					return storagegovernor.Pause("revalidate cross-filesystem intake copy", decision)
 				}
 			}
 		}
@@ -346,11 +346,4 @@ func copyFileWithStorage(ctx context.Context, src, dst string, governor *storage
 		return err
 	}
 	return os.Rename(tmp, dst)
-}
-
-func storageDecisionError(operation string, decision storagegovernor.Decision) error {
-	if decision.Err != nil {
-		return fmt.Errorf("%s (%s): %w", operation, decision.Snapshot.Reason, decision.Err)
-	}
-	return fmt.Errorf("%s (%s)", operation, decision.Snapshot.Reason)
 }

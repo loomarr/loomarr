@@ -1000,7 +1000,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			DeclaredBytes: source.Bytes, DurationMS: source.DurationMs,
 		})
 		if !ok {
-			return nil, storageDecisionError("estimate split storage", storagegovernor.Decision{
+			return nil, storagegovernor.Pause("estimate split storage", storagegovernor.Decision{
 				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
 			})
 		}
@@ -1010,11 +1010,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			EstimatedBytes: budget.ReservationBytes, Mode: storageMode,
 		})
 		if storageLease == nil {
-			return nil, storageDecisionError("reserve split storage", decision)
+			return nil, storagegovernor.Pause("reserve split storage", decision)
 		}
 		defer storageLease.Release()
 		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
-			return nil, storageDecisionError("revalidate split storage", decision)
+			return nil, storagegovernor.Pause("revalidate split storage", decision)
 		}
 	}
 	ext := filepath.Ext(source.Path)

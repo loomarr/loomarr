@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // --- doubles -----------------------------------------------------------------
@@ -909,6 +911,64 @@ func TestPipeline_FatalFailureRejects(t *testing.T) {
 	// ⚠ The fatal branch had the SAME omission as the verdict paths, one function away: it records
 	// the rung `failed` and sets the disposition, and left Status at `running`.
 	assertRowAgreesWithItsLadder(t, row)
+}
+
+// ⚠ **No room is not a broken file** (#2031). A household install had 33 of 35 `unplayable`
+// rejections caused by `reserve transcode storage (library_limit)`: the storage governor refused
+// the work MaxAttempts times and the fatal transcode rung rejected a good clip. However many passes
+// the governor refuses, the clip must stay on the conveyor, spend no attempt, and say why it waits.
+//
+// Both doors are covered: the lease refused before the encode starts, and the write monitor pausing
+// an encode that outgrew its lease.
+func TestPipeline_AStorageHoldNeverRejectsTheClip(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reason storagegovernor.Reason
+		op     string
+	}{
+		{"reserve refused", storagegovernor.ReasonLibraryLimit, "reserve transcode storage"},
+		{"write outgrew its lease", storagegovernor.ReasonHostReserve, "storage write paused"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newPipeMemStore()
+			seedEnrolled(st, "c1")
+			row := st.rows["c1"]
+			row.Stage = filler.StageTranscode
+			st.rows["c1"] = row
+			stages := allStages()
+			stages[filler.StageTranscode].err = fmt.Errorf("transcode: %w", storagegovernor.Pause(tc.op,
+				storagegovernor.Decision{Snapshot: storagegovernor.Snapshot{Reason: tc.reason}}))
+
+			at := time.Unix(1_800_000_000, 0).UTC()
+			p := newPipe(st, asSlice(stages), filler.DefaultBudget())
+			for i := 0; i < filler.MaxAttempts+2; i++ {
+				if err := p.Advance(context.Background(), "c1"); err != nil && !errors.Is(err, filler.ErrDeferred) {
+					t.Fatal(err)
+				}
+				// Space frees on a cleanup, not within a pass: the clip must not ask again at once.
+				if wait := st.rows["c1"].NextRun.Sub(at); wait < 10*time.Minute {
+					t.Fatalf("pass %d: held clip due again in %v, want it to wait for space", i, wait)
+				}
+				st.rows["c1"] = resetSchedule(st.rows["c1"])
+			}
+
+			got := st.rows["c1"]
+			if got.Disposition != filler.DispositionRunning || got.RejectReason != "" {
+				t.Fatalf("storage-held clip = %q / %q, want still running and unrejected", got.Disposition, got.RejectReason)
+			}
+			if got.Stage != filler.StageTranscode || got.Status != filler.StatusQueued || got.Attempts != 0 {
+				t.Fatalf("storage-held row = %q/%q attempts=%d, want transcode/queued with no attempt spent",
+					got.Stage, got.Status, got.Attempts)
+			}
+			if !st.clips["c1"].RemovedAt.IsZero() {
+				t.Fatal("a storage hold tombstoned the clip")
+			}
+			last := got.Stages[len(got.Stages)-1]
+			if last.Stage != filler.StageTranscode || !strings.Contains(last.Note, string(tc.reason)) {
+				t.Fatalf("ladder note = %+v, want the transcode rung to say it is waiting for storage", last)
+			}
+		})
+	}
 }
 
 // A failure short of the retry limit BACKS OFF rather than resolving — it stays on the same stage,

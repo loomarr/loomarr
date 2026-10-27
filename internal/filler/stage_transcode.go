@@ -189,7 +189,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			DeclaredBytes: info.Size(), DurationMS: c.DurationMs,
 		})
 		if !ok {
-			return StageResult{}, storageDecisionError("estimate transcode storage", storagegovernor.Decision{
+			return StageResult{}, storagegovernor.Pause("estimate transcode storage", storagegovernor.Decision{
 				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
 			})
 		}
@@ -199,11 +199,11 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			EstimatedBytes: budget.ReservationBytes, Mode: storagegovernor.Automatic,
 		})
 		if storageLease == nil {
-			return StageResult{}, storageDecisionError("reserve transcode storage", decision)
+			return StageResult{}, storagegovernor.Pause("reserve transcode storage", decision)
 		}
 		defer storageLease.Release()
 		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
-			return StageResult{}, storageDecisionError("revalidate transcode storage", decision)
+			return StageResult{}, storagegovernor.Pause("revalidate transcode storage", decision)
 		}
 		storageWrites = &storageWriteTracker{lease: storageLease}
 	}
