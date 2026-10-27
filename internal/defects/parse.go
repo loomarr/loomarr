@@ -2,6 +2,7 @@ package defects
 
 import (
 	"bufio"
+	"fmt"
 	"maps"
 	"math"
 	"regexp"
@@ -70,6 +71,13 @@ func Parse(log, metadata string, width, height int, active ActiveArea, hasAudio 
 	}
 	if order := slices.Sorted(maps.Keys(ssim)); len(order) == 2 {
 		r.UpscaleSSIM, r.UpscaleSSIM4 = ssim[order[0]], ssim[order[1]]
+	} else {
+		// ⚠ A missing summary would read as 0, which every picture check passes: a pass that measured
+		// nothing. The clip is unmeasurable under this version instead.
+		r.Unmeasurable = fmt.Sprintf("the measurement log had %d upscale scores, want 2", len(order))
+	}
+	if !blockMeanLine.MatchString(log) || !blurMeanLine.MatchString(log) {
+		r.Unmeasurable = "the measurement log had no block or blur summary"
 	}
 	if m := idetLine.FindAllStringSubmatch(log, -1); len(m) > 0 {
 		last := m[len(m)-1]

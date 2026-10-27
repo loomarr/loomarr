@@ -2,6 +2,7 @@ package defects
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,30 @@ func TestParse_ReadsEverySummaryAndTheFrameLog(t *testing.T) {
 	}
 	if silent := Parse(sampleLog, sampleMetadata, 640, 480, active, false); silent.FlatFactor != 0 || silent.PeakCount != 0 {
 		t.Fatalf("a clip with no audio stream took audio readings: %+v", silent)
+	}
+}
+
+// A summary missing from the log would read as 0, which every picture check passes.
+func TestParse_AMissingSummaryIsUnmeasurableNotClean(t *testing.T) {
+	active := ActiveArea{Width: 640, Height: 480}
+	for name, drop := range map[string]string{
+		"one ssim":   "[Parsed_ssim_16",
+		"blockiness": "[Parsed_blockdetect_2",
+		"blur":       "[Parsed_blurdetect_3",
+	} {
+		var kept []string
+		for _, line := range strings.SplitAfter(sampleLog, "\n") {
+			if !strings.HasPrefix(line, drop) {
+				kept = append(kept, line)
+			}
+		}
+		got := Parse(strings.Join(kept, ""), sampleMetadata, 640, 480, active, true)
+		if got.Unmeasurable == "" {
+			t.Errorf("without %s the pass read as measured: %+v", name, got)
+		}
+	}
+	if got := Parse(sampleLog, sampleMetadata, 640, 480, active, true); got.Unmeasurable != "" {
+		t.Fatalf("a whole log read as unmeasurable: %s", got.Unmeasurable)
 	}
 }
 

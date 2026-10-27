@@ -15,11 +15,13 @@ func TestScore_TalliesEachBandAgainstItsLabels(t *testing.T) {
 		{Era: 1985, Label: LabelFail, Outcome: Undecided},
 		{Era: 2015, Label: LabelPass, Outcome: Borderline, Ruling: RulingPass},
 		{Era: 2015, Label: LabelPass, Outcome: Pass},
+		// No judge configured: the clip is judged, but nobody ruled on it.
+		{Era: 2015, Label: LabelFail, Outcome: Borderline, Ruling: RulingNoJudge},
 	}
 	got := Score(results)
 	want := []BandScore{
 		{Band: BandTape, Failed: 1, FalseFails: 1, Missed: 1, Judged: 1, BorderlinePass: 1, JudgeRight: 1, JudgeWrong: 1, Total: 6},
-		{Band: BandHD, BorderlinePass: 1, JudgeRight: 1, Total: 2},
+		{Band: BandHD, Judged: 1, BorderlinePass: 1, JudgeRight: 1, Total: 3},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("Score = %+v, want %+v", got, want)

@@ -81,12 +81,19 @@ func Score(results []LabelledResult) []BandScore {
 		case r.Label == LabelFail:
 			s.Missed++
 		}
-		if r.Outcome == Borderline && r.Ruling != "" {
-			if (r.Ruling == RulingFail) == (r.Label == LabelFail) && r.Ruling != RulingAbstain {
+		if r.Outcome != Borderline {
+			continue
+		}
+		// No judge is not a ruling: the clip failed for want of one, which says nothing of the judge.
+		switch r.Ruling {
+		case RulingPass, RulingFail:
+			if (r.Ruling == RulingFail) == (r.Label == LabelFail) {
 				s.JudgeRight++
 			} else {
 				s.JudgeWrong++
 			}
+		case RulingAbstain:
+			s.JudgeWrong++
 		}
 	}
 	var out []BandScore
