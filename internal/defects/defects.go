@@ -15,8 +15,8 @@ import "math"
 const MeasurementVersion = "defects-v1-4fps"
 
 // FloorVersion versions the bars. "provisional" marks bars set from synthetic measurements before
-// the labelled corpus calibrates them (#2034 step 4c).
-const FloorVersion = "floor-v1-provisional"
+// the labelled corpus calibrates them (#2034 step 4c). v2: clipping has no borderline band.
+const FloorVersion = "floor-v2-provisional"
 
 // SampleFPS is the frame rate the picture detectors sample at. Interlace detection is the
 // exception: it needs consecutive fields, so it reads every frame.
@@ -146,8 +146,10 @@ var bars = map[Check]map[Band]bar{
 	CheckInterlace: allBands(bar{0.3, 0.6}),
 	CheckWindowbox: allBands(bar{0.04, 0.08}),
 	// Only the HD era is upscaled by definition; an older ad is meant to be SD.
-	CheckUpscale:  {BandHD: {0.985, 0.993}},
-	CheckClipping: allBands(bar{1, 5}),
+	CheckUpscale: {BandHD: {0.985, 0.993}},
+	// No borderline band: the judge sees stills and cannot hear, so sound is settled by the
+	// detector alone (floor-v2).
+	CheckClipping: allBands(bar{5, 5}),
 }
 
 func allBands(b bar) map[Band]bar { return map[Band]bar{BandTape: b, BandSD: b, BandHD: b} }

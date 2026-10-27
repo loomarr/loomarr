@@ -1688,31 +1688,44 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	record := func(hash string, era int, blur float64) store.ClipDefectRecord {
+	record := func(hash string, era int, blur float64, j *defects.Judgement) store.ClipDefectRecord {
 		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
-		return store.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: defects.Assess(r, era), MeasuredAt: now}
+		a := defects.Assess(r, era)
+		verdict, reason := defects.Decide(a, j)
+		return store.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
+			Verdict: verdict, VerdictReason: reason, MeasuredAt: now}
 	}
 	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
 		t.Fatal("a record with no measurement or verdict version was stored")
 	}
-	if err := s.UpsertClipDefects(ctx, record(one.Hash, 1988, 4)); err != nil {
+	unjudged := record(one.Hash, 1988, 4, nil)
+	unjudged.Verdict = ""
+	if err := s.UpsertClipDefects(ctx, unjudged); err == nil {
+		t.Fatal("a record with no verdict was stored")
+	}
+	if err := s.UpsertClipDefects(ctx, record(one.Hash, 1988, 4, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipDefects(ctx, record(one.Hash, 2012, 11)); err != nil {
+	if err := s.UpsertClipDefects(ctx, record(one.Hash, 2012, 11, nil)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipDefects(ctx, record(two.Hash, 2012, 4)); err != nil {
+	// Borderline tape softness, settled by the judge: the ruling round-trips with the record.
+	ruled := &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingPass, Reason: "clean enough", Model: "m1"}
+	if err := s.UpsertClipDefects(ctx, record(two.Hash, 1988, 10.5, ruled)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ListClipDefects(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := record(one.Hash, 2012, 11); !reflect.DeepEqual(got[one.Hash], want) {
+	if want := record(one.Hash, 2012, 11, nil); !reflect.DeepEqual(got[one.Hash], want) {
 		t.Fatalf("record = %+v, want the later measurement %+v", got[one.Hash], want)
 	}
-	if got[one.Hash].Assessment.Outcome != defects.Fail {
-		t.Fatalf("an HD-era blur of 11 was recorded as %q", got[one.Hash].Assessment.Outcome)
+	if got[one.Hash].Assessment.Outcome != defects.Fail || got[one.Hash].Verdict != defects.VerdictFail {
+		t.Fatalf("an HD-era blur of 11 was recorded as %q / %q", got[one.Hash].Assessment.Outcome, got[one.Hash].Verdict)
+	}
+	if want := record(two.Hash, 1988, 10.5, ruled); !reflect.DeepEqual(got[two.Hash], want) || got[two.Hash].Verdict != defects.VerdictPass {
+		t.Fatalf("judged record = %+v, want %+v", got[two.Hash], want)
 	}
 
 	transformed := two
@@ -6292,7 +6305,8 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	// The loser's defect record describes bytes that are about to be deleted (#2034).
 	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
 	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{
-		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988), MeasuredAt: now,
+		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988),
+		Verdict: defects.VerdictPass, MeasuredAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

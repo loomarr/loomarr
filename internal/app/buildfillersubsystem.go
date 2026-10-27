@@ -278,11 +278,14 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	ffmpegPath := set.str("playout.ffmpeg_path")
+	defectJudge := filler.NewVisionDefectJudge(&hotVisionProvider{set: set, log: log, metrics: metricRecorder},
+		buildFillerMediaTools(set, metricRecorder), fillerDefectJudgeLedger{st: st, set: set},
+		defectJudgeRoute(set), time.Now, log)
 	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
-		}, layout.ClipDir(), time.Now, log,
+		}, defectJudge, layout.ClipDir(), time.Now, log,
 	)))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
 	// folder there is nothing to download into, and the cache lives in memory only.

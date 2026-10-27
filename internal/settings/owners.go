@@ -103,6 +103,8 @@ var fillerOwners = map[string]Owner{
 	"filler.pipeline.max_vision":       OwnerFillerLimits,
 	"filler.pipeline.max_split_vision": OwnerFillerLimits,
 	"filler.pipeline.max_splits":       OwnerFillerLimits,
+	"filler.defects.judge_look_cents":  OwnerFillerLimits,
+	"filler.defects.judge_daily_cents": OwnerFillerLimits,
 
 	"ingest.ytdlp_path":    OwnerFillerTools,
 	"ingest.ffmpeg_path":   OwnerFillerTools,

@@ -900,6 +900,21 @@ func declared() []Setting {
 			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
 		},
+		{
+			// The defect floor's judge (#2034) reuses the vision model above. Each look is reserved
+			// at this ceiling before the call and settled at what it cost; a self-hosted Ollama
+			// reserves nothing. Whole cents, because a setting has no decimal kind.
+			Key: "filler.defects.judge_look_cents", Label: "Most one picture-quality check may cost (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_LOOK_CENTS", Group: GroupFiller,
+			Kind: KindInt, Default: 2, Advanced: true,
+			Doc: "Ads whose picture is close to the quality limit are shown to the vision model above for a ruling. This is the most one look may cost on a hosted model. 0 stops hosted looks, and those ads wait.",
+		},
+		{
+			// ⚠ The ledger's day is shared: it sums every metered filler model call that day, not
+			// only the judge's, so the doc says "paid filler AI" rather than "these checks".
+			Key: "filler.defects.judge_daily_cents", Label: "Daily ceiling for picture-quality checks (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_DAILY_CENTS", Group: GroupFiller,
+			Kind: KindInt, Default: 50, Advanced: true,
+			Doc: "Picture-quality checks on a hosted model stop for the day (UTC) once Loomarr's paid filler AI spend that day would pass this. Ads past the limit wait for the next day.",
+		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
 		// its result always required a human, which made compilations the most manual part of a

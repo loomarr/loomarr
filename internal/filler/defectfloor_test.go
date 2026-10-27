@@ -76,12 +76,13 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	}
 	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
 
-	res, err := NewDefectFloor(st, probe, measure, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1}) {
-		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed", res)
+	// Ruled: fresh and current are borderline tape softness, recorded as having no judge.
+	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1, Ruled: 2}) {
+		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed, 2 ruled", res)
 	}
 	if len(decoded) != 3 {
 		t.Fatalf("decoded %d clips, want only fresh, held and broken", len(decoded))
@@ -89,8 +90,9 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	if got := st.records[recorrected.Hash]; got.Era != 2015 || got.Assessment.Outcome != defects.Fail {
 		t.Fatalf("re-dated record = era %d %q, want the HD bar's fail at 2015", got.Era, got.Assessment.Outcome)
 	}
-	if got := st.records[fresh.Hash]; got.Assessment.Outcome != defects.Borderline || got.Readings.Version != defects.MeasurementVersion {
-		t.Fatalf("fresh tape-era record = %+v, want borderline softness", got)
+	if got := st.records[fresh.Hash]; got.Assessment.Outcome != defects.Borderline || got.Readings.Version != defects.MeasurementVersion ||
+		got.Verdict != defects.VerdictFail || got.Judgement == nil || got.Judgement.Ruling != defects.RulingNoJudge {
+		t.Fatalf("fresh tape-era record = %+v, want borderline softness failed for want of a judge", got)
 	}
 	for _, skipped := range []string{composite.Hash, unplayable.Hash} {
 		if _, ok := st.records[skipped]; ok {
@@ -103,7 +105,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 
 	// The next pass decodes nothing: the failure is recorded, not retried every hour.
 	decoded = nil
-	res, err = NewDefectFloor(st, probe, measure, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err = NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil || len(decoded) != 0 || res != (DefectFloorResult{}) {
 		t.Fatalf("second pass = %+v, decoded %v, err %v; want nothing to do", res, decoded, err)
 	}
@@ -122,7 +124,7 @@ func TestDefectFloor_AFailedRecordReadStopsThePass(t *testing.T) {
 		t.Fatal("a clip was decoded after the record read failed")
 		return defects.Readings{}, nil
 	}
-	if _, err := NewDefectFloor(st, nil, measure, t.TempDir(), time.Now, nil).Run(context.Background()); err == nil {
+	if _, err := NewDefectFloor(st, nil, measure, nil, t.TempDir(), time.Now, nil).Run(context.Background()); err == nil {
 		t.Fatal("the pass carried on past a failed record read")
 	}
 }
@@ -144,7 +146,7 @@ func TestDefectFloor_StopsDecodingWhenTheBudgetRunsOut(t *testing.T) {
 		return defects.Readings{Version: defects.MeasurementVersion}, nil
 	}
 	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
-	res, err := NewDefectFloor(st, probe, measure, dir, func() time.Time { return clock }, nil).Run(context.Background())
+	res, err := NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return clock }, nil).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
