@@ -56,7 +56,8 @@ func (r *run) startSegment(ctx context.Context, path string, seek time.Duration,
 	segment, err := p.WaitSegment(ctx, 0)
 	elapsed := time.Since(start)
 	cancel()
-	<-done // cancellation closes and reaps the child before scratch is removed
+	runErr := <-done // cancellation closes and reaps the child before scratch is removed
+	_ = runErr       // the run error is the cancellation itself
 	if err != nil {
 		if encoder != nil {
 			return 0, fmt.Errorf("first segment: %w: %s", err, tail(encoder.stderr.String()))

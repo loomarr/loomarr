@@ -303,8 +303,9 @@ func TestMigrateToPostgresLocksTargetThroughParityAndCommit(t *testing.T) {
 				writerDone <- err
 			}()
 			select {
-			case <-writerDone:
+			case err := <-writerDone:
 				finishedBeforeCommit = true
+				t.Logf("external write finished before commit: %v", err)
 			case <-time.After(100 * time.Millisecond):
 				// Expected: ACCESS EXCLUSIVE holds the writer until migration commits.
 			}

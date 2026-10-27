@@ -203,7 +203,8 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	cmd.Stderr = &out
 	if err := cmd.Start(); err != nil {
 		stop(nil)
-		<-monitorDone
+		monitorErr := <-monitorDone // reap the monitor; the start failure is the error to report
+		_ = monitorErr
 		return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
 	}
 	err = cmd.Wait()

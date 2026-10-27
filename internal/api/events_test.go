@@ -203,7 +203,8 @@ func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {
 	}()
 	close(shutdown)
 	select {
-	case <-done:
+	case err := <-done:
+		t.Logf("SSE stream ended: %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("SSE stream stayed open after generation shutdown")
 	}

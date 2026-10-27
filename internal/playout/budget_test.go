@@ -316,8 +316,8 @@ func TestResourceBudget_BackgroundYieldsTheMomentATranscodeIsReserved(t *testing
 	idle := make(chan error, 1)
 	go func() { idle <- b.WaitIdle(t.Context()) }()
 	select {
-	case <-idle:
-		t.Fatal("WaitIdle returned while a live transcode holds a lease")
+	case err := <-idle:
+		t.Fatalf("WaitIdle returned (%v) while a live transcode holds a lease", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 	live.Release()
