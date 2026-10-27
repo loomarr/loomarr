@@ -390,6 +390,11 @@ RETIRED=(
   'DENO_VERSION|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
   'denoland/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
   '/usr/local/bin/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image ships no Deno'
+  # Creative identity (#2033) replaced aligned-prefix dHash dedup.
+  'GrayFrames(|retired: MediaTools.Fingerprint measures the creative'
+  'DupHashThreshold|retired: creative.Compare decides a copy'
+  'meanHamming(|retired: creative.Compare aligns over an edge-trim window instead of from frame 0'
+  'dHashAlgorithm|retired: creative.Algorithm keys the fingerprint cache'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

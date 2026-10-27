@@ -303,6 +303,10 @@ type Clip struct {
 	// answerable (channel theming needs it), a re-split possible (detection improves), and the
 	// parent's broadcast context (network/market/date) inheritable by every segment for free.
 	ParentHash string
+	// Variants are the hashes of other versions of the same ad — a cut-down, an alternate ending, a
+	// different voiceover (#2033). Loaded for pod assembly only: a break never carries two versions
+	// of one ad, and an airing of any version rests them all.
+	Variants []string
 }
 
 // IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.

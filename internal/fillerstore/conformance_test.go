@@ -33,6 +33,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		})
 		t.Run("ClipIdentityReplacementSameHash", func(t *testing.T) { testClipIdentityReplacementSameHash(t, newStore) })
 		t.Run("ClipFingerprintCache", func(t *testing.T) { testClipFingerprintCache(t, newStore) })
+		t.Run("CreativeIdentityMerge", func(t *testing.T) { testCreativeIdentityMerge(t, newStore) })
 		t.Run("ClipCounts", func(t *testing.T) { testClipCounts(t, newStore) })
 		t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 		t.Run("ClipNameSource", func(t *testing.T) { testClipNameSource(t, newStore) })

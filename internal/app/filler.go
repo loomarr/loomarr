@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -200,6 +201,27 @@ func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string
 }
 func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkPipelineComplete(ctx, hash, at)
+}
+
+// fillerIdentityStoreAdapter bridges the store → filler.IdentityStore (#2033). It translates the
+// catalog listing, which carries admission time, and the merge record; the rest passes through.
+type fillerIdentityStoreAdapter struct{ fillerstore.Store }
+
+func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
+	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.IdentityClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.IdentityClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+	}
+	return out, nil
+}
+func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c filler.InferiorCopy) error {
+	return a.Store.MergeInferiorCopy(ctx, store.InferiorCopy{
+		ClipHash: c.ClipHash, SourceHash: c.SourceHash, SurvivorHash: c.SurvivorHash, DecidedAt: c.DecidedAt,
+	})
 }
 
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
@@ -612,9 +634,14 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 	if err != nil {
 		return nil, err
 	}
+	variants, err := a.st.ListClipVariants(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]filler.Clip, len(clips))
 	for i, c := range clips {
 		out[i] = c.Clip
+		out[i].Variants = variants[c.Hash]
 	}
 	return out, nil
 }
@@ -641,11 +668,11 @@ func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreC
 	}
 	return out, nil
 }
-func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error) {
+func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
 	return a.st.ListClipFingerprints(ctx, algorithm)
 }
-func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error {
-	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, frames)
+func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})

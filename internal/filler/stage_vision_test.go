@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -88,8 +89,8 @@ func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]fi
 func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
 	return nil, nil
 }
-func (s *scriptedVision) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
-	return nil, nil
+func (s *scriptedVision) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
+	return creative.Fingerprint{}, nil
 }
 func (s *scriptedVision) Cut(context.Context, string, int64, int64, string) error { return nil }
 

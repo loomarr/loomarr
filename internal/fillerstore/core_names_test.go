@@ -16,6 +16,7 @@ type (
 	InteractiveOperation = store.InteractiveOperation
 	Image                = store.Image
 	ImageRef             = store.ImageRef
+	InferiorCopy         = store.InferiorCopy
 )
 
 const (

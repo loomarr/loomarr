@@ -189,3 +189,17 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
 	}
 }
+
+// fillerIdentityJob keeps the catalog holding each ad once (#2033): it fingerprints published
+// clips, folds every copy of an ad into its best copy, and links variants. Hourly, so a better
+// copy that becomes ready replaces the old one within the hour; a pass only decodes clips it has
+// never measured, bounded to well inside the long-queue ceiling.
+func fillerIdentityJob(ci *filler.CreativeIdentity) scheduler.Job {
+	return scheduler.Job{
+		Timeout: scheduler.LongJobTimeout,
+		Name:    "filler-identity", Group: scheduler.GroupFiller, Title: "Keep one copy of each ad",
+		Description: "Matches copies of the same ad by picture and sound, keeps the best copy, and links cut-downs and other versions.",
+		DefaultCron: "0 20 * * * *", ScheduleKey: "job.filler_identity.schedule",
+		Run: func(ctx context.Context) error { _, err := ci.Run(ctx); return err },
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -91,13 +92,19 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	return c
 }
 
+// cachedClipFingerprint reads one clip's cached video frames under an algorithm.
 func cachedClipFingerprint(ctx context.Context, s Store, clipHash, algorithm string) ([]uint64, bool, error) {
 	all, err := s.ListClipFingerprints(ctx, algorithm)
 	if err != nil {
 		return nil, false, err
 	}
-	frames, found := all[clipHash]
-	return frames, found, nil
+	fp, found := all[clipHash]
+	return fp.Video, found, nil
+}
+
+// frames is a fingerprint carrying only the given video frames.
+func frames(video ...uint64) creative.Fingerprint {
+	return creative.Fingerprint{DurationMs: 30_000, Video: video}
 }
 
 func ids2(clips []Clip) []string {
@@ -875,7 +882,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipFingerprint(ctx, old.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
+	if err := s.UpsertClipFingerprint(ctx, old.Hash, "creative-test", frames(1, 2, 3)); err != nil {
 		t.Fatal(err)
 	}
 	child := sampleClip("child", "Child", filler.Commercial, 1993, filler.Kids, "toys")
@@ -959,10 +966,10 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if gotChannel.Revision != channel.Revision+1 {
 		t.Errorf("channel policy rekey revision = %d, want %d", gotChannel.Revision, channel.Revision+1)
 	}
-	if _, found, err := cachedClipFingerprint(ctx, s, old.Hash, "dhash-v1"); err != nil || found {
+	if _, found, err := cachedClipFingerprint(ctx, s, old.Hash, "creative-test"); err != nil || found {
 		t.Errorf("old-byte fingerprint survived identity replacement: found=%v err=%v", found, err)
 	}
-	if _, found, err := cachedClipFingerprint(ctx, s, replacement.Hash, "dhash-v1"); err != nil || found {
+	if _, found, err := cachedClipFingerprint(ctx, s, replacement.Hash, "creative-test"); err != nil || found {
 		t.Errorf("old-byte fingerprint was re-keyed onto replacement bytes: found=%v err=%v", found, err)
 	}
 	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, replacement.Path, replacement.Hash)
@@ -1203,7 +1210,7 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipFingerprint(ctx, clip.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
+	if err := s.UpsertClipFingerprint(ctx, clip.Hash, "creative-test", frames(1, 2, 3)); err != nil {
 		t.Fatal(err)
 	}
 	pipeline := filler.ClipPipeline{
@@ -1254,7 +1261,7 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
 		t.Errorf("same-identity pipeline changed: %+v, found=%v err=%v", row, found, err)
 	}
-	if cached, found, err := cachedClipFingerprint(ctx, s, clip.Hash, "dhash-v1"); err != nil || !found || len(cached) != 3 {
+	if cached, found, err := cachedClipFingerprint(ctx, s, clip.Hash, "creative-test"); err != nil || !found || len(cached) != 3 {
 		t.Errorf("fingerprint for unchanged bytes = (%v, %v, %v), want preserved", cached, found, err)
 	}
 }
@@ -1629,28 +1636,28 @@ func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", nil); err == nil {
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "creative-test", frames()); err == nil {
 		t.Fatal("empty fingerprint was persisted")
 	}
-	want := []uint64{0, 1, ^uint64(0)}
-	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", want); err != nil {
+	want := creative.Fingerprint{DurationMs: 30_000, Video: []uint64{0, 1, ^uint64(0)}, Audio: []uint32{5, creative.QuietHop}}
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "creative-test", want); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1")
-	if err != nil || !found || len(got) != len(want) || got[2] != want[2] {
-		t.Fatalf("fingerprint round-trip = (%v, %v, %v), want %v", got, found, err, want)
+	all, err := s.ListClipFingerprints(ctx, "creative-test")
+	if got := all[one.Hash]; err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("fingerprint round-trip = (%+v, %v), want %+v", got, err, want)
 	}
-	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v2"); err != nil || found {
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "creative-other"); err != nil || found {
 		t.Errorf("different algorithm hit the cache: found=%v err=%v", found, err)
 	}
-	if err := s.UpsertClipFingerprint(ctx, one.Hash, "dhash-v1", []uint64{9}); err != nil {
+	if err := s.UpsertClipFingerprint(ctx, one.Hash, "creative-test", frames(9)); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err = cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1")
+	got, found, err := cachedClipFingerprint(ctx, s, one.Hash, "creative-test")
 	if err != nil || !found || len(got) != 1 || got[0] != 9 {
 		t.Errorf("idempotent upsert = (%v, %v, %v), want [9]", got, found, err)
 	}
-	if err := s.UpsertClipFingerprint(ctx, two.Hash, "dhash-v1", []uint64{7}); err != nil {
+	if err := s.UpsertClipFingerprint(ctx, two.Hash, "creative-test", frames(7)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1658,10 +1665,10 @@ func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.DeleteClipsNotIn(ctx, []string{two.Hash}); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "dhash-v1"); err != nil || found {
+	if _, found, err := cachedClipFingerprint(ctx, s, one.Hash, "creative-test"); err != nil || found {
 		t.Errorf("pruned clip left an orphan fingerprint: found=%v err=%v", found, err)
 	}
-	if got, found, err := cachedClipFingerprint(ctx, s, two.Hash, "dhash-v1"); err != nil || !found || len(got) != 1 || got[0] != 7 {
+	if got, found, err := cachedClipFingerprint(ctx, s, two.Hash, "creative-test"); err != nil || !found || len(got) != 1 || got[0] != 7 {
 		t.Errorf("kept clip lost its fingerprint: got=%v found=%v err=%v", got, found, err)
 	}
 }
@@ -6166,4 +6173,128 @@ func reopenConformanceStore(t *testing.T, s Store) (Store, error) {
 	t.Helper()
 	url := reopenURL(t, s)
 	return openExtended(t.Context(), url, store.DialectOf(s) != DialectPostgres)
+}
+
+// testCreativeIdentityMerge pins #2033's merge on both backends: folding a losing copy into its
+// survivor carries every airing, play, variant link, earlier inferior copy, curated name and
+// channel override onto the survivor, deletes the loser's rows, and remembers both of its
+// identities so neither is catalogued again.
+func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.UnixMilli(1_800_000_000_000).UTC()
+	mustSaveChannel(t, s, sampleChannel("channel-a", 1, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("channel-b", 2, time.Time{}))
+	loser := sampleClip("loser", "Burger Barn (curated)", filler.Commercial, 1988, filler.General, "food")
+	loser.NameSource = clipcatalog.NameFromCurated
+	survivor := sampleClip("survivor", "Untitled commercial", filler.Commercial, 1988, filler.General, "food")
+	survivor.NameSource = clipcatalog.NameFromGrounded
+	cutDown := sampleClip("cut-down", "Burger Barn 15", filler.Commercial, 1988, filler.General, "food")
+	earlier := sampleClip("earlier-copy", "Burger Barn", filler.Commercial, 1988, filler.General, "food")
+	for _, c := range []Clip{loser, survivor, cutDown, earlier} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One airing on each copy, one channel each; the loser's is the later one.
+	if _, err := s.RecordClipPlay(ctx, "channel-a", survivor.Hash, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordClipPlay(ctx, "channel-b", loser.Hash, now.Add(time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LinkClipVariants(ctx, loser.Hash, cutDown.Hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
+		ClipHash: earlier.Hash, SourceHash: "earlier-source", SurvivorHash: loser.Hash, DecidedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	channel := sampleChannel("pinned", 3, now)
+	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{loser.Hash}}
+	if _, err := s.SaveChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: survivor.Hash, SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
+		t.Fatal("a clip merged into itself")
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: "gone", SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
+		t.Fatal("a missing clip merged")
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
+		ClipHash: loser.Hash, SourceHash: "loser-source", SurvivorHash: survivor.Hash, DecidedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.GetClip(ctx, loser.Hash); err == nil {
+		t.Error("the losing copy's catalog row survived the merge")
+	}
+	got, err := s.GetClip(ctx, survivor.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PlayCount != 2 || !got.LastPlayedAt.Equal(now.Add(time.Hour)) {
+		t.Errorf("survivor plays = %d, last %v; want both copies' 2, latest %v", got.PlayCount, got.LastPlayedAt, now.Add(time.Hour))
+	}
+	if got.Name != loser.Name || got.NameSource != clipcatalog.NameFromCurated {
+		t.Errorf("survivor name = %q (%s), want the curated %q", got.Name, got.NameSource, loser.Name)
+	}
+	exposure, err := exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exposure[survivor.Hash].PlayCount != 2 || exposure[loser.Hash].PlayCount != 0 {
+		t.Errorf("household rotation = %+v, want both airings on the survivor", exposure)
+	}
+	variants, err := s.ListClipVariants(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(variants[cutDown.Hash], []string{survivor.Hash}) || len(variants[loser.Hash]) != 0 {
+		t.Errorf("variant links = %v, want the cut-down linked to the survivor only", variants)
+	}
+	inferior, err := s.InferiorCopyHashes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{loser.Hash, "loser-source", earlier.Hash, "earlier-source"} {
+		if !inferior[h] {
+			t.Errorf("inferior identity %q was not remembered: %v", h, inferior)
+		}
+	}
+	if inferior[survivor.Hash] {
+		t.Error("the survivor was remembered as inferior")
+	}
+	gotChannel, err := s.GetChannel(ctx, channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChannel.Policy.Filler == nil || !reflect.DeepEqual(gotChannel.Policy.Filler.Pinned, []string{survivor.Hash}) {
+		t.Errorf("channel pin did not follow the merge: %+v", gotChannel.Policy.Filler)
+	}
+
+	// A transform that files new bytes carries it to the new hash: the cut-down stays a variant,
+	// airings still rest the ad, and copies that lost to it still name a live survivor.
+	conditioned := got
+	conditioned.Hash = "survivor-conditioned"
+	if err := s.ReplaceClipIdentity(ctx, survivor.Hash, conditioned); err != nil {
+		t.Fatal(err)
+	}
+	variants, err = s.ListClipVariants(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(variants[cutDown.Hash], []string{conditioned.Hash}) || len(variants[survivor.Hash]) != 0 {
+		t.Errorf("variant links after re-key = %v, want the cut-down linked to %q", variants, conditioned.Hash)
+	}
+	exposure, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exposure[conditioned.Hash].PlayCount != 2 || exposure[survivor.Hash].PlayCount != 0 {
+		t.Errorf("household rotation after re-key = %+v, want both airings on %q", exposure, conditioned.Hash)
+	}
 }

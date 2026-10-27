@@ -2,6 +2,7 @@ package filler
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 	"time"
 )
@@ -215,8 +216,18 @@ const (
 // rotationRank is the domain-owned anti-repeat ordering (§10 V58). The returned timestamp is
 // meaningful only for aired clips; lower tiers and older times rank first.
 func rotationRank(c Clip, w Window, policy Policy) (int, time.Time) {
-	exposure, ok := w.Exposures[c.ID()]
-	if !ok || exposure.PlayCount <= 0 || exposure.LastPlayedAt.IsZero() {
+	exposure := w.Exposures[c.ID()]
+	// Versions of one ad rest together (#2033): a viewer who saw the 30 s spot an hour ago has
+	// seen the 15 s cut-down too.
+	for _, v := range c.Variants {
+		if ve := w.Exposures[v]; ve.PlayCount > 0 {
+			exposure.PlayCount += ve.PlayCount
+			if ve.LastPlayedAt.After(exposure.LastPlayedAt) {
+				exposure.LastPlayedAt = ve.LastPlayedAt
+			}
+		}
+	}
+	if exposure.PlayCount <= 0 || exposure.LastPlayedAt.IsZero() {
 		return rotationNever, time.Time{}
 	}
 	if policy.Cooldown <= 0 || w.SnapshotAt.IsZero() ||
@@ -239,10 +250,11 @@ func rotationLess(a, b Clip, w Window, policy Policy) bool {
 	return false
 }
 
-// contains reports whether a clip id (its HASH) is already in the pod-in-progress.
+// contains reports whether a clip id (its HASH), or another version of its ad, is already in the
+// pod-in-progress. Variant links are stored both ways, so the placed clip's list is enough.
 func contains(out []Clip, id string) bool {
 	for _, c := range out {
-		if c.ID() == id {
+		if c.ID() == id || slices.Contains(c.Variants, id) {
 			return true
 		}
 	}

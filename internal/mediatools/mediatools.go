@@ -3,6 +3,7 @@ package mediatools
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/creative"
 )
 
 // MediaTools is the split pipeline's exec boundary (§10 V34): everything the
@@ -31,13 +33,14 @@ type MediaTools interface {
 	// utterances relative to that span. Errors when whisper is unrunnable — the
 	// caller then marks the segment Unsplittable rather than guessing.
 	Transcribe(ctx context.Context, file string, startMs, endMs int64) ([]TranscriptSegment, error)
-	// GrayFrames decodes the span at 1/3fps to 9x8 grayscale frames (dHash input,
-	// ~30 lines of pure Go over the bytes — no library).
-	GrayFrames(ctx context.Context, file string, startMs, endMs int64) ([][]byte, error)
+	// Fingerprint measures the span's creative (#2033): 9x8 grayscale frames at creative.VideoFPS
+	// and mono audio at creative.AudioSampleRate, hashed by the creative package. Audio is nil
+	// when the file has no audio stream.
+	Fingerprint(ctx context.Context, file string, startMs, endMs int64) (creative.Fingerprint, error)
 	// Keyframes samples n viewable JPEG frames spread across the clip — the vision
 	// tier's input (§10 V44) and the frame-heuristic tier's (framehints.go).
 	//
-	// ⚠ **Deliberately NOT GrayFrames.** GrayFrames is 9x8 grayscale dHash food —
+	// ⚠ **Deliberately NOT Fingerprint.** Fingerprint reads 9x8 grayscale frames —
 	// it has thrown away colour (so it cannot see a B&W transfer) and resolution
 	// (so it cannot read a logo), the two things both V44 tiers exist to read. This
 	// returns bounded near-full-resolution JPEGs from representative windows,
@@ -164,28 +167,52 @@ func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endM
 	return parseWhisperJSON(raw)
 }
 
-func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endMs int64) ([][]byte, error) {
-	// 1/3fps over 9x8 gray pixels: the §6.4-measured duplicate detector (mean
-	// per-frame Hamming 1.1 for a re-encoded duplicate vs 27.6–32.2 different).
-	var stdout bytes.Buffer
-	cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
-		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
-		"-i", file, "-vf", "fps=1/3,scale=9:8", "-pix_fmt", "gray",
-		"-f", "rawvideo", "-")
-	cmd.Stdout = &stdout
+func (t *FFmpegTools) Fingerprint(ctx context.Context, file string, startMs, endMs int64) (creative.Fingerprint, error) {
+	if t.FFprobePath == "" {
+		return creative.Fingerprint{}, fmt.Errorf("ffprobe is required to fingerprint %s", file)
+	}
+	span := []string{"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs - startMs), "-i", file}
+	var frames bytes.Buffer
+	cmd := bgexec.FFmpeg(ctx, t.FFmpegPath, append(span,
+		"-map", "0:v:0", "-vf", fmt.Sprintf("fps=%d,scale=9:8", creative.VideoFPS), "-pix_fmt", "gray",
+		"-f", "rawvideo", "-")...)
+	cmd.Stdout = &frames
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg gray frames %s: %w", file, err)
+		return creative.Fingerprint{}, fmt.Errorf("ffmpeg fingerprint frames %s: %w", file, err)
 	}
 	const frameBytes = 9 * 8
-	raw := stdout.Bytes()
-	var frames [][]byte
+	raw := frames.Bytes()
+	var gray [][]byte
 	for len(raw) >= frameBytes {
-		frame := make([]byte, frameBytes)
-		copy(frame, raw[:frameBytes])
-		frames = append(frames, frame)
+		gray = append(gray, raw[:frameBytes:frameBytes])
 		raw = raw[frameBytes:]
 	}
-	return frames, nil
+	fp := creative.Fingerprint{DurationMs: endMs - startMs, Video: creative.HashFrames(gray)}
+
+	// ffmpeg refuses to open an output with no stream, so a file without sound is asked first
+	// rather than read from a failed decode.
+	streams, err := bgexec.Tool(ctx, t.FFprobePath, "-v", "error", "-select_streams", "a:0",
+		"-show_entries", "stream=index", "-of", "csv=p=0", file).Output()
+	if err != nil {
+		return creative.Fingerprint{}, fmt.Errorf("ffprobe fingerprint audio %s: %w", file, err)
+	}
+	if strings.TrimSpace(string(streams)) == "" {
+		return fp, nil
+	}
+	var pcm bytes.Buffer
+	cmd = bgexec.FFmpeg(ctx, t.FFmpegPath, append(span,
+		"-map", "0:a:0", "-ac", "1", "-ar", strconv.Itoa(creative.AudioSampleRate),
+		"-f", "s16le", "-")...)
+	cmd.Stdout = &pcm
+	if err := cmd.Run(); err != nil {
+		return creative.Fingerprint{}, fmt.Errorf("ffmpeg fingerprint audio %s: %w", file, err)
+	}
+	samples := make([]int16, pcm.Len()/2)
+	for i := range samples {
+		samples[i] = int16(binary.LittleEndian.Uint16(pcm.Bytes()[2*i:]))
+	}
+	fp.Audio = creative.HashAudio(samples)
+	return fp, nil
 }
 
 // Keyframes samples the WHOLE clip. Prefer KeyframesIn when the caller already owns the measured

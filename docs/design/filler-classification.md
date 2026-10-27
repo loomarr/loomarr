@@ -151,7 +151,7 @@ composite and its output propagates to every child.
 topic, channel-fit and sensitivity labels from the segment's transcript and vision text. Pod
 eligibility stays exact, deterministic `WHERE` clauses (era, audience, category, no repeat brand,
 network and market), and the theme tags only order an already-eligible pool. Embeddings were
-measured and rejected for theme matching; duplicates use persisted dHash evidence. There is no
+measured and rejected for theme matching; duplicates use persisted creative fingerprints. There is no
 vector column, `sqlite-vec`, pgvector or embedding role.
 
 ## The clip taxonomy (V45a)

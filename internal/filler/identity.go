@@ -1,0 +1,337 @@
+package filler
+
+import (
+	"cmp"
+	"context"
+	"fmt"
+	"log/slog"
+	"math"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/mediatools"
+)
+
+// identityFingerprintBudget bounds how long one pass spends decoding. A catalog that needs more
+// is fingerprinted over several passes; comparison only ever uses what is already measured.
+const identityFingerprintBudget = 40 * time.Second
+
+// InferiorCopy is one copy of an ad folded into the better copy that survives (#2033).
+type InferiorCopy struct {
+	ClipHash, SourceHash, SurvivorHash string
+	DecidedAt                          time.Time
+}
+
+// IdentityStore is the slice of the store creative identity needs.
+type IdentityStore interface {
+	// ListIdentityClips is every catalog clip, composites and held clips included, with its
+	// admission time. Only published clips are compared, but every sidecar guards shared assets.
+	ListIdentityClips(ctx context.Context) ([]IdentityClip, error)
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
+	ListClipVariants(ctx context.Context) (map[string][]string, error)
+	LinkClipVariants(ctx context.Context, a, b string) error
+	MergeInferiorCopy(ctx context.Context, c InferiorCopy) error
+}
+
+// IdentityClip is a catalog clip and when it was admitted, the last tie-break between copies.
+type IdentityClip struct {
+	StoreClip
+	CreatedAt time.Time
+}
+
+// IdentityResult reports one pass.
+type IdentityResult struct {
+	Fingerprinted int // clips measured this pass
+	Merged        int // inferior copies folded into their survivor
+	Linked        int // new variant links
+	Pending       int // published clips still waiting for a fingerprint
+}
+
+// CreativeIdentity makes the catalog hold each ad once (#2033). Every pass fingerprints published
+// clips that lack one, folds every copy of an ad into its best copy, deletes the losers' files,
+// and links variants. It is the one writer of merges and links, for new arrivals and for a
+// catalog that predates it alike: a clip's turn comes when it has a fingerprint.
+type CreativeIdentity struct {
+	store   IdentityStore
+	tools   mediatools.MediaTools
+	clipDir string
+	// targetLUFS is the live air-time target; a copy closer to it needs less correction.
+	targetLUFS func() float64
+	now        func() time.Time
+	log        *slog.Logger
+}
+
+func NewCreativeIdentity(store IdentityStore, tools mediatools.MediaTools, clipDir string,
+	targetLUFS func() float64, now func() time.Time, log *slog.Logger) *CreativeIdentity {
+	return &CreativeIdentity{store: store, tools: tools, clipDir: clipDir, targetLUFS: targetLUFS, now: now, log: log}
+}
+
+// Run is one pass. A failure on one clip or pair is logged and left for the next pass.
+func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
+	var res IdentityResult
+	all, err := ci.store.ListIdentityClips(ctx)
+	if err != nil {
+		return res, err
+	}
+	cached, err := ci.store.ListClipFingerprints(ctx, creative.Algorithm)
+	if err != nil {
+		// Corrupt rows are omitted; the valid rest is still usable and the rest is remeasured.
+		ci.warn("identity: some cached fingerprints were unreadable", "err", err)
+	}
+	published := make([]IdentityClip, 0, len(all))
+	for _, c := range all {
+		if identityCandidate(c.Clip) {
+			published = append(published, c)
+		}
+	}
+	// Oldest first, so a backlog is measured in admission order and the result is deterministic.
+	slices.SortFunc(published, func(a, b IdentityClip) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.Hash, b.Hash))
+	})
+	deadline := ci.now().Add(identityFingerprintBudget)
+	measured := make([]IdentityClip, 0, len(published))
+	fps := make(map[string]creative.Fingerprint, len(published))
+	for _, c := range published {
+		if fp, ok := cached[c.Hash]; ok {
+			fps[c.Hash] = fp
+			measured = append(measured, c)
+			continue
+		}
+		if ctx.Err() != nil || ci.now().After(deadline) {
+			res.Pending++
+			continue
+		}
+		full, err := ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
+		if err != nil {
+			continue
+		}
+		fp, err := ci.tools.Fingerprint(ctx, full, 0, c.DurationMs)
+		if err != nil || len(fp.Video) == 0 {
+			ci.warn("identity: clip could not be fingerprinted", "clip", c.Hash, "err", err)
+			continue
+		}
+		if err := ci.store.UpsertClipFingerprint(ctx, c.Hash, creative.Algorithm, fp); err != nil {
+			return res, err
+		}
+		res.Fingerprinted++
+		fps[c.Hash] = fp
+		measured = append(measured, c)
+	}
+
+	// Copies group transitively, but a copy is merged only into a survivor it matches directly (see
+	// below): Same tolerates a few seconds of difference, so a chain of matches can span more.
+	group := newUnionFind(len(measured))
+	same := map[[2]int]bool{}
+	var variants [][2]int
+	for i := range measured {
+		// Every pair is compared each pass; the job stops cleanly when its lease ends.
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		for j := i + 1; j < len(measured); j++ {
+			switch creative.Compare(fps[measured[i].Hash], fps[measured[j].Hash]) {
+			case creative.Same:
+				group.union(i, j)
+				same[[2]int{i, j}] = true
+			case creative.Variant:
+				variants = append(variants, [2]int{i, j})
+			}
+		}
+	}
+	members := map[int][]int{}
+	for i := range measured {
+		members[group.find(i)] = append(members[group.find(i)], i)
+	}
+	referenced := referencedAssets(ci.clipDir, all)
+	survivorOf := make([]int, len(measured))
+	for i := range survivorOf {
+		survivorOf[i] = i
+	}
+	for _, copies := range members {
+		if len(copies) < 2 {
+			continue
+		}
+		best := slices.MinFunc(copies, func(a, b int) int { return ci.compareCopies(measured[a], measured[b]) })
+		for _, loser := range copies {
+			if loser == best || !same[[2]int{min(loser, best), max(loser, best)}] {
+				// Only reachable through another copy, e.g. a trimmed edit matching the full one
+				// while the survivor is trimmed the other way. It stays its own clip.
+				continue
+			}
+			survivorOf[loser] = best
+			if err := ci.merge(ctx, measured[loser], measured[best], referenced); err != nil {
+				ci.warn("identity: copy could not be merged", "clip", measured[loser].Hash,
+					"survivor", measured[best].Hash, "err", err)
+				survivorOf[loser] = loser
+				continue
+			}
+			res.Merged++
+		}
+	}
+
+	existing, err := ci.store.ListClipVariants(ctx)
+	if err != nil {
+		return res, err
+	}
+	for _, pair := range variants {
+		a, b := measured[survivorOf[pair[0]]].Hash, measured[survivorOf[pair[1]]].Hash
+		if a == b || slices.Contains(existing[a], b) {
+			continue
+		}
+		if err := ci.store.LinkClipVariants(ctx, a, b); err != nil {
+			return res, err
+		}
+		existing[a], existing[b] = append(existing[a], b), append(existing[b], a)
+		res.Linked++
+	}
+	if ci.log != nil && (res.Merged > 0 || res.Linked > 0) {
+		ci.log.Info("identity: catalog holds each ad once",
+			"merged", res.Merged, "linked", res.Linked, "fingerprinted", res.Fingerprinted, "pending", res.Pending)
+	}
+	return res, nil
+}
+
+// identityCandidate is a clip that airs as an ad of its own: published, not a compilation.
+func identityCandidate(c Clip) bool {
+	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != PlacementNotPlayable
+}
+
+// compareCopies orders two copies of one ad best first. Until #2034 measures defects: the higher
+// resolution, then the copy needing less air-time loudness correction (within 1 dB is a tie), then
+// the more complete edit, then the earlier admission.
+func (ci *CreativeIdentity) compareCopies(a, b IdentityClip) int {
+	if d := cmp.Compare(qualityRank(b.Quality), qualityRank(a.Quality)); d != 0 {
+		return d
+	}
+	if ga, gb := ci.correctionNeeded(a), ci.correctionNeeded(b); math.Abs(ga-gb) >= 1 {
+		return cmp.Compare(ga, gb)
+	}
+	return cmp.Or(cmp.Compare(b.DurationMs, a.DurationMs), a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.Hash, b.Hash))
+}
+
+// correctionNeeded is how far a copy's measured playback loudness sits from the target, in dB. An
+// unmeasured copy ranks last on this rung.
+func (ci *CreativeIdentity) correctionNeeded(c IdentityClip) float64 {
+	full, err := ClipPath(ci.clipDir, c.Path, filepath.Ext(c.Path))
+	if err != nil || ci.targetLUFS == nil {
+		return math.Inf(1)
+	}
+	tags, ok := ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
+		return math.Inf(1)
+	}
+	measured := tags.MediaAssets.Playback.QC.Loudness
+	if !measured.Available || math.IsNaN(measured.IntegratedLUFS) || math.IsInf(measured.IntegratedLUFS, 0) {
+		return math.Inf(1)
+	}
+	return math.Abs(ci.targetLUFS() - measured.IntegratedLUFS)
+}
+
+// qualityRank reads the height out of a quality label: "720p" is 720, "4K" 2160, unknown 0.
+func qualityRank(q string) int {
+	if strings.EqualFold(q, "4K") {
+		return 2160
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(strings.ToLower(q), "p"))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// merge folds loser into survivor durably, then deletes the loser's own files. The order is the
+// correctness story, as in SplitSweeper.retire: once the merge commits, Sync never catalogues the
+// loser again, so a failed unlink leaves only bytes, never a second copy on air.
+func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityClip, referenced map[string]int) error {
+	full, err := ClipPath(ci.clipDir, loser.Path, filepath.Ext(loser.Path))
+	if err != nil {
+		return fmt.Errorf("loser path: %w", err)
+	}
+	tags, _ := ReadSidecarTags(full)
+	source := loser.Hash
+	if tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.ClipHash != "" {
+		source = tags.MediaAssets.SourceMaster.ClipHash
+	}
+	if err := ci.store.MergeInferiorCopy(ctx, InferiorCopy{
+		ClipHash: loser.Hash, SourceHash: source, SurvivorHash: survivor.Hash, DecidedAt: ci.now().UTC(),
+	}); err != nil {
+		return err
+	}
+	files := []string{full, sidecarPathFor(full)}
+	if m := tags.MediaAssets; m != nil {
+		// An asset another clip's sidecar also names is shared; it stays.
+		for _, asset := range []string{m.SourceMaster.Path, derivativePath(m.Evidence)} {
+			if asset != "" && referenced[asset] == 1 {
+				files = append(files, filepath.Join(ci.clipDir, filepath.FromSlash(asset)))
+			}
+		}
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			ci.warn("identity: an inferior copy's file could not be removed; it is already off the catalog",
+				"clip", loser.Hash, "file", f, "err", err)
+		}
+	}
+	return nil
+}
+
+func derivativePath(d *MediaDerivativeLineage) string {
+	if d == nil {
+		return ""
+	}
+	return d.Asset.Path
+}
+
+// referencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
+func referencedAssets(clipDir string, clips []IdentityClip) map[string]int {
+	out := map[string]int{}
+	for _, c := range clips {
+		full, err := ClipPath(clipDir, c.Path, filepath.Ext(c.Path))
+		if err != nil {
+			continue
+		}
+		tags, ok := ReadSidecarTags(full)
+		if !ok || tags.MediaAssets == nil {
+			continue
+		}
+		m := tags.MediaAssets
+		for _, p := range []string{m.SourceMaster.Path, derivativePath(m.Evidence), derivativePath(m.Playback)} {
+			if p != "" {
+				out[p]++
+			}
+		}
+	}
+	return out
+}
+
+func (ci *CreativeIdentity) warn(msg string, args ...any) {
+	if ci.log != nil {
+		ci.log.Warn(msg, args...)
+	}
+}
+
+type unionFind []int
+
+func newUnionFind(n int) unionFind {
+	u := make(unionFind, n)
+	for i := range u {
+		u[i] = i
+	}
+	return u
+}
+
+func (u unionFind) find(i int) int {
+	for u[i] != i {
+		u[i] = u[u[i]]
+		i = u[i]
+	}
+	return i
+}
+
+func (u unionFind) union(a, b int) { u[u.find(a)] = u.find(b) }

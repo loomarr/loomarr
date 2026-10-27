@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -52,8 +53,8 @@ var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publicat
 type SplitStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
 	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
-	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
-	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
 	UpsertClip(ctx context.Context, c StoreClip) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
@@ -847,12 +848,12 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 	if err != nil || len(catalog) == 0 {
 		return
 	}
-	type hashed struct {
-		path   string
-		hashes []uint64
+	type candidate struct {
+		path string
+		fp   creative.Fingerprint
 	}
-	var candidates []hashed
-	cached, cacheErr := sp.store.ListClipFingerprints(ctx, dHashAlgorithm)
+	var candidates []candidate
+	cached, cacheErr := sp.store.ListClipFingerprints(ctx, creative.Algorithm)
 	if cacheErr != nil && sp.log != nil {
 		sp.log.Warn("catalog fingerprint cache read failed; missing entries will be recomputed", "err", cacheErr)
 	}
@@ -860,23 +861,24 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
-		hashes, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
+		fp, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
 		if !ok {
 			continue
 		}
-		candidates = append(candidates, hashed{path: c.Path, hashes: hashes})
+		candidates = append(candidates, candidate{path: c.Path, fp: fp})
 	}
 	if len(candidates) == 0 {
 		return
 	}
+	// Only a copy is a duplicate. A segment that is a variant of a catalog clip, such as a
+	// cut-down, is a separate ad and is kept (#2033).
 	for i := range segs {
-		frames, err := sp.tools.GrayFrames(ctx, file, segs[i].StartMs, segs[i].EndMs)
+		fp, err := sp.tools.Fingerprint(ctx, file, segs[i].StartMs, segs[i].EndMs)
 		if err != nil {
 			continue
 		}
-		h := dHashFrames(frames)
 		for _, c := range candidates {
-			if mean, ok := meanHamming(h, c.hashes); ok && mean <= DupHashThreshold {
+			if creative.Compare(fp, c.fp) == creative.Same {
 				segs[i].DupOf = c.path
 				break
 			}
@@ -886,24 +888,20 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 
 // catalogFingerprint makes whole-catalog dedup incremental. Content hash plus algorithm version
 // is the cache key, so a hit is exact; failures always degrade to recomputation or no verdict.
-func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached []uint64) ([]uint64, bool) {
-	if len(cached) > 0 {
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
+	if len(cached.Video) > 0 {
 		return cached, true
 	}
-	frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
-	if err != nil {
-		return nil, false
-	}
-	hashes := dHashFrames(frames)
-	if len(hashes) == 0 {
-		return nil, false
+	fp, err := sp.tools.Fingerprint(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
+	if err != nil || len(fp.Video) == 0 {
+		return creative.Fingerprint{}, false
 	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, dHashAlgorithm, hashes); err != nil && sp.log != nil {
+	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, creative.Algorithm, fp); err != nil && sp.log != nil {
 		sp.log.Warn("catalog fingerprint cache write failed", "clip", c.Hash, "err", err)
 	}
-	return hashes, true
+	return fp, true
 }
 
 // Confirm writes the operator's reviewed cut list to the catalog (§10): each kept segment is cut

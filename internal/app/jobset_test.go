@@ -36,6 +36,9 @@ func TestJobSet(t *testing.T) {
 		// unattended crawler", and this row is what a future reader sees when they check whether
 		// that is still true.
 		"filler-fetch | filler | 0 * * * * * | ",
+		// Added by #2033. The one job that deletes a clip because another copy of the same ad is
+		// better: a future reader asking "what removes clips on its own?" is looking at this row too.
+		"filler-identity | filler | 0 20 * * * * | job.filler_identity.schedule",
 		// ⚠ **The ingest pipeline (§10 V51b) — this ONE row replaced FOUR**: `filler-language`
 		// (:30), `filler-split` (:45), `filler-transcribe` (:15) and `filler-vision` (:50). Their
 		// staggered minutes were a hand-maintained scheduling discipline that kept four expensive

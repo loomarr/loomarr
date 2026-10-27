@@ -399,6 +399,11 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 			return fmt.Errorf("replace clip identity %s references: %w", oldHash, err)
 		}
 	}
+	for _, step := range identityHistoryMoves(oldHash, newHash) {
+		if _, err := tx.ExecContext(ctx, s.ph(step.query), step.args...); err != nil {
+			return fmt.Errorf("replace clip identity %s history: %w", oldHash, err)
+		}
+	}
 	if err := s.rekeyChannelClipRefs(ctx, tx, oldHash, newHash); err != nil {
 		return fmt.Errorf("replace clip identity %s channel references: %w", oldHash, err)
 	}
