@@ -16,8 +16,10 @@ func configureProcessTree(cmd *exec.Cmd, _ options) {
 func attachProcessTree(cmd *exec.Cmd, o options) (*processTree, error) {
 	if o.lowPriority {
 		// PRIO_PGRP covers every thread of every process already in the group; anything spawned
-		// later inherits. Best effort: an unprivileged process may always RAISE its niceness, so a
-		// failure here is not expected, and running at normal priority beats not running.
+		// later inherits. On Linux the child already started at this nice (startProcess), so this
+		// changes nothing; elsewhere it is how LowPriority applies, a moment after Start. Best
+		// effort: an unprivileged process may always RAISE its niceness, so a failure here is not
+		// expected, and running at normal priority beats not running.
 		_ = syscall.Setpriority(syscall.PRIO_PGRP, cmd.Process.Pid, BackgroundNice)
 	}
 	return &processTree{pgid: cmd.Process.Pid}, nil

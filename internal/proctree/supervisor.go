@@ -37,7 +37,7 @@ func Start(ctx context.Context, cmd *exec.Cmd, opts ...Option) (*Supervisor, err
 		return nil, err
 	}
 	configureProcessTree(cmd, o)
-	if err := cmd.Start(); err != nil {
+	if err := startProcess(cmd, o); err != nil {
 		return nil, err
 	}
 

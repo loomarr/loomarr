@@ -4,7 +4,6 @@ package proctree
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -26,8 +25,17 @@ func niceOf(t *testing.T, pid int) int {
 	return n
 }
 
+// The baseline is the shell's own nice: this process's may read as BackgroundNice once a lowered
+// start thread was the main thread, which Go parks rather than ends (start_linux.go).
 func TestStartLowPriorityNicesTheChild(t *testing.T) {
-	baseline := niceOf(t, os.Getpid())
+	out, err := exec.Command("sh", "-c", "ps -o ni= -p $$").Output()
+	if err != nil {
+		t.Skipf("ps unavailable: %v", err)
+	}
+	baseline, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("parse nice %q: %v", out, err)
+	}
 	if baseline >= BackgroundNice {
 		t.Skipf("test process already runs at nice %d", baseline)
 	}

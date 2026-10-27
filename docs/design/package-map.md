@@ -89,7 +89,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`proctree`** · 1 importer
+- **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 23 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -166,7 +166,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
