@@ -35,6 +35,8 @@ func TestJobSet(t *testing.T) {
 		// Its presence here is the deliberate record of that: §15 previously said "there is no
 		// unattended crawler", and this row is what a future reader sees when they check whether
 		// that is still true.
+		// Added by #2034. Record-only: it measures and judges, and removes nothing until #2036.
+		"filler-defects | filler | 0 40 * * * * | job.filler_defects.schedule",
 		"filler-fetch | filler | 0 * * * * * | ",
 		// Added by #2033. The one job that deletes a clip because another copy of the same ad is
 		// better: a future reader asking "what removes clips on its own?" is looking at this row too.
