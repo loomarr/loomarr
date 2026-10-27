@@ -80,7 +80,8 @@ func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
 		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
 		WithAcquisitionManifests(st).
-		WithStorageGovernor(governor)
+		WithStorageGovernor(governor).
+		WithInferiorCopies(st)
 
 	// Keep the library scanner wired while the connection is empty. The adapter treats the
 	// library module's explicit unconfigured result as an empty optional source, then starts

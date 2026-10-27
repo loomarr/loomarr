@@ -75,7 +75,7 @@ func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 
 // TakeIn is takeInFrom with no source, binding or storage governor.
 func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil)
+	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil, nil)
 }
 
 func movePath(src, dst string) error {

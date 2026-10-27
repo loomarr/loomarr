@@ -47,6 +47,9 @@ type IntakeResult struct {
 	// discarded — not catalogued twice, and not left in the watch folder to be re-examined on
 	// every pass.
 	Duplicates int
+	// Inferior counts files left in place because they are a known inferior copy of an ad the
+	// catalog already holds in a better copy (#2033).
+	Inferior int
 	// Skipped counts files that could not be hashed or moved. They stay in the watch folder, so
 	// a transient failure retries rather than losing the file.
 	Skipped int
@@ -64,7 +67,10 @@ type IntakeResult struct {
 // content-addressed destination before any move or duplicate deletion. It receives both filesystem
 // paths for exact-byte checks and their durable relative names; it is never invoked for an unfiled
 // operator clip found directly in clipDir.
-func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor) (IntakeResult, error) {
+//
+// `inferior` holds the identities of copies that lost to a better copy of their ad (#2033). Such a
+// file is left exactly where it is, never filed: it may be an operator's own file.
+func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor, inferior map[string]bool) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {
 		return res, nil
@@ -109,6 +115,10 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 			// Left where it is: a file being written as we look at it is the common case, and
 			// the next pass will find it complete.
 			res.Skipped++
+			continue
+		}
+		if inferior[id] {
+			res.Inferior++
 			continue
 		}
 
