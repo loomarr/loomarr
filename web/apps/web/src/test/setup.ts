@@ -55,7 +55,7 @@ globalThis.ResizeObserver ??= class {
 
 // The shared MSW server (V53d) — one mock layer for the whole suite, replacing the per-file
 // `stubFetch` helpers that 31 test files each hand-rolled. See `./msw/server` for why the
-// unhandled-request guard records-and-asserts instead of using `onUnhandledRequest: "error"`,
+// unhandled-request guard records-and-asserts instead of using `onUnhandledFrame: "error"`,
 // which does not fail a test.
 //
 // ⚠ Installed globally but STARTS WITH NO HANDLERS. Every test declares the routes it needs via

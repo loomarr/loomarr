@@ -92,8 +92,16 @@ const providerTypeHandler = http.get("*/v1/notifications/provider-types", () =>
   HttpResponse.json({ providers: providerTypes, webPushPublicKey: "B".repeat(87) }),
 );
 
+// jsdom has no service worker. The stub is defined on the real navigator rather than on an
+// `Object.create(navigator)` copy: a copy breaks jsdom's brand-checked getters (`navigator.product`),
+// which MSW reads while resolving every request.
+const stubServiceWorker = (serviceWorker: unknown) => {
+  Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: serviceWorker });
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(navigator, "serviceWorker");
 });
 
 describe("NotificationDestinationsPanel", () => {
@@ -304,9 +312,7 @@ describe("NotificationDestinationsPanel", () => {
     }));
     vi.stubGlobal("Notification", { permission: "default", requestPermission });
     vi.stubGlobal("PushManager", class {});
-    const navigatorWithServiceWorker = Object.create(navigator) as Navigator;
-    Object.defineProperty(navigatorWithServiceWorker, "serviceWorker", { value: { register } });
-    vi.stubGlobal("navigator", navigatorWithServiceWorker);
+    stubServiceWorker({ register });
     let created: Record<string, unknown> | undefined;
     server.use(
       providerTypeHandler,
@@ -354,9 +360,7 @@ describe("NotificationDestinationsPanel", () => {
         unsubscribe,
       }));
       const getRegistration = vi.fn(async () => ({ pushManager: { getSubscription } }));
-      const navigatorWithServiceWorker = Object.create(navigator) as Navigator;
-      Object.defineProperty(navigatorWithServiceWorker, "serviceWorker", { value: { getRegistration } });
-      vi.stubGlobal("navigator", navigatorWithServiceWorker);
+      stubServiceWorker({ getRegistration });
       let deleteBody: Record<string, unknown> | undefined;
       const browserProvider = {
         ...provider,

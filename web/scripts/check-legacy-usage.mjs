@@ -152,12 +152,10 @@ const importSpecifiers = (node, found = []) => {
     node.source
   ) {
     found.push(node.source.value);
-  } else if (
-    node.type === "CallExpression" &&
-    node.callee.type === "Import" &&
-    node.arguments[0]?.type === "StringLiteral"
-  ) {
-    found.push(node.arguments[0].value);
+  } else if (node.type === "ImportExpression" && node.source?.type === "StringLiteral") {
+    // Babel 8 parses `import(x)` as ImportExpression; Babel 7 emitted a CallExpression on an
+    // `Import` callee.
+    found.push(node.source.value);
   }
   for (const [key, child] of Object.entries(node)) {
     if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") importSpecifiers(child, found);
