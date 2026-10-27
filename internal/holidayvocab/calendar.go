@@ -183,7 +183,7 @@ func validCountry(c string) error {
 // a country no holiday names keeps none. Undated and group holidays are not on it: a group has no
 // window of its own (InSeason answers for it).
 func (v Vocabulary) Calendar(country string) []Observance {
-	country = normalCountry(country)
+	country = v.keeper(country)
 	var out []Observance
 	for _, h := range v.holidays {
 		if k, ok := h.keptIn(country); ok {
@@ -209,11 +209,15 @@ func (v Vocabulary) Countries() []string {
 	return out
 }
 
-func normalCountry(country string) string {
-	if country = strings.ToUpper(strings.TrimSpace(country)); country == "" {
-		return defaultCountry
+// keeper is the country whose calendar country reads: itself when some holiday is kept there, else
+// the US, so a household in a country no definition names keeps the calendar every household had
+// before countries rather than none.
+func (v Vocabulary) keeper(country string) string {
+	country = strings.ToUpper(strings.TrimSpace(country))
+	if slices.Contains(v.Countries(), country) {
+		return country
 	}
-	return country
+	return defaultCountry
 }
 
 func (h Holiday) keptIn(country string) (Keeping, bool) {

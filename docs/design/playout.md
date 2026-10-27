@@ -231,8 +231,8 @@ red/amber/cyan, the 1990s cyan/pink/green, and every other decade, or no bounded
 **Holiday versions.** While a calendar holiday is on, a generated logo carries a small picture to
 its left: Halloween a pumpkin, bat or ghost; Thanksgiving a leaf; Christmas holly or a snowflake;
 New Year a firework; Valentine's Day a heart (`policy.watermark.motifs` picks where there is a
-choice; the first is the default). The other calendar holidays (Easter, Mother's Day and the rest,
-#2030) have no holiday version yet: the logo airs plain through them. While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
+choice; the first is the default). The other calendar holidays (Easter, Mother's Day and the
+rest, see #2030) have no holiday version yet: the logo airs plain through them. While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
 a fixed colour gives way too. `policy.watermark.holiday` false turns it off; omitted is on, except that
 a channel whose seasonal mode is off (Ignore holidays) never shows one and a channel limited to some
 holidays shows only those. An uploaded image airs unchanged (no holiday version). The holiday comes

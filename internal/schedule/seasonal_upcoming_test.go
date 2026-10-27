@@ -36,3 +36,17 @@ func TestUpcomingHolidays(t *testing.T) {
 		}
 	}
 }
+
+// The windows are whole dates on the calendar's wall clock, as the seasonal policy reads them: at
+// 10 pm on Oct 31 in New York (Nov 1 in UTC) Halloween is still on.
+func TestUpcomingHolidaysDatesNowOnTheCalendarsClock(t *testing.T) {
+	eastern, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no tzdata:", err)
+	}
+	now := time.Date(2026, time.October, 31, 22, 0, 0, 0, eastern)
+	got := schedule.UpcomingHolidays(now, 24*time.Hour, schedule.Calendar{Zone: eastern})
+	if len(got) == 0 || got[0].ID != "halloween" {
+		t.Fatalf("upcoming at Oct 31 10 pm Eastern = %v, want Halloween still on", got)
+	}
+}

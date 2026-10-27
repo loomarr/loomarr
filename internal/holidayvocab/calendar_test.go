@@ -8,15 +8,13 @@ import (
 
 func day(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 12, 0, 0, 0, time.UTC) }
 
-// observed lists the holiday ids whose window, for country, contains t.
+// observed lists the holiday ids in season, for country, at t.
 func observed(country string, t time.Time) []string {
+	v := Default()
 	var out []string
-	for _, o := range Default().Calendar(country) {
-		for _, y := range []int{t.Year() - 1, t.Year()} {
-			if start, end := o.Window(y); !t.Before(start) && !t.After(end) {
-				out = append(out, o.ID)
-				break
-			}
+	for _, d := range v.Definitions() {
+		if v.InSeason(d.ID, country, t) {
+			out = append(out, d.ID)
 		}
 	}
 	slices.Sort(out)
@@ -38,6 +36,11 @@ func TestCalendarFollowsTheCountry(t *testing.T) {
 		{"Bonfire Night in Britain", "GB", day(2026, time.November, 3), []string{"bonfire-night"}},
 		{"no Bonfire Night in the US", "US", day(2026, time.November, 3), nil},
 		{"an unset country is the US", "", day(2026, time.July, 2), []string{"independence-day"}},
+		// A country no definition names keeps the US calendar, as every household did before
+		// countries: Germany's channels still bench Christmas in July.
+		{"an unlisted country is the US", "DE", day(2026, time.July, 2), []string{"independence-day"}},
+		{"so is a slip for Britain", "UK", day(2026, time.December, 20), []string{"christmas"}},
+		{"a country is read loosely", " gb ", day(2026, time.November, 3), []string{"bonfire-night"}},
 		{"Canada Day", "CA", day(2026, time.June, 28), []string{"canada-day"}},
 		{"Easter 2027 is March 28", "GB", day(2027, time.March, 20), []string{"easter"}},
 		{"through Easter Monday", "IE", day(2027, time.March, 29), []string{"easter"}},
@@ -82,8 +85,14 @@ func TestEveryHolidayIsObservedAndEveryCountryHasTheCommonOnes(t *testing.T) {
 			t.Errorf("no country keeps %s", d.ID)
 		}
 	}
-	if got := v.Calendar("ZZ"); got != nil {
-		t.Errorf("an unsupported country has a calendar: %v", got)
+	ids := func(os []Observance) (out []string) {
+		for _, o := range os {
+			out = append(out, o.ID)
+		}
+		return out
+	}
+	if got, want := ids(v.Calendar("ZZ")), ids(v.Calendar("US")); !slices.Equal(got, want) {
+		t.Errorf("an unsupported country keeps %v, want the US calendar %v", got, want)
 	}
 }
 
@@ -103,6 +112,59 @@ func TestANewHolidayBenchesOnlyWithEvidenceBeyondTheName(t *testing.T) {
 	}
 	if original := v.Judge("halloween", Evidence{Title: "Halloween"}); !original.Benches() {
 		t.Errorf("an original holiday's name alone no longer benches: %+v", original)
+	}
+}
+
+// A channel request names a holiday only outside its look-alikes: documentaries about Easter Island
+// are not an Easter channel.
+func TestMatchIntentSkipsLookAlikes(t *testing.T) {
+	v := Default()
+	if got := v.MatchIntent("documentaries on Easter Island"); len(got) != 0 {
+		t.Errorf("Easter Island intent = %v, want no holiday", got)
+	}
+	if got := v.MatchIntent("an Easter channel for the kids"); !slices.Equal(got, []string{"easter"}) {
+		t.Errorf("Easter intent = %v, want easter", got)
+	}
+}
+
+// Western Easter against published dates, including the computus's edge years.
+func TestEasterSundayMatchesKnownDates(t *testing.T) {
+	for year, want := range map[int]time.Time{
+		1818: time.Date(1818, time.March, 22, 0, 0, 0, 0, time.UTC), // the earliest possible
+		1943: time.Date(1943, time.April, 25, 0, 0, 0, 0, time.UTC), // the latest possible
+		2024: time.Date(2024, time.March, 31, 0, 0, 0, 0, time.UTC),
+		2025: time.Date(2025, time.April, 20, 0, 0, 0, 0, time.UTC),
+		2026: time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC),
+		2027: time.Date(2027, time.March, 28, 0, 0, 0, 0, time.UTC),
+		2038: time.Date(2038, time.April, 25, 0, 0, 0, 0, time.UTC),
+		2049: time.Date(2049, time.April, 18, 0, 0, 0, 0, time.UTC),
+	} {
+		if got := easterSunday(year); !got.Equal(want) {
+			t.Errorf("Easter %d = %s, want %s", year, got.Format(time.DateOnly), want.Format(time.DateOnly))
+		}
+	}
+}
+
+// A season that opens in the previous December (a holiday early in January) is in season on its
+// December days too.
+func TestASeasonOpeningLastYearIsInSeasonInDecember(t *testing.T) {
+	v, err := New([]Holiday{{ID: "epiphany", Label: "Epiphany",
+		Kept: []Keeping{keep([]string{"IE"}, fixed(time.January, 6), around(10, 0))}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		at   time.Time
+		want bool
+	}{
+		{day(2026, time.December, 27), true},
+		{day(2027, time.January, 6), true},
+		{day(2026, time.December, 26), false},
+		{day(2027, time.January, 7), false},
+	} {
+		if got := v.InSeason("epiphany", "IE", tc.at); got != tc.want {
+			t.Errorf("Epiphany on %s = %v, want %v", tc.at.Format(time.DateOnly), got, tc.want)
+		}
 	}
 }
 
@@ -158,7 +220,19 @@ func TestNewRejectsWhatItCannotEvaluate(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if _, err := New([]Holiday{ok, {ID: "autumn", Label: "Autumn", Members: []string{"missing"}}}); err == nil {
-		t.Error("a group whose member is no holiday is accepted")
+	group := func(id string, members ...string) Holiday { return Holiday{ID: id, Label: id, Members: members} }
+	for name, hs := range map[string][]Holiday{
+		"a member that is no holiday": {ok, group("autumn", "missing")},
+		"a member that is itself":     {ok, group("autumn", "autumn", "harvest")},
+		// A group of groups could cycle, and evaluating a cycle never ends.
+		"a member that is a group":  {ok, group("autumn", "harvest"), group("seasons", "autumn")},
+		"two groups of each other":  {group("a", "b"), group("b", "a")},
+		"a group with intent words": {ok, func() Holiday { g := group("autumn", "harvest"); g.Words.Intents = []string{"autumn"}; return g }()},
+		"a group with mood words":   {ok, func() Holiday { g := group("autumn", "harvest"); g.Words.Moods = []string{"leaves"}; return g }()},
+		"a group with look-alikes":  {ok, func() Holiday { g := group("autumn", "harvest"); g.Words.LookAlikes = []string{"x"}; return g }()},
+	} {
+		if _, err := New(hs); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }

@@ -62,7 +62,7 @@ func buildChannels(
 	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
-	metricRecorder *metrics.Recorder, watermarks *channelWatermarks,
+	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -233,7 +233,7 @@ func buildChannels(
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
-			ResolveCalendar:      householdCalendar(set, holidayvocab.Default, log),
+			ResolveCalendar:      calendar,
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
 			// supplies the durable in-progress target when one exists, otherwise the applied
 			// global fallback, while schedule.PlaysInternally applies a channel's policy override.

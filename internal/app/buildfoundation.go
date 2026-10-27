@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -53,6 +54,8 @@ type foundationBuild struct {
 	protection             *secretprotection.Manager
 	secretRedactor         *settings.Redactor
 	storageGovernor        *storagegovernor.Governor
+	// holidays is the one source of holiday definitions every consumer reads (#2030).
+	holidays holidayvocab.Source
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -64,7 +67,7 @@ func buildFoundation(
 	overrides Overrides,
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
-	result := foundationBuild{}
+	result := foundationBuild{holidays: holidayvocab.Default}
 	info := buildinfo.Get()
 	database := string(store.DialectOf(st))
 	if database == "" {

@@ -94,6 +94,26 @@ func TestHolidayRuleAndSeasonalShareOneCalendar(t *testing.T) {
 	}
 }
 
+// A season opening in the December before its holiday's date is active on those December days, for
+// rules and the seasonal engine alike.
+func TestASeasonOpeningLastYearIsActiveInDecember(t *testing.T) {
+	vocab, err := holidayvocab.New([]holidayvocab.Holiday{{ID: "epiphany", Label: "Epiphany",
+		Kept: []holidayvocab.Keeping{{Countries: []string{"IE"}, Rule: holidayvocab.Rule{
+			Day:    holidayvocab.DayRule{Kind: holidayvocab.DayFixed, Month: time.January, Day: 6},
+			Window: holidayvocab.WindowRule{Kind: holidayvocab.WindowAround, Before: 10}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cal := Calendar{Country: "IE", Holidays: &vocab}
+	dec27 := time.Date(2026, time.December, 27, 12, 0, 0, 0, time.UTC)
+	if !inHoliday("epiphany", dec27, cal) {
+		t.Error("the Epiphany rule should match Dec 27")
+	}
+	if active := activeHolidays(dec27, cal, nil); len(active) != 1 {
+		t.Errorf("active on Dec 27 = %v, want Epiphany", active)
+	}
+}
+
 // A holiday When-rule and SeasonalPolicy resolve the SAME active-holiday set from the same
 // clock — the composition point in ComputeDesiredAt (rule scope then seasonal bench) relies
 // on this so a "December holiday rule" and seasonal `auto` never contradict each other.

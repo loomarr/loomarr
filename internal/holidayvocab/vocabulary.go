@@ -47,6 +47,10 @@ type Words struct {
 	MoodGenres [][]string `json:"moodGenres,omitempty"`
 }
 
+func (w Words) none() bool {
+	return len(w.Intents)+len(w.Names)+len(w.LookAlikes)+len(w.Moods)+len(w.MoodGenres) == 0
+}
+
 // Vocabulary is one validated snapshot of the holiday definitions, in display order.
 type Vocabulary struct{ holidays []Holiday }
 
@@ -67,10 +71,15 @@ func New(holidays []Holiday) (Vocabulary, error) {
 			return Vocabulary{}, fmt.Errorf("holiday %q: %w", h.ID, err)
 		}
 	}
+	// A member is a holiday with a date of its own, never a group: groups of groups could cycle.
+	dated := map[string]bool{}
+	for _, h := range holidays {
+		dated[h.ID] = len(h.Members) == 0
+	}
 	for _, h := range holidays {
 		for _, m := range h.Members {
-			if !ids[m] || m == h.ID {
-				return Vocabulary{}, fmt.Errorf("holiday %q: member %q is not another holiday", h.ID, m)
+			if !dated[m] {
+				return Vocabulary{}, fmt.Errorf("holiday %q: member %q is not a holiday with its own dates", h.ID, m)
 			}
 		}
 	}
@@ -81,7 +90,7 @@ func (h Holiday) validate() error {
 	if strings.TrimSpace(h.Label) == "" {
 		return fmt.Errorf("no label")
 	}
-	if len(h.Members) > 0 && (len(h.Kept) > 0 || h.AirWindow != nil || len(h.Words.Names) > 0) {
+	if len(h.Members) > 0 && (len(h.Kept) > 0 || h.AirWindow != nil || !h.Words.none()) {
 		return fmt.Errorf("a group holiday has no dates or words of its own")
 	}
 	seen := map[string]bool{}
@@ -98,7 +107,7 @@ func (h Holiday) validate() error {
 			}
 			seen[c] = true
 		}
-		if err := k.Rule.Validate(); err != nil {
+		if err := k.Validate(); err != nil {
 			return fmt.Errorf("%s: %w", strings.Join(k.Countries, ","), err)
 		}
 	}
@@ -164,15 +173,15 @@ func (v Vocabulary) InSeason(id, country string, t time.Time) bool {
 	if len(h.Members) > 0 {
 		return slices.ContainsFunc(h.Members, func(m string) bool { return v.InSeason(m, country, t) })
 	}
-	k, ok := h.keptIn(normalCountry(country))
+	k, ok := h.keptIn(v.keeper(country))
 	return ok && spans(k.Rule, t)
 }
 
-// spans reports whether r's season contains t's calendar date (this year's or last year's, since
-// some wrap into January).
+// spans reports whether r's season contains t's calendar date: last year's season (one that wraps
+// into January), this year's, or next year's (one that opens in the December before its date).
 func spans(r Rule, t time.Time) bool {
 	day := time.Date(t.Year(), t.Month(), t.Day(), 12, 0, 0, 0, time.UTC)
-	for _, year := range []int{day.Year() - 1, day.Year()} {
+	for _, year := range []int{day.Year() - 1, day.Year(), day.Year() + 1} {
 		if start, end := r.Span(year); !day.Before(start) && !day.After(end) {
 			return true
 		}
@@ -180,12 +189,13 @@ func spans(r Rule, t time.Time) bool {
 	return false
 }
 
-// MatchIntent returns holiday ids named by whole-phrase affirmative intent text.
+// MatchIntent returns holiday ids named by whole-phrase affirmative intent text, outside the
+// holiday's look-alikes ("Easter Island" names no holiday).
 func (v Vocabulary) MatchIntent(text string) []string {
 	var out []string
 	for _, h := range v.holidays {
 		for _, alias := range h.Words.Intents {
-			if textmatch.ContainsPhrase(text, alias) {
+			if textmatch.ContainsPhraseOutside(text, alias, h.Words.LookAlikes...) {
 				out = append(out, h.ID)
 				break
 			}

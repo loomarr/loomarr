@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
@@ -60,6 +61,7 @@ func buildSuggestions(
 	approver *suggest.Approver,
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
+	holidays holidayvocab.Source,
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
@@ -112,6 +114,7 @@ func buildSuggestions(
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
 	suggester.WithRatings(tmdbClient).
+		WithHolidays(holidays).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
 		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved("reference", httpx.TimeoutReference, metricRecorder)))

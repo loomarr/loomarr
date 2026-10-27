@@ -347,7 +347,8 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	eligible := applyRuleScopeWithTrace(channelEligible, rule.What, trace)
 	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
 	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
-	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, ch.calendar(), trace)
+	season := activeSeason(eligible, rp, now, ch.calendar(), avail)
+	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, ch.calendar(), season, trace)
 	report.merge(seasonalReport)
 
 	// Franchise grouping (§5): tag movie entries sharing a TMDB collection so a franchise
@@ -360,7 +361,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
-	seasonalHolidays := exclusiveEpisodeHolidays(rp, now, ch.calendar())
+	seasonalHolidays := exclusiveEpisodeHolidays(rp, season)
 	// Auto mode features the holiday EPISODES of ordinary series (§6 "Holiday episodes"), so
 	// resolution records which holidays each episode is about.
 	var holidayMatches map[string][]string

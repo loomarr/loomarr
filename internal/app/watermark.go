@@ -22,7 +22,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -89,7 +88,7 @@ type watermarkGate struct{ works, colour atomic.Bool }
 // newChannelWatermarks builds the service before the channel packager that asks it for bugs. The
 // image service is built later and bound with withOriginals. Rendered bugs are derived files, kept
 // beside the image store rather than inside it (the image GC owns that tree).
-func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
+func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved, calendar func() schedule.Calendar, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
 	ffmpeg := set.str("playout.ffmpeg_path")
 	c := &channelWatermarks{
 		ffmpeg:   func() string { return ffmpeg },
@@ -97,7 +96,7 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
 		install:  watermarkInstall(set),
-		calendar: householdCalendar(set, holidayvocab.Default, log),
+		calendar: calendar,
 		channels: st, log: log, lifetime: rootCtx,
 	}
 	if events != nil {

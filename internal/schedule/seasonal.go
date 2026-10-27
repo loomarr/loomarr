@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -70,8 +71,10 @@ type HolidayWindow struct {
 
 // UpcomingHolidays lists the calendar's holidays whose window is on at `now` or starts within
 // `horizon`, soonest first (#1665 channel ideas). It reads the same calendar the seasonal policy
-// does, so an idea never announces a holiday the seasonal policy wouldn't honour.
+// does, on the same wall clock (civilNoon), so an idea never announces a holiday the seasonal
+// policy wouldn't honour.
 func UpcomingHolidays(now time.Time, horizon time.Duration, cal Calendar) []HolidayWindow {
+	now = civilNoon(now, cal.Zone)
 	var out []HolidayWindow
 	for _, h := range cal.holidays() {
 		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
@@ -164,11 +167,10 @@ func activeHolidays(now time.Time, cal Calendar, selected []string) []holiday {
 	return active
 }
 
-// holidayActive reports whether now falls in h's window, checking both the current
-// and prior evaluation year so a year-straddling window (New Year) matches on both
-// sides of the boundary.
+// holidayActive reports whether now falls in h's window: this year's, last year's (one wrapping
+// into January, New Year), or next year's (one opening in the December before its date).
 func holidayActive(h holiday, now time.Time) bool {
-	for _, y := range []int{now.Year(), now.Year() - 1} {
+	for _, y := range []int{now.Year(), now.Year() - 1, now.Year() + 1} {
 		start, end := h.window(y)
 		if !now.Before(start) && !now.After(end) {
 			return true
@@ -260,15 +262,62 @@ func aboutAnyHoliday(e LineupEntry, v holidayvocab.Vocabulary) bool {
 //     window, run the offSeason fallback (loop the scope w/o the filter,
 //     or dark). The dark case returns an empty set.
 func applySeasonal(entries []LineupEntry, rp ResolvedPolicy, now time.Time) ([]LineupEntry, ExclusionReport) {
-	return applySeasonalWithTrace(entries, rp, now, Calendar{}, nil)
+	return applySeasonalWithTrace(entries, rp, now, Calendar{}, activeSeason(entries, rp, now, Calendar{}, nil), nil)
 }
 
-func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, cal Calendar, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
+// activeSeason is the holidays the channel's seasonal policy treats as on at now. For an exclusive
+// channel that is only the active holidays it has something for (#2030): a title that fits, or a
+// series with an episode that does. A holiday it has nothing for leaves it out of season, on its
+// off-season fallback, rather than empty: a Halloween channel with every holiday chosen loops
+// through back-to-school. A series whose episodes cannot be judged (no availability, or stale
+// editorial evidence) may carry the holiday, so it keeps the channel in season as before.
+func activeSeason(entries []LineupEntry, rp ResolvedPolicy, now time.Time, cal Calendar, avail Availability) []holiday {
+	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
+		return nil
+	}
+	active := activeHolidays(now, cal, rp.Seasonal.Holidays)
+	if rp.Seasonal.Mode != SeasonalExclusive {
+		return active
+	}
+	stocked := active[:0:0]
+	for _, h := range active {
+		if hasContentFor(entries, h, avail) {
+			stocked = append(stocked, h)
+		}
+	}
+	return stocked
+}
+
+func hasContentFor(entries []LineupEntry, h holiday, avail Availability) bool {
+	for _, e := range entries {
+		if !e.Key.IsSeries() {
+			if fitsSeason(e, []holiday{h}) {
+				return true
+			}
+			continue
+		}
+		if avail == nil {
+			return true
+		}
+		res := avail.ResolveEpisodes(e.Key)
+		if res.EditorialUnavailable {
+			return true
+		}
+		for _, ep := range res.Programs {
+			if slices.Contains(episodeHolidays(ep, h.vocab), h.id) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// applySeasonalWithTrace applies the policy given the season activeSeason resolved.
+func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.Time, cal Calendar, active []holiday, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	if now.IsZero() || rp.Seasonal.Mode == SeasonalOff {
 		return entries, report
 	}
-	active := activeHolidays(now, cal, rp.Seasonal.Holidays)
 	inWindow := len(active) > 0
 
 	switch rp.Seasonal.Mode {
@@ -320,12 +369,10 @@ func applySeasonalWithTrace(entries []LineupEntry, rp ResolvedPolicy, now time.T
 	}
 }
 
-func exclusiveEpisodeHolidays(rp ResolvedPolicy, now time.Time, cal Calendar) map[string]bool {
-	if now.IsZero() || rp.Seasonal.Mode != SeasonalExclusive {
-		return nil
-	}
-	active := activeHolidays(now, cal, rp.Seasonal.Holidays)
-	if len(active) == 0 {
+// exclusiveEpisodeHolidays is the holidays an exclusive channel's episodes must fit: the season
+// activeSeason resolved, so titles and episodes are filtered for the same holidays.
+func exclusiveEpisodeHolidays(rp ResolvedPolicy, active []holiday) map[string]bool {
+	if rp.Seasonal.Mode != SeasonalExclusive || len(active) == 0 {
 		return nil
 	}
 	ids := make(map[string]bool, len(active))
