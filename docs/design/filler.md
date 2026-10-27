@@ -75,6 +75,36 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
   filler is a synced cache. Sidecars restore tags; play counts and pins do not survive, and the app
   says so.
 
+**Creative identity: one copy of each ad (#2033).** The byte hash says two files are the same
+bytes. It cannot say they are the same advert. `internal/creative` answers that from a
+fingerprint of picture and sound (`creative-v1-video4fps-gray9x8-audio8k-hk15`): a 64-bit
+difference hash per video frame at 4 fps, and a 15-bit band-energy hash per 64 ms of 8 kHz mono
+audio, which a gain change does not move.
+
+- **Same** means a duration gap of at most 2.5 s, at least 85% of aligned, informative frames within
+  20 bits at some offset within ±1.5 s (mean at most 12), and an audio bit-error rate of at most
+  0.30 when both clips have sound. A re-encode, a resize, a trimmed head or tail and a silent copy
+  are the same ad.
+- **Variant** means not the same, but at least half the frames of a shorter clip (at least 5 s)
+  appear in the longer one within 16 bits. A cut-down, an alternate ending, and the same picture
+  under another voiceover are variants.
+- Solid frames (fades, slates) are ignored. Too little evidence (fewer than 8 frames or 32 audio
+  hops) is never a match.
+- The hourly `filler-identity` job (`job.filler_identity.schedule`) fingerprints published clips
+  it has not measured and caches each fingerprint by algorithm. It also groups the copies of each
+  ad and keeps the best copy: higher resolution first, then the copy needing less air-time loudness
+  correction (within 1 dB is a tie), then the longer edit, then the earlier arrival. #2034 adds
+  measured defects ahead of these.
+- **Merging an inferior copy is one transaction.** The survivor gains its play count, later
+  last-played time and airings, inherits a curated name when its own is machine-derived, and takes
+  over its pins, exclusions and variant links. Then the inferior copy's media, sidecar and
+  unshared source assets are deleted. The inferior hash and its source hash are recorded
+  (`filler_inferior_copies`), so sync and intake skip those bytes instead of importing them again.
+  The same bytes dropped again into a watched folder are left there, never imported or deleted.
+- **Variants stay separate clips, linked** (`filler_clip_variants`). A break never carries two
+  versions of one ad, and an airing of any version rests them all in household rotation.
+- Split dedup uses the same `Same` verdict, so a reel's repeated spot is discarded by the same rule.
+
 **A clip's name records where it came from** (`name_source`, #1988). The scan takes the
 source's info-JSON `title` (`sidecar`), else the sidecar's derived `displayName` with its
 `nameProvenance` (`grounded` from evidence, or a split segment's chapter title `source` or

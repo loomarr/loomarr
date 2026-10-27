@@ -144,8 +144,9 @@ Its design and measurements are archived in
    is **unsplittable**, never guessed.
 4. **Role before enrichment.** Each interval gets its own role first; taxonomy enrichment adds
    product, era and audience only afterwards, and cannot repair an unresolved role.
-5. **Deterministic discard.** A dHash over grey frames at 1/3 fps separates re-encoded duplicates
-   from different adverts by a wide measured margin; duplicates and sub-floor segments are
+5. **Deterministic discard.** The creative fingerprint (picture and sound, see
+   [Creative identity](filler.md#clip-identity)) separates re-encoded duplicates from different
+   adverts by a wide measured margin; duplicates and sub-floor segments are
    discarded before classification. Neither deletes source media. Ambiguity is never a discard.
    The proposal reports discarded time ("39 fragments under 10s discarded"), never silently.
 6. **Per-segment language.** Each span samples its own bounded audio with the installation's
@@ -189,7 +190,7 @@ only the first. It is a ceiling ladder:
 Within one boundary the best evidence wins; across a segment's two boundaries the worst wins. Then
 over-long caps at 50 and `unsplittable` at 20. Black is not ranked above silence, and duration is
 not an input beyond the over-long cap (half of a real reel was correctly cut sub-10 s bumpers). A
-single-span rescue removes the over-long cap rather than adding points. dHash, duplicates and vision
+single-span rescue removes the over-long cap rather than adding points. Fingerprints, duplicates and vision
 tags are deliberately not scored.
 
 ## Split review
