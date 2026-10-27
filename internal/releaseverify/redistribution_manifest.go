@@ -93,6 +93,12 @@ func VerifyRedistributionManifest(root string) error {
 	if args["FFMPEG_RELEASE"] != ffmpeg.Upstream.ReleaseRev || args["FFMPEG_BUILD_ID"] != ffmpeg.Upstream.BuildID || args["FFMPEG_AMD64_SHA256"] != assetSHA256(ffmpeg, "amd64") || args["FFMPEG_ARM64_SHA256"] != assetSHA256(ffmpeg, "arm64") {
 		return errors.New("dockerfile FFmpeg inputs differ from redistribution manifest")
 	}
+	if args["FFMPEG_MIRROR_RELEASE"] != ffmpeg.Upstream.RetentionPolicyRev {
+		return errors.New("dockerfile FFmpeg mirror release differs from redistribution manifest")
+	}
+	if err := verifyFFmpegSourceRelease(root, ffmpeg); err != nil {
+		return err
+	}
 	if args["YTDLP_VERSION"] != ytdlp.Upstream.ReleaseRev || args["YTDLP_AMD64_SHA256"] != assetSHA256(ytdlp, "amd64") || args["YTDLP_ARM64_SHA256"] != assetSHA256(ytdlp, "arm64") {
 		return errors.New("dockerfile yt-dlp inputs differ from redistribution manifest")
 	}
@@ -127,7 +133,7 @@ func VerifyRedistributionManifest(root string) error {
 		`"https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"`,
 		`-o /usr/local/bin/yt-dlp`,
 		`echo "${YTDLP_SHA256} /usr/local/bin/yt-dlp" | sha256sum -c -`,
-		`"https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"`,
+		`"https://github.com/loomarr/loomarr/releases/download/${FFMPEG_MIRROR_RELEASE}/${FFMPEG_BUILD}.tar.xz"`,
 		`-o /tmp/ffmpeg.tar.xz`,
 		`echo "${FFMPEG_SHA256} /tmp/ffmpeg.tar.xz" | sha256sum -c -`,
 	} {
@@ -182,28 +188,23 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 	if !seen["amd64"] || !seen["arm64"] || !immutableGitRevision.MatchString(artifact.Upstream.ReleaseCommit) || !immutableGitRevision.MatchString(artifact.Upstream.SourceRev) || !immutableGitRevision.MatchString(artifact.Upstream.BuildRev) {
 		return errors.New("release, source, and build revisions must be immutable git revisions")
 	}
+	if artifact.Name == "ffmpeg" {
+		return verifyFFmpegIdentity(artifact)
+	}
 	want := map[string]struct{ release, releaseCommit, source, build, releaseRev, sourceRev, buildRev string }{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27", "8267213e26c1031621e6e1210fe3aa4867214f6a", "https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a", "autobuild-2026-08-31-13-27", "e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "8267213e26c1031621e6e1210fe3aa4867214f6a"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26", "f264a6cbd1f630894da0f368df00f8aae50140e0", "https://github.com/yt-dlp/yt-dlp/tree/f264a6cbd1f630894da0f368df00f8aae50140e0", "https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/bundle/pyinstaller.py", "2026.10.26", "f264a6cbd1f630894da0f368df00f8aae50140e0", "f264a6cbd1f630894da0f368df00f8aae50140e0"},
 	}
 	w, ok := want[artifact.Name]
 	if !ok || artifact.Upstream.ReleaseURL != w.release || artifact.Upstream.ReleaseCommit != w.releaseCommit || artifact.Upstream.SourceURL != w.source || artifact.Upstream.BuildURL != w.build || artifact.Upstream.ReleaseRev != w.releaseRev || artifact.Upstream.SourceRev != w.sourceRev || artifact.Upstream.BuildRev != w.buildRev {
 		return errors.New("upstream release, source, or build identity differs from the researched authority")
 	}
-	if artifact.Name == "ffmpeg" {
-		const policyRev = "8267213e26c1031621e6e1210fe3aa4867214f6a"
-		if artifact.Upstream.RetentionClass != "monthly" || artifact.Upstream.RetentionPolicyRev != policyRev || artifact.Upstream.RetentionPolicyURL != "https://github.com/BtbN/FFmpeg-Builds/blob/"+policyRev+"/util/prunetags.sh" {
-			return errors.New("FFmpeg release is not bound to BtbN's retained-monthly policy")
-		}
-	} else if artifact.Upstream.RetentionClass != "" || artifact.Upstream.RetentionPolicyURL != "" || artifact.Upstream.RetentionPolicyRev != "" {
+	if artifact.Upstream.RetentionClass != "" || artifact.Upstream.RetentionPolicyURL != "" || artifact.Upstream.RetentionPolicyRev != "" {
 		return errors.New("unexpected retention policy on non-BtbN artifact")
 	}
 	expectedAssets := map[string]map[string]string{
-		"ffmpeg": {"amd64": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz", "arm64": "ffmpeg-n9.0.1-11-ge47273f4d9-linuxarm64-gpl-9.0.tar.xz"},
 		"yt-dlp": {"amd64": "yt-dlp_linux", "arm64": "yt-dlp_linux_aarch64"},
 	}
 	expectedLicenses := map[string][]string{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/e47273f4d9227152dcbf543cebaf9e2430ddbcc4/COPYING.GPLv3"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/SHA2-256SUMS"},
 	}
 	if !slices.Equal(artifact.Upstream.LicenseURLs, expectedLicenses[artifact.Name]) {

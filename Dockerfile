@@ -149,23 +149,24 @@ ARG DENO_ARM64_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361
 # and pipes, never a concat of HTTP entries), so nothing in playout depends on that behaviour now.
 # n9 is also what fixes overlay_cuda after NVDEC, so the NVENC watermark self-check passes (#1549).
 #
-# ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
-# and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
-# must identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
-# BtbN prunes all but the latest 14 ordinary autobuilds; only one release per month is retained for
-# 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
-# pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
+# ffmpeg tracks BtbN's NEWEST release-series GPL build, pinned by exact build id + per-arch SHA256
+# like yt-dlp, deno and whisper — a redistributed image must be reproducible and its GPL
+# corresponding source must identify EXACT bytes, which `latest` (overwritten in place) cannot.
 #
-# This pin is `n9.0.1-11-ge47273f4d9`, the n9.0 GPL build in the retained monthly release below (the
-# same release that carried the previous n8.1 pin). To bump: choose BtbN's retained monthly release
-# for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
-# still keeps it, take its exact GPL asset filename for the series, download both architecture
-# archives, and update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence
-# together — never choose an ordinary daily archive or point any value at `latest`.
-ARG FFMPEG_RELEASE=autobuild-2026-08-31-13-27
-ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9
-ARG FFMPEG_AMD64_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
-ARG FFMPEG_ARM64_SHA256=e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1
+# ⚠ The archive downloads from LOOMARR'S OWN source release (FFMPEG_MIRROR_RELEASE), never from BtbN:
+# BtbN keeps only its newest 14 autobuilds (plus one per month), so a daily's URL 404s within weeks.
+# That release mirrors both binary archives together with their corresponding source — the FFmpeg
+# commit, BtbN's recipe, and the run's original dependency download cache, which BtbN deletes after
+# 14 days. FFMPEG_RELEASE records which BtbN autobuild the bytes came from.
+#
+# Never edit these five values by hand: `scripts/ffmpeg-pin-refresh.sh` (and the weekly
+# `FFmpeg pin refresh` workflow) captures the build, publishes the source release, and rewrites the
+# pins, the redistribution manifest and the per-pin evidence together. See docs/contributing/releasing.md.
+ARG FFMPEG_RELEASE=autobuild-2026-10-26-14-25
+ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-10-27
+ARG FFMPEG_BUILD_ID=n9.0.2-36-g6882969ce9
+ARG FFMPEG_AMD64_SHA256=79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b
+ARG FFMPEG_ARM64_SHA256=f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f
 # ⚠ Since v1.9.3 whisper.cpp's version releases carry NO binaries: the Ubuntu archives are attached
 # to the ggml-style build release cut from the SAME commit, which the version release links as its
 # "Nightly build". WHISPER_VERSION is the human version; WHISPER_BUILD is the release the archives
@@ -224,12 +225,13 @@ RUN set -eux; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
-    # (ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz — build id `n9.0.1-11-ge47273f4d9`,
+    # (ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz — build id `n9.0.2-17-g2a571b6068`,
     # suffix `9.0`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
     # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
-    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0).
+    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0); the second
+    # stops at `-` because a series' first build has no patch number (`n9.1-3-g…`).
     FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
-    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
+    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2 | cut -d- -f1)"; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
     # Repoint apt at the pinned snapshot (see the DEBIAN_SNAPSHOT note above) so every install below
     # is reproducible. deb822 `debian.sources`; both the archive and security suites. `http://`, not
@@ -339,7 +341,7 @@ RUN set -eux; \
     rm -f /tmp/deno.zip; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /tmp/ffmpeg.tar.xz \
-      "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
+      "https://github.com/loomarr/loomarr/releases/download/${FFMPEG_MIRROR_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
     echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
     # ffmpeg AND ffprobe (revised, §9.1). ffprobe was excluded to save ~99MB on the
