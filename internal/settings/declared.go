@@ -1353,6 +1353,14 @@ func declared() []Setting {
 			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
 		},
 		{
+			// Hourly at :20, clear of the :00 pipeline-heavy minute: a better copy that becomes
+			// ready replaces the old one within the hour, and a pass only decodes clips it has
+			// never fingerprinted (#2033).
+			Key: "job.filler_identity.schedule", EnvVar: "JOB_FILLER_IDENTITY_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 20 * * * *",
+			Doc: "How often Loomarr looks for copies of the same ad, keeps the best one, and links shorter or alternate versions (cron).",
+		},
+		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on
 			// an undeclared key, so a job registered without one takes the whole app down at
 			// startup rather than degrading. Caught by the boot test, which is exactly its job.

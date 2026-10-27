@@ -203,6 +203,27 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 
+// fillerIdentityStoreAdapter bridges the store → filler.IdentityStore (#2033). It translates the
+// catalog listing, which carries admission time, and the merge record; the rest passes through.
+type fillerIdentityStoreAdapter struct{ fillerstore.Store }
+
+func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
+	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.IdentityClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.IdentityClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+	}
+	return out, nil
+}
+func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c filler.InferiorCopy) error {
+	return a.Store.MergeInferiorCopy(ctx, store.InferiorCopy{
+		ClipHash: c.ClipHash, SourceHash: c.SourceHash, SurvivorHash: c.SurvivorHash, DecidedAt: c.DecidedAt,
+	})
+}
+
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
 //
 // ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the

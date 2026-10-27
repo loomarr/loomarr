@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -260,6 +262,18 @@ func buildFillerSubsystem(
 	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
+	)))
+	jobs.Add(fillerIdentityJob(filler.NewCreativeIdentity(
+		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
+		func() float64 {
+			// `filler.target_lufs` is a string whose empty value turns correction off; with no
+			// target, NaN makes the loudness rung a tie for every pair rather than ranking toward 0.
+			lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+			if err != nil {
+				return math.NaN()
+			}
+			return lufs
+		}, time.Now, log,
 	)))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
 	// folder there is nothing to download into, and the cache lives in memory only.
