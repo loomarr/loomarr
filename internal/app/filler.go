@@ -634,9 +634,14 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 	if err != nil {
 		return nil, err
 	}
+	variants, err := a.st.ListClipVariants(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]filler.Clip, len(clips))
 	for i, c := range clips {
 		out[i] = c.Clip
+		out[i].Variants = variants[c.Hash]
 	}
 	return out, nil
 }

@@ -119,6 +119,9 @@ type PodEntry struct {
 	// RotationPinned distinguishes an intentional operator override from pool-pressure relaxation.
 	RecentRepeat   bool
 	RotationPinned bool
+	// variants are the clip's other versions (Clip.Variants), reserved with it so a break never
+	// carries two versions of one ad. Unexported: assembly state, not part of what a break shows.
+	variants []string
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -336,10 +339,15 @@ func cloneSet(in map[string]bool) map[string]bool {
 	return out
 }
 
-// reserve keeps a clip out of every later pick. "" is not an identity (the same guard append has).
+// reserve keeps a clip, and every other version of its ad, out of every later pick. "" is not an
+// identity.
 func reserve(used map[string]bool, e PodEntry) {
-	if e.Hash != "" {
-		used[e.Hash] = true
+	if e.Hash == "" {
+		return
+	}
+	used[e.Hash] = true
+	for _, v := range e.variants {
+		used[v] = true
 	}
 }
 
@@ -447,7 +455,8 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 		}
 		out = append(out, c)
 		totalMs += c.DurationMs
-		used[id] = true // reserve so the ladder fill + return bumper don't reuse it
+		// Reserve (with its variants) so later pins, the ladder fill and the return bumper skip it.
+		reserve(used, PodEntry{Hash: id, variants: c.Variants})
 	}
 	return out
 }
@@ -461,9 +470,7 @@ func (p *Pod) append(e PodEntry, used map[string]bool) {
 	// ⚠ Reserve by HASH — the identity `used` is keyed on everywhere (pinned/excluded seed it with
 	// hashes). PodEntry carries both; keying on Path here let a clip pinned/excluded by hash slip the
 	// reservation (it never matched), so no-repeat and exclusion were both silently broken (§10 V45a).
-	if e.Hash != "" {
-		used[e.Hash] = true
-	}
+	reserve(used, e)
 }
 
 func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
@@ -476,6 +483,7 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 		Era: c.Era, Quality: c.Quality,
 		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
 		RecentRepeat: tier == rotationRecent,
+		variants:     c.Variants,
 	}
 }
 
