@@ -4,7 +4,7 @@ import type { Meta, StoryObj } from "@storybook/react-native";
 const NativeViewport = ({ density, insets }: { density: "touch" | "tv"; insets?: ViewportInsets }) => (
   <LoomarrProvider insets={insets}>
     <Screen density={density}>
-      <Surface flex={1} gap="$control" justifyContent="center" level="focus" padding="$section">
+      <Surface flex={1} gap="control" justifyContent="center" level="focus" padding="section">
         <Text density={density} textAlign="center" textRole="title">
           Safe content frame
         </Text>

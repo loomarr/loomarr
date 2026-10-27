@@ -72,12 +72,12 @@ const healthChip: Record<GuideHealthState, { label: string; tone: TextTone }> = 
 };
 
 const clipFill = {
-  commercial: "$guideClipSignal",
-  psa: "$guideClipSignal",
-  trailer: "$guideClipSignal",
-  bumper: "$guideClipTune",
-  station_id: "$guideClipSuggest",
-  interstitial: "$guideClipPlain",
+  commercial: "guideClipSignal",
+  psa: "guideClipSignal",
+  trailer: "guideClipSignal",
+  bumper: "guideClipTune",
+  station_id: "guideClipSuggest",
+  interstitial: "guideClipPlain",
 } as const;
 
 const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
@@ -127,6 +127,28 @@ const Block = ({
   const hasSeries = kind === "program" && Boolean(a.series) && Boolean(a.title.trim());
   const entries = a.pod?.entries ?? [];
   const podTotal = entries.reduce((n, e) => n + (e.durationMs || 0), 0) || 1;
+  const fill = pod
+    ? "guideBreakFill"
+    : pending
+      ? "guidePendingFill"
+      : airingNow
+        ? "stateAiringSurface"
+        : "surfaceElevated";
+  const edge = focused
+    ? "actionFocus"
+    : pod || airingNow
+      ? "borderAiring"
+      : pending
+        ? "guidePendingBorder"
+        : "borderDecorative";
+  // Now-airing is a neutral tone step (#1909 Q3), so its edge takes the airing border.
+  const accent = pod
+    ? "transparent"
+    : pending
+      ? "stateInfo"
+      : airingNow
+        ? "borderAiring"
+        : "guideBlockAccent";
 
   useEffect(() => {
     if (selected && focusPending?.current) {
@@ -158,28 +180,11 @@ const Block = ({
         }}
       >
         <Surface
-          backgroundColor={
-            pod
-              ? "$guideBreakFill"
-              : pending
-                ? "$guidePendingFill"
-                : airingNow
-                  ? "$stateAiringSurface"
-                  : "$surfaceElevated"
-          }
-          borderColor={
-            focused
-              ? "$actionFocus"
-              : pod || airingNow
-                ? "$borderAiring"
-                : pending
-                  ? "$guidePendingBorder"
-                  : "$borderDecorative"
-          }
-          borderLeftColor={
-            // Now-airing is a neutral tone step (#1909 Q3), so its edge takes the airing border.
-            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$borderAiring" : "$guideBlockAccent"
-          }
+          backgroundColor={fill}
+          borderTopColor={edge}
+          borderRightColor={edge}
+          borderBottomColor={edge}
+          borderLeftColor={accent}
           borderLeftWidth={2}
           borderRadius={4}
           borderStyle={pending ? "dashed" : "solid"}
@@ -296,8 +301,8 @@ const Row = memo(
     const chip = health ? healthChip[health] : undefined;
     return (
       <Surface
-        backgroundColor="$transparent"
-        borderBottomColor="$guideRowRule"
+        backgroundColor="transparent"
+        borderBottomColor="guideRowRule"
         borderBottomWidth={1}
         borderWidth={0}
         flexDirection="row"
@@ -307,8 +312,8 @@ const Row = memo(
       >
         <Surface
           alignItems="center"
-          backgroundColor="$surfaceCanvas"
-          borderColor="$borderDecorative"
+          backgroundColor="surfaceCanvas"
+          borderColor="borderDecorative"
           borderRightWidth={1}
           borderWidth={0}
           flexDirection="row"
@@ -347,12 +352,12 @@ const Row = memo(
           <Surface
             backgroundColor={
               broadcast === "live"
-                ? "$guideOnAir"
+                ? "guideOnAir"
                 : broadcast === "reconciling"
-                  ? "$guideReconciling"
-                  : "$actionDisabled"
+                  ? "guideReconciling"
+                  : "actionDisabled"
             }
-            borderRadius="$round"
+            borderRadius="round"
             borderWidth={0}
             height={8}
             width={8}
@@ -405,15 +410,15 @@ const GuideGrid = ({
 
   const ruler = (
     <Surface
-      backgroundColor="$surfaceCanvas"
-      borderBottomColor="$borderDecorative"
+      backgroundColor="surfaceCanvas"
+      borderBottomColor="borderDecorative"
       borderBottomWidth={1}
       borderWidth={0}
       flexDirection="row"
     >
       <Surface
-        backgroundColor="$surfaceCanvas"
-        borderColor="$borderDecorative"
+        backgroundColor="surfaceCanvas"
+        borderColor="borderDecorative"
         borderRightWidth={1}
         borderWidth={0}
         width={RAIL}
@@ -424,17 +429,17 @@ const GuideGrid = ({
       >
         {ticks.map((t, i) => (
           <Surface
-            backgroundColor="$transparent"
-            borderColor="$borderDecorative"
+            backgroundColor="transparent"
+            borderColor="borderDecorative"
             borderLeftWidth={1}
             borderWidth={0}
             bottom={0}
             justifyContent="center"
-            key={t}
             left={`${((t - layout.fromMs) / span) * 100}%`}
             paddingLeft={7}
             position="absolute"
             top={0}
+            key={t}
           >
             {i % stride === 0 ? (
               <Text numberOfLines={1} textRole="guideMeta">

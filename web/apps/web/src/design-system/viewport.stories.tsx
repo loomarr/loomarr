@@ -10,7 +10,7 @@ const ViewportContract = ({
 }) => (
   <LoomarrProvider insets={insets}>
     <Screen density={density}>
-      <Surface flex={1} gap="$control" justifyContent="center" level="focus" padding="$section">
+      <Surface flex={1} gap="control" justifyContent="center" padding="section" level="focus">
         <Text density={density} textAlign="center" textRole="title">
           Safe content frame
         </Text>

@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SurfRail } from "../index";
+import { declarationsOfElement } from "./support/atomic-css";
 
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
 type RailNode = {
@@ -26,9 +27,10 @@ const testDocument = (
   }
 ).document;
 
-// The selected card draws focus through Tamagui's atomic `$actionFocus` class; an Action draws it
-// as react-native-web's inline border colour. Either is an amber on screen.
-const amberCard = (node: RailNode) => /\b_btc-actionFocus\b/.test(node.className);
+// The selected card draws focus through a Tamagui atomic class whose rule names `actionFocus`; an
+// Action draws it as react-native-web's inline border colour. Either is an amber on screen.
+const amberCard = (node: RailNode) =>
+  /(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/.test(declarationsOfElement(node));
 const amberAction = (node: RailNode) => node.style?.borderTopColor === "rgb(255, 176, 32)";
 const ambers = (host: QueryRoot) =>
   Array.from(host.querySelectorAll("*")).filter((node) => amberCard(node) || amberAction(node));
@@ -88,8 +90,8 @@ describe("TV surf rail focus (#1887)", () => {
 
   it("draws the selected card as the one amber while the list has focus", () => {
     expect(amberCard(card())).toBe(true);
-    expect(card().className).toMatch(/\b_btw-3px\b/);
-    expect(number().className).toMatch(/\b_col-actionPrima/);
+    expect(declarationsOfElement(card())).toMatch(/(?<![-\w])border(?:-top)?-width:3px/);
+    expect(declarationsOfElement(number())).toMatch(/(?<![-\w])color:var\(--actionPrimary\)/);
     expect(ambers(host)).toEqual([card()]);
   });
 
@@ -101,10 +103,12 @@ describe("TV surf rail focus (#1887)", () => {
 
     expect(amberCard(card())).toBe(false);
     // At rest: a hairline, not the 3px focus border, and a muted number. Tamagui shortens a long
-    // token in its class name (`_btc-borderDeco…`).
-    expect(card().className).toMatch(/\b_btc-borderDeco/);
-    expect(card().className).toMatch(/\b_btw-1px\b/);
-    expect(number().className).toMatch(/\b_col-contentMute/);
+    // token in its rule (`border-color:var(--borderDecorative)`).
+    expect(declarationsOfElement(card())).toMatch(
+      /(?<![-\w])border(?:-top)?-color:var\(--borderDecorative\)/,
+    );
+    expect(declarationsOfElement(card())).toMatch(/(?<![-\w])border(?:-top)?-width:1px/);
+    expect(declarationsOfElement(number())).toMatch(/(?<![-\w])color:var\(--contentMuted\)/);
     // Still the selection OK returns to: the programme line and progress stay.
     expect(card().textContent).toBe(expanded);
     expect(ambers(host)).toEqual([wait]);

@@ -276,24 +276,24 @@ const RequestsJourney = ({
       }
     >
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         flex={1}
-        gap="$control"
+        gap="control"
         paddingHorizontal={PHONE_GUTTER}
       >
         {banner ? (
           <Surface
-            gap="$inline"
+            gap="inline"
+            marginTop="inline"
+            padding="control"
             level="raised"
-            marginTop="$inline"
-            padding="$control"
             role={banner.tone === "danger" ? "alert" : "status"}
           >
             <Text density="touch" textRole="body" tone={banner.tone}>
               {banner.message}
             </Text>
-            <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+            <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
               {banner.action ? (
                 <Action
                   accessibilityRole="button"

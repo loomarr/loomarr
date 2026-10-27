@@ -12,6 +12,7 @@ export {
   ArtworkFrame,
   Badge,
   FocusSurface,
+  lineHeightPx,
   ProgressTrack,
   Screen,
   StatusDot,

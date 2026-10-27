@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tamagui/core": "2.7.7",
+    "@tamagui/core": "3.1.4",
     "lucide-react-native": "1.35.0",
     "qrcode": "1.5.4",
     "react-native-svg": "15.15.5"

@@ -39,7 +39,7 @@ type AdaptiveSplitProps = Omit<ComponentProps<typeof View>, "children" | "flexDi
 const AdaptiveSplit = ({
   breakpoint,
   density = "pointer",
-  gap = "$section",
+  gap = "section",
   primary,
   secondary,
   secondaryWidth,
@@ -133,9 +133,9 @@ const Disclosure = ({
   return (
     <View
       {...props}
-      backgroundColor="$surfaceRaised"
-      borderColor={focused ? "$actionFocus" : "$borderDecorative"}
-      borderRadius="$card"
+      backgroundColor="surfaceRaised"
+      borderColor={focused ? "actionFocus" : "borderDecorative"}
+      borderRadius="card"
       borderWidth={focused ? 3 : 1}
       overflow="hidden"
       width="100%"
@@ -177,12 +177,12 @@ const Disclosure = ({
       </Pressable>
       {expanded ? (
         <View
-          borderTopColor="$borderDecorative"
+          borderTopColor="borderDecorative"
           borderTopWidth={1}
-          gap="$control"
+          gap="control"
+          padding="control"
           id={contentId}
           nativeID={contentId}
-          padding="$control"
         >
           {children}
         </View>

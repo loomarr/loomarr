@@ -25,13 +25,7 @@ const programmeLine = (programme: ProgrammeCardData) =>
 
 // The channel line both web layouts share: the amber mono number, then the name.
 const ChannelLine = ({ density, programme }: { density: Density; programme: ProgrammeCardData }) => (
-  <Surface
-    alignItems="center"
-    backgroundColor="$transparent"
-    borderWidth={0}
-    flexDirection="row"
-    gap="$inline"
-  >
+  <Surface alignItems="center" backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
     <Text density={density} textRole="cardChannelNumber">
       {programme.channelNumber}
     </Text>
@@ -45,13 +39,13 @@ const ChannelLine = ({ density, programme }: { density: Density; programme: Prog
 // the programme and the time left.
 const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { density: Density }) => (
   <Surface
-    backgroundColor="$surfaceRaised"
-    borderColor="$borderDecorative"
-    borderRadius="$cardCompact"
+    backgroundColor="surfaceRaised"
+    borderColor="borderDecorative"
+    borderRadius="cardCompact"
     overflow="hidden"
     width="100%"
   >
-    <Surface backgroundColor="$transparent" borderWidth={0} position="relative" width="100%">
+    <Surface backgroundColor="transparent" borderWidth={0} position="relative" width="100%">
       <ArtworkFrame
         borderRadius={0}
         borderWidth={0}
@@ -75,7 +69,7 @@ const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { den
       )}
     </Surface>
     <Surface
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       gap={3}
       paddingBottom={12}
@@ -98,17 +92,11 @@ const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { den
 const scrimGradient = `linear-gradient(180deg, rgba(11, 12, 14, 0) 35%, ${semanticColors.artwork.scrimStrong})`;
 
 const ViewerLine = ({ density, viewer }: { density: Density; viewer: ProgrammeCardViewer }) => (
-  <Surface
-    alignItems="center"
-    backgroundColor="$transparent"
-    borderWidth={0}
-    flexDirection="row"
-    gap="$inline"
-  >
+  <Surface alignItems="center" backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
     <Surface
       alignItems="center"
-      backgroundColor="$borderDecorative"
-      borderRadius="$round"
+      backgroundColor="borderDecorative"
+      borderRadius="round"
       borderWidth={0}
       height={22}
       justifyContent="center"
@@ -141,10 +129,11 @@ const OverlayCard = ({
 }: ProgrammeCardProps & { density: Density }) => (
   <Surface
     aspectRatio={16 / 9}
-    backgroundColor="$surfaceElevated"
-    borderColor={highlighted ? "$actionFocus" : "$borderDecorative"}
-    hoverStyle={hoverHighlight ? { borderColor: "$actionFocus" } : undefined}
-    borderRadius="$cardCompact"
+    backgroundColor="surfaceElevated"
+    borderColor={
+      highlighted ? "actionFocus" : hoverHighlight ? "borderDecorative hover:actionFocus" : "borderDecorative"
+    }
+    borderRadius="cardCompact"
     overflow="hidden"
     position="relative"
     width="100%"
@@ -171,11 +160,11 @@ const OverlayCard = ({
       right={0}
       top={0}
       {...(Platform.OS === "web"
-        ? { backgroundColor: "$transparent", style: { backgroundImage: scrimGradient } }
-        : { backgroundColor: "$artworkScrim" })}
+        ? { backgroundColor: "transparent", style: { backgroundImage: scrimGradient } }
+        : { backgroundColor: "artworkScrim" })}
     />
     <Surface
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       bottom={12}
       gap={4}
@@ -205,7 +194,7 @@ const ProgrammeCard = (props: ProgrammeCardProps) => {
   const maxWidth = density === "tv" ? 760 : density === "touch" ? 620 : 560;
 
   return (
-    <FocusSurface focused={focused} gap="$control" maxWidth={maxWidth} padding={padding} width="100%">
+    <FocusSurface focused={focused} gap="control" maxWidth={maxWidth} padding={padding} width="100%">
       <ArtworkFrame density={density} state={programme.artworkState} width="100%">
         {artwork}
       </ArtworkFrame>

@@ -118,7 +118,7 @@ const WatchingPanel = ({
     </Action>,
   ];
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} gap={6} paddingHorizontal={16} paddingTop={16}>
+    <Surface backgroundColor="transparent" borderWidth={0} gap={6} paddingHorizontal={16} paddingTop={16}>
       {/* At an accessibility text size the Go Live group wraps under the channel instead of squeezing
           the name out of the row, and the name wraps rather than clips. Wrapping is off otherwise: a
           wrapping row would drop the Live group below a long name that shrinks to fit today. */}
@@ -164,7 +164,7 @@ const WatchingPanel = ({
         >
           {live.mode === "live" ? (
             <>
-              <Surface backgroundColor="$guideOnAir" borderRadius={3} borderWidth={0} height={6} width={6} />
+              <Surface backgroundColor="guideOnAir" borderRadius={3} borderWidth={0} height={6} width={6} />
               <Text density={density} textRole="cardLabel" tone="live">
                 Live
               </Text>
@@ -254,17 +254,17 @@ const WatchingPanel = ({
       ) : null}
 
       {favourites.length > 0 ? (
-        <Surface backgroundColor="$transparent" borderWidth={0} paddingTop={10}>
+        <Surface backgroundColor="transparent" borderWidth={0} paddingTop={10}>
           <Text density={density} paddingVertical={6} textRole="label" tracking={0.08}>
             {`FAVORITES · ${favourites.length}`}
           </Text>
           {favourites.map((favourite) => (
             <Pressable accessibilityRole="button" key={favourite.id} onPress={() => onTune(favourite.id)}>
               {/* The rule above each row is its own hairline: a Surface's borderWidth resets a top-only border. */}
-              <Surface backgroundColor="$borderDecorative" borderWidth={0} height={1} />
+              <Surface backgroundColor="borderDecorative" borderWidth={0} height={1} />
               <Surface
                 alignItems="center"
-                backgroundColor="$transparent"
+                backgroundColor="transparent"
                 borderWidth={0}
                 flexDirection="row"
                 gap={12}
@@ -273,7 +273,7 @@ const WatchingPanel = ({
                 <Text density={density} textRole="time" width={32}>
                   {favourite.channelNumber}
                 </Text>
-                <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
+                <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
                   {/* The row is a <button> on the web, which centres its text; the mock's rows read left. */}
                   <Text
                     density={density}

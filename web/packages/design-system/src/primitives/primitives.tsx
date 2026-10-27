@@ -1,10 +1,11 @@
-import { isWeb, styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import { isWeb, styled, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ElementType, ReactNode } from "react";
 import { createElement, useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
+import { TamaguiText } from "../text-base";
 import { brandChroma, type Density, type TextRole, typography } from "../tokens";
 import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
@@ -13,7 +14,7 @@ const ScreenFrame = styled(View, {
   flex: 1,
   width: "100%",
   minHeight: isWeb ? "100vh" : "100%",
-  backgroundColor: "$surfaceCanvas",
+  backgroundColor: "surfaceCanvas",
 });
 
 type ScreenFrameProps = ComponentProps<typeof ScreenFrame>;
@@ -83,16 +84,28 @@ const Screen = ({ density = "pointer", flush = false, footer, ...props }: Screen
 
 const Surface = styled(View, {
   name: "LoomarrSurface",
-  borderColor: "$borderDecorative",
+  borderColor: "borderDecorative",
   borderWidth: 1,
-  borderRadius: "$card",
+  borderRadius: "card",
   variants: {
     level: {
-      canvas: { backgroundColor: "$surfaceCanvas" },
-      raised: { backgroundColor: "$surfaceRaised" },
-      elevated: { backgroundColor: "$surfaceElevated" },
-      overlay: { backgroundColor: "$surfaceOverlay", borderRadius: "$overlay" },
-      focus: { backgroundColor: "$surfaceFocus", borderColor: "$actionFocus" },
+      canvas: {
+        backgroundColor: "surfaceCanvas",
+      },
+      raised: {
+        backgroundColor: "surfaceRaised",
+      },
+      elevated: {
+        backgroundColor: "surfaceElevated",
+      },
+      overlay: {
+        backgroundColor: "surfaceOverlay",
+        borderRadius: "overlay",
+      },
+      focus: {
+        backgroundColor: "surfaceFocus",
+        borderColor: "actionFocus",
+      },
     },
   } as const,
   defaultVariants: {
@@ -103,16 +116,16 @@ const Surface = styled(View, {
 const FocusSurface = styled(Surface, {
   name: "LoomarrFocusSurface",
   borderWidth: 2,
-  borderColor: "$transparent",
+  borderColor: "transparent",
   variants: {
     focused: {
       false: {
-        backgroundColor: "$surfaceRaised",
-        borderColor: "$transparent",
+        backgroundColor: "surfaceRaised",
+        borderColor: "transparent",
       },
       true: {
-        backgroundColor: "$surfaceFocus",
-        borderColor: "$actionFocus",
+        backgroundColor: "surfaceFocus",
+        borderColor: "actionFocus",
       },
     },
   } as const,
@@ -163,9 +176,15 @@ type TextProps = Omit<
   tracking?: number;
 };
 
-/** The `$token` string a theme-token colour value resolves to, stripped for direct theme lookup. */
-const themeVal = (theme: ReturnType<typeof useTheme>, token: string) =>
-  (theme as unknown as Record<string, { val: string }>)[token.slice(1)]?.val;
+/** The concrete value of a theme colour key, for hosts that take inline style rather than a token. */
+const themeVal = (theme: ReturnType<typeof useTheme>, key: string) =>
+  (theme as unknown as Record<string, { val: string }>)[key]?.val;
+
+/**
+ * A line height in px for a Tamagui text prop. Tamagui 3 reads a bare numeric `lineHeight` as a
+ * ratio of the font size on web and native alike, so an absolute height must be an explicit px string.
+ */
+const lineHeightPx = (px: number) => `${px}px`;
 
 const SHOUT_TRACKING = 0.025;
 
@@ -204,16 +223,16 @@ const mutedRoles = new Set<TextRole>([
 // foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
 // `tone="signal"`.
 const textTones = {
-  danger: "$stateDanger",
-  info: "$stateInfo",
-  inverse: "$contentInverse",
-  live: "$stateLive",
-  muted: "$contentMuted",
-  primary: "$contentPrimary",
-  secondary: "$contentSecondary",
-  signal: "$actionPrimary",
-  success: "$stateSuccess",
-  warning: "$stateWarning",
+  danger: "stateDanger",
+  info: "stateInfo",
+  inverse: "contentInverse",
+  live: "stateLive",
+  muted: "contentMuted",
+  primary: "contentPrimary",
+  secondary: "contentSecondary",
+  signal: "actionPrimary",
+  success: "stateSuccess",
+  warning: "stateWarning",
 } as const;
 
 const roleTracking = (textRole: TextRole, size: number) =>
@@ -246,8 +265,8 @@ const Text = ({
   const colorToken = tone
     ? textTones[tone]
     : mutedRoles.has(textRole)
-      ? "$contentSecondary"
-      : "$contentPrimary";
+      ? "contentSecondary"
+      : "contentPrimary";
   const resolvedTracking =
     tracking === undefined
       ? shout
@@ -256,11 +275,11 @@ const Text = ({
       : value.size * tracking;
   const face = {
     color: colorToken,
-    fontFamily: dataRoles.has(textRole) ? "$data" : "$body",
+    fontFamily: dataRoles.has(textRole) ? "data" : "body",
     fontSize: value.size,
     fontWeight: value.weight,
     letterSpacing: resolvedTracking,
-    lineHeight: value.lineHeight,
+    lineHeight: lineHeightPx(value.lineHeight),
     // Only when shouting: `face` spreads after the caller's props, so an always-present key
     // would erase a caller's own `textTransform="uppercase"` (the Guide grid's labels).
     ...(shout && { textTransform: "uppercase" as const }),
@@ -342,29 +361,29 @@ type BadgeProps = Omit<ComponentProps<typeof View>, "children"> & {
 };
 
 const badgeTone = {
-  danger: { backgroundColor: "$stateDangerSurface", borderColor: "$stateDanger", color: "$stateDanger" },
-  info: { backgroundColor: "$stateInfoSurface", borderColor: "$stateInfo", color: "$stateInfo" },
-  live: { backgroundColor: "$stateLiveSurface", borderColor: "$stateLive", color: "$stateLive" },
+  danger: { backgroundColor: "stateDangerSurface", borderColor: "stateDanger", color: "stateDanger" },
+  info: { backgroundColor: "stateInfoSurface", borderColor: "stateInfo", color: "stateInfo" },
+  live: { backgroundColor: "stateLiveSurface", borderColor: "stateLive", color: "stateLive" },
   neutral: {
-    backgroundColor: "$surfaceElevated",
-    borderColor: "$actionDisabled",
-    color: "$contentSecondary",
+    backgroundColor: "surfaceElevated",
+    borderColor: "actionDisabled",
+    color: "contentSecondary",
   },
   // A channel override or Custom value (#1909 Q5): neutral with a foreground label.
   override: {
-    backgroundColor: "$surfaceElevated",
-    borderColor: "$borderControl",
-    color: "$contentPrimary",
+    backgroundColor: "surfaceElevated",
+    borderColor: "borderControl",
+    color: "contentPrimary",
   },
   success: {
-    backgroundColor: "$stateSuccessSurface",
-    borderColor: "$stateSuccess",
-    color: "$stateSuccess",
+    backgroundColor: "stateSuccessSurface",
+    borderColor: "stateSuccess",
+    color: "stateSuccess",
   },
   warning: {
-    backgroundColor: "$stateWarningSurface",
-    borderColor: "$stateWarning",
-    color: "$stateWarning",
+    backgroundColor: "stateWarningSurface",
+    borderColor: "stateWarning",
+    color: "stateWarning",
   },
 } as const;
 
@@ -377,9 +396,9 @@ const squareBadgeTone = (theme: ReturnType<typeof useTheme>) =>
     // A channel override or Custom value (#1909 Q5): neutral, with a foreground label and a control
     // hairline. The word carries the meaning; amber stays for focus and the primary action.
     override: {
-      backgroundColor: "$surfaceElevated",
-      borderColor: "$borderControl",
-      color: "$contentPrimary",
+      backgroundColor: "surfaceElevated",
+      borderColor: "borderControl",
+      color: "contentPrimary",
     },
     tune: { backgroundColor: withAlpha(theme.stateInfo.val, 0.15), color: theme.stateInfo.val },
     lock: { backgroundColor: withAlpha(theme.stateSuccess.val, 0.15), color: theme.stateSuccess.val },
@@ -417,11 +436,11 @@ const Badge = ({ children, density = "pointer", shape = "pill", tone = "neutral"
       >
         <TamaguiText
           color={colors.color}
-          fontFamily="$data"
+          fontFamily="data"
           fontSize={11}
           fontWeight="500"
           letterSpacing={0.275}
-          lineHeight={14}
+          lineHeight={lineHeightPx(14)}
           textTransform="uppercase"
         >
           {children}
@@ -438,18 +457,18 @@ const Badge = ({ children, density = "pointer", shape = "pill", tone = "neutral"
       alignSelf="flex-start"
       backgroundColor={colors.backgroundColor}
       borderColor={colors.borderColor}
-      borderRadius="$round"
+      borderRadius="round"
       borderWidth={1}
       flexShrink={0}
-      paddingHorizontal="$inline"
+      paddingHorizontal="inline"
       paddingVertical={4}
     >
       <TamaguiText
         color={colors.color}
-        fontFamily="$data"
+        fontFamily="data"
         fontSize={typography[density].metadata.size}
         fontWeight="600"
-        lineHeight={typography[density].metadata.lineHeight}
+        lineHeight={lineHeightPx(typography[density].metadata.lineHeight)}
       >
         {children}
       </TamaguiText>
@@ -475,7 +494,7 @@ const ArtworkFrame = ({ children, density = "pointer", state, ...props }: Artwor
     {...props}
     alignItems="center"
     aspectRatio={16 / 9}
-    backgroundColor="$artworkPlaceholder"
+    backgroundColor="artworkPlaceholder"
     justifyContent="center"
     overflow="hidden"
   >
@@ -534,7 +553,7 @@ const ProgressTrack = ({
   const theme = useTheme();
   const determinate = percent != null;
   const bounded = determinate ? Math.max(0, Math.min(100, percent)) : 100;
-  const borderRadius = ends === "round" ? "$round" : 0;
+  const borderRadius = ends === "round" ? "round" : 0;
   const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
   const pulse = useRef(new Animated.Value(1)).current;
 
@@ -575,7 +594,7 @@ const ProgressTrack = ({
             ...(determinate ? { "aria-valuemax": 100, "aria-valuemin": 0, "aria-valuenow": bounded } : {}),
           }
         : {})}
-      backgroundColor={tone === "artwork" ? "$artworkProgressTrack" : "$surfaceCanvas"}
+      backgroundColor={tone === "artwork" ? "artworkProgressTrack" : "surfaceCanvas"}
       borderRadius={borderRadius}
       height={height}
       overflow="hidden"
@@ -683,4 +702,4 @@ export type {
   TextProps,
   TextTone,
 };
-export { ArtworkFrame, Badge, FocusSurface, ProgressTrack, Screen, StatusDot, Surface, Text };
+export { ArtworkFrame, Badge, FocusSurface, lineHeightPx, ProgressTrack, Screen, StatusDot, Surface, Text };

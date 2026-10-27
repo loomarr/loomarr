@@ -18,8 +18,8 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
   const [guideDensity, setGuideDensity] = useState<"comfortable" | "compact">("comfortable");
 
   return (
-    <Screen density={density} gap="$section">
-      <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+    <Screen density={density} gap="section">
+      <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
         <Text density={density} textRole="metadata" tone="info">
           INTERACTION CONTRACT
         </Text>
@@ -28,16 +28,16 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
         </Text>
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Actions
         </Text>
         <Surface
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection={density === "touch" ? "column" : "row"}
           flexWrap="wrap"
-          gap="$control"
+          gap="control"
         >
           <Action density={density} onPress={() => undefined}>
             Primary
@@ -57,7 +57,7 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
         </Surface>
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Fields
         </Text>
@@ -79,7 +79,7 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
         <Field density={density} disabled label="Managed server" value="https://living-room.local" />
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text density={density} textRole="title">
           Toggles and choices
         </Text>
@@ -141,11 +141,11 @@ const Focused: Story = {
 // The same primary at rest and focused, side by side. An amber focus border on the amber fill was
 // invisible (WCAG 2.4.7, the tvOS Retry audit), so focus is a foreground ring outside a gap.
 const PrimaryFocusPair = ({ density }: { density: Density }) => (
-  <Screen density={density} gap="$section">
+  <Screen density={density} gap="section">
     <Text density={density} textRole="metadata" tone="secondary">
       PRIMARY AT REST · PRIMARY FOCUSED
     </Text>
-    <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$section">
+    <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="section">
       <Action density={density} tone="primary">
         Try again
       </Action>

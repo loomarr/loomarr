@@ -21,8 +21,8 @@ describe("Card", () => {
     expect(markup).toContain("Footer");
   });
 
-  // The legacy shadcn Card used `rounded-lg`, this app's own 12px radius step (`$cardCompact`),
-  // not Surface's own 16px default (`$card`) — a card that quietly grew rounder corners would be
+  // The legacy shadcn Card used `rounded-lg`, this app's own 12px radius step (`cardCompact`),
+  // not Surface's own 16px default (`card`) — a card that quietly grew rounder corners would be
   // the visual regression this primitive exists to avoid.
   it("uses the legacy 12px radius, not Surface's own 16px default", () => {
     const markup = renderToStaticMarkup(
@@ -30,7 +30,7 @@ describe("Card", () => {
         <Card>content</Card>
       </LoomarrProvider>,
     );
-    expect(markup).toMatch(/border-top-left-radius:var\(--t-radius-cardCompact\)/);
-    expect(markup).not.toMatch(/border-top-left-radius:var\(--t-radius-card\)/);
+    expect(markup).toMatch(/border-radius:var\(--t-radius-cardCompact\)/);
+    expect(markup).not.toMatch(/border-radius:var\(--t-radius-card\)/);
   });
 });

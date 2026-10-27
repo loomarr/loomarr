@@ -98,7 +98,7 @@ const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, v
         {children({ checked, focused })}
         {focused ? (
           <View
-            borderColor="$actionFocus"
+            borderColor="actionFocus"
             borderRadius={ringRadius + 3}
             borderWidth={2}
             bottom={-3}

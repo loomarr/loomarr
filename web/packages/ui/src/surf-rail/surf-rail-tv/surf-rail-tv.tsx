@@ -80,20 +80,20 @@ const TvSurfRail = ({
   return (
     <Surface
       accessibilityLabel="Channel surfer"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderRadius={0}
       borderWidth={0}
       flex={1}
     >
       <Surface
-        backgroundColor="$surfaceChrome"
+        backgroundColor="surfaceChrome"
         borderRadius={0}
         borderWidth={0}
         bottom={0}
         left={0}
         paddingBottom={48}
         paddingLeft={48}
-        paddingRight="$control"
+        paddingRight="control"
         paddingTop={48}
         position="absolute"
         top={0}
@@ -107,7 +107,7 @@ const TvSurfRail = ({
           ref={scrollFrame}
         >
           {groups.map((group) => (
-            <Surface backgroundColor="$transparent" borderWidth={0} gap={4} key={group.kind}>
+            <Surface backgroundColor="transparent" borderWidth={0} gap={4} key={group.kind}>
               <Text density="tv" paddingBottom={4} paddingTop={12} textRole="section" tone="muted">
                 {`${group.label.toUpperCase()} · ${group.channels.length}`}
               </Text>
@@ -158,10 +158,10 @@ const TvSurfRail = ({
         </Text>
       </Surface>
       <Surface
-        backgroundColor="$surfaceOverlay"
+        backgroundColor="surfaceOverlay"
         borderRadius={8}
         bottom={48}
-        padding="$control"
+        padding="control"
         position="absolute"
         right={48}
       >

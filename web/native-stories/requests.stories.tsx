@@ -174,7 +174,7 @@ const ReviewFrame = ({
           {navigation(requestsNeedsYouCount(needsYou))}
         </>
       }
-      gap="$control"
+      gap="control"
     >
       <ScrollFrame density="touch">
         <RequestsList
@@ -211,7 +211,7 @@ const RequestsWorkshop = ({
   if (screen === "review")
     return <ReviewFrame review={{ ...initialReview, ...review }} waiting={reviewWaiting} />;
   return (
-    <Screen density="touch" footer={navigation(badge)} gap="$control">
+    <Screen density="touch" footer={navigation(badge)} gap="control">
       {screen === "detail" ? (
         <RequestDetail
           entry={

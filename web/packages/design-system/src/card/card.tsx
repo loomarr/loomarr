@@ -9,11 +9,11 @@ import { Surface } from "../primitives";
  * host element Tamagui mounts — on web, that is a plain `HTMLDivElement`.
  *
  * The legacy shadcn Card used `rounded-lg` (12px in this app's own Tailwind radius scale), which
- * is `$cardCompact`, not `$card` (16px) — `Surface`'s own default would be visibly larger corners.
+ * is `cardCompact`, not `card` (16px) — `Surface`'s own default would be visibly larger corners.
  */
 const Card = styled(Surface, {
   name: "LoomarrCard",
-  borderRadius: "$cardCompact",
+  borderRadius: "cardCompact",
 });
 
 // 16px vertical rhythm with no gap below the last row — the legacy shadcn CardHeader's

@@ -12,17 +12,17 @@ const ChannelIdentity = ({ channel, density = "pointer", logo }: ChannelIdentity
   return (
     <Surface
       alignItems="center"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
-      gap="$control"
+      gap="control"
       minWidth={0}
     >
       {logoReady ? (
         <Surface
           alignItems="center"
-          backgroundColor="$surfaceElevated"
-          borderRadius="$control"
+          backgroundColor="surfaceElevated"
+          borderRadius="control"
           height={logoSize}
           justifyContent="center"
           overflow="hidden"
@@ -40,7 +40,7 @@ const ChannelIdentity = ({ channel, density = "pointer", logo }: ChannelIdentity
       <Text density={density} textRole="channelNumber">
         {channel.channelNumber}
       </Text>
-      <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
+      <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
         <Text density={density} numberOfLines={1} textRole="label" tone="primary">
           {channel.channelName}
         </Text>
@@ -50,16 +50,16 @@ const ChannelIdentity = ({ channel, density = "pointer", logo }: ChannelIdentity
 };
 
 const ProgrammeIdentity = ({ density = "pointer", programme }: ProgrammeIdentityProps) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$control" minWidth={0}>
+  <Surface backgroundColor="transparent" borderWidth={0} gap="control" minWidth={0}>
     <Surface
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
-      gap="$control"
+      gap="control"
       justifyContent="space-between"
       minWidth={0}
     >
-      <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={4} minWidth={0}>
+      <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={4} minWidth={0}>
         {programme.seriesTitle ? (
           <Text density={density} numberOfLines={1} textRole="label">
             {programme.seriesTitle}

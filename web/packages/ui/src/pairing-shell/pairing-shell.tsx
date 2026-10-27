@@ -141,12 +141,13 @@ const PairingShell = ({
         )
       ) : null}
       <Surface
-        borderRadius={density === "tv" && awaitingApproval ? 8 : undefined}
-        gap={density === "tv" && awaitingApproval ? 0 : "$section"}
-        level={density === "tv" && awaitingApproval ? "raised" : "overlay"}
+        // Spread: an explicit `borderRadius={undefined}` strips the level's own radius in Tamagui 3.
+        {...(density === "tv" && awaitingApproval ? { borderRadius: 8 } : {})}
+        gap={density === "tv" && awaitingApproval ? 0 : "section"}
         maxWidth={density === "tv" && awaitingApproval ? 760 : 620}
-        padding="$section"
+        padding="section"
         width="100%"
+        level={density === "tv" && awaitingApproval ? "raised" : "overlay"}
       >
         {awaitingApproval ? null : <BrandLockup size={density === "tv" ? "large" : "medium"} />}
         {content}
@@ -173,7 +174,7 @@ const PairingShell = ({
       </Screen>
     );
   return (
-    <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
+    <Screen alignItems="center" density={density} gap="section" justifyContent="center">
       {body}
     </Screen>
   );
@@ -305,20 +306,20 @@ const pairingContent = (
           </Text>
         ) : null}
         <Surface
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection={density === "tv" ? "row" : "column"}
-          gap={density === "tv" ? 0 : "$section"}
+          gap={density === "tv" ? 0 : "section"}
           width="100%"
         >
           {/* The halves share the TV's row. In a phone's column, flex's zero basis would give each no
               height on native, so the QR, the code and the button drew over each other. */}
           <Surface
             alignItems="center"
-            backgroundColor="$transparent"
+            backgroundColor="transparent"
             borderWidth={0}
             flex={density === "tv" ? 1 : undefined}
-            gap="$control"
+            gap="control"
           >
             <Text density={density} textRole={density === "tv" ? "section" : "title"}>
               {density === "tv" ? "SCAN QR CODE" : "Scan QR Code"}
@@ -327,7 +328,7 @@ const pairingContent = (
           </Surface>
           <Surface
             alignSelf="stretch"
-            backgroundColor="$borderDecorative"
+            backgroundColor="borderDecorative"
             borderWidth={0}
             height={density === "tv" ? "auto" : 1}
             minHeight={density === "tv" ? 210 : 1}
@@ -335,10 +336,10 @@ const pairingContent = (
           />
           <Surface
             alignItems="center"
-            backgroundColor="$transparent"
+            backgroundColor="transparent"
             borderWidth={0}
             flex={density === "tv" ? 1 : undefined}
-            gap="$control"
+            gap="control"
             justifyContent="flex-start"
           >
             <Text density={density} textRole={density === "tv" ? "section" : "title"}>
@@ -347,18 +348,18 @@ const pairingContent = (
             <Text
               density={density}
               numberOfLines={1}
-              selectable
               textRole={density === "tv" ? "metadata" : "time"}
               tone={density === "tv" ? "primary" : undefined}
+              userSelect="text"
             >
               {state.verificationUri}
             </Text>
             <Surface
               alignItems="center"
-              backgroundColor="$transparent"
+              backgroundColor="transparent"
               borderWidth={0}
-              gap="$inline"
-              padding={density === "tv" ? 0 : "$control"}
+              gap="inline"
+              padding={density === "tv" ? 0 : "control"}
               width="100%"
             >
               {density === "tv" ? null : (
@@ -369,10 +370,10 @@ const pairingContent = (
               <Text
                 accessibilityLabel={`Pairing code ${state.userCode}`}
                 density={density}
-                selectable
                 textRole={density === "tv" ? "code" : "channelNumber"}
                 // A display numeral, the brand moment that keeps amber (#1909 Q4).
                 tone="signal"
+                userSelect="text"
               >
                 {state.userCode}
               </Text>
@@ -385,7 +386,7 @@ const pairingContent = (
           </Surface>
         </Surface>
         <Surface
-          backgroundColor="$borderDecorative"
+          backgroundColor="borderDecorative"
           borderWidth={0}
           height={1}
           marginVertical={density === "tv" ? 20 : 0}
@@ -393,9 +394,9 @@ const pairingContent = (
         />
         <Surface
           alignItems="center"
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
-          gap={density === "tv" ? 12 : "$control"}
+          gap={density === "tv" ? 12 : "control"}
         >
           {urgent ? (
             <Badge accessibilityLiveRegion="polite" density={density} tone="danger">

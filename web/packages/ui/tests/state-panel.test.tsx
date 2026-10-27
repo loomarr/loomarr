@@ -33,6 +33,7 @@ describe("StatePanel", () => {
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain('aria-live="polite"');
     expect(markup).toContain("Loading channels");
-    expect(markup).not.toContain("button");
+    // Tamagui's injected <style> block names `button` in its reset rules; only elements count.
+    expect(markup.replace(/<style[\s\S]*?<\/style>/g, "")).not.toContain("button");
   });
 });

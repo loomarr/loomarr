@@ -1,9 +1,11 @@
-import { Text as TamaguiText, View } from "@tamagui/core";
+import { View } from "@tamagui/core";
 import { useState } from "react";
 import { Platform, Pressable } from "react-native";
 
 import { Icon } from "../icon";
 import { type IconName, icons } from "../icons";
+import { lineHeightPx } from "../primitives";
+import { TamaguiText } from "../text-base";
 import { useViewportInsets } from "../viewport";
 
 type TabBarIdiom = "ios" | "material";
@@ -42,9 +44,9 @@ type TabBarProps<Value extends string> = {
 // label, 49 pt of bar over the home indicator. Android: raised, 12 above a 64×32 pill holding a 22
 // glyph, a 12 pt label, 80 dp of bar over the gesture strip.
 const idioms = {
-  ios: { background: "$surfaceCanvas", glyph: "control", height: 49, hairline: 1, label: 10, top: 8 },
+  ios: { background: "surfaceCanvas", glyph: "control", height: 49, hairline: 1, label: 10, top: 8 },
   material: {
-    background: "$surfaceRaised",
+    background: "surfaceRaised",
     glyph: "navigation",
     height: 80,
     hairline: 0,
@@ -98,9 +100,9 @@ const TabBar = <Value extends string>({
         {/* The pill is Material's selection mark; on iPhone the same box only draws the focus ring. */}
         <View
           alignItems="center"
-          backgroundColor={idiom === "material" && current ? "$borderDecorative" : "$transparent"}
-          borderColor={focused === item.value ? "$actionFocus" : "$transparent"}
-          borderRadius={idiom === "material" ? "$round" : 8}
+          backgroundColor={idiom === "material" && current ? "borderDecorative" : "transparent"}
+          borderColor={focused === item.value ? "actionFocus" : "transparent"}
+          borderRadius={idiom === "material" ? "round" : 8}
           borderWidth={2}
           height={idiom === "material" ? 32 : 28}
           justifyContent="center"
@@ -115,8 +117,8 @@ const TabBar = <Value extends string>({
           {typeof item.badge === "number" && item.badge > 0 ? (
             <View
               alignItems="center"
-              backgroundColor="$stateLive"
-              borderRadius="$round"
+              backgroundColor="stateLive"
+              borderRadius="round"
               height={16}
               justifyContent="center"
               left={38}
@@ -125,7 +127,7 @@ const TabBar = <Value extends string>({
               position="absolute"
               top={-2}
             >
-              <TamaguiText color="$contentInverse" fontFamily="$body" fontSize={10} fontWeight="700">
+              <TamaguiText color="contentInverse" fontFamily="body" fontSize={10} fontWeight="700">
                 {item.badge > 99 ? "99+" : item.badge}
               </TamaguiText>
             </View>
@@ -135,7 +137,7 @@ const TabBar = <Value extends string>({
               // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
               // numeral badge already uses for "needs you" counts.
               backgroundColor="#D6409F"
-              borderRadius="$round"
+              borderRadius="round"
               height={7}
               position="absolute"
               right={-2}
@@ -145,11 +147,11 @@ const TabBar = <Value extends string>({
           ) : null}
         </View>
         <TamaguiText
-          color={current ? "$contentPrimary" : "$contentSecondary"}
-          fontFamily="$body"
+          color={current ? "contentPrimary" : "contentSecondary"}
+          fontFamily="body"
           fontSize={style.label}
           fontWeight={current ? "600" : "500"}
-          lineHeight={Math.round(style.label * 1.3)}
+          lineHeight={lineHeightPx(Math.round(style.label * 1.3))}
         >
           {item.label}
         </TamaguiText>
@@ -159,7 +161,7 @@ const TabBar = <Value extends string>({
   return (
     <View
       backgroundColor={style.background}
-      borderTopColor="$borderDecorative"
+      borderTopColor="borderDecorative"
       borderTopWidth={style.hairline}
       flexDirection="row"
       paddingBottom={insets.bottom}

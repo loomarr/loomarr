@@ -434,7 +434,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             <Surface
               accessibilityLiveRegion="polite"
               alignItems="center"
-              backgroundColor="$surfaceEntry"
+              backgroundColor="surfaceEntry"
               borderRadius={8}
               bottom={48}
               left={48}

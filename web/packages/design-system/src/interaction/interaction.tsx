@@ -1,4 +1,4 @@
-import { isWeb, Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import { isWeb, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactElement, ReactNode } from "react";
 import { cloneElement, forwardRef, isValidElement, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
@@ -6,7 +6,8 @@ import { Platform, Pressable, TextInput } from "react-native";
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
 import { useBehindModal } from "../modal-layer";
-import { Surface, Text } from "../primitives";
+import { lineHeightPx, Surface, Text } from "../primitives";
+import { TamaguiText } from "../text-base";
 import {
   brandChroma,
   type Density,
@@ -215,18 +216,18 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             }
           />
           <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
-            fontFamily="$body"
+            color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
+            fontFamily="body"
             fontSize={typography[density].cardMeta.size}
             fontWeight={pressed ? "600" : undefined}
-            lineHeight={typography[density].cardMeta.lineHeight}
+            lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
             numberOfLines={1}
           >
             {children}
           </TamaguiText>
         </View>
       ) : icon ? (
-        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="$inline">
+        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
           <Icon
             decorative
             glyph={icons[icon]}
@@ -234,8 +235,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             tone={iconTone}
           />
           <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
-            fontFamily="$body"
+            color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+            fontFamily="body"
             fontSize={tv ? typography.tv.data.size : typography[density].label.size}
             flexShrink={fitLabel ? 1 : undefined}
             fontWeight={labelWeight}
@@ -247,8 +248,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         </View>
       ) : (
         <TamaguiText
-          color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
-          fontFamily="$body"
+          color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+          fontFamily="body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
           fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
@@ -382,7 +383,7 @@ const Field = ({
       : theme.borderControl.val;
 
   return (
-    <View gap="$inline" width="100%">
+    <View gap="inline" width="100%">
       {label ? (
         <Text density={density} textRole="label">
           {label}
@@ -481,7 +482,7 @@ const FieldHint = ({ children, className, density = "pointer", id, role, tone = 
 const boxFocusRing = (focused: boolean, density: Density) =>
   focused
     ? ({
-        outlineColor: "$actionFocus",
+        outlineColor: "actionFocus",
         outlineOffset: 2,
         outlineStyle: "solid",
         outlineWidth: density === "tv" ? 3 : 2,
@@ -541,9 +542,9 @@ const Toggle = ({
           border and mark. Amber is the focus ring around the box, outside a gap. */}
       <Surface
         alignItems={kind === "switch" ? (checked ? "flex-end" : "flex-start") : "center"}
-        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
-        borderColor={checked ? "$contentPrimary" : "$borderControl"}
-        borderRadius={kind === "switch" ? "$round" : "$control"}
+        backgroundColor={checked ? "surfaceElevated" : "surfaceCanvas"}
+        borderColor={checked ? "contentPrimary" : "borderControl"}
+        borderRadius={kind === "switch" ? "round" : "control"}
         height={controlSize}
         justifyContent="center"
         padding={kind === "switch" ? 3 : 0}
@@ -552,8 +553,8 @@ const Toggle = ({
       >
         {kind === "switch" ? (
           <View
-            backgroundColor={checked ? "$contentPrimary" : "$contentSecondary"}
-            borderRadius="$round"
+            backgroundColor={checked ? "contentPrimary" : "contentSecondary"}
+            borderRadius="round"
             height={controlSize - 8}
             width={controlSize - 8}
           />
@@ -632,16 +633,16 @@ const ChoiceRow = ({
       <Surface
         alignItems="center"
         // A chosen option is neutral-pressed (#1909), like a checked box; amber is the focus ring.
-        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
-        borderColor={checked ? "$contentPrimary" : "$borderControl"}
-        borderRadius="$round"
+        backgroundColor={checked ? "surfaceElevated" : "surfaceCanvas"}
+        borderColor={checked ? "contentPrimary" : "borderControl"}
+        borderRadius="round"
         height={density === "tv" ? 36 : 24}
         justifyContent="center"
         width={density === "tv" ? 36 : 24}
         {...boxFocusRing(hasFocus && !behindModal, density)}
       >
         {checked ? (
-          <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
+          <View backgroundColor="contentPrimary" borderRadius="round" height="45%" width="45%" />
         ) : null}
       </Surface>
       <View flex={1} gap={2}>
@@ -665,7 +666,7 @@ const ChoiceGroup = <Value extends string>({
   options,
   value,
 }: ChoiceGroupProps<Value>) => (
-  <View aria-label={label} role="radiogroup" gap="$inline">
+  <View aria-label={label} role="radiogroup" gap="inline">
     <Text density={density} textRole="label">
       {label}
     </Text>
