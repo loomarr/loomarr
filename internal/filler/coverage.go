@@ -33,6 +33,7 @@ const (
 	CriterionDuration  Criterion = "duration"
 	CriterionQuality   Criterion = "quality"
 	CriterionGeography Criterion = "geography"
+	CriterionLanguage  Criterion = "language"
 )
 
 // CriterionCoverage is one setting and how much of the commercial catalog survives it ON ITS OWN.
@@ -70,8 +71,14 @@ type CoverageReport struct {
 	// own, else the installation's). A zero country means no location limit. Reported so the
 	// channel page can say WHICH commercials the pool is limited to without restating a setting.
 	Geography Geography
+	// Language is the commercial language this channel's breaks were limited to (the channel's own,
+	// else the household's), "" when there is none. UndeterminedLanguage counts the break-body
+	// commercials whose language is unknown: they count only on a channel whose language is the
+	// household default (language_boundary.go).
+	Language             string
+	UndeterminedLanguage int
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder.
-	// Always the same six entries in the same order, so the UI renders a stable list rather
+	// Always the same entries in the same order, so the UI renders a stable list rather
 	// than one that reshuffles as counts change.
 	Criteria []CriterionCoverage
 	// Rungs, tightest first, in ladder order.
@@ -249,6 +256,7 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		{CriterionGeography, count(func(c Clip) bool {
 			return GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography))
 		})},
+		{CriterionLanguage, count(func(c Clip) bool { return speaksTheChannelsLanguage(c, w, policy) })},
 		{CriterionEra, count(func(c Clip) bool { return len(filterEraWindows([]Clip{c}, w.eraWindows())) > 0 })},
 		{CriterionAudience, count(func(c Clip) bool {
 			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
@@ -288,6 +296,12 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	// one of the criteria being reported. Measuring it after would make that line always equal the
 	// base — a row that can never say anything.
 	criteria := criterionCoverage(catalog, w, policy)
+	undetermined := 0
+	for _, c := range catalog {
+		if c.EffectivePlacement() == PlacementBreakBody && NormalizeLanguage(c.Language) == LangUndetermined {
+			undetermined++
+		}
+	}
 
 	// Level is the rung a fresh break REACHES, so it is read off the same assembly rather than
 	// re-derived: since #1684 a pod tops up from looser rungs, and "tightest non-empty rung"
@@ -306,9 +320,12 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 
 	report := CoverageReport{
 		Geography: geography.Normalize(),
+		Language:  commercialLanguage(w, policy),
 		Criteria:  criteria,
-		Rungs:     make([]RungCoverage, 0, len(pools)),
-		Level:     MatchBumperCard,
+
+		UndeterminedLanguage: undetermined,
+		Rungs:                make([]RungCoverage, 0, len(pools)),
+		Level:                MatchBumperCard,
 	}
 	if windows := w.eraWindows(); len(windows) > 0 && !windows[0].Any() {
 		report.EraWindows = NormalizeEraWindows(windows)

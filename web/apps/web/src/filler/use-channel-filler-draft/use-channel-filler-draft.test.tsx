@@ -29,6 +29,8 @@ const previewBody: PreviewDraftPodsOutputBody = {
     total: 1,
     rungs: [{ level: "exact", clips: 1 }],
     geography: { country: "", market: "" },
+    language: "",
+    undeterminedLanguage: 0,
     criteria: [
       { criterion: "era", clips: 1 },
       { criterion: "audience", clips: 1 },

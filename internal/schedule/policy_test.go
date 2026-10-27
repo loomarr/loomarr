@@ -156,7 +156,7 @@ func TestValidate(t *testing.T) {
 		OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{
 			Era: &Range{From: 1990, To: 1999}, Audience: "kids",
 			Categories: []string{"toys", "cereal"}, Kinds: []string{"commercial", "bumper"},
-			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"},
+			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"}, Language: "fre",
 		}},
 	}
 	if err := valid.Validate(); err != nil {
@@ -176,6 +176,7 @@ func TestValidate(t *testing.T) {
 		{ProposalPolicy: ProposalPolicy{Seasonal: SeasonalPolicy{Mode: "sometimes"}}},
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Language: "klingon"}}},               // unknown language
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
 		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{}}}},
 		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{MovieRelease: []Range{{From: 1899, To: 1990}}}}}},

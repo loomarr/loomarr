@@ -133,24 +133,17 @@ func SourceGeographicallyEligible(source, target Geography) bool {
 	return target.Market != "" && strings.EqualFold(source.Market, target.Market)
 }
 
+// effectiveGeography is the channel's own location when it names one, else the household's (#2030
+// decision 16). The channel's country and market replace the household's, so a channel of British
+// shows in a US household can opt into British commercials; it is never inferred from where the
+// shows are from. The region preference stays the household's (#2035): a channel inherits it,
+// and Normalize drops the channel's own country from it.
 func effectiveGeography(channel, installation Geography) Geography {
-	channel, installation = channel.Normalize(), installation.Normalize()
-	if installation.Country != "" {
-		if channel.Country == "" {
-			return installation
-		}
-		if channel.Country != installation.Country {
-			// An impossible target fails every clip closed. A Channel may narrow the
-			// installation country to a market, never escape that country boundary.
-			return Geography{Country: "--"}
-		}
+	if channel = channel.Normalize(); channel.Country != "" {
 		channel.Fallback = installation.Fallback
-		return channel
+		return channel.Normalize()
 	}
-	if channel.Country != "" {
-		return channel
-	}
-	return installation
+	return installation.Normalize()
 }
 
 func filterGeography(clips []Clip, target Geography) []Clip {

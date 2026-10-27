@@ -35,6 +35,7 @@ const (
 	FitGeography FitReason = "geography" // foreign, out-of-market, or unknown geography
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
 	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)
+	FitLanguage  FitReason = "language"  // not in the channel's commercial language (language_boundary.go)
 )
 
 // Fit reports how one clip relates to one channel's selection.
@@ -119,6 +120,11 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// it was being honoured. Caught by asserting against `Assemble` rather than re-asserting the
 	// predicates this function calls.
 	if fit.Pinned {
+		return fit
+	}
+	// Like the season below, the commercial language holds for bookends and body alike.
+	if !speaksTheChannelsLanguage(c, w, policy) {
+		fit.Reason = FitLanguage
 		return fit
 	}
 	// Out of season a holiday clip airs nowhere in the break, bookend or body.

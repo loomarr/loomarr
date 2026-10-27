@@ -44,7 +44,11 @@ const renderSection = (ui: ReactNode) => {
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
-const NO_LIMIT: CoverageDTO["geography"] = { country: "", market: "" };
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
+  geography: { country: "", market: "" },
+  language: "",
+  undeterminedLanguage: 0,
+};
 
 const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "era", clips: 4 },
@@ -63,7 +67,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
     total: 4,
     rungs: [{ level: "exact", clips: 4 }],
     criteria: HEALTHY,
-    geography: NO_LIMIT,
+    ...NO_LIMIT,
   },
   entries: [
     {
@@ -153,6 +157,8 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       rungs: [{ level: "exact", clips: 4 }],
       criteria: HEALTHY,
       geography: { country: "US", market: "" },
+      language: "en",
+      undeterminedLanguage: 0,
     }),
   );
 
@@ -465,7 +471,7 @@ describe("ChannelFiller", () => {
         total: 0,
         rungs: [],
         criteria: HEALTHY,
-        geography: NO_LIMIT,
+        ...NO_LIMIT,
       }),
       // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
       // the inherited-default settings read too.

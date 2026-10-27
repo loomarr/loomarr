@@ -183,8 +183,9 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
 - **Per-channel selection (`policy.filler`, `FillerSelection`)** narrows `era`, `audience`,
   `categories`, `kinds`, `pinned` and `excluded`. `era` has three states: unset inherits the era
   `policy.scope.dates` implies, `{0,0}` is explicitly any, and a range matches both bounds. Exclusion wins
-  over a pin. Optional `geography` may choose a market but never change the installation country,
-  and is applied before pins. On first approval of a generated channel, one pure function seeds the
+  over a pin. Optional `geography` replaces the installation's, another country included (#2030
+  decision 16; the channel page still offers only a market until the filler UI work), and is
+  applied before pins. Optional `language` is the channel's commercial language (below). On first approval of a generated channel, one pure function seeds the
   selection from the Proposal (the era its scope dates imply; `TV-Y`/`TV-Y7` → `kids`, `G`…`TV-PG` → `family`, anything
   else → `general`); after that the operator owns it and refine or re-curation never overwrite it.
 - **Derived context.** Where the operator left audience or era unset, `schedule.DeriveFiller`
@@ -299,6 +300,17 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   with no seasons, as it is without play history, so a season opening never re-sizes the
   timeline. A holiday with no dates is not a season: its clips air year-round. Pins skip both
   rules, and an in-season pin counts toward the half. A clip's fit reports `season` out of season.
+- **Commercial language (#2030).** Each channel has a commercial language (`policy.filler.language`, any ISO 639 form, mapped onto the detector's codes); empty inherits the
+  household setting `filler.language`. It is independent of the channel's audio language. A
+  break airs clips in that language plus wordless (`none`) ones, bumpers and station IDs included;
+  when they run out the card airs. A clip whose language is undetermined airs only where the
+  channel's language is the household default. Pins skip the rule. Coverage names the language,
+  counts it as a criterion and reports the undetermined commercials; a clip's fit reports
+  `language`.
+- **Location.** A channel's own country and market replace the household's, another country
+  included, so a channel of British shows can opt into British commercials. It is never inferred
+  from the shows. The region preference stays the household's: the channel inherits it, less its
+  own country.
 
 **Audience is an allowlist and never weakens** (a kids and teen guardrail):
 
@@ -342,6 +354,7 @@ Formerly `design.md` §19.
   `available` and is re-pushed; `unavailable` substitutes). Dropping the availability event entirely
   still backfills through the periodic sweep. One leader per channel under concurrency.
 - **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
-  category variety, density, no-repeat-in-window and the holiday season and half
-  (`internal/filler/season_test.go`); the fallback ladder degrades to a bumper card;
+  category variety, density, no-repeat-in-window, the holiday season and half
+  (`internal/filler/season_test.go`) and the commercial language and location
+  (`language_boundary_test.go`, `geography_test.go`); the fallback ladder degrades to a bumper card;
   filler never appears as a lineup programme; only real catalog clips are placed.

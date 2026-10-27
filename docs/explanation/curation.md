@@ -102,9 +102,17 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
   channel from general-audience filler. Loomarr doesn't guess product categories from the
   shows' genres.
 - **Geography is never loosened.** A channel set to a US market takes US-national clips and that
-  market's local clips. Clips from other countries or markets stay in the library but never
-  enter that channel's pool, whatever the fallback. The guide's time zone only changes how times
-  are shown; it never sets a country.
+  market's local clips, plus the national clips of any country in your region preference. Clips
+  from other countries or markets stay in the library but never enter that channel's pool,
+  whatever the fallback. A channel follows your household's location
+  unless you give it its own, which may be another country: a channel of British shows can take
+  British commercials. Loomarr never works a location out from the shows, and the guide's time
+  zone only changes how times are shown; it never sets a country.
+- **Language is never loosened either.** Each channel has a commercial language, your household's
+  unless you give it its own, and it is separate from the channel's audio language: an anime
+  channel can play Japanese audio with English commercials. A break plays clips in that language
+  and clips with no speech; when those run out, the channel's card plays instead. A clip whose
+  language Loomarr couldn't work out plays only on channels using your household's language.
 
 ### Holidays
 
@@ -115,4 +123,4 @@ commercial when one that fits hasn't aired recently, and holiday commercials fil
 a break while other commercials can fill the rest, so the season doesn't crowd out everything else.
 When nothing else fits, holiday commercials fill the break rather than leaving it to the channel's
 card. A holiday tag with no dates yet is just
-a tag: its clips play all year. A clip you pin to a channel plays whatever the season.
+a tag: its clips play all year. A clip you pin to a channel plays whatever the season or its language.

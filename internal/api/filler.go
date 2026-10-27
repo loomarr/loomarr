@@ -1228,7 +1228,7 @@ type ChannelFitDTO struct {
 	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
 	// precedent), because a server sentence cannot be translated and cannot link to the setting
 	// that caused it.
-	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,geography,excluded,season" doc:"Why the clip is not a candidate; absent when it is one"`
+	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
 	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
 	//
 	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set

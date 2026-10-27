@@ -222,7 +222,8 @@ fetchable and operator-removable.
     order. Region yields to era: a GB ad from the channel's own era outranks a US ad from a
     widened one, which is what "when US supply for an era runs thin" means.
   - An unattended pass asks home sources first, then each listed country's.
-  - A channel inherits the list. Non-target languages are still rejected by the language check.
+  - A channel inherits the list, a channel in another country too (#2030 decision 16), less that
+    channel's own country. Non-target languages are still rejected by the language check.
   - The list is edited under Filler › Settings › Automatic downloads.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
   live. An explicit country and market is an Advanced override. The read model reports the

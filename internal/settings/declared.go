@@ -1240,7 +1240,7 @@ func declared() []Setting {
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
 			Key: "filler.language", Label: "Commercial language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
 			Kind: KindEnum, Enum: fillerLanguageOptions(), Presentation: PresentationLanguage, Default: "en",
-			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept.",
+			Doc: "The language filler is expected to be in, and every channel's commercial language unless the channel sets its own. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
 		},
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be

@@ -175,6 +175,63 @@ func TestAssemble_GeographyMismatchFallsBackToCard(t *testing.T) {
 	}
 }
 
+// #2030 decision 16: a channel's own location replaces the household's, another country included,
+// so a channel of British shows can opt into British commercials in a US household.
+func TestAssemble_AChannelMayOptIntoAnotherCountry(t *testing.T) {
+	catalog := []filler.Clip{
+		geoCommercial("us-national", filler.GeographicNational, "US", ""),
+		geoCommercial("gb-national", filler.GeographicNational, "GB", ""),
+		geoCommercial("london", filler.GeographicLocal, "GB", "London"),
+	}
+	policy := filler.Policy{Geography: filler.Geography{Country: "US", Market: "New York"}}
+	for _, tc := range []struct {
+		channel     filler.Geography
+		want, never []string
+	}{
+		{filler.Geography{Country: "GB"}, []string{"gb-national"}, []string{"us-national", "london"}},
+		{filler.Geography{Country: "GB", Market: "London"}, []string{"gb-national", "london"}, []string{"us-national"}},
+		{filler.Geography{}, []string{"us-national"}, []string{"gb-national", "london"}},
+	} {
+		seen := map[string]bool{}
+		for seed := range int64(40) {
+			w := filler.Window{Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 60_000, PodMax: 2,
+				Geography: tc.channel}
+			for _, e := range filler.Assemble(catalog, w, policy, nil).Entries {
+				seen[e.Hash] = true
+			}
+		}
+		for _, id := range tc.want {
+			if !seen[id] {
+				t.Errorf("channel %+v: %s never aired; aired %v", tc.channel, id, seen)
+			}
+		}
+		for _, id := range tc.never {
+			if seen[id] {
+				t.Errorf("channel %+v: %s aired", tc.channel, id)
+			}
+		}
+	}
+}
+
+// A channel in another country still inherits the household's region preference (#2035): it is
+// the household's alone. The channel's own country leaves the list, and home is not added to it.
+func TestGeographicallyEligible_AnotherCountryChannelInheritsTheFallback(t *testing.T) {
+	policy := filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "GB,CA"}}
+	w := filler.Window{Seed: 2, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120_000, PodMax: 4,
+		Geography: filler.Geography{Country: "GB"}}
+	seen := map[string]bool{}
+	for _, e := range filler.Assemble([]filler.Clip{
+		geoCommercial("gb-national", filler.GeographicNational, "GB", ""),
+		geoCommercial("ca-national", filler.GeographicNational, "CA", ""),
+		geoCommercial("us-national", filler.GeographicNational, "US", ""),
+	}, w, policy, nil).Entries {
+		seen[e.Hash] = true
+	}
+	if !seen["gb-national"] || !seen["ca-national"] || seen["us-national"] {
+		t.Fatalf("a GB channel aired %v, want the GB and CA national ads only", seen)
+	}
+}
+
 func TestGeographicallyEligible_EmptyInstallationPreservesLegacyPool(t *testing.T) {
 	if !filler.GeographicallyEligible(geoCommercial("unknown", filler.GeographicUnknown, "", ""), filler.Geography{}) {
 		t.Fatal("empty installation geography unexpectedly excluded a legacy clip")
@@ -203,19 +260,5 @@ func TestSourceGeographyHardBoundary(t *testing.T) {
 	}
 	if !filler.SourceGeographicallyEligible(filler.Geography{}, filler.Geography{}) {
 		t.Fatal("unconfigured installation must preserve legacy source eligibility")
-	}
-}
-
-func TestAssemble_ChannelCannotEscapeInstallationCountry(t *testing.T) {
-	pod := filler.Assemble(
-		[]filler.Clip{geoCommercial("canadian", filler.GeographicNational, "CA", "")},
-		filler.Window{
-			Seed: 1, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 30_000, PodMax: 1,
-			Geography: filler.Geography{Country: "CA", Market: "Toronto"},
-		},
-		filler.Policy{Geography: filler.Geography{Country: "US", Market: "New York"}}, nil,
-	)
-	if pod.MatchLevel != filler.MatchBumperCard {
-		t.Fatalf("cross-country channel match = %s, want bumper card", pod.MatchLevel)
 	}
 }

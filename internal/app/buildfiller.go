@@ -484,6 +484,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
 		return filler.Policy{
 			Geography:       set.homeGeography(),
+			Language:        set.str("filler.language"),
 			PodMax:          set.intv("filler.pod_max"),
 			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor

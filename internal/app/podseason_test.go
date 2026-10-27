@@ -40,3 +40,22 @@ func TestPodAdapter_DatesHolidaysOnTheHouseholdCalendar(t *testing.T) {
 		}
 	}
 }
+
+// filler.language reaches the pod assembler as every channel's default commercial language
+// (#2030 decision 12): a channel naming none refuses a clip in another language.
+func TestPodAdapter_TheHouseholdLanguageIsEveryChannelsDefault(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	holidays := func() holidayvocab.Vocabulary { return holidayvocab.Vocabulary{} }
+	for _, tc := range []struct {
+		household string
+		want      filler.FitReason
+	}{{"es", ""}, {"en", filler.FitLanguage}} {
+		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Kind: filler.Commercial, Audience: filler.General,
+			DurationMs: 15_000, Language: "es"}
+		set := visionSet(t, map[string]string{"filler.language": tc.household})
+		pods := buildPodAdapter(nil, set, householdCalendar(set, holidays, log), log)
+		if got := pods.FitForChannel("ch", filler.Selection{}, ad).Reason; got != tc.want {
+			t.Errorf("%s household: fit reason = %q, want %q", tc.household, got, tc.want)
+		}
+	}
+}

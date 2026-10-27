@@ -30,13 +30,17 @@ const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "quality", clips: 9 },
 ];
 
-const NO_LIMIT: CoverageDTO["geography"] = { country: "", market: "" };
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
+  geography: { country: "", market: "" },
+  language: "",
+  undeterminedLanguage: 0,
+};
 
 const full: CoverageDTO = {
   level: "exact",
   total: 9,
   criteria: HEALTHY,
-  geography: NO_LIMIT,
+  ...NO_LIMIT,
   rungs: [
     { level: "exact", clips: 4 },
     { level: "widened", clips: 5 },
@@ -85,7 +89,7 @@ describe("CoverageMeter", () => {
           level: "exact",
           total: 9,
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
           rungs: [
             { level: "exact", clips: 4 },
             { level: "audience", clips: 9 },
@@ -102,7 +106,7 @@ describe("CoverageMeter", () => {
   it("says plainly when nothing in the catalog fits", async () => {
     renderMeter(
       <CoverageMeter
-        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, geography: NO_LIMIT }}
+        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, ...NO_LIMIT }}
       />,
     );
     expect(await screen.findByText("No commercials")).toBeInTheDocument();
@@ -124,7 +128,7 @@ describe("CoverageMeter", () => {
           total: 2,
           rungs: [],
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
         }}
       />,
     );
@@ -140,7 +144,7 @@ describe("CoverageMeter", () => {
           level: "exact",
           total: 3,
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
           rungs: [{ level: "sideways" as CoverageDTO["level"], clips: 3 }],
         }}
       />,
@@ -168,7 +172,7 @@ describe("CoverageMeter", () => {
           total: 6,
           rungs: [{ level: "widened", clips: 2 }],
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
         }}
       />,
     );
@@ -178,7 +182,7 @@ describe("CoverageMeter", () => {
     // And the worst case obviously offers it.
     renderMeter(
       <CoverageMeter
-        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, geography: NO_LIMIT }}
+        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, ...NO_LIMIT }}
       />,
     );
     expect(await screen.findByTestId("find-clips")).toBeInTheDocument();
@@ -194,7 +198,7 @@ describe("CoverageMeter", () => {
           total: 3,
           rungs: [{ level: "exact", clips: 3 }],
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
         }}
       />,
     );
@@ -210,7 +214,7 @@ describe("CoverageMeter", () => {
           total: 1,
           rungs: [{ level: "exact", clips: 1 }],
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
         }}
       />,
     );
@@ -230,7 +234,7 @@ describe("CoverageMeter", () => {
           level: "bumper_card",
           total: 0,
           rungs: [],
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
           // ⚠ Distinct counts on purpose: with three settings sharing 214 the assertion below
           // matched three nodes and threw. Duplicates also make the fixture read as if the
           // criteria were correlated, which is the one thing they are specifically not.
@@ -264,7 +268,7 @@ describe("CoverageMeter", () => {
           level: "bumper_card",
           total: 0,
           rungs: [],
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
           criteria: [
             { criterion: "era", clips: 0 },
             { criterion: "audience", clips: 0 },
@@ -297,7 +301,7 @@ describe("CoverageMeter", () => {
           total: 6,
           rungs: [{ level: "widened", clips: 6 }],
           criteria: HEALTHY,
-          geography: NO_LIMIT,
+          ...NO_LIMIT,
         }}
       />,
     );
