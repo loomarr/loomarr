@@ -444,8 +444,7 @@ re-encode), within the ordinary transcode budget.
 - A clip needing more than the +6 dB boost limit is refused at the transcode rung as `too_quiet`.
   Raising it further would raise its hiss too. The limit is calibrated in #2034. The floor ignores
   the peak ceiling: a clip the ceiling holds short of the target airs slightly quiet, not clipped.
-- `filler.conditioning.normalize_loudness`, the old on-disk levelling switch, is removed. A saved
-  value is ignored.
+- The old on-disk levelling switch under `filler.conditioning` is removed. A saved value is ignored.
 - Clips published before measurement existed are re-processed through the app (rewind or a fresh
   download); there is no compatibility path that airs them uncorrected on purpose.
 
