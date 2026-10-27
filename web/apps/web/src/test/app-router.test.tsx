@@ -14,7 +14,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAccountActionGrant } from "@/auth/account-action-grant";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
@@ -64,8 +64,18 @@ const stubAuth = (startAuthed: boolean, identity: MeBody = ADMIN) => {
   return { logins };
 };
 
+// ⚠ A test can pass while the page it opened is still fetching (a negative assertion is true at
+// once). Cleanup then unmounts and cancels those queries, and the CancelledError surfaces as an
+// unhandled rejection attributed to whichever test runs next. Each test waits for its own client
+// to go quiet before it ends, as guide-page.test.tsx does.
+const clients: QueryClient[] = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+});
+
 const renderApp = (initialPath: string) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(queryClient);
   const router = createRouter({
     routeTree,
     context: { queryClient },
