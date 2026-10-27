@@ -37,9 +37,7 @@
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noComponentHookFactories": "off",
         "noReactNativeRawText": "off",
-        "usePlaywrightValidDescribeCallback": "off",
         "noUnusedImports": "error",
         "noUnusedVariables": "error"
       },
@@ -61,6 +59,12 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**"],
+      "linter": { "rules": { "correctness": { "noComponentHookFactories": "off" } } }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "on" } }
