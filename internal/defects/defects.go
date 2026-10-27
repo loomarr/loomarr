@@ -135,8 +135,8 @@ type bar struct{ borderline, fail float64 }
 // Compression blocks, combing, windowboxing and clipping are rip damage rather than era texture,
 // so one bar holds for every era. Softness and tape noise are era texture, and relax with age.
 var bars = map[Check]map[Band]bar{
-	CheckBlocks:    allBands(bar{25, 50}),
-	CheckBlur:      {BandTape: {10, 14}, BandSD: {8, 12}, BandHD: {6, 9}},
+	CheckBlocks: allBands(bar{25, 50}),
+	CheckBlur:   {BandTape: {10, 14}, BandSD: {8, 12}, BandHD: {6, 9}},
 	// The outlier share is close to the share of the frame dropouts cover: twelve one-line specks
 	// on every frame read 0.0033, clean video 0.0001.
 	CheckDropouts:  {BandTape: {0.0015, 0.003}, BandSD: {0.001, 0.0025}, BandHD: {0.0007, 0.002}},
