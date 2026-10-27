@@ -65,7 +65,12 @@ const DisclosureTrigger = ({ label, className }: DisclosureTriggerProps) => (
 // ⚠ No aria-label: the whole header is visible, so WCAG 2.5.3 needs the name to contain it. The
 // name is the header itself, and `aria-expanded` (from Base UI) says whether it is open. The
 // trigger is `relative` so the sr-only context span resolves against it, not the viewport.
-const DisclosureSectionTrigger = ({ title, context, description, className }: DisclosureSectionTriggerProps) => (
+const DisclosureSectionTrigger = ({
+  title,
+  context,
+  description,
+  className,
+}: DisclosureSectionTriggerProps) => (
   <Collapsible.Trigger
     className={cn(
       "group hover:bg-static-800 relative -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors",

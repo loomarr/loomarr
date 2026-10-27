@@ -126,7 +126,7 @@ test("a specific clip keeps its parent source and reconnects to the durable down
   await page.getByRole("button", { name: `Manage ${sourceName}` }).click();
   await expect(page).toHaveURL(/\/filler\/sources\/archive(?::|%3A)long$/i);
   let workspace = page.getByRole("dialog", { name: sourceName });
-  await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+  await workspace.getByRole("button", { name: /find a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
   await workspace.getByRole("button", { name: "Search", exact: true }).click();
   await workspace.getByRole("button", { name: "Queue download: Found clip 1" }).click();
@@ -148,7 +148,7 @@ test("a specific clip keeps its parent source and reconnects to the durable down
   await page.reload();
   workspace = page.getByRole("dialog", { name: sourceName });
   await expect(workspace).toBeVisible();
-  await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+  await workspace.getByRole("button", { name: /find a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
   await workspace.getByRole("button", { name: "Search", exact: true }).click();
 
@@ -465,7 +465,7 @@ test("registered sources stay compact and open a scalable source workspace", asy
     expect(backend.state.fillerFetches.at(-1)).toBe("archive:1");
 
     await expect(workspace.getByRole("textbox", { name: "Search this source" })).toHaveCount(0);
-    await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+    await workspace.getByRole("button", { name: /find a specific clip/i }).click();
     await workspace.getByRole("textbox", { name: "Search this source" }).fill("breakfast cereal");
     await workspace.getByRole("button", { name: "Search", exact: true }).click();
     await expect(workspace.getByText("Showing 8 of 20 matches")).toBeVisible();
