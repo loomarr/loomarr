@@ -546,7 +546,7 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
     decode.
 
   Held clips are judged too, so the record can say what the floor would retire. A re-key drops
-  the record, because it describes the old bytes.
+  the record, because it describes the old bytes, and so does merging a copy into its survivor.
 - **A clip that cannot be measured is recorded as undecided, with the reason** (no picture, a
   stream the decoder rejects). It is not retried every hour, where it would keep spending the
   budget ahead of healthy clips. A new measurement version measures it again. A failed read of the

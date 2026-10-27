@@ -6289,6 +6289,13 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: "gone", SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
 		t.Fatal("a missing clip merged")
 	}
+	// The loser's defect record describes bytes that are about to be deleted (#2034).
+	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
+	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{
+		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988), MeasuredAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
 		ClipHash: loser.Hash, SourceHash: "loser-source", SurvivorHash: survivor.Hash, DecidedAt: now,
 	}); err != nil {
@@ -6297,6 +6304,11 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 
 	if _, err := s.GetClip(ctx, loser.Hash); err == nil {
 		t.Error("the losing copy's catalog row survived the merge")
+	}
+	if records, err := s.ListClipDefects(ctx); err != nil {
+		t.Fatal(err)
+	} else if _, ok := records[loser.Hash]; ok {
+		t.Error("the losing copy's defect record survived the merge")
 	}
 	got, err := s.GetClip(ctx, survivor.Hash)
 	if err != nil {
