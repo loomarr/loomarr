@@ -47,7 +47,8 @@ type Readings struct {
 	// ActiveWidth and ActiveHeight are the union of the picture's non-black area over the clip.
 	ActiveWidth  int `json:"activeWidth"`
 	ActiveHeight int `json:"activeHeight"`
-	// InterlacedShare is the share of decided frames idet reads as interlaced: visible combing.
+	// InterlacedShare is how far one field order leads the other across the frames idet decided:
+	// visible combing keeps one order throughout, a detector misreading splits evenly (see Parse).
 	InterlacedShare float64 `json:"interlacedShare"`
 	// UpscaleSSIM is the luma SSIM between each frame and itself halved and enlarged again. A frame
 	// with no detail beyond half its size reads close to 1: it was upscaled.
@@ -136,7 +137,9 @@ type bar struct{ borderline, fail float64 }
 var bars = map[Check]map[Band]bar{
 	CheckBlocks:    allBands(bar{25, 50}),
 	CheckBlur:      {BandTape: {10, 14}, BandSD: {8, 12}, BandHD: {6, 9}},
-	CheckDropouts:  {BandTape: {0.01, 0.03}, BandSD: {0.005, 0.015}, BandHD: {0.003, 0.01}},
+	// The outlier share is close to the share of the frame dropouts cover: twelve one-line specks
+	// on every frame read 0.0033, clean video 0.0001.
+	CheckDropouts:  {BandTape: {0.0015, 0.003}, BandSD: {0.001, 0.0025}, BandHD: {0.0007, 0.002}},
 	CheckInterlace: allBands(bar{0.3, 0.6}),
 	CheckWindowbox: allBands(bar{0.04, 0.08}),
 	// Only the HD era is upscaled by definition; an older ad is meant to be SD.

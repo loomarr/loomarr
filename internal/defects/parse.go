@@ -29,8 +29,12 @@ func Parse(log, metadata string, width, height int, hasAudio bool) Readings {
 	if m := idetLine.FindAllStringSubmatch(log, -1); len(m) > 0 {
 		last := m[len(m)-1]
 		tff, bff, prog := atoi(last[1]), atoi(last[2]), atoi(last[3])
+		// ⚠ The lead of one field order over the other, not the interlaced share. Woven fields
+		// keep one order frame after frame (a combed clip reads TFF 100, BFF 0). Fine detail in
+		// fast motion fools idet too, but evenly both ways: a progressive test pattern read
+		// TFF 40, BFF 38, which as a share is 78% "interlaced".
 		if decided := tff + bff + prog; decided > 0 {
-			r.InterlacedShare = float64(tff+bff) / float64(decided)
+			r.InterlacedShare = math.Abs(float64(tff-bff)) / float64(decided)
 		}
 	}
 	if hasAudio {

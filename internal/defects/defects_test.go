@@ -36,7 +36,7 @@ func TestParse_ReadsEverySummaryAndTheFrameLog(t *testing.T) {
 	want := Readings{
 		Version: MeasurementVersion, Width: 640, Height: 480, Frames: 2,
 		BlockMean: 10.5984955, BlurMean: 4.5358817, OutlierShare: 0.003, RepeatedLineShare: 0.4,
-		ActiveWidth: 640, ActiveHeight: 480, InterlacedShare: 0.3, UpscaleSSIM: 0.998015,
+		ActiveWidth: 640, ActiveHeight: 480, InterlacedShare: 0.1, UpscaleSSIM: 0.998015,
 		HasAudio: true, PeakDB: 0.000265, FlatFactor: 21.016619, PeakCount: 2582, NoiseFloorDB: -200,
 	}
 	if !reflect.DeepEqual(got, want) {
