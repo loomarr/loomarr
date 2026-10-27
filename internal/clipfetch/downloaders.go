@@ -30,7 +30,7 @@ import (
 // post-processing) to fetch a YouTube playlist/video into the drop-folder,
 // preserving the info-JSON sidecar yt-dlp writes (the source title/description
 // the core's AI tagging reads as text signals, §10). The shared process-tree
-// supervisor owns yt-dlp and every ffmpeg or Deno descendant (§9.1).
+// supervisor owns yt-dlp and every ffmpeg or Node descendant (§9.1).
 type YtDlpDownloader struct {
 	ytDlpPath  string
 	ffmpegPath string
@@ -72,6 +72,13 @@ func (b *diagnosticTail) String() string {
 	return string(b.data)
 }
 
+// ytDlpJSRuntime enables Node as yt-dlp's JavaScript runtime. YouTube's player challenges are
+// solved by a JS runtime, and yt-dlp enables only Deno by default; with no enabled runtime it
+// warns and then fails with "Requested format is not available". The image ships Node at
+// /usr/local/bin/node (Dockerfile `node-runtime` stage), found on PATH. Only the extraction
+// calls (Estimate, Download) need it: the flat listings never solve a player challenge.
+const ytDlpJSRuntimeFlag, ytDlpJSRuntime = "--js-runtimes", "node"
+
 // NewYtDlpDownloader builds the yt-dlp downloader.
 func NewYtDlpDownloader(ytDlpPath, ffmpegPath string) *YtDlpDownloader {
 	return &YtDlpDownloader{ytDlpPath: ytDlpPath, ffmpegPath: ffmpegPath}
@@ -85,7 +92,8 @@ func (d *YtDlpDownloader) Estimate(ctx context.Context, src Source) (storagegove
 		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
 	}
 	cmd := bgexec.Tool(ctx, d.ytDlpPath,
-		"--no-config", "--simulate", "--dump-single-json", "--playlist-end", "1", src.URL,
+		"--no-config", ytDlpJSRuntimeFlag, ytDlpJSRuntime,
+		"--simulate", "--dump-single-json", "--playlist-end", "1", src.URL,
 	)
 	stdout := boundedSourceFinderOutput{limit: maxSourceFinderJSONBytes}
 	stderr := diagnosticTail{limit: ytDlpDiagnosticLimit}
@@ -180,6 +188,7 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	// idempotent re-runs; --ffmpeg-location for the bundled binary.
 	args := []string{
 		"--no-config",
+		ytDlpJSRuntimeFlag, ytDlpJSRuntime,
 		"--no-progress",
 		"--playlist-end", "1",
 		"--write-info-json",

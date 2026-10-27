@@ -26,6 +26,16 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     && pnpm --filter @loomarr/web build
 # vite outDir is ../../../internal/web/dist ⇒ /src/internal/web/dist
 
+# ---- node-runtime ----
+# The Node binary yt-dlp uses as its JavaScript runtime (YouTube player challenges). It is the SAME
+# digest-pinned official image as `fe` above, so there is no new download source or checksum to
+# keep: Renovate and the pin comment above govern both. Unlike `fe` this stage is deliberately NOT
+# --platform=$BUILDPLATFORM — the `node` binary is copied into the runtime image and must match
+# TARGETARCH (the digest is the multi-arch index, so each platform resolves its own binary).
+# Only /usr/local/bin/node is used; it is one dynamically linked executable whose libraries
+# (libc, libm, libstdc++, libgcc_s) debian:stable-slim already provides.
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS node-runtime
+
 # ---- build ----
 # Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
 # far faster than compiling under QEMU emulation, and correct because the static
@@ -98,13 +108,17 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 #     PyInstaller — no system Python, so §14's all-Go rule holds).
 #   - ffmpeg: BtbN static GPL build. Needed so yt-dlp can merge separate
 #     video/audio streams; without it high-res sources fail or silently downgrade.
-#   - deno: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
+#   - node: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
 #     YouTube extraction without one ("No supported JavaScript runtime"), so the
-#     YouTube leg fails without it. Auto-detected on PATH. (Found the hard way by
-#     a live smoke: the YouTube fetch errored until deno was present.)
+#     YouTube leg fails without it. yt-dlp enables only Deno by default, so
+#     internal/clipfetch passes `--js-runtimes node` explicitly; node is found on
+#     PATH at /usr/local/bin/node. It is copied from the digest-pinned `node-runtime`
+#     stage (the same official image as the web build), not downloaded. Deno was
+#     replaced because its development ends after Cloudflare took on the Deno team.
 # All three are version-pinned so a build cannot silently pull a changed binary.
 #
-# ARCHITECTURE: all three are fetched per TARGETARCH. The removed Dockerfile.ingest
+# ARCHITECTURE: yt-dlp and ffmpeg are fetched per TARGETARCH, and node comes from the TARGETARCH
+# variant of its image. The removed Dockerfile.ingest
 # hardcoded x86_64 URLs, so on an arm64 host it BUILT FINE and then failed at run
 # time with "rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2" —
 # a broken image that looks healthy until someone actually ingests. Keep these
@@ -127,7 +141,6 @@ ARG TARGETARCH
 # digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
 ARG DEBIAN_SNAPSHOT=20261020T213255Z
 ARG YTDLP_VERSION=2026.10.26
-ARG DENO_VERSION=v2.9.8
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
 # are the fail-closed identity. Keep both architectures explicit: a version tag alone
@@ -135,8 +148,6 @@ ARG DENO_VERSION=v2.9.8
 # the other's checksum.
 ARG YTDLP_AMD64_SHA256=767ba9dce7052aa196f8b12652f433d76de128ba168966fa84b6394d5e6c6795
 ARG YTDLP_ARM64_SHA256=e87e9533e89fe5889abaa21f5114dfe7756d6aa6219b83551add04d48b18e483
-ARG DENO_AMD64_SHA256=e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609
-ARG DENO_ARM64_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AND THE PICTURE CHECKS AGAINST THE NEW BUILD.
 #
 # A GPU filter that silently produces nothing is fast and exits 0 (#1516: tonemap_vaapi aired black;
@@ -150,7 +161,7 @@ ARG DENO_ARM64_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361
 # n9 is also what fixes overlay_cuda after NVDEC, so the NVENC watermark self-check passes (#1549).
 #
 # ffmpeg tracks BtbN's NEWEST release-series GPL build, pinned by exact build id + per-arch SHA256
-# like yt-dlp, deno and whisper — a redistributed image must be reproducible and its GPL
+# like yt-dlp and whisper — a redistributed image must be reproducible and its GPL
 # corresponding source must identify EXACT bytes, which `latest` (overwritten in place) cannot.
 #
 # ⚠ The archive downloads from LOOMARR'S OWN source release (FFMPEG_MIRROR_RELEASE), never from BtbN:
@@ -218,10 +229,13 @@ ARG INTEL_IGC_CORE_SHA256=0a6e64a663ae65a0fa02d6912ae3b6b37cf85b90c21cc423fd9fef
 ARG INTEL_IGC_OPENCL_SHA256=779e1b9e88098eb25711e9a8f67c2752665bad22f134aa40ed5649f6e1b87058
 ARG INTEL_OPENCL_ICD_SHA256=61712caaddeba3d38e4f79e2a0fb23fea25596ca2d72c3144c6eea2331ec4301
 ARG INTEL_GMMLIB_SHA256=6031a63d6e8a12ce61c14efc15f2c8e727061286e3820b8594e6d00615e04d54
+# yt-dlp's JavaScript runtime (see the `node` note above). Copied before the RUN so its build-time
+# self-check can prove yt-dlp finds it.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
-      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
@@ -242,7 +256,7 @@ RUN set -eux; \
     printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
       "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
     apt-get -o Acquire::Check-Valid-Until=false update; \
-    apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
+    apt-get install -y --no-install-recommends ca-certificates curl xz-utils; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
     # without them EVERY hardware family fails the capability probe on EVERY host —
     # measured, not assumed: the probe reported "Unable to open the libvulkan library",
@@ -333,13 +347,6 @@ RUN set -eux; \
     echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod +x /usr/local/bin/yt-dlp; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
-      -o /tmp/deno.zip \
-      "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
-    echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
-    unzip -q /tmp/deno.zip -d /usr/local/bin; \
-    chmod +x /usr/local/bin/deno; \
-    rm -f /tmp/deno.zip; \
-    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /tmp/ffmpeg.tar.xz \
       "https://github.com/loomarr/loomarr/releases/download/${FFMPEG_MIRROR_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
     echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
@@ -415,7 +422,7 @@ RUN set -eux; \
       -o /usr/local/share/whisper/ggml-tiny.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
     echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
-    apt-get purge -y curl xz-utils unzip; \
+    apt-get purge -y curl xz-utils; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
     # Prove the tooling actually runs on THIS arch, at build time. Without this the
@@ -423,7 +430,11 @@ RUN set -eux; \
     /usr/local/bin/yt-dlp --version; \
     /usr/local/bin/ffmpeg -version | head -1; \
     /usr/local/bin/ffprobe -version | head -1; \
-    /usr/local/bin/deno --version | head -1; \
+    /usr/local/bin/node --version; \
+    # ...and yt-dlp must actually pick node up as its JS runtime, enabled exactly as internal/clipfetch
+    # enables it. Offline: with no URL it prints its debug header (`JS runtimes: node-22.x`, or
+    # `none` when node is missing) and exits nonzero for the missing URL, hence `|| true`.
+    { /usr/local/bin/yt-dlp --no-config -v --js-runtimes node 2>&1 || true; } | grep -E 'JS runtimes: node-'; \
     # ⚠ whisper is NOT proved by `--help`: it returns 0 without ever initialising a compute
     # backend, and did so on arm64 in a layout where the first real transcription aborted
     # with "GGML_ASSERT(device) failed". What actually has to be proved is that ggml can
@@ -452,6 +463,8 @@ ARG VERSION=""
 COPY --from=build /out/loomarr /loomarr
 COPY --from=image-worker /src/target/release/loomarr-image /usr/local/bin/loomarr-image
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/
+# Node's license file carries the notices of the components it bundles (V8, OpenSSL, ICU, ...).
+COPY --from=node-runtime /usr/local/LICENSE /usr/share/doc/loomarr/node-LICENSE
 RUN contract="$(/usr/local/bin/loomarr-image capabilities --protocol 1 --self-test)"; \
     echo "$contract" | grep -q '"selfTest":true'; \
     echo "$contract" | grep -q "\"release\":\"${VERSION:-dev}\""

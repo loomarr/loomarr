@@ -127,8 +127,8 @@ func VerifyRedistributionManifest(root string) error {
 	for _, recipe := range []string{
 		"amd64) YTDLP_ASSET=yt-dlp_linux; YTDLP_SHA256=\"$YTDLP_AMD64_SHA256\"",
 		"arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256=\"$YTDLP_ARM64_SHA256\"",
-		"amd64) YTDLP_ASSET=yt-dlp_linux; YTDLP_SHA256=\"$YTDLP_AMD64_SHA256\"; DENO_ARCH=x86_64; DENO_SHA256=\"$DENO_AMD64_SHA256\"; FFMPEG_ARCH=linux64; FFMPEG_SHA256=\"$FFMPEG_AMD64_SHA256\"",
-		"arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256=\"$YTDLP_ARM64_SHA256\"; DENO_ARCH=aarch64; DENO_SHA256=\"$DENO_ARM64_SHA256\"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256=\"$FFMPEG_ARM64_SHA256\"",
+		"amd64) YTDLP_ASSET=yt-dlp_linux; YTDLP_SHA256=\"$YTDLP_AMD64_SHA256\"; FFMPEG_ARCH=linux64; FFMPEG_SHA256=\"$FFMPEG_AMD64_SHA256\"",
+		"arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256=\"$YTDLP_ARM64_SHA256\"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256=\"$FFMPEG_ARM64_SHA256\"",
 		`FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"`,
 		`"https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"`,
 		`-o /usr/local/bin/yt-dlp`,

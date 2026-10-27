@@ -59,7 +59,7 @@ Exec'd, never linked, and shipped in the one image, so every feature is always a
 | Tool | Why |
 | --- | --- |
 | `ffmpeg`, `ffprobe` | playout encoding and packaging, probing, yt-dlp stream merging |
-| `yt-dlp`, `deno` | YouTube and playlist filler sources (`internal/clipfetch`); deno is required by yt-dlp |
+| `yt-dlp`, `node` | YouTube and playlist filler sources (`internal/clipfetch`); yt-dlp needs a JavaScript runtime for YouTube's player challenges and `clipfetch` enables Node with `--js-runtimes node` (yt-dlp enables only Deno by default). `node` is copied from the digest-pinned official Node image the web build already uses, not downloaded, so it adds no pin of its own; Deno was retired when its development was announced to end |
 | `whisper-cli` (whisper.cpp) with `small.en` | transcripts for compilation splitting; smaller models measurably dropped whole adverts. Ships its `libggml` backends beside it, and the image proves it by transcribing at build time |
 | Traefik (Compose edge) | one health-aware HTTP edge, digest-pinned; one Loomarr replica remains the supported boundary |
 
