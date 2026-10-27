@@ -52,6 +52,7 @@ func ownerFor(setting Setting) Owner {
 var fillerOwners = map[string]Owner{
 	"filler.home_country":    OwnerLocation,
 	"filler.home_market":     OwnerLocation,
+	"filler.region_fallback": OwnerLocation,
 	"filler.breaks_per_hour": OwnerDefaults,
 
 	"filler.dir":                   OwnerFillerFolders,

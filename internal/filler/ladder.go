@@ -105,13 +105,14 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Every un-used clip once, at the tightest rung that holds it (the rungs nest).
 	var cands []rungClip
 	seen := map[string]bool{}
+	geography := effectiveGeography(w.Geography, policy.Geography)
 	for rung, p := range pools {
 		for _, c := range sortByID(p.clips) {
 			if used[c.ID()] || seen[c.ID()] {
 				continue
 			}
 			seen[c.ID()] = true
-			cands = append(cands, rungClip{Clip: c, rung: rung})
+			cands = append(cands, rungClip{Clip: c, rung: rung, region: geography.RegionRank(c.Country)})
 		}
 	}
 	if len(cands) == 0 {
@@ -186,16 +187,23 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 type rungClip struct {
 	Clip
 	rung int
+	// region is the clip's country in the installation's preference order: 0 home.
+	region int
 }
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
-// inside its cooldown moved below all rested ones. Bands are what ladderLess orders.
+// inside its cooldown moved below all rested ones, and within a rung the home country's clips
+// before each fallback country's in preference order (#2035). Bands are what ladderLess orders.
+//
+// ⚠ Region yields to era: a fallback country's clip from the channel's own era outranks a home
+// clip from a widened one. The preference is "US first, then GB when US supply for an era runs
+// thin", and thin is per era.
 func ladderBand(c rungClip, w Window, policy Policy) int {
 	resting := 0
 	if tier, _ := rotationRank(c.Clip, w, policy); tier == rotationRecent {
 		resting = 1
 	}
-	return resting<<8 | c.rung // resting dominates; the rung (0-2) orders within it
+	return resting<<16 | c.rung<<8 | c.region // resting dominates; then the rung (0-2); then region
 }
 
 // ladderLess orders ladder candidates: by band (rested before resting, then tightest rung

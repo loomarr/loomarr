@@ -205,6 +205,23 @@ func breakDuration(v any) error {
 	return nil
 }
 
+// countryCodeList validates filler.region_fallback: every entry an ISO 3166-1 alpha-2 code.
+func countryCodeList(v any) error {
+	list, ok := v.([]string)
+	if !ok {
+		return fmt.Errorf("want a list of country codes")
+	}
+	for _, c := range list {
+		if c == "" {
+			continue
+		}
+		if err := optionalCountryCode(c); err != nil {
+			return fmt.Errorf("%q: %w", c, err)
+		}
+	}
+	return nil
+}
+
 func optionalCountryCode(v any) error {
 	s, ok := v.(string)
 	if !ok {
@@ -775,6 +792,11 @@ func declared() []Setting {
 			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
 			Kind: KindString, Default: "",
 			Doc: "Optional. Add a city or TV market when you want local filler, such as New York or Seattle.",
+		},
+		{
+			Key: "filler.region_fallback", Label: "Other countries", EnvVar: "FILLER_REGION_FALLBACK", Group: GroupFiller,
+			Kind: KindStringList, Default: "", Validate: countryCodeList,
+			Doc: "Optional, in order of preference: countries whose national commercials may air and whose sources may download after your own country's, such as GB, CA, AU. Your country's commercials always come first within an era; these fill in when its supply for that era runs thin.",
 		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
