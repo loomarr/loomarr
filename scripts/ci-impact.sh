@@ -553,6 +553,13 @@ classify() {
       known=true
       select_gate policy
       ;;
+    internal/filler/curated/*)
+      # The curated sources list (#2035) is embedded in the filler package and read at boot; the
+      # scheduled curated-sources workflow checks it against the live providers.
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
     internal/*/testdata/*)
       # Go package fixtures belong to their owning package's tests. Treating a new fixture
       # directory as unknown used to fan ordinary backend work out to every Apple/Android and
@@ -617,6 +624,8 @@ classify() {
         scripts/check-compose.sh) select_gate contracts ;;
         scripts/check-release-image-absence.sh) select_gate contracts ;;
         scripts/check-retired.sh) select_gate contracts ;;
+        # Run by the curated-sources workflow against live providers; contracts shellchecks it.
+        scripts/check-curated-sources.sh) select_gate contracts ;;
         # The docs gate's inline-path check (ci-docs.yml, `make docs-lint-paths`) and its allowlist.
         scripts/check-doc-paths*) select_gate docs ;;
         # The docs screenshot capture (`make docs-capture`) is a manual operator helper; no gate
@@ -819,7 +828,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/ffmpeg-pin-refresh.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/apple-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/curated-sources.yml|.github/workflows/deadcode.yml|.github/workflows/ffmpeg-pin-refresh.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/apple-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
       known=true
       select_gate policy
       ;;

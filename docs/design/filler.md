@@ -198,8 +198,23 @@ fetchable and operator-removable.
   with a blank target and a `not configured` badge, because that answers "why is my catalog empty?".
 - **A fresh install seeds sources but downloads nothing.** Three Archive.org collections seed with
   targets verified against the live API (`classic_tv_commercials`, `vhscommercials`, `tv_ads`),
-  each with a human-readable label. The YouTube row seeds empty: Loomarr never recommends YouTube
-  content itself. `packs` is not a kind until a real pack index exists.
+  each with a human-readable label. The `youtube` row seeds empty, a prompt to bring your own
+  channel or playlist. `packs` is not a kind until a real pack index exists.
+- **Curated sources** (#2035, decision
+  [0045](decisions/0045-loomarr-recommends-curated-youtube-channels.md)).
+  `internal/filler/curated/sources.json` is a versioned list of vetted archive.org collections and
+  YouTube channels, each with a label, era range, region and notes.
+  - **Offered once, switched off.** Each boot offers the entries this install has not been offered
+    (`filler_curated_offers`), as sources switched off. Enabling one is the consent to fetch from
+    it.
+  - **Operator rows are never overwritten.** A source the operator already added by hand keeps its
+    label, switch and geography, since the curated id is the one adding it by hand would give. One
+    they deleted is not offered again.
+  - **Checked weekly.** The `curated-sources` workflow (`scripts/check-curated-sources.sh`) checks
+    each entry weekly, and on any change to the list. An archive.org entry must still be a
+    collection with items; a YouTube entry must list at least one video through the yt-dlp
+    version the image pins. A removed or renamed entry fails the job. On an install, a dead source
+    is reported by the ordinary source-health checks.
 - **A disabled source is not scanned, fetched or searched, and cannot enter a pull**, re-checked at
   approval. Its clips stay. The switch is enforced at the scan and fetch sites, not by dimming a
   row. It does not bind an admin's deliberate one-item actions (global discover search, a typed

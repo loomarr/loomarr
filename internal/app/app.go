@@ -192,6 +192,7 @@ func buildHandler(
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
 		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays,
 	)
+	offerCuratedSources(rootCtx, st, log)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.
 	healthProbes[diagnostics.StartupCheckPublicURL] = publicURLProbe(set, &http.Client{Timeout: startupIntegrationTimeout})

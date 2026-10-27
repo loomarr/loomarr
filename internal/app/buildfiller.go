@@ -47,6 +47,28 @@ import (
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
+// offerCuratedSources offers this build's curated sources the install has not been offered, switched
+// off (#2035). Enabling one is the operator's consent to fetch from it. A failure costs only the
+// offer, never the boot: the next start tries again.
+func offerCuratedSources(ctx context.Context, st fillerstore.Store, log *slog.Logger) {
+	if st == nil {
+		return
+	}
+	list, err := filler.CuratedSources()
+	if err != nil {
+		log.Error("filler: curated sources unreadable", "err", err)
+		return
+	}
+	added, err := st.OfferCuratedSources(ctx, list, time.Now())
+	if err != nil {
+		log.Warn("filler: curated sources not offered", "version", list.Version, "err", err)
+		return
+	}
+	if added > 0 {
+		log.Info("filler: curated sources offered, switched off", "version", list.Version, "added", added)
+	}
+}
+
 func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{

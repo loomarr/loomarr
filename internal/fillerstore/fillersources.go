@@ -388,6 +388,49 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 	return nil
 }
 
+// OfferCuratedSources records each new offer and inserts its source switched off, in one
+// transaction, so a crash cannot leave an offer without the row it promised.
+//
+// ⚠ Never an upsert of the source. A row that exists, added by hand or offered before, is the
+// operator's: its label, switch and geography are left exactly as they are.
+func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedList, now time.Time) (int, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("offer curated sources: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	added := 0
+	for _, c := range list.Sources {
+		res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_curated_offers (source_id, list_version, offered_at)
+			VALUES (?, ?, ?) ON CONFLICT(source_id) DO NOTHING`), c.SourceID(), list.Version, now.UnixMilli())
+		if err != nil {
+			return 0, fmt.Errorf("offer curated source %s: %w", c.SourceID(), err)
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return 0, fmt.Errorf("offer curated source %s: %w", c.SourceID(), err)
+		} else if n == 0 {
+			continue
+		}
+		geography := filler.Geography{Country: c.Country}.Normalize()
+		res, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_sources (id, kind, uri, label, license,
+			  last_fetched_at, created_at, enabled, country, market)
+			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, '') ON CONFLICT(id) DO NOTHING`),
+			c.SourceID(), c.Kind, c.Target, c.Label, epoch(now), false, geography.Country)
+		if err != nil {
+			return 0, fmt.Errorf("add curated source %s: %w", c.SourceID(), err)
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return 0, fmt.Errorf("add curated source %s: %w", c.SourceID(), err)
+		} else {
+			added += int(n)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("offer curated sources: %w", err)
+	}
+	return added, nil
+}
+
 // SetFillerSourceGeography is the sole writer for an existing source's asserted coverage.
 func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
 	geography = geography.Normalize()
