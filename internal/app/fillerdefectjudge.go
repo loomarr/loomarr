@@ -11,9 +11,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
 // defectJudgeRole names the judge's rows in the filler inference ledger (#551).
@@ -105,7 +105,7 @@ func (l fillerDefectJudgeLedger) SettleDefectJudge(ctx context.Context, id strin
 	}
 	switch {
 	case a.Charge != nil && strings.EqualFold(a.Charge.Currency, "USD"):
-		nano, err := fillereval.USDToNanoCeil(a.Charge.Amount)
+		nano, err := openroutermedia.USDToNanoCeil(a.Charge.Amount)
 		if err != nil {
 			return err
 		}
