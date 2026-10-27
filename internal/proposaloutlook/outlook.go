@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -33,6 +34,7 @@ type Config struct {
 	Planner   Planner
 	Preview   Preview
 	Additions suggest.ApprovalAdditionResolver
+	Holidays  holidayvocab.Source
 	Now       func() time.Time
 }
 
@@ -87,7 +89,7 @@ func (s *Service) Assess(ctx context.Context, proposal store.Proposal, edit *sug
 	if err != nil {
 		return Assessment{}, err
 	}
-	prepared, body, err := suggest.PrepareApproval(proposal, resolvedEdit)
+	prepared, body, err := suggest.PrepareApproval(proposal, resolvedEdit, s.config.Holidays.Current())
 	if err != nil {
 		return Assessment{}, err
 	}

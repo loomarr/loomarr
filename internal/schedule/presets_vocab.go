@@ -1,7 +1,5 @@
 package schedule
 
-import "github.com/loomarr/loomarr/internal/holidayvocab"
-
 // The authoring vocabulary served to the rules editor (programming-design §6.6, §8.1). Until
 // now the FE hand-mirrored presets.go BYTE-FOR-BYTE (its presets.ts said "keep in sync") — a
 // standing drift hazard. BuildVocabulary makes the BE the single source: it enumerates the
@@ -74,18 +72,28 @@ var (
 
 // BuildVocabulary assembles the vocabulary, lowering each token through the same Lower*
 // functions every other caller uses. A token that fails to lower is skipped (it can't be a
-// real preset) — the parity test guarantees this never silently drops a shipped token.
-func BuildVocabulary() Vocabulary {
+// real preset) — the parity test guarantees this never silently drops a shipped token. A holiday
+// token is offered for each holiday the calendar's country keeps (#2030): one it does not keep
+// would never be in season.
+func BuildVocabulary(cal Calendar) Vocabulary {
+	holidays := cal.Vocab()
+	kept := map[string]bool{}
+	for _, o := range holidays.Calendar(cal.Country) {
+		kept[o.ID] = true
+	}
 	v := Vocabulary{}
 
 	for _, w := range whenVocabTokens {
-		if pred, prio, ok := LowerWhen(w.token); ok {
+		if pred, prio, ok := LowerWhen(w.token, holidays); ok {
 			v.When = append(v.When, WhenVocab{Token: w.token, Label: w.label, ShortLabel: w.short, Predicate: pred, Priority: prio})
 		}
 	}
-	for _, h := range holidayvocab.Definitions() {
+	for _, h := range holidays.Definitions() {
+		if !kept[h.ID] {
+			continue
+		}
 		token := "holiday:" + h.ID
-		if pred, prio, ok := LowerWhen(token); ok {
+		if pred, prio, ok := LowerWhen(token, holidays); ok {
 			v.When = append(v.When, WhenVocab{Token: token, Label: h.Label, ShortLabel: h.Label, Predicate: pred, Priority: prio})
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
@@ -127,6 +128,15 @@ type Suggester struct {
 	// collection members rather than only title-prefix search hits.
 	collections MovieCollectionResolver
 	maxAcq      int // default SUGGEST_MAX_ACQUISITIONS cap
+	// holidays are the holiday definitions a request's named holiday is read against (#2030).
+	holidays holidayvocab.Source
+}
+
+// WithHolidays reads named holidays against the household's definitions rather than the shipped
+// ones, so a holiday added there can be asked for by name.
+func (s *Suggester) WithHolidays(source holidayvocab.Source) *Suggester {
+	s.holidays = source
+	return s
 }
 
 // WithMovieCollections wires TMDB collection rosters for named-franchise examples.

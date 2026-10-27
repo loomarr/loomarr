@@ -24,7 +24,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 7 | `storagegovernor` |
 | `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
-| `holidayvocab` | 5 | — |
+| `holidayvocab` | 6 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
@@ -136,8 +136,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
-- **`holidayvocab`** · 5 importers · → `textmatch`
-  Owns Loomarr's immutable built-in holiday identities and the judgment of whether a title or episode is about one (programming-design §6).
+- **`holidayvocab`** · 6 importers · → `textmatch`
+  Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
@@ -276,7 +276,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
-- **`proposaloutlook`** · 2 importers · → `channels`, `library`, `provision`, `schedule`, `store`, `suggest`
+- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `provision`, `schedule`, `store`, `suggest`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.

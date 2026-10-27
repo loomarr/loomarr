@@ -309,7 +309,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Curation rules (§6.5): pick the active rule for this wall-clock, if any. Its WHAT
 	// narrows the pool and its HOW/Window override ordering + the horizon. No matching
 	// rule ⇒ the channel's base whole-policy behavior (rule == zero value).
-	rule, _ := pickRule(policy.Rules, now)
+	rule, _ := pickRule(policy.Rules, now, ch.calendar())
 
 	rp := policy.Resolved(ch.Strategy, singleSeriesEntries(entries))
 	rp = applyRuleHow(rp, rule.How) // overlay the active rule's ordering/separation
@@ -317,6 +317,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// the caller already has, and it reaches placement through the resolved policy because
 	// that is what placement receives. Empty ⇒ ordering is unchanged from pre-§3.1.
 	rp.LastAired = ch.LastAired
+	rp.Calendar = ch.calendar()
 	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
 	seed := channelSeed(ch)
 	// The window being arranged is the one `now` falls in, unless the caller names it: while the
@@ -346,7 +347,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	eligible := applyRuleScopeWithTrace(channelEligible, rule.What, trace)
 	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
 	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
-	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, ch.WindowZone, trace)
+	eligible, seasonalReport := applySeasonalWithTrace(eligible, rp, now, ch.calendar(), trace)
 	report.merge(seasonalReport)
 
 	// Franchise grouping (§5): tag movie entries sharing a TMDB collection so a franchise
@@ -359,7 +360,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
-	seasonalHolidays := exclusiveEpisodeHolidays(rp, now, ch.WindowZone)
+	seasonalHolidays := exclusiveEpisodeHolidays(rp, now, ch.calendar())
 	// Auto mode features the holiday EPISODES of ordinary series (§6 "Holiday episodes"), so
 	// resolution records which holidays each episode is about.
 	var holidayMatches map[string][]string
@@ -460,7 +461,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// never reorders the deck, so every other window's tile is untouched.
 	ring := newDealtRing(dealer, window, windowIndex(dealOriginOf(ch), window, ch.WindowZone))
 	holidays := newHolidayPlanner(ring, holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand},
-		window, ch.WindowZone, breakFactor(brk))
+		window, ch.calendar(), breakFactor(brk))
 	orderedAll := append([]Slot(nil), ordered...)
 	// In season, and for the first windows after a season, the planner's simulation of the season
 	// decides the tile against what actually aired (#1939); every other window airs its deal.
@@ -519,7 +520,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 // (no truncation). Exported so the preview can explain "why ~24h and not 800 episodes"
 // without re-deriving the precedence — it calls the identical resolveWindow the builder does.
 func ResolveWindow(ch Channel, policy ChannelPolicy, now time.Time) time.Duration {
-	rule, _ := pickRule(policy.Rules, now)
+	rule, _ := pickRule(policy.Rules, now, ch.calendar())
 	return resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
 }
 
@@ -826,16 +827,16 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 			}
 			assignPartGroups(string(e.Key), inRange)
 			beforeSeasonal := len(inRange)
-			inRange = filterExclusiveEpisodes(e, inRange, resolution.EditorialUnavailable, seasonalHolidays, report, trace)
+			inRange = filterExclusiveEpisodes(e, inRange, resolution.EditorialUnavailable, seasonalHolidays, rp.Calendar.Vocab(), report, trace)
 			seasonalDropped := beforeSeasonal - len(inRange)
 			beforeEditorial := len(inRange)
-			inRange = selectEpisodesWithTrace(e, inRange, resolution.EditorialUnavailable, trace)
+			inRange = selectEpisodesWithTrace(e, inRange, resolution.EditorialUnavailable, rp.Calendar.Vocab(), trace)
 			editorialDropped := beforeEditorial - len(inRange)
 			out := make([]Slot, 0, len(inRange))
-			recordHolidays := holidayMatches != nil && !isSeasonalForAny(e)
+			recordHolidays := holidayMatches != nil && !aboutAnyHoliday(e, rp.Calendar.Vocab())
 			for _, ep := range inRange {
 				if recordHolidays {
-					if ids := episodeHolidays(ep); len(ids) > 0 {
+					if ids := episodeHolidays(ep, rp.Calendar.Vocab()); len(ids) > 0 {
 						holidayMatches[ep.LibraryItemID] = ids
 					}
 				}

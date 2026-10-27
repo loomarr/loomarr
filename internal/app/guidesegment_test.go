@@ -27,6 +27,8 @@ func (c *rotatingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.D
 	return c.window, nil
 }
 
+func (c *rotatingCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (c *rotatingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return !c.tunarr, nil
 }

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -137,6 +138,12 @@ type Channel struct {
 	// container's zone), so a daily window turns at local midnight, not 00:00 UTC (#1675).
 	// Transient, like DefaultWindow. Nil = UTC.
 	WindowZone *time.Location `json:"-"`
+	// HolidayCountry is the household's country (filler.home_country), whose holidays the
+	// seasonal policy keeps (#2030). Transient, like WindowZone. "" = the US.
+	HolidayCountry string `json:"-"`
+	// HolidayDefinitions is the household's holiday definitions snapshot. Transient. Nil = the
+	// shipped definitions.
+	HolidayDefinitions *holidayvocab.Vocabulary `json:"-"`
 	// WindowOpened names the rolling window being arranged by its opening instant. Zero = the
 	// window `now` falls in. Reconcile sets it while the programme that crossed a boundary is
 	// still airing: until that programme ends, the committed window is still the one it belongs
@@ -159,6 +166,18 @@ type Channel struct {
 // order in tests and across restarts — never Math.random-style nondeterminism.
 type ShuffleParams struct {
 	Seed int64
+}
+
+// calendar is the holiday calendar the channel's seasonal policy keeps.
+func (c Channel) calendar() Calendar {
+	return Calendar{Zone: c.WindowZone, Country: c.HolidayCountry, Holidays: c.HolidayDefinitions}
+}
+
+// WithCalendar is the channel dated and judged by cal: its window grid's zone and the holidays
+// its seasonal policy keeps.
+func (c Channel) WithCalendar(cal Calendar) Channel {
+	c.WindowZone, c.HolidayCountry, c.HolidayDefinitions = cal.Zone, cal.Country, cal.Holidays
+	return c
 }
 
 // Validate checks the invariants a Channel must satisfy before it can be

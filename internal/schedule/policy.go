@@ -839,6 +839,10 @@ type ResolvedPolicy struct {
 	// which is why it has no ChannelPolicy counterpart and no §9 extensibility entry. It rides
 	// here because it is an INPUT to placement and this is what placement receives.
 	LastAired map[string]time.Time
+	// Calendar is the household's holiday calendar (#2030), which judges and dates the seasonal
+	// pass and the holiday-episode matchers. Household state, not policy — it rides here for the
+	// same reason LastAired does.
+	Calendar Calendar
 }
 
 // ResolvedSeparation is the separation policy with every window/limit filled.

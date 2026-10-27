@@ -250,18 +250,10 @@ func TestSeasonal_ExclusiveDarkOutOfWindow_IsEmpty(t *testing.T) {
 // TestSeasonal_NewYearBoundary_AlwaysActive: any date in [Dec 27, Jan 2] (the
 // year-straddling window, §6) is ALWAYS active for the newyear holiday, across many
 // years and both sides of the boundary. This exercises holidayActive's prior-year
-// check and newYearWindow directly. (Invariant 4.)
+// check and the newyear window directly. (Invariant 4.)
 func TestSeasonal_NewYearBoundary_AlwaysActive(t *testing.T) {
 	g := rand.New(rand.NewSource(0x0EFE)) //nolint:gosec
-	var newyear holiday
-	for _, h := range builtinCalendar {
-		if h.id == "newyear" {
-			newyear = h
-		}
-	}
-	if newyear.id == "" {
-		t.Fatal("newyear holiday not found in builtinCalendar")
-	}
+	newyear := newYearHoliday(t)
 
 	for trial := 0; trial < 2000; trial++ {
 		year := 2000 + g.Intn(60)
@@ -289,35 +281,48 @@ func TestSeasonal_NewYearBoundary_AlwaysActive(t *testing.T) {
 			t.Fatalf("trial %d: newyear must be active at %s (inside [Dec27,Jan2])", trial, now)
 		}
 
-		// And a sanity anchor on newYearWindow itself: the picked instant is within the
+		// And a sanity anchor on the window itself: the picked instant is within the
 		// window computed for the DECEMBER-side year (the window's canonical start year).
-		start, end := newYearWindow(year)
+		start, end := newyear.window(year)
 		if now.Before(start) || now.After(end) {
-			t.Fatalf("trial %d: %s outside newYearWindow(%d)=[%s,%s]", trial, now, year, start, end)
+			t.Fatalf("trial %d: %s outside newyear.window(%d)=[%s,%s]", trial, now, year, start, end)
 		}
 	}
 }
 
-// TestSeasonal_NewYearWindow_Shape: newYearWindow(year) is exactly
+// newYearHoliday is the shipped calendar's newyear holiday.
+func newYearHoliday(t testing.TB) holiday {
+	t.Helper()
+	for _, h := range (Calendar{}).holidays() {
+		if h.id == "newyear" {
+			return h
+		}
+	}
+	t.Fatal("newyear holiday not found in the shipped calendar")
+	return holiday{}
+}
+
+// TestSeasonal_NewYearWindow_Shape: newyear.window(year) is exactly
 // [Dec 27 year 00:00, the final nanosecond of Jan 2 year+1], straddling the boundary. Fuzz over
 // years to catch any off-by-year regression. (Supports invariant 4.)
 func TestSeasonal_NewYearWindow_Shape(t *testing.T) {
 	g := rand.New(rand.NewSource(0x0517)) //nolint:gosec
+	newyear := newYearHoliday(t)
 	for trial := 0; trial < 500; trial++ {
 		year := 1970 + g.Intn(200)
-		start, end := newYearWindow(year)
+		start, end := newyear.window(year)
 
 		wantStart := time.Date(year, time.December, 27, 0, 0, 0, 0, time.UTC)
 		wantEnd := time.Date(year+1, time.January, 3, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 		if !start.Equal(wantStart) {
-			t.Fatalf("trial %d: newYearWindow(%d) start=%s want %s", trial, year, start, wantStart)
+			t.Fatalf("trial %d: newyear.window(%d) start=%s want %s", trial, year, start, wantStart)
 		}
 		if !end.Equal(wantEnd) {
-			t.Fatalf("trial %d: newYearWindow(%d) end=%s want %s", trial, year, end, wantEnd)
+			t.Fatalf("trial %d: newyear.window(%d) end=%s want %s", trial, year, end, wantEnd)
 		}
 		// The window must cross a year boundary (end year > start year).
 		if end.Year() <= start.Year() {
-			t.Fatalf("trial %d: newYearWindow(%d) must straddle the boundary, got [%s,%s]", trial, year, start, end)
+			t.Fatalf("trial %d: newyear.window(%d) must straddle the boundary, got [%s,%s]", trial, year, start, end)
 		}
 		// A date just OUTSIDE each edge must not be in the window (tight bounds).
 		justBefore := wantStart.Add(-time.Second)
@@ -340,22 +345,17 @@ func FuzzHolidayActive_NewYearBoundary(f *testing.F) {
 	f.Add(time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC).Unix())
 	f.Add(int64(0))
 
-	var newyear holiday
-	for _, h := range builtinCalendar {
-		if h.id == "newyear" {
-			newyear = h
-		}
-	}
+	newyear := newYearHoliday(f)
 
 	f.Fuzz(func(t *testing.T, unix int64) {
 		now := time.Unix(unix, 0).UTC()
 		got := holidayActive(newyear, now)
 
 		// Compute the ground-truth membership: now is in the boundary window if it
-		// falls in newYearWindow(now.Year()) OR newYearWindow(now.Year()-1). This is
+		// falls in newyear.window(now.Year()) OR newyear.window(now.Year()-1). This is
 		// the same disjunction holidayActive uses, expressed independently.
-		curS, curE := newYearWindow(now.Year())
-		prevS, prevE := newYearWindow(now.Year() - 1)
+		curS, curE := newyear.window(now.Year())
+		prevS, prevE := newyear.window(now.Year() - 1)
 		want := within(now, curS, curE) || within(now, prevS, prevE)
 
 		if got != want {

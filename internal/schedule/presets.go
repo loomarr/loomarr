@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -19,14 +20,15 @@ import (
 // grounded picks/ceiling, which live in the suggester, so they are not in this pure table.
 
 // LowerWhen maps a WHEN token to a (predicate, defaultPriority, ok). Composite tokens like
-// "weekend-mornings" AND their parts. Case-insensitive. "holiday:<id>" carries the id.
-func LowerWhen(token string) (WhenPredicate, int, bool) {
+// "weekend-mornings" AND their parts. Case-insensitive. "holiday:<id>" carries the id, which must
+// name one of the holidays v defines.
+func LowerWhen(token string, v holidayvocab.Vocabulary) (WhenPredicate, int, bool) {
 	t := strings.ToLower(strings.TrimSpace(token))
 
-	// holiday:<id> — the §6 calendar. Validate the id against the builtin calendar.
+	// holiday:<id> — the §6 calendar. Validate the id against the holiday definitions.
 	if id, ok := strings.CutPrefix(t, "holiday:"); ok {
 		id = strings.TrimSpace(id)
-		if !knownHoliday(id) {
+		if !knownHoliday(id, v) {
 			return WhenPredicate{}, 0, false
 		}
 		return WhenPredicate{Holiday: id}, 60, true
@@ -169,11 +171,11 @@ var (
 	familyGenres  = []string{"Family", "Animation", "Adventure", "Comedy"}
 )
 
-// knownHoliday reports whether id is a builtin-calendar holiday (§6), so an unknown
-// "holiday:xyz" token is dropped rather than lowered to a never-matching predicate.
-func knownHoliday(id string) bool {
-	for _, h := range builtinCalendar {
-		if h.id == id {
+// knownHoliday reports whether id is a defined holiday (§6), so an unknown "holiday:xyz"
+// token is dropped rather than lowered to a never-matching predicate.
+func knownHoliday(id string, v holidayvocab.Vocabulary) bool {
+	for _, h := range v.Definitions() {
+		if h.ID == id {
 			return true
 		}
 	}

@@ -65,8 +65,9 @@ const WatermarkDefaultColor = "era"
 // by an internal/app test).
 var WatermarkColors = []string{"era", "amber", "cyan", "green", "red", "pink", "yellow"}
 
-// WatermarkMotifs is each calendar holiday's pictures, the default first (#1659 Q13): a choice only
-// for Halloween and Christmas. Its ids are the renderer's watermark.Motifs.
+// WatermarkMotifs is the pictures of each holiday with a holiday version, the default first (#1659
+// Q13): a choice only for Halloween and Christmas. A calendar holiday missing here airs the plain
+// logo (#2030). Its ids are the renderer's watermark.Motifs.
 var WatermarkMotifs = map[string][]string{
 	"halloween":    {"pumpkin", "bat", "ghost"},
 	"thanksgiving": {"leaf"},
@@ -97,13 +98,13 @@ type ResolvedWatermark struct {
 // WatermarkHoliday is the holiday version a channel's bug airs with at an airing's start: the
 // calendar holiday and its picture, or "" for none. It is "" when the version is off, when the
 // channel ignores holidays or limits them to others (ActiveHolidayAt), and for a custom image
-// (#1659 Q20: the household's own artwork airs unchanged). zone is the channel's wall clock (nil =
-// UTC), the same one the schedule's holiday window reads.
-func WatermarkHoliday(p *WatermarkPolicy, r ResolvedWatermark, seasonal SeasonalPolicy, at time.Time, zone *time.Location) (holiday, motif string) {
+// (#1659 Q20: the household's own artwork airs unchanged). cal is the calendar the schedule's
+// holiday window reads.
+func WatermarkHoliday(p *WatermarkPolicy, r ResolvedWatermark, seasonal SeasonalPolicy, at time.Time, cal Calendar) (holiday, motif string) {
 	if !r.Holiday || r.Image != "" {
 		return "", ""
 	}
-	holiday = ActiveHolidayAt(at, seasonal, zone)
+	holiday = ActiveHolidayAt(at, seasonal, cal)
 	if motif = WatermarkMotif(p, holiday); motif == "" {
 		return "", ""
 	}

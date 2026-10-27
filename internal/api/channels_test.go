@@ -87,6 +87,8 @@ func (f *fakeChannelSvc) Purge(ctx context.Context, id string) error {
 	return f.err
 }
 
+func (f *fakeChannelSvc) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {

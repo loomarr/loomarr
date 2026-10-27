@@ -50,13 +50,15 @@ type deterministicIntentPolicy struct {
 	kidsSignal              bool
 }
 
-func deriveIntentPolicy(intent Intent) deterministicIntentPolicy {
+// deriveIntentPolicy reads the intent's deterministic policy; holidays are the definitions a named
+// holiday is read against.
+func deriveIntentPolicy(intent Intent, holidays holidayvocab.Vocabulary) deterministicIntentPolicy {
 	return deterministicIntentPolicy{
-		episodeSelection:        EpisodeSelectionForIntent(intent),
+		episodeSelection:        EpisodeSelectionForIntent(intent, holidays),
 		explicitAudienceCeiling: intentExplicitAudienceCeiling(intent),
 		excludeUnrated:          intentExcludesUnrated(intent),
 		safetyCeiling:           intentDeterministicSafetyCeiling(intent),
-		seasonal:                seasonalPolicyForIntent(intent),
+		seasonal:                seasonalPolicyForIntent(intent, holidays),
 		sequential:              intentRequestsSequential(intent),
 		curated:                 intentRequestsCuratedEpisodes(intent),
 		kidsSignal:              intentSignalsKids(intent),
@@ -145,9 +147,9 @@ func intentMatchesAnyCue(intent Intent, cues ...string) bool {
 // disables highlights but can still order a holiday-filtered pool sequentially.
 // EpisodeSelectionForIntent is the server-owned series policy preview used by
 // proposal review and the approval gate. Clients may display it but never choose it.
-func EpisodeSelectionForIntent(intent Intent) schedule.EpisodeSelection {
+func EpisodeSelectionForIntent(intent Intent, v holidayvocab.Vocabulary) schedule.EpisodeSelection {
 	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
-	if holidays := namedHolidaysIn(affirmativeIntentText(intent)); len(holidays) > 0 {
+	if holidays := v.MatchIntent(affirmativeIntentText(intent)); len(holidays) > 0 {
 		selection = schedule.EpisodeSelection{
 			Mode: schedule.EpisodeHoliday, Holidays: holidays,
 		}
@@ -159,8 +161,8 @@ func EpisodeSelectionForIntent(intent Intent) schedule.EpisodeSelection {
 	return selection
 }
 
-func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
-	selection := deriveIntentPolicy(intent).episodeSelection
+func stampEpisodeSelection(items []ProposalItem, intent Intent, holidays holidayvocab.Vocabulary) bool {
+	selection := EpisodeSelectionForIntent(intent, holidays)
 	changed := false
 	for i := range items {
 		grounded := schedule.EpisodeSelection{}
@@ -329,7 +331,7 @@ func affirmativeIntentText(intent Intent) string {
 // seasonalPolicyForIntent makes an explicitly named holiday deterministic. A
 // holiday channel is exclusive to that holiday; leaving Holidays empty would mean
 // every built-in holiday and would make a Christmas request rotate into Halloween.
-func seasonalPolicyForIntent(intent Intent) schedule.SeasonalPolicy {
+func seasonalPolicyForIntent(intent Intent, v holidayvocab.Vocabulary) schedule.SeasonalPolicy {
 	// A refine can add a timed holiday block to an existing year-round channel.
 	// Only treat the refine as a whole-channel identity change when it actually
 	// names a channel transformation; ordinary "add Christmas specials" language
@@ -341,15 +343,11 @@ func seasonalPolicyForIntent(intent Intent) schedule.SeasonalPolicy {
 	if textmatch.ContainsPhrase(refine, "channel") {
 		hay += " " + refine
 	}
-	holidays := namedHolidaysIn(hay)
+	holidays := v.MatchIntent(hay)
 	if len(holidays) == 0 {
 		return schedule.SeasonalPolicy{}
 	}
 	return schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: holidays}
-}
-
-func namedHolidaysIn(text string) []string {
-	return holidayvocab.MatchIntent(text)
 }
 
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.

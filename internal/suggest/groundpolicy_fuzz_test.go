@@ -61,7 +61,7 @@ func FuzzGroundPolicy(f *testing.F) {
 		// the property under test is ceiling CANONICALIZATION; the drop-when-no-kids-signal
 		// path (§4/§8) has its own dedicated tests. The no-signal case would simply drop
 		// every ceiling to "", which trivially satisfies Validate but exercises nothing.
-		p := groundPolicy(&raw, nil, nil, Intent{Description: "for kids"})
+		p := groundPolicy(&raw, nil, nil, Intent{Description: "for kids"}, shipped)
 
 		// CORE SAFETY PROPERTY: whatever the model emitted, the returned policy is
 		// always enforcement-valid. groundPolicy's final net drops to the empty

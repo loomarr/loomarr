@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -232,7 +233,7 @@ func buildChannels(
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
-			ResolveWindowZone:    windowZone(func() string { return set.str("guide.timezone") }, log),
+			ResolveCalendar:      householdCalendar(set, holidayvocab.Default, log),
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
 			// supplies the durable in-progress target when one exists, otherwise the applied
 			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
@@ -346,6 +347,17 @@ func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, 
 // Unset/empty (production, and the primary worktree) ⇒ false, today's behaviour unchanged.
 func tunerPublishingDisabled() bool {
 	return strings.TrimSpace(os.Getenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER")) != ""
+}
+
+// householdCalendar is the calendar every channel arrangement and on-screen logo reads (#2030):
+// the window grid's wall clock (windowZone), the household's country (filler.home_country) and
+// the holiday definitions. Each read resolves the settings live.
+func householdCalendar(set resolved, holidays holidayvocab.Source, log *slog.Logger) func() schedule.Calendar {
+	zone := windowZone(func() string { return set.str("guide.timezone") }, log)
+	return func() schedule.Calendar {
+		defs := holidays.Current()
+		return schedule.Calendar{Zone: zone(), Country: set.str("filler.home_country"), Holidays: &defs}
+	}
 }
 
 // windowZone resolves the wall clock the rolling-window grid is laid on (#1675): guide.timezone,

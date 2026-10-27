@@ -44,9 +44,10 @@ type channelWatermarks struct {
 	dir     string
 	// install is the live install-wide opacity and look (watermarkInstall), read on every For.
 	install func() schedule.WatermarkInstall
-	// zone is the channels' wall clock (guide.timezone, the engine's ResolveWindowZone), so a
-	// holiday version flips at the same local instant as the schedule's holiday. nil = UTC.
-	zone     func() *time.Location
+	// calendar is the channels' holiday calendar (householdCalendar, the engine's too), so a
+	// holiday version flips at the same local instant as the schedule's holiday. nil = the zero
+	// Calendar (UTC, the US).
+	calendar func() schedule.Calendar
 	channels interface {
 		GetChannel(context.Context, string) (store.Channel, error)
 	}
@@ -96,7 +97,7 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
 		install:  watermarkInstall(set),
-		zone:     windowZone(func() string { return set.str("guide.timezone") }, log),
+		calendar: householdCalendar(set, holidayvocab.Default, log),
 		channels: st, log: log, lifetime: rootCtx,
 	}
 	if events != nil {
@@ -123,12 +124,12 @@ func (c *channelWatermarks) withOriginals(imgs *images.Service) {
 	}
 }
 
-// wallClock is the zone holiday versions are dated in; unbound (tests), UTC.
-func (c *channelWatermarks) wallClock() *time.Location {
-	if c.zone == nil {
-		return nil
+// holidayCalendar is the calendar holiday versions are dated in; unbound (tests), the zero one.
+func (c *channelWatermarks) holidayCalendar() schedule.Calendar {
+	if c.calendar == nil {
+		return schedule.Calendar{}
 	}
-	return c.zone()
+	return c.calendar()
 }
 
 // renderVersion changes every cached bug when the renderer's output changes.
@@ -151,7 +152,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 		return nil
 	}
 	look := watermark.Look{Size: res.Size, Opacity: res.Opacity, Shadow: true}
-	holiday, motif := schedule.WatermarkHoliday(ch.Policy.Watermark, res, ch.Policy.Seasonal, at, c.wallClock())
+	holiday, motif := schedule.WatermarkHoliday(ch.Policy.Watermark, res, ch.Policy.Seasonal, at, c.holidayCalendar())
 	key, render := c.source(ctx, ch, res, bugDesign{holiday: holiday, motif: watermark.Motif(motif),
 		decade: schedule.WatermarkEraDecade(ch.Policy.Scope), white: !gate.colour.Load()})
 	straight, w, h, err := c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, height, look.Size, look.Opacity, renderVersion),
@@ -256,7 +257,8 @@ func (c *channelWatermarks) PreviewMotif(ctx context.Context, channelID, holiday
 
 // Options is what the channel page's On-screen logo section shows beside the choices at now (#1659
 // W2c): the derived name, the era and the colours "Match the era" uses, and the holidays the logo
-// follows, each in effect through the scheduler's own ActiveHolidayAt so the page and what airs agree.
+// follows (those with a picture), each in effect through the scheduler's own ActiveHolidayAt so the
+// page and what airs agree.
 func (c *channelWatermarks) Options(ctx context.Context, channelID string, now time.Time) (api.WatermarkOptions, error) {
 	ch, err := c.channels.GetChannel(ctx, channelID)
 	if err != nil {
@@ -270,13 +272,16 @@ func (c *channelWatermarks) Options(ctx context.Context, channelID string, now t
 	for _, col := range watermark.EraPalette(decade) {
 		out.EraPalette = append(out.EraPalette, string(col))
 	}
+	cal := c.holidayCalendar()
 	names := map[string]string{}
-	for _, d := range holidayvocab.Definitions() {
+	for _, d := range cal.Vocab().Definitions() {
 		names[d.ID] = d.Label
 	}
-	zone := c.wallClock()
-	active := schedule.ActiveHolidayAt(now, ch.Policy.Seasonal, zone)
-	for _, w := range schedule.HonouredHolidays(now, ch.Policy.Seasonal, zone) {
+	active := schedule.ActiveHolidayAt(now, ch.Policy.Seasonal, cal)
+	for _, w := range schedule.HonouredHolidays(now, ch.Policy.Seasonal, cal) {
+		if len(schedule.WatermarkMotifs[w.ID]) == 0 {
+			continue // no holiday version to show: the logo airs plain through it
+		}
 		h := api.WatermarkHolidayOption{ID: w.ID, Name: names[w.ID], Start: w.Start.Format(time.DateOnly),
 			End: w.End.Format(time.DateOnly), Active: w.ID == active, Picture: schedule.WatermarkMotif(ch.Policy.Watermark, w.ID)}
 		for _, m := range schedule.WatermarkMotifs[w.ID] {

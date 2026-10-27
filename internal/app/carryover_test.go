@@ -45,6 +45,8 @@ func (d *windowDecks) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Dur
 	return d.window, nil
 }
 
+func (d *windowDecks) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil
 }

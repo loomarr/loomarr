@@ -354,7 +354,8 @@ func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Motifs: map[string]string{"halloween": "ghost"}}
 	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	c := colour(testWatermarks(t, ch, true))
-	c.zone = func() *time.Location { return eastern }
+	cal := schedule.Calendar{Zone: eastern}
+	c.calendar = func() schedule.Calendar { return cal }
 	oct31Night := time.Date(2026, time.October, 31, 21, 0, 0, 0, eastern) // Nov 1 01:00 UTC
 	sep30Night := time.Date(2026, time.September, 30, 21, 0, 0, 0, eastern)
 	h := watermark.HolidayLooks["halloween"]
@@ -363,7 +364,7 @@ func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
 	plain := watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
 		Colour: watermark.Red, Palette: watermark.EraPalette(1980)}
 
-	if got := schedule.ActiveHolidayAt(oct31Night, ch.Policy.Seasonal, eastern); got != "halloween" {
+	if got := schedule.ActiveHolidayAt(oct31Night, ch.Policy.Seasonal, cal); got != "halloween" {
 		t.Fatalf("the schedule's holiday at Oct 31 9 pm Eastern = %q, want halloween", got)
 	}
 	sameDesign(t, c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct31Night).Straight, spooky)
@@ -476,6 +477,21 @@ func TestChannelWatermarks_Options(t *testing.T) {
 	}
 	if len(got.Holidays) != 0 || got.Holidays == nil || got.Era != "" || got.EraPalette[0] != "amber" {
 		t.Fatalf("ignore holidays = %+v, want an empty list, no era, amber", got)
+	}
+
+	// Every holiday: only those with a holiday version are rows (#2030). Easter and the rest air
+	// the plain logo, so a row for them would offer no picture.
+	ch.Policy.Seasonal = schedule.SeasonalPolicy{}
+	got, err = testWatermarks(t, ch, true).Options(context.Background(), "ch-1", oct13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []string
+	for _, h := range got.Holidays {
+		rows = append(rows, h.ID)
+	}
+	if want := []string{"halloween", "thanksgiving", "christmas", "newyear", "valentines"}; !slices.Equal(rows, want) {
+		t.Fatalf("every holiday = %v, want the pictured ones %v", rows, want)
 	}
 }
 

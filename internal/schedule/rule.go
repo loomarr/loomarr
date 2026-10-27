@@ -100,8 +100,8 @@ type WhenPredicate struct {
 	// 24h wall-clock; it WRAPS when from > to (late-night, e.g. 23→2). Both 0 = any hour.
 	HourFrom int `json:"hourFrom,omitempty"`
 	HourTo   int `json:"hourTo,omitempty"`
-	// Holiday matches when `now` falls in the named holiday's window (reuses the §6
-	// builtinCalendar ids: "christmas", "halloween", …). "" = no holiday constraint.
+	// Holiday matches when `now` falls in the named holiday's window in the household's
+	// country (the §6 Calendar's ids: "christmas", "halloween", …). "" = no holiday constraint.
 	Holiday string `json:"holiday,omitempty"`
 	// DateFrom/DateTo bound an explicit date range (inclusive). Nil = unbounded on that
 	// end. For a one-off ("this weekend's marathon") without a recurring predicate.
@@ -119,7 +119,7 @@ func (w WhenPredicate) isZero() bool {
 // Matches reports whether the predicate holds at `now` (container wall-clock). All set
 // sub-predicates must hold (AND). A zero `now` never matches a non-zero predicate — the
 // policy-free path (no clock) has no wall-clock rules. A zero predicate matches always.
-func (w WhenPredicate) Matches(now time.Time) bool {
+func (w WhenPredicate) Matches(now time.Time, cal Calendar) bool {
 	if w.isZero() {
 		return true
 	}
@@ -138,7 +138,7 @@ func (w WhenPredicate) Matches(now time.Time) bool {
 	if (w.HourFrom != 0 || w.HourTo != 0) && !hourInWindow(now.Hour(), w.HourFrom, w.HourTo) {
 		return false
 	}
-	if w.Holiday != "" && !inHoliday(w.Holiday, now) {
+	if w.Holiday != "" && !inHoliday(w.Holiday, now, cal) {
 		return false
 	}
 	if w.DateFrom != nil && now.Before(*w.DateFrom) {
@@ -171,20 +171,15 @@ func hourInWindow(h, from, to int) bool {
 	return h >= from || h < to
 }
 
-// inHoliday reports whether `now` is inside the named builtin holiday's window (§6).
-// Reuses builtinCalendar so a holiday rule and seasonal detection share one calendar.
-func inHoliday(id string, now time.Time) bool {
-	for _, hol := range builtinCalendar {
-		if hol.id != id {
-			continue
+// inHoliday reports whether `now`'s date is inside the named holiday's window (§6), through the
+// same calendar seasonal detection reads, so a holiday rule and the seasonal policy agree on when
+// a holiday is. A holiday the calendar's country does not keep is never on.
+func inHoliday(id string, now time.Time, cal Calendar) bool {
+	now = civilNoon(now, cal.Zone)
+	for _, hol := range cal.holidays() {
+		if hol.id == id {
+			return holidayActive(hol, now)
 		}
-		start, end := hol.window(now.Year())
-		if !now.Before(start) && !now.After(end) {
-			return true
-		}
-		// A window straddling the year boundary (e.g. New Year) also checks last year's.
-		ps, pe := hol.window(now.Year() - 1)
-		return !now.Before(ps) && !now.After(pe)
 	}
 	return false
 }
@@ -251,8 +246,8 @@ func applyRuleScopeWithTrace(entries []LineupEntry, what *ScopePolicy, trace *sc
 // list order (first wins). Returns (zeroRule, false) when no rule matches — the caller
 // falls through to the channel's base whole-policy behavior (§6.5). Deterministic: the
 // same (rules, now) always yields the same active rule.
-func pickRule(rules []SchedulingRule, now time.Time) (SchedulingRule, bool) {
-	best := pickRuleIndex(rules, now)
+func pickRule(rules []SchedulingRule, now time.Time, cal Calendar) (SchedulingRule, bool) {
+	best := pickRuleIndex(rules, now, cal)
 	if best == -1 {
 		return SchedulingRule{}, false
 	}
@@ -261,10 +256,10 @@ func pickRule(rules []SchedulingRule, now time.Time) (SchedulingRule, bool) {
 
 // pickRuleIndex is pickRule's selection as a position in `rules` (-1 = none), so a caller can key
 // on WHICH rule is active without comparing rule values.
-func pickRuleIndex(rules []SchedulingRule, now time.Time) int {
+func pickRuleIndex(rules []SchedulingRule, now time.Time, cal Calendar) int {
 	best := -1
 	for i, r := range rules {
-		if !r.When.Matches(now) {
+		if !r.When.Matches(now, cal) {
 			continue
 		}
 		if best == -1 || r.Priority > rules[best].Priority {
@@ -288,8 +283,8 @@ type ActiveRuleAttribution struct {
 // ActiveRuleAt reports the rule active at `now` for attribution (§8.1). It is the exported
 // window onto pickRule: the API's cycle preview calls it to label "what airs at this moment"
 // with the exact rule reconcile would select — one code path, so preview == reality.
-func ActiveRuleAt(rules []SchedulingRule, now time.Time) ActiveRuleAttribution {
-	r, ok := pickRule(rules, now)
+func ActiveRuleAt(rules []SchedulingRule, now time.Time, cal Calendar) ActiveRuleAttribution {
+	r, ok := pickRule(rules, now, cal)
 	if !ok {
 		return ActiveRuleAttribution{Label: "Base policy", Matched: false}
 	}
@@ -300,8 +295,8 @@ func ActiveRuleAt(rules []SchedulingRule, now time.Time) ActiveRuleAttribution {
 // it sets one, else the policy's, else the Strategy's. The same two steps ComputeDesiredAt takes,
 // so a reader asking "are these episodes airing in order?" (Tonight's premieres, #1664) gets the
 // scheduler's own answer.
-func OrderingAt(policy ChannelPolicy, strategy Strategy, at time.Time) OrderingMode {
-	rule, _ := pickRule(policy.Rules, at)
+func OrderingAt(policy ChannelPolicy, strategy Strategy, at time.Time, cal Calendar) OrderingMode {
+	rule, _ := pickRule(policy.Rules, at, cal)
 	return applyRuleHow(policy.Resolved(strategy, false), rule.How).Ordering
 }
 

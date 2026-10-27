@@ -158,7 +158,7 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Owner task | Kind | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `filler.home_country` (`FILLER_HOME_COUNTRY`) | Location | string | — | Where your channels are watched. Loomarr uses this country for channels and filler sources. |
+| `filler.home_country` (`FILLER_HOME_COUNTRY`) | Location | string | — | Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty keeps the US calendar. |
 | `filler.home_market` (`FILLER_HOME_MARKET`) | Location | string | — | Optional. Add a city or TV market when you want local filler, such as New York or Seattle. |
 | `filler.dir` (`FILLER_DIR`) | Filler — Clip folders | string | `<data dir>/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults to a directory beside the database (/data in the container) so its volume carries it; point it elsewhere to use an existing clip library. _(required for filler; applies after restart)_ |
 | `filler.watch_dir` (`FILLER_WATCH_DIR`) | Filler — Clip folders | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. _(applies after restart)_ |

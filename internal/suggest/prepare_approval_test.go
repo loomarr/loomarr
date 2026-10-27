@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -26,7 +27,7 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	edit := &suggest.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []suggest.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: suggest.EditorialCore},
 	}, Note: "More variety"}
-	prepared, decoded, err := suggest.PrepareApproval(p, edit)
+	prepared, decoded, err := suggest.PrepareApproval(p, edit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 	p := store.Proposal{ID: "p-backup", Status: "submitted", ProposalJSON: string(raw)}
 	_, decoded, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000002"},
-	})
+	}, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, decoded, err := suggest.PrepareApproval(p, resolvedEdit)
+	prepared, decoded, err := suggest.PrepareApproval(p, resolvedEdit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
 	p := store.Proposal{ID: "p-empty", Status: "submitted", ProposalJSON: string(raw)}
 	_, _, err = suggest.PrepareApproval(p, &suggest.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000001"},
-	})
+	}, holidayvocab.Default())
 	if !errors.Is(err, suggest.ErrEmptyApproval) {
 		t.Fatalf("PrepareApproval error = %v, want ErrEmptyApproval", err)
 	}

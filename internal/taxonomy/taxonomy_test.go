@@ -33,7 +33,7 @@ func TestSeedForest_Integrity(t *testing.T) {
 	}
 }
 
-func TestSeedForest_PresentationVocabularyHasOneAdditiveRevision(t *testing.T) {
+func TestSeedForest_VocabularyGrowsThroughAdditiveRevisions(t *testing.T) {
 	f := seed()
 	for raw, want := range map[string]string{"animated": "animated", "cartoon": "animated", "live action": "live-action"} {
 		got, ok := f.Resolve(raw)
@@ -46,8 +46,20 @@ func TestSeedForest_PresentationVocabularyHasOneAdditiveRevision(t *testing.T) {
 		}
 	}
 	revisions := taxonomy.SeedRevisions()
-	if len(revisions) != 1 || revisions[0].Version != 2 || len(revisions[0].Taxa) != 3 {
-		t.Fatalf("SeedRevisions() = %+v, want one v2 presentation revision", revisions)
+	if len(revisions) != 2 || revisions[0].Version != 2 || len(revisions[0].Taxa) != 3 {
+		t.Fatalf("SeedRevisions() = %+v, want the v2 presentation revision first", revisions)
+	}
+	// v3 adds the seasonal taxa for the holidays the original seed lacked (#2030).
+	if revisions[1].Version != 3 {
+		t.Fatalf("second revision = v%d, want v3", revisions[1].Version)
+	}
+	for _, tx := range revisions[1].Taxa {
+		if tx.Axis != taxonomy.AxisSeasonal {
+			t.Errorf("v3 taxon %q is on axis %q, want seasonal", tx.Slug, tx.Axis)
+		}
+		if got, ok := f.Resolve(tx.Slug); !ok || got != tx.Slug {
+			t.Errorf("Resolve(%q) = (%q,%v), want the seeded seasonal taxon", tx.Slug, got, ok)
+		}
 	}
 }
 
