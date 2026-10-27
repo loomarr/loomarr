@@ -14,6 +14,7 @@ react_native_pods() {
   local pods="$1"
   mkdir -p "$pods/React-Core-prebuilt/React.xcframework/ios-arm64" \
     "$pods/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework" \
+    "$pods/ReactNativeDependencies/framework/packages/react-native/ReactNativeDependenciesHeaders.xcframework" \
     "$pods/hermes-engine/destroot/Library/Frameworks/universal/hermesvm.xcframework" \
     "$pods/RNScreens/ios"
 }

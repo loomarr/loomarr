@@ -19,6 +19,8 @@ readonly PODS_DIR="${1%/}"
 readonly ALLOWED=(
   React-Core-prebuilt/React.xcframework
   ReactNativeDependencies/framework/packages/react-native/ReactNativeDependencies.xcframework
+  # React Native 0.88's dependencies archive carries the third-party headers in a sibling framework.
+  ReactNativeDependencies/framework/packages/react-native/ReactNativeDependenciesHeaders.xcframework
   hermes-engine/destroot/Library/Frameworks/universal/hermesvm.xcframework
 )
 
