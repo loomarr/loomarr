@@ -102,7 +102,7 @@ func TestYtDlpEstimateUsesSelectedVideoAndAudioFormats(t *testing.T) {
 	t.Parallel()
 	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
 case "$*" in
-  *--no-config*--simulate*--dump-single-json*--playlist-end\ 1*) ;;
+  *--no-config*--js-runtimes\ node*--simulate*--dump-single-json*--playlist-end\ 1*) ;;
   *) exit 19 ;;
 esac
 printf '%s\n' '{"duration":60,"height":1080,"filesize_approx":1,"requested_formats":[{"filesize":100000000},{"filesize_approx":10000000}]}'
@@ -153,6 +153,23 @@ printf 'source-1\t%%s\n' %q >> "$3"
 	}
 	if !sidecarStamped(t, sidecar) {
 		t.Fatal("successful download did not stamp its sidecar")
+	}
+}
+
+// YouTube extraction needs a JS runtime and yt-dlp enables only Deno by default, so the download
+// must name Node explicitly; without it the fetch warns and then fails to find any format.
+func TestYtDlpDownloaderEnablesNodeAsJSRuntime(t *testing.T) {
+	dir := t.TempDir()
+	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
+case "$*" in
+  *--js-runtimes\ node*) exit 0 ;;
+  *) echo "missing --js-runtimes node" >&2; exit 19 ;;
+esac
+`)
+	if _, err := NewYtDlpDownloader(executable, "ffmpeg").Download(context.Background(), Source{
+		ID: "source-1", Kind: YouTube, URL: "https://example.invalid/watch",
+	}, dir); err != nil && strings.Contains(err.Error(), "missing --js-runtimes node") {
+		t.Fatal(err)
 	}
 }
 

@@ -10,6 +10,11 @@ signed multi-architecture `ghcr.io/loomarr/loomarr` images from successful `main
 Changes on `main` that have not yet shipped belong here. `PROGRESS.md` carries current initiative
 status; pull requests and GitHub Releases carry the durable delivery record.
 
+- **Build — yt-dlp uses Node, not Deno, for YouTube's JavaScript challenges.** Deno's development
+  is ending, so the image no longer downloads it. The `node` binary is copied from the
+  digest-pinned official Node image the web build already uses, and Loomarr's yt-dlp calls pass
+  `--js-runtimes node`.
+
 - **Security — `/metrics` now requires a scrape token (#1408).** `/v1/metrics` and `/metrics` were
   served to anyone who could reach the listener. They now require
   `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` (or `LOOMARR_METRICS_TOKEN_FILE`) and are refused

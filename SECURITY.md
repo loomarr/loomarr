@@ -42,7 +42,7 @@ window to ship a fix before any public write-up.
   is never logged. Metrics still expose aggregate operational state and the default
   listener is plain HTTP, so keep it on a private scrape network or add TLS at an
   operator-managed edge. See [Monitor Loomarr](docs/guides/monitoring.md).
-- The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and
+- The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`, `node`, and
   `whisper-cli` with its shared libraries and model data) pinned by the `Dockerfile`;
   vulnerabilities in those upstreams are best
   reported to their projects, but do let us know if a pin needs bumping. These used

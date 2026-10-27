@@ -382,6 +382,11 @@ RETIRED=(
   'JOB_PLAYOUT_PREPARE_SCHEDULE|#1512 4: prepared media is retired; the job is gone'
   '"job.playout_prepare.schedule"|#1512 4: prepared media is retired; the job is gone'
   'LOOMARR_AGENT_PREPARED_DIR|#1512 4: prepared media is retired; lanes have no prepared library'
+  # Deno's development is ending (Cloudflare took on the Deno team); yt-dlp now runs YouTube's JS
+  # challenges on the Node binary copied from the pinned Node image, so no Deno is downloaded.
+  'DENO_VERSION|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
+  'denoland/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
+  '/usr/local/bin/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image ships no Deno'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

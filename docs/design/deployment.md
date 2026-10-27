@@ -35,7 +35,7 @@ One image, `ghcr.io/loomarr/loomarr`, for `linux/amd64` and `linux/arm64`. There
 server; macOS runs the Linux image through Docker Desktop.
 
 - **Contents:** a cgo-free static Go server with the embedded web UI, the required release-matched
-  `loomarr-image` Rust worker, and vendored `yt-dlp`, `ffmpeg`, `ffprobe`, `deno` and `whisper-cli`
+  `loomarr-image` Rust worker, and vendored `yt-dlp`, `ffmpeg`, `ffprobe`, `node` and `whisper-cli`
   with its model. Every non-Go binary runs through `exec`; pixel buffers never cross the process
   boundary. The base is non-root Debian/glibc (uid 65532) because the media tools need glibc.
 - **Why one image:** ffmpeg is load-bearing for playout, so a slim image without it would be a Loomarr
