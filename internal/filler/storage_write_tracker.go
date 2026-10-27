@@ -33,7 +33,7 @@ func (t *storageWriteTracker) Record(ctx context.Context, bytes int64) error {
 	next := t.written + bytes
 	decision := t.lease.Revalidate(ctx, next)
 	if !decision.Allowed {
-		return storageDecisionError("track filler storage", decision)
+		return storagegovernor.Pause("track filler storage", decision)
 	}
 	t.written = next
 	return nil

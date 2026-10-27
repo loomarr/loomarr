@@ -306,6 +306,10 @@ reservations and the operator-facing decision.
   before queueing, revalidated before execution, charged as output grows and released on success,
   cancellation or failure. Writes have a byte ceiling, so a dishonest provider length cannot
   overrun.
+- **A pause is never a verdict on the clip** (#2031). A pipeline rung that the governor turns away
+  waits on its rung without spending an attempt, records the pause reason on the ladder, and asks
+  again later. It never reaches the fatal-rung rule, so lack of room can't reject a clip as
+  `unplayable`.
 - An acquisition lease covers its staging ceiling, `source + max(source/4, 32 MiB)`. Transcode,
   split and artwork reserve their own peaks when they run. Leases are per item and
   released as each download ends. An unsizable item is planned from its duration and height, else a

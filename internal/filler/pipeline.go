@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/logchange"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // The ingest pipeline (§10 V51b): one ordered, per-clip run replacing seven independent cron
@@ -162,6 +163,11 @@ const MaxAttempts = 3
 // spends no attempt. Without it, the oldest-first work list hands the whole budget back to the same
 // unfinishable clip every pass, which starved 84 others in the run that found this.
 const deferYield = 2 * time.Minute
+
+// storageHoldWait is how long a clip the storage governor turned away waits before asking again.
+// Like deferYield it spends no attempt; it is longer because space frees on a cleanup or an
+// operator's change, not within one pass.
+const storageHoldWait = 15 * time.Minute
 
 // fatalStages are the ones whose exhausted failure REJECTS the clip rather than skipping it.
 //
@@ -828,6 +834,22 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 				// through. One pass interval is enough: it comes back promptly, but behind work
 				// that can actually finish.
 				row.NextRun = p.now().UTC().Add(deferYield)
+				if err := p.persist(ctx, row, clip); err != nil {
+					return row.Disposition, err
+				}
+				return row.Disposition, ErrDeferred
+			}
+			// ⚠ **No room is not a broken file.** The storage governor declining the work says
+			// nothing about the clip, so it must never reach onFailure, whose fatal transcode rung
+			// would reject it as `unplayable` after MaxAttempts (#2031). Same no-attempt shape as
+			// the deferral above, with the reason recorded so the ladder says why it is waiting.
+			var hold *storagegovernor.PauseError
+			if errors.As(runErr, &hold) {
+				if row.Attempts > 0 {
+					row.Attempts--
+				}
+				row.Record(row.Stage, StatusQueued, "waiting for filler storage: "+runErr.Error(), row.Attempts, p.now().UTC())
+				row.NextRun = p.now().UTC().Add(storageHoldWait)
 				if err := p.persist(ctx, row, clip); err != nil {
 					return row.Disposition, err
 				}
