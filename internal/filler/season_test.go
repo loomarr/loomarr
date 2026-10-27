@@ -161,11 +161,65 @@ func TestSeason_InSeasonShareIsAtMostHalfAndAtLeastOne(t *testing.T) {
 				if in < 1 {
 					t.Fatalf("seed %d: no Christmas ad in December: %+v", seed, pod.Entries)
 				}
-				if in > max(1, body/2) {
-					t.Fatalf("seed %d: %d of %d commercials are Christmas ads", seed, in, body)
+				// Past the half only once every plain ad is in the break (decision 34).
+				if in > max(1, body/2) && body-in < tc.plain {
+					t.Fatalf("seed %d: %d of %d commercials are Christmas ads with a plain ad left", seed, in, body)
 				}
 			}
 		})
+	}
+}
+
+// Decision 34: the half yields only to the card. With one plain ad in the catalog, Christmas ads
+// fill the break instead of leaving it to the card, and the plain ad still airs.
+func TestSeason_TheHalfYieldsWhenTheCardIsTheAlternative(t *testing.T) {
+	cat := seasonCatalog(1, 12)
+	xmas := christmasHashes(cat)
+	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
+	for seed := range int64(100) {
+		pod, err := a.PreviewAt(context.Background(), "ch", seed, seasonSel, seasonDec20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if in, body := inSeasonCount(pod, xmas); body-in != 1 || in < 2 {
+			t.Fatalf("seed %d: %d of %d commercials are Christmas ads, want all but the plain one, past the half", seed, in, body)
+		}
+		if left := 120_000 - pod.TotalMs; left >= 15_000 {
+			t.Fatalf("seed %d: %d ms left to the card with Christmas ads that fit", seed, left)
+		}
+	}
+}
+
+// Decision 35: the guaranteed in-season ad takes a seeded place among the commercials, so a break
+// does not always open on it.
+func TestSeason_TheGuaranteedAdMovesAroundTheBreak(t *testing.T) {
+	cat := seasonCatalog(30, 1)
+	xmas := christmasHashes(cat)
+	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
+	positions := map[int]bool{}
+	for seed := range int64(100) {
+		pod, err := a.PreviewAt(context.Background(), "ch", seed, seasonSel, seasonDec20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := -1
+		n := 0
+		for _, e := range pod.Entries {
+			if e.Kind != filler.Commercial {
+				continue
+			}
+			if xmas[e.Hash] {
+				at = n
+			}
+			n++
+		}
+		if at < 0 {
+			t.Fatalf("seed %d: no Christmas ad in December: %+v", seed, pod.Entries)
+		}
+		positions[at] = true
+	}
+	if len(positions) < 3 {
+		t.Errorf("the Christmas ad took only positions %v over 100 breaks", positions)
 	}
 }
 
@@ -219,9 +273,9 @@ func TestSeason_ARollupAncestorIsNotTheClipsHoliday(t *testing.T) {
 	}
 }
 
-// The end-of-break top-up holds the half too: long plain ads leave a tail only short Christmas
-// ads fit, and the top-up must not spend it on them.
-func TestSeason_TopUpKeepsTheHalf(t *testing.T) {
+// Decision 34 at the end of the break: long plain ads leave a tail only short Christmas ads fit, so
+// the top-up spends it on them rather than leaving it to the card, and the plain ads still air.
+func TestSeason_TopUpSpendsATailOnlyHolidayAdsFit(t *testing.T) {
 	var cat []filler.Clip
 	for i := range 6 {
 		c := seasonAd(fmt.Sprintf("plain%02d", i), 1994)
@@ -240,8 +294,89 @@ func TestSeason_TopUpKeepsTheHalf(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if in, body := inSeasonCount(pod, xmas); in > max(1, body/2) {
-			t.Fatalf("seed %d: %d of %d commercials are Christmas ads", seed, in, body)
+		in, body := inSeasonCount(pod, xmas)
+		if body-in != 2 {
+			t.Fatalf("seed %d: %d plain ads aired, want the 2 that fit", seed, body-in)
+		}
+		if left := 120_000 - pod.TotalMs; left >= 7_000 {
+			t.Fatalf("seed %d: %d ms left unfilled with Christmas ads that fit", seed, left)
+		}
+	}
+}
+
+// The guaranteed ad's seeded place keeps category variety: it never lands beside an ad of its own
+// category. Every other ad's category is distinct, so only that move could make a repeat.
+func TestSeason_TheGuaranteedAdKeepsCategoryVariety(t *testing.T) {
+	var cat []filler.Clip
+	for i := range 8 {
+		c := seasonAd(fmt.Sprintf("plain%02d", i), 1994)
+		c.Category = fmt.Sprintf("cat%02d", i)
+		cat = append(cat, c)
+	}
+	for i := 1; i < 8; i++ {
+		c := seasonAd(fmt.Sprintf("cereal%02d", i), 1994)
+		c.Category = "cereal"
+		cat = append(cat, c)
+	}
+	x := seasonAd("xmas", 1994, "christmas")
+	x.Category = "cereal"
+	cat = append(cat, x)
+	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
+	for seed := range int64(200) {
+		pod, err := a.PreviewAt(context.Background(), "ch", seed, seasonSel, seasonDec20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ads []filler.PodEntry
+		for _, e := range pod.Entries {
+			if e.Kind == filler.Commercial {
+				ads = append(ads, e)
+			}
+		}
+		for i, e := range ads {
+			if e.Hash != "xmas" {
+				continue
+			}
+			for _, j := range []int{i - 1, i + 1} {
+				if j >= 0 && j < len(ads) && ads[j].Category == "cereal" {
+					t.Fatalf("seed %d: the Christmas ad sits beside %s", seed, ads[j].Hash)
+				}
+			}
+		}
+	}
+}
+
+// The half yields only when nothing else fits, and a station ID fits: the tail spends its time on
+// them before it adds Christmas ads past the half.
+func TestSeason_StationIDsFillTheTailBeforeTheHalfYields(t *testing.T) {
+	var cat []filler.Clip
+	for i := range 6 {
+		c := seasonAd(fmt.Sprintf("plain%02d", i), 1994)
+		c.DurationMs = 40_000
+		cat = append(cat, c)
+		x := seasonAd(fmt.Sprintf("xmas%02d", i), 1994, "christmas")
+		x.DurationMs = 7_000
+		cat = append(cat, x)
+		cat = append(cat, filler.Clip{Hash: fmt.Sprintf("ident%02d", i), Path: fmt.Sprintf("ident%02d.mp4", i),
+			Kind: filler.StationID, Era: 1994, Audience: filler.General, DurationMs: 5_000})
+	}
+	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
+	for seed := range int64(100) {
+		pod, err := a.PreviewAt(context.Background(), "ch", seed, seasonSel, seasonDec20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if in, body := inSeasonCount(pod, christmasHashes(cat)); in > max(1, body/2) {
+			t.Fatalf("seed %d: %d of %d commercials are Christmas ads while station IDs fit: %+v", seed, in, body, pod.Entries)
+		}
+		idents := 0
+		for _, e := range pod.Entries {
+			if e.Kind == filler.StationID {
+				idents++
+			}
+		}
+		if idents < 4 { // two bookends, and the tail's 23 s holds at least two more
+			t.Fatalf("seed %d: only %d station IDs aired: %+v", seed, idents, pod.Entries)
 		}
 	}
 }

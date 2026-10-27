@@ -110,7 +110,9 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
 
 A clip tagged with a holiday, such as Christmas or Halloween, plays only in that holiday's season
 as your country keeps it, on your guide's time zone. Out of season it stays in the library but
-never plays, bumpers and station IDs included. In season, a break leads with one holiday
-commercial when one that fits hasn't aired recently, and holiday commercials never fill more than half of
-a break, so the season doesn't crowd out everything else. A holiday tag with no dates yet is just
+never plays, bumpers and station IDs included. In season, a break includes a holiday
+commercial when one that fits hasn't aired recently, and holiday commercials fill at most half of
+a break while other commercials can fill the rest, so the season doesn't crowd out everything else.
+When nothing else fits, holiday commercials fill the break rather than leaving it to the channel's
+card. A holiday tag with no dates yet is just
 a tag: its clips play all year. A clip you pin to a channel plays whatever the season.

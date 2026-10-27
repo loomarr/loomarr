@@ -94,7 +94,8 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //   - Deterministic: all randomness comes from the seeded rng, and candidates are sorted
 //     by Path (the identity) before any pick so catalog input order can't leak into output.
 //   - SEASON SHARE: in-season clips stay at most half of the break's commercials (`share`, which
-//     already counts the pins), and with none yet the best rested in-season clip leads (season.go).
+//     already counts the pins), and with none yet the best rested in-season clip is placed first,
+//     then moved to a seeded spot among the commercials (placeLead, season.go).
 //   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
 func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, share *seasonShare) (MatchLevel, []Clip) {
 	// w.GapMs is already net of the intro and return bumpers: Assemble subtracts their real
@@ -128,11 +129,14 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making the
 	// ladder and durable rotation authoritative (see ladderLess).
 	sort.SliceStable(cands, func(i, j int) bool { return ladderLess(cands[i], cands[j], w, policy) })
-	// At least one in-season commercial when one is rested: the first that fits leads the break.
+	// At least one in-season commercial when one is rested: the first that fits is placed first, so
+	// nothing can crowd it out, and takes a seeded position once the break is filled (decision 35).
+	lead := ""
 	if share.in == 0 {
 		for i, c := range cands {
 			if inSeason(c.Clip, w) && !resting(c.Clip, w, policy) && c.DurationMs <= budget {
 				cands = append([]rungClip{c}, slices.Delete(cands, i, i+1)...)
+				lead = c.ID()
 				break
 			}
 		}
@@ -195,7 +199,27 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	if len(out) == 0 {
 		return "", nil
 	}
-	return pools[loosest].level, out
+	return pools[loosest].level, placeLead(out, lead, rng)
+}
+
+// placeLead moves the guaranteed in-season commercial from the front of out to a seeded position
+// among the commercials, one that keeps category variety (decision 35).
+func placeLead(out []Clip, lead string, rng *rand.Rand) []Clip {
+	if lead == "" || len(out) < 2 || out[0].ID() != lead {
+		return out
+	}
+	c, rest := out[0], slices.Clone(out[1:])
+	clash := func(other Clip) bool { return c.Category != "" && other.Category == c.Category }
+	var at []int
+	for i := 0; i <= len(rest); i++ {
+		if (i == 0 || !clash(rest[i-1])) && (i == len(rest) || !clash(rest[i])) {
+			at = append(at, i)
+		}
+	}
+	if len(at) == 0 {
+		return out
+	}
+	return slices.Insert(rest, at[rng.Intn(len(at))], c)
 }
 
 // rungClip is a ladder candidate: the clip and the tightest rung (index into the pools) that
