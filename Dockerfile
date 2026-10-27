@@ -167,9 +167,15 @@ ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-10-27
 ARG FFMPEG_BUILD_ID=n9.0.2-36-g6882969ce9
 ARG FFMPEG_AMD64_SHA256=79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b
 ARG FFMPEG_ARM64_SHA256=f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f
-ARG WHISPER_VERSION=v1.9.1
-ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
-ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
+# ⚠ Since v1.9.3 whisper.cpp's version releases carry NO binaries: the Ubuntu archives are attached
+# to the ggml-style build release cut from the SAME commit, which the version release links as its
+# "Nightly build". WHISPER_VERSION is the human version; WHISPER_BUILD is the release the archives
+# download from. To bump: take the new version's linked build tag, confirm both tags resolve to one
+# commit, and recompute both SHA256s from the downloaded archives.
+ARG WHISPER_VERSION=v1.9.5
+ARG WHISPER_BUILD=b5454
+ARG WHISPER_AMD64_SHA256=a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c
+ARG WHISPER_ARM64_SHA256=6b95ebfc60447df48e70ef00a73bdc3f41679ed2d01ef465827206a2ff325149
 # The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
 # that silently changes content changes transcription, and transcription decides where
 # clips get cut. Same reasoning as the version pins above, higher stakes.
@@ -368,7 +374,7 @@ RUN set -eux; \
     # at load with "libgomp.so.1: cannot open shared object file".
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /tmp/whisper.tar.gz \
-      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
+      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_BUILD}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
     echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/whisper.tar.gz -C /tmp; \
     install -d /usr/local/lib/whisper; \
