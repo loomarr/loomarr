@@ -44,7 +44,7 @@ func borderlineCatalog(t *testing.T, n int) ([]DefectClip, *defectMemStore) {
 	t.Helper()
 	dir := t.TempDir()
 	t0 := time.Unix(1_800_000_000, 0).UTC()
-	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 10.5}
+	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 8.5}
 	st := &defectMemStore{records: map[string]DefectRecord{}}
 	var clips []DefectClip
 	for i := range n {
@@ -270,7 +270,7 @@ func (p *judgeProvider) AskAboutImages(_ context.Context, prompt string, jpegs [
 // The vision judge takes its stills across the whole clip, reserves before it asks, settles after,
 // and reads the model's ruling.
 func TestVisionDefectJudge_ReservesAsksAndSettles(t *testing.T) {
-	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 10.5}
+	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 8.5}
 	req := DefectJudgeRequest{ClipHash: "c1", File: filepath.Join("clips", "c1.mp4"), DurationMs: 30_000, Era: 1988,
 		Assessment: defects.Assess(soft, 1988)}
 	route := func() (DefectJudgeEndpoint, error) {
