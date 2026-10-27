@@ -18,6 +18,9 @@ type taxonomyEditor struct {
 	store store.Store
 	wake  *fillerChannelWake
 	now   func() time.Time
+	// holidaysChanged rereads the holiday snapshot: a seasonal taxon's edit can add or retire the
+	// undated holiday it owns (#2030).
+	holidaysChanged func(context.Context)
 }
 
 func (e taxonomyEditor) Preview(ctx context.Context, edit store.TaxonomyEdit) (api.TaxonomyImpact, error) {
@@ -39,6 +42,10 @@ func (e taxonomyEditor) Apply(ctx context.Context, edit store.TaxonomyEdit) (api
 	}
 	if err := e.store.ApplyTaxonomyEdit(ctx, edit, now().UTC()); err != nil {
 		return api.TaxonomyImpact{}, err
+	}
+	if e.holidaysChanged != nil {
+		// The edit is committed: a client that hangs up now must not leave the snapshot stale.
+		e.holidaysChanged(context.WithoutCancel(ctx))
 	}
 	after, err := e.playableSnapshots(ctx, impact.Store.PlayableClipHashes)
 	if err != nil {

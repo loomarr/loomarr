@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -18,6 +19,14 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 		return err
 	}
 	if err := s.convergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), now); err != nil {
+		return err
+	}
+	// Holidays follow their taxa (a holiday row references its seasonal taxon), and the heal runs
+	// last so a shipped holiday is stored dated before an orphan taxon could claim its slug undated.
+	if err := s.convergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), now); err != nil {
+		return err
+	}
+	if err := s.healUndatedHolidays(ctx, now); err != nil {
 		return err
 	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the

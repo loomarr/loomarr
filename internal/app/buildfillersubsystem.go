@@ -62,6 +62,7 @@ func buildFillerSubsystem(
 	imageService *images.Service,
 	playbackHeadroom filler.PlaybackHeadroom,
 	owner *generationLifecycle,
+	holidaysChanged func(context.Context),
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -118,7 +119,7 @@ func buildFillerSubsystem(
 
 	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
-	result.taxonomy = taxonomyEditor{store: st, wake: wake}
+	result.taxonomy = taxonomyEditor{store: st, wake: wake, holidaysChanged: holidaysChanged}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
