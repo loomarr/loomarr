@@ -249,13 +249,13 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   Positions are deterministic for a lineup and seed.
 - **Rotation (V58, household-wide since #2017).** The history is the household's, not a channel's:
   a commercial seen on any channel rests on every channel. One row per watched airing
-  (`filler_airings`: channel, clip, scheduled start, recorded at) keeps each clip's newest four, so
-  it stays bounded. Internal playout writes it when the channel encoder resolves the clip, keyed by
+  (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
+  day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when the channel encoder resolves the clip, keyed by
   scheduled start, so tune-ins and rebuilds cannot inflate it; preview and reconcile never write it.
   **Only watched airings count:** a packager a neighbour warm keeps ready for a channel switch airs
-  to nobody, and its lookups carry `playout.WithUnwatched` until a viewer has fetched it within the
-  last 10 seconds. A viewer who switches to a warm channel mid-clip misses that clip's count, the
-  cheaper error. Per-channel history let one TV switching channels see the same clips in the same
+  to nobody, and its lookups carry `playout.WithUnwatched` while no viewer (browser player or tuner)
+  holds it or released it in the last 10 seconds. A viewer who switches to a warm channel mid-clip
+  misses that clip's count, the cheaper error. Per-channel history let one TV switching channels see the same clips in the same
   order on two channels within the hour, and warm neighbours rested clips nobody saw.
 
   Assembly reads a snapshot of airings that aired before the break starts **and** were recorded at

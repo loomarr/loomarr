@@ -587,14 +587,30 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("concurrent exposure = %+v, want three distinct channel/start airings", got)
 	}
 
-	// Only a clip's newest airings are kept, so the history stays bounded however long it runs.
+	// Every airing younger than a day is kept, however many channels aired the clip: a break on air
+	// may count any of them.
 	for i := 1; i <= 5; i++ {
 		at := second.Add(time.Duration(i) * time.Hour)
 		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	latest := second.Add(5 * time.Hour)
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all[clip.Hash]; got.PlayCount != 8 {
+		t.Fatalf("exposure within a day = %+v, want all eight airings kept", got)
+	}
+	// Older than a day, only a clip's newest four are kept, so the history stays bounded.
+	day := 25 * time.Hour
+	for i := 1; i <= 5; i++ {
+		at := second.Add(time.Duration(i) * day)
+		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest := second.Add(5 * day)
 	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -603,12 +619,23 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("trimmed exposure = %+v, want the newest four airings, latest at %v", got, latest)
 	}
 	// A break between the kept airings still sees the latest one before it.
-	mid, err := exposuresBefore(ctx, s, second.Add(3*time.Hour+time.Minute), 0)
+	mid, err := exposuresBefore(ctx, s, second.Add(3*day+time.Minute), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := mid[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second.Add(3*time.Hour)) {
+	if got := mid[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second.Add(3*day)) {
 		t.Fatalf("snapshot inside the kept airings = %+v, want the two before it", got)
+	}
+	// An airing older than all of those, written late, is not trimmed by its own write: resolving
+	// it again is still one airing.
+	for i, want := range []bool{true, false} {
+		recorded, err := s.RecordClipPlay(ctx, "channel-c", clip.Hash, first, latest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if recorded != want {
+			t.Fatalf("late write %d of one old airing reported recorded=%v, want %v", i+1, recorded, want)
+		}
 	}
 
 	// A missing catalog row still records actual airing truth. Re-admission must retain it.

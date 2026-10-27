@@ -232,7 +232,7 @@ func (s *watchSource) lookups() []bool {
 
 // #2017: what a neighbour warm keeps airing for a fast channel switch airs to nobody, and must not
 // count as seen in the household's commercial rotation. A packager's lookups are watched while a
-// viewer has fetched it within watchedWindow, and unwatched otherwise, from its very first.
+// viewer holds it or released it within watchedWithin, and unwatched otherwise, from its very first.
 func TestPackagerMarksLookupsNobodyWatches(t *testing.T) {
 	src := &watchSource{}
 	m, err := NewPackagerHLS(src, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
@@ -255,11 +255,16 @@ func TestPackagerMarksLookupsNobodyWatches(t *testing.T) {
 	if look() {
 		t.Error("a packager no viewer has fetched looked up its item as watched")
 	}
-	seen.mark(time.Now())
+	seen.join()
 	if !look() {
-		t.Error("a packager a viewer just fetched looked up its item as unwatched")
+		t.Error("a packager a viewer holds looked up its item as unwatched")
 	}
-	seen.mark(time.Now().Add(-watchedWindow - time.Second))
+	seen.leave(time.Now())
+	if !look() {
+		t.Error("a packager a player released between two polls looked up its item as unwatched")
+	}
+	seen.join()
+	seen.leave(time.Now().Add(-watchedWithin - time.Second))
 	if look() {
 		t.Error("a packager its viewer left looked up its item as watched")
 	}
@@ -274,16 +279,24 @@ func TestPackagerMarksLookupsNobodyWatches(t *testing.T) {
 	if got := src.lookups(); len(got) <= before || got[before] {
 		t.Fatalf("a warm start's first lookup was watched (lookups %v from %d)", got, before)
 	}
-	if c.seen.recent(time.Now()) {
+	if c.seen.watched(time.Now()) {
 		t.Fatal("a warm start counts as a viewer")
 	}
+	// A tuner (Attach) holds one viewer lease for its whole session: watched however long it runs,
+	// and not once it has been gone longer than watchedWithin.
 	_, release, err = m.acquire("neighbour", FormatBaseline, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if later := time.Now().Add(time.Hour); !c.seen.watched(later) {
+		t.Fatal("a viewer holding the packager for an hour stopped counting as watched")
+	}
 	release()
-	if !c.seen.recent(time.Now()) {
-		t.Fatal("a viewer joining the warm packager did not make it watched")
+	if !c.seen.watched(time.Now()) {
+		t.Fatal("a viewer who just released the packager no longer counts")
+	}
+	if c.seen.watched(time.Now().Add(watchedWithin + time.Second)) {
+		t.Fatal("a packager its last viewer left counts as watched")
 	}
 }
 

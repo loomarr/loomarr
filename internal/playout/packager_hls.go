@@ -117,25 +117,36 @@ type packagedChannel struct {
 	// warmHeld is set while the last acquire was a neighbour warm's, not a viewer's: the packager is
 	// adjacent to where a viewer is. A premium keeps the baseline's grace while it is (#1037).
 	warmHeld bool
-	// seen is when a viewer last fetched this packager, shared with its schedule (#2017).
+	// seen is whether a viewer holds this packager, shared with its schedule (#2017).
 	seen *viewership
 }
 
-// watchedWindow is how recently a viewer must have fetched a packager's playlist for what it airs
-// to count as watched. A player refreshes the playlist about once a segment (outputGOPSeconds), so
-// this is many missed refreshes: a viewer who left, not one on a slow network. warmHeld cannot say
-// it: it stays false through the grace after the last viewer leaves.
-const watchedWindow = 10 * time.Second
+// viewership is whether anyone is watching a packager: a viewer's lease is held now, or the last one
+// was released less than watchedWithin ago. A browser player holds a lease only while a playlist
+// request is in flight, so between its polls it holds none; a tuner holds one for its whole session.
+// Neighbour warms never count. warmHeld cannot say it: it stays false through the grace after the
+// last viewer leaves. The schedule reads it on the packager's own goroutine as it looks up each
+// item, so it is atomic rather than under the origin's lock.
+type viewership struct {
+	holders atomic.Int64
+	left    atomic.Int64 // unix nanos when a viewer's lease was last released
+}
 
-// viewership is when a viewer last fetched a packager. The schedule reads it on the packager's own
-// goroutine as it looks up each item, so it is atomic rather than under the origin's lock.
-type viewership struct{ at atomic.Int64 }
+func (v *viewership) join() { v.holders.Add(1) }
 
-func (v *viewership) mark(t time.Time) { v.at.Store(t.UnixNano()) }
+// leave stamps the release before dropping the count, so a reader that sees no holder sees when the
+// last one left.
+func (v *viewership) leave(t time.Time) {
+	v.left.Store(t.UnixNano())
+	v.holders.Add(-1)
+}
 
-func (v *viewership) recent(t time.Time) bool {
-	at := v.at.Load()
-	return at != 0 && t.Sub(time.Unix(0, at)) < watchedWindow
+func (v *viewership) watched(t time.Time) bool {
+	if v.holders.Load() > 0 {
+		return true
+	}
+	left := v.left.Load()
+	return left != 0 && t.Sub(time.Unix(0, left)) < watchedWithin
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -437,14 +448,19 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 	c.warmHeld = speculative
 	if !speculative {
 		c.speculative = false
-		c.seen.mark(time.Now())
+		c.seen.join()
 	}
 	if c.idle != nil {
 		c.idle.Stop()
 		c.idle = nil
 	}
 	m.mu.Unlock()
-	return c, onceRelease(func() { m.release(key, c) }), nil
+	return c, onceRelease(func() {
+		if !speculative {
+			c.seen.leave(time.Now())
+		}
+		m.release(key, c)
+	}), nil
 }
 
 func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel, error) {
@@ -461,7 +477,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	if speculative {
 		firstCtx = WithUnwatched(ctx)
 	} else {
-		seen.mark(resolvedAt)
+		seen.left.Store(resolvedAt.UnixNano()) // the viewer starting it joins once it is registered
 	}
 	first, ferr := m.source.ItemAt(firstCtx, key.channel, resolvedAt)
 	req := AdmitRequest{Class: ClassSDR}
@@ -543,7 +559,7 @@ func (m *PackagerHLS) schedule(
 		it, ok := pre.take(at)
 		if !ok {
 			lookup := ctx
-			if !seen.recent(time.Now()) {
+			if !seen.watched(time.Now()) {
 				lookup = WithUnwatched(ctx)
 			}
 			var err error

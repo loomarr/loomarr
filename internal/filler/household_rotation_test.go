@@ -52,7 +52,7 @@ func TestHouseholdRotation_AnEveningOfChannelSurfingNeverRepeatsInsideTheSpacing
 	channels := []struct {
 		id     string
 		offset time.Duration
-	}{{"simpsons", 0}, {"rewind", 12 * time.Minute}}
+	}{{"cartoon-classics", 0}, {"rewind", 12 * time.Minute}}
 	watching := func(at time.Time) string { return channels[int(at.Sub(evening)/(30*time.Minute))%2].id }
 
 	type airing struct {
