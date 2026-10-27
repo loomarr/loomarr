@@ -853,7 +853,7 @@ gate because a newly published advisory would otherwise fail every Go PR regardl
 A red run is the prompt to bump the module, or go.mod's `toolchain` line together with the
 Dockerfile's golang image.
 
-## Scheduled FFmpeg pin refresh
+## Scheduled ffmpeg pin refresh
 
 `ffmpeg-pin-refresh.yml` runs every Monday, and on manual dispatch with an optional `dry_run`. It
 runs `scripts/ffmpeg-pin-refresh.sh automate`. When BtbN has a newer release-series build, the

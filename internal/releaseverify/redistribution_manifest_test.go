@@ -3,8 +3,8 @@ package releaseverify
 import (
 	"encoding/json"
 	"os"
-	"regexp"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"

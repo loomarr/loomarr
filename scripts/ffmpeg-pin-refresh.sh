@@ -57,7 +57,8 @@ series="$(series_of "$build_id")"
 current_build="$(read_pin FFMPEG_BUILD_ID)"
 current_series="$(series_of "$current_build")"
 changed=false
-[[ "$build_id" == "$current_build" && "$release" == "$(read_pin FFMPEG_RELEASE)" ]] || changed=true
+# A newer autobuild of the SAME build id is a rebuild, not a new FFmpeg: keep the pin.
+[[ "$build_id" == "$current_build" ]] || changed=true
 series_change=false
 [[ "$series" == "$current_series" ]] || series_change=true
 if [[ "$mode" == check ]]; then
@@ -71,7 +72,10 @@ if [[ "$mode" == automate ]]; then
   branch="deps/ffmpeg-$build_id"
   [[ "$changed" == true ]] || { echo "the pin $current_build is BtbN's newest build; nothing to do" >&2; exit 0; }
   if git -C "$repo_root" ls-remote --exit-code --heads origin "$branch" >/dev/null; then
-    echo "$branch already exists; nothing to do" >&2
+    # Done only when the branch has its PR; a branch without one is a run that died half-way.
+    [[ "$(gh pr list --repo "$loomarr" --head "$branch" --state all --json number --jq length)" != 0 ]] \
+      || die "$branch exists but has no PR: a previous run stopped half-way; open its PR or delete the branch"
+    echo "$branch already has its PR; nothing to do" >&2
     exit 0
   fi
   [[ "${DRY_RUN:-false}" == true ]] && mode=dry-run || mode=publish
@@ -106,7 +110,14 @@ gh api "repos/FFmpeg/FFmpeg/compare/$base_tag...$source_commit" --jq '"\(.ahead_
   | grep -qx "$distance 0" || die "$source_commit is not $distance commits after $base_tag"
 
 # --- Download and verify --------------------------------------------------------------------------
+# release/ is rebuilt every run so nothing from an earlier build can be published; downloads in it are
+# kept aside first and re-verified by digest before reuse.
+mkdir -p "$work/keep"
+if [[ -d "$work/release" ]]; then find "$work/release" -maxdepth 1 -name '*.tar.xz' -exec mv -t "$work/keep" {} +; fi
+rm -rf "$work/release"
 mkdir -p "$work/release"
+find "$work/keep" -maxdepth 1 -name "ffmpeg-$build_id-*" -exec mv -t "$work/release" {} +
+rm -rf "$work/keep"
 fetch() { # fetch URL DEST DIGEST — reuse DEST only when it still matches DIGEST
   local url="$1" dest="$2" digest="$3"
   if [[ -f "$dest" && "$(sha "$dest")" == "$digest" ]]; then return; fi
@@ -203,14 +214,25 @@ echo "staged $tag in $work/release:" >&2
 # --- Publish, then verify what GitHub serves -----------------------------------------------------
 if gh release view "$tag" --repo "$loomarr" >/dev/null 2>&1; then die "$tag already exists"; fi
 target="$(gh api "repos/$loomarr/commits/main" --jq .sha)"
-gh release create "$tag" --repo "$loomarr" --prerelease --latest=false --target "$target" \
+# Created as a DRAFT and made public only once every uploaded asset matches its local digest: a
+# failed or partial upload must never become a public source release.
+gh release create "$tag" --repo "$loomarr" --draft --prerelease --latest=false --target "$target" \
   --title "Third-party source materials — FFmpeg $build_id" --notes-file "$work/notes.md" "$work"/release/*
+draft_assets() { gh api "repos/$loomarr/releases?per_page=30" --jq ".[] | select(.tag_name == \"$tag\") | .assets"; }
+for attempt in 1 2 3 4 5 6; do
+  assets="$(draft_assets)"
+  mismatch=""
+  while read -r name; do
+    want="$(sha "$work/release/$name")"
+    got="$(jq -r --arg n "$name" '.[] | select(.name == $n) | .digest // "" | ltrimstr("sha256:")' <<<"$assets")"
+    [[ "$got" == "$want" ]] || mismatch="$name (got '$got', want $want)"
+  done < <(cd "$work/release" && ls)
+  [[ -n "$mismatch" ]] || break
+  ((attempt < 6)) || die "draft $tag asset $mismatch; the draft stays unpublished"
+  sleep 10
+done
+gh release edit "$tag" --repo "$loomarr" --draft=false --prerelease --latest=false >/dev/null
 published_json="$(gh api "repos/$loomarr/releases/tags/$tag")"
-while read -r name; do
-  want="$(sha "$work/release/$name")"
-  got="$(jq -r --arg n "$name" '.assets[] | select(.name == $n) | .digest | ltrimstr("sha256:")' <<<"$published_json")"
-  [[ "$got" == "$want" ]] || die "published $name digest $got differs from local $want"
-done < <(cd "$work/release" && ls)
 
 # --- Rewrite the pins and evidence ---------------------------------------------------------------
 set_arg() { # set_arg NAME VALUE — rewrite exactly one `ARG NAME=` line, then prove it
@@ -296,8 +318,8 @@ provenance.
 EOF
 awk -v f="$block" '
   /^<!-- ffmpeg-pin:begin -->$/ { print; while ((getline line < f) > 0) print line; skip = 1; n++; next }
-  /^<!-- ffmpeg-pin:end -->$/ { skip = 0 }
-  !skip { print } END { exit n != 1 }' "$notices" >"$notices.tmp" || { rm -f "$notices.tmp"; die "THIRD_PARTY_NOTICES.md needs one ffmpeg-pin block"; }
+  /^<!-- ffmpeg-pin:end -->$/ { skip = 0; e++ }
+  !skip { print } END { exit n != 1 || e != 1 }' "$notices" >"$notices.tmp" || { rm -f "$notices.tmp"; die "THIRD_PARTY_NOTICES.md needs one ffmpeg-pin block"; }
 mv -- "$notices.tmp" "$notices"
 echo "pinned $build_id from $release; published $release_url" >&2
 [[ "$automate" == true ]] || exit 0

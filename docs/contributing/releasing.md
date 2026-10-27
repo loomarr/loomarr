@@ -306,9 +306,9 @@ animated WebP rendition while its still fallback remains non-animated. Tests exe
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
 
-## Bundled FFmpeg pin
+## Bundled ffmpeg pin
 
-The image ships BtbN's newest release-series GPL build of FFmpeg (`nX.Y` builds, never master's
+The image ships BtbN's newest release-series GPL build of ffmpeg (`nX.Y` builds, never master's
 `N-` builds), pinned by build id and per-architecture SHA256. BtbN keeps only its newest 14 daily
 releases and deletes each build's dependency download cache after 14 days. Each pin is therefore
 published, together with its corresponding source, as a Loomarr `third-party-sources-<date>` release.
@@ -323,7 +323,7 @@ The image and CI download the binaries from that release, never from BtbN.
 ```
 
 `publish` finds the BtbN run that published the newest autobuild and downloads both GPL archives,
-checking them against BtbN's checksums. It also downloads the FFmpeg source archive at the build's
+checking them against BtbN's checksums. It also downloads the ffmpeg source archive at the build's
 commit, the BtbN recipe archive at the commit the run built, and the run's `download-cache`
 artifact. It fails if that artifact has expired. It then publishes the release, which is split into
 parts over GitHub's 2 GiB asset limit, and checks every published asset's digest. Last, it rewrites:
@@ -336,7 +336,7 @@ parts over GitHub's 2 GiB asset limit, and checks every published asset's digest
 `internal/releaseverify` fails unless the pinned build's source release is recorded with both
 binaries, the source, the recipe and the cache.
 
-The **FFmpeg pin refresh** workflow runs it every Monday and on dispatch (`dry_run` stages only).
+The `ffmpeg-pin-refresh.yml` workflow runs it every Monday and on dispatch (`dry_run` stages only).
 When BtbN has a newer build, the workflow publishes the release and pushes `deps/ffmpeg-<build>`. It
 then opens a PR and dispatches `ci.yml` with `scope=full`, because a bot push triggers no CI. That
 CI run builds the image on amd64 and arm64 and runs `make test-ffmpeg` against the image's own
