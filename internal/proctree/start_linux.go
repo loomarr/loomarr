@@ -19,6 +19,10 @@ func startProcess(cmd *exec.Cmd, o options) error {
 // priority from their first instruction. A renice after Start leaves a window in which the child
 // runs, and may spawn, at normal priority (#2020). The goroutine never unlocks the thread, so the
 // lowered thread exits with it: an unprivileged thread cannot raise its priority back.
+//
+// Two consequences. When the lowered thread is the main thread, Go parks it rather than ending it,
+// so ps and top report the whole server at that nice although no goroutine runs there again. And
+// cmd must not set SysProcAttr.Pdeathsig: it fires when the creating thread exits, which is at once.
 func StartAtNice(cmd *exec.Cmd, nice int) error {
 	started := make(chan error, 1)
 	go func() {

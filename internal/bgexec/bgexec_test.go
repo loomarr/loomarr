@@ -31,11 +31,9 @@ func TestCapThreadsRespectsAnExplicitChoice(t *testing.T) {
 
 // fakeTool writes its own nice value and argv to files, then exits with the given code.
 //
-// proctree applies background priority with setpriority(PRIO_PGRP) right after Start, because Go
-// cannot set a child's niceness before exec. A shell that samples its niceness in its very first
-// instruction can therefore observe 0 on a busy host (reproduced: 30 failures in 400 runs under
-// load, and once on the self-hosted CI runner). The contract is that the tree runs at background
-// priority, so the tool waits up to 2s for the renice to land before reporting what it observes.
+// On Linux proctree starts the tool already at background priority (#2020). Elsewhere it renices
+// the group a moment after Start, so a tool that sampled its niceness at once could observe 0; the
+// tool waits up to 2s for the renice to land before reporting what it observes.
 func fakeTool(t *testing.T, exit int) (tool, report string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -50,9 +48,11 @@ func fakeTool(t *testing.T, exit int) (tool, report string) {
 	return tool, report
 }
 
+// requireNice0 reads an ordinary child's nice, not this process's: once a lowered start thread was
+// the main thread, ps reports this process at that nice (proctree/start_linux.go).
 func requireNice0(t *testing.T) {
 	t.Helper()
-	out, err := exec.Command("ps", "-o", "ni=", "-p", strconv.Itoa(os.Getpid())).Output()
+	out, err := exec.Command("sh", "-c", "ps -o ni= -p $$").Output()
 	if err != nil || strings.TrimSpace(string(out)) != "0" {
 		t.Skip("needs ps and a test process at nice 0")
 	}
