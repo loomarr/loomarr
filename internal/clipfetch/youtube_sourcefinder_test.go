@@ -181,10 +181,12 @@ printf '%%s\n' '{"entries":[]}'
 func TestYouTubeSourceFinderRunsOnlyOneDistinctSearchAtATime(t *testing.T) {
 	dir := t.TempDir()
 	lock, overlap := dir+"/lock", dir+"/overlap"
+	// The lock is a noclobber create (O_CREAT|O_EXCL), not `mkdir`: uutils mkdir (Ubuntu 26.04's) lets
+	// two racing runs both succeed, which would hide the very overlap this test looks for.
 	ytdlp := testkit.Executable(t, "yt-dlp", fmt.Sprintf(`#!/bin/sh
-if ! mkdir %q 2>/dev/null; then printf 'overlap\n' >> %q; fi
+if ! (set -C; : > %q) 2>/dev/null; then printf 'overlap\n' >> %q; fi
 sleep 0.1
-rmdir %q 2>/dev/null || true
+rm -f %q
 printf '%%s\n' '{"entries":[]}'
 `, lock, overlap, lock))
 	finder := clipfetch.NewYouTubeSourceFinder(ytdlp)
