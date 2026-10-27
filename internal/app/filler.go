@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
@@ -591,8 +592,15 @@ type clipCatalogAdapter struct{ st store.Store }
 // actual-airing history but cannot write it. Playout owns the sole write boundary.
 type clipExposureAdapter struct{ st store.Store }
 
-func (a clipExposureAdapter) FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
-	return a.st.FillerExposureRecords(ctx, channelID)
+// airingSettle is how long before a break an airing must have been recorded to count for it.
+// Playout resolves a break's first clip no earlier than its run-ahead before the break and records
+// each clip as it resolves it, so every airing the break counts was already stored when its first
+// clip was assembled. The margin covers clock skew between Postgres replicas.
+const airingSettle = playout.OnAirLookahead + 3*time.Second
+
+func (a clipExposureAdapter) FillerAirings(ctx context.Context) (filler.AiringHistory, error) {
+	airings, err := a.st.FillerAirings(ctx)
+	return filler.AiringHistory{Airings: airings, Settle: airingSettle}, err
 }
 
 // ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,

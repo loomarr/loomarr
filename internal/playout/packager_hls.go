@@ -117,6 +117,25 @@ type packagedChannel struct {
 	// warmHeld is set while the last acquire was a neighbour warm's, not a viewer's: the packager is
 	// adjacent to where a viewer is. A premium keeps the baseline's grace while it is (#1037).
 	warmHeld bool
+	// seen is when a viewer last fetched this packager, shared with its schedule (#2017).
+	seen *viewership
+}
+
+// watchedWindow is how recently a viewer must have fetched a packager's playlist for what it airs
+// to count as watched. A player refreshes the playlist about once a segment (outputGOPSeconds), so
+// this is many missed refreshes: a viewer who left, not one on a slow network. warmHeld cannot say
+// it: it stays false through the grace after the last viewer leaves.
+const watchedWindow = 10 * time.Second
+
+// viewership is when a viewer last fetched a packager. The schedule reads it on the packager's own
+// goroutine as it looks up each item, so it is atomic rather than under the origin's lock.
+type viewership struct{ at atomic.Int64 }
+
+func (v *viewership) mark(t time.Time) { v.at.Store(t.UnixNano()) }
+
+func (v *viewership) recent(t time.Time) bool {
+	at := v.at.Load()
+	return at != 0 && t.Sub(time.Unix(0, at)) < watchedWindow
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -418,6 +437,7 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 	c.warmHeld = speculative
 	if !speculative {
 		c.speculative = false
+		c.seen.mark(time.Now())
 	}
 	if c.idle != nil {
 		c.idle.Stop()
@@ -436,7 +456,14 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
 	// A premium packager is priced by its own class instead (premiumAdmission).
 	resolvedAt := time.Now()
-	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
+	seen := &viewership{}
+	firstCtx := ctx
+	if speculative {
+		firstCtx = WithUnwatched(ctx)
+	} else {
+		seen.mark(resolvedAt)
+	}
+	first, ferr := m.source.ItemAt(firstCtx, key.channel, resolvedAt)
 	req := AdmitRequest{Class: ClassSDR}
 	if key.format.isPremium() {
 		req = premiumAdmission
@@ -474,7 +501,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	if out.HDR {
 		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
 	}
-	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, log), slate)
+	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, seen, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
@@ -482,7 +509,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 		return nil, err
 	}
 	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{}),
-		lease: lease, speculative: speculative}
+		lease: lease, speculative: speculative, seen: seen}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
@@ -504,9 +531,10 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 
 // schedule adapts the application's items to the packager: each Open builds the item's command
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
-// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
+// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
+// made while no viewer has fetched the channel recently is marked unwatched (WithUnwatched).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, seen *viewership, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
@@ -514,8 +542,12 @@ func (m *PackagerHLS) schedule(
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
+			lookup := ctx
+			if !seen.recent(time.Now()) {
+				lookup = WithUnwatched(ctx)
+			}
 			var err error
-			if it, err = m.source.ItemAt(ctx, key.channel, at); err != nil {
+			if it, err = m.source.ItemAt(lookup, key.channel, at); err != nil {
 				return packager.Item{}, err
 			}
 		}

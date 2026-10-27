@@ -65,7 +65,10 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   that rendition warm but cannot start a new packager or promote one to viewing. Premium snapshots
   require the viewer's learned premium preference. The hint is stripped from init and segment URLs,
   so prefetched bytes use the same signed addresses as the real player. These requests never count
-  as household viewing or as evidence that the client chose premium.
+  as household viewing or as evidence that the client chose premium. What a warm packager airs is
+  not watched either: until a viewer has fetched it within the last 10 seconds, its item lookups
+  carry `WithUnwatched`, and the commercials it resolves are not recorded in the household's
+  rotation (scheduling.md, Rotation).
   Playlist acquisition is ordered with lifecycle changes; waiting for media readiness releases that
   lifecycle lock so stop, pause and quiesce can cancel a pending response.
 - **Stills.** A warm channel's still is decoded once per segment from its newest listed segment. A cold

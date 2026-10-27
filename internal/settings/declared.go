@@ -1147,7 +1147,7 @@ func declared() []Setting {
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
 			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Default seconds before the same commercial airs again on a channel (14400 is 4 hours). Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
+			Doc: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a

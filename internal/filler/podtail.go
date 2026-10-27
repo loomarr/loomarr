@@ -29,8 +29,13 @@ type tailCandidate struct {
 // cooldown is never used here — a short tail beats a repeat — then category variety, relaxed
 // rather than leaving time unused. Ads respect the pod's clip ceiling; bookends do not count against it.
 //
-// Among the clips that fit, the LONGEST wins, so the leftover shrinks as fast as it can, and a
-// remainder that no clip fits exactly still ends under the shortest unused clip.
+// Among the clips that fit, rotation picks first, exactly as it does for the ads: a clip the
+// household has never seen, then the least recently aired. Equals go to the LONGEST, so the
+// leftover shrinks as fast as it can. Either way the loop runs until nothing unused fits, so the
+// remainder still ends under the shortest unused clip.
+//
+// ⚠ Length used to come first, so the same few long clips topped up every break they fitted and
+// a never-aired clip lost to one aired a few hours ago (#2017).
 func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, remainingMs int64, adsPlaced int) {
 	if remainingMs <= 0 {
 		return
@@ -119,16 +124,19 @@ func (p *Pod) widenTo(pools []pool, rung int) {
 	}
 }
 
-// tailBetter orders two rested clips that both fit: the longer, then an ad
-// before a bookend, then the durable rotation order. Equal clips keep their (seeded) position.
+// tailBetter orders two rested clips that both fit: the durable rotation order, then the longer,
+// then an ad before a bookend. Equal clips keep their (seeded) position.
 func tailBetter(a, b tailCandidate, w Window, policy Policy) bool {
+	if rotationLess(a.Clip, b.Clip, w, policy) {
+		return true
+	}
+	if rotationLess(b.Clip, a.Clip, w, policy) {
+		return false
+	}
 	if a.DurationMs != b.DurationMs {
 		return a.DurationMs > b.DurationMs
 	}
-	if (a.rung >= 0) != (b.rung >= 0) {
-		return a.rung >= 0
-	}
-	return rotationLess(a.Clip, b.Clip, w, policy)
+	return a.rung >= 0 && b.rung < 0
 }
 
 func resting(c Clip, w Window, policy Policy) bool {

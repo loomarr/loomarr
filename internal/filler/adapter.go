@@ -15,8 +15,8 @@ import (
 // a per-channel pool (not a per-gap sequence): the scheduler no longer sizes pods
 // to individual gaps.
 type PodAdapter struct {
-	catalog   CatalogReader
-	exposures ExposureReader
+	catalog CatalogReader
+	airings AiringReader
 	// policy is RESOLVED PER CALL, not captured once.
 	//
 	// ⚠ **It was a plain `Policy` value, and that quietly broke every filler setting's
@@ -60,11 +60,15 @@ type CatalogReader interface {
 	AllClips(ctx context.Context) ([]Clip, error)
 }
 
-// ExposureReader is the durable channel-history seam used only for actual break planning.
-// Keeping it separate from CatalogReader makes previews/tests that intentionally have no history
-// explicit, and prevents assembly from acquiring any write capability.
-type ExposureReader interface {
-	FillerExposureRecords(ctx context.Context, channelID string) (map[string]ExposureRecord, error)
+// AiringReader is the durable airing-history seam used only for actual break planning. Keeping it
+// separate from CatalogReader makes previews/tests that intentionally have no history explicit,
+// and prevents assembly from acquiring any write capability.
+//
+// ⚠ The history is the HOUSEHOLD's, not one channel's: a commercial seen on any channel rests on
+// every channel (#2017). Per-channel history let one TV switching channels see the same clips in
+// the same order on two channels within the hour.
+type AiringReader interface {
+	FillerAirings(ctx context.Context) (AiringHistory, error)
 }
 
 // Selection is a channel's per-channel filler choice in filler-native terms (§10) — the
@@ -92,8 +96,8 @@ type Selection struct {
 //
 // ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
-func NewPodAdapter(catalog CatalogReader, exposures ExposureReader, policy func() Policy, log *slog.Logger) *PodAdapter {
-	return &PodAdapter{catalog: catalog, exposures: exposures, policy: policy, log: log}
+func NewPodAdapter(catalog CatalogReader, airings AiringReader, policy func() Policy, log *slog.Logger) *PodAdapter {
+	return &PodAdapter{catalog: catalog, airings: airings, policy: policy, log: log}
 }
 
 // WithMetrics binds generation-scoped observations without coupling filler to Prometheus.
@@ -234,7 +238,7 @@ type Break struct {
 
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
 // (#1420). Each pod is exactly what PreviewAt returns for that break; the catalog, the policy and
-// the channel's exposure records are read ONCE and each break's snapshot is cut from them in
+// the household's airing history are read ONCE and each break's snapshot is cut from them in
 // memory. It used to be a catalog read plus an exposure query per break, 40-80 full-catalog reads
 // for a four-hour guide once breaks were on.
 func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Selection, breaks []Break) ([]Pod, error) {
@@ -249,17 +253,19 @@ func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Se
 	if len(clips) == 0 {
 		return pods, nil
 	}
-	var records map[string]ExposureRecord
-	if a.exposures != nil {
-		if records, err = a.exposures.FillerExposureRecords(ctx, channelID); err != nil {
+	var history *AiringHistory
+	if a.airings != nil {
+		h, err := a.airings.FillerAirings(ctx)
+		if err != nil {
 			return nil, err
 		}
+		history = &h
 	}
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
 	for i, b := range breaks {
-		pods[i] = a.assemble(clips, records, channelID, b, sel, pol)
+		pods[i] = a.assemble(clips, history, channelID, b, sel, pol)
 	}
 	return pods, nil
 }
@@ -276,7 +282,7 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 // break on a timeline is assembled to its slot's own length, which is the hard budget: the slot
 // may be shorter than the configured break (reconcile caps it at the playable pod), and a pod
 // assembled to the setting would run past the slot's end and lose its last ad mid-spot.
-func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, b Break, sel Selection, pol Policy) Pod {
+func (a *PodAdapter) assemble(clips []Clip, history *AiringHistory, channelID string, b Break, sel Selection, pol Policy) Pod {
 	seed, breakStart := b.Seed, b.Start
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	if b.Length > 0 {
@@ -294,8 +300,8 @@ func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, c
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
 	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
-	if a.exposures != nil {
-		w.Exposures = ExposuresBefore(records, breakStart)
+	if history != nil {
+		w.Exposures = ExposuresBefore(*history, breakStart)
 		w.SnapshotAt = breakStart
 	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)

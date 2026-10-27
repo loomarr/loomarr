@@ -60,6 +60,23 @@ func ViewerFrom(ctx context.Context) string {
 	return viewer
 }
 
+type unwatchedContextKey struct{}
+
+// WithUnwatched marks an item lookup for a channel nobody is watching: a packager a neighbour warm
+// keeps ready for a channel switch. The item airs all the same, but nobody saw it, so it is not an
+// airing in the household's commercial rotation (#2017).
+func WithUnwatched(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unwatchedContextKey{}, true)
+}
+
+// Watched reports whether an item lookup is for a channel someone is watching. A lookup with no
+// mark is: only the HLS packager knows a channel is merely warm, and every other path serves a
+// viewer.
+func Watched(ctx context.Context) bool {
+	unwatched, _ := ctx.Value(unwatchedContextKey{}).(bool)
+	return !unwatched
+}
+
 // Presentation is one tuned Channel. Exactly one of Stream or Manifest is populated according
 // to the requested Delivery. Release must be called when the caller is finished with this snapshot.
 type Presentation struct {

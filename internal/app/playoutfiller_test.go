@@ -457,13 +457,15 @@ type recordingPlays struct {
 	calls    []string
 	channels []string
 	at       []time.Time
+	recorded []time.Time
 	err      error
 }
 
-func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash string, at time.Time) (bool, error) {
+func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash string, at, recordedAt time.Time) (bool, error) {
 	r.calls = append(r.calls, clipHash)
 	r.channels = append(r.channels, channelID)
 	r.at = append(r.at, at)
+	r.recorded = append(r.recorded, recordedAt)
 	return r.err == nil, r.err
 }
 
@@ -524,6 +526,33 @@ func TestAiringNow_RecordsClipStartWhenResolverArrivesLate(t *testing.T) {
 	}
 	if got := plays.at[0]; !got.Equal(base) {
 		t.Fatalf("recorded at %v, want scheduled clip start %v", got, base)
+	}
+	if got := plays.recorded[0]; !got.Equal(base.Add(100 * time.Millisecond)) {
+		t.Fatalf("recordedAt %v, want the wall clock of the write", got)
+	}
+}
+
+// #2017: a neighbour warm keeps the next channel's packager running so a switch is instant, and its
+// clips air to nobody. Counted, each one rested on every channel as if the household had seen it.
+func TestAiringNow_DoesNotCountAClipNobodyWatches(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+	plays := &recordingPlays{}
+	r.clipPlays = plays
+
+	got, _, err := r.AiringNow(playout.WithUnwatched(context.Background()), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Identity != "hash-toys" {
+		t.Fatalf("airing %q, want the clip to air all the same", got.Identity)
+	}
+	if len(plays.calls) != 0 {
+		t.Fatalf("recorded %v for a channel nobody watches, want nothing", plays.calls)
 	}
 }
 

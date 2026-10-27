@@ -8,36 +8,49 @@ import (
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 )
 
-// Exposure is one clip's durable actual-airing history on a channel (§10 V58).
-// It is an aggregate rather than an event log: rotation needs recency and whether a clip is new,
-// while the existing global Clip counters remain the operator-facing all-channel totals.
+// Exposure is one clip's watched-airing history across the household, as one break sees it (§10
+// rotation): how many of its stored airings count, and the latest. Rotation needs recency and
+// whether a clip is new; the global Clip counters remain the operator-facing totals.
 type Exposure struct {
 	PlayCount    int64
 	LastPlayedAt time.Time
 }
 
-// ExposureRecord is one clip's stored aggregate on a channel, which playout writes through the core
-// store (see clipcatalog.ExposureRecord).
-type ExposureRecord = clipcatalog.ExposureRecord
+// Airing is one watched airing of a clip on any channel (see clipcatalog.Airing).
+type Airing = clipcatalog.Airing
 
-// ExposuresBefore is the history strictly before `before`, cut from the stored aggregates. A zero
-// cutoff returns all history. The strict boundary keeps a break's snapshot immutable while that
-// break airs, so a rebuild cannot reshuffle its tail.
+// AiringHistory is the household's stored airings and how long one takes to settle: an airing
+// recorded less than Settle before a break starts may have been recorded after that break's first
+// clip was resolved, so the break does not count it.
+type AiringHistory struct {
+	Airings []Airing
+	Settle  time.Duration
+}
+
+// ExposuresBefore is the history a break starting at `before` ranks by: every airing that aired
+// strictly before it and was recorded at least Settle before it. A zero cutoff counts all history.
 //
-// ⚠ Pure and in the domain (#1420) so one read of the records can serve every break of a guide
+// ⚠ Both cuts keep a break's snapshot fixed while the break airs, which a rebuild relies on: the
+// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle its tail.
+// An airing at or after the break's start is the break's own (or later). An airing recorded after
+// the break's first clip was resolved can come from ANOTHER channel with an earlier start: a viewer
+// who tunes in there mid-clip records that clip, aired minutes ago, now. Playout resolves a break's
+// first clip no earlier than its run-ahead before the break, which Settle covers.
+//
+// ⚠ Pure and in the domain (#1420) so one read of the history can serve every break of a guide
 // window: the cut used to live in the store query, which forced one query per break.
-func ExposuresBefore(records map[string]ExposureRecord, before time.Time) map[string]Exposure {
-	out := make(map[string]Exposure, len(records))
-	for hash, r := range records {
-		count, last := r.PlayCount, r.LastPlayedAt
-		if !before.IsZero() && !last.Before(before) {
-			count--
-			last = r.PreviousPlayedAt
-		}
-		if count <= 0 || last.IsZero() {
+func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
+	out := map[string]Exposure{}
+	for _, a := range h.Airings {
+		if !before.IsZero() && (!a.AiredAt.Before(before) || !a.RecordedAt.Before(before.Add(-h.Settle))) {
 			continue
 		}
-		out[hash] = Exposure{PlayCount: count, LastPlayedAt: last}
+		e := out[a.ClipHash]
+		e.PlayCount++
+		if a.AiredAt.After(e.LastPlayedAt) {
+			e.LastPlayedAt = a.AiredAt
+		}
+		out[a.ClipHash] = e
 	}
 	return out
 }
@@ -149,7 +162,7 @@ type Window struct {
 	Kinds      []string
 	Pinned     []string
 	Excluded   []string
-	// Exposures is the durable per-channel snapshot strictly before SnapshotAt (§10 V58).
+	// Exposures is the household's snapshot before SnapshotAt (§10 rotation, ExposuresBefore).
 	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
 	Exposures  map[string]Exposure
 	SnapshotAt time.Time

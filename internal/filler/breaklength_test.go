@@ -42,11 +42,11 @@ func TestPlayableDurationIgnoresPlayHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	aired := map[string]filler.ExposureRecord{}
+	var history []filler.Airing
 	for _, e := range pod.Entries {
-		aired[e.Hash] = filler.ExposureRecord{PlayCount: 1, LastPlayedAt: time.Now().Add(-time.Minute)}
+		history = append(history, aired(e.Hash, time.Now().Add(-time.Minute)))
 	}
-	played := filler.NewPodAdapter(stubCatalog{clips: cat}, &stubExposures{items: aired}, policy, discardLogger())
+	played := filler.NewPodAdapter(stubCatalog{clips: cat}, &stubExposures{items: history}, policy, discardLogger())
 	if got := played.PlayableDurationMs(context.Background(), "ch-1", 7, filler.Selection{}); got != want {
 		t.Fatalf("break sized %d ms after its clips aired, %d ms before: airing re-sized the schedule", got, want)
 	}

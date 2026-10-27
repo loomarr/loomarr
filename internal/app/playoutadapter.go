@@ -64,9 +64,10 @@ type titleReader interface {
 // playoutResolver answers "what is airing now, and where does ffmpeg read it from".
 // clipPlayRecorder is the one-method slice of the store the resolver needs to count an
 // airing. `at` is the scheduled clip start, which makes repeated resolves of one airing
-// idempotent in the store. Narrow deliberately — the resolver has no other business writing.
+// idempotent in the store; `recordedAt` is the wall clock. Narrow deliberately — the resolver
+// has no other business writing.
 type clipPlayRecorder interface {
-	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (bool, error)
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (bool, error)
 }
 
 // airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
@@ -1108,9 +1109,14 @@ func (r *playoutResolver) airingFiller(
 			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
 			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
 			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
-			if e.Hash != "" && r.clipPlays != nil {
+			//
+			// ⚠ Watched airings only (#2017). A neighbour warm keeps the next channel's packager
+			// running for a fast switch; its clips air to nobody. Counted, they rested on every
+			// channel as if the household had seen them. A viewer who switches to a warm channel
+			// mid-clip misses that one clip's count, the cheaper error.
+			if e.Hash != "" && r.clipPlays != nil && playout.Watched(ctx) {
 				startedAt := now.Add(-into)
-				recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, startedAt)
+				recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, startedAt, r.now())
 				if err != nil {
 					// Telemetry, never correctness: a failed count must not stop a break from
 					// airing. Logged at debug because a pruned clip is an ordinary race.
