@@ -31,6 +31,8 @@ jobs:
       # and the repo root has none, so `pnpm -C` from the root downloads the latest pnpm.
       - name: Test the iOS LAN discovery planner
         run: cd web && pnpm -C packages/lan-discovery-native exec vitest run tests/ios-unicast-target-planner.test.mjs
+      - name: Test the iOS MetricKit crash payload store
+        run: cd web && pnpm -C packages/crash-reports-native exec vitest run tests/ios-crash-payload-store.test.mjs
       - name: Fingerprint the Apple toolchain
         id: apple-toolchain
         run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"

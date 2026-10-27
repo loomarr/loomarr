@@ -1,3 +1,4 @@
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -38,6 +39,7 @@ import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
 import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
+import { recordCrashBreadcrumb, useCrashReportUpload } from "../src/crash-reports";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -205,6 +207,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
+  // Pending crash reports (last launch's included) go to this server once paired.
+  useCrashReportUpload(credential, session);
+  useEffect(() => recordCrashBreadcrumb(ClientCrashBreadcrumbCategory.navigation, active), [active]);
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {
     haptic.selection();
@@ -318,6 +323,12 @@ const Index = () => {
     });
     return () => void unsubscribe();
   }, [haptic, session]);
+  useEffect(() => {
+    const unsubscribe = session.subscribe(({ status }) =>
+      recordCrashBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
+    );
+    return () => void unsubscribe();
+  }, [session]);
   return (
     <>
       <PairingShell
