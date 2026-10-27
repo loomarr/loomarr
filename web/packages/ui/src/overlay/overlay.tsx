@@ -75,7 +75,9 @@ const OverlayPanel = ({
     paddingLeft={contentInsets?.left}
     paddingRight={contentInsets?.right}
     paddingTop={contentInsets?.top}
-    borderRadius={edgeToEdge ? 0 : undefined}
+    // Spread, not `borderRadius={… : undefined}`: Tamagui 3 reads an explicit undefined at the call
+    // site as "remove this style", which strips the overlay level's own radius.
+    {...(edgeToEdge ? { borderRadius: 0 } : {})}
     width="100%"
     zIndex={modal ? 1 : undefined}
     level="overlay"

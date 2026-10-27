@@ -141,7 +141,8 @@ const PairingShell = ({
         )
       ) : null}
       <Surface
-        borderRadius={density === "tv" && awaitingApproval ? 8 : undefined}
+        // Spread: an explicit `borderRadius={undefined}` strips the level's own radius in Tamagui 3.
+        {...(density === "tv" && awaitingApproval ? { borderRadius: 8 } : {})}
         gap={density === "tv" && awaitingApproval ? 0 : "section"}
         maxWidth={density === "tv" && awaitingApproval ? 760 : 620}
         padding="section"
