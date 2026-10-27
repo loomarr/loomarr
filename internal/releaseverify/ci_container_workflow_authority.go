@@ -607,6 +607,15 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
+		// Read-only: the script asks archive.org and YouTube whether each curated source still exists.
+		"curated-sources.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"check": {steps: map[string]workflowStepAuthority{
+					"./scripts/check-curated-sources.sh": exactWorkflowStep(1, "Check every entry against its provider", workflowStepAuthority{}),
+				}},
+			},
+		},
 		"rust-maintenance.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{

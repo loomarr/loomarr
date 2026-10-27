@@ -38,15 +38,6 @@ import (
 // EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
-// buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
-//
-// ⚠ Policy remains live, while the storage layout is immutable for this application generation.
-// The source switch and minimum duration therefore remain closures, but scan and intake share the
-// one captured root/watch pair so a settings write cannot move files between generations.
-//
-// ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
-// install rather than a degraded one: its adapter maps the explicit unconfigured result to an
-// empty optional source, so folder rows still drain and a saved connection enables the next scan.
 // offerCuratedSources offers this build's curated sources the install has not been offered, switched
 // off (#2035). Enabling one is the operator's consent to fetch from it. A failure costs only the
 // offer, never the boot: the next start tries again.
@@ -69,6 +60,15 @@ func offerCuratedSources(ctx context.Context, st fillerstore.Store, log *slog.Lo
 	}
 }
 
+// buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
+//
+// ⚠ Policy remains live, while the storage layout is immutable for this application generation.
+// The source switch and minimum duration therefore remain closures, but scan and intake share the
+// one captured root/watch pair so a settings write cannot move files between generations.
+//
+// ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
+// install rather than a degraded one: its adapter maps the explicit unconfigured result to an
+// empty optional source, so folder rows still drain and a saved connection enables the next scan.
 func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{

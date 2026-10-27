@@ -52,4 +52,18 @@ func testCuratedSourceOffers(t *testing.T, newStore NewStoreFunc) {
 	if got, ok := findSource(t, s, later.SourceID()); !ok || got.Enabled || got.Kind != "youtube" {
 		t.Fatalf("the next version's entry = %+v (listed %v), want it added switched off", got, ok)
 	}
+
+	// A row holding the same target under another id trips the unique (kind, uri) index; the offer
+	// keeps that row and still records the rest of the list.
+	unprefixed := NewFillerSource("old_ads", "archive", "old_ads", "Old seed", at)
+	if err := s.UpsertFillerSource(ctx, unprefixed); err != nil {
+		t.Fatal(err)
+	}
+	oldAds := filler.CuratedSource{Kind: "archive", Target: "old_ads", Label: "Old ads", Notes: "n"}
+	if _, err := s.OfferCuratedSources(ctx, filler.CuratedList{Version: "v3", Sources: []filler.CuratedSource{oldAds}}, at.Add(2*time.Hour)); err != nil {
+		t.Fatalf("an offer whose target another id holds: %v", err)
+	}
+	if kept, ok := findSource(t, s, "old_ads"); !ok || !kept.Enabled || kept.Label != "Old seed" {
+		t.Fatalf("the row already holding the target = %+v (listed %v), want it untouched", kept, ok)
+	}
 }

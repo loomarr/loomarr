@@ -23,6 +23,7 @@ archive.org collections and YouTube channels, each with a label, era range, regi
   entry the operator deleted is not offered again.
 - A scheduled CI job checks every entry against the live archive.org metadata API and a yt-dlp flat
   listing, downloading no media. A removed or renamed entry fails the job and is fixed in the list.
+  YouTube's bot check refusing the runner is a warning, since it says nothing about the entry.
 - YouTube fetches the best format available and passes the same defect floor and creative identity
   as every other source (#2034, #2033).
 
@@ -34,5 +35,7 @@ archive.org collections and YouTube channels, each with a label, era range, regi
   stops at once.
 - A curated channel is not a licence. Licence metadata stays passive provenance, and an empty licence
   is unknown, never public domain.
+- An entry's id is the one adding its exact target by hand would give. An operator who added the
+  same channel by its `@handle` or another URL form is offered it a second time, switched off.
 - A dead source on an install is reported by the existing source-health checks until the next
   release drops it.

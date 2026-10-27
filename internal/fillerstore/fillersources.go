@@ -392,7 +392,9 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 // transaction, so a crash cannot leave an offer without the row it promised.
 //
 // ⚠ Never an upsert of the source. A row that exists, added by hand or offered before, is the
-// operator's: its label, switch and geography are left exactly as they are.
+// operator's: its label, switch and geography are left exactly as they are. The bare ON CONFLICT
+// also covers the unique (kind, uri) index, so a row holding the same target under another id is
+// kept rather than failing the whole offer on every boot.
 func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedList, now time.Time) (int, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -402,7 +404,7 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 	added := 0
 	for _, c := range list.Sources {
 		res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_curated_offers (source_id, list_version, offered_at)
-			VALUES (?, ?, ?) ON CONFLICT(source_id) DO NOTHING`), c.SourceID(), list.Version, now.UnixMilli())
+			VALUES (?, ?, ?) ON CONFLICT(source_id) DO NOTHING`), c.SourceID(), list.Version, epoch(now))
 		if err != nil {
 			return 0, fmt.Errorf("offer curated source %s: %w", c.SourceID(), err)
 		}
@@ -414,7 +416,7 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		geography := filler.Geography{Country: c.Country}.Normalize()
 		res, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_sources (id, kind, uri, label, license,
 			  last_fetched_at, created_at, enabled, country, market)
-			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, '') ON CONFLICT(id) DO NOTHING`),
+			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, '') ON CONFLICT DO NOTHING`),
 			c.SourceID(), c.Kind, c.Target, c.Label, epoch(now), false, geography.Country)
 		if err != nil {
 			return 0, fmt.Errorf("add curated source %s: %w", c.SourceID(), err)

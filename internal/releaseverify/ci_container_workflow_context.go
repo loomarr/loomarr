@@ -113,6 +113,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 			strategy: &workflowStrategyAuthority{include: []workflowMatrixEntryAuthority{{platform: "linux/amd64", runner: "ubuntu-24.04", arch: "amd64"}, {platform: "linux/arm64", runner: "ubuntu-24.04-arm", arch: "arm64"}}},
 		},
 		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
+		{workflow: "curated-sources.yml", job: "check"}:          {name: "Check the curated sources", runsOn: "ubuntu-24.04", timeoutMinutes: 15},
 		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
 		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
