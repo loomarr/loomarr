@@ -11,15 +11,15 @@ const BrandLockup = ({ variant = "hero", tagline = true, className }: BrandLocku
     return (
       <div className={cn("flex items-center gap-2", className)}>
         <ColorBars size="sm" />
-        <span className="font-semibold text-sm tracking-[0.12em]">LOOMARR</span>
+        <span className="text-sm font-semibold tracking-[0.12em]">LOOMARR</span>
       </div>
     );
   }
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
       <ColorBars size="lg" />
-      <span className="font-bold text-3xl tracking-[0.08em]">LOOMARR</span>
-      {tagline && <span className="font-mono text-muted-foreground text-sm">always something on</span>}
+      <span className="text-3xl font-bold tracking-[0.08em]">LOOMARR</span>
+      {tagline && <span className="text-muted-foreground font-mono text-sm">always something on</span>}
     </div>
   );
 };

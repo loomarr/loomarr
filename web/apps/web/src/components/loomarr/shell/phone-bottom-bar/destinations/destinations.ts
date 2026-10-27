@@ -33,7 +33,7 @@ const PRIMARY_ORDER: readonly PhoneDestinationKey[] = ["home", "watch", "guide",
 const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["filler", "people", "settings", "help"];
 const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["notifications", "help"];
 
-const describe = (
+const destinationFor = (
   key: PhoneDestinationKey,
   watchChannelId: string | undefined,
 ): PhoneDestination | undefined => {
@@ -76,14 +76,14 @@ const phoneBarPrimary = (
   badges?: Partial<Record<NavTo, number>>,
 ): PhoneDestination[] =>
   PRIMARY_ORDER.flatMap((key) => {
-    const destination = describe(key, watchChannelId);
+    const destination = destinationFor(key, watchChannelId);
     return destination ? [withBadge(destination, badges)] : [];
   });
 
 /** Everything else: admin's Filler/People/Settings/Help, member's Notifications/Help. */
 const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, number>>): PhoneDestination[] =>
   (isAdmin ? ADMIN_OVERFLOW : MEMBER_OVERFLOW).flatMap((key) => {
-    const destination = describe(key, undefined);
+    const destination = destinationFor(key, undefined);
     return destination ? [withBadge(destination, badges)] : [];
   });
 

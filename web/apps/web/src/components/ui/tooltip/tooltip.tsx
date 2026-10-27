@@ -35,7 +35,7 @@ const TooltipContent = ({
       <TooltipPrimitive.Popup
         role="tooltip"
         className={cn(
-          "z-50 max-w-xs rounded-md border border-border bg-popover px-2.5 py-1.5 text-popover-foreground text-xs shadow-md",
+          "border-border bg-popover text-popover-foreground z-50 max-w-xs rounded-md border px-2.5 py-1.5 text-xs shadow-md",
           // Fade + rise on open — off under reduced-motion (and frozen in the visual suite).
           "motion-safe:animate-select-in",
           className,

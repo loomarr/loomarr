@@ -25,7 +25,7 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
 const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
-  <div className="flex flex-col gap-2 text-muted-foreground">
+  <div className="text-muted-foreground flex flex-col gap-2">
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       {(
         [
@@ -74,8 +74,8 @@ const ProposalOutlookDetails = ({
   assessment: Assessment;
   showDiagnostics?: boolean;
 }) => (
-  <section aria-label="What can play now" className="flex flex-col gap-2 text-muted-foreground">
-    <h3 className="font-medium text-foreground">What can play now</h3>
+  <section aria-label="What can play now" className="text-muted-foreground flex flex-col gap-2">
+    <h3 className="text-foreground font-medium">What can play now</h3>
     <p>
       {value.programs > 0
         ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
@@ -153,7 +153,7 @@ const ProposalOutlook = ({
       <p className={value.thin ? "text-caution" : "text-muted-foreground"}>{summary}</p>
       {showDetails && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-muted-foreground">Schedule details</summary>
+          <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>
           <div className="mt-2">
             <ProposalOutlookDetails assessment={value} />
           </div>

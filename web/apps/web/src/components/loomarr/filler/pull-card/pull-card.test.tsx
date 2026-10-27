@@ -125,7 +125,7 @@ describe("PullCard", () => {
     const onApprove = vi.fn();
     render(<PullCard pull={pull()} onApprove={onApprove} onDismiss={() => {}} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /leave public service out/i }));
+    await userEvent.click(screen.getByRole("button", { name: /leave out public service/i }));
     expect(onApprove).not.toHaveBeenCalled();
 
     await userEvent.type(screen.getByLabelText("Notes for this pull"), "reviewed by programming");
@@ -156,8 +156,8 @@ describe("PullCard", () => {
     const onApprove = vi.fn();
     render(<PullCard pull={pull()} onApprove={onApprove} onDismiss={() => {}} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /leave public service out/i }));
-    await userEvent.click(screen.getByRole("button", { name: /put public service back/i }));
+    await userEvent.click(screen.getByRole("button", { name: /leave out public service/i }));
+    await userEvent.click(screen.getByRole("button", { name: /put back public service/i }));
     await userEvent.click(screen.getByRole("button", { name: "Approve pull" }));
 
     expect(onApprove).toHaveBeenCalledWith({ dropCandidateIds: [], note: "" });
@@ -168,8 +168,8 @@ describe("PullCard", () => {
   it("refuses to approve once every source is left out", async () => {
     render(<PullCard pull={pull()} onApprove={() => {}} onDismiss={() => {}} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /leave classic tv commercials out/i }));
-    await userEvent.click(screen.getByRole("button", { name: /leave public service out/i }));
+    await userEvent.click(screen.getByRole("button", { name: /leave out classic tv commercials/i }));
+    await userEvent.click(screen.getByRole("button", { name: /leave out public service/i }));
 
     expect(screen.getByRole("button", { name: "Approve pull" })).toBeDisabled();
     expect(screen.getByText(/nothing to fetch. dismiss it instead/i)).toBeInTheDocument();

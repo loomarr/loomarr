@@ -28,11 +28,11 @@ const RequestCard = ({
   now,
   className,
 }: RequestCardProps) => (
-  <Card className={cn("flex items-center gap-3 transition-colors hover:bg-accent", className)}>
+  <Card className={cn("hover:bg-accent flex items-center gap-3 transition-colors", className)}>
     <Link
       to="/requests/$jobId"
       params={{ jobId }}
-      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-3 rounded-lg p-4 outline-none focus-visible:ring-2"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <p className="font-medium">{title}</p>
@@ -48,7 +48,7 @@ const RequestCard = ({
         </div>
         {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
       </div>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <ChevronRight className="text-muted-foreground size-4 shrink-0" aria-hidden />
     </Link>
     {action && <div className="shrink-0 pr-4">{action}</div>}
   </Card>

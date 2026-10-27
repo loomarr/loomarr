@@ -21,7 +21,7 @@ const ratio = (fg: string, bg: string) => contrast(fg, bg).toFixed(2);
 // A pairing's verdict against WCAG AA for SMALL text. 11px badge copy is small text no matter
 // how label-like it feels — the rule §2.1 calls "learned the hard way, twice".
 const Verdict = ({ value }: { value: number }) => (
-  <span className={cn("font-mono text-2xs tabular-nums", value >= AA_SMALL ? "text-lock" : "text-onair-300")}>
+  <span className={cn("text-2xs font-mono tabular-nums", value >= AA_SMALL ? "text-lock" : "text-onair-300")}>
     {value >= AA_SMALL ? `${value.toFixed(2)} AA` : `${value.toFixed(2)} FAIL`}
   </span>
 );
@@ -31,14 +31,14 @@ const Verdict = ({ value }: { value: number }) => (
 // meaning, and worse than no number, since it reads as a defect.
 const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; measure?: boolean }) => (
   <div className="flex items-center gap-3">
-    <div className="size-10 shrink-0 rounded-md border border-border" style={{ backgroundColor: hex }} />
+    <div className="border-border size-10 shrink-0 rounded-md border" style={{ backgroundColor: hex }} />
     <div className="min-w-0">
-      <div className="truncate font-medium text-sm">{name}</div>
-      <div className="font-mono text-2xs text-static-400 uppercase">{hex}</div>
+      <div className="truncate text-sm font-medium">{name}</div>
+      <div className="text-2xs text-static-400 font-mono uppercase">{hex}</div>
     </div>
     {measure && (
       <div className="ml-auto text-right">
-        <div className="font-mono text-2xs text-static-400">on bg</div>
+        <div className="text-2xs text-static-400 font-mono">on bg</div>
         <Verdict value={contrast(hex, staticScale["static-950"])} />
       </div>
     )}
@@ -60,7 +60,7 @@ const isTextStep = (step: number) => step <= 15;
 // see failing.
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
   <div className="flex flex-col gap-1">
-    <div className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`${accent} tints`}</div>
+    <div className="text-2xs text-static-400 font-mono tracking-wide uppercase">{`${accent} tints`}</div>
     <div className="flex flex-wrap gap-2">
       {tintSteps.map((step) => {
         const composited = compositeTint(hex, step, tintSurface);
@@ -76,17 +76,17 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
           <div key={step} className="flex min-w-24 flex-col gap-1">
-            <span className="font-mono text-2xs text-static-400">{`${step}%`}</span>
+            <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
             <div
-              className="flex h-8 items-center rounded-md border border-border px-2"
+              className="border-border flex h-8 items-center rounded-md border px-2"
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
-                <span className="font-mono text-2xs uppercase" style={{ color: textHex }}>
+                <span className="text-2xs font-mono uppercase" style={{ color: textHex }}>
                   Badge
                 </span>
               ) : (
-                <span className="font-mono text-2xs text-static-400/0">fill</span>
+                <span className="text-2xs text-static-400/0 font-mono">fill</span>
               )}
             </div>
             <Verdict value={r} />
@@ -107,8 +107,8 @@ const Palette = () => {
   return (
     <div className="flex flex-col gap-8 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-xl">Palette</h1>
-        <p className="max-w-2xl text-muted-foreground text-sm">
+        <h1 className="text-xl font-semibold">Palette</h1>
+        <p className="text-muted-foreground max-w-2xl text-sm">
           The broadcast accents, drawn from the SMPTE bars. Every hex and every ratio on this page is read
           from the generated tokens and measured with the same function the CI contrast gate uses — so what
           you see here is what the build enforces.
@@ -116,7 +116,7 @@ const Palette = () => {
       </header>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-semibold text-base">Accents</h2>
+        <h2 className="text-base font-semibold">Accents</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {accentRows.map(([name, a]) => (
             <Swatch key={name} name={name} hex={a.base} />
@@ -126,8 +126,8 @@ const Palette = () => {
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="font-semibold text-base">Tints, and the badge rule</h2>
-          <p className="max-w-2xl text-muted-foreground text-sm">
+          <h2 className="text-base font-semibold">Tints, and the badge rule</h2>
+          <p className="text-muted-foreground max-w-2xl text-sm">
             A tint is an alpha wash, not a fixed hex:{" "}
             <code className="font-mono text-xs">color-mix(in srgb, accent N%, transparent)</code> over the
             surface. 11px badge text is <em>small text</em> under WCAG, so the 4.5:1 bar applies. On the
@@ -139,7 +139,7 @@ const Palette = () => {
         {accentRows.map(([name, a]) => (
           <TintRamp key={name} accent={name} hex={a.base} textHex={a.on} />
         ))}
-        <p className="max-w-2xl text-muted-foreground text-sm">
+        <p className="text-muted-foreground max-w-2xl text-sm">
           ⚠ Note where the ramps go red. The badge rule and its CI check are scoped to the{" "}
           <strong className="text-foreground">15% step</strong> — the one badges actually use — and accent
           text does not clear AA on the 30% and 40% steps. Those darker steps are for <em>fills</em> (a pod
@@ -149,13 +149,13 @@ const Palette = () => {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-semibold text-base">Statics</h2>
+        <h2 className="text-base font-semibold">Statics</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {Object.entries(staticScale).map(([name, hex]) => (
             <Swatch key={name} name={name} hex={hex as string} measure={!SURFACE_STATICS.has(name)} />
           ))}
         </div>
-        <p className="max-w-2xl text-muted-foreground text-sm">
+        <p className="text-muted-foreground max-w-2xl text-sm">
           <code className="font-mono text-xs">static-500</code> sits at{" "}
           {ratio(staticScale["static-500"], staticScale["static-900"])}
           :1 on cards — below the AA bar — so it is restricted to disabled states and decorative glyphs. Any

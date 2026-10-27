@@ -11,9 +11,9 @@ import { useSettingsEntries } from "@/settings/use-settings-entries";
 const publicURLKey = "access.public_url";
 
 const SsoNote = () => (
-  <section className="rounded-lg border border-border p-4">
-    <h2 className="font-medium text-sm">How sign-in works with a provider</h2>
-    <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+  <section className="border-border rounded-lg border p-4">
+    <h2 className="text-sm font-medium">How sign-in works with a provider</h2>
+    <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
       Your provider proves who someone is. The People list decides whether they can get in — signing in with
       your provider does not create an account here, and it does not set anyone's role. Add people under
       People first, then they can sign in either way.

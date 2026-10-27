@@ -103,7 +103,7 @@ const TaxonTree = ({
   nested?: boolean;
 }) => (
   <ul
-    className={nested ? "ml-5 border-border border-l" : "divide-y divide-border"}
+    className={nested ? "border-border ml-5 border-l" : "divide-border divide-y"}
     {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
   >
     {nodes.map(({ taxon, children }) => {
@@ -113,21 +113,21 @@ const TaxonTree = ({
       return (
         <li key={taxon.slug}>
           <div className="flex items-start gap-2 px-4 py-3">
-            {nested ? <ChevronRight className="mt-1 size-3 shrink-0 text-static-500" aria-hidden /> : null}
+            {nested ? <ChevronRight className="text-static-500 mt-1 size-3 shrink-0" aria-hidden /> : null}
             <div className="min-w-0 flex-1">
               <button
                 type="button"
                 disabled={!isAdmin}
                 className={cn(
-                  "break-words text-left font-medium text-sm",
-                  isAdmin && "cursor-pointer hover:text-signal",
+                  "text-left text-sm font-medium break-words",
+                  isAdmin && "hover:text-signal cursor-pointer",
                 )}
                 onClick={() => onEdit(taxon)}
               >
                 {taxon.label}
               </button>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                <span className="break-all font-mono text-muted-foreground text-xs">{taxon.slug}</span>
+                <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
                 {resolverTermCount > 0 ? (
                   <details className="text-muted-foreground text-xs">
                     <summary className="cursor-pointer">
@@ -150,7 +150,7 @@ const TaxonTree = ({
               <Link
                 to="/filler/library"
                 search={{ taxon: taxon.slug }}
-                className="rounded-sm font-mono text-signal text-xs underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="text-signal focus-visible:ring-ring rounded-sm font-mono text-xs underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
                 title={`Browse clips matching ${taxon.label}, including descendants`}
               >
                 {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
@@ -275,7 +275,7 @@ const TaxonEditor = ({
     >
       <div>
         <h3 className="font-medium">{current ? `Edit ${current.label}` : "Add a tag"}</h3>
-        <p className="mt-1 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-1 text-sm">
           Slugs are what classifiers and saved clips use. Labels are what people see.
         </p>
       </div>
@@ -324,7 +324,7 @@ const TaxonEditor = ({
             </SelectContent>
           </Select>
           {current && nodeHasDescendants ? (
-            <p className="mt-1 text-muted-foreground text-xs">
+            <p className="text-muted-foreground mt-1 text-xs">
               Move this tag&rsquo;s children before changing its axis.
             </p>
           ) : null}
@@ -373,18 +373,18 @@ const TaxonEditor = ({
       </p>
       {review ? (
         <Card
-          className="space-y-3 border-signal/40 bg-signal/5 p-4"
+          className="border-signal/40 bg-signal/5 space-y-3 p-4"
           aria-label="Change impact"
           aria-live="polite"
         >
           <div>
             <h4 className="font-medium">Review the impact</h4>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {review.impact.affectedStoredClips > 0
                 ? `${review.impact.affectedStoredClips.toLocaleString()} stored clips may have different inherited classification (${review.impact.directStoredClips.toLocaleString()} direct, ${review.impact.descendantStoredClips.toLocaleString()} through descendants).`
                 : "No stored clip classifications will change."}
             </p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {review.impact.affectedPlayableClips > 0
                 ? `${review.impact.affectedPlayableClips.toLocaleString()} playable clips will be checked against channel filler rules after this change.`
                 : "No playable clips need channel eligibility checks."}
@@ -505,18 +505,18 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <p className="text-muted-foreground text-xs uppercase tracking-wide">Library coverage</p>
+          <p className="text-muted-foreground text-xs tracking-wide uppercase">Library coverage</p>
           {data.totalClips === 0 ? (
             <>
-              <p className="mt-1 font-semibold text-xl">No playable clips yet</p>
-              <p className="mt-1 text-muted-foreground text-sm">Coverage begins after clips are ready.</p>
+              <p className="mt-1 text-xl font-semibold">No playable clips yet</p>
+              <p className="text-muted-foreground mt-1 text-sm">Coverage begins after clips are ready.</p>
             </>
           ) : (
             <>
-              <p className="mt-1 font-semibold text-2xl">
+              <p className="mt-1 text-2xl font-semibold">
                 {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
               </p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 playable clips have at least one classification signal
               </p>
             </>
@@ -524,24 +524,24 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         </Card>
         <Card className="p-4 sm:col-span-2">
           <p className="font-medium">What belongs here</p>
-          <p className="mt-1 text-muted-foreground text-sm">
+          <p className="text-muted-foreground mt-1 text-sm">
             Classification describes what a clip contains. Kind is the closed playout role; format and
             presentation are optional browsing details. Era, audience, and grounded brand remain separate
             facts too.
           </p>
           {data.totalClips === 0 ? (
-            <p className="mt-2 text-muted-foreground text-sm">Nothing to classify yet.</p>
+            <p className="text-muted-foreground mt-2 text-sm">Nothing to classify yet.</p>
           ) : data.unclassifiedClips > 0 ? (
             <Link
               to="/filler/library"
               search={{ unclassified: true }}
-              className="mt-2 inline-flex text-signal text-sm underline-offset-2 hover:underline"
+              className="text-signal mt-2 inline-flex text-sm underline-offset-2 hover:underline"
             >
               Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
               {data.unclassifiedClips === 1 ? "clip" : "clips"}
             </Link>
           ) : (
-            <p className="mt-2 text-lock text-sm">Every playable clip has at least one taxonomy tag.</p>
+            <p className="text-lock mt-2 text-sm">Every playable clip has at least one taxonomy tag.</p>
           )}
         </Card>
       </div>
@@ -557,16 +557,16 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
 
       <section aria-labelledby="classification-coverage-heading">
         <div>
-          <h2 id="classification-coverage-heading" className="font-semibold text-lg">
+          <h2 id="classification-coverage-heading" className="text-lg font-semibold">
             Classification coverage
           </h2>
-          <p className="mt-1 text-muted-foreground text-sm">
+          <p className="text-muted-foreground mt-1 text-sm">
             These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly
             normal.
           </p>
         </div>
         {data.totalClips === 0 ? (
-          <Card className="mt-3 p-4 text-muted-foreground text-sm">
+          <Card className="text-muted-foreground mt-3 p-4 text-sm">
             Coverage will appear after clips are ready. The vocabulary below is ready when they are.
           </Card>
         ) : (
@@ -576,10 +576,10 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
               return (
                 <Card key={axis} className="p-4">
                   <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
-                  <p className="mt-1 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
-                  <p className="mt-2 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                  <p className="text-muted-foreground mt-1 text-sm">{AXIS_COPY[axis].help}</p>
+                  <p className="text-muted-foreground mt-2 text-xs">{AXIS_COPY[axis].example}</p>
                   {coverage ? (
-                    <div className="mt-3 border-border border-t pt-3 text-sm">
+                    <div className="border-border mt-3 border-t pt-3 text-sm">
                       <p>
                         <span className="font-medium">{coverage.taggedClips.toLocaleString()}</span> of{" "}
                         {data.totalClips.toLocaleString()} playable clips
@@ -588,12 +588,12 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         <Link
                           to="/filler/library"
                           search={{ withoutAxis: axis }}
-                          className="mt-1 inline-flex text-signal text-xs underline-offset-2 hover:underline"
+                          className="text-signal mt-1 inline-flex text-xs underline-offset-2 hover:underline"
                         >
                           Browse {coverage.untaggedClips.toLocaleString()} without this signal
                         </Link>
                       ) : (
-                        <p className="mt-1 text-lock text-xs">All playable clips have this signal.</p>
+                        <p className="text-lock mt-1 text-xs">All playable clips have this signal.</p>
                       )}
                     </div>
                   ) : null}
@@ -604,12 +604,12 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         )}
       </section>
 
-      <details className="rounded-lg border border-border bg-panel">
-        <summary className="cursor-pointer px-4 py-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <details className="border-border bg-panel rounded-lg border">
+        <summary className="focus-visible:ring-ring cursor-pointer px-4 py-3 font-medium focus-visible:ring-2 focus-visible:outline-none">
           {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
         </summary>
         <div className="border-border border-t p-4">
-          <p className="mb-4 text-muted-foreground text-sm">
+          <p className="text-muted-foreground mb-4 text-sm">
             {isAdmin
               ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
               : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
@@ -618,11 +618,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             {AXES.map((axis) => {
               return (
                 <Card key={axis} className="overflow-hidden">
-                  <div className="flex items-start gap-3 border-border border-b p-4">
+                  <div className="border-border flex items-start gap-3 border-b p-4">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
-                      <p className="mt-0.5 text-muted-foreground text-sm">{AXIS_COPY[axis].help}</p>
-                      <p className="mt-1 text-muted-foreground text-xs">{AXIS_COPY[axis].example}</p>
+                      <p className="text-muted-foreground mt-0.5 text-sm">{AXIS_COPY[axis].help}</p>
+                      <p className="text-muted-foreground mt-1 text-xs">{AXIS_COPY[axis].example}</p>
                     </div>
                     {isAdmin ? (
                       <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
@@ -631,7 +631,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                     ) : null}
                   </div>
                   {byAxis[axis].length === 0 ? (
-                    <p className="px-4 py-3 text-muted-foreground text-sm">No terms yet.</p>
+                    <p className="text-muted-foreground px-4 py-3 text-sm">No terms yet.</p>
                   ) : (
                     <TaxonTree
                       nodes={byAxis[axis]}

@@ -31,20 +31,20 @@ const LanguageReceipt = ({
 }) => {
   if (exclusions.length === 0) return null;
   return (
-    <details className="rounded-lg border border-border bg-muted/20 p-4 text-sm">
+    <details className="border-border bg-muted/20 rounded-lg border p-4 text-sm">
       <summary className="cursor-pointer font-medium">
         Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
-        <span className="ml-1 font-normal text-muted-foreground">
+        <span className="text-muted-foreground ml-1 font-normal">
           · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
         </span>
       </summary>
-      <p className="mt-2 text-muted-foreground">
+      <p className="text-muted-foreground mt-2">
         This split was checked for {languageName(checkedFor)}. These clips remain in the original compilation
         but won’t be added as filler.
       </p>
       <ul className="mt-3 space-y-2">
         {exclusions.map((item) => (
-          <li key={`${item.startMs}-${item.endMs}`} className="rounded-md bg-background/60 px-3 py-2">
+          <li key={`${item.startMs}-${item.endMs}`} className="bg-background/60 rounded-md px-3 py-2">
             <span className="block font-medium">{item.name}</span>
             <span className="text-muted-foreground text-xs">
               {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
@@ -149,23 +149,23 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
             link is the pattern. */}
         <Link
           to={backTo}
-          className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
         >
           <ArrowLeft className="size-3.5" aria-hidden />
           {from === "incoming" ? "Incoming" : "Library"}
         </Link>
-        <h1 className="font-semibold text-xl">Review clips</h1>
-        <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-          Loomarr found these clips in <span className="font-medium text-static-200">{parentName}</span>.
+        <h1 className="text-xl font-semibold">Review clips</h1>
+        <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
+          Loomarr found these clips in <span className="text-static-200 font-medium">{parentName}</span>.
           Preview anything that needs a closer look, then keep the clips you want. The original recording
           stays available if you need it later.
         </p>
       </div>
       {languageChanged ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-caution/40 bg-caution-tint-15 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="border-caution/40 bg-caution-tint-15 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-medium">{currentLanguageHeadline}</p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               This split was checked for {languageName(checkedLanguage)}. Recheck it before you confirm.
             </p>
           </div>

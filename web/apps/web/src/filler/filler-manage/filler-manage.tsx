@@ -106,7 +106,7 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
   return (
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-2">
-        <p id={`diagnostic-${row.id}`} className="font-medium text-sm">
+        <p id={`diagnostic-${row.id}`} className="text-sm font-medium">
           {copy.title}
         </p>
         <Badge variant={row.recovery.mode === "automatic_retry" ? "signal" : "caution"}>
@@ -119,16 +119,16 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
                 : "Settings needed"}
         </Badge>
       </div>
-      <p className="mt-1 text-muted-foreground text-sm">{copy.detail}</p>
-      <p className="mt-1 text-muted-foreground text-xs">Clip {row.clipHash.slice(0, 10)}…</p>
-      <details className="mt-2 text-muted-foreground text-xs">
+      <p className="text-muted-foreground mt-1 text-sm">{copy.detail}</p>
+      <p className="text-muted-foreground mt-1 text-xs">Clip {row.clipHash.slice(0, 10)}…</p>
+      <details className="text-muted-foreground mt-2 text-xs">
         <summary className="w-fit cursor-pointer">Technical details</summary>
-        <p className="mt-1 break-all font-mono">
+        <p className="mt-1 font-mono break-all">
           Issue code: {row.code} · Clip ID: {row.clipHash}
         </p>
       </details>
       {row.recovery.mode === "automatic_retry" ? (
-        <p className="mt-3 text-signal text-sm">{automaticRetryText} Nothing you need to do.</p>
+        <p className="text-signal mt-3 text-sm">{automaticRetryText} Nothing you need to do.</p>
       ) : null}
       {row.recovery.mode === "manual_retry" ? (
         // aria-disabled, not disabled: disabling the focused button makes the browser drop focus
@@ -161,7 +161,7 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
         </Button>
       ) : null}
       {problem ? (
-        <p role="alert" className="mt-3 text-danger text-sm">
+        <p role="alert" className="text-danger mt-3 text-sm">
           The retry didn&apos;t start. This clip is still on hold. {problem.detail ?? problem.title}
         </p>
       ) : null}
@@ -255,18 +255,18 @@ const ManageHub = ({
   ];
 
   return (
-    <section aria-label="Filler tools" className="overflow-hidden rounded-lg border border-border bg-card">
+    <section aria-label="Filler tools" className="border-border bg-card overflow-hidden rounded-lg border">
       <ul>
         {rows.map((row) => (
           <li
             key={row.title}
-            className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0"
+            className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
           >
             {/* Decorative: the summary beside it says the same thing in words. */}
             <StatusDot tone={row.tone} label="" className="size-1.5" />
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">{row.title}</p>
-              <p className="mt-0.5 text-muted-foreground text-xs">{row.summary}</p>
+              <p className="text-sm font-medium">{row.title}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs">{row.summary}</p>
             </div>
             {typeof row.open === "function" ? (
               <Button size="sm" variant="outline" onClick={row.open} aria-label={`Open ${row.title}`}>
@@ -325,7 +325,7 @@ const FillerManage = () => {
 
       <section aria-labelledby="activity-heading">
         <div className="mb-3">
-          <h2 id="activity-heading" className="font-semibold text-lg">
+          <h2 id="activity-heading" className="text-lg font-semibold">
             Recent activity
           </h2>
           <p className="text-muted-foreground text-sm">See what Loomarr added, skipped, or changed.</p>
@@ -339,19 +339,19 @@ const FillerManage = () => {
           </Card>
         ) : null}
         {activity?.rows.length === 0 ? (
-          <Card className="p-4 text-muted-foreground text-sm">Nothing has happened yet.</Card>
+          <Card className="text-muted-foreground p-4 text-sm">Nothing has happened yet.</Card>
         ) : null}
         {activity?.rows.length ? (
-          <div className="overflow-hidden rounded-lg border border-border">
+          <div className="border-border overflow-hidden rounded-lg border">
             {activity.rows.map((row) => {
               const presentation = activityPresentation(row.kind);
               return (
                 <div
                   key={row.id}
-                  className="flex flex-wrap items-center gap-3 border-border border-b p-3 last:border-b-0"
+                  className="border-border flex flex-wrap items-center gap-3 border-b p-3 last:border-b-0"
                 >
                   <Badge variant={presentation.variant}>{presentation.label}</Badge>
-                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
+                  <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                     Clip {row.clipHash.slice(0, 12)}…
                   </span>
                   <span className="text-muted-foreground text-xs">{formatRelative(row.createdAt)}</span>
@@ -367,7 +367,7 @@ const FillerManage = () => {
           <Card className="overflow-hidden" id="diagnostics">
             <div className="flex flex-wrap items-center gap-3 p-4">
               <div className="min-w-0 flex-1">
-                <h2 className="font-semibold text-lg">Needs attention</h2>
+                <h2 className="text-lg font-semibold">Needs attention</h2>
                 <p className="text-muted-foreground text-sm">
                   See what stopped and how to get it moving again.
                 </p>
@@ -379,7 +379,7 @@ const FillerManage = () => {
               ) : null}
               <Disclosure.Trigger label={`${diagnosticsOpen ? "Hide" : "Show"} issues`} />
             </div>
-            <Disclosure.Panel className="space-y-5 border-border border-t p-4">
+            <Disclosure.Panel className="border-border space-y-5 border-t p-4">
               {diagnosticsOpen ? (
                 <>
                   {diagnosticsQuery.error ? (
@@ -394,10 +394,10 @@ const FillerManage = () => {
                     <article
                       key={row.id}
                       aria-labelledby={`diagnostic-${row.id}`}
-                      className="flex flex-col gap-3 rounded-md border border-border p-4 sm:flex-row sm:items-start"
+                      className="border-border flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-start"
                     >
                       <DiagnosticRecovery row={row} />
-                      <span className="shrink-0 text-muted-foreground text-xs">
+                      <span className="text-muted-foreground shrink-0 text-xs">
                         {formatRelative(row.createdAt)}
                       </span>
                     </article>

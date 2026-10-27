@@ -122,7 +122,7 @@ const ChannelProgramming = ({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-semibold text-lg">Programming</h2>
+        <h2 className="text-lg font-semibold">Programming</h2>
         <p className="text-muted-foreground text-sm">What this channel plays, and when.</p>
       </div>
 
@@ -188,14 +188,14 @@ const ChannelProgramming = ({
                 deliberately the same shape as the filler sandbox's bar: two drafts on one page
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
-              <div className="flex items-center gap-2 border-border border-t pt-4">
+              <div className="border-border flex items-center gap-2 border-t pt-4">
                 <Button variant="suggest" size="sm" disabled={rules.isApplying} onClick={rules.apply}>
                   {rules.isApplying ? "Applying…" : "Apply rules"}
                 </Button>
                 <Button variant="ghost" size="sm" disabled={rules.isApplying} onClick={rules.discard}>
                   Discard
                 </Button>
-                <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
+                <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
               </div>
             )}
 

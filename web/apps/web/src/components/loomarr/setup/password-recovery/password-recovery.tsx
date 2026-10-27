@@ -24,9 +24,9 @@ const PasswordRecoveryRequest = ({
   if (sent) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="mx-auto size-10 text-signal" aria-hidden />
+        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
         <div className="space-y-2">
-          <h1 className="font-display font-semibold text-2xl">Check your email</h1>
+          <h1 className="font-display text-2xl font-semibold">Check your email</h1>
           <p className="text-muted-foreground text-sm">
             If that account can be recovered here, Loomarr sent a reset link to its verified address.
           </p>
@@ -52,8 +52,8 @@ const PasswordRecoveryRequest = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <Mail className="mx-auto size-8 text-signal" aria-hidden />
-        <h1 className="font-display font-semibold text-2xl">Forgot your password?</h1>
+        <Mail className="text-signal mx-auto size-8" aria-hidden />
+        <h1 className="font-display text-2xl font-semibold">Forgot your password?</h1>
         <p className="text-muted-foreground text-sm">
           Enter your Loomarr username. We’ll email a reset link when this local account has a verified
           address.
@@ -83,7 +83,7 @@ const PasswordRecoveryRequest = ({
         {isPending ? "Requesting…" : "Email reset link"}
       </Button>
 
-      <div className="space-y-2 border-border border-t pt-4 text-center">
+      <div className="border-border space-y-2 border-t pt-4 text-center">
         <p className="text-muted-foreground text-xs">
           Emby or Jellyfin owns imported-account passwords. Change yours there, then sign in here once to
           refresh Loomarr’s offline verifier.
@@ -108,7 +108,7 @@ const PasswordRecoveryReset = ({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-muted-foreground" role="status">
+      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
         <Loader2 className="size-4 animate-spin" aria-hidden />
         Checking reset link…
       </div>
@@ -117,9 +117,9 @@ const PasswordRecoveryReset = ({
   if (succeeded) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="mx-auto size-10 text-signal" aria-hidden />
+        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
         <div className="space-y-2">
-          <h1 className="font-display font-semibold text-2xl">Password reset</h1>
+          <h1 className="font-display text-2xl font-semibold">Password reset</h1>
           <p className="text-muted-foreground text-sm">
             Your new Loomarr password is ready. Every existing session has been signed out.
           </p>
@@ -133,7 +133,7 @@ const PasswordRecoveryReset = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-3 text-center">
-        <h1 className="font-display font-semibold text-2xl">Reset link unavailable</h1>
+        <h1 className="font-display text-2xl font-semibold">Reset link unavailable</h1>
         <p className="text-muted-foreground text-sm">
           This link is missing, expired, revoked, or already used. Request a new one from the sign-in page.
         </p>
@@ -164,8 +164,8 @@ const PasswordRecoveryReset = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <KeyRound className="mx-auto size-8 text-signal" aria-hidden />
-        <h1 className="font-display font-semibold text-2xl">Create a new password</h1>
+        <KeyRound className="text-signal mx-auto size-8" aria-hidden />
+        <h1 className="font-display text-2xl font-semibold">Create a new password</h1>
         <p className="text-muted-foreground text-sm">This reset link expires {expiry}.</p>
       </div>
 

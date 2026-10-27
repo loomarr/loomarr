@@ -634,7 +634,7 @@ const FillerCriteria = ({
                       "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                       // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                       on
-                        ? "border-foreground bg-static-800 font-semibold text-foreground"
+                        ? "border-foreground bg-static-800 text-foreground font-semibold"
                         : "border-border text-muted-foreground hover:border-input hover:text-foreground",
                     )}
                   >

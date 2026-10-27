@@ -108,7 +108,7 @@ const LoginForm = ({
       </form.Field>
 
       <a
-        className="-mt-3 self-end text-signal text-sm underline-offset-4 hover:underline"
+        className="text-signal -mt-3 self-end text-sm underline-offset-4 hover:underline"
         href="/forgot-password"
       >
         Forgot password?
@@ -124,7 +124,7 @@ const LoginForm = ({
           always works alongside SSO rather than instead of it, and an install whose provider
           is down must not look like one nobody can enter. */}
       {onSso && (
-        <div className="flex flex-col gap-2 border-border border-t pt-4">
+        <div className="border-border flex flex-col gap-2 border-t pt-4">
           {ssoError ? (
             <p className="text-danger text-sm" role="alert">
               {ssoErrorCopy(ssoError)}
@@ -143,7 +143,7 @@ const LoginForm = ({
           skips authentication should read as the unusual thing it is, both for the
           maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
       {onDevLogin && (
-        <div className="flex flex-col items-center gap-1 border-border border-t pt-4">
+        <div className="border-border flex flex-col items-center gap-1 border-t pt-4">
           <Button type="button" variant="outline" size="sm" onClick={onDevLogin} disabled={isPending}>
             <FlaskConical aria-hidden />
             Skip sign-in (dev)

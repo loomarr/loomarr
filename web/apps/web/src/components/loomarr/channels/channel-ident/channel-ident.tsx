@@ -29,7 +29,7 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
         aria-label={`${name} logo`}
         style={{ width: size, height: size, backgroundImage: `url(${JSON.stringify(logo)})` }}
         className={cn(
-          "shrink-0 rounded-[5px] border border-border bg-background bg-center bg-cover",
+          "border-border bg-background shrink-0 rounded-[5px] border bg-cover bg-center",
           className,
         )}
       />

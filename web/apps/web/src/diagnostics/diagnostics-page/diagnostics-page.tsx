@@ -56,7 +56,7 @@ const DiagnosticsPage = ({
         }
       />
       <nav
-        className="flex gap-1 overflow-x-auto border-border border-b px-4 pt-2 pb-2 sm:px-6"
+        className="border-border flex gap-1 overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
         aria-label="Diagnostics views"
       >
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -64,10 +64,10 @@ const DiagnosticsPage = ({
             key={id}
             type="button"
             aria-current={search.view === id ? "page" : undefined}
-            className={`inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
+            className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
               // The current view is neutral, like a NavTabs pill (#1909 Q1).
               search.view === id
-                ? "bg-static-800 font-medium text-foreground"
+                ? "bg-static-800 text-foreground font-medium"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
             onClick={() =>

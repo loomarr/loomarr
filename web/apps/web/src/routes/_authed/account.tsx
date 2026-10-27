@@ -88,9 +88,9 @@ const AccountScreen = () => {
         description="Your sign-in, your password, and the devices holding a session."
       />
 
-      <div className="mx-auto flex w-full max-w-form flex-1 flex-col gap-4 overflow-auto p-6">
+      <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
         <Card className="flex items-center gap-3 p-5">
-          <div className="flex size-10 items-center justify-center rounded-full bg-muted font-medium">
+          <div className="bg-muted flex size-10 items-center justify-center rounded-full font-medium">
             {(user?.name ?? "?").slice(0, 2).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -167,23 +167,23 @@ const AccountScreen = () => {
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
         <Card className="flex shrink-0 flex-col overflow-hidden">
-          <h2 className="border-border border-b px-4 py-3.5 font-semibold text-sm">Where you're signed in</h2>
-          {sessions.isLoading && <p className="px-4 py-3 text-muted-foreground text-sm">Loading sessions…</p>}
+          <h2 className="border-border border-b px-4 py-3.5 text-sm font-semibold">Where you're signed in</h2>
+          {sessions.isLoading && <p className="text-muted-foreground px-4 py-3 text-sm">Loading sessions…</p>}
           {!sessions.isLoading && sessionRows.length === 0 && (
-            <p className="px-4 py-3 text-muted-foreground text-sm">No other sessions.</p>
+            <p className="text-muted-foreground px-4 py-3 text-sm">No other sessions.</p>
           )}
           <ul>
             {sessionRows.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0"
+                className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm">
+                  <p className="text-sm font-medium">
                     {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                   </p>
                   {s.lastSeenAt !== undefined && (
-                    <p className="mt-0.5 font-mono text-muted-foreground text-xs">
+                    <p className="text-muted-foreground mt-0.5 font-mono text-xs">
                       {formatRelative(s.lastSeenAt)}
                     </p>
                   )}

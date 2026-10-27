@@ -289,7 +289,7 @@ const SettingField = ({
               onChange(String(Math.round(Number(e.target.value) * 1024 ** 2)));
             }}
           />
-          <span className="flex h-9 w-16 shrink-0 items-center justify-center rounded-md border border-input text-muted-foreground text-sm">
+          <span className="border-input text-muted-foreground flex h-9 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
             {current.unit}
           </span>
         </div>
@@ -317,7 +317,7 @@ const SettingField = ({
     return (
       <div className={cn("min-w-0", className)}>
         {secretLocked ? (
-          <span className="font-mono text-muted-foreground text-xs">{entry.preview ?? "stored"}</span>
+          <span className="text-muted-foreground font-mono text-xs">{entry.preview ?? "stored"}</span>
         ) : (
           control()
         )}
@@ -364,7 +364,7 @@ const SettingField = ({
               // The visible text is the STATE; the action belongs in the accessible name, or
               // a screen-reader user hears "set via environment, button" and has to guess.
               aria-label={`Unlock ${label} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
-              className="group/unlock cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-2"
+              className="group/unlock focus-visible:outline-signal cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               {/* The hover/focus tell: the chip warms from inert grey to `signal`, and the
                   padlock springs open. `opacity-80` (what this was) says only "something is
@@ -394,7 +394,7 @@ const SettingField = ({
                   200ms is the house duration for this kind of moment (frontend-design §7's
                   "lock in"). No reduced-motion guard needed — styles.css already zeroes every
                   transition under `prefers-reduced-motion`, globally. */}
-              <Badge className="gap-1 transition-colors duration-200 group-hover/unlock:bg-signal-tint-15 group-hover/unlock:text-signal group-focus-visible/unlock:bg-signal-tint-15 group-focus-visible/unlock:text-signal">
+              <Badge className="group-hover/unlock:bg-signal-tint-15 group-hover/unlock:text-signal group-focus-visible/unlock:bg-signal-tint-15 group-focus-visible/unlock:text-signal gap-1 transition-colors duration-200">
                 {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the chip's
                     text — a swap that changes width would make the label twitch on hover. */}
                 <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
@@ -445,7 +445,7 @@ const SettingField = ({
 
       {secretLocked ? (
         <div className="flex items-center gap-2">
-          <span className="flex h-9 flex-1 items-center rounded-md border border-input px-3 font-mono text-muted-foreground text-sm">
+          <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
             {entry.preview ?? "stored"}
           </span>
           <button
@@ -454,7 +454,7 @@ const SettingField = ({
               setReplacing(true);
               onChange("");
             }}
-            className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+            className="border-input hover:bg-accent cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors"
           >
             Replace
           </button>
@@ -499,7 +499,7 @@ const SettingField = ({
       {entry.updatedAt && (
         <p
           className={cn(
-            "pointer-events-none text-muted-foreground text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
+            "text-muted-foreground pointer-events-none text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
             inlineSwitch && "col-span-2",
           )}
         >

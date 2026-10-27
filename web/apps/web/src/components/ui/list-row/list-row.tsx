@@ -16,7 +16,7 @@ const ListGroup = ({ children, className, ...aria }: ListGroupProps) => (
   <ul
     {...aria}
     className={cn(
-      "m-0 list-none overflow-hidden rounded-lg border border-static-700 bg-static-900 p-0",
+      "border-static-700 bg-static-900 m-0 list-none overflow-hidden rounded-lg border p-0",
       className,
     )}
   >
@@ -26,18 +26,18 @@ const ListGroup = ({ children, className, ...aria }: ListGroupProps) => (
 
 const ListRow = ({ tone, toneLabel = "", title, sub, progress, action, className }: ListRowProps) => (
   <li
-    className={cn("flex items-center gap-4 border-static-700 border-b px-4 py-3 last:border-b-0", className)}
+    className={cn("border-static-700 flex items-center gap-4 border-b px-4 py-3 last:border-b-0", className)}
   >
     <StatusDot tone={tone} label={toneLabel} />
     <div className="min-w-0 flex-1">
-      <p className="m-0 font-medium text-base">{title}</p>
-      {sub != null && <p className="mt-0.5 mb-0 text-static-400 text-xs">{sub}</p>}
+      <p className="m-0 text-base font-medium">{title}</p>
+      {sub != null && <p className="text-static-400 mt-0.5 mb-0 text-xs">{sub}</p>}
     </div>
     {progress && (
       <div className="flex w-40 shrink-0 flex-col gap-1">
         <Progress value={progress.value} label={progress.label} tone="tune" className="h-1" />
         {progress.eta && (
-          <span className="text-right font-mono text-2xs text-static-400">{progress.eta}</span>
+          <span className="text-2xs text-static-400 text-right font-mono">{progress.eta}</span>
         )}
       </div>
     )}

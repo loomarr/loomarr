@@ -18,7 +18,7 @@ describe("PeopleRoster", () => {
     expect(screen.getByText(/Media-server account/)).toBeInTheDocument();
     expect(screen.getByText("You")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Greta Finch" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Greta Finch/ }));
     expect(onSelect).toHaveBeenCalledWith(people.importedMember);
   });
 
@@ -31,15 +31,15 @@ describe("PeopleRoster", () => {
         now={now}
       />,
     );
-    expect(screen.getByRole("button", { name: "Manage Greta Finch" })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: "Manage Alder Wren" })).toHaveTextContent("Never");
+    expect(screen.getByRole("button", { name: /^Manage Greta Finch/ })).toHaveTextContent("2h ago");
+    expect(screen.getByRole("button", { name: /^Manage Alder Wren/ })).toHaveTextContent("Never");
   });
 
   it("searches and filters the loaded roster with an explicit no-results state", async () => {
     render(<PeopleRoster users={Object.values(people)} onSelect={() => {}} />);
     await userEvent.type(screen.getByLabelText("Search people"), "Greta");
-    expect(screen.getByRole("button", { name: "Manage Greta Finch" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Manage Adela Hale" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Manage Greta Finch/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Manage Adela Hale/ })).not.toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText("Search people"));
     await userEvent.type(screen.getByLabelText("Search people"), "Nobody");

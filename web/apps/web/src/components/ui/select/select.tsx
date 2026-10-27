@@ -15,13 +15,13 @@ const SelectValue = SelectPrimitive.Value;
 const SelectTrigger = ({ className, children, ...props }: SelectTriggerProps) => (
   <SelectPrimitive.Trigger
     className={cn(
-      "flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground [&>span]:truncate",
+      "border-input focus-visible:ring-ring focus-visible:ring-offset-background data-[placeholder]:text-muted-foreground flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate",
       className,
     )}
     {...props}
   >
     {children}
-    <SelectPrimitive.Icon render={<ChevronDown className="size-4 shrink-0 text-muted-foreground" />} />
+    <SelectPrimitive.Icon render={<ChevronDown className="text-muted-foreground size-4 shrink-0" />} />
   </SelectPrimitive.Trigger>
 );
 
@@ -52,7 +52,7 @@ const SelectContent = ({
           // `--anchor-width` is Base UI's `--radix-select-trigger-width`: the list is never
           // narrower than the trigger it drops from. `--available-height` keeps a long list
           // inside the viewport instead of running off the bottom.
-          "relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md",
+          "border-border bg-popover text-popover-foreground relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] overflow-hidden rounded-md border shadow-md",
           // Fade + rise on open — off under reduced-motion (and frozen in the visual suite).
           "motion-safe:animate-select-in",
           className,
@@ -68,7 +68,7 @@ const SelectContent = ({
 const SelectItem = ({ className, children, ...props }: SelectItemProps) => (
   <SelectPrimitive.Item
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:opacity-50",
+      "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground relative flex w-full cursor-pointer items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}
@@ -76,7 +76,7 @@ const SelectItem = ({ className, children, ...props }: SelectItemProps) => (
     <span className="absolute right-2 flex size-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         {/* The chosen option is a selection, so its mark is foreground, not amber (#1909). */}
-        <Check className="size-4 text-foreground" />
+        <Check className="text-foreground size-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

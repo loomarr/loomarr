@@ -39,7 +39,7 @@ const MovieCollectionChoices = ({
   );
   if (actionableCollections.length === 0) {
     return loading ? (
-      <p role="status" className="inline-flex items-center gap-2 text-muted-foreground text-sm">
+      <p role="status" className="text-muted-foreground inline-flex items-center gap-2 text-sm">
         <LoaderCircle className="size-4 animate-spin" aria-hidden /> Checking for movie collections…
       </p>
     ) : null;
@@ -48,11 +48,11 @@ const MovieCollectionChoices = ({
   return (
     <section
       aria-label="Movie collections"
-      className="flex flex-col gap-2 rounded-md border border-border p-3"
+      className="border-border flex flex-col gap-2 rounded-md border p-3"
     >
       <div>
-        <h3 className="font-medium text-sm">Complete a collection</h3>
-        <p className="mt-0.5 text-muted-foreground text-xs">
+        <h3 className="text-sm font-medium">Complete a collection</h3>
+        <p className="text-muted-foreground mt-0.5 text-xs">
           Keep the films together, or choose just the ones you want.
         </p>
       </div>
@@ -69,11 +69,11 @@ const MovieCollectionChoices = ({
         const libraryCount = members.filter((member) => member.inLibrary).length;
 
         return (
-          <div key={collection.tmdbId} className="rounded-md bg-static-900/50 px-3 py-2.5">
+          <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate font-medium text-sm">{collection.name}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+                <p className="truncate text-sm font-medium">{collection.name}</p>
+                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                   <span>
                     {selectedCount} of {members.length} selected
                   </span>
@@ -97,11 +97,11 @@ const MovieCollectionChoices = ({
             <Disclosure>
               <Disclosure.SectionTrigger
                 className="mt-1 py-1.5 text-sm"
-                label={`Choose films from ${collection.name}`}
                 title="Choose films"
+                context={`from ${collection.name}`}
               />
               <Disclosure.Panel className="pt-1">
-                <ul className="divide-y divide-border border-border border-t">
+                <ul className="divide-border border-border divide-y border-t">
                   {members.map((member) => {
                     const key = provisionKey(member);
                     const selected = selectedKeys.has(key);
@@ -109,14 +109,14 @@ const MovieCollectionChoices = ({
                       <li key={key} className="flex items-center gap-3 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm">{member.name}</p>
-                          <p className="mt-0.5 text-muted-foreground text-xs">
+                          <p className="text-muted-foreground mt-0.5 text-xs">
                             {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
                         </div>
                         {selected ? (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
                             <Check className="size-3.5" aria-hidden /> Selected
                           </span>
                         ) : (

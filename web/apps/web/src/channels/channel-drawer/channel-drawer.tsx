@@ -64,23 +64,23 @@ const ChannelDrawer = ({
   return (
     <section
       aria-labelledby="channel-drawer-title"
-      className="flex h-full w-[372px] max-w-full flex-col border-static-700 border-l bg-static-950/95 backdrop-blur-md"
+      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l backdrop-blur-md"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
         onClose();
       }}
     >
-      <div className="flex items-center gap-2.5 border-static-800 border-b px-[18px] pt-4 pb-3">
-        <h2 id="channel-drawer-title" className="font-semibold text-sm">
+      <div className="border-static-800 flex items-center gap-2.5 border-b px-[18px] pt-4 pb-3">
+        <h2 id="channel-drawer-title" className="text-sm font-semibold">
           Channels
         </h2>
-        <span className="font-mono text-[11px] text-muted-foreground tracking-[.06em]">NOW → NEXT 2H</span>
+        <span className="text-muted-foreground font-mono text-[11px] tracking-[.06em]">NOW → NEXT 2H</span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close channels"
-          className="ml-auto flex size-6 items-center justify-center rounded text-muted-foreground hover:text-static-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="text-muted-foreground hover:text-static-0 focus-visible:ring-ring ml-auto flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none"
         >
           <span aria-hidden className="text-sm leading-none">
             ✕
@@ -95,7 +95,7 @@ const ChannelDrawer = ({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Find a channel or show…"
           aria-label="Find a channel or show"
-          className="w-full rounded-lg border border-border-control bg-static-950 px-3 py-2 text-foreground text-sm outline-none placeholder:text-muted-foreground focus:border-signal"
+          className="border-border-control bg-static-950 text-foreground placeholder:text-muted-foreground focus:border-signal w-full rounded-lg border px-3 py-2 text-sm outline-none"
         />
       </div>
       <div className="flex-1 overflow-y-auto p-2.5">
@@ -103,7 +103,7 @@ const ChannelDrawer = ({
           <section key={group.header} aria-labelledby={groupHeadingId(group.header)}>
             <h3
               id={groupHeadingId(group.header)}
-              className="px-1 pt-1.5 pb-[7px] font-mono font-normal text-[11px] text-muted-foreground tracking-[.14em]"
+              className="text-muted-foreground px-1 pt-1.5 pb-[7px] font-mono text-[11px] font-normal tracking-[.14em]"
             >
               {group.header}
             </h3>
@@ -121,7 +121,7 @@ const ChannelDrawer = ({
           </section>
         ))}
       </div>
-      <p className="border-static-800 border-t px-[18px] py-3 font-mono text-[11px] text-muted-foreground">
+      <p className="border-static-800 text-muted-foreground border-t px-[18px] py-3 font-mono text-[11px]">
         {q
           ? `${listed.length} of ${channels.length} channels · guide has the full week`
           : `${channels.length} channels · type a number to tune direct`}
@@ -165,16 +165,16 @@ const DrawerRow = ({
         // The tuned row is neutral (#1909 Q2): elevated fill, the TUNED tag and `aria-current`.
         // Amber is left for the focus ring, so a focused row is never confused with the tuned one.
         className={cn(
-          "flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          tuned ? "border-static-700 bg-static-800" : "border-static-800 bg-transparent hover:bg-static-900",
+          "text-foreground focus-visible:ring-ring flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left focus-visible:ring-2 focus-visible:outline-none",
+          tuned ? "border-static-700 bg-static-800" : "border-static-800 hover:bg-static-900 bg-transparent",
         )}
       >
         <span className="flex items-center gap-[9px] pr-7">
-          <span className="w-[26px] font-mono text-muted-foreground text-sm">
+          <span className="text-muted-foreground w-[26px] font-mono text-sm">
             {channelNumber(channel.number)}
           </span>
-          <span className="min-w-0 flex-1 truncate font-semibold text-sm">{channel.name}</span>
-          {tuned && <span className="font-mono text-[11px] text-muted-foreground">TUNED</span>}
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{channel.name}</span>
+          {tuned && <span className="text-muted-foreground font-mono text-[11px]">TUNED</span>}
         </span>
         <span aria-hidden className="relative flex h-6 gap-0.5 overflow-hidden rounded">
           {channel.blocks.map((block) => (
@@ -187,15 +187,15 @@ const DrawerRow = ({
               style={{ flex: `${block.minutes} 1 0px` }}
             >
               {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
-                <span className="block min-w-0 truncate text-[11px] text-foreground">{block.label}</span>
+                <span className="text-foreground block min-w-0 truncate text-[11px]">{block.label}</span>
               )}
             </span>
           ))}
           {channel.blocks.length > 0 && (
-            <span className="absolute inset-y-0 w-[1.5px] bg-onair" style={{ left: `${nowPercent}%` }} />
+            <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
           )}
         </span>
-        <span className="flex items-center gap-[7px] text-[11px] text-muted-foreground">
+        <span className="text-muted-foreground flex items-center gap-[7px] text-[11px]">
           <span className="min-w-0 truncate">{line ? `▸ ${line}` : ""}</span>
           <span className="ml-auto shrink-0 font-mono">
             {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
@@ -210,7 +210,7 @@ const DrawerRow = ({
         title={favourite ? "Unpin favorite" : "Pin as favorite"}
         className={cn(
           // A pinned favourite is a pressed state, so it is foreground with the filled star, not amber.
-          "absolute top-2 right-2 flex size-6 items-center justify-center rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "hover:text-foreground focus-visible:ring-ring absolute top-2 right-2 flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none",
           favourite ? "text-foreground" : "text-muted-foreground",
         )}
       >

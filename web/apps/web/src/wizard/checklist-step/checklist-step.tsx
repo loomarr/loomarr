@@ -198,7 +198,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
       {/* Names the blocks that actually gate THIS install. Reading the derived set rather
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
           it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
-      <p className="mt-1 text-muted-foreground text-xs">
+      <p className="text-muted-foreground mt-1 text-xs">
         {requiredChecks(backend)
           .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
           .join(" and ")}{" "}

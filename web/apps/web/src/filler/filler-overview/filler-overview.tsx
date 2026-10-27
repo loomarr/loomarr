@@ -157,7 +157,7 @@ const FillerOverview = () => {
     return (
       <Card aria-live="polite" className="p-6">
         <p className="font-medium">Checking filler health…</p>
-        <p className="mt-1 text-muted-foreground text-sm">Finding out what's ready and what's on the way.</p>
+        <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
       </Card>
     );
   }
@@ -174,12 +174,12 @@ const FillerOverview = () => {
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
               <Badge variant="caution">Action recommended</Badge>
-              <h2 className="mt-3 font-semibold text-xl">{action.title}</h2>
-              <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{action.description}</p>
+              <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
+              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <p className="mt-2 text-muted-foreground text-sm">
+                <p className="text-muted-foreground mt-2 text-sm">
                   An admin can sort this out from Filler › Manage.
                 </p>
               )}
@@ -201,7 +201,7 @@ const FillerOverview = () => {
         </Card>
       ) : (
         <Card className="flex items-center gap-2.5 p-4">
-          <span aria-hidden className="size-2 shrink-0 rounded-full bg-lock" />
+          <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
           <div className="min-w-0">
             <h2 className="font-semibold">Filler is working on its own</h2>
             <p className="text-muted-foreground text-sm">
@@ -214,7 +214,7 @@ const FillerOverview = () => {
       <section aria-labelledby="coverage-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="coverage-heading" className="font-semibold text-lg">
+            <h2 id="coverage-heading" className="text-lg font-semibold">
               Channel coverage
             </h2>
             <p className="text-muted-foreground text-sm">
@@ -241,7 +241,7 @@ const FillerOverview = () => {
                       >
                         {channel.number} · {channel.name}
                       </Link>
-                      <p className="mt-1 text-muted-foreground text-sm">
+                      <p className="text-muted-foreground mt-1 text-sm">
                         {channel.level === "bumper_card"
                           ? "Only a bumper card"
                           : `${formatDuration(channel.durationMs)} playable · ${pluralize(channel.total, "clip")}`}
@@ -251,7 +251,7 @@ const FillerOverview = () => {
                       {badge.label}
                     </Badge>
                   </div>
-                  <p className="mt-3 text-muted-foreground text-xs">
+                  <p className="text-muted-foreground mt-3 text-xs">
                     {channel.categories} {channel.categories === 1 ? "category" : "categories"} ·{" "}
                     {pluralize(channel.brands, "brand")}
                   </p>
@@ -260,7 +260,7 @@ const FillerOverview = () => {
             })}
           </div>
         ) : (
-          <Card className="p-4 text-muted-foreground text-sm">
+          <Card className="text-muted-foreground p-4 text-sm">
             {readinessQuery.error
               ? "Channel coverage is temporarily unavailable."
               : "No live channels need filler coverage yet."}

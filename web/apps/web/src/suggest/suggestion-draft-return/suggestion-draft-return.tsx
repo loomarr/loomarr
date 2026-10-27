@@ -7,9 +7,9 @@ const SuggestionDraftReturn = () => {
   if (!draft) return null;
 
   return (
-    <aside className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+    <aside className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
       <div>
-        <p className="font-medium text-sm">Your channel draft is saved</p>
+        <p className="text-sm font-medium">Your channel draft is saved</p>
         <p className="text-muted-foreground text-sm">Finish setup, then return without retyping it.</p>
       </div>
       <Link to="/guide" className={buttonVariants({ variant: "outline", size: "sm" })}>

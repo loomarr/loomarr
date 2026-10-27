@@ -65,7 +65,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
           aria-pressed={revealed}
           onClick={() => setRevealed((v) => !v)}
           // The colour stays a class: hover brightens it, and an inline colour would pin it.
-          className="rounded-r-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring focus-visible:ring-offset-background rounded-r-md transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           style={{
             position: "absolute",
             top: 0,

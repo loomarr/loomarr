@@ -65,7 +65,7 @@ const Copied: Story = {
   args: { existing: invitation },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Generate QR and link" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Copy invitation link" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Copy link to this invitation" }));
     await canvas.findByRole("button", { name: "Copied" });
   },
 };

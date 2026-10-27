@@ -184,11 +184,11 @@ const ChannelSuggestPanel = ({
       {run.error != null &&
         !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
-          <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
+          <div role="alert" className="border-border bg-muted/40 rounded-lg border p-4">
             <p className="font-medium">
               {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
             </p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {groundingUnconfigured
                 ? isAdmin
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
@@ -243,15 +243,15 @@ const ChannelSuggestPanel = ({
       {run.failed && !proposal && (
         <div
           role="alert"
-          className="mx-auto flex w-full max-w-form flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
+          className="max-w-form border-border bg-muted/35 mx-auto flex w-full flex-col gap-3 rounded-lg border p-4"
         >
           <div>
             <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {failureCopy?.message ?? "Loomarr couldn't finish this request."}
             </p>
             {failureCopy?.guidance && (
-              <p className="mt-1 text-muted-foreground text-sm">{failureCopy.guidance}</p>
+              <p className="text-muted-foreground mt-1 text-sm">{failureCopy.guidance}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">

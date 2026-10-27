@@ -24,11 +24,11 @@ const EncryptionSettings = () => {
   };
 
   return (
-    <section className="rounded-lg border border-border p-4">
+    <section className="border-border rounded-lg border p-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-medium text-sm">Database secret encryption</h2>
-          <p className="mt-1 max-w-2xl text-muted-foreground text-sm leading-relaxed">
+          <h2 className="text-sm font-medium">Database secret encryption</h2>
+          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
             Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
             key with your host or secrets manager—it is not included in database backups.
           </p>
@@ -55,7 +55,7 @@ const EncryptionSettings = () => {
           </div>
           <div>
             <dt className="text-muted-foreground">Installation key fingerprint</dt>
-            <dd className="break-all font-mono text-xs">
+            <dd className="font-mono text-xs break-all">
               {encryption.installationKeyFingerprint || "Unavailable"}
             </dd>
           </div>
@@ -65,7 +65,7 @@ const EncryptionSettings = () => {
           </div>
         </dl>
       )}
-      {message != null && <p className="mt-3 text-muted-foreground text-sm">{message}</p>}
+      {message != null && <p className="text-muted-foreground mt-3 text-sm">{message}</p>}
     </section>
   );
 };

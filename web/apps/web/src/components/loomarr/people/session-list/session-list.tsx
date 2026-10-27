@@ -50,7 +50,7 @@ const SessionList = ({
         {sessions.map((s) => (
           <li
             key={s.id}
-            className="flex items-center justify-between gap-3 rounded-md border border-static-800 px-3 py-2"
+            className="border-static-800 flex items-center justify-between gap-3 rounded-md border px-3 py-2"
           >
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-sm">

@@ -33,9 +33,9 @@ const PickRow = ({
 }) => {
   const window = seasonWindowLabel(item.seasonMin, item.seasonMax);
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm">
+    <li className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
       <span className="font-medium">{item.name}</span>
-      {item.year ? <span className="font-mono text-static-400 text-xs">{item.year}</span> : null}
+      {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
       <Badge variant={kind === "lineup" ? "lock" : "tune"}>
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
@@ -95,11 +95,11 @@ const ApprovalQueueItem = ({
             {edit && <Badge variant="suggest">Edited</Badge>}
             {denied && <Badge variant="onair">Denied</Badge>}
           </div>
-          {summary && <p className="mt-1 text-muted-foreground text-sm">{summary}</p>}
+          {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
           {requestedBy && (
-            <p className="mt-1 font-mono text-static-400 text-xs">{`Requested by ${requestedBy}`}</p>
+            <p className="text-static-400 mt-1 font-mono text-xs">{`Requested by ${requestedBy}`}</p>
           )}
-          {denied && denyReason && <p className="mt-1 text-onair-300 text-sm">{denyReason}</p>}
+          {denied && denyReason && <p className="text-onair-300 mt-1 text-sm">{denyReason}</p>}
         </div>
 
         {!denied && !denying && (
@@ -124,7 +124,7 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <div className="flex flex-col gap-2 border-border border-t pt-2">
+        <div className="border-border flex flex-col gap-2 border-t pt-2">
           <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
             Why not? Optional: the requester sees this.
           </label>
@@ -168,9 +168,9 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <div className="flex flex-col gap-1.5 rounded-md border border-caution-tint-40 bg-caution-tint-8 px-3 py-2">
+        <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm">
-            <ShieldAlert className="size-4 shrink-0 text-caution" aria-hidden />
+            <ShieldAlert className="text-caution size-4 shrink-0" aria-hidden />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title" : "titles"} won't be included
             </span>
@@ -201,7 +201,7 @@ const ApprovalQueueItem = ({
         <div className="border-border border-t pt-2">
           <button
             type="button"
-            className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
             // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
             data-touch-target
             onClick={() => setOpen((v) => !v)}

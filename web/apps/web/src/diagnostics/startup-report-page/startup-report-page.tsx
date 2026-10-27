@@ -53,15 +53,15 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
         {readableStatus(check.status)}
       </span>
     </td>
-    <td className="px-4 py-3 text-muted-foreground text-xs">
+    <td className="text-muted-foreground px-4 py-3 text-xs">
       <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
         {dateTime(check.observedAt)}
       </time>
     </td>
-    <td className="px-4 py-3 text-muted-foreground">
+    <td className="text-muted-foreground px-4 py-3">
       {check.detail || "—"}
       {check.remediationRoute && (
-        <a className="ml-2 text-signal underline underline-offset-4" href={check.remediationRoute}>
+        <a className="text-signal ml-2 underline underline-offset-4" href={check.remediationRoute}>
           Open
         </a>
       )}
@@ -72,24 +72,24 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
 const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
   return (
     <section
-      className="overflow-hidden rounded-lg border border-border bg-card"
+      className="border-border bg-card overflow-hidden rounded-lg border"
       aria-label="Current health summary"
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
         <div className="min-w-0 flex-1">
-          <p className="inline-flex items-center gap-2 font-medium text-lg">
+          <p className="inline-flex items-center gap-2 text-lg font-medium">
             <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
             {healthStateCopy(report.state)}
           </p>
           <p className="text-muted-foreground text-xs">Continuously monitored</p>
         </div>
-        <span className="font-mono text-muted-foreground text-xs">{report.version}</span>
+        <span className="text-muted-foreground font-mono text-xs">{report.version}</span>
       </div>
       <div className="border-border border-t">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] text-sm">
             <caption className="sr-only">Current health checks</caption>
-            <thead className="border-border border-t bg-muted/30 text-muted-foreground text-xs">
+            <thead className="border-border bg-muted/30 text-muted-foreground border-t text-xs">
               <tr>
                 {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
                   <th key={label} scope="col" className="px-4 py-2 text-left font-medium">

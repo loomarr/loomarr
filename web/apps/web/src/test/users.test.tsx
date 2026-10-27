@@ -277,7 +277,7 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     const detail = await screen.findByRole("dialog", { name: "Grace" });
     await userEvent.click(within(detail).getByLabelText("Role"));
     await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
@@ -301,7 +301,7 @@ describe("Users page", () => {
   it("sends contact changes to the selected person's generated endpoints", async () => {
     const state = stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Grace/ }));
     const detail = await screen.findByRole("dialog", { name: "Grace" });
     await userEvent.click(within(detail).getByRole("button", { name: "Add email" }));
     await userEvent.type(within(detail).getByLabelText("Contact email"), "grace@example.com");
@@ -327,7 +327,7 @@ describe("Users page", () => {
     renderAt("/people");
     await screen.findByText("Grace");
 
-    const trigger = screen.getByRole("button", { name: "Manage Grace" });
+    const trigger = screen.getByRole("button", { name: /^Manage Grace/ });
     await userEvent.click(trigger);
     expect(await screen.findByText(/1 active session for Grace/)).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
@@ -386,7 +386,7 @@ describe("Users page", () => {
     expect(state.syncs).toEqual([true]);
     await userEvent.keyboard("{Escape}");
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(state.revokes).toEqual(["opaque-session-hash"]);
   });
@@ -431,10 +431,10 @@ describe("Users page", () => {
     // the media-server password, so offering a reset here would imply authority it lacks.
     stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Ada/ }));
     expect(await screen.findByRole("button", { name: /reset password/i })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
-    await userEvent.click(screen.getByRole("button", { name: "Manage Grace" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     const imported = await screen.findByRole("dialog", { name: "Grace" });
     expect(within(imported).queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument();
   });
@@ -442,7 +442,7 @@ describe("Users page", () => {
   it("keeps self-demotion and self-disable unavailable on the routed page", async () => {
     stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Ada/ }));
     const detail = await screen.findByRole("dialog", { name: "Ada" });
     expect(within(detail).getByLabelText("Role")).toBeDisabled();
     expect(within(detail).getByRole("button", { name: "Disable account" })).toBeDisabled();
@@ -451,7 +451,7 @@ describe("Users page", () => {
   it("sends the new password to the admin reset route", async () => {
     const { resets } = stubUsers();
     renderAt("/people");
-    await userEvent.click(await screen.findByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Ada/ }));
     await userEvent.click(await screen.findByRole("button", { name: /reset password/i }));
     await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
     await userEvent.click(screen.getByRole("button", { name: /set new password/i }));
@@ -476,8 +476,8 @@ describe("Users page", () => {
       getListUsersMockHandler(() => ({ users: [ADA, { ...GRACE, lastSeenAt: Date.now() - 2 * 3_600_000 }] })),
     );
     renderAt("/people");
-    expect(await screen.findByRole("button", { name: "Manage Grace" })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: "Manage Ada" })).toHaveTextContent("Never");
+    expect(await screen.findByRole("button", { name: /^Manage Grace/ })).toHaveTextContent("2h ago");
+    expect(screen.getByRole("button", { name: /^Manage Ada/ })).toHaveTextContent("Never");
   });
 });
 

@@ -59,7 +59,7 @@ const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): str
 const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
   if (!storage) {
     return (
-      <p aria-live="polite" className="rounded-lg bg-muted/50 px-4 py-3 text-muted-foreground text-sm">
+      <p aria-live="polite" className="bg-muted/50 text-muted-foreground rounded-lg px-4 py-3 text-sm">
         Checking this drive…
       </p>
     );
@@ -69,18 +69,18 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
     <div
       className={
         pauseMessage
-          ? "rounded-lg border border-caution/40 bg-caution/5 px-4 py-3 text-sm"
-          : "rounded-lg bg-muted/50 px-4 py-3 text-sm"
+          ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3 text-sm"
+          : "bg-muted/50 rounded-lg px-4 py-3 text-sm"
       }
     >
       <p className="font-medium">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </p>
-      <p className="mt-1 text-muted-foreground">
+      <p className="text-muted-foreground mt-1">
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
       </p>
-      {pauseMessage ? <p className="mt-2 text-caution-foreground">{pauseMessage}</p> : null}
+      {pauseMessage ? <p className="text-caution-foreground mt-2">{pauseMessage}</p> : null}
     </div>
   );
 };
@@ -88,16 +88,16 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
 const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSection }) => {
   const navigate = useNavigate();
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="border-border bg-card flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <Link
           to="/filler/settings"
-          className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
         >
           <ArrowLeft className="size-3.5" aria-hidden />
           All filler settings
         </Link>
-        <p className="mt-2 text-muted-foreground text-xs">Jump straight to another task.</p>
+        <p className="text-muted-foreground mt-2 text-xs">Jump straight to another task.</p>
       </div>
       <Select
         value={section}
@@ -128,13 +128,13 @@ const FillerSettingsIndex = () => (
     <div>
       <Link
         to="/filler/manage"
-        className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
       >
         <ArrowLeft className="size-3.5" aria-hidden />
         Manage
       </Link>
-      <h2 className="mt-3 font-semibold text-xl">Filler settings</h2>
-      <p className="mt-1 text-muted-foreground text-sm">
+      <h2 className="mt-3 text-xl font-semibold">Filler settings</h2>
+      <p className="text-muted-foreground mt-1 text-sm">
         Change how Loomarr finds, prepares, stores, and plays short clips.
       </p>
     </div>
@@ -155,10 +155,10 @@ const FillerSettingsIndex = () => (
     ).map((group) => (
       <section key={group.id} aria-labelledby={`filler-settings-${group.id}`}>
         <div className="mb-3">
-          <h3 id={`filler-settings-${group.id}`} className="font-medium text-base">
+          <h3 id={`filler-settings-${group.id}`} className="text-base font-medium">
             {group.label}
           </h3>
-          <p className="mt-0.5 text-muted-foreground text-sm">{group.description}</p>
+          <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
@@ -166,16 +166,16 @@ const FillerSettingsIndex = () => (
               key={item.id}
               to="/filler/settings/$section"
               params={{ section: item.id }}
-              className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-signal/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
             >
               <span className="min-w-0 flex-1">
-                <span className="block font-medium text-sm">{item.label}</span>
-                <span className="mt-0.5 block text-muted-foreground text-xs leading-relaxed">
+                <span className="block text-sm font-medium">{item.label}</span>
+                <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
                   {item.description}
                 </span>
               </span>
               <ArrowRight
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+                className="text-muted-foreground group-hover:text-foreground mt-0.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
                 aria-hidden
               />
             </Link>
@@ -236,7 +236,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
             ? "No enabled sources are currently downloading automatically."
             : `Across ${sourceCount} enabled ${sourceCount === 1 ? "source" : "sources"}, one full check can add up to ${fullCheckMax} ${fullCheckMax === 1 ? "clip" : "clips"}.`;
         return (
-          <p className="rounded-lg bg-muted/50 px-4 py-3 text-muted-foreground text-sm">
+          <p className="bg-muted/50 text-muted-foreground rounded-lg px-4 py-3 text-sm">
             {cadence} {round}{" "}
             <Link to="/filler/settings/$section" params={{ section: "storage" }} className="underline">
               Storage limits

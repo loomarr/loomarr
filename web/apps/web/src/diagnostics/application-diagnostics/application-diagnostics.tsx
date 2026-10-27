@@ -143,17 +143,17 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
     <Button
       variant="ghost"
       size="sm"
-      className="h-auto justify-start px-2 py-1 font-mono text-xs"
+      className="relative h-auto justify-start px-2 py-1 font-mono text-xs"
       onClick={() => {
         void navigator.clipboard.writeText(value).then(() => {
           setCopied(true);
           window.setTimeout(() => setCopied(false), 1_500);
         });
       }}
-      aria-label={`Copy ${label}`}
     >
       {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-      <span className="truncate">{value}</span>
+      {/* The name is the content, so it holds the visible value (WCAG 2.5.3). */}
+      <span className="sr-only">Copy {label}:</span> <span className="truncate">{value}</span>
     </Button>
   );
 };
@@ -184,15 +184,15 @@ const EventDetail = ({
     });
   };
   return (
-    <div className="space-y-4 bg-muted/20 p-4 text-sm">
+    <div className="bg-muted/20 space-y-4 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <span className="inline-flex items-center gap-2 text-muted-foreground text-xs">
+          <span className="text-muted-foreground inline-flex items-center gap-2 text-xs">
             <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
             {levelLabel(event.level)} · {sourceLabel(event.source)}
           </span>
-          <h3 className="mt-2 font-medium text-lg">{event.message || fallbackMessage(event)}</h3>
-          <p className="mt-1 text-muted-foreground text-xs">
+          <h3 className="mt-2 text-lg font-medium">{event.message || fallbackMessage(event)}</h3>
+          <p className="text-muted-foreground mt-1 text-xs">
             {formatTime(event.occurredAt)}
             {event.subsystem ? ` · ${event.subsystem}` : ""}
           </p>
@@ -231,15 +231,15 @@ const EventDetail = ({
           </Button>
         )}
       </div>
-      <details className="rounded-md border border-border bg-background p-3">
-        <summary className="cursor-pointer font-medium text-sm">Technical details</summary>
+      <details className="border-border bg-background rounded-md border p-3">
+        <summary className="cursor-pointer text-sm font-medium">Technical details</summary>
         <div className="mt-3 space-y-3">
-          <p className="font-mono text-muted-foreground text-xs">{event.event}</p>
+          <p className="text-muted-foreground font-mono text-xs">{event.event}</p>
           {correlations.length > 0 && (
             <div className="grid gap-1">
               {correlations.map(([label, value]) => (
                 <div key={label} className="flex min-w-0 items-center gap-1">
-                  <span className="w-28 shrink-0 text-muted-foreground text-xs">{label}</span>
+                  <span className="text-muted-foreground w-28 shrink-0 text-xs">{label}</span>
                   <CopyValue label={label} value={value} />
                 </div>
               ))}
@@ -248,7 +248,7 @@ const EventDetail = ({
           {Object.keys(event.attributes).length === 0 ? (
             <p className="text-muted-foreground text-xs">No structured attributes.</p>
           ) : (
-            <pre className="max-h-56 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs">
+            <pre className="border-border bg-card max-h-56 overflow-auto rounded-md border p-3 font-mono text-xs">
               {JSON.stringify(event.attributes, null, 2)}
             </pre>
           )}
@@ -282,10 +282,10 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
     await query.refetch();
   };
   return (
-    <section className="rounded-lg border border-border bg-card p-3" aria-labelledby="verbose-capture-title">
+    <section className="border-border bg-card rounded-lg border p-3" aria-labelledby="verbose-capture-title">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-64 flex-1">
-          <h3 id="verbose-capture-title" className="font-medium text-sm">
+          <h3 id="verbose-capture-title" className="text-sm font-medium">
             Verbose capture
           </h3>
           <p className="text-muted-foreground text-xs">
@@ -298,7 +298,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
         {capture?.active ? (
           <>
             <span className="inline-flex items-center gap-2 text-sm">
-              <Radio aria-hidden className="size-4 text-caution" />
+              <Radio aria-hidden className="text-caution size-4" />
               Active until {formatTime(capture.endsAt ?? Date.now())}
             </span>
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void stopCapture()}>
@@ -329,9 +329,9 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
           </>
         )}
       </div>
-      {query.isError && <p className="mt-2 text-onair text-xs">Verbose capture is unavailable.</p>}
+      {query.isError && <p className="text-onair mt-2 text-xs">Verbose capture is unavailable.</p>}
       {(start.isError || stop.isError) && (
-        <p className="mt-2 text-onair text-xs">The capture control could not be updated.</p>
+        <p className="text-onair mt-2 text-xs">The capture control could not be updated.</p>
       )}
     </section>
   );
@@ -420,7 +420,7 @@ const ApplicationDiagnostics = ({
     <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="logs-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="logs-title" className="font-medium text-lg">
+          <h2 id="logs-title" className="text-lg font-medium">
             Logs
           </h2>
           <p className="text-muted-foreground text-sm">
@@ -440,7 +440,7 @@ const ApplicationDiagnostics = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-3">
         <Input
           className="min-w-64 flex-1"
           aria-label="Search logs"
@@ -481,11 +481,11 @@ const ApplicationDiagnostics = ({
 
       {advanced && (
         <section
-          className="space-y-4 rounded-lg border border-border bg-card p-4"
+          className="border-border bg-card space-y-4 rounded-lg border p-4"
           aria-label="More log filters"
         >
           <div>
-            <h3 className="font-medium text-sm">More filters</h3>
+            <h3 className="text-sm font-medium">More filters</h3>
             <p className="text-muted-foreground text-xs">
               Use these when you already know the affected source or identifier.
             </p>
@@ -513,7 +513,7 @@ const ApplicationDiagnostics = ({
             />
           </div>
           <details>
-            <summary className="cursor-pointer font-medium text-muted-foreground text-sm">
+            <summary className="text-muted-foreground cursor-pointer text-sm font-medium">
               IDs and correlations
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -529,7 +529,7 @@ const ApplicationDiagnostics = ({
             </div>
           </details>
           <details>
-            <summary className="cursor-pointer font-medium text-sm">Verbose capture</summary>
+            <summary className="cursor-pointer text-sm font-medium">Verbose capture</summary>
             <div className="mt-3">
               <VerboseCaptureControl filters={filters} />
             </div>
@@ -552,7 +552,7 @@ const ApplicationDiagnostics = ({
               render={
                 <button
                   type="button"
-                  className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:border-current hover:bg-muted/30"}`}
+                  className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:bg-muted/30 hover:border-current"}`}
                   aria-pressed={filters.level === level}
                   onClick={() => updateFilters({ ...filters, level })}
                 >
@@ -568,7 +568,7 @@ const ApplicationDiagnostics = ({
         {counts.debug > 0 && (
           <button
             type="button"
-            className={`cursor-pointer rounded-full border px-2.5 py-1 font-medium text-muted-foreground ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
+            className={`text-muted-foreground cursor-pointer rounded-full border px-2.5 py-1 font-medium ${filters.level === "debug" ? "border-current bg-current/10" : "border-border hover:border-current"}`}
             aria-pressed={filters.level === "debug"}
             onClick={() => updateFilters({ ...filters, level: filters.level === "debug" ? "all" : "debug" })}
           >
@@ -576,12 +576,12 @@ const ApplicationDiagnostics = ({
           </button>
         )}
         {downloadState === "failed" && (
-          <span className="inline-flex items-center gap-1 text-onair">
+          <span className="text-onair inline-flex items-center gap-1">
             <AlertTriangle aria-hidden className="size-3" /> Download failed
           </span>
         )}
         {dropped > 0 && (
-          <span className="inline-flex items-center gap-1 text-caution">
+          <span className="text-caution inline-flex items-center gap-1">
             <AlertTriangle aria-hidden className="size-3" /> {dropped} events dropped since startup
           </span>
         )}
@@ -606,11 +606,11 @@ const ApplicationDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
+        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
           Loading retained diagnostics…
         </p>
       ) : events.length === 0 ? (
-        <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-muted-foreground text-sm">
+        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
           No logs match these filters. Try a longer time range or clear More filters.
         </p>
       ) : (
@@ -621,7 +621,7 @@ const ApplicationDiagnostics = ({
           primary={
             <section
               ref={listRef}
-              className="max-h-[55vh] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card lg:max-h-[40rem]"
+              className="border-border bg-card max-h-[55vh] overflow-x-hidden overflow-y-auto rounded-lg border lg:max-h-[40rem]"
               aria-label="Logs"
               style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
             >
@@ -635,12 +635,12 @@ const ApplicationDiagnostics = ({
                       key={event.id}
                       ref={virtualizer.measureElement}
                       data-index={virtualRow.index}
-                      className="absolute top-0 left-0 w-full border-border border-b"
+                      className="border-border absolute top-0 left-0 w-full border-b"
                       style={{ transform: `translateY(${virtualRow.start}px)` }}
                     >
                       <button
                         type="button"
-                        className={`grid w-full cursor-pointer gap-2 px-4 py-3 text-left hover:bg-muted/20 sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
+                        className={`hover:bg-muted/20 grid w-full cursor-pointer gap-2 px-4 py-3 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
                         aria-expanded={open}
                         onClick={() => setExpanded(open ? undefined : event.id)}
                       >
@@ -649,10 +649,10 @@ const ApplicationDiagnostics = ({
                           {levelLabel(event.level)}
                         </span>
                         <span className="min-w-0">
-                          <span className="block font-medium text-sm">
+                          <span className="block text-sm font-medium">
                             {event.message || fallbackMessage(event)}
                           </span>
-                          <span className="mt-1 block text-muted-foreground text-xs">
+                          <span className="text-muted-foreground mt-1 block text-xs">
                             {sourceLabel(event.source)}
                             {event.subsystem ? ` · ${event.subsystem}` : ""}
                             {event.channelId ? " · Channel involved" : ""}
@@ -660,7 +660,7 @@ const ApplicationDiagnostics = ({
                           </span>
                         </span>
                         <time
-                          className="font-mono text-muted-foreground text-xs sm:text-right"
+                          className="text-muted-foreground font-mono text-xs sm:text-right"
                           dateTime={new Date(event.occurredAt).toISOString()}
                         >
                           {formatTime(event.occurredAt)}
@@ -683,7 +683,7 @@ const ApplicationDiagnostics = ({
           }
           secondary={
             <aside
-              className="h-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card"
+              className="border-border bg-card h-full overflow-x-hidden overflow-y-auto rounded-lg border"
               aria-label="Selected log"
             >
               {selectedEvent ? (
@@ -693,8 +693,8 @@ const ApplicationDiagnostics = ({
                   onOpenRelated={onOpenRelated}
                 />
               ) : (
-                <div className="p-6 text-muted-foreground text-sm">
-                  <p className="font-medium text-foreground">Select a log to see more</p>
+                <div className="text-muted-foreground p-6 text-sm">
+                  <p className="text-foreground font-medium">Select a log to see more</p>
                   <p className="mt-1">Related actions and technical details will appear here.</p>
                 </div>
               )}

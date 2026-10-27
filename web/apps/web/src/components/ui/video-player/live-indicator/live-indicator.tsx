@@ -26,26 +26,26 @@ const lagLabel = (seconds: number): string => {
 const LiveIndicator = ({ state, onGoLive }: LiveIndicatorProps) => {
   if (state.mode === "live") {
     return (
-      <span className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-onair-300/25 bg-onair-tint-15 px-2.5 font-mono text-2xs text-onair-300 uppercase tracking-[0.12em] shadow-sm backdrop-blur-sm">
-        <span className="size-1.5 rounded-full bg-onair-300 motion-safe:animate-pulse" aria-hidden />
+      <span className="border-onair-300/25 bg-onair-tint-15 text-2xs text-onair-300 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 font-mono tracking-[0.12em] uppercase shadow-sm backdrop-blur-sm">
+        <span className="bg-onair-300 size-1.5 rounded-full motion-safe:animate-pulse" aria-hidden />
         Live
       </span>
     );
   }
 
   return (
-    <span className="inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-static-500/50 bg-static-900/80 shadow-sm backdrop-blur-sm">
-      <span className="inline-flex items-center gap-1.5 px-2.5 font-mono text-2xs text-static-100 uppercase tabular-nums tracking-[0.08em]">
-        {state.mode === "paused" && <span className="font-semibold text-static-50">Paused</span>}
+    <span className="border-static-500/50 bg-static-900/80 inline-flex h-7 shrink-0 overflow-hidden rounded-full border shadow-sm backdrop-blur-sm">
+      <span className="text-2xs text-static-100 inline-flex items-center gap-1.5 px-2.5 font-mono tracking-[0.08em] uppercase tabular-nums">
+        {state.mode === "paused" && <span className="text-static-50 font-semibold">Paused</span>}
         {state.mode === "paused" && <span className="text-static-500">·</span>}
         <span>{lagLabel(state.lagSeconds)} behind</span>
       </span>
       <button
         type="button"
         onClick={onGoLive}
-        className="inline-flex cursor-pointer items-center gap-1.5 border-static-500/50 border-l bg-onair-tint-15 px-2.5 font-semibold text-2xs text-onair-300 uppercase tracking-[0.08em] outline-none transition-colors hover:bg-onair-tint-25 focus-visible:bg-onair-tint-25 focus-visible:ring-2 focus-visible:ring-onair-300 focus-visible:ring-inset"
+        className="border-static-500/50 bg-onair-tint-15 text-2xs text-onair-300 hover:bg-onair-tint-25 focus-visible:bg-onair-tint-25 focus-visible:ring-onair-300 inline-flex cursor-pointer items-center gap-1.5 border-l px-2.5 font-semibold tracking-[0.08em] uppercase transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset"
       >
-        <span className="size-1.5 rounded-full bg-onair-300" aria-hidden />
+        <span className="bg-onair-300 size-1.5 rounded-full" aria-hidden />
         Go live
       </button>
     </span>

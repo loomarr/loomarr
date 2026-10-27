@@ -61,28 +61,19 @@ const config: KnipConfig = {
         // under routes/ except `-`-prefixed ones, which are ordinary modules the routes import.
         // Listed so the result does not depend on whether codegen has run.
         "src/routes/**/!(-*).tsx",
-        // client-platform-proof.html → `pnpm client-proof` (make clients).
-        "src/client-platform-proof/client-platform-proof.tsx",
-        "tests/client-platform-proof.ssr.test.tsx",
         // Registered by URL: navigator.serviceWorker.register("/push-worker.js").
         "public/push-worker.js",
       ],
       playwright: { config: ["playwright*.config.ts"] },
       vite: { config: ["vite.config.ts", "vite.client-platform.config.ts"] },
-      // Run as node_modules/.bin/http-server by the Playwright webServer commands.
-      ignoreDependencies: ["http-server"],
     },
     "apps/mobile": {
       // Metro bundles web/native-stories (which import @loomarr/fixtures) into the app when
       // STORYBOOK_ENABLED is set, resolving from the app. expo-updates: knip assumes it unless
       // app.json sets updates.enabled=false; the app ships no OTA updates.
-      // Expo's dynamic config, loaded by the Expo CLI.
-      entry: ["app.config.cjs"],
       ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
     },
     "apps/tv": {
-      // Expo's dynamic config, loaded by the Expo CLI.
-      entry: ["app.config.cjs"],
       ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
     },
     "packages/api": {
@@ -98,10 +89,6 @@ const config: KnipConfig = {
       // vitest.config.ts re-exports vitest.universal.config.ts, which has no `test` block, so
       // knip's Vitest plugin adds no test entries; vitest itself runs its default include.
       entry: ["tests/**/*.test.{ts,tsx}"],
-    },
-    "packages/lan-discovery-native": {
-      // React Native CLI autolinking config.
-      entry: ["react-native.config.cjs"],
     },
     "packages/player": {
       // Same as the design system: no `test` block for knip's Vitest plugin, and the hook tests are .tsx.

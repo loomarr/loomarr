@@ -125,7 +125,7 @@ const ChannelIconField = ({
       <div className="flex items-center gap-3">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
-        <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+        <div className="border-border bg-background flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border">
           {/*
             Three states, and the middle one is the interesting one.
 
@@ -145,17 +145,17 @@ const ChannelIconField = ({
               alt="Channel icon"
               sizes="48px"
               className="size-full object-cover"
-              fallback={<ImageOff className="size-6 text-static-500" aria-hidden />}
+              fallback={<ImageOff className="text-static-500 size-6" aria-hidden />}
             />
           ) : logo ? (
             <img src={logo} alt="Channel icon" className="size-full object-cover" />
           ) : (
-            <ImageOff className="size-6 text-static-500" aria-hidden />
+            <ImageOff className="text-static-500 size-6" aria-hidden />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-sm">Channel icon</p>
-          <p className="mt-0.5 text-muted-foreground text-xs">
+          <p className="text-sm font-medium">Channel icon</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">
             What your household sees in the media server's guide.
           </p>
         </div>
@@ -177,14 +177,14 @@ const ChannelIconField = ({
       {/* The mock draws only the "Change…" button, not what it opens, so the picker keeps
           today's three ways in plus Clear. */}
       {isAdmin && suggestionsOpen && (
-        <div id={pickerId} className="rounded-md border border-border p-4">
+        <div id={pickerId} className="border-border rounded-md border p-4">
           <div className="flex flex-col gap-4">
             {logo && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="self-start text-muted-foreground"
+                className="text-muted-foreground self-start"
                 disabled={clearing}
                 onClick={() => void clear()}
               >
@@ -194,26 +194,26 @@ const ChannelIconField = ({
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
-              <p className="font-medium text-sm">From your titles</p>
+              <p className="text-sm font-medium">From your titles</p>
               {suggestions.isLoading && (
-                <p className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
+                <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
                   Looking for posters…
                 </p>
               )}
               {tmdbUnconfigured && (
-                <p className="mt-2 text-muted-foreground text-xs">
+                <p className="text-muted-foreground mt-2 text-xs">
                   Set up a TMDB connection in Settings to suggest icons from this channel's titles.
                 </p>
               )}
               {!suggestions.isLoading && !tmdbUnconfigured && suggestions.error && (
-                <p className="mt-2 text-muted-foreground text-xs">Couldn't load suggestions right now.</p>
+                <p className="text-muted-foreground mt-2 text-xs">Couldn't load suggestions right now.</p>
               )}
               {!suggestions.isLoading &&
                 !tmdbUnconfigured &&
                 !suggestions.error &&
                 suggestionList.length === 0 && (
-                  <p className="mt-2 text-muted-foreground text-xs">
+                  <p className="text-muted-foreground mt-2 text-xs">
                     No posters found for this channel's titles yet.
                   </p>
                 )}
@@ -226,7 +226,7 @@ const ChannelIconField = ({
                         aria-label={`Use ${s.title}'s poster as the channel icon`}
                         title={s.title}
                         onClick={() => void pickSuggestion(s.url)}
-                        className="block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border border-border transition-colors hover:border-static-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="border-border hover:border-static-500 focus-visible:ring-ring block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border transition-colors focus-visible:ring-2 focus-visible:outline-none"
                       >
                         {/*
                           ⚠ These were <img src={tmdbUrl}> until V52 phase 7 — a dozen third-party
@@ -246,7 +246,7 @@ const ChannelIconField = ({
                             alt={s.title}
                             sizes="(min-width: 640px) 6rem, 4rem"
                             className="size-full object-cover"
-                            fallback={<ImageOff className="size-4 text-static-500" aria-hidden />}
+                            fallback={<ImageOff className="text-static-500 size-4" aria-hidden />}
                           />
                         ) : (
                           <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
@@ -260,7 +260,7 @@ const ChannelIconField = ({
 
             {/* (b) Upload a file. */}
             <div>
-              <Label htmlFor={`${urlInputId}-file`} className="font-medium text-sm">
+              <Label htmlFor={`${urlInputId}-file`} className="text-sm font-medium">
                 Upload a file
               </Label>
               <div className="mt-2 flex items-center gap-2">
@@ -274,19 +274,19 @@ const ChannelIconField = ({
                     const file = e.target.files?.[0];
                     if (file) void handleFile(file);
                   }}
-                  className="block w-full text-muted-foreground text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-static-800 file:px-3 file:py-1.5 file:font-medium file:text-foreground file:text-sm hover:file:bg-static-700"
+                  className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
                 {uploading && (
-                  <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
                 )}
               </div>
-              <p className="mt-1 text-static-400 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
-              {uploadError && <p className="mt-1 text-onair-300 text-xs">{uploadError}</p>}
+              <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
+              {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
             </div>
 
             {/* (c) Paste a direct image URL. */}
             <div>
-              <Label htmlFor={urlInputId} className="font-medium text-sm">
+              <Label htmlFor={urlInputId} className="text-sm font-medium">
                 Paste an image URL
               </Label>
               <div className="mt-2 flex items-center gap-2">
@@ -323,7 +323,7 @@ const ChannelIconField = ({
                   Set
                 </Button>
               </div>
-              {urlError && <p className="mt-1 text-onair-300 text-xs">{urlError}</p>}
+              {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
             </div>
           </div>
         </div>

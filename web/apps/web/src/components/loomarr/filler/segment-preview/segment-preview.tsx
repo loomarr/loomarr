@@ -44,11 +44,13 @@ const SegmentPreview = ({
   const span = endMs - startMs;
   const panelId = `seg-preview-${position}`;
   const verbId = `seg-preview-verb-${position}`;
+  const unavailableId = `seg-preview-na-${position}`;
+  const spanId = `seg-preview-span-${position}`;
 
   const player = failed ? (
     <div
       role="alert"
-      className="flex aspect-video items-center justify-center rounded-md bg-static-900 p-6 text-center text-muted-foreground text-sm"
+      className="bg-static-900 text-muted-foreground flex aspect-video items-center justify-center rounded-md p-6 text-center text-sm"
     >
       This preview couldn’t be played. The original recording may be unavailable.
     </div>
@@ -98,7 +100,12 @@ const SegmentPreview = ({
         // adjacent Name <input>: `aria-labelledby` on an input takes its VALUE, so the button
         // would be renamed on every keystroke. Anchoring to something on screen is also what the
         // compact-control rule asks for — an sr-only-only name drifts from what the operator sees.
-        aria-labelledby={`${verbId} ${labelledBy}`}
+        // The tile's own visible words ("Preview unavailable", the timecode badge) belong in the
+        // name too, in reading order (WCAG 2.5.3). The badge stays aria-hidden so it is read once,
+        // as part of the name; labelledby still resolves hidden elements.
+        aria-labelledby={[verbId, labelledBy, !artwork && unavailableId, span > 0 && spanId]
+          .filter(Boolean)
+          .join(" ")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => {
@@ -106,14 +113,14 @@ const SegmentPreview = ({
           onOpenChange(!open);
         }}
         className={cn(
-          "relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border p-0",
+          "border-border relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border p-0",
           "flex items-center justify-center",
           // ⚠ A visible focus ring the mock does not have — the same gap the filmstrip's blocks
           // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
-          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
+          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
           "bg-static-900",
           // Open is a pressed state, so it is neutral (#1909); the amber outline above is focus.
-          open && "ring-1 ring-foreground",
+          open && "ring-foreground ring-1",
         )}
       >
         <span id={verbId} className="sr-only">
@@ -122,11 +129,13 @@ const SegmentPreview = ({
         {artwork ? (
           <Image image={artwork} alt="" sizes="112px" className="size-full object-cover" />
         ) : (
-          <span className="px-2 text-center text-[10px] text-muted-foreground">Preview unavailable</span>
+          <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
+            Preview unavailable
+          </span>
         )}
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center bg-static-950/25 text-sm text-white"
+          className="bg-static-950/25 absolute inset-0 flex items-center justify-center text-sm text-white"
         >
           ▶
         </span>
@@ -136,8 +145,9 @@ const SegmentPreview = ({
             validation readout, this is a timecode badge on a thumbnail. */}
         {span > 0 && (
           <span
+            id={spanId}
             aria-hidden
-            className="absolute right-1 bottom-1 rounded-[2px] bg-static-950/85 px-1 font-mono text-[9px] text-static-100"
+            className="bg-static-950/85 text-static-100 absolute right-1 bottom-1 rounded-[2px] px-1 font-mono text-[9px]"
           >
             {formatMmSs(span)}
           </span>

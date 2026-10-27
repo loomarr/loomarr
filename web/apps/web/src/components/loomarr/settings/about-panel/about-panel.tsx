@@ -49,13 +49,13 @@ const AboutPanel = ({ version, now = Date.now(), className }: AboutPanelProps) =
   rows.push({ key: "Status", value: version.ready ? "Ready" : (version.detail ?? "Not ready") });
 
   return (
-    <section className={cn("overflow-hidden rounded-lg border border-border", className)}>
+    <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
       <h2 className="sr-only">About this install</h2>
-      <dl className="divide-y divide-border">
+      <dl className="divide-border divide-y">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-4 px-4 py-2.5">
-            <dt className="w-36 shrink-0 text-muted-foreground text-sm">{r.key}</dt>
-            <dd className="min-w-0 flex-1 break-words font-mono text-sm">{r.value}</dd>
+            <dt className="text-muted-foreground w-36 shrink-0 text-sm">{r.key}</dt>
+            <dd className="min-w-0 flex-1 font-mono text-sm break-words">{r.value}</dd>
           </div>
         ))}
       </dl>

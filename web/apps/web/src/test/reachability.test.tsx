@@ -518,8 +518,8 @@ describe("feature-gated panels mount when their flag is on", () => {
   it("/filler/sources opens an archive source workspace onto its downloads-nothing promise", async () => {
     stubReachable();
     renderAt("/filler/sources");
-    await userEvent.click(await screen.findByRole("button", { name: /^Manage Classic TV Commercials$/i }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Classic TV Commercials/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     const found = await screen.findAllByText(/searching doesn’t download anything/i, undefined, {
       timeout: 3000,
     });

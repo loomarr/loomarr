@@ -23,20 +23,20 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
 };
 
 const ProcessingStage = ({ stage }: { stage: IncomingProcessingStageDTO }) => (
-  <li className="relative min-w-0 border-border border-l pb-5 pl-4 last:pb-0">
+  <li className="border-border relative min-w-0 border-l pb-5 pl-4 last:pb-0">
     <span
       aria-hidden
-      className="absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2 border-background bg-muted-foreground"
+      className="border-background bg-muted-foreground absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2"
     />
     <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
       <span className="font-medium">{stage.label}</span>
       <span className="text-muted-foreground text-xs">{stage.outcomeLabel}</span>
     </div>
-    <p className="mt-1 break-words text-muted-foreground text-xs">{stage.note}</p>
+    <p className="text-muted-foreground mt-1 text-xs break-words">{stage.note}</p>
     <time
       dateTime={stage.at}
       title={new Date(stage.at).toLocaleString()}
-      className="mt-1 block text-muted-foreground text-xs"
+      className="text-muted-foreground mt-1 block text-xs"
     >
       {formatRelative(stage.at)}
     </time>
@@ -57,7 +57,7 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
   });
 
   return (
-    <details className="rounded-lg border border-border p-4 text-sm">
+    <details className="border-border rounded-lg border p-4 text-sm">
       <summary className="cursor-pointer font-medium">Processing details</summary>
       <div className="mt-4 space-y-4">
         {processing.attempts ? (

@@ -104,7 +104,7 @@ describe("AppShell", () => {
       // The footer identity link (Your account) is not a nav section — it is you. Excluded
       // by its aria-label rather than its text, which is the avatar initials glued to the
       // name ("OPOperator") and would silently stop matching if either changed.
-      .filter((a) => a.getAttribute("aria-label") !== "Your account")
+      .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
       .map((a) => a.textContent?.trim());
     expect(labels).toEqual(["Home", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
   });
@@ -112,7 +112,7 @@ describe("AppShell", () => {
   // The palette opens on ⌘K or Ctrl K everywhere; the hint names the one this keyboard has.
   it("names the search shortcut for the viewer's platform", async () => {
     renderShell(true);
-    const search = await screen.findByRole("button", { name: "Open global search" });
+    const search = await screen.findByRole("button", { name: /^Search…/ });
     const apple = /mac|iphone|ipad|ipod/i.test(navigator.platform);
     expect(search).toHaveTextContent(apple ? "⌘K" : "Ctrl K");
     expect(search).toHaveAttribute("aria-keyshortcuts", apple ? "Meta+K" : "Control+K");
@@ -203,7 +203,7 @@ describe("AppShell", () => {
       const nav = await screen.findByRole("navigation", { name: "Primary" });
       const labels = within(nav)
         .getAllByRole("link")
-        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
       expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
       expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/channels/ch-7/watch");
@@ -214,7 +214,7 @@ describe("AppShell", () => {
       const nav = await screen.findByRole("navigation", { name: "Primary" });
       const labels = within(nav)
         .getAllByRole("link")
-        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
       expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Notifications", "Help"]);
     });

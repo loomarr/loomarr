@@ -192,8 +192,8 @@ const InvitationDialog = ({
         {!invitation ? (
           <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 font-medium text-sm">Credential path</legend>
-              <Label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border p-3">
+              <legend className="mb-2 text-sm font-medium">Credential path</legend>
+              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
                 <input
                   type="radio"
                   name="invitation-kind"
@@ -204,7 +204,7 @@ const InvitationDialog = ({
                 />
                 Local Loomarr account
               </Label>
-              <Label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border p-3">
+              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
                 <input
                   type="radio"
                   name="invitation-kind"
@@ -299,7 +299,7 @@ const InvitationDialog = ({
                 />
                 <span>
                   <span className="block font-medium">Also send by email</span>
-                  <span className="block text-muted-foreground text-xs">
+                  <span className="text-muted-foreground block text-xs">
                     QR and copy remain available even if email is disabled or fails.
                   </span>
                 </span>
@@ -318,11 +318,11 @@ const InvitationDialog = ({
           </form>
         ) : terminal ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-static-900 p-5">
+            <div className="border-border bg-static-900 rounded-lg border p-5">
               <p className="font-medium">
                 Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
               </p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 This invitation can no longer issue a QR code or copied link.
               </p>
             </div>
@@ -357,7 +357,7 @@ const InvitationDialog = ({
             </div>
 
             {emailProblem && (
-              <p role="alert" className="rounded-lg border border-destructive/50 p-3 text-sm">
+              <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
                 The invitation is ready, but email could not be queued. Share this QR code or copied link.
               </p>
             )}
@@ -379,7 +379,7 @@ const InvitationDialog = ({
                 <Button
                   type="button"
                   disabled={busy}
-                  aria-label={copied ? "Copied" : "Copy invitation link"}
+                  aria-label={copied ? "Copied" : "Copy link to this invitation"}
                   onClick={async () => {
                     setProblem(undefined);
                     try {
@@ -400,9 +400,9 @@ const InvitationDialog = ({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-static-900 p-5">
+            <div className="border-border bg-static-900 rounded-lg border p-5">
               <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Generating a new link invalidates every earlier copied, QR, or email link for this invitation.
               </p>
             </div>

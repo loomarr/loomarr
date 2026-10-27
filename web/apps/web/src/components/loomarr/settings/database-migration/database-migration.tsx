@@ -50,12 +50,12 @@ const DatabaseMigration = ({
   // a missing feature; this reads as an answered question.
   if (!status.canMigrate) {
     return (
-      <section className={cn("rounded-lg border border-border p-4", className)}>
+      <section className={cn("border-border rounded-lg border p-4", className)}>
         <div className="flex items-center gap-2">
-          <Database className="size-4 text-muted-foreground" aria-hidden />
-          <h3 className="font-medium text-sm">Running on PostgreSQL</h3>
+          <Database className="text-muted-foreground size-4" aria-hidden />
+          <h3 className="text-sm font-medium">Running on PostgreSQL</h3>
         </div>
-        <p className="mt-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-2 text-sm">
           Nothing to migrate. Back PostgreSQL up with your usual tooling. Loomarr does not try to own that,
           because an operator already running Postgres has a strategy better than anything it would invent.
         </p>
@@ -64,21 +64,21 @@ const DatabaseMigration = ({
   }
 
   return (
-    <section className={cn("rounded-lg border border-border", className)}>
+    <section className={cn("border-border rounded-lg border", className)}>
       <header className="border-border border-b p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Database className="size-4 text-tune" aria-hidden />
-          <h3 className="font-medium text-sm">Move to PostgreSQL</h3>
-          <Badge className="font-mono text-2xs uppercase">{status.backend}</Badge>
+          <Database className="text-tune size-4" aria-hidden />
+          <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
+          <Badge className="text-2xs font-mono uppercase">{status.backend}</Badge>
         </div>
-        <p className="mt-1.5 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-1.5 text-sm">
           {step === null
             ? "Four steps. Your SQLite file is never deleted."
             : `Step ${at + 1} of 4 · the switch happens only after an independent parity check.`}
         </p>
         {/* Why anyone would do this — and why they might not need to. Stating the SQLite
             constraint is the honest framing: Postgres is not "better", it buys replicas. */}
-        <p className="mt-2 text-muted-foreground text-xs">
+        <p className="text-muted-foreground mt-2 text-xs">
           SQLite: run exactly one instance: a second process writing the same file will corrupt it. PostgreSQL
           enables replicas, and is worth it if you already run Postgres and would rather back up one thing.
         </p>
@@ -87,10 +87,10 @@ const DatabaseMigration = ({
       {envPinned ? (
         // An env pin wins at boot, so an atomic copy-and-switch cannot commit.
         <div className="flex gap-3 p-4">
-          <Lock className="mt-0.5 size-4 shrink-0 text-lock" aria-hidden />
+          <Lock className="text-lock mt-0.5 size-4 shrink-0" aria-hidden />
           <div>
             <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               In-app migration is unavailable because an environment variable always wins at boot. Change
               DATABASE_URL where Loomarr is launched and restart; Loomarr will not make a copy that can
               silently diverge from the database it keeps using.
@@ -99,7 +99,7 @@ const DatabaseMigration = ({
         </div>
       ) : (
         <>
-          <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 border-border border-b px-4 py-3">
+          <ol className="border-border flex flex-wrap items-center gap-x-2 gap-y-2 border-b px-4 py-3">
             {STEPS.map((s, i) => {
               const done = at > i;
               const current = at === i;
@@ -107,7 +107,7 @@ const DatabaseMigration = ({
                 <li key={s.key} className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "flex size-5 items-center justify-center rounded-full border font-mono text-2xs",
+                      "text-2xs flex size-5 items-center justify-center rounded-full border font-mono",
                       done && "border-signal bg-signal-tint-15 text-signal",
                       current && "border-tune bg-tune-tint-15 text-tune",
                       !done && !current && "border-border text-muted-foreground",
@@ -118,7 +118,7 @@ const DatabaseMigration = ({
                   <span
                     className={cn(
                       "text-xs",
-                      current ? "font-medium text-foreground" : "text-muted-foreground",
+                      current ? "text-foreground font-medium" : "text-muted-foreground",
                     )}
                   >
                     {s.label}
@@ -169,7 +169,7 @@ const DatabaseMigration = ({
                     <li key={c.name} className="flex items-start gap-2">
                       <span
                         className={cn(
-                          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-2xs",
+                          "text-2xs mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono",
                           c.ok ? "bg-signal-tint-15 text-signal" : "bg-onair-tint-15 text-onair-300",
                         )}
                         aria-hidden
@@ -205,7 +205,7 @@ const DatabaseMigration = ({
                   A backup is required, not suggested. It&rsquo;s the only thing that makes this reversible.
                   Loomarr writes it before touching either database.
                 </p>
-                <p className="font-mono text-muted-foreground text-xs">
+                <p className="text-muted-foreground font-mono text-xs">
                   {backup
                     ? `${backup.path} · ${formatBytes(backup.bytes)} · written just now`
                     : "no backup yet for this migration"}
@@ -229,7 +229,7 @@ const DatabaseMigration = ({
 
             {step === "reconnect" && (
               <div className="flex flex-col gap-3">
-                <p className="font-mono text-tune text-xs">migration accepted · waiting for Loomarr</p>
+                <p className="text-tune font-mono text-xs">migration accepted · waiting for Loomarr</p>
                 <p className="text-sm">
                   The connection may disappear while Loomarr drains, copies, verifies, switches databases, and
                   restarts. Keep this page open; it will reconnect automatically.
@@ -245,7 +245,7 @@ const DatabaseMigration = ({
                 operator's first question after a failed migration is whether their data
                 survived, and a generic "migration failed" leaves them to guess. */}
             {error && (
-              <p className="mt-3 flex items-start gap-2 text-onair-300 text-sm">
+              <p className="text-onair-300 mt-3 flex items-start gap-2 text-sm">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 {error}
               </p>

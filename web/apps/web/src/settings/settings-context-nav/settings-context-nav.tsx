@@ -9,13 +9,13 @@ interface SettingsContextNavProps {
 // every leaf a predictable route back to the task home without making all settings look equally
 // important again.
 const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
-  <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-border border-b px-4 sm:px-6">
+  <div className="border-border flex min-h-11 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
     <nav aria-label="Settings location" className="min-w-0">
       <ol className="flex min-w-0 items-center gap-2 text-sm">
         <li>
           <Link
             to="/settings"
-            className="inline-flex items-center gap-1.5 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
           >
             <ArrowLeft className="size-3.5" aria-hidden />
             Settings
@@ -26,7 +26,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
             <li className="text-muted-foreground" aria-hidden>
               /
             </li>
-            <li className="truncate text-foreground">{section}</li>
+            <li className="text-foreground truncate">{section}</li>
           </>
         ) : null}
       </ol>
@@ -34,7 +34,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     <Link
       to="/settings"
       aria-label="Find another setting"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-sm text-muted-foreground text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1.5 rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
     >
       <Search className="size-3.5" aria-hidden />
       <span className="hidden sm:inline">Find another setting</span>

@@ -22,7 +22,7 @@ const isColor = (v: string | number) => typeof v === "string" && v.startsWith("#
 
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
   <section className="flex flex-col gap-2">
-    <h2 className="font-mono font-semibold text-base">{name}</h2>
+    <h2 className="font-mono text-base font-semibold">{name}</h2>
     <div className="overflow-x-auto">
       <table className="w-full min-w-96 text-sm">
         <tbody>
@@ -32,12 +32,12 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
                 <code className="font-mono text-xs">{key}</code>
               </td>
               <td className="py-1.5 pr-4 align-middle">
-                <code className="font-mono text-static-400 text-xs">{String(value)}</code>
+                <code className="text-static-400 font-mono text-xs">{String(value)}</code>
               </td>
               <td className="w-10 py-1.5 align-middle">
                 {isColor(value) && (
                   <span
-                    className="block size-5 rounded border border-border"
+                    className="border-border block size-5 rounded border"
                     style={{ backgroundColor: value as string }}
                   />
                 )}
@@ -57,8 +57,8 @@ const Tokens = () => {
   return (
     <div className="flex flex-col gap-8 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-semibold text-xl">Tokens</h1>
-        <p className="max-w-2xl text-muted-foreground text-sm">
+        <h1 className="text-xl font-semibold">Tokens</h1>
+        <p className="text-muted-foreground max-w-2xl text-sm">
           {`All ${total} generated tokens, read from the same `}
           <code className="font-mono text-xs">tokens.json</code>
           {" the Tailwind preset and "}

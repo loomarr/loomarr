@@ -6,12 +6,12 @@ import type { PlaceholderProps } from "./placeholder.type";
 const Placeholder = ({ title, hint }: PlaceholderProps) => (
   <div className="flex h-full flex-col">
     <header className="border-border border-b px-6 py-4">
-      <h1 className="font-semibold text-xl">{title}</h1>
+      <h1 className="text-xl font-semibold">{title}</h1>
     </header>
     <div className="flex flex-1 items-center justify-center p-6">
       <div className="max-w-sm text-center">
-        <p className="font-mono text-sm text-static-400 uppercase tracking-wide">Dead air</p>
-        <p className="mt-2 text-muted-foreground">{hint}</p>
+        <p className="text-static-400 font-mono text-sm tracking-wide uppercase">Dead air</p>
+        <p className="text-muted-foreground mt-2">{hint}</p>
       </div>
     </div>
   </div>

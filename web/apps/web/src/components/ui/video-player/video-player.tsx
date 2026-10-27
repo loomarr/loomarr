@@ -261,7 +261,7 @@ const VideoPlayer = ({
               <>
                 <div className="pointer-events-auto shrink-0">{leading}</div>
                 {title && (
-                  <p className="pointer-events-auto ml-auto min-w-0 truncate text-right font-medium text-sm text-static-100">
+                  <p className="text-static-100 pointer-events-auto ml-auto min-w-0 truncate text-right text-sm font-medium">
                     {title}
                   </p>
                 )}
@@ -307,12 +307,12 @@ const VideoPlayer = ({
               non-live (a clip): the video's own elapsed / total. */}
               {live
                 ? timeLeft && (
-                    <span className="hidden shrink-0 font-mono text-static-300 text-xs tabular-nums lg:inline-flex">
+                    <span className="text-static-300 hidden shrink-0 font-mono text-xs tabular-nums lg:inline-flex">
                       {timeLeft}
                     </span>
                   )
                 : ready && (
-                    <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
+                    <span className="text-static-300 shrink-0 font-mono text-xs tabular-nums">
                       {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
                     </span>
                   )}

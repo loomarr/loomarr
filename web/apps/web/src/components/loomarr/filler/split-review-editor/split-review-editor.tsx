@@ -236,7 +236,7 @@ const SplitReviewEditor = ({
   const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <div className={cn("flex w-full min-w-0 max-w-full flex-col gap-4 overflow-x-hidden", className)}>
+    <div className={cn("flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-hidden", className)}>
       {/* The reel stays stable while the selected clip is inspected in the shared Sheet. */}
       <SegmentFilmstrip
         segments={stripSegments}
@@ -263,12 +263,12 @@ const SplitReviewEditor = ({
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3 border-border border-t pt-4">
+      <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
         <Button variant="outline" size="sm" onClick={onBack}>
           Back
         </Button>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-muted-foreground text-sm tabular-nums">
+          <span className="text-muted-foreground font-mono text-sm tabular-nums">
             {pluralize(draft.length, "clip")}
           </span>
           <Button size="sm" disabled={!confirmable || confirming} onClick={() => onConfirm(toWire(draft))}>
@@ -305,7 +305,7 @@ const SplitReviewEditor = ({
                   <ChevronLeft aria-hidden />
                   Previous
                 </Button>
-                <span className="font-mono text-muted-foreground text-xs tabular-nums">
+                <span className="text-muted-foreground font-mono text-xs tabular-nums">
                   {selectedIndex + 1} / {draft.length}
                 </span>
                 <Button
@@ -367,27 +367,28 @@ const SegmentSummaryRow = ({
   return (
     <li>
       {/* Selection is neutral (#1909): amber is for focus and the primary action. */}
-      <Card className={cn(selected && "ring-1 ring-foreground")}>
+      <Card className={cn(selected && "ring-foreground ring-1")}>
         <button
           type="button"
-          aria-label={`Open clip ${n}: ${segment.name || "unnamed"}`}
           aria-current={selected ? "true" : undefined}
           onClick={(event) => onOpen(event.currentTarget)}
-          className="flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="focus-visible:ring-ring relative flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
         >
-          <span className="relative h-14 w-24 shrink-0 overflow-hidden rounded-md border border-border bg-static-900">
+          {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
+          <span className="sr-only">Open clip</span>{" "}
+          <span className="border-border bg-static-900 relative h-14 w-24 shrink-0 overflow-hidden rounded-md border">
             {segment.artwork ? (
               <Image image={segment.artwork} alt="" sizes="96px" className="size-full object-cover" />
             ) : (
-              <span className="flex size-full items-center justify-center px-2 text-center text-[10px] text-muted-foreground">
+              <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
                 Preview unavailable
               </span>
             )}
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="font-mono text-muted-foreground text-xs tabular-nums">#{n}</span>
-              <span className="truncate font-medium text-sm">{segment.name || "Unnamed clip"}</span>
+              <span className="text-muted-foreground font-mono text-xs tabular-nums">#{n}</span>
+              <span className="truncate text-sm font-medium">{segment.name || "Unnamed clip"}</span>
             </span>
             <span
               className={cn(
@@ -411,7 +412,7 @@ const SegmentSummaryRow = ({
               {needsAttention ? <Badge variant="caution">Needs a closer look</Badge> : null}
             </span>
           </span>
-          <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <ChevronRight aria-hidden className="text-muted-foreground size-4 shrink-0" />
         </button>
       </Card>
     </li>
@@ -516,18 +517,18 @@ const SegmentInspector = ({
       </div>
 
       {segment.holdReason ? (
-        <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
+        <p role="status" className="bg-caution-tint-15 text-caution rounded-sm px-2 py-1.5 text-sm">
           {`Take a closer look: ${segment.holdReason}.`}
         </p>
       ) : null}
       {segment.unsplittable ? (
-        <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+        <p className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
           Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next clip,
           or remove it.
         </p>
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
-        <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+        <p role="status" className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
           This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer, join
           it with the next clip, or remove it.
         </p>
@@ -549,8 +550,8 @@ const SegmentInspector = ({
         </div>
       ) : null}
 
-      <details open={timingNeedsAttention} className="rounded-md border border-border/70 px-3 py-2">
-        <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-sm">
+      <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
           <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
@@ -601,8 +602,8 @@ const SegmentInspector = ({
 
       {hasDetails ? (
         <details className="px-1 text-sm">
-          <summary className="cursor-pointer text-muted-foreground">Details</summary>
-          <div className="mt-2 space-y-2 text-muted-foreground">
+          <summary className="text-muted-foreground cursor-pointer">Details</summary>
+          <div className="text-muted-foreground mt-2 space-y-2">
             {namingMessage ? <p>{namingMessage}</p> : null}
             {!segment.language && languageMessage ? (
               <p title={segment.languageNote}>{languageMessage}</p>
@@ -616,7 +617,7 @@ const SegmentInspector = ({
               </p>
             ) : null}
             {segment.transcript ? (
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-xs">
+              <pre className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 font-mono text-xs whitespace-pre-wrap">
                 {segment.transcript}
               </pre>
             ) : null}

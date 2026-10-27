@@ -52,28 +52,29 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <div className="divide-y divide-border rounded-lg border border-border">
+  <div className="divide-border border-border divide-y rounded-lg border">
     {group.rows.map((row) => (
       <button
         key={row.clipHash}
         type="button"
-        className="flex min-h-16 w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        aria-label={`View details for ${row.name}`}
+        className="hover:bg-muted/30 focus-visible:ring-ring relative flex min-h-16 w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
         onClick={(event) => onOpen(row, event.currentTarget)}
       >
-        <span className="h-12 w-16 shrink-0 overflow-hidden rounded bg-muted">
+        {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
+        <span className="sr-only">View details for</span>{" "}
+        <span className="bg-muted h-12 w-16 shrink-0 overflow-hidden rounded">
           {row.thumbImage ? (
             <Image image={row.thumbImage} alt="" sizes="64px" className="size-full object-cover" />
           ) : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block break-words font-medium text-sm">{row.name}</span>
-          <span className="mt-0.5 block text-muted-foreground text-xs">
+          <span className="block text-sm font-medium break-words">{row.name}</span>
+          <span className="text-muted-foreground mt-0.5 block text-xs">
             {row.from ? `${row.from} · ` : ""}
             {formatClipDuration(row.durationMs)}
           </span>
         </span>
-        <span className="shrink-0 text-muted-foreground text-xs">{row.statusLabel}</span>
+        <span className="text-muted-foreground shrink-0 text-xs">{row.statusLabel}</span>
       </button>
     ))}
     {group.nextCursor ? (
@@ -182,7 +183,7 @@ const Incoming = () => {
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (!view) {
     return (
-      <Card aria-live="polite" className="p-6 text-muted-foreground text-sm">
+      <Card aria-live="polite" className="text-muted-foreground p-6 text-sm">
         Checking what’s on the way…
       </Card>
     );
@@ -192,7 +193,7 @@ const Incoming = () => {
   if (total === 0) {
     return (
       <section aria-labelledby="incoming-empty-heading">
-        <h2 id="incoming-empty-heading" className="font-semibold text-2xl">
+        <h2 id="incoming-empty-heading" className="text-2xl font-semibold">
           Nothing on the way
         </h2>
         <div className="flex flex-col items-center">
@@ -232,16 +233,16 @@ const Incoming = () => {
   return (
     <section aria-labelledby="incoming-heading" className="flex flex-col gap-7">
       <div>
-        <h2 id="incoming-heading" className="font-semibold text-2xl">
+        <h2 id="incoming-heading" className="text-2xl font-semibold">
           {summary}
         </h2>
-        <p className="mt-1 text-muted-foreground text-sm">{summaryDescription}</p>
+        <p className="text-muted-foreground mt-1 text-sm">{summaryDescription}</p>
       </div>
 
       {view.preparing.total > 0 ? (
         <section aria-labelledby="preparing-heading" className="space-y-3">
           <div>
-            <h3 id="preparing-heading" className="font-semibold text-lg">
+            <h3 id="preparing-heading" className="text-lg font-semibold">
               Getting clips ready
             </h3>
             <p className="text-muted-foreground text-sm">
@@ -261,7 +262,7 @@ const Incoming = () => {
       {view.needsHelp.total > 0 ? (
         <section aria-labelledby="needs-help-heading" className="space-y-3">
           <div>
-            <h3 id="needs-help-heading" className="font-semibold text-lg">
+            <h3 id="needs-help-heading" className="text-lg font-semibold">
               Needs your help
             </h3>
             <p className="text-muted-foreground text-sm">
@@ -270,7 +271,7 @@ const Incoming = () => {
           </div>
           {helpTask ? (
             <Card className="space-y-4 p-4">
-              <div className="flex items-center justify-between gap-3 text-muted-foreground text-xs">
+              <div className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
                 <span>
                   {helpIndex + 1} of {view.needsHelp.total}
                 </span>
@@ -278,15 +279,15 @@ const Incoming = () => {
               </div>
               <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="break-words font-medium text-sm">{helpTask.name}</p>
-                  <p className="mt-1 text-muted-foreground text-sm">{helpTask.question}</p>
+                  <p className="text-sm font-medium break-words">{helpTask.name}</p>
+                  <p className="text-muted-foreground mt-1 text-sm">{helpTask.question}</p>
                 </div>
                 <Button render={<a href={helpTask.actionHref} />} size="sm">
                   {helpTask.actionLabel}
                 </Button>
               </div>
               {view.needsHelp.total > 1 ? (
-                <div className="flex justify-end gap-2 border-border border-t pt-3">
+                <div className="border-border flex justify-end gap-2 border-t pt-3">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -314,7 +315,7 @@ const Incoming = () => {
         <section aria-labelledby="ready-heading" className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h3 id="ready-heading" className="font-semibold text-lg">
+              <h3 id="ready-heading" className="text-lg font-semibold">
                 Ready
               </h3>
               <p className="text-muted-foreground text-sm">

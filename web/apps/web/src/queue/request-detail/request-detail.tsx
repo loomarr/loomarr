@@ -27,7 +27,7 @@ import { useRequests } from "@/queue/use-requests";
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="flex flex-col gap-2">
-    <h2 className="font-semibold text-lg">{title}</h2>
+    <h2 className="text-lg font-semibold">{title}</h2>
     {children}
   </section>
 );
@@ -60,7 +60,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
 
   const journey = unwrap(query.data, (body) => body);
   if (query.error != null) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!journey) return <p className="p-6 text-muted-foreground text-sm">Loading…</p>;
+  if (!journey) return <p className="text-muted-foreground p-6 text-sm">Loading…</p>;
 
   const status = requestStatus(journey, titles);
   // Only what is still outstanding: a title that has landed is part of the channel, so listing it
@@ -105,7 +105,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <div className="mx-auto flex w-full max-w-reading flex-1 flex-col gap-6 overflow-auto p-6">
+      <div className="max-w-reading mx-auto flex w-full flex-1 flex-col gap-6 overflow-auto p-6">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.tone}>{status.line}</Badge>
         </div>
@@ -185,14 +185,14 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                 <li
                   // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                   key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
-                  className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5"
+                  className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2.5"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.name}
                     {item.year ? <span className="text-muted-foreground"> ({item.year})</span> : null}
                     {/* WHY it was given up (e.g. "deadline exceeded"); otherwise the row only says it failed. */}
                     {title?.state === "unavailable" && title.lastError ? (
-                      <span className="block truncate text-muted-foreground text-xs">{title.lastError}</span>
+                      <span className="text-muted-foreground block truncate text-xs">{title.lastError}</span>
                     ) : null}
                   </span>
                   {title ? (

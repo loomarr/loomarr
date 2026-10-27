@@ -155,7 +155,7 @@ const DateAxisEditor = ({
     onChange([...ranges, { from, to }]);
   };
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+    <div className="border-border flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-3">
         <Label className="text-sm">{label}</Label>
       </div>
@@ -196,7 +196,7 @@ const DateAxisEditor = ({
             placeholder="To"
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add ${label} range`}>
+        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
           Add range
         </Button>
       </div>

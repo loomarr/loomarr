@@ -401,9 +401,9 @@ const GuidePage = ({
           spans the guide; its content sits in the centred form tier (#1817 Q10), inside the
           page-edge contract's 24 px gutter (16 below `sm`). */}
       {adding && (
-        <div className="border-border border-b bg-card px-4 py-4.5 sm:px-6">
+        <div className="border-border bg-card border-b px-4 py-4.5 sm:px-6">
           <ChannelSuggestPanel
-            className="mx-auto max-w-form"
+            className="max-w-form mx-auto"
             initialIntent={initialIntent}
             initialJobId={initialJobId}
             initialManual={openManualOnArrival}
@@ -419,7 +419,7 @@ const GuidePage = ({
           much time is on screen. Precise planning controls live in the secondary View row. */}
       {!adding && channels.length > 0 && (
         <>
-          <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
+          <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
               <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
                 <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
@@ -441,7 +441,7 @@ const GuidePage = ({
                   type="button"
                   onClick={() => setDayOffset(0)}
                   className={cn(
-                    "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
+                    "border-border text-2xs hover:border-static-400 cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
                     dayOffset < 0 ? "text-static-400" : "text-tune",
                   )}
                 >
@@ -465,7 +465,7 @@ const GuidePage = ({
               <Button
                 variant="outline"
                 size="sm"
-                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-foreground")}
+                className={cn("text-2xs h-6.5 font-mono", atNow ? "text-static-400" : "text-foreground")}
                 onClick={() => {
                   setHourShift(0);
                   setDayOffset(0);
@@ -505,7 +505,7 @@ const GuidePage = ({
                         "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
                         // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                         active
-                          ? "border-foreground bg-static-800 font-semibold text-foreground"
+                          ? "border-foreground bg-static-800 text-foreground font-semibold"
                           : "border-border text-static-400 hover:border-static-400",
                       )}
                     >
@@ -521,7 +521,7 @@ const GuidePage = ({
               size="sm"
               className={cn(
                 "h-6.5",
-                viewOptionsOpen && "border-foreground bg-static-800 font-semibold text-foreground",
+                viewOptionsOpen && "border-foreground bg-static-800 text-foreground font-semibold",
               )}
               aria-label={hasCustomView ? "View options, custom" : "View options"}
               aria-expanded={viewOptionsOpen}
@@ -529,7 +529,7 @@ const GuidePage = ({
               onClick={() => setViewOptionsOpen((open) => !open)}
             >
               {hasCustomView ? (
-                <span className="size-2 rounded-full bg-foreground" aria-hidden />
+                <span className="bg-foreground size-2 rounded-full" aria-hidden />
               ) : (
                 <SlidersHorizontal className="size-3.5" aria-hidden />
               )}
@@ -540,7 +540,7 @@ const GuidePage = ({
           {viewOptionsOpen && (
             <div
               id="guide-view-options"
-              className="flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-border/60 border-b bg-card/40 px-7 py-2.5 sm:justify-end"
+              className="border-border/60 bg-card/40 flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-b px-7 py-2.5 sm:justify-end"
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
@@ -642,7 +642,7 @@ const GuidePage = ({
               <div
                 role="status"
                 aria-label="Loading guide"
-                className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-signal"
+                className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
               />
             )}
             {layout && phoneWidth ? (

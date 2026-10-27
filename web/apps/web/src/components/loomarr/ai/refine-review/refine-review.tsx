@@ -104,7 +104,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
   if (deltas.length === 0) return null;
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`Programming · ${deltas.length}`}</h3>
+      <h3 className="text-2xs text-static-400 font-mono tracking-wide uppercase">{`Programming · ${deltas.length}`}</h3>
       <ul className="flex flex-col gap-1.5">
         {deltas.map((d) => (
           <li key={d.label} className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -117,7 +117,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
             ) : (
               <span>
                 <span className="text-static-400 line-through">{d.from}</span>
-                <span className="mx-1 text-muted-foreground" aria-hidden>
+                <span className="text-muted-foreground mx-1" aria-hidden>
                   →
                 </span>
                 <span className="text-foreground">{d.to}</span>
@@ -191,9 +191,9 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
   <li className="flex flex-col gap-0.5 text-sm">
     <div className="flex items-baseline gap-2">
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-        {tone === "kept" && <Check className="size-3.5 text-static-400" />}
-        {tone === "added" && <Check className="size-3.5 text-lock" />}
-        {tone === "removed" && <Minus className="size-3.5 text-onair-300" />}
+        {tone === "kept" && <Check className="text-static-400 size-3.5" />}
+        {tone === "added" && <Check className="text-lock size-3.5" />}
+        {tone === "removed" && <Minus className="text-onair-300 size-3.5" />}
       </span>
       <span
         className={cn(
@@ -204,14 +204,14 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
       >
         {row.name}
       </span>
-      {row.year ? <span className="font-mono text-static-400 text-xs">{row.year}</span> : null}
+      {row.year ? <span className="text-static-400 font-mono text-xs">{row.year}</span> : null}
       {note && <span className="text-static-400 text-xs">{note}</span>}
     </div>
     {/* Only on additions. A removal doesn't need the model's justification, and a kept
         title was the operator's pick in the first place — but "Adding: Predator" with no
         reason is the refine asking for trust it hasn't earned. */}
     {tone === "added" && row.rationale && (
-      <p className="pl-6 text-muted-foreground text-xs">{friendlyTitleRationale(row.rationale)}</p>
+      <p className="text-muted-foreground pl-6 text-xs">{friendlyTitleRationale(row.rationale)}</p>
     )}
   </li>
 );
@@ -232,7 +232,7 @@ const Group = ({
   if (rows.length === 0) return null;
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`${title} · ${rows.length}`}</h3>
+      <h3 className="text-2xs text-static-400 font-mono tracking-wide uppercase">{`${title} · ${rows.length}`}</h3>
       <ul className="flex flex-col gap-1">
         {rows.map((row) => (
           <Row key={row.key} row={row} tone={tone} note={rowNote} />
@@ -272,7 +272,7 @@ const RefineReview = ({
   return (
     <Card className={cn("flex flex-col gap-4 p-5", className)}>
       <header>
-        <h2 className="font-semibold text-lg">Refined lineup</h2>
+        <h2 className="text-lg font-semibold">Refined lineup</h2>
         <p className="text-muted-foreground text-sm">
           {noChanges
             ? "No changes. Your channel already matches."
@@ -292,7 +292,7 @@ const RefineReview = ({
         </div>
       )}
 
-      <footer className="flex justify-end gap-2 border-border border-t pt-4">
+      <footer className="border-border flex justify-end gap-2 border-t pt-4">
         <Button variant="ghost" onClick={onDiscard} disabled={busy}>
           Discard
         </Button>

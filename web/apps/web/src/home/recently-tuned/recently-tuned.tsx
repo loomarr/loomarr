@@ -26,7 +26,7 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
   return (
     <section aria-labelledby="home-recently-tuned">
       <SectionHeader id="home-recently-tuned" title="Recently tuned" />
-      <div className="flex flex-col items-start gap-4 rounded-lg border border-static-700 bg-static-900 p-4 sm:flex-row sm:items-center">
+      <div className="border-static-700 bg-static-900 flex flex-col items-start gap-4 rounded-lg border p-4 sm:flex-row sm:items-center">
         <div className="aspect-video w-full shrink-0 overflow-hidden rounded-md sm:w-48">
           <AiringArtwork
             airing={airing}
@@ -37,15 +37,15 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <ChannelIdent name={data.channelName} number={channel.source.number} logo={data.channelLogoUri} />
-            <span className="font-mono text-foreground text-sm">
+            <span className="text-foreground font-mono text-sm">
               {String(channel.source.number).padStart(2, "0")}
             </span>
-            <span className="text-sm text-static-400">{data.channelName}</span>
+            <span className="text-static-400 text-sm">{data.channelName}</span>
           </div>
-          <h3 className="mt-2.5 break-words font-semibold text-base">
+          <h3 className="mt-2.5 text-base font-semibold break-words">
             {data.now.seriesTitle ?? data.now.title}
           </h3>
-          <p className="m-0 text-sm text-static-400">Join what’s on now.</p>
+          <p className="text-static-400 m-0 text-sm">Join what’s on now.</p>
         </div>
         <Button render={<Link to="/channels/$id/watch" params={{ id: channel.source.channelId }} />}>
           Watch live

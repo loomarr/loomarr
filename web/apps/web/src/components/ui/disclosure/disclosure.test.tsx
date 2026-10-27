@@ -70,8 +70,8 @@ describe("Disclosure", () => {
     render(
       <Disclosure>
         <Disclosure.SectionTrigger
-          label="Show tools for finding a specific clip"
           title="Find a specific clip"
+          context="in this collection"
           description="Search this collection by title or keyword."
         />
         <Disclosure.Panel>Search tools</Disclosure.Panel>
@@ -80,7 +80,13 @@ describe("Disclosure", () => {
 
     const title = screen.getByText("Find a specific clip");
     expect(title.closest("button")).not.toBeNull();
+    // WCAG 2.5.3: the name holds the visible header; context only adds to it; state is aria-expanded.
+    const trigger = screen.getByRole("button", {
+      name: "Find a specific clip in this collection Search this collection by title or keyword.",
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(title);
     expect(screen.getByText("Search tools")).toBeVisible();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 });

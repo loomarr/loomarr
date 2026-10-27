@@ -27,7 +27,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
     <article
       aria-labelledby={nameId}
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-lg border bg-static-900",
+        "bg-static-900 flex min-w-0 flex-col overflow-hidden rounded-lg border",
         idea.requested ? "border-suggest-tint-40" : "border-static-700",
       )}
     >
@@ -36,15 +36,15 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           what the idea is. */}
       <div aria-hidden className="grid grid-cols-4 gap-1.5 px-3 pt-3">
         {idea.keys.slice(0, POSTERS).map((key) => (
-          <div key={key} className="aspect-[2/3] rounded-[6px] border border-static-700 bg-static-800" />
+          <div key={key} className="border-static-700 bg-static-800 aspect-[2/3] rounded-[6px] border" />
         ))}
       </div>
       <div className="flex flex-col gap-1 px-4 pt-3.5">
         <span className="text-static-400 text-xs">{ideaReason(idea, empty, nowMs)}</span>
-        <h3 id={nameId} className="m-0 font-semibold text-base leading-[1.3]">
+        <h3 id={nameId} className="m-0 text-base leading-[1.3] font-semibold">
           {idea.name}
         </h3>
-        <p className="m-0 text-pretty text-sm text-static-400">{idea.pitch}</p>
+        <p className="text-static-400 m-0 text-sm text-pretty">{idea.pitch}</p>
       </div>
       <div className="flex items-center gap-2 px-4 pt-2.5 text-xs">
         {/* The availability text beside it says what the dot does. */}
@@ -80,7 +80,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
               title="Not for me"
               disabled={busy}
               onClick={onHide}
-              className="ml-auto w-8 px-0 text-static-400 hover:bg-static-800 hover:text-foreground"
+              className="text-static-400 hover:bg-static-800 hover:text-foreground ml-auto w-8 px-0"
             >
               <X aria-hidden />
             </Button>
@@ -153,7 +153,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
               type="button"
               disabled={unhide.isPending}
               onClick={() => unhide.mutate({ ideaId: hidden.id })}
-              className="cursor-pointer border-none bg-transparent p-0 text-foreground text-xs underline underline-offset-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="text-foreground focus-visible:ring-ring cursor-pointer border-none bg-transparent p-0 text-xs underline underline-offset-[3px] focus-visible:ring-2 focus-visible:outline-none"
             >
               Undo
             </button>
@@ -169,7 +169,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         )}
       </SectionHeader>
       {ideas.length === 0 ? (
-        <p className="m-0 rounded-lg border border-static-700 bg-static-900 px-4 py-5 text-sm text-static-400">
+        <p className="border-static-700 bg-static-900 text-static-400 m-0 rounded-lg border px-4 py-5 text-sm">
           That’s every idea for now. New ones appear as your library grows.
         </p>
       ) : (
@@ -204,7 +204,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
       {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
           blank. The shipped grid above already names this as waiting on the mock; #1872 is the
           approved one. */}
-      <div className="mt-3 flex items-center justify-center rounded-lg border border-static-700 border-dashed p-3.5">
+      <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
         <Link to="/guide" search={{ manual: "1" }} className={cn(buttonVariants({ variant: "ghost" }))}>
           Don’t see it? Describe your own channel
         </Link>

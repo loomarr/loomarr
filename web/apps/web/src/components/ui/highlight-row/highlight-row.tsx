@@ -25,18 +25,18 @@ const HighlightRow = ({
     props: {
       onClick,
       className: cn(
-        "grid w-full cursor-pointer grid-cols-[80px_36px_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 border-none bg-transparent px-4 py-3 text-left text-foreground hover:bg-static-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:grid-cols-[80px_36px_minmax(0,1fr)_auto] sm:gap-3",
+        "text-foreground hover:bg-static-800 focus-visible:ring-ring grid w-full cursor-pointer grid-cols-[80px_36px_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 border-none bg-transparent px-4 py-3 text-left focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset sm:grid-cols-[80px_36px_minmax(0,1fr)_auto] sm:gap-3",
         className,
       ),
       children: (
         <>
           <span className="font-mono text-sm">{time}</span>
-          <span className="font-mono font-semibold text-foreground text-sm">{channelNumber}</span>
-          <span className="min-w-0 truncate font-medium text-base">
+          <span className="text-foreground font-mono text-sm font-semibold">{channelNumber}</span>
+          <span className="min-w-0 truncate text-base font-medium">
             {title}
-            {detail != null && <span className="font-normal text-static-400">{detail}</span>}
+            {detail != null && <span className="text-static-400 font-normal">{detail}</span>}
           </span>
-          <span className="col-start-3 text-static-400 text-xs sm:col-start-auto sm:whitespace-nowrap">
+          <span className="text-static-400 col-start-3 text-xs sm:col-start-auto sm:whitespace-nowrap">
             {reason}
           </span>
         </>

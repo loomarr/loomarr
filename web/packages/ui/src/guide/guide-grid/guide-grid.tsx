@@ -225,6 +225,9 @@ const Block = ({
               {hasSeries ? (
                 <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
                   {a.series}
+                  {/* A trailing space, collapsed on screen: axe (4.14, WCAG 2.5.3) joins sibling text
+                      with nothing between, so "series" + "title" reads as one word against this
+                      block's label. */}{" "}
                 </Text>
               ) : null}
               <Text
@@ -233,7 +236,7 @@ const Block = ({
                 textRole="cardLabel"
                 tone={pending || kind === "flex" ? "muted" : "primary"}
               >
-                {hasSeries ? a.title : guideAiringLabel(a)}
+                {hasSeries ? a.title : guideAiringLabel(a)}{" "}
               </Text>
               {!hasSeries && px >= META_MIN ? (
                 <Text numberOfLines={1} textAlign="left" textRole="guideMeta">

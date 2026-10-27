@@ -68,7 +68,7 @@ const NavTabs = ({
       ref={bar}
       aria-label={label}
       className={cn(
-        "flex shrink-0 gap-1 overflow-x-auto border-border border-b",
+        "border-border flex shrink-0 gap-1 overflow-x-auto border-b",
         !underline && "pb-2",
         className,
       )}
@@ -100,16 +100,16 @@ const NavTabs = ({
               underline
                 ? cn(
                     // `-mb-px` lets the 2px underline sit over the bar's 1px rule.
-                    "-mb-px border-b-2 bg-transparent px-[13px] py-[9px] text-[13.5px] hover:text-foreground",
+                    "hover:text-foreground -mb-px border-b-2 bg-transparent px-[13px] py-[9px] text-[13.5px]",
                     active
-                      ? "border-foreground font-medium text-foreground"
-                      : "border-transparent text-muted-foreground",
+                      ? "border-foreground text-foreground font-medium"
+                      : "text-muted-foreground border-transparent",
                   )
                 : cn(
                     // The #1659 web mock's pill: 13 px at the browser's normal line height (29 px
                     // tall, not the body's 1.5), and hover changes the colour only.
-                    "rounded-md px-3 py-1.5 text-muted-foreground text-sm leading-[normal] hover:text-foreground",
-                    active && "bg-static-800 font-medium text-foreground",
+                    "text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5 text-sm leading-[normal]",
+                    active && "bg-static-800 text-foreground font-medium",
                   ),
             )}
           >
@@ -118,14 +118,14 @@ const NavTabs = ({
             {tab.count !== undefined && (
               <span
                 className={cn(
-                  "rounded-full px-1.5 py-px font-mono text-2xs",
+                  "text-2xs rounded-full px-1.5 py-px font-mono",
                   // ⚠ The ACTIVE pill's count sits on `background`, so it reads as a chip against
                   // the elevated pill. A count tinted to match the fill behind it once failed axe
                   // `color-contrast` (4.11:1 at 11px, SERIOUS); check a new tint against the pill.
                   underline
                     ? tab.attention && tab.count > 0
-                      ? "bg-suggest-tint-15 px-[7px] text-suggest-300"
-                      : "bg-static-800 px-[7px] text-static-400"
+                      ? "bg-suggest-tint-15 text-suggest-300 px-[7px]"
+                      : "bg-static-800 text-static-400 px-[7px]"
                     : // Waiting work outranks "you are here" (#1659 web mock): Needs you keeps its pink
                       // count while selected, so the number still reads as work to do.
                       tab.attention && tab.count > 0

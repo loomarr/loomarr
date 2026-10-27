@@ -70,11 +70,11 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   const history = unwrap(query.data) as JobHistoryView | undefined;
 
   if (query.isLoading) {
-    return <p className="mt-4 text-muted-foreground text-xs">Loading execution history…</p>;
+    return <p className="text-muted-foreground mt-4 text-xs">Loading execution history…</p>;
   }
   if (query.error) {
     return (
-      <div className="mt-4 flex items-center gap-2 text-destructive text-xs" role="alert">
+      <div className="text-destructive mt-4 flex items-center gap-2 text-xs" role="alert">
         <span>Couldn’t load execution history.</span>
         <Button variant="ghost" size="sm" onClick={() => query.refetch()}>
           Retry
@@ -85,9 +85,9 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   if (!history) return null;
 
   return (
-    <section className="mt-4 border-border border-t pt-3" aria-label="Execution history">
+    <section className="border-border mt-4 border-t pt-3" aria-label="Execution history">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="font-medium text-xs">Past 24 hours</h3>
+        <h3 className="text-xs font-medium">Past 24 hours</h3>
         {history.runCount === 0 ? (
           <p className="text-muted-foreground text-xs">No completed runs.</p>
         ) : (
@@ -111,7 +111,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
       </div>
 
       {history.recent.length > 0 && (
-        <ul className="mt-2 divide-y divide-border rounded-md border border-border bg-background">
+        <ul className="divide-border border-border bg-background mt-2 divide-y rounded-md border">
           {history.recent.map((run) => {
             const failed = run.result === "error";
             return (
@@ -120,7 +120,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                   <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
                   <span className="font-medium">{run.trigger === "manual" ? "Manual" : "Scheduled"}</span>
                   <span className="text-muted-foreground">{formatRelative(run.startedAt)}</span>
-                  <span className="font-mono text-muted-foreground">{executionDuration(run.durationMs)}</span>
+                  <span className="text-muted-foreground font-mono">{executionDuration(run.durationMs)}</span>
                 </div>
                 {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
               </li>
@@ -201,21 +201,21 @@ const TasksPage = () => {
           if (groupedJobs.length === 0) return null;
           const groupOpen = openGroups.has(group.id);
           return (
-            <section key={group.id} className="overflow-hidden rounded-lg border border-border bg-card">
+            <section key={group.id} className="border-border bg-card overflow-hidden rounded-lg border">
               <button
                 type="button"
-                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+                className="hover:bg-muted/40 flex w-full items-center gap-3 px-4 py-3 text-left"
                 aria-expanded={groupOpen}
                 aria-controls={`task-group-${group.id}`}
                 onClick={() => toggleGroup(group.id)}
               >
                 {groupOpen ? (
-                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
+                  <ChevronDown className="text-muted-foreground size-4" aria-hidden />
                 ) : (
-                  <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+                  <ChevronRight className="text-muted-foreground size-4" aria-hidden />
                 )}
                 <span className="font-medium">{group.label}</span>
-                <span className="ml-auto text-muted-foreground text-xs">{groupSummary(groupedJobs)}</span>
+                <span className="text-muted-foreground ml-auto text-xs">{groupSummary(groupedJobs)}</span>
               </button>
 
               {groupOpen && (
@@ -227,7 +227,7 @@ const TasksPage = () => {
                       ))}
                     </colgroup>
                     <thead>
-                      <tr className="border-border border-b text-left text-muted-foreground text-xs">
+                      <tr className="border-border text-muted-foreground border-b text-left text-xs">
                         {COLUMNS.map((column) => (
                           <th key={column.key} className="px-4 py-2.5 font-medium">
                             {column.label}
@@ -259,22 +259,22 @@ const TasksPage = () => {
                                   />
                                   <span className="font-medium">{job.title}</span>
                                   {job.paused && (
-                                    <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
+                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
                                       Paused
                                     </span>
                                   )}
                                 </button>
                               </td>
                               <td
-                                className="px-4 py-3 text-muted-foreground"
+                                className="text-muted-foreground px-4 py-3"
                                 title={job.disabledReason ? undefined : job.schedule}
                               >
                                 {job.disabledReason ? "Not scheduled" : describeCron(job.schedule)}
                               </td>
-                              <td className="px-4 py-3 text-muted-foreground">
+                              <td className="text-muted-foreground px-4 py-3">
                                 {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
                               </td>
-                              <td className="px-4 py-3 text-muted-foreground">
+                              <td className="text-muted-foreground px-4 py-3">
                                 {job.disabledReason
                                   ? "—"
                                   : job.paused
@@ -303,16 +303,16 @@ const TasksPage = () => {
                               </td>
                             </tr>
                             {jobOpen && (
-                              <tr id={`task-${job.name}`} className="border-border border-b bg-muted/20">
+                              <tr id={`task-${job.name}`} className="border-border bg-muted/20 border-b">
                                 <td colSpan={5} className="px-4 py-3">
-                                  <p className="max-w-prose text-muted-foreground text-sm">
+                                  <p className="text-muted-foreground max-w-prose text-sm">
                                     {job.description}
                                   </p>
                                   {job.lastResult === "error" && (
                                     <ErrorDetails message={job.lastError} className="mt-2" />
                                   )}
                                   {job.disabledReason && (
-                                    <p className="mt-2 text-muted-foreground text-sm">{job.disabledReason}</p>
+                                    <p className="text-muted-foreground mt-2 text-sm">{job.disabledReason}</p>
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
@@ -361,7 +361,7 @@ const TasksPage = () => {
         })}
 
         {list.length === 0 && !jobs.isLoading && (
-          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-muted-foreground">
+          <div className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-6 text-center">
             No scheduled tasks.
           </div>
         )}

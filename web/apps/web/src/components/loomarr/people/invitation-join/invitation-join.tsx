@@ -21,7 +21,7 @@ const InvitationJoin = ({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-muted-foreground" role="status">
+      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
         <Loader2 className="size-4 animate-spin" aria-hidden />
         Checking invitation…
       </div>
@@ -32,7 +32,7 @@ const InvitationJoin = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-2 text-center">
-        <h1 className="font-display font-semibold text-2xl">Invitation unavailable</h1>
+        <h1 className="font-display text-2xl font-semibold">Invitation unavailable</h1>
         <p className="text-muted-foreground text-sm">
           This invitation is missing, expired, revoked, or already used. Ask an administrator for a new one.
         </p>
@@ -73,16 +73,16 @@ const InvitationJoin = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <h1 className="font-display font-semibold text-2xl">Join Loomarr</h1>
+        <h1 className="font-display text-2xl font-semibold">Join Loomarr</h1>
         <p className="text-muted-foreground text-sm">Review the account below before activating it.</p>
       </div>
 
-      <div className="space-y-3 rounded-lg border border-border bg-muted/25 p-4">
+      <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
         <div className="flex items-start gap-3">
-          <UserRound className="mt-0.5 size-5 shrink-0 text-signal" aria-hidden />
+          <UserRound className="text-signal mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground text-xs uppercase tracking-wide">Invited identity</p>
-            <p className="break-words font-medium">{identity}</p>
+            <p className="text-muted-foreground text-xs tracking-wide uppercase">Invited identity</p>
+            <p className="font-medium break-words">{identity}</p>
           </div>
           <Badge
             variant={preview.role === "admin" ? "onair" : "neutral"}
@@ -92,12 +92,12 @@ const InvitationJoin = ({
           </Badge>
         </div>
         {preview.role === "admin" ? (
-          <p className="flex gap-2 text-onair-300 text-sm">
+          <p className="text-onair-300 flex gap-2 text-sm">
             <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
             This account will have administrator access to people, settings, and approvals.
           </p>
         ) : null}
-        <p className="flex gap-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground flex gap-2 text-sm">
           <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
           This invitation expires {expires}.
         </p>

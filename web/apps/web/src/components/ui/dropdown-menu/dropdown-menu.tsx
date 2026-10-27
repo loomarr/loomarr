@@ -49,7 +49,7 @@ const DropdownMenuContent = ({
     >
       <MenuPrimitive.Popup
         className={cn(
-          "min-w-40 overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg",
+          "border-border bg-popover text-popover-foreground min-w-40 overflow-hidden rounded-md border p-1 shadow-lg",
           className,
         )}
         {...props}
@@ -65,8 +65,8 @@ const DropdownMenuContent = ({
 const DropdownMenuItem = ({ className, ...props }: DropdownMenuItemProps) => (
   <MenuPrimitive.Item
     className={cn(
-      "flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 text-left text-sm outline-none transition-colors",
-      "data-[disabled]:pointer-events-none data-[highlighted]:bg-static-700 data-[highlighted]:text-static-0 data-[disabled]:opacity-50",
+      "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors outline-none select-none",
+      "data-[highlighted]:bg-static-700 data-[highlighted]:text-static-0 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}
@@ -80,7 +80,7 @@ const DropdownMenuItem = ({ className, ...props }: DropdownMenuItemProps) => (
 // instead of a floating heading that only sighted users associate with the rows beneath it.
 const DropdownMenuLabel = ({ className, ...props }: DropdownMenuLabelProps) => (
   <MenuPrimitive.GroupLabel
-    className={cn("px-2 py-1.5 font-mono text-2xs text-muted-foreground uppercase tracking-wide", className)}
+    className={cn("text-2xs text-muted-foreground px-2 py-1.5 font-mono tracking-wide uppercase", className)}
     {...props}
   />
 );
@@ -104,8 +104,8 @@ const DropdownMenuCheckboxItem = ({
     checked={checked}
     closeOnClick={closeOnClick}
     className={cn(
-      "relative flex cursor-pointer select-none items-center rounded-sm py-1.5 pr-2 pl-7 text-sm outline-none",
-      "data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:opacity-50",
+      "relative flex cursor-pointer items-center rounded-sm py-1.5 pr-2 pl-7 text-sm outline-none select-none",
+      "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}
@@ -122,7 +122,7 @@ const DropdownMenuCheckboxItem = ({
 // ⚠ Separator comes from Base UI's top-level component, not from Menu — unlike Radix, `Menu` ships
 // no Separator part of its own.
 const DropdownMenuSeparator = ({ className, ...props }: DropdownMenuSeparatorProps) => (
-  <SeparatorPrimitive className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />
+  <SeparatorPrimitive className={cn("bg-border -mx-1 my-1 h-px", className)} {...props} />
 );
 
 export {

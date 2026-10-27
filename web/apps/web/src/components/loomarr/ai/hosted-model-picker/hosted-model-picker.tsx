@@ -65,23 +65,23 @@ const ModelRow = ({
   return (
     <li
       className={cn(
-        "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
+        "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5",
         primary && !isActive && "border-signal-tint-30 bg-signal-tint-5",
         // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
         isActive && "bg-static-800",
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 font-medium text-sm">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
           {model.label}
-          <span className="font-mono text-static-400 text-xs">{model.id}</span>
+          <span className="text-static-400 font-mono text-xs">{model.id}</span>
           {model.recommended && <Badge variant="signal">recommended</Badge>}
           <Badge variant={model.tools ? "lock" : "caution"}>{model.tools ? "Tools" : "Tools required"}</Badge>
           {isActive && <Badge variant="lock">active</Badge>}
         </p>
-        {model.why && <p className="mt-0.5 text-muted-foreground text-sm">{model.why}</p>}
+        {model.why && <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>}
         {unusable && !model.why && (
-          <p className="mt-0.5 text-muted-foreground text-sm">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Loomarr requires advertised tool-calling to ground suggestions safely.
           </p>
         )}
@@ -138,9 +138,9 @@ const HostedModelPicker = ({
         return (
           <div key={hp.key} className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="font-medium text-sm">
+              <p className="text-sm font-medium">
                 {hp.label}
-                {hp.active && <span className="ml-2 text-muted-foreground text-xs">(in use)</span>}
+                {hp.active && <span className="text-muted-foreground ml-2 text-xs">(in use)</span>}
               </p>
               {hp.modelsLive ? (
                 <span className="text-static-400 text-xs">live models</span>
@@ -178,7 +178,7 @@ const HostedModelPicker = ({
               <>
                 <div className="relative">
                   <Search
-                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                    className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
                     aria-hidden
                   />
                   <Input
@@ -225,7 +225,7 @@ const HostedModelPicker = ({
               <>
                 {primary && (
                   <>
-                    <p className="font-medium text-signal text-xs">Safe default</p>
+                    <p className="text-signal text-xs font-medium">Safe default</p>
                     <ul>
                       <ModelRow
                         model={primary}
@@ -240,7 +240,7 @@ const HostedModelPicker = ({
                 )}
                 {alternatives.length > 0 && (
                   <>
-                    <p className="mt-1 font-medium text-muted-foreground text-xs">
+                    <p className="text-muted-foreground mt-1 text-xs font-medium">
                       {primary ? "Strong alternatives" : "Available models"}
                     </p>
                     <ul className="flex flex-col gap-2">
@@ -259,7 +259,7 @@ const HostedModelPicker = ({
                 )}
                 {current && (
                   <>
-                    <p className="mt-1 font-medium text-muted-foreground text-xs">Currently active</p>
+                    <p className="text-muted-foreground mt-1 text-xs font-medium">Currently active</p>
                     <ul>
                       <ModelRow
                         model={current}
@@ -278,7 +278,7 @@ const HostedModelPicker = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="self-start text-muted-foreground text-xs"
+                className="text-muted-foreground self-start text-xs"
                 onClick={() => setSearching((value) => ({ ...value, [hp.key]: !isSearching }))}
               >
                 {isSearching ? "Back to recommendations" : "Find another model"}

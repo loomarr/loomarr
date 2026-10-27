@@ -29,7 +29,7 @@ const buttonVariants = ({
   variant?: ButtonVariant | null;
 } = {}) =>
   cn(
-    "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 forced-colors:border forced-colors:border-current [&_svg]:size-4 [&_svg]:shrink-0",
+    "focus-visible:ring-ring focus-visible:ring-offset-background inline-flex cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 forced-colors:border forced-colors:border-current [&_svg]:size-4 [&_svg]:shrink-0",
     variant === "suggest"
       ? // The AI action (§2.1: suggest is "THE AI color"). Reserved for generation —
         // the Suggest button — so magenta reads as "this asks the model", distinct from
@@ -44,7 +44,7 @@ const buttonVariants = ({
           // the danger zone), while static-950 clears it comfortably.
           "bg-destructive text-static-950 hover:bg-destructive/90"
         : variant === "outline"
-          ? "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground"
+          ? "border-input hover:bg-accent hover:text-accent-foreground border bg-transparent"
           : variant === "secondary"
             ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
             : variant === "ghost"

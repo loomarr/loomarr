@@ -430,7 +430,7 @@ const SourcesPanel = ({
   const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
   const localSourceSetup = isAdmin ? (
     <div className="flex flex-col gap-3">
-      <p className="font-medium text-sm">Add a folder or library</p>
+      <p className="text-sm font-medium">Add a folder or library</p>
       <form
         className="flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
@@ -480,18 +480,18 @@ const SourcesPanel = ({
       {storage ? (
         <section
           aria-labelledby="filler-storage-heading"
-          className="rounded-lg border border-border bg-card p-4"
+          className="border-border bg-card rounded-lg border p-4"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h2 id="filler-storage-heading" className="font-medium text-sm">
+              <h2 id="filler-storage-heading" className="text-sm font-medium">
                 Storage
               </h2>
               <p className="mt-1 text-sm">
                 {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
                 this drive
               </p>
-              <p className="mt-1 text-muted-foreground text-xs">
+              <p className="text-muted-foreground mt-1 text-xs">
                 {storage.pausedBy === "host_reserve"
                   ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
                   : storage.pausedBy === "library_limit"
@@ -528,7 +528,7 @@ const SourcesPanel = ({
           </div>
 
           {storage.pausedBy === "host_reserve" ? (
-            <div className="mt-3 border-border border-t pt-3">
+            <div className="border-border mt-3 border-t pt-3">
               {cleanupPreviewQuery.isLoading ? (
                 <p aria-live="polite" className="text-muted-foreground text-sm">
                   Checking for old temporary downloads…
@@ -558,13 +558,13 @@ const SourcesPanel = ({
                 </p>
               )}
               {cleanupResult && cleanupResult.removedItems > 0 ? (
-                <p role="status" className="mt-2 text-muted-foreground text-xs">
+                <p role="status" className="text-muted-foreground mt-2 text-xs">
                   Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
                   {formatBytes(cleanupResult.removedBytes)}.
                 </p>
               ) : null}
               {cleanupPreviewQuery.error || cleanupStorage.error ? (
-                <p role="alert" className="mt-2 text-destructive text-sm">
+                <p role="alert" className="text-destructive mt-2 text-sm">
                   Temporary files could not be checked or removed. Nothing in your library was changed.
                 </p>
               ) : null}
@@ -632,15 +632,15 @@ const SourcesPanel = ({
                   <h3 id="source-status-heading" className="font-medium">
                     {readinessLabel(selectedSource)}
                   </h3>
-                  <p className="mt-1 text-muted-foreground text-sm">{selectedSource.detail}</p>
-                  <p className="mt-1 text-muted-foreground text-xs">
+                  <p className="text-muted-foreground mt-1 text-sm">{selectedSource.detail}</p>
+                  <p className="text-muted-foreground mt-1 text-xs">
                     {selectedSource.incoming > 0
                       ? `${selectedSource.count} ready · `
                       : `${selectedSource.count} ${selectedSource.count === 1 ? "clip" : "clips"}`}
                     {selectedSource.incoming > 0 && (
                       <a
                         href="/filler/incoming"
-                        className="underline decoration-border underline-offset-2 hover:text-foreground"
+                        className="decoration-border hover:text-foreground underline underline-offset-2"
                       >
                         {`${selectedSource.incoming} being checked`}
                       </a>
@@ -650,7 +650,7 @@ const SourcesPanel = ({
                       : " · not checked yet"}
                   </p>
                   {selectedSource.kind === "folder" && (
-                    <p className="mt-3 break-all font-mono text-muted-foreground text-xs">
+                    <p className="text-muted-foreground mt-3 font-mono text-xs break-all">
                       {selectedSource.uri ?? selectedSource.target}
                     </p>
                   )}
@@ -671,12 +671,12 @@ const SourcesPanel = ({
                 )}
 
                 {checkResult && checkResult.sourceId === selectedSource.id && (
-                  <p role="status" className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+                  <p role="status" className="bg-muted/40 rounded-md px-3 py-2 text-sm">
                     {checkResultText(selectedSource, checkResult)}
                   </p>
                 )}
                 {fetchSource.error && (
-                  <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-sm">
+                  <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
                     {fetchSource.error.detail}
                   </p>
                 )}
@@ -721,7 +721,6 @@ const SourcesPanel = ({
                   className="border-border border-t pt-5"
                 >
                   <Disclosure.SectionTrigger
-                    label={`${browseOpen ? "Hide" : "Show"} tools for finding a specific clip`}
                     title="Find a specific clip"
                     description="Search this Archive.org collection by title or keyword."
                   />
@@ -776,7 +775,6 @@ const SourcesPanel = ({
                   className="border-border border-t pt-5"
                 >
                   <Disclosure.SectionTrigger
-                    label={`${settingsOpen ? "Hide" : "Show"} source settings`}
                     title="Source settings"
                     description="Automatic downloads, location, and removal"
                   />
@@ -785,12 +783,12 @@ const SourcesPanel = ({
                       {selectedSource.automaticDownloads && (
                         <div className="flex flex-col gap-3">
                           <div>
-                            <p className="font-medium text-sm">Automatic downloads</p>
-                            <p className="mt-1 text-muted-foreground text-sm">
+                            <p className="text-sm font-medium">Automatic downloads</p>
+                            <p className="text-muted-foreground mt-1 text-sm">
                               {selectedSource.automaticDownloads.summary}
                             </p>
                             {selectedSource.automaticDownloads.nextCheckAt && (
-                              <p className="mt-1 text-muted-foreground text-xs">
+                              <p className="text-muted-foreground mt-1 text-xs">
                                 Next automatic check{" "}
                                 {formatRelative(selectedSource.automaticDownloads.nextCheckAt)}
                               </p>
@@ -960,7 +958,7 @@ const SourcesPanel = ({
                           {downloadSaveError && (
                             <p
                               role="alert"
-                              className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-sm"
+                              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
                             >
                               {downloadSaveError}
                             </p>
@@ -969,7 +967,7 @@ const SourcesPanel = ({
                       )}
 
                       {selectedSource.actions.includes("edit_location") && (
-                        <div className="flex flex-col gap-3 border-border border-t pt-3">
+                        <div className="border-border flex flex-col gap-3 border-t pt-3">
                           <p className="text-muted-foreground text-sm">
                             Change this only when the source covers a different area from your location.
                           </p>
@@ -1060,7 +1058,7 @@ const SourcesPanel = ({
                               ? "Removing…"
                               : "Remove source"}
                           </Button>
-                          <p className="mt-1 text-muted-foreground text-xs">
+                          <p className="text-muted-foreground mt-1 text-xs">
                             Clips already downloaded stay in your library.
                           </p>
                         </div>

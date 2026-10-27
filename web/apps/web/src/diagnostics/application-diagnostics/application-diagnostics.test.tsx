@@ -110,7 +110,7 @@ describe("ApplicationDiagnostics", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       expect.stringContaining('"event": "player.media_error"'),
     );
-    expect(screen.getAllByRole("button", { name: "Copy Request id" })[0]).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Copy Request id/ })[0]).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Open process output" })[0]!);
     expect(onOpenProcess).toHaveBeenCalledWith("process-1");
     await userEvent.click(screen.getAllByRole("button", { name: "Open related Channel" })[0]!);

@@ -69,8 +69,12 @@ describe("TV surf rail focus (#1887)", () => {
     vi.unstubAllGlobals();
   });
 
+  // The row is named by its content (WCAG 2.5.3), so it is found by what it shows: the padded
+  // channel's ident initials, its padded number, then its name; the recent group lists it first.
   const row = () =>
-    host.querySelector(`[aria-label^="recent, channel ${channel?.channelNumber},"]`) as RailNode;
+    Array.from(host.querySelectorAll('[role="button"]')).find((node) =>
+      node.textContent?.includes(`${channel?.channelNumber.padStart(2, "0")}${channel?.channelName}`),
+    ) as RailNode;
   const card = () => row().firstElementChild as RailNode;
   // The channel number is the card's data-mono text: its padded digits.
   const number = () =>

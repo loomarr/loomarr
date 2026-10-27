@@ -34,9 +34,9 @@ const ChannelCard = ({
     <Card className={cn("flex flex-col gap-3 p-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <span className="font-mono text-2xl tabular-nums leading-none">{channelNumber(number)}</span>
+          <span className="font-mono text-2xl leading-none tabular-nums">{channelNumber(number)}</span>
           <div>
-            <p className="font-medium leading-tight">{name}</p>
+            <p className="leading-tight font-medium">{name}</p>
             {managed && (
               <Caption as="p" shout>
                 Managed by Loomarr
@@ -57,7 +57,7 @@ const ChannelCard = ({
       {chip && (
         <span
           className={cn(
-            "inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide",
+            "text-2xs inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-mono font-medium tracking-wide uppercase",
             chip.chip,
           )}
         >

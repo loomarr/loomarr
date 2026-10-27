@@ -42,7 +42,7 @@ const StateBadge = ({ state, className }: StateBadgeProps) => (
   <Badge
     variant={TONE[state]}
     className={cn(
-      "font-mono uppercase tracking-wide",
+      "font-mono tracking-wide uppercase",
       // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
       // has no notion of, and it is genuinely domain-specific.
       state === "unavailable" && "line-through",

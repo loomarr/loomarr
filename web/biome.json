@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
@@ -19,15 +19,25 @@
       "!pnpm-lock.yaml"
     ]
   },
-  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 110 },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 110
+  },
   "javascript": {
-    "formatter": { "quoteStyle": "double", "trailingCommas": "all", "semicolons": "always" }
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
   },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
       "correctness": {
+        "noReactNativeRawText": "off",
         "noUnusedImports": "error",
         "noUnusedVariables": "error"
       },
@@ -43,16 +53,22 @@
         "noLabelWithoutControl": "error"
       },
       "nursery": {
-        "useSortedClasses": {
-          "level": "error",
-          "options": { "functions": ["cn", "cva", "clsx"] }
+        "useTailwindSortedClasses": {
+          "level": "error"
         }
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**"],
+      "linter": { "rules": { "correctness": { "noComponentHookFactories": "off" } } }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "on" } }
   },
-  "plugins": ["./biome-plugins/no-function-declaration.grit", "./biome-plugins/no-inline-export.grit"]
+  "plugins": ["./biome-plugins/no-function-declaration.grit", "./biome-plugins/no-inline-export.grit"],
+  "tailwind": { "mergeFunctions": ["cn", "clsx"], "variantFunctions": ["cva"] }
 }

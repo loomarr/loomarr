@@ -41,7 +41,7 @@ if [[ $# -ne 1 ]]; then
   exit 2
 fi
 
-readonly image=mcr.microsoft.com/playwright:v1.62.1-noble
+readonly image=mcr.microsoft.com/playwright:v1.64.1-noble
 readonly mode=$1
 
 if [[ $mode == ensure ]]; then

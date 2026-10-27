@@ -6,18 +6,18 @@ import type { NowNextStripProps } from "./now-next-strip.type";
 // air; an unprogrammed channel reads "Nothing scheduled".
 const NowNextStrip = ({ now, next, gap, className }: NowNextStripProps) => {
   if (!now && !gap) {
-    return <p className={cn("text-sm text-static-400", className)}>Nothing scheduled</p>;
+    return <p className={cn("text-static-400 text-sm", className)}>Nothing scheduled</p>;
   }
   return (
     <p className={cn("truncate text-sm", className)}>
       <span className="text-static-400">Now </span>
-      <span className="font-mono text-foreground">{gap ? "Filler break" : now?.title}</span>
-      {now?.until && <span className="ml-1 font-mono text-static-400 text-xs">·til {now.until}</span>}
+      <span className="text-foreground font-mono">{gap ? "Filler break" : now?.title}</span>
+      {now?.until && <span className="text-static-400 ml-1 font-mono text-xs">·til {now.until}</span>}
       {next && (
         <>
-          <span className="mx-1.5 text-static-400">·</span>
+          <span className="text-static-400 mx-1.5">·</span>
           <span className="text-static-400">Next </span>
-          <span className="font-mono text-static-100">{next.title}</span>
+          <span className="text-static-100 font-mono">{next.title}</span>
         </>
       )}
     </p>

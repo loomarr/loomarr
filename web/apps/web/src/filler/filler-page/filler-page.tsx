@@ -139,7 +139,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {tab === "incoming" || tab === "sources" || tab === "taxonomy" ? (
           <Link
             to="/filler/manage"
-            className="inline-flex items-center gap-1.5 self-start text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
           >
             <ArrowLeft className="size-3.5" aria-hidden />
             Manage
@@ -149,10 +149,10 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
-          <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
+          <Card className="border-caution/40 bg-caution/5 flex flex-wrap items-center gap-3 p-4">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">Automatic fetching is paused</p>
-              <p className="mt-0.5 text-muted-foreground text-sm">
+              <p className="text-sm font-medium">Automatic fetching is paused</p>
+              <p className="text-muted-foreground mt-0.5 text-sm">
                 {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
                 {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
                 add clips yourself. Remove clips you no longer want or raise this limit to restart automatic

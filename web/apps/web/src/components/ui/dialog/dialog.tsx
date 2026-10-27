@@ -26,14 +26,14 @@ const DialogContent = ({ className, children, portalContainer, ...props }: Dialo
     <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
     <DialogPrimitive.Popup
       className={cn(
-        "fixed top-1/2 left-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border border-border bg-card p-6 shadow-lg focus:outline-none",
+        "border-border bg-card fixed top-1/2 left-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border p-6 shadow-lg focus:outline-none",
         className,
       )}
       {...props}
     >
       {children}
       <DialogPrimitive.Close
-        className="absolute top-4 right-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute top-4 right-4 rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
         aria-label="Close"
       >
         <X className="size-4" aria-hidden />
@@ -51,7 +51,7 @@ const DialogFooter = ({ className, ...props }: DialogSectionProps) => (
 );
 
 const DialogTitle = ({ className, ...props }: DialogTitleProps) => (
-  <DialogPrimitive.Title className={cn("font-semibold text-lg", className)} {...props} />
+  <DialogPrimitive.Title className={cn("text-lg font-semibold", className)} {...props} />
 );
 
 const DialogDescription = ({ className, ...props }: DialogDescriptionProps) => (

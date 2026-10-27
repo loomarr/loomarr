@@ -57,12 +57,12 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       : `Software encoding · ${capability.encoder} · ${capacity}`;
 
   return (
-    <div className="flex items-center justify-between gap-3 border-border border-b bg-static-900/40 px-4 py-2.5">
+    <div className="border-border bg-static-900/40 flex items-center justify-between gap-3 border-b px-4 py-2.5">
       <div className="min-w-0">
-        <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">Encoder</p>
-        <p className="mt-0.5 text-muted-foreground text-sm">{summary}</p>
+        <p className="text-2xs text-muted-foreground font-mono tracking-wide uppercase">Encoder</p>
+        <p className="text-muted-foreground mt-0.5 text-sm">{summary}</p>
         {!!gpu.vramGiB && (
-          <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground text-xs">
+          <p className="text-muted-foreground mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
             <span>{gpu.name ?? "GPU"}</span>
             <span>{formatVram(gpu.vramGiB)} total</span>
             {gpu.llmModel && (
@@ -86,7 +86,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
     <PanelRow>
       <PanelRow.Main>
         <div className="flex items-center gap-1.5">
-          <p className="truncate font-medium text-sm">{channelLabel(channel)}</p>
+          <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
           {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
               request. The app-wide Tooltip (TooltipProvider at __root.tsx) gives an instant, styled
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
@@ -97,7 +97,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
                 <button
                   type="button"
                   aria-label={`Channel id ${channel.channelId}`}
-                  className="inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full text-static-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
                 />
               }
             >
@@ -108,15 +108,15 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
             </TooltipContent>
           </Tooltip>
         </div>
-        <p className="mt-0.5 truncate text-muted-foreground text-xs">
+        <p className="text-muted-foreground mt-0.5 truncate text-xs">
           {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
         </p>
       </PanelRow.Main>
 
       <PanelRow.Meta>
         <div className="text-right">
-          <p className="font-mono text-static-200 text-xs">{formatColdStart(channel.coldStartMs)}</p>
-          <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
+          <p className="text-static-200 font-mono text-xs">{formatColdStart(channel.coldStartMs)}</p>
+          <p className="text-2xs text-muted-foreground mt-0.5 font-mono">
             {formatBuffer(channel.bufferedMs)}
           </p>
         </div>
@@ -148,19 +148,19 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
 
   return (
     <Card className={cn("flex shrink-0 flex-col overflow-hidden p-0", className)}>
-      <div className="flex items-center justify-between gap-3 border-border border-b px-4 py-3">
-        <h2 className="font-semibold text-base">{title}</h2>
+      <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
+        <h2 className="text-base font-semibold">{title}</h2>
         {!loading && status != null && (
           <Badge variant="neutral">{status.running ? "Loomarr" : "Tunarr"}</Badge>
         )}
       </div>
 
-      {loading && <p className="px-4 py-6 text-muted-foreground text-sm">Reading playout status…</p>}
+      {loading && <p className="text-muted-foreground px-4 py-6 text-sm">Reading playout status…</p>}
 
       {/* On a Tunarr-backed install there is no internal playout to show, which is not the same as
           every channel being unhealthy. */}
       {!loading && status != null && !status.running && (
-        <p className="px-4 py-6 text-muted-foreground text-sm">
+        <p className="text-muted-foreground px-4 py-6 text-sm">
           Loomarr isn't streaming these channels. Tunarr is.
         </p>
       )}
@@ -168,7 +168,7 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
       {!loading && status?.running && <EncoderRow capability={status.capability} gpu={status.gpu} />}
 
       {!loading && status?.running && channels.length === 0 && (
-        <p className="px-4 py-6 text-muted-foreground text-sm">No channels are streaming right now.</p>
+        <p className="text-muted-foreground px-4 py-6 text-sm">No channels are streaming right now.</p>
       )}
 
       {status?.running && channels.length > 0 && (

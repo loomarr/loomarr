@@ -103,7 +103,7 @@ const BrokenWithDesignedFallback: Story = {
   args: {
     image: poster({ src: "/does-not-exist.jpg", srcSetWebp: "", srcSetAvif: "" }),
     fallback: (
-      <div className="flex aspect-[2/3] w-full items-center justify-center rounded-md bg-tune/20 font-semibold text-2xl text-tune">
+      <div className="bg-tune/20 text-tune flex aspect-[2/3] w-full items-center justify-center rounded-md text-2xl font-semibold">
         AH
       </div>
     ),

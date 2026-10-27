@@ -18,14 +18,14 @@ const InfoScreen = () => {
 
   return (
     <>
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-3xl tabular-nums leading-none">{channelNumber(ch.number)}</span>
+          <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>
           <div className="flex items-center gap-2">
             <OnAirIndicator state={air.dot} />
             {/* The status is the info panel's heading (also what the reachability check
                 keys on — a real heading proves the screen composed). */}
-            <h2 className="font-semibold text-lg">{air.label}</h2>
+            <h2 className="text-lg font-semibold">{air.label}</h2>
           </div>
         </div>
         <p className="text-muted-foreground text-sm">{air.detail}</p>

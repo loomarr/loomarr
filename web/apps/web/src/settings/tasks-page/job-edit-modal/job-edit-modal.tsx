@@ -61,7 +61,7 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <span className="font-medium text-sm">Frequency</span>
+            <span className="text-sm font-medium">Frequency</span>
             <Select value={choice} onValueChange={setChoice}>
               <SelectTrigger aria-label="Frequency">
                 <SelectValue />
@@ -80,7 +80,7 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
           {/* Advanced: the raw cron field, revealed only for the Custom choice. */}
           {advanced && (
             <div className="flex flex-col gap-1.5">
-              <span className="font-medium text-sm">Cron expression</span>
+              <span className="text-sm font-medium">Cron expression</span>
               <Input
                 aria-label="Cron expression"
                 value={advancedCron}
