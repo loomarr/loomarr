@@ -244,14 +244,19 @@ git -C "$TMP" worktree remove "$collision_b"
 # A killed writer cannot leave every future agent waiting on an ownerless registry lock.
 step 'abandoned registry lock recovery'
 state_dir="$(git -C "$TMP" rev-parse --path-format=absolute --git-common-dir)/loomarr-agents"
-mkdir -p "$state_dir/lock"
-printf 'pid=999999\ncreated=1\n' > "$state_dir/lock/owner"
+printf 'pid=999999\ncreated=1\n' > "$state_dir/lock"
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start after-stale-lock agent-contract >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
-mkdir -p "$state_dir/lock"
+: > "$state_dir/lock"
 touch -t 197001010000 "$state_dir/lock"
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start after-ownerless-lock agent-contract >/dev/null
 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+# A lock directory left by the mkdir-based version is recovered the same way.
+mkdir -p "$state_dir/lock"
+touch -t 197001010000 "$state_dir/lock"
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" start after-legacy-lock-dir agent-contract >/dev/null
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" stop >/dev/null
+[ ! -e "$state_dir/lock" ] || { echo "agent-harness-test: registry lock left behind" >&2; exit 1; }
 
 # Leases can be extended explicitly, and abandoned entries can be pruned without touching worktrees.
 step 'lease renewal and pruning'
