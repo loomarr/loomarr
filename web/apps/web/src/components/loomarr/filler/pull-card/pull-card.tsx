@@ -124,7 +124,7 @@ const PullCard = ({
                 size="sm"
                 disabled={deciding}
                 onClick={() => toggleDropped(id)}
-                aria-label={isDropped ? `Put ${row.name} back` : `Leave ${row.name} out`}
+                aria-label={isDropped ? `Put back ${row.name}` : `Leave out ${row.name}`}
               >
                 {isDropped ? "Put back" : "Leave out"}
               </Button>

@@ -85,7 +85,6 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
       variant="ghost"
       size="sm"
       className="h-auto max-w-full justify-start px-2 py-1 font-mono text-xs"
-      aria-label={`Copy ${label}`}
       onClick={() =>
         void navigator.clipboard.writeText(value).then(() => {
           setCopied(true);
@@ -94,7 +93,8 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
       }
     >
       {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-      <span className="truncate">{value}</span>
+      {/* The name is the content, so it holds the visible value (WCAG 2.5.3). */}
+      <span className="sr-only">Copy {label}:</span> <span className="truncate">{value}</span>
     </Button>
   );
 };

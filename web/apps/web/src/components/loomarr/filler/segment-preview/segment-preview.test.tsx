@@ -105,7 +105,10 @@ describe("SegmentPreview", () => {
   // input — aria-labelledby on an input takes its value, renaming the button on every keystroke.
   it("takes its name from the visible row marker", () => {
     renderPreview();
-    expect(screen.getByRole("button", { name: "Preview segment #1" })).toBeInTheDocument();
+    // With no artwork the tile's own visible words join the name too (WCAG 2.5.3).
+    expect(
+      screen.getByRole("button", { name: "Preview segment #1 Preview unavailable" }),
+    ).toBeInTheDocument();
   });
 
   it("collapses on Escape and hands focus back to the tile", async () => {

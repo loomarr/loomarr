@@ -70,7 +70,7 @@ describe("InvitationDialog", () => {
     expect(screen.getByRole("img", { name: "Scan to accept newcomer’s Loomarr invitation" })).toBeVisible();
     expect(screen.getByText(/Expires January 8, 2030/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Copy invitation link" }));
+    await userEvent.click(screen.getByRole("button", { name: "Copy link to this invitation" }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       "https://loomarr.example/join#grant=fake-deterministic-grant",
     );
@@ -125,7 +125,7 @@ describe("InvitationDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Generate QR and link" }));
     expect(await screen.findByRole("button", { name: "Regenerate link" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Regenerate link" }));
-    await userEvent.click(screen.getByRole("button", { name: "Copy invitation link" }));
+    await userEvent.click(screen.getByRole("button", { name: "Copy link to this invitation" }));
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(replacement);
 
     await userEvent.click(screen.getByRole("button", { name: "Revoke invitation" }));
@@ -139,12 +139,12 @@ describe("InvitationDialog", () => {
     renderDialog({ existing: localInvitation });
 
     await userEvent.click(screen.getByRole("button", { name: "Generate QR and link" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Copy invitation link" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Copy link to this invitation" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not be copied/i);
     expect(screen.getByRole("img", { name: /Scan to accept/ })).toBeVisible();
     expect(screen.queryByText(/fake-deterministic-grant/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy invitation link" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy link to this invitation" })).toBeInTheDocument();
   });
 
   it("clears bearer and editable values whenever the dialog closes", async () => {

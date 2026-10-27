@@ -30,7 +30,6 @@ const TvSurfChannel = ({
   selected: boolean;
 }) => (
   <Pressable
-    accessibilityLabel={`${group}, channel ${channel.channelNumber}, ${channel.channelName}`}
     accessibilityRole="button"
     accessibilityState={{ selected }}
     hasTVPreferredFocus={selected}

@@ -44,6 +44,7 @@ const SegmentPreview = ({
   const span = endMs - startMs;
   const panelId = `seg-preview-${position}`;
   const verbId = `seg-preview-verb-${position}`;
+  const unavailableId = `seg-preview-na-${position}`;
 
   const player = failed ? (
     <div
@@ -98,7 +99,8 @@ const SegmentPreview = ({
         // adjacent Name <input>: `aria-labelledby` on an input takes its VALUE, so the button
         // would be renamed on every keystroke. Anchoring to something on screen is also what the
         // compact-control rule asks for — an sr-only-only name drifts from what the operator sees.
-        aria-labelledby={`${verbId} ${labelledBy}`}
+        // The tile's own visible words ("Preview unavailable") belong in the name too (WCAG 2.5.3).
+        aria-labelledby={artwork ? `${verbId} ${labelledBy}` : `${verbId} ${labelledBy} ${unavailableId}`}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => {
@@ -122,7 +124,9 @@ const SegmentPreview = ({
         {artwork ? (
           <Image image={artwork} alt="" sizes="112px" className="size-full object-cover" />
         ) : (
-          <span className="text-muted-foreground px-2 text-center text-[10px]">Preview unavailable</span>
+          <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
+            Preview unavailable
+          </span>
         )}
         <span
           aria-hidden

@@ -259,12 +259,7 @@ const WatchingPanel = ({
             {`FAVORITES · ${favourites.length}`}
           </Text>
           {favourites.map((favourite) => (
-            <Pressable
-              accessibilityLabel={`Watch ${favourite.channelNumber} ${favourite.channelName}`}
-              accessibilityRole="button"
-              key={favourite.id}
-              onPress={() => onTune(favourite.id)}
-            >
+            <Pressable accessibilityRole="button" key={favourite.id} onPress={() => onTune(favourite.id)}>
               {/* The rule above each row is its own hairline: a Surface's borderWidth resets a top-only border. */}
               <Surface backgroundColor="$borderDecorative" borderWidth={0} height={1} />
               <Surface

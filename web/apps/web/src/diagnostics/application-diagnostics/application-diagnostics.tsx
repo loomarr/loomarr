@@ -150,10 +150,10 @@ const CopyValue = ({ label, value }: { label: string; value: string }) => {
           window.setTimeout(() => setCopied(false), 1_500);
         });
       }}
-      aria-label={`Copy ${label}`}
     >
       {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-      <span className="truncate">{value}</span>
+      {/* The name is the content, so it holds the visible value (WCAG 2.5.3). */}
+      <span className="sr-only">Copy {label}:</span> <span className="truncate">{value}</span>
     </Button>
   );
 };

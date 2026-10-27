@@ -379,7 +379,7 @@ const InvitationDialog = ({
                 <Button
                   type="button"
                   disabled={busy}
-                  aria-label={copied ? "Copied" : "Copy invitation link"}
+                  aria-label={copied ? "Copied" : "Copy link to this invitation"}
                   onClick={async () => {
                     setProblem(undefined);
                     try {

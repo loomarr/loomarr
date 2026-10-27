@@ -80,7 +80,7 @@ describe("SplitReviewEditor", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    const firstTrigger = screen.getByRole("button", { name: /open clip 1: first ad/i });
+    const firstTrigger = screen.getByRole("button", { name: /open clip .*#1.*first ad/i });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
 
@@ -401,7 +401,7 @@ describe("SplitReviewEditor — sub-second cuts", () => {
   it("keeps at most one preview mounted while traversing the reel", async () => {
     render(<SplitReviewEditor proposal={proposal} onConfirm={vi.fn()} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /open clip 1: first ad/i }));
+    await userEvent.click(screen.getByRole("button", { name: /open clip .*#1.*first ad/i }));
     expect(document.body.querySelectorAll("video")).toHaveLength(1);
     const firstPlayer = document.body.querySelector("video");
 

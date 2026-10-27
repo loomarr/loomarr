@@ -126,6 +126,7 @@ const AppShell = ({
   // rail items. `channelNavHighlight` is the one place that rule lives — shared with PhoneBottomBar.
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
+  const accountInitials = userName.slice(0, 2).toUpperCase();
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -152,7 +153,6 @@ const AppShell = ({
           <button
             type="button"
             onClick={onOpenCommand}
-            aria-label="Open global search"
             aria-keyshortcuts={commandShortcutAria()}
             className="border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
           >
@@ -252,10 +252,13 @@ const AppShell = ({
           <Link
             to="/account"
             className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors"
-            aria-label="Your account"
+            // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
+            aria-label={`Your account: ${accountInitials} ${userName}`}
           >
             <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
-              {userName.slice(0, 2).toUpperCase()}
+              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+              {accountInitials}{" "}
             </div>
             <span className="text-muted-foreground truncate">{userName}</span>
           </Link>

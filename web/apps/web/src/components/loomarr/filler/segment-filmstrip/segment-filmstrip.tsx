@@ -91,7 +91,6 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
             }
 
             const name = item.name || "Unnamed clip";
-            const label = `${formatMmSs(item.startMs)} · ${name}`;
             const tooltipId = `${tooltipIdPrefix}-clip-${itemIndex}`;
             const tags = (item.tags ?? []).slice(0, 3);
             return (
@@ -101,7 +100,6 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     render={
                       <button
                         type="button"
-                        aria-label={label}
                         aria-describedby={tooltipId}
                         aria-current={activeKey === item.key ? "true" : undefined}
                         onClick={(event) => onSelect?.(item.key, event.currentTarget)}
@@ -115,6 +113,9 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                       />
                     }
                   >
+                    {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
+                        the start time is the part the tile shows only to assistive tech. */}
+                    <span className="sr-only">{formatMmSs(item.startMs)} ·</span>{" "}
                     {item.artwork ? (
                       <Image image={item.artwork} alt="" sizes="240px" className="size-full object-cover" />
                     ) : (

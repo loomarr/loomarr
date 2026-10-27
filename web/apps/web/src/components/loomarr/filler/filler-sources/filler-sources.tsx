@@ -217,10 +217,11 @@ const FillerSources = ({
             <button
               type="button"
               className="hover:bg-muted/50 focus-visible:ring-ring flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-3 rounded-md px-2 py-2 focus-visible:ring-2 focus-visible:outline-none sm:flex-nowrap"
-              aria-label={`Manage ${source.id === "folder" ? "Drop folder" : source.target}`}
               onClick={() => onSelect(source)}
             >
-              {details}
+              {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
+                  the verb is the one thing the row shows only to assistive tech. */}
+              <span className="sr-only">Manage</span> {details}
             </button>
           ) : (
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 px-2 py-2 sm:flex-nowrap">

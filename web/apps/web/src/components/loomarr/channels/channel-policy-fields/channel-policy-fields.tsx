@@ -196,7 +196,7 @@ const DateAxisEditor = ({
             placeholder="To"
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add ${label} range`}>
+        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
           Add range
         </Button>
       </div>

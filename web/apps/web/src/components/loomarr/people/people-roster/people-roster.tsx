@@ -124,7 +124,6 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
               <li key={user.id} className="border-static-800 border-b last:border-b-0">
                 <button
                   type="button"
-                  aria-label={`Manage ${user.name}`}
                   aria-current={selectedId === user.id ? "true" : undefined}
                   onClick={() => onSelect(user)}
                   className={cn(
@@ -133,6 +132,8 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                     selectedId === user.id && "bg-accent",
                   )}
                 >
+                  {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
+                  <span className="sr-only">Manage</span>{" "}
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-medium">{user.name}</span>

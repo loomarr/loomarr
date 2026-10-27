@@ -184,7 +184,7 @@ describe("SplitReviewPage", () => {
     stubSplit();
     renderPage();
     expect(await screen.findByRole("heading", { name: /review clips/i })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /open clip 1: first ad/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /open clip .*#1.*first ad/i })).toBeInTheDocument();
     expect(screen.getByText("Classic Toy Commercial Compilation 1989")).toBeInTheDocument();
     expect(screen.queryByText("comp-hash")).not.toBeInTheDocument();
     expect(screen.getByText(/left out 1 clip spoken in another language/i)).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("SplitReviewPage", () => {
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {
     const { confirms } = stubSplit();
     const router = renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /open clip 2: second ad/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open clip .*#2.*second ad/i }));
     const second = await screen.findByRole("dialog", { name: /second ad/i });
     // Answer the open era question, then commit.
     fireEvent.click(within(second).getByRole("button", { name: /use 1985/i }));
@@ -234,7 +234,7 @@ describe("SplitReviewPage", () => {
   it("Back leaves without calling confirm", async () => {
     const { confirms } = stubSplit();
     renderPage();
-    await screen.findByRole("button", { name: /open clip 1: first ad/i });
+    await screen.findByRole("button", { name: /open clip .*#1.*first ad/i });
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
     await screen.findByText("the catalog");
     expect(confirms).toHaveLength(0);

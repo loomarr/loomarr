@@ -94,7 +94,7 @@ type Story = StoryObj<typeof meta>;
 const MixedRoster: Story = {};
 const SelectedOfflineReady: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: "Manage Kira Brandt" }));
+    await userEvent.click(await canvas.findByRole("button", { name: /^Manage Kira Brandt/ }));
   },
 };
 const ImportOpen: Story = {

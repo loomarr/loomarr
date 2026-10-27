@@ -370,11 +370,12 @@ const SegmentSummaryRow = ({
       <Card className={cn(selected && "ring-foreground ring-1")}>
         <button
           type="button"
-          aria-label={`Open clip ${n}: ${segment.name || "unnamed"}`}
           aria-current={selected ? "true" : undefined}
           onClick={(event) => onOpen(event.currentTarget)}
           className="focus-visible:ring-ring flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
         >
+          {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
+          <span className="sr-only">Open clip</span>{" "}
           <span className="border-border bg-static-900 relative h-14 w-24 shrink-0 overflow-hidden rounded-md border">
             {segment.artwork ? (
               <Image image={segment.artwork} alt="" sizes="96px" className="size-full object-cover" />
