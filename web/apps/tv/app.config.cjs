@@ -1,3 +1,5 @@
+const { appleTestFlightConfig } = require("../../scripts/apple-testflight-config.cjs");
+
 const shieldReleaseConfig = (config, environment = process.env) => {
   const channel = environment.LOOMARR_SHIELD_RELEASE_CHANNEL;
   if (!channel) return config;
@@ -28,5 +30,20 @@ const shieldReleaseConfig = (config, environment = process.env) => {
   };
 };
 
-module.exports = ({ config }) => shieldReleaseConfig(config);
-module.exports.shieldReleaseConfig = shieldReleaseConfig;
+// The permanent Apple TV identity: its own App Store Connect record, "Loomarr TV", apart from the
+// iPhone's. The Shield identity above is a different store and package name, so either release
+// leaves the other platform's prototype identity in place.
+const appleTvRelease = {
+  label: "Apple TV",
+  name: "Loomarr TV",
+  slug: "loomarr-tv",
+  ios: { bundleIdentifier: "media.loomarr.tv" },
+};
+
+module.exports = ({ config }) => {
+  // One build releases one store's app; both channels at once is a mis-wired release step.
+  if (process.env.LOOMARR_SHIELD_RELEASE_CHANNEL && process.env.LOOMARR_APPLE_RELEASE_CHANNEL) {
+    throw new Error("a TV build releases either the Shield or the Apple TV app, not both");
+  }
+  return appleTestFlightConfig(shieldReleaseConfig(config), appleTvRelease);
+};
