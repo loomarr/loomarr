@@ -441,18 +441,22 @@ func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 // The packager admits through the one cost-aware policy (Admit, §9.1 V49): a full budget refuses a
 // new channel with ErrAtCapacity, and an unmeasured (zero) budget never blocks playout.
 func TestFillerGainIsFillerOnly(t *testing.T) {
-	lufs := -20.0
+	lufs, hot, quiet, peaky := -20.0, -12.2, -27.0, -3.0
 	for name, tc := range map[string]struct {
 		a      Airing
 		target string
 		gain   float64
 		noted  bool
 	}{
-		"filler measured":     {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
-		"library title":       {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
-		"filler unmeasured":   {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
-		"target not a number": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
-		"no target":           {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
+		"filler measured": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
+		// #2032: the household's most-aired ad, which the old ±6 dB clamp left 4.8 dB hot.
+		"hot clip cut fully": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
+		// A boost stops where the true peak would pass -1 dBTP.
+		"boost capped by peak": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
+		"library title":        {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
+		"filler unmeasured":    {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
+		"target not a number":  {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
+		"no target":            {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
 	} {
 		gain, note := FillerGain(tc.a, tc.target)
 		if gain != tc.gain || (note != "") != tc.noted {

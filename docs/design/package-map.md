@@ -83,6 +83,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
+- **`loudness`** · 2 importers
+  One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
 - **`openroutermedia`** · 2 importers
@@ -166,7 +168,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
@@ -210,7 +212,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 7 importers · → `bgexec`, `clipcatalog`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 7 importers · → `bgexec`, `clipcatalog`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `loudness`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8

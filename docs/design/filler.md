@@ -434,11 +434,19 @@ re-encode), within the ordinary transcode budget.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
   duration.
 
-**Loudness is measured at ingest and applied at playout**, target `filler.target_lufs` (−23 LUFS).
-Normalisation at playout is the default: reversible, one filter on a stream already being encoded.
-On-file normalisation is an opt-in (`filler.conditioning.normalize_loudness`, default off) that
-writes the playback derivative with `loudnorm` at the **same** target and records `normalizedLufs`
-in the sidecar so it is never repeated. Playout still normalises, so older clips stay consistent.
+**Loudness is measured at ingest and corrected at playout**, target `filler.target_lufs`
+(−23 LUFS), by one rule in `internal/loudness` (#2032). Files are never levelled on disk.
+
+- The playback derivative's integrated loudness and true peak are measured at ingest. Derivative
+  verification refuses a clip with audio but no valid measurement, so every new clip is measured.
+- At air time a clip gets one static gain, `min(target − measured, −1 dBTP − truePeak)`. A boost is
+  at most +6 dB, and a cut at most −20 dB, which only guards against a broken measurement.
+- A clip needing more than the +6 dB boost limit is refused at the transcode rung as `too_quiet`.
+  Raising it further would raise its hiss too. The limit is calibrated in #2034. The floor ignores
+  the peak ceiling: a clip the ceiling holds short of the target airs slightly quiet, not clipped.
+- The old on-disk levelling switch under `filler.conditioning` is removed. A saved value is ignored.
+- Clips published before measurement existed are re-processed through the app (rewind or a fresh
+  download); there is no compatibility path that airs them uncorrected on purpose.
 
 **Brightness is measured by nothing and fixed by nothing.** A dim VHS transfer is what the source
 looks like, and unlike loudness a correction could not be undone at playout.
@@ -474,7 +482,7 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
 | --- | --- | --- |
 | **source master** | exact acquired or supplied bytes; provenance, reprocessing, recovery | immutable, identified by full SHA-256 and byte length, never replaced |
 | **evidence derivative** | inspection, segmentation, OCR, transcription, model input | reproducible from the master under one versioned recipe; no loudness or cosmetic change |
-| **playback derivative** | what Tunarr or internal playout reads | H.264/yuv420p, AAC stereo 48 kHz, fast-start, bounded GOP; optional loudness policy lives here |
+| **playback derivative** | what Tunarr or internal playout reads | H.264/yuv420p, AAC stereo 48 kHz, fast-start, bounded GOP; its measured loudness drives the air-time gain |
 
 - The master is copied and hashed into `.loomarr-media/masters/<sha[0:2]>/<sha[2:4]>/<sha><ext>`
   under the filler filesystem before any derivative publishes; the scan never treats it as
@@ -534,7 +542,7 @@ Split children are measured, not trusted (V64, V65). Structure decisions are in
   edge available. Post-rewrite parent edges are derived by checked integer arithmetic in media-tools
   (`derivedParentEdgesAfterRewrite`), because re-encoded packets cannot be matched to the parent.
   Anything missing holds the child for review; cancellation is checked at every boundary and
-  follows the same path. `normalizedLufs` is only a target marker, never loudness evidence.
+  follows the same path.
 - **The sidecar is the restart record**: a child with complete valid evidence is not decoded again;
   damaged or incomplete evidence holds.
 

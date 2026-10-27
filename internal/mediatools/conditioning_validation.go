@@ -15,6 +15,11 @@ const (
 	ConditioningAfterRewrite  ConditioningEvidenceMode = "after_rewrite"
 )
 
+// conditioningTimelineRoundingMs bounds a stream end against the container end. Each is the sum
+// of two ffprobe scalars rounded to the millisecond independently, so the same instant can read up
+// to 2 ms apart; a stream past that is genuinely outside the container.
+const conditioningTimelineRoundingMs = 2
+
 // ValidateConditioningEvidence validates the application-safe persisted subset of a measurement.
 // MeasureConditioning can honestly describe more than one A/V pair, but the filler application
 // currently supports exactly one presented video and one presented audio stream.
@@ -64,7 +69,7 @@ func ValidateConditioningEvidence(m ConditioningMeasurement, mode ConditioningEv
 			return fmt.Errorf("%w: stream timing is unavailable or invalid", ErrConditioningOutput)
 		}
 		end, ok := checkedMillisecondsAdd(stream.Start.Milliseconds, stream.Duration.Milliseconds)
-		if !ok || end <= 0 || end > containerEnd ||
+		if !ok || end <= 0 || end-containerEnd > conditioningTimelineRoundingMs ||
 			(m.ContainerStart.Available && stream.Start.Milliseconds < m.ContainerStart.Milliseconds) {
 			return fmt.Errorf("%w: stream timing is outside the container", ErrConditioningOutput)
 		}

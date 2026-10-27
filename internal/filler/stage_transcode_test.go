@@ -587,7 +587,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			parent := StoreClip{Clip: Clip{Hash: parentHash, Path: parentRel, IsComposite: true}}
 			tc.mutate(&lineage, &evidence, &quality, &parent)
 			if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-				Mezzanine: mediatools.DefaultMezzanine().ID(), NormalizedLUFS: -23,
+				Mezzanine:    mediatools.DefaultMezzanine().ID(),
 				MediaQuality: &quality, ConditioningLineage: &lineage, Conditioning: &evidence,
 			}, false); err != nil {
 				t.Fatal(err)
@@ -637,14 +637,14 @@ func TestReadConditioningSidecar_ReturnsRetryableErrorWhenPathBecomesDirectory(t
 	}
 }
 
-func TestTranscodeStage_NormalizedMarkerAloneCannotCertifyAChildRestart(t *testing.T) {
+func TestTranscodeStage_MezzanineMarkerAloneCannotCertifyAChildRestart(t *testing.T) {
 	dir := t.TempDir()
 	parentHash := writeContentAddressedClip(t, dir, []byte("retained parent"), ".mp4")
 	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 	childHash := writeContentAddressedClip(t, dir, []byte("marker-only child"), ".mp4")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
 	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-		Mezzanine: mediatools.DefaultMezzanine().ID(), NormalizedLUFS: -23,
+		Mezzanine: mediatools.DefaultMezzanine().ID(),
 		MediaQuality: &MediaQuality{
 			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
 			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
@@ -1195,7 +1195,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	outputHashPath := filepath.Join(dir, filepath.FromSlash(ClipRelPath(stored.clip.Hash, ".mp4")))
 	tags, ok := ReadSidecarTags(outputHashPath)
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != sourceHash ||
-		tags.Conditioning.AfterRewriteHash != stored.clip.Hash || tags.NormalizedLUFS != -23 {
+		tags.Conditioning.AfterRewriteHash != stored.clip.Hash {
 		t.Fatalf("recoverable published evidence = %+v, ok=%v", tags, ok)
 	}
 

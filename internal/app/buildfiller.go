@@ -295,20 +295,12 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 			clipDir, mediatools.DefaultMezzanine(),
 			func() string { return set.str("playout.ffmpeg_path") },
-			// ⚠ The loudness target is applied only when the operator opted in. This is the
-			// FIRST production caller of on-file loudness normalisation: V42 built the pass,
-			// and `filler.conditioning.normalize_loudness` gates the derivative recipe, so the
-			// setting has been inert since it shipped. Folding it into the encode that is
-			// happening anyway is what finally wires it.
+			// The playback target, for the too_quiet floor only: files are never levelled on
+			// disk, playout corrects them at air time (#2032).
 			func() float64 {
-				if !set.boolv("filler.conditioning.normalize_loudness") {
-					return 0
-				}
 				// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
-				// normalisation at all", which no numeric kind can express), so it is parsed
-				// here. An unparseable value yields 0 — the same as off, which is the safe
-				// direction: the alternative is applying a garbage target to the operator's
-				// audio.
+				// correction at all", which no numeric kind can express), so it is parsed
+				// here. An unparseable value yields 0, meaning no target and no floor.
 				lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
 				if err != nil {
 					return 0

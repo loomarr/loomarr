@@ -182,11 +182,10 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		tags.Conditioning.BeforeRewrite.Quality.DurationMs != tags.Conditioning.BeforeRewrite.ContainerDurationMs ||
 		tags.Conditioning.BeforeRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
 		tags.Conditioning.AfterRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
-		tags.NormalizedLUFS != -23 ||
 		!tags.Conditioning.BeforeRewrite.Loudness.Available ||
 		!tags.Conditioning.AfterRewrite.Loudness.Available ||
-		math.Abs(tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS-tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS) < 0.5 ||
-		math.Abs(tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS-(-23)) > 1.0 ||
+		// #2032: the file is never levelled on disk, so the rewrite keeps the source's loudness.
+		math.Abs(tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS-tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS) > 1.0 ||
 		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
 		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
 		len(tags.Conditioning.AfterRewrite.Streams) != 2 ||
@@ -219,16 +218,18 @@ func TestFillerConditioningJourneyFFmpeg_ChildEndingInBlackAndSilencePublishes(t
 		t.Fatalf("mezzanine container start = %+v, want the measured priming offset", after.ContainerStart)
 	}
 	// The stream-copy cut overshoots into the next segment by a packet, so each tail ends where its
-	// own stream ends on the container timeline: the audio decodes past the container end and is
-	// bounded by it, the video ends earlier.
-	video := after.Streams[0]
-	videoEnd := video.Start.Milliseconds + video.Duration.Milliseconds - after.ContainerStart.Milliseconds
+	// own stream ends on the container timeline, bounded by the container end. Which stream runs
+	// longer depends on the encode; un-levelled audio (#2032) no longer outlasts the video.
+	streamEnd := func(s mediatools.ConditioningStream) int64 {
+		return min(s.Start.Milliseconds+s.Duration.Milliseconds-after.ContainerStart.Milliseconds,
+			after.ContainerDurationMs)
+	}
 	for name, want := range map[string]struct {
 		spans []mediatools.Interval
 		end   int64
 	}{
-		"black":   {after.Quality.Black, videoEnd},
-		"silence": {after.Quality.Silence, after.ContainerDurationMs},
+		"black":   {after.Quality.Black, streamEnd(after.Streams[0])},
+		"silence": {after.Quality.Silence, streamEnd(after.Streams[1])},
 	} {
 		if len(want.spans) == 0 {
 			t.Fatalf("%s evidence = %+v, want the transition tail", name, after.Quality)

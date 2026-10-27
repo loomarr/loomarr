@@ -139,8 +139,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
 				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
 			}
-			ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "conditioned target bytes "+fixtureSuffix,
-				"loudnorm=I=-23:TP=-1:LRA=11")
+			ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "conditioned target bytes "+fixtureSuffix)
 			crashStore := &conditioningRekeyCrashStore{st: st, afterRekey: tc.afterRekey}
 			newStage := func(clipStore filler.TranscodeClipStore) *filler.TranscodeStage {
 				stage := filler.NewTranscodeStage(clipStore, func(context.Context, string) (filler.Probed, error) {
@@ -238,7 +237,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "mezzanine", "loudnorm=I=-23:TP=-1:LRA=11")
+	ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "mezzanine")
 	parentProbeCalls := 0
 	probe := func(_ context.Context, path string) (filler.Probed, error) {
 		if filepath.Clean(path) == filepath.Clean(parentFull) {
@@ -362,7 +361,6 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS != -23.1 ||
 		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
 		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
-		tags.NormalizedLUFS != -23 ||
 		len(tags.Conditioning.DerivedParentEdgesAfterRewrite.Streams) != 2 {
 		t.Fatalf("conditioned sidecar = %+v, ok=%v", tags.Conditioning, ok)
 	}

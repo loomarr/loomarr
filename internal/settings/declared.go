@@ -900,39 +900,6 @@ func declared() []Setting {
 			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
 		},
-		{
-			// Playback-derivative loudness normalisation (§10 V42/V66).
-			//
-			// ⚠ **This key spent three phases gating a function nothing called, and the note that
-			// used to sit here claimed the opposite.** It said the setting "lands with its
-			// consumer (`filler.NormalizeInPlace`, called from the auto-file step)" (retired-ok) — invoking
-			// §15's own rule that a setting nothing READS does not exist. The consumer was
-			// deleted or never wired; V51b found the function with no production caller at all,
-			// so the toggle has been inert since it shipped. It is now read by the TRANSCODE rung,
-			// which applies the loudness filter in the pass that is already re-encoding the clip.
-			//
-			// The lesson is the one §15's rule was written for, arriving from the other side: a
-			// COMMENT asserting a consumer exists is not the same as a consumer existing, and
-			// nothing failed when it stopped being true.
-			//
-			// DEFAULT OFF. The conditioning rung retains an immutable source master and applies
-			// this only to the playback derivative, so the operator can opt into a baked playback
-			// correction without sacrificing evidence or recoverability.
-			//
-			// ⚠ There is deliberately NO separate target here. The pass reuses
-			// `filler.target_lufs` (−23), because two targets in one system means a clip
-			// normalised on file gets corrected again at playout toward a different number —
-			// double processing, and quieter than either setting asks for.
-			//
-			// ⚠ Idempotency is NOT optional for this one. A re-scan cannot tell by looking that
-			// a file was already normalised, so without the sidecar's `normalizedLufs` marker
-			// every pass would normalise an already-normalised file and walk the loudness down
-			// run after run. The transcode rung writes that marker after the encode lands, and
-			// its own `mezzanine` marker stops the re-encode independently.
-			Key: "filler.conditioning.normalize_loudness", Label: "Normalize playback derivative loudness", EnvVar: "FILLER_CONDITIONING_NORMALIZE_LOUDNESS",
-			Group: GroupFiller, Kind: KindBool, Default: false,
-			Doc: "Normalize the playback derivative during conditioning while retaining the immutable source master. Leave off to normalize only during playback.",
-		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
 		// its result always required a human, which made compilations the most manual part of a

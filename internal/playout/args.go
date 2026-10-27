@@ -1,8 +1,9 @@
 package playout
 
 import (
-	"math"
 	"strconv"
+
+	"github.com/loomarr/loomarr/internal/loudness"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -165,19 +166,11 @@ func DefaultProfile() Profile {
 	}
 }
 
-// MaxGainDB bounds a static per-item gain. Clips are normalised to the target at ingest, so a
-// real correction is a fraction of a dB; anything past this is a bad measurement, and applying it
-// would either clip (boost) or mute (cut) a clip on the strength of a number nobody checked.
-const MaxGainDB = 6.0
-
-// StaticGainDB is the constant gain that moves a clip measured at measuredLUFS to targetLUFS,
-// clamped to ±MaxGainDB.
-func StaticGainDB(targetLUFS, measuredLUFS float64) float64 {
-	return math.Max(-MaxGainDB, math.Min(MaxGainDB, targetLUFS-measuredLUFS))
-}
-
 // FillerGain is the static loudness gain an airing gets (#1512 G6): FILLER ONLY, from the loudness
-// measured at ingest against the live `filler.target_lufs`. A library title is never adjusted
+// and true peak measured at ingest against the live `filler.target_lufs`, by the one correction
+// rule in `loudness` (#2032). Files are never levelled on disk, so this is the whole correction;
+// the old ±6 dB symmetric clamp assumed ingest had already normalised and left a -12 LUFS clip
+// airing 5 dB hot. A library title is never adjusted
 // (advert loudness would flatten a film's dynamic range) and gets 0 dB with no note. A filler clip
 // that cannot be corrected airs at 0 dB, and note says why, for the caller to log.
 //
@@ -194,7 +187,8 @@ func FillerGain(a Airing, targetLUFS string) (gainDB float64, note string) {
 	case a.MeasuredLUFS == nil:
 		return 0, "filler clip has no ingest loudness measurement"
 	}
-	return StaticGainDB(target, *a.MeasuredLUFS), ""
+	gain, _ := loudness.Correction(target, *a.MeasuredLUFS, a.MeasuredTruePeak)
+	return gain, ""
 }
 
 // gainFilter is the constant-gain audio filter for a filler clip.

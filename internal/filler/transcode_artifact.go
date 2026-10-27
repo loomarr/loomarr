@@ -50,7 +50,7 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 
 // validateRecoveredTranscode proves an existing canonical artifact is the exact output and restart
 // record from this attempt. Sparse catalog identity alone is never recovery authority.
-func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *ConditioningLineage, evidence *ConditioningEvidence, quality MediaQuality, normalizedLUFS float64, assets *MediaAssetManifest) error {
+func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *ConditioningLineage, evidence *ConditioningEvidence, quality MediaQuality, assets *MediaAssetManifest) error {
 	publishedID, err := ClipID(published)
 	if err != nil || publishedID != expectedHash {
 		return errors.New("existing transformed artifact bytes do not match their identity")
@@ -68,8 +68,7 @@ func validateRecoveredTranscode(ctx context.Context, staged, published, expected
 	}
 	if evidence != nil && (!reflect.DeepEqual(tags.ConditioningLineage, lineage) ||
 		tags.Conditioning == nil || !reflect.DeepEqual(*tags.Conditioning, *evidence) ||
-		tags.MediaQuality == nil || !reflect.DeepEqual(*tags.MediaQuality, quality) ||
-		tags.NormalizedLUFS != normalizedLUFS) {
+		tags.MediaQuality == nil || !reflect.DeepEqual(*tags.MediaQuality, quality)) {
 		return errors.New("existing transformed artifact is not bound to this child evidence")
 	}
 	return nil
