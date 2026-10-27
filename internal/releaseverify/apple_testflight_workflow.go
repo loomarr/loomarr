@@ -117,7 +117,7 @@ func VerifyAppleTestFlightWorkflow(path string) error {
 		return err
 	}
 	if scalarValue(root, "name") != "Apple TestFlight betas" {
-		return errors.New("Apple TestFlight workflow name must be Apple TestFlight betas")
+		return errors.New("the Apple TestFlight workflow name must be Apple TestFlight betas")
 	}
 	if err := verifyAppleTestFlightTrigger(root); err != nil {
 		return err
@@ -134,7 +134,7 @@ func VerifyAppleTestFlightWorkflow(path string) error {
 		return err
 	}
 	if len(jobs.Content) != 4 || jobs.Content[0].Value != "plan" || jobs.Content[2].Value != "release" {
-		return errors.New("Apple TestFlight workflow must contain only the audited plan and release jobs")
+		return errors.New("the Apple TestFlight workflow must contain only the audited plan and release jobs")
 	}
 	if err := verifyAppleTestFlightPlanJob(jobs); err != nil {
 		return err
@@ -147,7 +147,7 @@ func VerifyAppleTestFlightWorkflow(path string) error {
 		return err
 	}
 	if scalarValue(job, "needs") != "plan" || scalarValue(job, "if") != appleTestFlightReleaseCondition {
-		return fmt.Errorf("Apple TestFlight release job must need plan and run only if %s", appleTestFlightReleaseCondition)
+		return fmt.Errorf("the Apple TestFlight release job must need plan and run only if %s", appleTestFlightReleaseCondition)
 	}
 	if err := verifyAppleTestFlightMatrix(job); err != nil {
 		return err
@@ -163,10 +163,10 @@ func VerifyAppleTestFlightWorkflow(path string) error {
 		return err
 	}
 	if scalarValue(job, "runs-on") != "xcode-27" || scalarValue(job, "environment") != "ios-testflight" {
-		return errors.New("Apple TestFlight job must run on xcode-27 in the ios-testflight environment")
+		return errors.New("the Apple TestFlight job must run on xcode-27 in the ios-testflight environment")
 	}
 	if scalarValue(job, "timeout-minutes") != "90" {
-		return errors.New("Apple TestFlight job must keep its 90-minute timeout")
+		return errors.New("the Apple TestFlight job must keep its 90-minute timeout")
 	}
 	env, err := requiredMap(job, "env")
 	if err != nil {
@@ -193,7 +193,7 @@ func verifyAppleTestFlightMatrix(job *yaml.Node) error {
 		return err
 	}
 	if scalarValue(strategy, "fail-fast") != "false" {
-		return errors.New("Apple TestFlight strategy must not fail fast")
+		return errors.New("the Apple TestFlight strategy must not fail fast")
 	}
 	matrix, err := requiredMap(strategy, "matrix")
 	if err != nil {
@@ -306,7 +306,7 @@ func verifyAppleTestFlightPlanJob(jobs *yaml.Node) error {
 		return err
 	}
 	if scalarValue(job, "if") != appleTestFlightMain || scalarValue(job, "runs-on") != "ubuntu-latest" {
-		return errors.New("Apple TestFlight plan job must run on ubuntu-latest only from refs/heads/main")
+		return errors.New("the Apple TestFlight plan job must run on ubuntu-latest only from refs/heads/main")
 	}
 	outputs, err := requiredMap(job, "outputs")
 	if err != nil {
@@ -320,20 +320,20 @@ func verifyAppleTestFlightPlanJob(jobs *yaml.Node) error {
 		return err
 	}
 	if len(steps.Content) != 2 || steps.Content[0].Kind != yaml.MappingNode || steps.Content[1].Kind != yaml.MappingNode {
-		return errors.New("Apple TestFlight plan job must contain exactly the checkout and plan steps")
+		return errors.New("the Apple TestFlight plan job must contain exactly the checkout and plan steps")
 	}
 	checkout, plan := steps.Content[0], steps.Content[1]
 	if err := verifyOnlyKeys(checkout, "Apple TestFlight plan checkout", "uses", "with"); err != nil {
 		return err
 	}
 	if strings.SplitN(scalarValue(checkout, "uses"), "@", 2)[0] != "actions/checkout" {
-		return errors.New("Apple TestFlight plan job must start with actions/checkout")
+		return errors.New("the Apple TestFlight plan job must start with actions/checkout")
 	}
 	if err := verifyOnlyKeys(plan, "Apple TestFlight plan step", "name", "id", "env", "run"); err != nil {
 		return err
 	}
 	if scalarValue(plan, "id") != "plan" || strings.TrimSpace(scalarValue(plan, "run")) != appleTestFlightPlanCommand {
-		return fmt.Errorf("Apple TestFlight plan step must be id plan running %q", appleTestFlightPlanCommand)
+		return fmt.Errorf("the Apple TestFlight plan step must be id plan running %q", appleTestFlightPlanCommand)
 	}
 	env, err := requiredMap(plan, "env")
 	if err != nil {
@@ -350,19 +350,19 @@ func verifyAppleTestFlightSteps(job *yaml.Node) error {
 		return err
 	}
 	if len(steps.Content) != len(appleTestFlightActionSteps)+len(appleTestFlightRunSteps) {
-		return fmt.Errorf("Apple TestFlight job must contain exactly %d audited steps, found %d",
+		return fmt.Errorf("the Apple TestFlight job must contain exactly %d audited steps, found %d",
 			len(appleTestFlightActionSteps)+len(appleTestFlightRunSteps), len(steps.Content))
 	}
 	for index, step := range steps.Content {
 		if step.Kind != yaml.MappingNode {
-			return fmt.Errorf("Apple TestFlight step %d must be a mapping", index+1)
+			return fmt.Errorf("the Apple TestFlight step %d must be a mapping", index+1)
 		}
 		if action, ok := appleTestFlightActionSteps[index]; ok {
 			if err := verifyOnlyKeys(step, fmt.Sprintf("Apple TestFlight step %d", index+1), "name", "uses", "with"); err != nil {
 				return err
 			}
 			if strings.SplitN(scalarValue(step, "uses"), "@", 2)[0] != action {
-				return fmt.Errorf("Apple TestFlight step %d must use %s", index+1, action)
+				return fmt.Errorf("the Apple TestFlight step %d must use %s", index+1, action)
 			}
 			continue
 		}
@@ -371,10 +371,10 @@ func verifyAppleTestFlightSteps(job *yaml.Node) error {
 			return err
 		}
 		if strings.TrimSpace(scalarValue(step, "run")) != want.run {
-			return fmt.Errorf("Apple TestFlight step %d is not the audited command %q", index+1, want.run)
+			return fmt.Errorf("the Apple TestFlight step %d is not the audited command %q", index+1, want.run)
 		}
 		if got := scalarValue(step, "if"); got != want.condition {
-			return fmt.Errorf("Apple TestFlight step %d condition is %q, want %q", index+1, got, want.condition)
+			return fmt.Errorf("the Apple TestFlight step %d condition is %q, want %q", index+1, got, want.condition)
 		}
 		if err := verifyAppleTestFlightStepEnvironment(step, index, want.env); err != nil {
 			return err
@@ -387,12 +387,12 @@ func verifyAppleTestFlightStepEnvironment(step *yaml.Node, index int, want map[s
 	env, ok := mappingValue(step, "env")
 	if want == nil {
 		if ok {
-			return fmt.Errorf("Apple TestFlight step %d must not declare an environment", index+1)
+			return fmt.Errorf("the Apple TestFlight step %d must not declare an environment", index+1)
 		}
 		return nil
 	}
 	if !ok {
-		return fmt.Errorf("Apple TestFlight step %d must declare its audited environment", index+1)
+		return fmt.Errorf("the Apple TestFlight step %d must declare its audited environment", index+1)
 	}
 	return verifyExactScalarMap(env, fmt.Sprintf("Apple TestFlight step %d environment", index+1), want)
 }
