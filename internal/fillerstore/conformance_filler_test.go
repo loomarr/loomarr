@@ -539,6 +539,18 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if got := all[clip.Hash]; got.PlayCount != 3 || !got.LastPlayedAt.Equal(second) {
 		t.Fatalf("household exposure = %+v, want both channels' three airings, latest at %v", got, second)
 	}
+	// Supply sizes each era's pool from the channels its evenings were watched on (#2035).
+	airings, err := s.FillerAirings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onChannel := map[string]int{}
+	for _, a := range airings {
+		onChannel[a.ChannelID]++
+	}
+	if onChannel["channel-a"] != 2 || onChannel["channel-b"] != 1 {
+		t.Fatalf("airings by channel = %v, want two on channel-a and one on channel-b", onChannel)
+	}
 	storedClip, err := s.GetClip(ctx, clip.Hash)
 	if err != nil {
 		t.Fatal(err)
@@ -595,8 +607,8 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("concurrent exposure = %+v, want three distinct channel/start airings", got)
 	}
 
-	// Every airing younger than a day is kept, however many channels aired the clip: a break on air
-	// may count any of them.
+	// Every airing inside the history age is kept, however many channels aired the clip: a break on
+	// air may count any of them, and supply sizes the pool from them.
 	for i := 1; i <= 5; i++ {
 		at := second.Add(time.Duration(i) * time.Hour)
 		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {
@@ -608,10 +620,10 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if got := all[clip.Hash]; got.PlayCount != 8 {
-		t.Fatalf("exposure within a day = %+v, want all eight airings kept", got)
+		t.Fatalf("exposure within the history age = %+v, want all eight airings kept", got)
 	}
-	// Older than a day, only a clip's newest four are kept, so the history stays bounded.
-	day := 25 * time.Hour
+	// Past the history age, only a clip's newest four are kept, so the history stays bounded.
+	day := clipcatalog.AiringHistoryAge + time.Hour
 	for i := 1; i <= 5; i++ {
 		at := second.Add(time.Duration(i) * day)
 		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {

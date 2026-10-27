@@ -106,6 +106,16 @@ type CoverageReport struct {
 	EraWindows []EraRange
 }
 
+// exactClips is the exact rung's count: the clips a break fills from without widening.
+func (r CoverageReport) exactClips() int {
+	for _, rung := range r.Rungs {
+		if rung.Level == MatchExact {
+			return rung.Clips
+		}
+	}
+	return 0
+}
+
 // ChannelCoverage is one channel's coverage answer, labelled for display (§10 V35).
 //
 // It carries the channel's identity as plain strings/ints rather than a channel type: this

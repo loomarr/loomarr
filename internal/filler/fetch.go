@@ -278,7 +278,8 @@ type FetchResult struct {
 	Outcomes SourceCheckSummary
 	// MaxPerCheck is the selected source's effective cap on a manual run.
 	MaxPerCheck int
-	// StoppedBy names the limit that ended the pass early ("catalog", "provider", or ""). ⚠ Reported
+	// StoppedBy names the limit that ended the pass early ("catalog", "provider", "target" for a
+	// met pool target, or ""). ⚠ Reported
 	// rather than logged-and-forgotten: an operator whose catalog stopped growing must be able
 	// to see which ceiling stopped it (§10).
 	StoppedBy string
@@ -415,11 +416,20 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
 	// steering is an optimisation, and the source still deserves its bounded refresh.
 	var gaps CoverageGaps
+	targeted := false
 	if f.gaps != nil {
 		if gaps, err = f.gaps(ctx); err != nil {
 			f.log.Warn("filler auto-fetch: coverage gaps unavailable; selecting without them", "err", err)
 			gaps = CoverageGaps{}
+		} else {
+			targeted = true
 		}
+	}
+	// An unattended pass fetches toward the pool target and stops when it is met (#2035). The
+	// operator's click is not held to it: asking a source for more is a deliberate act.
+	if scheduled && targeted && gaps.Met() {
+		res.StoppedBy = "target"
+		return res, nil
 	}
 	gapReason := ""
 	if len(gaps.Eras) > 0 {
@@ -462,6 +472,15 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		providerBound := perRun > remaining
 		if providerBound {
 			perRun = remaining
+		}
+		if scheduled && targeted && gaps.Short > 0 && len(gaps.Roles) == 0 {
+			if left := gaps.Short - res.Queued; left < perRun {
+				if left < 1 {
+					res.StoppedBy = "target"
+					break
+				}
+				perRun = left
+			}
 		}
 		checkAt := f.now()
 		leaseUntil := checkAt.Add(SourceCheckLease)

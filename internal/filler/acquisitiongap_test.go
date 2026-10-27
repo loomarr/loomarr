@@ -91,10 +91,40 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 		channel(filler.MatchWidened, filler.EraRange{From: 2010, To: 2012}),
 	}}
 	pool.Bookends = 3
-	got := filler.CoverageGapsFrom(pool)
+	got := filler.CoverageGapsFrom(pool, filler.PoolTargets{}, 2026)
 	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+}
+
+// A channel can fill every break from its own era and still be short of an evening (#2035): its
+// era is a gap until the exact rung reaches the target, and Short is the largest shortfall.
+func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
+	exact := func(clips int, era filler.EraRange) filler.ChannelCoverage {
+		return filler.ChannelCoverage{Report: filler.CoverageReport{
+			Level: filler.MatchExact, EraWindows: []filler.EraRange{era},
+			Rungs: []filler.RungCoverage{{Level: filler.MatchExact, Clips: clips}, {Level: filler.MatchWidened, Clips: clips + 40}},
+		}}
+	}
+	targets := filler.PoolTargets{Floor: 50, PerDecade: map[int]int{1980: 80}}
+	pool := filler.PoolReport{Bookends: 2, Channels: []filler.ChannelCoverage{
+		exact(30, filler.EraRange{From: 1980, To: 1989}), // 80 wanted: 50 short
+		exact(60, filler.EraRange{From: 1990, To: 1999}), // the floor, 50: met
+		exact(90, filler.EraRange{From: 2000, To: 2019}), // two decades at the floor, 100: 10 short
+	}}
+	got := filler.CoverageGapsFrom(pool, targets, 2026)
+	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+	if got.Met() {
+		t.Fatal("a short pool reads as met")
+	}
+	pool.Channels[0] = exact(80, filler.EraRange{From: 1980, To: 1989})
+	pool.Channels[2] = exact(100, filler.EraRange{From: 2000, To: 2019})
+	if got := filler.CoverageGapsFrom(pool, targets, 2026); !got.Met() {
+		t.Fatalf("a pool at its target = %+v, want met", got)
 	}
 }
 
@@ -103,14 +133,14 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
 	live := filler.PoolReport{Channels: []filler.ChannelCoverage{{Report: filler.CoverageReport{Level: filler.MatchExact}}}}
 	want := []filler.Kind{filler.Bumper, filler.StationID}
-	if got := filler.CoverageGapsFrom(live).Roles; !reflect.DeepEqual(got, want) {
+	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
 	live.Bookends = 1
-	if got := filler.CoverageGapsFrom(live).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with a bookend = %v, want none", got)
 	}
-	if got := filler.CoverageGapsFrom(filler.PoolReport{}).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(filler.PoolReport{}, filler.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)
 	}
 }
@@ -161,6 +191,47 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stub.queuedGaps, []string{"era:1990-1999"}) {
 		t.Fatalf("queued gaps %q, want the download tagged with the gap it was for", stub.queuedGaps)
+	}
+}
+
+// After a purge (#2035), an undersized pool refills unattended, without a pull or an approval: each
+// pass fetches what the pool is short, however many sources are due, and the pass after the target
+// is met fetches nothing.
+func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "s1", Kind: "archive", URI: "one", Enabled: true},
+			{ID: "s2", Kind: "archive", URI: "two", Enabled: true},
+		},
+		offers: refs("a", "b", "c", "d", "e"),
+	}
+	short := 3
+	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		return filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
+	})
+	res, err := fetcher.Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 3 {
+		t.Fatalf("pass = %+v queued %v, want the three the pool is short", res, stub.queuedIDs)
+	}
+
+	short = 0
+	stub.queuedIDs = nil
+	fetcher = newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		return filler.CoverageGaps{}, nil
+	})
+	res, err = fetcher.Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 0 || res.SourcesPolled != 0 || res.StoppedBy != "target" {
+		t.Fatalf("pass at target = %+v, want no source asked", res)
+	}
+	// The operator's click is not held to the target.
+	if res, err := fetcher.RunSource(t.Context(), "s1"); err != nil || res.Queued == 0 {
+		t.Fatalf("a manual check at target = %+v, %v; want it to fetch", res, err)
 	}
 }
 

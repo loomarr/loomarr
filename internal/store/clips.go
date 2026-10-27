@@ -986,9 +986,9 @@ func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era 
 // write, which a break's snapshot needs to stay fixed while it airs (filler.ExposuresBefore).
 //
 // A clip keeps its newest fillerAiringsKept airings and every airing younger than
-// fillerAiringsTrimAge: rotation reads the latest airing a break may count, and an airing a day old
-// can matter to no break on air or in the guide's window, however many channels aired the clip
-// since. The trim never removes the airing just written, so a re-resolve stays a no-op.
+// fillerAiringsTrimAge: rotation reads the latest airing a break may count, and supply reads every
+// airing of the last eight weeks to size the pool. The trim never removes the airing just written,
+// so a re-resolve stays a no-op.
 //
 // A missing clip is NOT an error. Playout resolves a path that the catalog may have pruned
 // between the schedule being built and the break airing; failing here would turn a stale
@@ -1021,7 +1021,7 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at,
 		return false, nil
 	}
 	// With fewer than fillerAiringsKept rows the subquery is NULL and nothing is deleted. Only airings
-	// a day old go, and never the one just written: a break on air may count any recent airing, and
+	// past the history age go, and never the one just written: a break on air may count any recent airing, and
 	// a deleted row would let the same airing be counted again at its next resolve.
 	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at < ?
 		AND NOT (channel_id = ? AND aired_at = ?) AND aired_at <
@@ -1045,13 +1045,13 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at,
 // younger than fillerAiringsTrimAge, which it always keeps.
 const (
 	fillerAiringsKept    = 4
-	fillerAiringsTrimAge = 24 * time.Hour
+	fillerAiringsTrimAge = clipcatalog.AiringHistoryAge
 )
 
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
 func (s *sqlStore) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT clip_hash, aired_at, recorded_at FROM filler_airings`)
+	rows, err := s.db.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at, recorded_at FROM filler_airings`)
 	if err != nil {
 		return nil, fmt.Errorf("list filler airings: %w", err)
 	}
@@ -1061,7 +1061,7 @@ func (s *sqlStore) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, err
 	for rows.Next() {
 		var a clipcatalog.Airing
 		var airedMs, recordedMs int64
-		if err := rows.Scan(&a.ClipHash, &airedMs, &recordedMs); err != nil {
+		if err := rows.Scan(&a.ChannelID, &a.ClipHash, &airedMs, &recordedMs); err != nil {
 			return nil, fmt.Errorf("scan filler airing: %w", err)
 		}
 		a.AiredAt, a.RecordedAt = exposureTime(airedMs), exposureTime(recordedMs)

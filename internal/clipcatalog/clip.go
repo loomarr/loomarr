@@ -381,11 +381,19 @@ const (
 	GeographicLocal    GeographicScope = "local"
 )
 
+// AiringHistoryAge is how far back the household's airings are kept whole: supply sizes the pool
+// from the longest evening in them (#2035).
+const AiringHistoryAge = 8 * 7 * 24 * time.Hour
+
 // Airing is one watched airing of a clip on any of the household's channels: when it aired (its
 // scheduled start) and when playout recorded it. The two differ: playout records a clip as it
 // resolves it, up to its run-ahead before the clip airs, or later when a viewer tunes in mid-clip.
-// Playout writes it through the core store; filler's pod assembly reads it (§10 rotation).
+// Playout writes it through the core store; filler's pod assembly reads it (§10 rotation), and
+// supply sizes the pool from the household's evenings in it (#2035).
+//
+// The store keeps every airing younger than AiringHistoryAge, and a clip's newest few beyond it.
 type Airing struct {
+	ChannelID  string
 	ClipHash   string
 	AiredAt    time.Time
 	RecordedAt time.Time
