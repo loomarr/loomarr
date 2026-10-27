@@ -107,11 +107,11 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 			Rungs: []filler.RungCoverage{{Level: filler.MatchExact, Clips: clips}, {Level: filler.MatchWidened, Clips: clips + 40}},
 		}}
 	}
-	targets := filler.PoolTargets{Floor: 50, PerDecade: map[int]int{1980: 80}}
+	targets := filler.PoolTargets{Decade: 50, PerDecade: map[int]float64{1980: 80}}
 	pool := filler.PoolReport{Bookends: 2, Channels: []filler.ChannelCoverage{
 		exact(30, filler.EraRange{From: 1980, To: 1989}), // 80 wanted: 50 short
-		exact(60, filler.EraRange{From: 1990, To: 1999}), // the floor, 50: met
-		exact(90, filler.EraRange{From: 2000, To: 2019}), // two decades at the floor, 100: 10 short
+		exact(60, filler.EraRange{From: 1990, To: 1999}), // the default, 50: met
+		exact(90, filler.EraRange{From: 2000, To: 2019}), // two decades at the default, 100: 10 short
 	}}
 	got := filler.CoverageGapsFrom(pool, targets, 2026)
 	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
@@ -216,18 +216,28 @@ func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
 	if res.Queued != 3 {
 		t.Fatalf("pass = %+v queued %v, want the three the pool is short", res, stub.queuedIDs)
 	}
+	// The source capped to the last one still over-lists as far as an uncapped one.
+	if want := []int{8, 8}; !reflect.DeepEqual(stub.listLimits, want) {
+		t.Fatalf("listed %v, want %v: the shortfall caps what is taken, not what is looked at", stub.listLimits, want)
+	}
 
-	short = 0
 	stub.queuedIDs = nil
+	reads := 0
 	fetcher = newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		reads++
 		return filler.CoverageGaps{}, nil
 	})
-	res, err = fetcher.Run(t.Context())
-	if err != nil {
-		t.Fatal(err)
+	for range 2 {
+		res, err = fetcher.Run(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Queued != 0 || res.SourcesPolled != 0 || res.StoppedBy != "target" {
+			t.Fatalf("pass at target = %+v, want no source asked", res)
+		}
 	}
-	if res.Queued != 0 || res.SourcesPolled != 0 || res.StoppedBy != "target" {
-		t.Fatalf("pass at target = %+v, want no source asked", res)
+	if reads != 1 {
+		t.Fatalf("two passes at target read the pool %d times, want once until the recheck", reads)
 	}
 	// The operator's click is not held to the target.
 	if res, err := fetcher.RunSource(t.Context(), "s1"); err != nil || res.Queued == 0 {

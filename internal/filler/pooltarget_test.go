@@ -27,11 +27,15 @@ func evening(channel string, start time.Time, n int) []clipcatalog.Airing {
 func TestSizePool_ADefaultEveningUntilTheHouseholdHasFourWeeks(t *testing.T) {
 	windows := map[string][]filler.EraRange{"a": eighties}
 	got := filler.SizePool(evening("a", sizedAt.Add(-27*24*time.Hour), 120), windows, 4*time.Hour, sizedAt)
-	if got.FromHistory || got.Floor != 80 {
-		t.Fatalf("three weeks of history sized %+v, want the default evening of 80", got)
+	if need := got.For(eighties, 2026); got.FromHistory || need != 80 {
+		t.Fatalf("three weeks of history sized %+v (%d), want the default evening of 80", got, need)
 	}
-	if got := filler.SizePool(nil, windows, 8*time.Hour, sizedAt); got.Floor != 107 {
-		t.Fatalf("a spacing longer than the default evening sized %+v, want its own 107", got)
+	// Each decade a channel draws from takes a default evening.
+	if need := got.For([]filler.EraRange{{From: 1985, To: 1994}}, 2026); need != 160 {
+		t.Fatalf("a two-decade channel needs %d, want two default evenings", need)
+	}
+	if need := filler.SizePool(nil, windows, 8*time.Hour, sizedAt).For(eighties, 2026); need != 107 {
+		t.Fatalf("a spacing longer than the default evening needs %d, want its own 107", need)
 	}
 }
 
@@ -60,14 +64,30 @@ func TestSizePool_EachDecadeTakesItsLongestEvening(t *testing.T) {
 	if need := got.For(eighties, 2026); need != 90 {
 		t.Fatalf("an eighties channel needs %d, want 90", need)
 	}
-	// A decade nobody watched still takes the spacing floor; a window spans each decade it touches.
-	if need := got.For([]filler.EraRange{{From: 1975, To: 1989}}, 2026); need != 54+90 {
-		t.Fatalf("a 1975-1989 channel needs %d, want the seventies' floor and the eighties' 90", need)
+	// A decade nobody watched needs nothing of its own: a channel there takes the spacing floor, and
+	// one reaching into a watched decade takes that decade's evening.
+	if need := got.For([]filler.EraRange{{From: 1975, To: 1989}}, 2026); need != 90 {
+		t.Fatalf("a 1975-1989 channel needs %d, want the eighties' 90", need)
 	}
-	if need := got.For([]filler.EraRange{{From: 2015}}, 2026); need != 2*54 {
-		t.Fatalf("a 2015-onwards channel needs %d, want two decades at the floor", need)
+	if need := got.For([]filler.EraRange{{From: 1950}}, 2026); need != 160 {
+		t.Fatalf("a 1950-onwards channel needs %d, want the eighties' and nineties' evenings only", need)
 	}
 	if need := got.For(nil, 2026); need != 54 {
-		t.Fatalf("an any-era channel needs %d, want one window at the floor", need)
+		t.Fatalf("an any-era channel needs %d, want the floor", need)
+	}
+}
+
+// An evening on a channel spanning two decades is shared between them, not counted in each.
+func TestSizePool_AChannelAcrossDecadesSharesItsEvening(t *testing.T) {
+	windows := map[string][]filler.EraRange{"a": {{From: 1980, To: 1999}}, "b": {{From: 1970, To: 1999}}}
+	airings := evening("a", sizedAt.Add(-5*7*24*time.Hour), 1)
+	airings = append(airings, evening("a", sizedAt.Add(-48*time.Hour), 100)...)
+	airings = append(airings, evening("b", sizedAt.Add(-24*time.Hour), 90)...)
+	got := filler.SizePool(airings, windows, time.Hour, sizedAt)
+	if need := got.For(windows["a"], 2026); need != 100 {
+		t.Fatalf("the 1980-1999 channel needs %d after a 100-ad evening, want 100 (per decade %v)", need, got.PerDecade)
+	}
+	if need := got.For(windows["b"], 2026); need != 30+50+50 {
+		t.Fatalf("the 1970-1999 channel needs %d, want its seventies' 30 and the longer evenings' 50 and 50", need)
 	}
 }

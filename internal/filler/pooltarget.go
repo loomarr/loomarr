@@ -28,32 +28,37 @@ const anyEra = 0
 
 // PoolTargets is the pool each decade window needs.
 type PoolTargets struct {
-	// PerDecade is the target for each decade the household's evenings reached, keyed by its first
-	// year (anyEra for channels with no era). A decade not listed takes Floor.
-	PerDecade map[int]int
-	// Floor is the least a decade takes: the default evening before there is a history, then the
-	// rotation-spacing minimum, the ads a channel airs before one may repeat.
+	// PerDecade is the most airings one evening drew from each decade, keyed by its first year
+	// (anyEra for channels with no era).
+	PerDecade map[int]float64
+	// Decade is the least each decade takes: the default evening before there is a history, none
+	// after, when a decade nobody watched needs nothing beyond Floor.
+	Decade int
+	// Floor is the least a channel takes: the rotation-spacing minimum, the ads it airs before one
+	// may repeat.
 	Floor int
 	// FromHistory reports whether the household's evenings sized it.
 	FromHistory bool
 }
 
 // For returns the pool a channel with these era windows needs: every decade it draws from, each at
-// its own target. thisYear closes an open-ended window.
+// its own target, and never below the spacing floor. thisYear closes an open-ended window.
 func (t PoolTargets) For(windows []EraRange, thisYear int) int {
-	need := 0
+	var need float64
 	for _, d := range decadesOf(windows, thisYear) {
-		need += max(t.PerDecade[d], t.Floor)
+		need += max(t.PerDecade[d], float64(t.Decade))
 	}
-	return need
+	// Shared airings sum in thirds and sevenths; the tolerance keeps N from reading as N+1.
+	return max(int(math.Ceil(need-1e-9)), t.Floor)
 }
 
 // SizePool sizes the pool from the household's watched airings (#2017) over the last
 // AiringHistoryAge. An evening is a run of airings with no silence longer than eveningGap, across
 // every channel, since rotation rests an ad household-wide; each decade takes the most airings any
-// one evening drew from it. windows maps a channel to the era windows its content uses; an airing on
-// a channel no longer listed counts toward nothing. spacing is the commercial spacing, below which
-// no target falls.
+// one evening drew from it. An airing on a channel spanning several decades is shared between them,
+// so one evening is not counted once per decade. windows maps a channel to the era windows its
+// content uses; an airing on a channel no longer listed counts toward nothing. spacing is the
+// commercial spacing, below which no channel's target falls.
 func SizePool(airings []clipcatalog.Airing, windows map[string][]EraRange, spacing time.Duration, now time.Time) PoolTargets {
 	floor := adsFor(spacing)
 	since := now.Add(-clipcatalog.AiringHistoryAge)
@@ -65,12 +70,12 @@ func SizePool(airings []clipcatalog.Airing, windows map[string][]EraRange, spaci
 	}
 	slices.SortFunc(recent, func(a, b clipcatalog.Airing) int { return a.AiredAt.Compare(b.AiredAt) })
 	if len(recent) == 0 || now.Sub(recent[0].AiredAt) < minEveningHistory {
-		return PoolTargets{Floor: max(floor, adsFor(DefaultEvening))}
+		return PoolTargets{Decade: adsFor(DefaultEvening), Floor: floor}
 	}
 
 	thisYear := now.Year()
-	longest := map[int]int{}
-	evening := map[int]int{}
+	longest := map[int]float64{}
+	evening := map[int]float64{}
 	closeEvening := func() {
 		for d, n := range evening {
 			longest[d] = max(longest[d], n)
@@ -85,8 +90,9 @@ func SizePool(airings []clipcatalog.Airing, windows map[string][]EraRange, spaci
 		if !ok {
 			continue
 		}
-		for _, d := range decadesOf(w, thisYear) {
-			evening[d]++
+		decades := decadesOf(w, thisYear)
+		for _, d := range decades {
+			evening[d] += 1 / float64(len(decades))
 		}
 	}
 	closeEvening()

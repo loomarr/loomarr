@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 )
@@ -242,7 +243,15 @@ type Fetcher struct {
 	log    *slog.Logger
 	now    func() time.Time
 	gaps   func(context.Context) (CoverageGaps, error)
+	// metUntil is when a met pool target is next read again, in Unix milliseconds. A met pass
+	// claims no source, so every source stays due and each minute's wake would otherwise re-read
+	// every channel's coverage and the household's airings.
+	metUntil atomic.Int64
 }
+
+// TargetRecheck is how long an unattended pass that found the pool target met waits before reading
+// it again.
+const TargetRecheck = 15 * time.Minute
 
 // WithCoverageGaps steers each pass toward what the live channels' breaks are short of (#749,
 // CoverageGapsFrom). Optional: without it a pass ranks by quality and diversity alone, as it
@@ -392,6 +401,10 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	if len(due) == 0 {
 		return res, nil
 	}
+	if scheduled && now.UnixMilli() < f.metUntil.Load() {
+		res.StoppedBy = "target"
+		return res, nil
+	}
 
 	have, err := f.store.CatalogPaths(ctx)
 	if err != nil {
@@ -428,6 +441,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	// An unattended pass fetches toward the pool target and stops when it is met (#2035). The
 	// operator's click is not held to it: asking a source for more is a deliberate act.
 	if scheduled && targeted && gaps.Met() {
+		f.metUntil.Store(now.Add(TargetRecheck).UnixMilli())
 		res.StoppedBy = "target"
 		return res, nil
 	}
@@ -473,6 +487,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		if providerBound {
 			perRun = remaining
 		}
+		// The shortfall caps what is taken, not what is listed: a short over-list of a source whose
+		// newest items are all held would report nothing new while the pool stays short.
+		listFor := perRun
 		if scheduled && targeted && gaps.Short > 0 && len(gaps.Roles) == 0 {
 			if left := gaps.Short - res.Queued; left < perRun {
 				if left < 1 {
@@ -499,7 +516,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// Over-list so that a page full of already-held items still yields new ones. Without
 		// this a source whose first N items are all catalogued would report "nothing new"
 		// forever while the rest of the collection sat unfetched.
-		enumerationLimit := perRun * 4
+		enumerationLimit := listFor * 4
 		if src.Kind == "youtube" {
 			enumerationLimit = YouTubeInitialLookback
 		}
