@@ -22,6 +22,7 @@ type FillerDefectFixtures struct {
 	Combed      string // fields from two moments woven into each frame
 	Dropouts    string // twelve one-line white specks on every frame, as a worn tape drops out
 	Clipped     string // the tone driven 30x past full scale
+	Rotated     string // the clean clip flagged to display turned 90 degrees: still clean
 }
 
 const (
@@ -45,6 +46,7 @@ func FillerDefectMedia(t testing.TB, dir string) FillerDefectFixtures {
 		Combed:      filepath.Join(dir, "defect-combed.mp4"),
 		Dropouts:    filepath.Join(dir, "defect-dropouts.mp4"),
 		Clipped:     filepath.Join(dir, "defect-clipped.mp4"),
+		Rotated:     filepath.Join(dir, "defect-rotated.mp4"),
 	}
 	encode := func(out, picture, videoFilter, audioFilter string, codec ...string) {
 		args := []string{"-nostdin", "-v", "error", "-y",
@@ -72,6 +74,11 @@ func FillerDefectMedia(t testing.TB, dir string) FillerDefectFixtures {
 	encode(f.Combed, "testsrc2=size=640x480:rate=50:duration=4", "tinterlace=mode=interleave_top", "")
 	encode(f.Dropouts, defectPicture, dropoutSpecks(), "")
 	encode(f.Clipped, defectPicture, "", "volume=30,aformat=sample_fmts=s16")
+	// A phone clip: the coded frame is 640x480 and a display matrix turns it upright.
+	if out, err := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-y", "-display_rotation", "90",
+		"-i", f.Clean, "-c", "copy", f.Rotated).CombinedOutput(); err != nil {
+		t.Fatalf("generate filler defect fixture: %v: %s", err, out)
+	}
 	return f
 }
 

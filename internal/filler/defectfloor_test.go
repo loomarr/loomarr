@@ -92,10 +92,38 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	if got := st.records[fresh.Hash]; got.Assessment.Outcome != defects.Borderline || got.Readings.Version != defects.MeasurementVersion {
 		t.Fatalf("fresh tape-era record = %+v, want borderline softness", got)
 	}
-	for _, skipped := range []string{composite.Hash, unplayable.Hash, broken.Hash} {
+	for _, skipped := range []string{composite.Hash, unplayable.Hash} {
 		if _, ok := st.records[skipped]; ok {
 			t.Errorf("clip %s got a record", skipped)
 		}
+	}
+	if got := st.records[broken.Hash]; got.Assessment.Outcome != defects.Undecided || got.Readings.Unmeasurable == "" {
+		t.Fatalf("broken record = %+v, want undecided with the reason it could not be measured", got)
+	}
+
+	// The next pass decodes nothing: the failure is recorded, not retried every hour.
+	decoded = nil
+	res, err = NewDefectFloor(st, probe, measure, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	if err != nil || len(decoded) != 0 || res != (DefectFloorResult{}) {
+		t.Fatalf("second pass = %+v, decoded %v, err %v; want nothing to do", res, decoded, err)
+	}
+}
+
+type failingDefectStore struct{ defectMemStore }
+
+func (failingDefectStore) ListClipDefects(context.Context) (map[string]DefectRecord, error) {
+	return nil, errors.New("database is locked")
+}
+
+// A failed read is not a partial one: carrying on would make every clip look unmeasured.
+func TestDefectFloor_AFailedRecordReadStopsThePass(t *testing.T) {
+	st := &failingDefectStore{defectMemStore{clips: []DefectClip{{}}, records: map[string]DefectRecord{}}}
+	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
+		t.Fatal("a clip was decoded after the record read failed")
+		return defects.Readings{}, nil
+	}
+	if _, err := NewDefectFloor(st, nil, measure, t.TempDir(), time.Now, nil).Run(context.Background()); err == nil {
+		t.Fatal("the pass carried on past a failed record read")
 	}
 }
 

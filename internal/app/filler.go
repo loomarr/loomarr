@@ -1799,6 +1799,11 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 
 func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]filler.DefectRecord, error) {
 	rows, err := a.st.ListClipDefects(ctx)
+	if errors.Is(err, store.ErrCorruptClipDefects) {
+		err = fmt.Errorf("%w: %w", filler.ErrDefectRecordsCorrupt, err)
+	} else if err != nil {
+		return nil, err
+	}
 	out := make(map[string]filler.DefectRecord, len(rows))
 	for hash, r := range rows {
 		out[hash] = filler.DefectRecord(r)

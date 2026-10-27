@@ -3,6 +3,7 @@ package filler
 import (
 	"cmp"
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -24,6 +25,10 @@ type DefectRecord struct {
 	Assessment defects.Assessment
 	MeasuredAt time.Time
 }
+
+// ErrDefectRecordsCorrupt marks a ListClipDefects result that omitted unreadable rows; the rest of
+// the map is usable. Any other error is a failed read.
+var ErrDefectRecordsCorrupt = errors.New("some defect records are corrupt")
 
 // DefectStore is what the defect floor reads and writes.
 type DefectStore interface {
@@ -59,7 +64,7 @@ type DefectFloorResult struct {
 	Measured   int // decoded and judged
 	Reassessed int // judged again from stored readings: a new floor version or a corrected era
 	Pending    int // left for the next pass when the decode budget ran out
-	Failed     int // could not be probed or measured; tried again next pass
+	Failed     int // could not be probed or measured; recorded as undecided with the reason
 }
 
 // NewDefectFloor builds the defect floor job.
@@ -78,9 +83,13 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 		return res, err
 	}
 	records, err := d.store.ListClipDefects(ctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrDefectRecordsCorrupt):
 		// Corrupt rows are omitted, so those clips are measured again.
 		d.warn("defects: some records were unreadable", "err", err)
+	case err != nil:
+		// Not a partial read: every clip would look unmeasured and be decoded again.
+		return res, err
 	}
 	slices.SortFunc(clips, func(a, b DefectClip) int {
 		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.Hash, b.Hash))
@@ -108,9 +117,18 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 		}
 		readings, err := d.measureClip(ctx, c.Clip)
 		if err != nil {
+			if ctx.Err() != nil {
+				res.Pending++ // the pass was cancelled, not the clip
+				continue
+			}
+			// Recorded rather than retried: a clip with no picture, or one the decoder rejects, fails
+			// the same way every hour and would keep spending the budget ahead of healthy clips. A
+			// new MeasurementVersion measures it again.
 			d.warn("defects: clip could not be measured", "clip", c.Hash, "err", err)
+			readings = defects.Readings{Version: defects.MeasurementVersion, Unmeasurable: err.Error()}
 			res.Failed++
-			continue
+		} else {
+			res.Measured++
 		}
 		if err := d.store.UpsertClipDefects(ctx, DefectRecord{
 			ClipHash: c.Hash, Readings: readings, Era: c.Era,
@@ -118,7 +136,6 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 		}); err != nil {
 			return res, err
 		}
-		res.Measured++
 	}
 	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0) {
 		d.log.Info("defects: records current", "measured", res.Measured, "reassessed", res.Reassessed,

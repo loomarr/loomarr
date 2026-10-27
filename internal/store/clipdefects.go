@@ -48,8 +48,12 @@ func (s *sqlStore) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) er
 	return nil
 }
 
-// ListClipDefects reads every record in one query. A corrupt row is omitted and reported in the
-// joined error, so it is measured again rather than read as a verdict.
+// ErrCorruptClipDefects marks a ListClipDefects result that omitted unreadable rows. The returned
+// map holds every readable row; any other error means the read itself failed.
+var ErrCorruptClipDefects = errors.New("corrupt clip defect records")
+
+// ListClipDefects reads every record in one query. A corrupt row is omitted and reported under
+// ErrCorruptClipDefects, so it is measured again rather than read as a verdict.
 func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT clip_hash, era, readings_json, assessment_json, measured_at FROM filler_clip_defects`)
@@ -64,20 +68,23 @@ func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRe
 		var readings, assessment string
 		var measuredAt int64
 		if err := rows.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &measuredAt); err != nil {
-			return out, fmt.Errorf("scan clip defects: %w", err)
+			return nil, fmt.Errorf("scan clip defects: %w", err)
 		}
 		if err := errors.Join(json.Unmarshal([]byte(readings), &r.Readings),
 			json.Unmarshal([]byte(assessment), &r.Assessment)); err != nil {
-			invalid = append(invalid, fmt.Errorf("clip defects %s corrupt: %w", r.ClipHash, err))
+			invalid = append(invalid, fmt.Errorf("clip defects %s: %w", r.ClipHash, err))
 			continue
 		}
 		r.MeasuredAt = fromEpoch(measuredAt)
 		out[r.ClipHash] = r
 	}
 	if err := rows.Err(); err != nil {
-		return out, fmt.Errorf("list clip defects: %w", err)
+		return nil, fmt.Errorf("list clip defects: %w", err)
 	}
-	return out, errors.Join(invalid...)
+	if len(invalid) > 0 {
+		return out, fmt.Errorf("%w: %w", ErrCorruptClipDefects, errors.Join(invalid...))
+	}
+	return out, nil
 }
 
 func (s *sqlStore) pruneOrphanClipDefects(ctx context.Context) error {

@@ -28,6 +28,9 @@ const minFrames = 8
 // Readings are one clip's measured defects. Shares are fractions of 0..1; levels are dBFS.
 type Readings struct {
 	Version string `json:"version"`
+	// Unmeasurable says why the clip could not be measured (no picture, an undecodable stream).
+	// Such a clip is Undecided and is measured again only under a new MeasurementVersion.
+	Unmeasurable string `json:"unmeasurable,omitempty"`
 	// Width and Height are the decoded frame size the crop is measured against.
 	Width  int `json:"width"`
 	Height int `json:"height"`
@@ -157,6 +160,9 @@ var checkOrder = []Check{CheckBlocks, CheckBlur, CheckDropouts, CheckInterlace, 
 // clip with no sound.
 func Assess(r Readings, era int) Assessment {
 	band := BandFor(era)
+	if r.Unmeasurable != "" {
+		return Assessment{Version: FloorVersion, Band: band, Outcome: Undecided}
+	}
 	a := Assessment{Version: FloorVersion, Band: band, Outcome: Pass}
 	pictureKnown := r.Frames >= minFrames && r.Width > 0 && r.Height > 0
 	for _, check := range checkOrder {

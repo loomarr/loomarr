@@ -37,9 +37,12 @@ func TestMeasureDefects_EachDamageFailsItsOwnCheck(t *testing.T) {
 		return out
 	}
 
-	clean := measure(fx.Clean)
-	if a := defects.Assess(clean, 2015); a.Outcome != defects.Pass {
-		t.Fatalf("clean clip = %+v from %+v, want a pass", a, clean)
+	// The rotated copy is measured against the probed coded size, and is as clean as the original.
+	for _, file := range []string{fx.Clean, fx.Rotated} {
+		clean := measure(file)
+		if a := defects.Assess(clean, 2015); a.Outcome != defects.Pass {
+			t.Fatalf("%s = %+v from %+v, want a pass", file, a, clean)
+		}
 	}
 	for name, c := range map[string]struct {
 		file  string

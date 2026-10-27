@@ -34,8 +34,12 @@ func MeasureDefects(ctx context.Context, ffmpegPath, file string, width, height 
 		return defects.Readings{}, fmt.Errorf("measure defects: temporary path %q cannot be quoted in a filter graph", metadataFile)
 	}
 
+	// ⚠ -noautorotate: ffprobe reports the coded frame size and the decoder would otherwise turn a
+	// rotated clip upright, so the upscale branch scaled back to the probed size and the windowbox
+	// share measured against it would both be the wrong shape. A defect does not depend on which
+	// way up the picture is.
 	args := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info",
-		"-i", file, "-filter_threads", strconv.Itoa(BackgroundThreads),
+		"-noautorotate", "-i", file, "-filter_threads", strconv.Itoa(BackgroundThreads),
 		"-filter_complex", defectsFilterGraph(metadataFile, width, height, hasAudio), "-map", "[defects]", "-f", "null", "-"}
 	var stderr bytes.Buffer
 	cmd := bgexec.FFmpeg(ctx, FFmpegOr(ffmpegPath), args...)

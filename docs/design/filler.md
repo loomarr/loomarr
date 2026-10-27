@@ -547,6 +547,12 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
 
   Held clips are judged too, so the record can say what the floor would retire. A re-key drops
   the record, because it describes the old bytes.
+- **A clip that cannot be measured is recorded as undecided, with the reason** (no picture, a
+  stream the decoder rejects). It is not retried every hour, where it would keep spending the
+  budget ahead of healthy clips. A new measurement version measures it again. A failed read of the
+  records stops the pass rather than treating every clip as unmeasured.
+- **The pass runs with `-noautorotate`.** ffprobe reports the coded frame size, and a rotated
+  phone clip decoded upright would not match it.
 
 ## Source evidence and playable media
 
