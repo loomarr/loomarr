@@ -377,12 +377,12 @@ const (
 	GeographicLocal    GeographicScope = "local"
 )
 
-// ExposureRecord is one clip's stored aggregate on a channel: the Exposure plus the airing before
-// the latest. That one predecessor is the bounded state that lets a break's snapshot be rebuilt
-// after its own clips start airing (no-repeat means a clip airs at most once inside one pod).
-// Playout writes it through the core store; filler's pod assembly reads it.
-type ExposureRecord struct {
-	PlayCount        int64
-	LastPlayedAt     time.Time
-	PreviousPlayedAt time.Time
+// Airing is one watched airing of a clip on any of the household's channels: when it aired (its
+// scheduled start) and when playout recorded it. The two differ: playout records a clip as it
+// resolves it, up to its run-ahead before the clip airs, or later when a viewer tunes in mid-clip.
+// Playout writes it through the core store; filler's pod assembly reads it (§10 rotation).
+type Airing struct {
+	ClipHash   string
+	AiredAt    time.Time
+	RecordedAt time.Time
 }

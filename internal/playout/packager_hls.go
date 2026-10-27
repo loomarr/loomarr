@@ -117,6 +117,36 @@ type packagedChannel struct {
 	// warmHeld is set while the last acquire was a neighbour warm's, not a viewer's: the packager is
 	// adjacent to where a viewer is. A premium keeps the baseline's grace while it is (#1037).
 	warmHeld bool
+	// seen is whether a viewer holds this packager, shared with its schedule (#2017).
+	seen *viewership
+}
+
+// viewership is whether anyone is watching a packager: a viewer's lease is held now, or the last one
+// was released less than watchedWithin ago. A browser player holds a lease only while a playlist
+// request is in flight, so between its polls it holds none; a tuner holds one for its whole session.
+// Neighbour warms never count. warmHeld cannot say it: it stays false through the grace after the
+// last viewer leaves. The schedule reads it on the packager's own goroutine as it looks up each
+// item, so it is atomic rather than under the origin's lock.
+type viewership struct {
+	holders atomic.Int64
+	left    atomic.Int64 // unix nanos when a viewer's lease was last released
+}
+
+func (v *viewership) join() { v.holders.Add(1) }
+
+// leave stamps the release before dropping the count, so a reader that sees no holder sees when the
+// last one left.
+func (v *viewership) leave(t time.Time) {
+	v.left.Store(t.UnixNano())
+	v.holders.Add(-1)
+}
+
+func (v *viewership) watched(t time.Time) bool {
+	if v.holders.Load() > 0 {
+		return true
+	}
+	left := v.left.Load()
+	return left != 0 && t.Sub(time.Unix(0, left)) < watchedWithin
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -418,13 +448,19 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 	c.warmHeld = speculative
 	if !speculative {
 		c.speculative = false
+		c.seen.join()
 	}
 	if c.idle != nil {
 		c.idle.Stop()
 		c.idle = nil
 	}
 	m.mu.Unlock()
-	return c, onceRelease(func() { m.release(key, c) }), nil
+	return c, onceRelease(func() {
+		if !speculative {
+			c.seen.leave(time.Now())
+		}
+		m.release(key, c)
+	}), nil
 }
 
 func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel, error) {
@@ -436,7 +472,14 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
 	// A premium packager is priced by its own class instead (premiumAdmission).
 	resolvedAt := time.Now()
-	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
+	seen := &viewership{}
+	firstCtx := ctx
+	if speculative {
+		firstCtx = WithUnwatched(ctx)
+	} else {
+		seen.left.Store(resolvedAt.UnixNano()) // the viewer starting it joins once it is registered
+	}
+	first, ferr := m.source.ItemAt(firstCtx, key.channel, resolvedAt)
 	req := AdmitRequest{Class: ClassSDR}
 	if key.format.isPremium() {
 		req = premiumAdmission
@@ -474,7 +517,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	if out.HDR {
 		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
 	}
-	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, log), slate)
+	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, seen, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
@@ -482,7 +525,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 		return nil, err
 	}
 	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{}),
-		lease: lease, speculative: speculative}
+		lease: lease, speculative: speculative, seen: seen}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
@@ -504,9 +547,10 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 
 // schedule adapts the application's items to the packager: each Open builds the item's command
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
-// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
+// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
+// made while no viewer has fetched the channel recently is marked unwatched (WithUnwatched).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, seen *viewership, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
@@ -514,8 +558,12 @@ func (m *PackagerHLS) schedule(
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
+			lookup := ctx
+			if !seen.watched(time.Now()) {
+				lookup = WithUnwatched(ctx)
+			}
 			var err error
-			if it, err = m.source.ItemAt(ctx, key.channel, at); err != nil {
+			if it, err = m.source.ItemAt(lookup, key.channel, at); err != nil {
 				return packager.Item{}, err
 			}
 		}

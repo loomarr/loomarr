@@ -1426,7 +1426,7 @@ components:
           format: int64
           type: integer
         commercialSpacing:
-          description: "How long the same commercial rests before this channel airs it again, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"
+          description: "How long a commercial the household saw on any channel rests before this channel airs it, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"
           examples:
             - 168h
             - 24h

@@ -87,7 +87,7 @@ const COMMERCIAL_SPACING: DurationChoice = {
   min: 0,
   step: 0.5,
   fallbackDefault: 4,
-  help: "Minimum time before a commercial repeats on this channel. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
+  help: "Minimum time before a commercial you saw on any channel airs again here. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
 };
 
 // One field for a channel duration that follows a default or overrides it. Break length uses it

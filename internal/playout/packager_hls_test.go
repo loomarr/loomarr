@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -144,7 +145,7 @@ func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.source = fixedItemSource{item: PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: testSources()[name]}}
-		item, err := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))(t.Context(), time.Now())
+		item, err := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, &viewership{}, slog.New(slog.DiscardHandler))(t.Context(), time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +194,7 @@ func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n 
 	m.WithObserver(obs)
 	m.source = fixedItemSource{item: it}
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
-	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	for range n {
 		item, err := sched(t.Context(), time.Now())
 		if err != nil {
@@ -207,6 +208,96 @@ func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n 
 		_ = rc.Close()
 	}
 	return obs.Fallbacks()
+}
+
+// watchSource records, for each lookup, whether it was for a watched channel.
+type watchSource struct {
+	stuckSlateSource
+	mu      sync.Mutex
+	watched []bool
+}
+
+func (s *watchSource) ItemAt(ctx context.Context, ch string, at time.Time) (PackagerItem, error) {
+	s.mu.Lock()
+	s.watched = append(s.watched, Watched(ctx))
+	s.mu.Unlock()
+	return s.stuckSlateSource.ItemAt(ctx, ch, at)
+}
+
+func (s *watchSource) lookups() []bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.watched)
+}
+
+// #2017: what a neighbour warm keeps airing for a fast channel switch airs to nobody, and must not
+// count as seen in the household's commercial rotation. A packager's lookups are watched while a
+// viewer holds it or released it within watchedWithin, and unwatched otherwise, from its very first.
+func TestPackagerMarksLookupsNobodyWatches(t *testing.T) {
+	src := &watchSource{}
+	m, err := NewPackagerHLS(src, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+
+	seen := &viewership{}
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, HostProfile{}, OutputProfile{FPS: 25},
+		nil, nil, seen, slog.New(slog.DiscardHandler))
+	look := func() bool {
+		t.Helper()
+		if _, err := sched(t.Context(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		got := src.lookups()
+		return got[len(got)-1]
+	}
+	if look() {
+		t.Error("a packager no viewer has fetched looked up its item as watched")
+	}
+	seen.join()
+	if !look() {
+		t.Error("a packager a viewer holds looked up its item as unwatched")
+	}
+	seen.leave(time.Now())
+	if !look() {
+		t.Error("a packager a player released between two polls looked up its item as unwatched")
+	}
+	seen.join()
+	seen.leave(time.Now().Add(-watchedWithin - time.Second))
+	if look() {
+		t.Error("a packager its viewer left looked up its item as watched")
+	}
+
+	// A neighbour warm's start resolves the airing as unwatched; a viewer joining it makes it watched.
+	before := len(src.lookups())
+	c, release, err := m.acquire("neighbour", FormatBaseline, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if got := src.lookups(); len(got) <= before || got[before] {
+		t.Fatalf("a warm start's first lookup was watched (lookups %v from %d)", got, before)
+	}
+	if c.seen.watched(time.Now()) {
+		t.Fatal("a warm start counts as a viewer")
+	}
+	// A tuner (Attach) holds one viewer lease for its whole session: watched however long it runs,
+	// and not once it has been gone longer than watchedWithin.
+	_, release, err = m.acquire("neighbour", FormatBaseline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if later := time.Now().Add(time.Hour); !c.seen.watched(later) {
+		t.Fatal("a viewer holding the packager for an hour stopped counting as watched")
+	}
+	release()
+	if !c.seen.watched(time.Now()) {
+		t.Fatal("a viewer who just released the packager no longer counts")
+	}
+	if c.seen.watched(time.Now().Add(watchedWithin + time.Second)) {
+		t.Fatal("a packager its last viewer left counts as watched")
+	}
 }
 
 type fixedItemSource struct {
@@ -608,7 +699,7 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	base := cost()
 	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
-		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
+		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
 	// stopped mid-item (airItem reports nothing).
 	encodeItem := func(delivered int64) {
@@ -989,7 +1080,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Fatalf("admission: %v, rung %s; want full on 8 cores", err, lease.SoftwareRung())
 	}
 	host, out := hdrItemSource{}.Output(context.Background(), "ch", "", 0)
-	sched := m.schedule(packagedKey{channel: "ch"}, host, out, lease, nil, slog.New(slog.DiscardHandler))
+	sched := m.schedule(packagedKey{channel: "ch"}, host, out, lease, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	at := time.Now()
 	slot := packager.Slot{Frames: 100_000, AudioFrames: 100_000}
 
@@ -1041,7 +1132,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Error("a resume without a new step still held")
 	}
 
-	gpu := m.schedule(packagedKey{channel: "gpu"}, HostFor(EncoderNVENC, true, GPUFilters{}), out, nil, nil, slog.New(slog.DiscardHandler))
+	gpu := m.schedule(packagedKey{channel: "gpu"}, HostFor(EncoderNVENC, true, GPUFilters{}), out, nil, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	if item, err := gpu(t.Context(), at); err == nil {
 		if rc, err := item.Open(t.Context(), slot); err == nil {
 			for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 3 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {

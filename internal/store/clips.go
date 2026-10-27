@@ -973,9 +973,15 @@ func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era 
 //
 // `at` is the scheduled clip start, not the wall clock when the resolver happened to arrive.
 // A finite encoder child normally requests its successor milliseconds after that boundary, and
-// a viewer reconnect or retry may resolve it again. The per-channel upsert accepts only a NEWER
-// scheduled start, so all callbacks for one airing are one durable write without process-local
-// memory; only that accepted write increments the global catalog counter.
+// a viewer reconnect or retry may resolve it again. One airing is one (channel, clip, start)
+// row, so all callbacks for it are one durable write without process-local memory; only that
+// first write increments the global catalog counter. `recordedAt` is the wall clock of that
+// write, which a break's snapshot needs to stay fixed while it airs (filler.ExposuresBefore).
+//
+// A clip keeps its newest fillerAiringsKept airings and every airing younger than
+// fillerAiringsTrimAge: rotation reads the latest airing a break may count, and an airing a day old
+// can matter to no break on air or in the guide's window, however many channels aired the clip
+// since. The trim never removes the airing just written, so a re-resolve stays a no-op.
 //
 // A missing clip is NOT an error. Playout resolves a path that the catalog may have pruned
 // between the schedule being built and the break airing; failing here would turn a stale
@@ -984,25 +990,16 @@ func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era 
 //
 // updated_at is left alone: this is not a catalog edit, and touching it would make every clip
 // look freshly re-synced in the UI's "last updated" column.
-func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at time.Time) (bool, error) {
+func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at, recordedAt time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("record clip play %s: %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_exposures
-		(channel_id, clip_hash, play_count, last_played_at, previous_played_at) VALUES (?, ?, 1, ?, 0)
-		ON CONFLICT(channel_id, clip_hash) DO UPDATE SET
-			play_count = filler_exposures.play_count + 1,
-			previous_played_at = CASE
-				WHEN excluded.last_played_at > filler_exposures.last_played_at
-				THEN filler_exposures.last_played_at ELSE filler_exposures.previous_played_at END,
-			last_played_at = CASE
-				WHEN excluded.last_played_at > filler_exposures.last_played_at
-				THEN excluded.last_played_at ELSE filler_exposures.last_played_at END
-		WHERE excluded.last_played_at > filler_exposures.last_played_at`),
-		channelID, id, at.UnixMilli())
+	res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
+		VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, clip_hash, aired_at) DO NOTHING`),
+		channelID, id, at.UnixMilli(), recordedAt.UnixMilli())
 	if err != nil {
 		return false, fmt.Errorf("record channel clip play %s/%s: %w", channelID, id, err)
 	}
@@ -1016,6 +1013,15 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at 
 		}
 		return false, nil
 	}
+	// With fewer than fillerAiringsKept rows the subquery is NULL and nothing is deleted. Only airings
+	// a day old go, and never the one just written: a break on air may count any recent airing, and
+	// a deleted row would let the same airing be counted again at its next resolve.
+	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at < ?
+		AND NOT (channel_id = ? AND aired_at = ?) AND aired_at <
+		(SELECT aired_at FROM filler_airings WHERE clip_hash = ? ORDER BY aired_at DESC LIMIT 1 OFFSET ?)`),
+		id, recordedAt.Add(-fillerAiringsTrimAge).UnixMilli(), channelID, at.UnixMilli(), id, fillerAiringsKept-1); err != nil {
+		return false, fmt.Errorf("trim clip airings %s: %w", id, err)
+	}
 	if _, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE clips SET play_count = play_count + 1,
 		 last_played_at = CASE WHEN ? > last_played_at THEN ? ELSE last_played_at END
@@ -1028,29 +1034,34 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at 
 	return true, nil
 }
 
-// FillerExposureRecords returns one channel's durable aggregate rotation records (§10 V58). The
+// fillerAiringsKept is how many of a clip's newest airings RecordClipPlay keeps, beyond those
+// younger than fillerAiringsTrimAge, which it always keeps.
+const (
+	fillerAiringsKept    = 4
+	fillerAiringsTrimAge = 24 * time.Hour
+)
+
+// FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
-func (s *sqlStore) FillerExposureRecords(ctx context.Context, channelID string) (map[string]clipcatalog.ExposureRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT clip_hash, play_count, last_played_at,
-		previous_played_at FROM filler_exposures WHERE channel_id = ?`), channelID)
+func (s *sqlStore) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT clip_hash, aired_at, recorded_at FROM filler_airings`)
 	if err != nil {
-		return nil, fmt.Errorf("list filler exposures for channel %s: %w", channelID, err)
+		return nil, fmt.Errorf("list filler airings: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := map[string]clipcatalog.ExposureRecord{}
+	var out []clipcatalog.Airing
 	for rows.Next() {
-		var hash string
-		var count, lastMs, previousMs int64
-		if err := rows.Scan(&hash, &count, &lastMs, &previousMs); err != nil {
-			return nil, fmt.Errorf("scan filler exposure for channel %s: %w", channelID, err)
+		var a clipcatalog.Airing
+		var airedMs, recordedMs int64
+		if err := rows.Scan(&a.ClipHash, &airedMs, &recordedMs); err != nil {
+			return nil, fmt.Errorf("scan filler airing: %w", err)
 		}
-		out[hash] = clipcatalog.ExposureRecord{
-			PlayCount: count, LastPlayedAt: exposureTime(lastMs), PreviousPlayedAt: exposureTime(previousMs),
-		}
+		a.AiredAt, a.RecordedAt = exposureTime(airedMs), exposureTime(recordedMs)
+		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list filler exposures for channel %s: %w", channelID, err)
+		return nil, fmt.Errorf("list filler airings: %w", err)
 	}
 	return out, nil
 }

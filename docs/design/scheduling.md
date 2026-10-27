@@ -247,14 +247,31 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
   Positions are deterministic for a lineup and seed.
-- **Rotation (V58).** One bounded row per `(channel, clip)` holds play count and the latest airing.
-  Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
-  tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
-  snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside the channel's commercial spacing. A clip inside its spacing ranks behind
-  every rested clip on any rung, so the ladder widens era before a clip repeats, and spacing relaxes
-  only when the whole ladder is resting (the pod records `CooldownRelaxed`). Spacing never causes
-  dead air. Pins come first and may repeat. **Spacing is per channel (#1670):**
+- **Rotation (V58, household-wide since #2017).** The history is the household's, not a channel's:
+  a commercial seen on any channel rests on every channel. One row per watched airing
+  (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
+  day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when
+  the channel encoder resolves the clip, keyed by scheduled start, so tune-ins and rebuilds cannot
+  inflate it; preview and reconcile never write it.
+  **Only watched airings count:** a packager a neighbour warm keeps ready for a channel switch airs
+  to nobody, and its lookups carry `playout.WithUnwatched` while no viewer (browser player or tuner)
+  holds it or released it in the last 10 seconds. A viewer who switches to a warm channel mid-clip
+  misses that clip's count, the cheaper error. Per-channel history let one TV switching channels
+  see the same clips in the same order on two channels within the hour, and warm neighbours rested
+  clips nobody saw.
+
+  Assembly reads a snapshot of airings that aired before the break starts **and** were recorded at
+  least a settle (`OnAirLookahead` + 3 s) before it. The second cut keeps a break fixed while it
+  airs across channels: a viewer tuning in mid-clip elsewhere records an airing that started
+  minutes earlier, at that moment, and the break's pod is assembled again at every clip's resolve.
+  Playout resolves a break's first clip no earlier than its run-ahead before the break, so every
+  airing a break counts was stored before its first clip was assembled. Within each rung it ranks:
+  never aired, then least recently aired outside the channel's commercial spacing. The end-of-break
+  top-up ranks the same way, the longer clip winning only among equals. A clip inside its spacing
+  ranks behind every rested clip on any rung, so the ladder widens era before a clip repeats, and
+  spacing relaxes only when the whole ladder is resting (the pod records `CooldownRelaxed`).
+  Spacing never causes dead air. Pins come first and may repeat. **Each channel sets its own
+  spacing (#1670), measured against the household's airings:**
   `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
   nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip
   repeat in any later break. On Tunarr channels Tunarr owns rotation; Loomarr writes the channel's

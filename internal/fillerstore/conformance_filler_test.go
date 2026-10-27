@@ -128,14 +128,14 @@ func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
 	return FillerSource{}, false
 }
 
-// exposuresBefore is a break's rotation snapshot the way pod assembly reads it: the stored
-// records, cut strictly before `before` by the filler domain (a zero cutoff keeps everything).
-func exposuresBefore(ctx context.Context, s Store, channelID string, before time.Time) (map[string]filler.Exposure, error) {
-	records, err := s.FillerExposureRecords(ctx, channelID)
+// exposuresBefore is a break's rotation snapshot the way pod assembly reads it: the household's
+// stored airings, cut before `before` by the filler domain (a zero cutoff keeps everything).
+func exposuresBefore(ctx context.Context, s Store, before time.Time, settle time.Duration) (map[string]filler.Exposure, error) {
+	airings, err := s.FillerAirings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return filler.ExposuresBefore(records, before), nil
+	return filler.ExposuresBefore(filler.AiringHistory{Airings: airings, Settle: settle}, before), nil
 }
 
 // src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
@@ -448,7 +448,8 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	aired := time.Unix(1_800_000_000, 0).UTC()
 	for i := 0; i < 3; i++ {
-		if _, err := s.RecordClipPlay(ctx, "channel-1", c.Hash, aired.Add(time.Duration(i)*time.Minute)); err != nil {
+		at := aired.Add(time.Duration(i) * time.Minute)
+		if _, err := s.RecordClipPlay(ctx, "channel-1", c.Hash, at, at); err != nil {
 			t.Fatalf("record play %d: %v", i, err)
 		}
 	}
@@ -480,13 +481,14 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	// Playout may resolve a clip the catalog has since pruned; that is telemetry missing a
 	// row, not a playback error.
-	if _, err := s.RecordClipPlay(ctx, "channel-1", "gone/missing.mp4", aired); err != nil {
+	if _, err := s.RecordClipPlay(ctx, "channel-1", "gone/missing.mp4", aired, aired); err != nil {
 		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
 	}
 }
 
-// V58: rotation history is channel-scoped, durable when a catalog row disappears, and queried
-// through a strict break-start cutoff so a clip beginning inside a break cannot reshuffle its tail.
+// V58, #2017: rotation history is the household's, durable when a catalog row or a channel
+// disappears, bounded per clip, and cut at a break's start and settle so an airing recorded while
+// the break airs cannot reshuffle its tail.
 func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -498,42 +500,36 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	}
 	first := time.UnixMilli(1_800_000_000_123).UTC()
 	second := first.Add(2 * time.Second)
-	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first); err != nil {
+	ahead := func(at time.Time) time.Time { return at.Add(-12 * time.Second) } // playout's run-ahead
+	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first, ahead(first)); err != nil {
 		t.Fatal(err)
 	} else if !recorded {
 		t.Fatal("first scheduled start was not reported as a new airing")
 	}
 	// A resolver can ask about the active clip more than once. The scheduled start is stable,
 	// so a repeated write for that start is one airing, not another viewer or another play.
-	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, first, first); err != nil {
 		t.Fatal(err)
 	} else if recorded {
 		t.Fatal("duplicate scheduled start was reported as another airing")
 	}
-	if recorded, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, second); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, second, ahead(second)); err != nil {
 		t.Fatal(err)
 	} else if !recorded {
 		t.Fatal("same clip on another channel was not reported as an independent airing")
 	}
-	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second); err != nil {
+	if recorded, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second, ahead(second)); err != nil {
 		t.Fatal(err)
 	} else if !recorded {
 		t.Fatal("later scheduled start was not reported as a new airing")
 	}
 
-	a, err := exposuresBefore(ctx, s, "channel-a", time.Time{})
+	all, err := exposuresBefore(ctx, s, time.Time{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second) {
-		t.Fatalf("channel-a exposure = %+v, want count 2 at %v", got, second)
-	}
-	b, err := exposuresBefore(ctx, s, "channel-b", time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := b[clip.Hash]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
-		t.Fatalf("channel-b exposure = %+v, want count 1 at %v", got, second)
+	if got := all[clip.Hash]; got.PlayCount != 3 || !got.LastPlayedAt.Equal(second) {
+		t.Fatalf("household exposure = %+v, want both channels' three airings, latest at %v", got, second)
 	}
 	storedClip, err := s.GetClip(ctx, clip.Hash)
 	if err != nil {
@@ -543,12 +539,24 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("global clip count = %d, want the three distinct channel/start airings", storedClip.PlayCount)
 	}
 
-	beforeBreak, err := exposuresBefore(ctx, s, "channel-a", second)
+	beforeBreak, err := exposuresBefore(ctx, s, second, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := beforeBreak[clip.Hash]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(first) {
 		t.Fatalf("break snapshot = %+v, want the history immediately before its cutoff", got)
+	}
+	// A tune-in on channel-b records, as the break airs, a clip that started before the break.
+	tuneIn := sampleClip("tune-in-hash", "tune-in.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	if _, err := s.RecordClipPlay(ctx, "channel-b", tuneIn.Hash, first.Add(-time.Minute), second.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	onAir, err := exposuresBefore(ctx, s, second, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := onAir[tuneIn.Hash]; ok {
+		t.Fatalf("break snapshot = %+v counts an airing recorded after the break began", onAir)
 	}
 
 	// Duplicate callbacks for one scheduled start are idempotent, including when two replicas
@@ -560,7 +568,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second)
+			_, err := s.RecordClipPlay(ctx, "channel-a", clip.Hash, second, second)
 			errs <- err
 		}()
 	}
@@ -571,34 +579,86 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("concurrent record: %v", err)
 		}
 	}
-	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second) {
-		t.Fatalf("concurrent exposure = %+v, want two distinct scheduled starts", got)
+	if got := all[clip.Hash]; got.PlayCount != 3 || !got.LastPlayedAt.Equal(second) {
+		t.Fatalf("concurrent exposure = %+v, want three distinct channel/start airings", got)
+	}
+
+	// Every airing younger than a day is kept, however many channels aired the clip: a break on air
+	// may count any of them.
+	for i := 1; i <= 5; i++ {
+		at := second.Add(time.Duration(i) * time.Hour)
+		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all[clip.Hash]; got.PlayCount != 8 {
+		t.Fatalf("exposure within a day = %+v, want all eight airings kept", got)
+	}
+	// Older than a day, only a clip's newest four are kept, so the history stays bounded.
+	day := 25 * time.Hour
+	for i := 1; i <= 5; i++ {
+		at := second.Add(time.Duration(i) * day)
+		if _, err := s.RecordClipPlay(ctx, "channel-b", clip.Hash, at, ahead(at)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	latest := second.Add(5 * day)
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := all[clip.Hash]; got.PlayCount != 4 || !got.LastPlayedAt.Equal(latest) {
+		t.Fatalf("trimmed exposure = %+v, want the newest four airings, latest at %v", got, latest)
+	}
+	// A break between the kept airings still sees the latest one before it.
+	mid, err := exposuresBefore(ctx, s, second.Add(3*day+time.Minute), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mid[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second.Add(3*day)) {
+		t.Fatalf("snapshot inside the kept airings = %+v, want the two before it", got)
+	}
+	// An airing older than all of those, written late, is not trimmed by its own write: resolving
+	// it again is still one airing.
+	for i, want := range []bool{true, false} {
+		recorded, err := s.RecordClipPlay(ctx, "channel-c", clip.Hash, first, latest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if recorded != want {
+			t.Fatalf("late write %d of one old airing reported recorded=%v, want %v", i+1, recorded, want)
+		}
 	}
 
 	// A missing catalog row still records actual airing truth. Re-admission must retain it.
 	missing := "removed-and-reready"
-	if _, err := s.RecordClipPlay(ctx, "channel-a", missing, second); err != nil {
+	if _, err := s.RecordClipPlay(ctx, "channel-a", missing, second, ahead(second)); err != nil {
 		t.Fatal(err)
 	}
-	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a[missing]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
+	if got := all[missing]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
 		t.Fatalf("pruned clip exposure = %+v, want durable actual airing", got)
 	}
 	restored := sampleClip(missing, "restored.mp4", filler.Commercial, 1994, filler.Kids, "toys")
 	if err := s.UpsertClip(ctx, restored); err != nil {
 		t.Fatal(err)
 	}
-	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
-	if err != nil || a[missing].PlayCount != 1 {
-		t.Fatalf("re-admission lost exposure: %+v (err=%v)", a[missing], err)
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil || all[missing].PlayCount != 1 {
+		t.Fatalf("re-admission lost exposure: %+v (err=%v)", all[missing], err)
 	}
+	// What the household saw on a channel it deleted, it still saw.
 	channel, err := s.GetChannel(ctx, "channel-a")
 	if err != nil {
 		t.Fatal(err)
@@ -606,12 +666,12 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteChannel(ctx, channel.ID, channel.Revision); err != nil {
 		t.Fatal(err)
 	}
-	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
+	all, err = exposuresBefore(ctx, s, time.Time{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(a) != 0 {
-		t.Fatalf("deleted channel retained exposure rows: %+v", a)
+	if all[missing].PlayCount != 1 {
+		t.Fatalf("deleting a channel dropped the household's airings: %+v", all)
 	}
 }
 
@@ -658,14 +718,14 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 
 	// RecordClipPlay is hash-keyed and deliberately silent on a miss, so assert the COUNTER
 	// rather than the error — a path that no-ops returns nil either way.
-	if _, err := s.RecordClipPlay(ctx, "channel-1", c.Path, now); err != nil {
+	if _, err := s.RecordClipPlay(ctx, "channel-1", c.Path, now, now); err != nil {
 		t.Errorf("RecordClipPlay(path) = %v, want a silent no-op", err)
 	}
 	got, _ := s.GetClip(ctx, c.Hash)
 	if got.PlayCount != 0 {
 		t.Errorf("play count = %d after recording against a PATH, want 0", got.PlayCount)
 	}
-	if _, err := s.RecordClipPlay(ctx, "channel-1", c.Hash, now); err != nil {
+	if _, err := s.RecordClipPlay(ctx, "channel-1", c.Hash, now, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)

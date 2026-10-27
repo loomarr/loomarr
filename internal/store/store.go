@@ -500,16 +500,16 @@ type InteractiveOperationStore interface {
 
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
-	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
-	// `at` is its scheduled start: repeating that start is an idempotent no-op, while a later
-	// start counts as another airing. Written from playout only; a missing catalog clip is not
-	// an error because the durable channel exposure intentionally survives catalog pruning and
-	// re-admission.
-	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (recorded bool, err error)
-	// FillerExposureRecords returns one channel's stored per-clip aggregates. A break's snapshot
-	// (history strictly before its start) is cut from them by filler.ExposuresBefore, so one
-	// read serves every break in a window (#1420).
-	FillerExposureRecords(ctx context.Context, channelID string) (map[string]clipcatalog.ExposureRecord, error)
+	// RecordClipPlay counts a filler clip having AIRED to a viewer on a channel, globally and in
+	// the household's rotation history (V58, #2017). `at` is its scheduled start: repeating that
+	// start is an idempotent no-op, while a later start counts as another airing. `recordedAt`
+	// is the wall clock of the write. Written from playout only; a missing catalog clip is not an
+	// error because the airing history intentionally survives catalog pruning and re-admission.
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (recorded bool, err error)
+	// FillerAirings returns the household's stored clip airings across every channel. A break's
+	// snapshot is cut from them by filler.ExposuresBefore, so one read serves every break in a
+	// window (#1420).
+	FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
 	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
 	// actually resolved for streaming; one row per airing of a unit (episode or film), written
