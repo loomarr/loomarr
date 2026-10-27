@@ -20,10 +20,11 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
 
   await clips.first().click();
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /^00:00 · .*Fizzbolt — Dude!/ })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  // The preview Sheet is modal, so Base UI hides the page behind it from assistive tech while it is
+  // open; the selected tile's state is still asserted, hence includeHidden.
+  await expect(
+    page.getByRole("button", { name: /^00:00 · .*Fizzbolt — Dude!/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("dialog", { name: "Fizzbolt — Dude!" })).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
@@ -39,10 +40,9 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
   await expect(page.getByRole("tooltip").filter({ hasText: "Rotoscoped tech spot" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /^00:30 · .*Rotoscoped tech spot/ })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(
+    page.getByRole("button", { name: /^00:30 · .*Rotoscoped tech spot/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("dialog", { name: "Rotoscoped tech spot" })).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
@@ -91,22 +91,20 @@ test("a 50-clip review stays compact and usable on a phone", async ({ page }) =>
   await page.getByRole("button", { name: "Next clip" }).click();
   await expect(page.getByRole("dialog", { name: "Commercial 25" })).toBeVisible();
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: /^12:00 · .*Commercial 25/ })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.getByRole("button", { name: /^Open clip #25(?!\d).*Commercial 25/ })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  // Both lists sit behind the modal Sheet, hidden from assistive tech while it is open.
+  await expect(
+    page.getByRole("button", { name: /^12:00 · .*Commercial 25/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    page.getByRole("button", { name: /^Open clip #25(?!\d).*Commercial 25/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
 
   await page.getByRole("button", { name: "Previous clip" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Commercial 24" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^11:30 · .*Commercial 24/ })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(
+    page.getByRole("button", { name: /^11:30 · .*Commercial 24/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
 
   const viewportOverflow = await page.locator("html").evaluate((root) => ({
     client: root.clientWidth,
