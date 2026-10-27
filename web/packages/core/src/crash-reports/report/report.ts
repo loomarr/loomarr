@@ -1,7 +1,7 @@
 import type { ClientCrashBreadcrumb } from "@loomarr/api/models/clientCrashBreadcrumb";
 import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
 import { ClientCrashReportInputKind } from "@loomarr/api/models/clientCrashReportInputKind";
-import { scrubText, truncateUtf8 } from "./scrub";
+import { scrubText, truncateUtf8 } from "../scrub";
 
 const MESSAGE_BYTES = 2 << 10;
 const STACK_BYTES = 32 << 10;

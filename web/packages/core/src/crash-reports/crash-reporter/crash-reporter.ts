@@ -1,8 +1,8 @@
 import { getReportClientCrashUrl } from "@loomarr/api/endpoints/diagnostics";
 import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
-import { BreadcrumbTrail } from "./breadcrumbs";
-import { type NativeCrashEnvelope, nativeCrashReports } from "./native";
-import { type CrashReportDevice, jsCrashReport } from "./report";
+import { BreadcrumbTrail } from "../breadcrumbs";
+import { type NativeCrashEnvelope, nativeCrashReports } from "../native";
+import { type CrashReportDevice, jsCrashReport } from "../report";
 
 /**
  * Where pending reports live between a crash and the next launch: one entry per report. Every
