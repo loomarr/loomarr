@@ -6174,3 +6174,105 @@ func reopenConformanceStore(t *testing.T, s Store) (Store, error) {
 	url := reopenURL(t, s)
 	return openExtended(t.Context(), url, store.DialectOf(s) != DialectPostgres)
 }
+
+// testCreativeIdentityMerge pins #2033's merge on both backends: folding a losing copy into its
+// survivor carries every airing, play, variant link, earlier inferior copy, curated name and
+// channel override onto the survivor, deletes the loser's rows, and remembers both of its
+// identities so neither is catalogued again.
+func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.UnixMilli(1_800_000_000_000).UTC()
+	mustSaveChannel(t, s, sampleChannel("channel-a", 1, time.Time{}))
+	mustSaveChannel(t, s, sampleChannel("channel-b", 2, time.Time{}))
+	loser := sampleClip("loser", "Burger Barn (curated)", filler.Commercial, 1988, filler.General, "food")
+	loser.NameSource = clipcatalog.NameFromCurated
+	survivor := sampleClip("survivor", "Untitled commercial", filler.Commercial, 1988, filler.General, "food")
+	survivor.NameSource = clipcatalog.NameFromGrounded
+	cutDown := sampleClip("cut-down", "Burger Barn 15", filler.Commercial, 1988, filler.General, "food")
+	earlier := sampleClip("earlier-copy", "Burger Barn", filler.Commercial, 1988, filler.General, "food")
+	for _, c := range []Clip{loser, survivor, cutDown, earlier} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One airing on each copy, one channel each; the loser's is the later one.
+	if _, err := s.RecordClipPlay(ctx, "channel-a", survivor.Hash, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordClipPlay(ctx, "channel-b", loser.Hash, now.Add(time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LinkClipVariants(ctx, loser.Hash, cutDown.Hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
+		ClipHash: earlier.Hash, SourceHash: "earlier-source", SurvivorHash: loser.Hash, DecidedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	channel := sampleChannel("pinned", 3, now)
+	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{loser.Hash}}
+	if _, err := s.SaveChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: survivor.Hash, SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
+		t.Fatal("a clip merged into itself")
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: "gone", SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
+		t.Fatal("a missing clip merged")
+	}
+	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
+		ClipHash: loser.Hash, SourceHash: "loser-source", SurvivorHash: survivor.Hash, DecidedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.GetClip(ctx, loser.Hash); err == nil {
+		t.Error("the losing copy's catalog row survived the merge")
+	}
+	got, err := s.GetClip(ctx, survivor.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PlayCount != 2 || !got.LastPlayedAt.Equal(now.Add(time.Hour)) {
+		t.Errorf("survivor plays = %d, last %v; want both copies' 2, latest %v", got.PlayCount, got.LastPlayedAt, now.Add(time.Hour))
+	}
+	if got.Name != loser.Name || got.NameSource != clipcatalog.NameFromCurated {
+		t.Errorf("survivor name = %q (%s), want the curated %q", got.Name, got.NameSource, loser.Name)
+	}
+	exposure, err := exposuresBefore(ctx, s, time.Time{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exposure[survivor.Hash].PlayCount != 2 || exposure[loser.Hash].PlayCount != 0 {
+		t.Errorf("household rotation = %+v, want both airings on the survivor", exposure)
+	}
+	variants, err := s.ListClipVariants(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(variants[cutDown.Hash], []string{survivor.Hash}) || len(variants[loser.Hash]) != 0 {
+		t.Errorf("variant links = %v, want the cut-down linked to the survivor only", variants)
+	}
+	inferior, err := s.InferiorCopyHashes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{loser.Hash, "loser-source", earlier.Hash, "earlier-source"} {
+		if !inferior[h] {
+			t.Errorf("inferior identity %q was not remembered: %v", h, inferior)
+		}
+	}
+	if inferior[survivor.Hash] {
+		t.Error("the survivor was remembered as inferior")
+	}
+	gotChannel, err := s.GetChannel(ctx, channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotChannel.Policy.Filler == nil || !reflect.DeepEqual(gotChannel.Policy.Filler.Pinned, []string{survivor.Hash}) {
+		t.Errorf("channel pin did not follow the merge: %+v", gotChannel.Policy.Filler)
+	}
+}

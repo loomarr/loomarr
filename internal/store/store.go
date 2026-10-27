@@ -487,6 +487,13 @@ type ClipStore interface {
 	// bad row is recomputed.
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
+	// MergeInferiorCopy, LinkClipVariants, ListClipVariants and InferiorCopyHashes own creative
+	// identity's durable state (#2033): copies folded into their survivor, linked variants, and
+	// the identities of copies that lost.
+	MergeInferiorCopy(ctx context.Context, c InferiorCopy) error
+	LinkClipVariants(ctx context.Context, a, b string) error
+	ListClipVariants(ctx context.Context) (map[string][]string, error)
+	InferiorCopyHashes(ctx context.Context) (map[string]bool, error)
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
