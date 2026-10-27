@@ -315,8 +315,18 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		}
 	}
 
-	// Bottom of the ladder: nothing content-bearing fits (no pins, no commercials), so the pod is
-	// just the embedded card and the break is never empty (§10 never dead air).
+	// No ad fits, so the break is the channel's own station material, resting or not (#2036). It
+	// still reports bumper_card, since no ad matched, but it plays: the card has no file.
+	trial := cloneSet(used)
+	if pod, ok := stationBreak(catalog, w, policy, trial, rng); ok {
+		for id := range trial {
+			used[id] = true
+		}
+		return pod
+	}
+
+	// Bottom of the ladder: nothing at all fits, so the pod is just the embedded card and the
+	// break is never empty (§10 never dead air).
 	pod := Pod{MatchLevel: MatchBumperCard}
 	pod.append(FallbackCard, used)
 	return pod
@@ -540,4 +550,27 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 		best++
 	}
 	return clipToEntry(bumpers[rng.Intn(best)], w, policy), true
+}
+
+// stationBreak fills a break that has no ad with bumpers and idents, in rotation order: never
+// aired, then least recently aired, resting ones last but still placed. A short pool is what puts
+// a break here (#2036), and a repeated ident is better than the card. It reports false when no
+// station clip fits.
+func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (Pod, bool) {
+	cands := sortByID(bookendCandidates(catalog, w, used))
+	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
+	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
+	pod := Pod{MatchLevel: MatchBumperCard}
+	remainingMs := w.GapMs
+	for _, c := range cands {
+		if len(pod.Entries) >= maxTailClips {
+			break
+		}
+		if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+			continue
+		}
+		pod.append(clipToEntry(c, w, policy), used)
+		remainingMs -= c.DurationMs
+	}
+	return pod, len(pod.Entries) > 0
 }
