@@ -27,6 +27,10 @@ type Geography struct {
 	//
 	// ⚠ Comma-joined ("GB,CA,AU"), not a slice, so Geography stays comparable: channels, sources
 	// and their tests compare geographies with ==.
+	//
+	// ⚠ Not serialised. Anything persisted with a Geography (a pull's intent) drops it, so a
+	// stored geography must never be trusted to carry the preference: read the live home again
+	// (pull approval re-checks every source against it).
 	Fallback string `json:"-"`
 }
 
@@ -56,17 +60,22 @@ func (g Geography) fallsBackTo(country string) bool {
 
 // RegionRank orders a country by the installation's preference: 0 for home (or no boundary), then
 // each fallback country in turn. A country outside both ranks last.
-func (g Geography) RegionRank(country string) int {
-	country = strings.ToUpper(strings.TrimSpace(country))
-	if g.Country == "" || country == g.Country {
-		return 0
+func (g Geography) RegionRank(country string) int { return g.regionRanker()(country) }
+
+// regionRanker is RegionRank with the preference parsed once, for ranking a whole catalog.
+func (g Geography) regionRanker() func(country string) int {
+	home := strings.ToUpper(strings.TrimSpace(g.Country))
+	fallback := fallbackCountries(g.Fallback, home)
+	return func(country string) int {
+		country = strings.ToUpper(strings.TrimSpace(country))
+		if home == "" || country == home {
+			return 0
+		}
+		if i := slices.Index(fallback, country); i >= 0 {
+			return i + 1
+		}
+		return len(fallback) + 1
 	}
-	// Capped to the byte ladderBand gives it.
-	fallback := fallbackCountries(g.Fallback, g.Country)
-	if i := slices.Index(fallback, country); i >= 0 {
-		return min(i+1, 255)
-	}
-	return min(len(fallback)+1, 255)
 }
 
 func (g Geography) Validate() error {

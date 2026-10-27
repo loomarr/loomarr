@@ -105,14 +105,14 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Every un-used clip once, at the tightest rung that holds it (the rungs nest).
 	var cands []rungClip
 	seen := map[string]bool{}
-	geography := effectiveGeography(w.Geography, policy.Geography)
+	regionOf := effectiveGeography(w.Geography, policy.Geography).regionRanker()
 	for rung, p := range pools {
 		for _, c := range sortByID(p.clips) {
 			if used[c.ID()] || seen[c.ID()] {
 				continue
 			}
 			seen[c.ID()] = true
-			cands = append(cands, rungClip{Clip: c, rung: rung, region: geography.RegionRank(c.Country)})
+			cands = append(cands, rungClip{Clip: c, rung: rung, region: regionOf(c.Country)})
 		}
 	}
 	if len(cands) == 0 {
@@ -192,25 +192,29 @@ type rungClip struct {
 }
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
-// inside its cooldown moved below all rested ones, and within a rung the home country's clips
-// before each fallback country's in preference order (#2035). Bands are what ladderLess orders.
-//
-// ⚠ Region yields to era: a fallback country's clip from the channel's own era outranks a home
-// clip from a widened one. The preference is "US first, then GB when US supply for an era runs
-// thin", and thin is per era.
+// inside its cooldown moved below all rested ones. Bands are what ladderLess orders.
 func ladderBand(c rungClip, w Window, policy Policy) int {
 	resting := 0
 	if tier, _ := rotationRank(c.Clip, w, policy); tier == rotationRecent {
 		resting = 1
 	}
-	return resting<<16 | c.rung<<8 | c.region // resting dominates; then the rung (0-2); then region
+	return resting<<8 | c.rung // resting dominates; the rung (0-2) orders within it
 }
 
 // ladderLess orders ladder candidates: by band (rested before resting, then tightest rung
-// first), then by durable rotation inside the band (new, then least recently played).
+// first), then the home country's clips before each fallback country's in preference order
+// (#2035), then by durable rotation (new, then least recently played).
+//
+// ⚠ Region orders WITHIN a band, never makes one: the variety pass runs per band, and a band per
+// country would stack two home beer ads before it reached a fallback car ad. Region also yields to
+// era: a fallback country's clip from the channel's own era outranks a home clip from a widened
+// one, since "US first, then GB when US supply for an era runs thin" is per era.
 func ladderLess(a, b rungClip, w Window, policy Policy) bool {
 	if ab, bb := ladderBand(a, w, policy), ladderBand(b, w, policy); ab != bb {
 		return ab < bb
+	}
+	if a.region != b.region {
+		return a.region < b.region
 	}
 	return rotationLess(a.Clip, b.Clip, w, policy)
 }

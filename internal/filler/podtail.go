@@ -125,7 +125,8 @@ func (p *Pod) widenTo(pools []pool, rung int) {
 }
 
 // tailBetter orders two rested clips that both fit: the durable rotation order, then the longer,
-// then an ad before a bookend. Equal clips keep their (seeded) position.
+// then an ad before a bookend. Equal clips keep their (seeded) position. Like the rung, the region
+// preference (#2035) does not rank here: the tail fills spare seconds with whatever fits best.
 func tailBetter(a, b tailCandidate, w Window, policy Policy) bool {
 	if rotationLess(a.Clip, b.Clip, w, policy) {
 		return true

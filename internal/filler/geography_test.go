@@ -84,6 +84,46 @@ func TestAssemble_FallbackCountriesFillInBehindHomeWithinAnEra(t *testing.T) {
 	}
 }
 
+// Region orders within a rung, so category variety still spans it: home, the fallback country's
+// different product, then home's second of the same product.
+func TestAssemble_FallbackRegionKeepsVarietyAcrossTheRung(t *testing.T) {
+	beer := func(id string) filler.Clip {
+		c := geoCommercial(id, filler.GeographicNational, "US", "")
+		c.Category = "beer"
+		return c
+	}
+	car := geoCommercial("gb-car", filler.GeographicNational, " gb ", "")
+	car.Category = "car"
+	pod := filler.Assemble([]filler.Clip{beer("us-beer-1"), beer("us-beer-2"), car},
+		filler.Window{Seed: 5, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 90_000, PodMax: 3},
+		filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "GB"}}, nil)
+	var cats []string
+	for _, e := range pod.Entries {
+		cats = append(cats, e.Category)
+	}
+	if want := []string{"beer", "car", "beer"}; !slices.Equal(cats, want) {
+		t.Fatalf("pod categories %v, want %v", cats, want)
+	}
+}
+
+// A channel narrowed to a market in the home country still inherits the preference, and a fallback
+// country's local ads stay out.
+func TestGeographicallyEligible_AMarketChannelInheritsTheFallback(t *testing.T) {
+	policy := filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "GB"}}
+	w := filler.Window{Seed: 2, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120_000, PodMax: 4,
+		Geography: filler.Geography{Country: "US", Market: "Seattle"}}
+	seen := map[string]bool{}
+	for _, e := range filler.Assemble([]filler.Clip{
+		geoCommercial("gb-national", filler.GeographicNational, "gb", ""),
+		geoCommercial("gb-local", filler.GeographicLocal, "GB", "London"),
+	}, w, policy, nil).Entries {
+		seen[e.Hash] = true
+	}
+	if !seen["gb-national"] || seen["gb-local"] {
+		t.Fatalf("a Seattle channel aired %v, want the GB national ad only", seen)
+	}
+}
+
 func TestSourceGeographicallyEligible_AFallbackCountryIsNationalOnly(t *testing.T) {
 	home := filler.Geography{Country: "US", Fallback: "GB"}
 	cases := []struct {
