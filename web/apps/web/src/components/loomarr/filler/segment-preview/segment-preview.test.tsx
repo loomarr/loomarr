@@ -105,9 +105,9 @@ describe("SegmentPreview", () => {
   // input — aria-labelledby on an input takes its value, renaming the button on every keystroke.
   it("takes its name from the visible row marker", () => {
     renderPreview();
-    // With no artwork the tile's own visible words join the name too (WCAG 2.5.3).
+    // With no artwork the tile's own visible words join the name too, timecode badge included (WCAG 2.5.3).
     expect(
-      screen.getByRole("button", { name: "Preview segment #1 Preview unavailable" }),
+      screen.getByRole("button", { name: "Preview segment #1 Preview unavailable 00:30" }),
     ).toBeInTheDocument();
   });
 

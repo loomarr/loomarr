@@ -213,7 +213,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 158,
+      "tailwindClasses": 159,
       "legacyUi": 5
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
@@ -229,7 +229,7 @@
       "legacyUi": 5
     },
     "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "tailwindClasses": 96,
+      "tailwindClasses": 97,
       "legacyUi": 2
     },
     "src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
@@ -241,7 +241,7 @@
       "legacyUi": 3
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 182,
+      "tailwindClasses": 183,
       "legacyUi": 7
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
@@ -268,7 +268,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/people/people-roster/people-roster.tsx": {
-      "tailwindClasses": 144,
+      "tailwindClasses": 145,
       "legacyUi": 4
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
@@ -520,7 +520,7 @@
       "legacyTokens": 1
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 265,
+      "tailwindClasses": 266,
       "legacyUi": 5
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
@@ -535,7 +535,7 @@
       "legacyUi": 2
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 187,
+      "tailwindClasses": 188,
       "legacyUi": 5
     },
     "src/diagnostics/server-status/server-status.tsx": {
@@ -610,7 +610,7 @@
       "legacyUi": 2
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 116,
+      "tailwindClasses": 117,
       "legacyUi": 4
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {

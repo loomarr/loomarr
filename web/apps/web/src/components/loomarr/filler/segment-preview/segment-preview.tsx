@@ -45,6 +45,7 @@ const SegmentPreview = ({
   const panelId = `seg-preview-${position}`;
   const verbId = `seg-preview-verb-${position}`;
   const unavailableId = `seg-preview-na-${position}`;
+  const spanId = `seg-preview-span-${position}`;
 
   const player = failed ? (
     <div
@@ -99,8 +100,12 @@ const SegmentPreview = ({
         // adjacent Name <input>: `aria-labelledby` on an input takes its VALUE, so the button
         // would be renamed on every keystroke. Anchoring to something on screen is also what the
         // compact-control rule asks for — an sr-only-only name drifts from what the operator sees.
-        // The tile's own visible words ("Preview unavailable") belong in the name too (WCAG 2.5.3).
-        aria-labelledby={artwork ? `${verbId} ${labelledBy}` : `${verbId} ${labelledBy} ${unavailableId}`}
+        // The tile's own visible words ("Preview unavailable", the timecode badge) belong in the
+        // name too, in reading order (WCAG 2.5.3). The badge stays aria-hidden so it is read once,
+        // as part of the name; labelledby still resolves hidden elements.
+        aria-labelledby={[verbId, labelledBy, !artwork && unavailableId, span > 0 && spanId]
+          .filter(Boolean)
+          .join(" ")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => {
@@ -140,6 +145,7 @@ const SegmentPreview = ({
             validation readout, this is a timecode badge on a thumbnail. */}
         {span > 0 && (
           <span
+            id={spanId}
             aria-hidden
             className="bg-static-950/85 text-static-100 absolute right-1 bottom-1 rounded-[2px] px-1 font-mono text-[9px]"
           >
