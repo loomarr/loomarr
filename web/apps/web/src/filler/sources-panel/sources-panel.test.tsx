@@ -545,7 +545,7 @@ describe("SourcesPanel", () => {
       "Find a specific clip",
     );
     expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
     unmount();
 
@@ -585,7 +585,7 @@ describe("SourcesPanel", () => {
     expect(workspace).toHaveTextContent("Look for new clips");
     expect(workspace).toHaveTextContent("Find a specific clip");
     expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Location" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
@@ -828,7 +828,7 @@ describe("SourcesPanel per-source search", () => {
     renderPanel(twoCollections);
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
@@ -855,7 +855,7 @@ describe("SourcesPanel per-source search", () => {
     renderPanel(twoCollections);
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -918,7 +918,7 @@ describe("SourcesPanel per-source search", () => {
     renderPanel(twoCollections);
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -945,7 +945,7 @@ describe("SourcesPanel per-source search", () => {
     );
     const first = renderPanel(twoCollections);
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -954,7 +954,7 @@ describe("SourcesPanel per-source search", () => {
 
     renderPanel(twoCollections);
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
@@ -979,14 +979,14 @@ describe("SourcesPanel per-source search", () => {
     renderPanel(twoCollections);
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await userEvent.click(screen.getByRole("button", { name: /^Manage Vintage PSAs/ }));
 
     expect(await screen.findByRole("dialog", { name: "Vintage PSAs" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /search this source/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: /search this source/i })).toHaveValue("");
   });
 

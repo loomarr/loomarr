@@ -721,7 +721,6 @@ const SourcesPanel = ({
                   className="border-border border-t pt-5"
                 >
                   <Disclosure.SectionTrigger
-                    label={`${browseOpen ? "Hide" : "Show"} tools for finding a specific clip`}
                     title="Find a specific clip"
                     description="Search this Archive.org collection by title or keyword."
                   />
@@ -776,7 +775,6 @@ const SourcesPanel = ({
                   className="border-border border-t pt-5"
                 >
                   <Disclosure.SectionTrigger
-                    label={`${settingsOpen ? "Hide" : "Show"} source settings`}
                     title="Source settings"
                     description="Automatic downloads, location, and removal"
                   />

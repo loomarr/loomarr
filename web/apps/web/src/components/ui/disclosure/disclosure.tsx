@@ -61,21 +61,25 @@ const DisclosureTrigger = ({ label, className }: DisclosureTriggerProps) => (
 // A sparse section has no sibling controls, so its complete visible header can be the trigger.
 // This keeps collapsed content discoverable and gives touch users a real hit target while the
 // icon-only Trigger above remains available for dense rows with independent actions.
-const DisclosureSectionTrigger = ({
-  label,
-  title,
-  description,
-  className,
-}: DisclosureSectionTriggerProps) => (
+//
+// ⚠ No aria-label: the whole header is visible, so WCAG 2.5.3 needs the name to contain it. The
+// name is the header itself, and `aria-expanded` (from Base UI) says whether it is open. The
+// trigger is `relative` so the sr-only context span resolves against it, not the viewport.
+const DisclosureSectionTrigger = ({ title, context, description, className }: DisclosureSectionTriggerProps) => (
   <Collapsible.Trigger
-    aria-label={label}
     className={cn(
-      "group hover:bg-static-800 -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors",
+      "group hover:bg-static-800 relative -mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-left transition-colors",
       className,
     )}
   >
     <span className="min-w-0 flex-1">
-      <span className="block font-medium">{title}</span>
+      <span className="block font-medium">
+        {title}
+        {context && " "}
+        {context && <span className="sr-only">{context}</span>}
+      </span>
+      {/* The parts are block spans; this space keeps the name's words apart where CSS isn't applied. */}
+      {description && " "}
       {description && <span className="text-muted-foreground mt-1 block text-sm">{description}</span>}
     </span>
     <ChevronDown

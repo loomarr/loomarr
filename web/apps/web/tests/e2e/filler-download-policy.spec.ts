@@ -55,7 +55,7 @@ test("automatic downloads expose simple defaults with optional per-source contro
       name: "Manage Classic television commercials from a deliberately long collection name",
     })
     .click();
-  await page.getByRole("button", { name: "Show source settings" }).click();
+  await page.getByRole("button", { name: /^Source settings/, expanded: false }).click();
 
   await expect(page.getByText("Uses your defaults: every 12 hours, up to 4 clips each check.")).toBeVisible();
   await expect(page.getByText(/^Next automatic check /)).toBeVisible();
@@ -137,7 +137,7 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
     name: "Classic television commercials from a deliberately long collection name",
   });
   await expect(workspace).toBeVisible();
-  const sourceSettings = workspace.getByRole("button", { name: "Show source settings" });
+  const sourceSettings = workspace.getByRole("button", { name: /^Source settings/, expanded: false });
   await sourceSettings.focus();
   await page.keyboard.press("Enter");
   await expect(

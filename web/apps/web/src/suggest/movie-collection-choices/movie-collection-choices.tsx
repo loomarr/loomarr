@@ -97,8 +97,8 @@ const MovieCollectionChoices = ({
             <Disclosure>
               <Disclosure.SectionTrigger
                 className="mt-1 py-1.5 text-sm"
-                label={`Choose films from ${collection.name}`}
                 title="Choose films"
+                context={`from ${collection.name}`}
               />
               <Disclosure.Panel className="pt-1">
                 <ul className="divide-border border-border divide-y border-t">
