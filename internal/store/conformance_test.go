@@ -106,6 +106,11 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
 	})
 
+	t.Run("Holidays", func(t *testing.T) {
+		t.Run("SeededOnOpen", func(t *testing.T) { testHolidaysSeededOnOpen(t, newStore) })
+		t.Run("FollowSeasonalTaxa", func(t *testing.T) { testHolidaysFollowSeasonalTaxa(t, newStore) })
+	})
+
 	t.Run("Notifications", func(t *testing.T) {
 		t.Run("LifecycleAndIdempotency", func(t *testing.T) { testNotificationLifecycle(t, newStore) })
 		t.Run("ProductVocabulary", func(t *testing.T) { testNotificationProductVocabulary(t, newStore) })

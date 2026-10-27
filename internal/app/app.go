@@ -190,7 +190,7 @@ func buildHandler(
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
-		playbackHeadroomFor(channelsBuilt.resourceBudget), owner,
+		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.

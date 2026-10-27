@@ -36,15 +36,15 @@ type Holiday struct {
 // Words are the phrases that tie a title to a holiday.
 type Words struct {
 	// Intents name the holiday in a channel request ("a Halloween channel").
-	Intents []string `json:"intents,omitempty"`
+	Intents []string `json:"intents"`
 	// Names name the holiday itself. Any one, outside the look-alikes, is proof.
-	Names []string `json:"names,omitempty"`
+	Names []string `json:"names"`
 	// LookAlikes contain a name without naming the holiday ("santa monica").
-	LookAlikes []string `json:"lookAlikes,omitempty"`
+	LookAlikes []string `json:"lookAlikes"`
 	// Moods fit the holiday's mood. One counts only when the genres or the air date corroborate it.
-	Moods []string `json:"moods,omitempty"`
+	Moods []string `json:"moods"`
 	// MoodGenres corroborate a mood: any one inner set fully present in the genres.
-	MoodGenres [][]string `json:"moodGenres,omitempty"`
+	MoodGenres [][]string `json:"moodGenres"`
 }
 
 func (w Words) none() bool {
@@ -54,7 +54,9 @@ func (w Words) none() bool {
 // Vocabulary is one validated snapshot of the holiday definitions, in display order.
 type Vocabulary struct{ holidays []Holiday }
 
-var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+// slugPattern is the taxonomy's: a holiday's id is the slug of the seasonal taxon it owns, so any
+// seasonal taxon an operator made can become a holiday.
+var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:[-_][a-z0-9]+)*$`)
 
 // New validates holidays into a Vocabulary.
 func New(holidays []Holiday) (Vocabulary, error) {
@@ -173,7 +175,7 @@ func (v Vocabulary) InSeason(id, country string, t time.Time) bool {
 	if len(h.Members) > 0 {
 		return slices.ContainsFunc(h.Members, func(m string) bool { return v.InSeason(m, country, t) })
 	}
-	k, ok := h.keptIn(v.keeper(country))
+	k, ok := h.keptIn(v.CalendarCountry(country))
 	return ok && spans(k.Rule, t)
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -436,6 +437,9 @@ type ClipStore interface {
 	// PreviewTaxonomyEdit validates the same prospective graph and reports the stored/playable
 	// library facts whose derived taxonomy meaning may change, without mutating the graph.
 	PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error)
+	// ListHolidays returns every stored holiday definition in display order (#2030). Each owns the
+	// seasonal taxon of its id; ApplyTaxonomyEdit keeps the two one-to-one.
+	ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error)
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
 	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from

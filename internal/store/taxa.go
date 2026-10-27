@@ -133,10 +133,8 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if s.dialect == DialectPostgres {
-		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
-			return fmt.Errorf("edit taxonomy: lock: %w", err)
-		}
+	if err := s.lockTaxonomyTx(ctx, tx); err != nil {
+		return fmt.Errorf("edit taxonomy: %w", err)
 	}
 	existing, err := listTaxaFrom(ctx, tx)
 	if err != nil {
@@ -160,6 +158,11 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 		}
 	}
 
+	afterTaxonWrite, err := s.syncTaxonHolidayTx(ctx, tx, current, edit, at)
+	if err != nil {
+		return err
+	}
+
 	if edit.Delete {
 		parent := current.Parent
 		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE taxa SET parent = ?, updated_at = ? WHERE parent = ?`), parent, epoch(at), slug); err != nil {
@@ -172,6 +175,9 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 			return fmt.Errorf("delete taxon %s: %w", slug, err)
 		}
 	} else if err := s.upsertTaxonTx(ctx, tx, edit.Taxon, at); err != nil {
+		return err
+	}
+	if err := afterTaxonWrite(); err != nil {
 		return err
 	}
 
@@ -188,6 +194,19 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 	return tx.Commit()
 }
 
+// lockTaxonomyTx serialises a graph writer — an operator edit or a boot seed — against every other
+// on Postgres, whose READ COMMITTED transactions would otherwise validate different snapshots.
+// SQLite already admits one writer at a time.
+func (s *sqlStore) lockTaxonomyTx(ctx context.Context, tx *sql.Tx) error {
+	if s.dialect != DialectPostgres {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
+		return fmt.Errorf("lock taxonomy: %w", err)
+	}
+	return nil
+}
+
 // PreviewTaxonomyEdit validates the same prospective graph ApplyTaxonomyEdit will use and returns
 // the stored knowledge and playable clips whose derived lineage could change. It performs no write;
 // callers must still treat ApplyTaxonomyEdit as authoritative if another editor wins the race.
@@ -201,6 +220,16 @@ func (s *sqlStore) PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (
 	_, current, err := planTaxonomyEdit(existing, edit)
 	if err != nil {
 		return TaxonomyEditImpact{}, err
+	}
+	// The same refusal Apply makes, so a preview never promises an edit Apply rejects.
+	if !edit.Create && current.Axis == taxonomy.AxisSeasonal && (edit.Delete || edit.Taxon.Axis != taxonomy.AxisSeasonal) {
+		holidays, err := s.ListHolidays(ctx)
+		if err != nil {
+			return TaxonomyEditImpact{}, err
+		}
+		if err := refuseHolidayRetirement(current.Slug, holidays); err != nil {
+			return TaxonomyEditImpact{}, err
+		}
 	}
 
 	impact := TaxonomyEditImpact{}

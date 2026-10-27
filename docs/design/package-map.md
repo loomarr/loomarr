@@ -24,7 +24,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `diagnostics` | 7 | `storagegovernor` |
 | `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
-| `holidayvocab` | 6 | — |
+| `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
@@ -39,7 +39,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `schedule` | 19 | `holidayvocab`, `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
 | `storagegovernor` | 6 | — |
-| `store` | 15 | `contact`, `diagnostics`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 15 | `contact`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -136,7 +136,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
-- **`holidayvocab`** · 6 importers · → `textmatch`
+- **`holidayvocab`** · 7 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`invitation`** · 6 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
@@ -183,7 +183,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`store`** · 15 importers · → `clipcatalog`, `contact`, `diagnostics`, `episodeevidence`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 15 importers · → `clipcatalog`, `contact`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 5

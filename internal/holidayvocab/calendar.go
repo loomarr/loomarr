@@ -34,7 +34,7 @@ type MonthDay struct {
 
 // DayRule finds a holiday's own date in a year.
 type DayRule struct {
-	Kind    DayKind      `json:"kind"`
+	Kind    DayKind      `json:"kind" enum:"fixed,nth_weekday,last_weekday,easter"`
 	Month   time.Month   `json:"month,omitempty"`
 	Day     int          `json:"day,omitempty"`
 	Weekday time.Weekday `json:"weekday,omitempty"`
@@ -44,7 +44,7 @@ type DayRule struct {
 
 // WindowRule lays a holiday's season, as whole dates.
 type WindowRule struct {
-	Kind   WindowKind `json:"kind"`
+	Kind   WindowKind `json:"kind" enum:"range,around"`
 	From   MonthDay   `json:"from,omitzero"`
 	To     MonthDay   `json:"to,omitzero"`
 	Before int        `json:"before,omitempty"`
@@ -183,7 +183,7 @@ func validCountry(c string) error {
 // a country no holiday names keeps none. Undated and group holidays are not on it: a group has no
 // window of its own (InSeason answers for it).
 func (v Vocabulary) Calendar(country string) []Observance {
-	country = v.keeper(country)
+	country = v.CalendarCountry(country)
 	var out []Observance
 	for _, h := range v.holidays {
 		if k, ok := h.keptIn(country); ok {
@@ -209,10 +209,10 @@ func (v Vocabulary) Countries() []string {
 	return out
 }
 
-// keeper is the country whose calendar country reads: itself when some holiday is kept there, else
-// the US, so a household in a country no definition names keeps the calendar every household had
-// before countries rather than none.
-func (v Vocabulary) keeper(country string) string {
+// CalendarCountry is the country whose calendar country reads: itself when some holiday is kept
+// there, else the US, so a household in a country no definition names keeps the calendar every
+// household had before countries rather than none.
+func (v Vocabulary) CalendarCountry(country string) string {
 	country = strings.ToUpper(strings.TrimSpace(country))
 	if slices.Contains(v.Countries(), country) {
 		return country

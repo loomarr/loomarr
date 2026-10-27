@@ -54,8 +54,11 @@ type foundationBuild struct {
 	protection             *secretprotection.Manager
 	secretRedactor         *settings.Redactor
 	storageGovernor        *storagegovernor.Governor
-	// holidays is the one source of holiday definitions every consumer reads (#2030).
+	// holidays is the one source of holiday definitions every consumer reads (#2030): the stored
+	// holidays' snapshot, or the shipped ones with no store.
 	holidays holidayvocab.Source
+	// reloadHolidays rereads the snapshot after this process changes the stored holidays.
+	reloadHolidays func(context.Context)
 }
 
 // buildFoundation creates the shared roots consumed by later subsystem builders. The returned
@@ -67,7 +70,7 @@ func buildFoundation(
 	overrides Overrides,
 	owner *generationLifecycle,
 ) (foundationBuild, error) {
-	result := foundationBuild{holidays: holidayvocab.Default}
+	result := foundationBuild{holidays: holidayvocab.Default, reloadHolidays: func(context.Context) {}}
 	info := buildinfo.Get()
 	database := string(store.DialectOf(st))
 	if database == "" {
@@ -116,6 +119,11 @@ func buildFoundation(
 		result.clientCrashes = diagnostics.NewClientCrashes(st, time.Now)
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
+
+		holidays := newHolidaySnapshot(st, log)
+		holidays.Reload(rootCtx)
+		owner.goRunAfterBuild(holidays.Run)
+		result.holidays, result.reloadHolidays = holidays.Current, holidays.Reload
 	}
 	if st != nil {
 		protection, err := buildSecretProtection(rootCtx, st, overrides.DataDir)

@@ -61,6 +61,8 @@ type fakeChannelSvc struct {
 	cycleActive schedule.ActiveRuleAttribution // returned attribution
 	cycleWindow time.Duration                  // returned window
 	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
+	// calendar is the household holiday calendar Calendar returns (zero = the US, shipped holidays).
+	calendar schedule.Calendar
 	// cycleExcluded is the §4 exclusion report the draft preview reports back — what the
 	// audience ceiling / scope filters refused.
 	cycleExcluded schedule.ExclusionReport
@@ -87,7 +89,7 @@ func (f *fakeChannelSvc) Purge(ctx context.Context, id string) error {
 	return f.err
 }
 
-func (f *fakeChannelSvc) Calendar() schedule.Calendar { return schedule.Calendar{} }
+func (f *fakeChannelSvc) Calendar() schedule.Calendar { return f.calendar }
 
 func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,

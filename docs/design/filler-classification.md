@@ -171,6 +171,10 @@ seeded with a default forest.
 - **The graph is valid or the edit does not happen.** Slugs, synonyms and aliases are unique; parents
   exist on the same axis; cycles and cross-axis edges are refused. Deleting a taxon with directly
   asserted clips is refused; deleting an unused intermediate reparents its children.
+- **A seasonal taxon is a holiday's.** Each seasonal taxon owns one row in `holidays` (its dates
+  and words, programming-design §6), in the same transaction as the graph edit. A new seasonal
+  taxon gets an undated holiday; deleting the taxon, or moving it off the seasonal axis, retires
+  the holiday only while it is undated. A dated or group holiday is retired from the holidays.
 - **Edits are previewed through the same prospective-graph contract they commit**: affected clips,
   playable clips, lineage changes, channel selections and resolver terms, computed by the server.
 - **Rollups are stored denormalised** so `WHERE taxon = 'food'` is one index hit. A `taxa_closure`

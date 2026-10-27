@@ -46,6 +46,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
+	srv.registerHolidays(humaAPI)
 	srv.registerSetup(humaAPI)
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)

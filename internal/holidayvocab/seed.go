@@ -187,3 +187,16 @@ func Seed() []Holiday {
 		},
 	}
 }
+
+// SeedRevision is one shipped addition to the stored holidays, applied once per installation: a
+// holiday whose id is already stored is left as the operator has it, and one the operator later
+// retires stays retired. A later revision lists only the holidays it adds to Seed.
+type SeedRevision struct {
+	Version  int
+	Holidays []Holiday
+}
+
+// SeedRevisions is every shipped revision, oldest first.
+func SeedRevisions() []SeedRevision {
+	return []SeedRevision{{Version: 1, Holidays: Seed()}}
+}

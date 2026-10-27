@@ -106,6 +106,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
+	srv.registerHolidays(humaAPI)
 	srv.registerSetup(humaAPI)
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
