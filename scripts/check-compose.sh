@@ -28,8 +28,8 @@ if printf '%s\n' "$sqlite" | grep -q 'DATABASE_URL:'; then
 	echo 'compose-verify: SQLite deployment pins DATABASE_URL and disables in-app migration' >&2
 	exit 1
 fi
-printf '%s\n' "$sqlite" | grep -q 'image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42'
-printf '%s\n' "$sqlite" | grep -q 'image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
+printf '%s\n' "$sqlite" | grep -q 'image: traefik:v3.7.16@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65'
+printf '%s\n' "$sqlite" | grep -q 'image: busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 # shellcheck disable=SC2016 # the backticks are literal Traefik rule syntax
 printf '%s\n' "$sqlite" | grep -q 'providers.docker.constraints=Label(`media.loomarr.edge`,`true`)'
 printf '%s\n' "$sqlite" | grep -q -- '--ping.entrypoint=health'
@@ -74,7 +74,7 @@ postgres="$(
 		--profile postgres config 2>/dev/null
 )"
 printf '%s\n' "$postgres" | grep -q "image: ghcr.io/loomarr/loomarr:$VERSION"
-printf '%s\n' "$postgres" | grep -q 'image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94'
+printf '%s\n' "$postgres" | grep -q 'image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97'
 printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable'
 if printf '%s\n' "$postgres" | grep -q 'DATABASE_URL: sqlite:'; then
 	echo 'compose-verify: postgres deployment resolved Loomarr to SQLite' >&2

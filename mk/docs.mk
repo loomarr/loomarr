@@ -15,8 +15,8 @@
 # ⚠ lychee publishes no semver tags on Docker Hub — only `sha-*`, `nightly` and `master`. The
 # sha tag is the pin; `latest` does not exist for this image and `master` is a moving target.
 LYCHEE_IMAGE ?= lycheeverse/lychee:sha-c36b9aa-alpine
-VALE_IMAGE   ?= jdkato/vale:v3.17.1
-D2_IMAGE     ?= terrastruct/d2:v0.7.1@sha256:810f69aff66636a75ab0b14afaca7d9055698ebe3a54274b477b351dffef9b58
+VALE_IMAGE   ?= jdkato/vale:v3.24.0
+D2_IMAGE     ?= terrastruct/d2:v0.9.0@sha256:0f9237e0213338415de5ef7436c92450ddd04e0e6e7df2db3f41387322df97b9
 DOCKER_DOC   := docker run --rm -v "$(CURDIR)":/work -w /work
 
 .PHONY: diagrams
@@ -32,7 +32,7 @@ docs-lint: diagrams-verify docs-lint-md docs-lint-links docs-lint-paths docs-lin
 
 .PHONY: docs-lint-md
 docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.jsonc)
-	npx --yes markdownlint-cli2@0.23.2
+	npx --yes markdownlint-cli2@0.24.0
 
 .PHONY: docs-lint-links
 docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.toml for why)

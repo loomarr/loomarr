@@ -50,7 +50,7 @@ func TestVerifyIOSTestFlightWorkflow(t *testing.T) {
 		{name: "secrets cannot reach the build step environment", mutate: replaceOnce("          RELEASE_VERSION: ${{ needs.plan.outputs.version }}\n", "          RELEASE_VERSION: ${{ needs.plan.outputs.version }}\n          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}\n", t), wantErr: true},
 		{name: "build version comes from the plan", mutate: replaceOnce("          RELEASE_VERSION: ${{ needs.plan.outputs.version }}\n", "          RELEASE_VERSION: ${{ inputs.version }}\n", t), wantErr: true},
 		{name: "validation cannot be skipped", mutate: replaceOnce("        run: ./web/scripts/build-ios-testflight.sh validate\n", "        if: false\n        run: ./web/scripts/build-ios-testflight.sh validate\n", t), wantErr: true},
-		{name: "mutable actions are rejected", mutate: replaceOnce("actions/setup-node@820762786026740c76f36085b0efc47a31fe5020", "actions/setup-node@v7", t), wantErr: true},
+		{name: "mutable actions are rejected", mutate: replaceOnce("actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1", "actions/setup-node@v7", t), wantErr: true},
 		{name: "plan checkout is pinned", mutate: replaceOnce("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          fetch-depth: 0", "actions/checkout@v7\n        with:\n          fetch-depth: 0", t), wantErr: true},
 		{name: "second job is rejected", mutate: replaceOnce("jobs:\n", "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo bypass\n", t), wantErr: true},
 	}

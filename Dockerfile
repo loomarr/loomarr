@@ -9,12 +9,12 @@
 # placeholder and serves a "not built" notice — the UI would be missing. Runs on
 # the BUILD platform (native), never emulated: the output is portable static assets.
 # codegen reads the committed api/openapi.yaml (orval) — no running server needed.
-# Node 22.23.2 satisfies the repository's >=22.5 <23 contract and includes the
+# Node 22.23.4 satisfies the repository's >=22.5 <23 contract and includes the
 # built-in `node:sqlite` pnpm 11.13 uses for its store index. Keep the image on the
 # same major CI and contributors certify; a release build is not the place to trial
 # the next Node line. Corepack is separately pinned because it is no longer bundled
 # in newer official Node images.
-FROM --platform=$BUILDPLATFORM node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS fe
+FROM --platform=$BUILDPLATFORM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS fe
 RUN npm install -g corepack@0.36.0 && corepack enable
 WORKDIR /src
 COPY web ./web
@@ -55,7 +55,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
 # libwebp and Rust standard library always match the runtime architecture.
-FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS image-worker
+FROM rust:1.99-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS image-worker
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust ./rust
@@ -116,7 +116,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
 # `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
 # image-worker bases above.
-FROM debian:stable-slim@sha256:04634311a8d5fc442b6eb06d792293c4f3e2268652ca7634e00ce8ef5cc0a28a AS runtime
+FROM debian:stable-slim@sha256:a717a33469731894e77e912ea7d714e27c2dc38ee6554fd1a3102e92999cfc66 AS runtime
 ARG TARGETARCH
 # The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
 # resolves the SAME package versions on every build — the digest-pinned base above fixes the root
@@ -125,18 +125,18 @@ ARG TARGETARCH
 # the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
 # pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
 # digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
-ARG DEBIAN_SNAPSHOT=20260824T000000Z
-ARG YTDLP_VERSION=2026.08.19
-ARG DENO_VERSION=v2.9.6
+ARG DEBIAN_SNAPSHOT=20261020T213255Z
+ARG YTDLP_VERSION=2026.10.26
+ARG DENO_VERSION=v2.9.8
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
 # are the fail-closed identity. Keep both architectures explicit: a version tag alone
 # does not stop an asset from being replaced, and one architecture must never inherit
 # the other's checksum.
-ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
-ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
-ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
-ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
+ARG YTDLP_AMD64_SHA256=767ba9dce7052aa196f8b12652f433d76de128ba168966fa84b6394d5e6c6795
+ARG YTDLP_ARM64_SHA256=e87e9533e89fe5889abaa21f5114dfe7756d6aa6219b83551add04d48b18e483
+ARG DENO_AMD64_SHA256=e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609
+ARG DENO_ARM64_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AND THE PICTURE CHECKS AGAINST THE NEW BUILD.
 #
 # A GPU filter that silently produces nothing is fast and exits 0 (#1516: tonemap_vaapi aired black;

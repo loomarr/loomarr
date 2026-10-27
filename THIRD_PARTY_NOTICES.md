@@ -76,7 +76,7 @@ the release SBOM.
 
 ## Compose deployment companion (not in the Loomarr image)
 
-The supported Docker Compose topology starts the official `traefik:v3.7.1` image as its HTTP edge,
+The supported Docker Compose topology starts the official `traefik:v3.7.16` image as its HTTP edge,
 pinned by multi-architecture manifest digest in `docker/compose.yaml`. Traefik is MIT-licensed. It
 is pulled separately and is not part of Loomarr's OCI image or Loomarr's BuildKit SBOM.
 

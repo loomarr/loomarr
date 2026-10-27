@@ -184,7 +184,7 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 	}
 	want := map[string]struct{ release, releaseCommit, source, build, releaseRev, sourceRev, buildRev string }{
 		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27", "8267213e26c1031621e6e1210fe3aa4867214f6a", "https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a", "autobuild-2026-08-31-13-27", "e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "8267213e26c1031621e6e1210fe3aa4867214f6a"},
-		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/tree/3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/bundle/pyinstaller.py", "2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "3a08beaf031ab68f966401ead017ac81fe8486cf"},
+		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26", "f264a6cbd1f630894da0f368df00f8aae50140e0", "https://github.com/yt-dlp/yt-dlp/tree/f264a6cbd1f630894da0f368df00f8aae50140e0", "https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/bundle/pyinstaller.py", "2026.10.26", "f264a6cbd1f630894da0f368df00f8aae50140e0", "f264a6cbd1f630894da0f368df00f8aae50140e0"},
 	}
 	w, ok := want[artifact.Name]
 	if !ok || artifact.Upstream.ReleaseURL != w.release || artifact.Upstream.ReleaseCommit != w.releaseCommit || artifact.Upstream.SourceURL != w.source || artifact.Upstream.BuildURL != w.build || artifact.Upstream.ReleaseRev != w.releaseRev || artifact.Upstream.SourceRev != w.sourceRev || artifact.Upstream.BuildRev != w.buildRev {
@@ -204,7 +204,7 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 	}
 	expectedLicenses := map[string][]string{
 		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/e47273f4d9227152dcbf543cebaf9e2430ddbcc4/COPYING.GPLv3"},
-		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/SHA2-256SUMS"},
+		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/f264a6cbd1f630894da0f368df00f8aae50140e0/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/SHA2-256SUMS"},
 	}
 	if !slices.Equal(artifact.Upstream.LicenseURLs, expectedLicenses[artifact.Name]) {
 		return errors.New("license URL set differs from the researched authority")
