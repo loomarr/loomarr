@@ -305,3 +305,50 @@ render through the shared frontend `Image` primitive. An animated filler hover m
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
+
+## Bundled FFmpeg pin
+
+The image ships BtbN's newest release-series GPL build of FFmpeg (`nX.Y` builds, never master's
+`N-` builds), pinned by build id and per-architecture SHA256. BtbN keeps only its newest 14 daily
+releases and deletes each build's dependency download cache after 14 days. Each pin is therefore
+published, together with its corresponding source, as a Loomarr `third-party-sources-<date>` release.
+The image and CI download the binaries from that release, never from BtbN.
+
+`scripts/ffmpeg-pin-refresh.sh` does the whole update:
+
+```sh
+./scripts/ffmpeg-pin-refresh.sh check                   # newest BtbN build vs the pin; changes nothing
+./scripts/ffmpeg-pin-refresh.sh dry-run .artifacts/ffmpeg-pin   # download, verify, stage; no publish, no write
+./scripts/ffmpeg-pin-refresh.sh publish .artifacts/ffmpeg-pin   # publish the release, rewrite the pin
+```
+
+`publish` finds the BtbN run that published the newest autobuild and downloads both GPL archives,
+checking them against BtbN's checksums. It also downloads the FFmpeg source archive at the build's
+commit, the BtbN recipe archive at the commit the run built, and the run's `download-cache`
+artifact. It fails if that artifact has expired. It then publishes the release, which is split into
+parts over GitHub's 2 GiB asset limit, and checks every published asset's digest. Last, it rewrites:
+
+- the five `FFMPEG_*` ARGs in the `Dockerfile`;
+- the ffmpeg entry in `project/evidence/redistribution-manifest-v1.json`;
+- `project/evidence/source-distribution-<date>.json` and `project/evidence/ffmpeg-pin-<date>.md`;
+- the `ffmpeg-pin` block in `THIRD_PARTY_NOTICES.md`.
+
+`internal/releaseverify` fails unless the pinned build's source release is recorded with both
+binaries, the source, the recipe and the cache.
+
+The **FFmpeg pin refresh** workflow runs it every Monday and on dispatch (`dry_run` stages only).
+When BtbN has a newer build, the workflow publishes the release and pushes `deps/ffmpeg-<build>`. It
+then opens a PR and dispatches `ci.yml` with `scope=full`, because a bot push triggers no CI. That
+CI run builds the image on amd64 and arm64 and runs `make test-ffmpeg` against the image's own
+ffmpeg, which includes the software-encode picture checks
+(`TestLive_SoftwareRungsProduceAPictureInOneFormat` fails on a black picture). A new release series
+opens as a draft labelled `ready-for-human`; it merges only after explicit approval.
+
+CI has no GPU. Before merging a pin PR, run the GPU checks on a GPU host, one at a time, with each
+GPU command under `flock /tmp/loomarr-gpu.lock`:
+
+1. Put the pinned ffmpeg first on `PATH`. Then run `make test-ffmpeg` against it, and once against
+   the previous pin.
+2. Encode the packager's arguments (`packagerItemArgs`) for the software and hardware paths, SDR and
+   HDR, from a non-black 1080p source. Check the output with `signalstats`: YAVG and YMAX must be well
+   above 16 and match the previous pin. Look at a saved frame from each path.

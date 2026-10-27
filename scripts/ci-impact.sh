@@ -565,6 +565,8 @@ classify() {
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
+        # Rewrites the FFmpeg pin evidence that internal/releaseverify (contracts) verifies.
+        scripts/ffmpeg-pin-refresh.sh) select_gate contracts; select_gate policy ;;
         scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/tuner-args*|scripts/flake-quarantine*) select_gate tuner; select_gate policy ;;
@@ -802,7 +804,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/ffmpeg-pin-refresh.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
       known=true
       select_gate policy
       ;;

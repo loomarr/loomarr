@@ -116,19 +116,18 @@ binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
 
-⚠ The source release for the current FFmpeg pin (`n9.0.2-17-g2a571b6068`, see "GPL source
-distribution" below) is **not yet published**; an image with this pin must not be released until it
-is. The releases below are for the previous pins. Their FFmpeg and yt-dlp source materials are
-available without authentication or charge in two Loomarr source releases. The
+The shipped FFmpeg's binaries and corresponding source are available without authentication or charge
+in the Loomarr source release named under [GPL source distribution (ffmpeg)](#gpl-source-distribution-ffmpeg)
+below. Earlier releases stay published for the earlier pins: the
 [n9.0.1 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
-carries the previous `n9.0.1-11-ge47273f4d9` build's exact source, BtbN build recipe and original
-dependency download cache.
+carries the `n9.0.1-11-ge47273f4d9` build's exact source, BtbN build recipe and original dependency
+download cache.
 The [August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31)
 carries yt-dlp, the retained dependency and runtime sources and license texts: download
 `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`. Verify every download against its
 release's `SHA256SUMS`. Each `README.txt` explains the contents; the August
 `source-package-inventory.json` records all 490 source/license file hashes. The distribution records
-([n9.0](project/evidence/source-distribution-2026-09-27.json),
+(the current pin's, named below; [n9.0.1](project/evidence/source-distribution-2026-09-27.json),
 [August](project/evidence/source-distribution-2026-08-31.json)) bind public asset URLs, sizes
 and SHA256 digests to the accepted dependency pins. These directions
 ship in the image at `/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md`. Application release notes link
@@ -166,21 +165,20 @@ in the public domain. The image satisfies the license's notice condition by reta
 
 ### GPL source distribution (ffmpeg)
 
-The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n9.0` series. The
-[`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
-`autobuild-2026-09-30-13-08`, build `n9.0.2-17-g2a571b6068`, verified by per-architecture SHA256
-(`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
-bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
-The evidence manifest also binds BtbN's pruning policy at the release commit: ordinary daily
-archives expire after the newest 14, while one archive per month is retained for 24 months.
+<!-- ffmpeg-pin:begin -->
+The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build. The [`Dockerfile`](Dockerfile) pins BtbN
+autobuild `autobuild-2026-10-26-14-25`, build `n9.0.2-36-g6882969ce9`, by per-architecture SHA256, and downloads both archives from
+Loomarr's own source release [`third-party-sources-2026-10-27`](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-10-27). That release also carries the exact FFmpeg source
+(`6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d`), BtbN's build recipe (`937868360a21d711ec94a33f5591d345ad9b7754`) and the build's original dependency download
+cache. [`source-distribution-2026-10-27.json`](project/evidence/source-distribution-2026-10-27.json) binds
+each asset's URL, size and SHA256, and the [pin record](project/evidence/ffmpeg-pin-2026-10-27.md) gives the
+provenance.
+<!-- ffmpeg-pin:end -->
 
-The September build (`n9.0.2-17-g2a571b6068`, FFmpeg source commit
-`2a571b606854520cf89804d8030c8b328e621689`, BtbN build scripts and retention policy at
-`6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b`) replaces the August n9.0 build. Its
-[retention record](project/evidence/ffmpeg-september-source-retention.md) binds the binary and source
-archives to the pins. ⚠ Unlike August, BtbN's original dependency download cache for this build had
-already expired (run artifacts are kept 14 days), and the source release for this pin is **not yet
-published**; the record states what remains. The August record below describes the previous pin.
+Since beta.9 the pin follows BtbN's newest release-series build rather than a retained monthly one.
+BtbN prunes daily releases, so Loomarr mirrors the binary archives in its own source release and the
+image downloads them from there; each source release also carries the build's original dependency
+download cache, which BtbN keeps for only 14 days. The paragraphs below record the earlier pins.
 
 The August build replaced July because its original upstream dependency download cache and build
 logs were retained before expiry. The [retention record](project/evidence/ffmpeg-august-source-retention.md)

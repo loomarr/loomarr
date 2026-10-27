@@ -57,7 +57,7 @@ exit 2
 				t.Fatal(err)
 			}
 			digest := fmt.Sprintf("%x", sha256.Sum256(bytes))
-			writeFixtureFile(t, filepath.Join(root, "Dockerfile"), "ARG FFMPEG_RELEASE=autobuild-2026-07-31-14-10\nARG FFMPEG_BUILD_ID="+buildID+"\nARG FFMPEG_AMD64_SHA256="+digest+"\n")
+			writeFixtureFile(t, filepath.Join(root, "Dockerfile"), "ARG FFMPEG_RELEASE=autobuild-2026-07-31-14-10\nARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-08-01\nARG FFMPEG_BUILD_ID="+buildID+"\nARG FFMPEG_AMD64_SHA256="+digest+"\n")
 			cache := filepath.Join(root, "cache")
 			cached := filepath.Join(cache, build+".tar.xz")
 			if scenario != "download" && scenario != "corrupt download" {
@@ -148,12 +148,14 @@ func TestCIFFmpegDownloadRetriesAConnectionReset(t *testing.T) {
 		t.Fatalf("curl is required: %v", err)
 	}
 	const release = "autobuild-2026-07-31-14-10"
+	const mirror = "third-party-sources-2026-08-01"
 	const buildID = "n8.1.2-34-g9b6c8969e0"
 	const archive = "ffmpeg-" + buildID + "-linux64-gpl-8.1.tar.xz"
 	payload := []byte("pinned archive bytes")
 	var served atomic.Int32
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/BtbN/FFmpeg-Builds/releases/download/"+release+"/"+archive {
+		// Loomarr's own mirror release, never BtbN: BtbN prunes the daily the pin names.
+		if r.URL.Path != "/loomarr/loomarr/releases/download/"+mirror+"/"+archive {
 			http.NotFound(w, r)
 			return
 		}
@@ -174,7 +176,7 @@ func TestCIFFmpegDownloadRetriesAConnectionReset(t *testing.T) {
 	script := filepath.Join(root, "scripts", "ci-ffmpeg.sh")
 	writeFixtureExecutable(t, script, readFixtureFile(t, filepath.Join(filepath.Dir(source), "..", "..", "scripts", "ci-ffmpeg.sh")))
 	writeFixtureFile(t, filepath.Join(root, "Dockerfile"), fmt.Sprintf(
-		"ARG FFMPEG_RELEASE=%s\nARG FFMPEG_BUILD_ID=%s\nARG FFMPEG_AMD64_SHA256=%x\n", release, buildID, sha256.Sum256(payload)))
+		"ARG FFMPEG_RELEASE=%s\nARG FFMPEG_MIRROR_RELEASE=%s\nARG FFMPEG_BUILD_ID=%s\nARG FFMPEG_AMD64_SHA256=%x\n", release, mirror, buildID, sha256.Sum256(payload)))
 	bin := filepath.Join(root, "commands")
 	writeFixtureExecutable(t, filepath.Join(bin, "uname"), "#!/bin/sh\nprintf 'x86_64\\n'\n")
 	port := listener.Addr().(*net.TCPAddr).Port

@@ -1,0 +1,51 @@
+name: FFmpeg pin refresh
+
+# Weekly: keep the bundled FFmpeg on BtbN's NEWEST release-series GPL build (never master's N-
+# builds). When BtbN has a newer build, scripts/ffmpeg-pin-refresh.sh publishes its
+# third-party-sources release — both binary archives (the image downloads them from there, because
+# BtbN prunes dailies) plus the exact source, the recipe and the run's dependency download cache,
+# which BtbN deletes after 14 days, so a weekly cadence always catches it — then pushes
+# deps/ffmpeg-<build>, opens the pin PR and dispatches full CI for it. A new release series opens as
+# a DRAFT labelled for a human, the explicit approval renovate.json holds majors for. The logic lives
+# in the script (shellchecked, runnable locally); see docs/contributing/releasing.md.
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Download, verify and stage only: publish nothing, open no PR"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ffmpeg-pin-refresh
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  refresh:
+    name: Refresh the FFmpeg pin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write # publish the third-party-sources release; push the pin branch
+      pull-requests: write # open the pin PR
+      actions: write # dispatch CI: a push made with GITHUB_TOKEN triggers no workflow
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Refresh the pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOOMARR_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: ./scripts/ffmpeg-pin-refresh.sh automate "$RUNNER_TEMP/ffmpeg-pin"

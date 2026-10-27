@@ -585,6 +585,26 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				}},
 			},
 		},
+		// The one workflow that publishes a release and opens a PR on a schedule. Everything it does is
+		// in the script; the job's write permissions are exactly what the script's three side effects need.
+		"ffmpeg-pin-refresh.yml": {
+			environment: map[string]string{"GO_VERSION": "1.27"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"refresh": {
+					permissions: map[string]string{"actions": "write", "contents": "write", "pull-requests": "write"},
+					steps: map[string]workflowStepAuthority{
+						`./scripts/ffmpeg-pin-refresh.sh automate "$RUNNER_TEMP/ffmpeg-pin"`: exactWorkflowStep(2, "Refresh the pin", workflowStepAuthority{
+							allowsAcquisition: true,
+							environment: map[string]string{
+								"GH_TOKEN": "${{ github.token }}", "LOOMARR_REPO": "${{ github.repository }}",
+								"DRY_RUN": "${{ inputs.dry_run || false }}",
+							},
+						}),
+					},
+				},
+			},
+		},
 		"rust-maintenance.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{

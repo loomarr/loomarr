@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "sourceRelease": "https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-10-27",
+  "sourceTag": "third-party-sources-2026-10-27",
+  "releaseTarget": "54f90ed50e004847f9d879c0d4a41878f52d760b",
+  "publishedAt": "2026-10-27T00:26:13Z",
+  "scope": "FFmpeg n9.0.2-36-g6882969ce9: both binary archives (the image downloads them from here), exact source, BtbN recipe and the original dependency download cache",
+  "assets": [
+    {
+      "name": "README.txt",
+      "bytes": 1823,
+      "sha256": "6c8293674a8192e87f7c7bcf2f33437498c1eced2930d881bea822d6c9a57055",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/README.txt"
+    },
+    {
+      "name": "SHA256SUMS",
+      "bytes": 845,
+      "sha256": "82a2f9f11be9b24c516d5bf0306ebbd98e47cf684528260ff546dd69bfaa5f9a",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/SHA256SUMS"
+    },
+    {
+      "name": "ffmpeg-6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d.tar.gz",
+      "bytes": 17330904,
+      "sha256": "9dc825750d71d51a9c8d45516ad3ffdf05e74f029a66f8c3efaf431ed7331701",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d.tar.gz"
+    },
+    {
+      "name": "ffmpeg-builds-93786836.tar.gz",
+      "bytes": 116848,
+      "sha256": "9ee4b55c6bf1ea2f9ee50a63bac8887532117ce9f7e7b0e2842a533b2d5f046a",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-builds-93786836.tar.gz"
+    },
+    {
+      "name": "ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz",
+      "bytes": 151218568,
+      "sha256": "79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-n9.0.2-36-g6882969ce9-linux64-gpl-9.0.tar.xz"
+    },
+    {
+      "name": "ffmpeg-n9.0.2-36-g6882969ce9-linuxarm64-gpl-9.0.tar.xz",
+      "bytes": 127578100,
+      "sha256": "f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-n9.0.2-36-g6882969ce9-linuxarm64-gpl-9.0.tar.xz"
+    },
+    {
+      "name": "ffmpeg-original-download-cache.zip.part00",
+      "bytes": 1900000000,
+      "sha256": "b2e24656aa400f4ba090b3e6889c29a9ef61d88e8565e5e515db9efd85b500de",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-original-download-cache.zip.part00"
+    },
+    {
+      "name": "ffmpeg-original-download-cache.zip.part01",
+      "bytes": 310375776,
+      "sha256": "66961801e7c80d55e751737a9774acd556753a562517df8d916b242edbabc563",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/ffmpeg-original-download-cache.zip.part01"
+    },
+    {
+      "name": "source-package-inventory.json",
+      "bytes": 582,
+      "sha256": "5b6603738899f12a6fe3e13ffbe57b6ba2be14c6ae933a8e2cad619e9f7b223b",
+      "url": "https://github.com/loomarr/loomarr/releases/download/third-party-sources-2026-10-27/source-package-inventory.json"
+    }
+  ]
+}

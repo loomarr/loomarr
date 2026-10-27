@@ -1,7 +1,9 @@
 package releaseverify
 
 import (
+	"encoding/json"
 	"os"
+	"regexp"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,12 +25,48 @@ func TestVerifyRedistributionManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The FFmpeg pin moves with every refresh, so its mutations take the live values instead of
+	// literals: a refresh must never need a test edit to keep these cases meaningful.
+	args := map[string]string{}
+	for _, m := range redistributionDockerfileArgs.FindAllStringSubmatch(string(dockerfile), -1) {
+		args[m[1]] = m[2]
+	}
+	var parsed redistributionManifest
+	if err := json.Unmarshal(manifest, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	var ffmpeg redistributionUpstream
+	for _, a := range parsed.Artifacts {
+		if a.Name == "ffmpeg" {
+			ffmpeg = a.Upstream
+		}
+	}
+	mirror := args["FFMPEG_MIRROR_RELEASE"]
+	distributionPath := filepath.Join(root, "project", "evidence", "source-distribution-"+strings.TrimPrefix(mirror, "third-party-sources-")+".json")
+	distribution, err := os.ReadFile(distributionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noticesPath := filepath.Join(root, "THIRD_PARTY_NOTICES.md")
+	notices, err := os.ReadFile(noticesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originals := map[string][]byte{manifestPath: manifest, dockerfilePath: dockerfile, distributionPath: distribution, noticesPath: notices}
+	cacheName := regexp.MustCompile(`"name": "ffmpeg-original-download-cache\.zip[^"]*"`)
 	mutations := map[string]struct{ path, text string }{
+		"BtbN download host":                   {dockerfilePath, strings.Replace(string(dockerfile), "https://github.com/loomarr/loomarr/releases/download/${FFMPEG_MIRROR_RELEASE}/", "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/", 1)},
+		"mirror release drift":                 {dockerfilePath, strings.Replace(string(dockerfile), "ARG FFMPEG_MIRROR_RELEASE="+mirror, "ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2000-01-01", 1)},
+		"source release lacks the cache":       {distributionPath, cacheName.ReplaceAllString(string(distribution), `"name": "unrelated.bin"`)},
+		"source release lacks a binary":        {distributionPath, strings.Replace(string(distribution), args["FFMPEG_ARM64_SHA256"], strings.Repeat("0", 64), 1)},
+		"source release lacks the source":      {distributionPath, strings.ReplaceAll(string(distribution), "ffmpeg-"+ffmpeg.SourceRev+".tar.gz", "ffmpeg-other.tar.gz")},
+		"notices name another build":           {noticesPath, strings.ReplaceAll(string(notices), args["FFMPEG_BUILD_ID"], "n9.0.0-1-g0000000")},
 		"missing architecture":                 {manifestPath, strings.Replace(string(manifest), `"architecture": "arm64"`, `"architecture": "removed"`, 1)},
-		"checksum drift":                       {manifestPath, strings.Replace(string(manifest), "68ee646831adaae2495618346f3bba94ff207ff83bbd34d643e7004730d66269", strings.Repeat("0", 64), 1)},
-		"release commit drift":                 {manifestPath, strings.Replace(string(manifest), "6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b", "6c9aec5fc9a72ec3abedd1fa84db141fa18cf520", 1)},
-		"retained monthly policy removed":      {manifestPath, strings.Replace(string(manifest), `"retention_class": "monthly"`, `"retention_class": "daily"`, 1)},
-		"retention policy revision drift":      {manifestPath, strings.Replace(string(manifest), `"retention_policy_revision": "6c9aec5fc9a72ec3abedd1fa84db141fa18cf52b"`, `"retention_policy_revision": "6c9aec5fc9a72ec3abedd1fa84db141fa18cf520"`, 1)},
+		"checksum drift":                       {manifestPath, strings.Replace(string(manifest), args["FFMPEG_AMD64_SHA256"], strings.Repeat("0", 64), 1)},
+		"release commit drift":                 {manifestPath, strings.Replace(string(manifest), `"release_commit": "`+ffmpeg.ReleaseCommit+`"`, `"release_commit": "`+ffmpeg.ReleaseCommit+`0"`, 1)},
+		"source commit drift":                  {manifestPath, strings.ReplaceAll(string(manifest), ffmpeg.SourceRev, strings.Repeat("0", 40))},
+		"mirror retention removed":             {manifestPath, strings.Replace(string(manifest), `"retention_class": "mirrored"`, `"retention_class": "daily"`, 1)},
+		"retention policy revision drift":      {manifestPath, strings.Replace(string(manifest), `"retention_policy_revision": "`+mirror+`"`, `"retention_policy_revision": "`+mirror+`0"`, 1)},
 		"license set drift":                    {manifestPath, strings.Replace(string(manifest), "COPYING.GPLv3", "LICENSE", 1)},
 		"trailing JSON document":               {manifestPath, string(manifest) + "{}\n"},
 		"alternate download host":              {dockerfilePath, strings.Replace(string(dockerfile), "github.com/yt-dlp/yt-dlp/releases", "example.com/yt-dlp/yt-dlp/releases", 1)},
@@ -40,7 +78,7 @@ func TestVerifyRedistributionManifest(t *testing.T) {
 		"inline comment checksum bypass":       {dockerfilePath, strings.Replace(string(dockerfile), `echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -`, `echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" # echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -`, 1)},
 		"comment cannot satisfy active recipe": {dockerfilePath, strings.Replace(string(dockerfile), `"https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"`, `"https://example.invalid/alternate"`, 1) + "\n# original recipe retained only in this comment: https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}\n"},
 		"FFmpeg architecture mapping drift":    {dockerfilePath, strings.Replace(string(dockerfile), `FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"`, `FFMPEG_ARCH=linuxarm64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"`, 1)},
-		"Dockerfile version drift":             {dockerfilePath, strings.Replace(string(dockerfile), "ARG FFMPEG_BUILD_ID=n9.0.2-17-g2a571b6068", "ARG FFMPEG_BUILD_ID=n9.0.2-17-g2a571b6069", 1)},
+		"Dockerfile version drift":             {dockerfilePath, strings.Replace(string(dockerfile), "ARG FFMPEG_BUILD_ID="+args["FFMPEG_BUILD_ID"], "ARG FFMPEG_BUILD_ID="+args["FFMPEG_BUILD_ID"]+"0", 1)},
 	}
 	for name, mutation := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -48,7 +86,7 @@ func TestVerifyRedistributionManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() {
-				if err := os.WriteFile(mutation.path, map[string][]byte{manifestPath: manifest, dockerfilePath: dockerfile}[mutation.path], 0o600); err != nil {
+				if err := os.WriteFile(mutation.path, originals[mutation.path], 0o600); err != nil {
 					t.Error(err)
 				}
 			})

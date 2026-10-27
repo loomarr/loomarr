@@ -853,6 +853,21 @@ gate because a newly published advisory would otherwise fail every Go PR regardl
 A red run is the prompt to bump the module, or go.mod's `toolchain` line together with the
 Dockerfile's golang image.
 
+## Scheduled FFmpeg pin refresh
+
+`ffmpeg-pin-refresh.yml` runs every Monday, and on manual dispatch with an optional `dry_run`. It
+runs `scripts/ffmpeg-pin-refresh.sh automate`. When BtbN has a newer release-series build, the
+script does four things:
+
+1. publishes that build's `third-party-sources-<date>` release (binaries plus corresponding source);
+2. pushes `deps/ffmpeg-<build>`;
+3. opens the pin PR, as a draft labelled `ready-for-human` for a new series;
+4. dispatches `ci.yml` with `scope=full` at that branch, because a push made with `GITHUB_TOKEN`
+   starts no workflow.
+
+Its single job holds `contents`, `pull-requests` and `actions` write, one for each of those side
+effects. The procedure is in [releasing.md](releasing.md#bundled-ffmpeg-pin).
+
 ## Scheduled Rust maintenance
 
 `rust-maintenance.yml` is intentionally outside the required PR gate. Every Monday, and on manual
