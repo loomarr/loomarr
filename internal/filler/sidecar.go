@@ -142,7 +142,7 @@ type SidecarTags struct {
 	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
 	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first
 	// place, so what round-trips here is a fact, never a guess — the same "metadata travels with
-	// the clip" rule `originalName`/`normalizedLufs` follow.
+	// the clip" rule `originalName` follows.
 	Brand           string `json:"brand,omitempty"`
 	GeographicScope string `json:"geographicScope,omitempty"`
 	Country         string `json:"country,omitempty"`
@@ -152,7 +152,7 @@ type SidecarTags struct {
 	AirDate         string `json:"airDate,omitempty"`
 	GeoEvidence     string `json:"geographyEvidence,omitempty"`
 	// Transcript is the clip's spoken text (§10 V44), persisted beside the file for the same reason
-	// as `normalizedLufs`: it must survive a catalog rebuild, because re-deriving it means re-running
+	// as `originalName`: it must survive a catalog rebuild, because re-deriving it means re-running
 	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or
 	// not-yet-transcribed clip's sidecar unchanged.
 	Transcript string `json:"transcript,omitempty"`
@@ -163,24 +163,10 @@ type SidecarTags struct {
 	// separately for the same reason the column is separate: restoring it as `Era` would
 	// launder a guess into a fact, which is the §8 failure the grounding rule exists to prevent.
 	SuggestedEra int `json:"suggestedEra,omitempty"`
-	// NormalizedLUFS records that this clip's AUDIO WAS REWRITTEN to that target (§10 V42),
-	// set only by the opt-in on-file loudness pass.
-	//
-	// ⚠ This is an IDEMPOTENCY MARKER, not a measurement, and the pass is broken without it. A
-	// normalised file looks like any other file — a re-scan cannot tell by inspection that the
-	// work already happened — so every pass would normalise an already-normalised clip and walk
-	// its loudness down run after run. Compared against the CURRENT target, so lowering
-	// `filler.target_lufs` re-normalises once and then stops.
-	//
-	// ⚠ It lives in the sidecar rather than the database for the same reason `originalName`
-	// does: it must survive a catalog rebuild. A restored install that lost this marker would
-	// re-normalise the whole folder.
-	NormalizedLUFS float64 `json:"normalizedLufs,omitempty"`
 	// Mezzanine records that this clip was re-encoded to the ingest profile (§10 V51b), holding
 	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
 	//
-	// ⚠ An IDEMPOTENCY MARKER like `normalizedLufs`, and here the stakes are higher: a transcode
-	// is a GENERATION OF LOSS. V66 retains the exact source master, but a second unnecessary pass
+	// ⚠ An IDEMPOTENCY MARKER, and the stakes are high: a transcode is a GENERATION OF LOSS. V66 retains the exact source master, but a second unnecessary pass
 	// would still waste time and could make the visible playback identity drift. The pipeline
 	// ladder normally prevents that, while this portable marker survives a catalog rebuild.
 	//
@@ -667,17 +653,22 @@ func isBoilerplate(line string) bool {
 	return false
 }
 
-// PlaybackLoudness is the integrated loudness measured for the clip's playback rendition at
-// ingest, read from its sidecar. ok is false when the clip has no sidecar, no playback
-// derivative, or no audio measurement — the caller then applies no gain (#1512 G6).
-func PlaybackLoudness(mediaPath string) (lufs float64, ok bool) {
+// PlaybackLoudness is the integrated loudness, and the true peak when it is finite, measured for
+// the clip's playback rendition at ingest, read from its sidecar. ok is false when the clip has no
+// sidecar, no playback derivative, or no audio measurement — the caller then applies no gain
+// (#1512 G6). truePeak is nil when the peak was not a finite measurement.
+func PlaybackLoudness(mediaPath string) (lufs float64, truePeak *float64, ok bool) {
 	tags, valid := ReadSidecarTags(mediaPath)
 	if !valid || tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
-		return 0, false
+		return 0, nil, false
 	}
 	loudness := tags.MediaAssets.Playback.QC.Loudness
 	if !loudness.Available || math.IsNaN(loudness.IntegratedLUFS) || math.IsInf(loudness.IntegratedLUFS, 0) {
-		return 0, false
+		return 0, nil, false
 	}
-	return loudness.IntegratedLUFS, true
+	if peak := loudness.TruePeak; peak.State == mediatools.TruePeakFinite && !math.IsNaN(peak.DBTP) && !math.IsInf(peak.DBTP, 0) {
+		dbtp := peak.DBTP
+		truePeak = &dbtp
+	}
+	return loudness.IntegratedLUFS, truePeak, true
 }

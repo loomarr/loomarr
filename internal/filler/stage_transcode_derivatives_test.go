@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,47 @@ import (
 )
 
 func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t *testing.T) {
+	out, measurements, stored, childHash, err := runEvidenceBoundConditioning(t, 30_000)
+	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
+		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
+	}
+}
+
+// The probe truncates format.duration to the millisecond and conditioning evidence rounds it, so a
+// staged file 1 ms short of its measured container is the same length and publishes at the
+// evidence's; any other gap is a different file and holds for review.
+func TestTranscodeStage_ConditionedChildTakesTheMeasuredContainerLength(t *testing.T) {
+	for _, tc := range []struct {
+		probedMs  int64
+		publishes bool
+	}{
+		{probedMs: 30_000, publishes: true},
+		{probedMs: 29_999, publishes: true},
+		{probedMs: 29_998},
+		{probedMs: 30_001},
+	} {
+		t.Run(fmt.Sprint(tc.probedMs), func(t *testing.T) {
+			out, _, stored, _, err := runEvidenceBoundConditioning(t, tc.probedMs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.publishes {
+				if out.Verdict != VerdictReview || stored.oldHash != "" {
+					t.Fatalf("probed %d ms against a 30000 ms container = %+v, replaced=%q; want held for review",
+						tc.probedMs, out, stored.oldHash)
+				}
+				return
+			}
+			if out.Verdict != VerdictContinue || stored.clip.DurationMs != 30_000 {
+				t.Fatalf("probed %d ms = %+v, duration %d; want published at the measured 30000 ms",
+					tc.probedMs, out, stored.clip.DurationMs)
+			}
+		})
+	}
+}
+
+func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, int, *transcodeStore, string, error) {
+	t.Helper()
 	dir := t.TempDir()
 	parentSource := filepath.Join(dir, "parent-source.mkv")
 	if err := os.WriteFile(parentSource, []byte("parent source master bytes"), 0o644); err != nil {
@@ -77,8 +119,11 @@ func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t 
 	stored := &transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
 		Hash: parentHash, Path: parentRel, DurationMs: 61_000, IsComposite: true,
 	}}}}
-	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
-		return Probed{DurationMs: 30_000, Height: 480}, nil
+	stage := NewTranscodeStage(stored, func(_ context.Context, path string) (Probed, error) {
+		if path == childFull {
+			return Probed{DurationMs: 30_000, Height: 480}, nil
+		}
+		return Probed{DurationMs: probedMs, Height: 480}, nil
 	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
 	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return after.Quality, os.WriteFile(request.Out, []byte("conditioned playback child"), 0o600)
@@ -99,9 +144,7 @@ func TestTranscodeStage_ConditionsEvidenceBoundChildAgainstExactEvidenceAsset(t 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, Name: "Reviewed child", Kind: Commercial, ParentHash: parentHash,
 	}})
-	if err != nil || out.Verdict != VerdictContinue || measurements != 2 || stored.oldHash != childHash {
-		t.Fatalf("evidence-bound conditioning = %+v, measurements=%d stored=%q err=%v", out, measurements, stored.oldHash, err)
-	}
+	return out, measurements, stored, childHash, err
 }
 
 func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *testing.T) {
@@ -128,7 +171,8 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	}
 	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		playbackInput = request.In
-		if request.Profile.CRF != 20 || request.TargetLUFS != -23 {
+		// #2032: the playback file is never levelled on disk; playout corrects it at air time.
+		if request.Profile.CRF != 20 || request.TargetLUFS != 0 {
 			t.Fatalf("playback recipe = %+v", request)
 		}
 		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback derivative"), 0o600)
@@ -155,6 +199,60 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.Evidence.Asset.Path))); err != nil {
 		t.Fatalf("evidence derivative is unavailable: %v", err)
+	}
+}
+
+// #2032: a clip the air-time boost limit cannot bring to the target is refused, not aired quiet.
+// The household's quietest ad measured -33.7 LUFS, 10.7 dB under -23. A clip just inside the
+// limit still continues.
+func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		measured float64
+		refused  bool
+	}{
+		{"too quiet", -33.7, true},
+		{"quiet but correctable", -28.5, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			oldHash := writeContentAddressedClip(t, dir, []byte("quiet source master "+tc.name), ".mkv")
+			oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
+			stored := &transcodeStore{}
+			probe := func(context.Context, string) (Probed, error) {
+				return Probed{DurationMs: 30_000, Height: 480}, nil
+			}
+			stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now).WithMediaDerivatives()
+			stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
+				return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("d", 64)}, nil
+			}
+			stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, _ float64) (mediatools.DerivativeQC, error) {
+				return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, tc.measured), nil
+			}
+			stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+				return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence"), 0o600)
+			}
+			stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+				return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback "+tc.name), 0o600)
+			}
+
+			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.refused {
+				if out.Verdict != VerdictContinue {
+					t.Fatalf("correctable clip = %+v, want it to continue", out)
+				}
+				return
+			}
+			if out.Verdict != VerdictReject || out.Reason != ReasonTooQuiet || !strings.Contains(out.Detail, "-33.7 LUFS") {
+				t.Fatalf("too-quiet clip = %+v, want rejected too_quiet with its measurement", out)
+			}
+			if stored.oldHash != "" {
+				t.Fatalf("a refused clip was published into the catalog as %q", stored.oldHash)
+			}
+		})
 	}
 }
 

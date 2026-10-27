@@ -80,7 +80,6 @@ var fillerOwners = map[string]Owner{
 
 	"filler.transcribe.enabled":               OwnerFillerReview,
 	"filler.vision.enabled":                   OwnerFillerReview,
-	"filler.conditioning.normalize_loudness":  OwnerFillerReview,
 	"filler.autosplit.enabled":                OwnerFillerReview,
 	"filler.autosplit.min_confidence":         OwnerFillerReview,
 	"filler.autosplit.max_duration":           OwnerFillerReview,

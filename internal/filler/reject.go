@@ -59,6 +59,9 @@ const (
 	// near-total dead air. Distinct from no_video/no_audio: ffprobe sees both streams just fine.
 	ReasonBlackContent  RejectReason = "black_content"
 	ReasonSilentContent RejectReason = "silent_content"
+	// ReasonTooQuiet — the playback rendition measures so far below `filler.target_lufs` that the
+	// air-time boost limit cannot reach it (#2032). Raising it further would raise its hiss too.
+	ReasonTooQuiet RejectReason = "too_quiet"
 	// ReasonUnplayable — the transcode stage failed after retries, so nothing downstream can
 	// play it.
 	ReasonUnplayable RejectReason = "unplayable"

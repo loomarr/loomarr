@@ -61,6 +61,9 @@ type Airing struct {
 	// derivative's QC), or nil when nothing was measured. Only a filler clip carries one. The
 	// channel packager turns it into a static gain against `filler.target_lufs` (#1512 G6).
 	MeasuredLUFS *float64
+	// MeasuredTruePeak is the same derivative's true peak in dBTP, or nil when it was not measured.
+	// It caps a boost so a raised clip cannot clip.
+	MeasuredTruePeak *float64
 	// Title is for logs and the guide, never for identity.
 	Title string
 	// Offset is how far INTO the item playout should start.

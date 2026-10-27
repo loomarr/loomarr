@@ -174,13 +174,21 @@ func TestValidateConditioningEvidenceBoundsStreamsByTheContainerTimeline(t *test
 	if err := mediatools.ValidateConditioningEvidence(reencodedChildMeasurement(), mediatools.ConditioningAfterRewrite); err != nil {
 		t.Fatalf("re-encoded child whose container starts after zero was rejected: %v", err)
 	}
+	// #2032's un-levelled re-encode read video 67+12513 against container 45+12534: one instant,
+	// rounded twice per side.
+	rounded := reencodedChildMeasurement()
+	rounded.Streams[1].Duration.Milliseconds += 2
+	rounded.AVSkew.End.Milliseconds += 2
+	if err := mediatools.ValidateConditioningEvidence(rounded, mediatools.ConditioningAfterRewrite); err != nil {
+		t.Fatalf("stream end within millisecond rounding of the container end was rejected: %v", err)
+	}
 	cases := []struct {
 		name   string
 		mutate func(*mediatools.ConditioningMeasurement)
 	}{
-		{name: "stream ends after container start plus duration", mutate: func(m *mediatools.ConditioningMeasurement) {
-			m.Streams[1].Duration.Milliseconds++
-			m.AVSkew.End.Milliseconds++
+		{name: "stream ends past container start plus duration and its rounding", mutate: func(m *mediatools.ConditioningMeasurement) {
+			m.Streams[1].Duration.Milliseconds += 3
+			m.AVSkew.End.Milliseconds += 3
 		}},
 		{name: "container starts after a stream starts", mutate: func(m *mediatools.ConditioningMeasurement) { m.ContainerStart.Milliseconds = 46 }},
 		{name: "container start overflows its end", mutate: func(m *mediatools.ConditioningMeasurement) {

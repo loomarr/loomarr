@@ -247,10 +247,13 @@ RETIRED=(
   'AdmissionControllable|source controls acquisition, not admission'
   'filler.autofile.enabled|retired: no confidence-to-publication switch'
   'filler.autofile.min_confidence|retired: classification confidence is diagnostic'
-  'filler.autofile.normalize_loudness|retired: use filler.conditioning.normalize_loudness'
+  'filler.autofile.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
+  'filler.conditioning.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
   'FILLER_AUTOFILE_ENABLED|retired: no confidence-to-publication switch'
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
-  'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: use FILLER_CONDITIONING_NORMALIZE_LOUDNESS'
+  'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: files are never levelled on disk (#2032)'
+  'FILLER_CONDITIONING_NORMALIZE_LOUDNESS|retired: files are never levelled on disk (#2032)'
+  'NormalizedLUFS|retired: the on-disk loudness marker went with on-disk levelling (#2032)'
   'TunePanel|retired: Sources owns acquisition policy; Incoming owns evidence review and terminal decisions'
   # Private-home filler keeps provider-declared licence text as passive metadata, but it has no
   # runtime legal authority. Restoring any of these identifiers would recreate the removed fifth

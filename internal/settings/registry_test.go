@@ -363,14 +363,7 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 		}
 	}
 
-	conditioning, ok := r.Get("filler.conditioning.normalize_loudness")
-	if !ok {
-		t.Fatal("filler.conditioning.normalize_loudness not declared")
-	}
-	if len(conditioning.ShowWhen) != 0 {
-		t.Errorf("conditioning is independent of admission, got ShowWhen %v", conditioning.ShowWhen)
-	}
-	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness"} {
+	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness", "filler.conditioning.normalize_loudness"} {
 		if _, ok := r.Get(retired); ok {
 			t.Errorf("retired publication setting %s is still declared", retired)
 		}

@@ -289,12 +289,11 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 	at := func(id StageID) bool { return StageIndex(id) >= idx }
 
 	if at(StageTranscode) {
-		// The loudness marker, so the re-encode normalises again rather than reading its own
-		// previous work as "already at target". The `mezzanine` marker goes with it — it is the
-		// gate that would otherwise make the rung skip itself immediately.
+		// The `mezzanine` marker is the gate that would otherwise make the rung skip itself
+		// immediately.
 		full := filepath.Join(p.clipDir, filepath.FromSlash(clip.Path))
 		if tags, ok := ReadSidecarTags(full); ok {
-			tags.NormalizedLUFS, tags.Mezzanine = 0, ""
+			tags.Mezzanine = ""
 			if err := WriteSidecarTags(full, tags, false); err != nil {
 				return fmt.Errorf("rewind %s: clearing the encode marker: %w", clip.Path, err)
 			}

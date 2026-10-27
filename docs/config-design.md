@@ -479,8 +479,7 @@ Everything else on every page goes through the bar. A fifth exception should be 
 against this list, not added quietly.
 
 This applies to contextual workflow editors too. Filler's Incoming-page auto-filing panel is the
-curated home for its enable switch, confidence threshold, and destructive on-file loudness option,
-but those values are staged inside the panel and committed with an explicit **Save auto-filing**
+curated home for its enable switch and confidence threshold, but those values are staged inside the panel and committed with an explicit **Save auto-filing**
 action. Being closer to the affected clips is not permission to introduce an uncued autosave model.
 
 Filler settings use the same workspace heading and navigation as Sources, Incoming, and Library.

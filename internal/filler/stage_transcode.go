@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/loudness"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -44,8 +45,8 @@ type TranscodeStage struct {
 	profile MezzanineProfile
 	// ffmpegPath is the operator's configured binary; empty falls back to PATH.
 	ffmpegPath func() string
-	// targetLUFS folds loudness normalisation into the same pass. A closure returning 0 leaves the
-	// audio alone, which is what `filler.conditioning.normalize_loudness` off means.
+	// targetLUFS is the live `filler.target_lufs` playout corrects to. A clip no air-time gain can
+	// bring to it is refused as too_quiet. A closure returning 0 means no target, and no floor.
 	targetLUFS func() float64
 	now        func() time.Time
 	// transcode is a seam around the ffmpeg driver. Production always uses mediatools.Transcode;
@@ -438,9 +439,11 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		return conditioningReview(c, "conditioning transcode was cancelled"), nil
 	}
 
-	lufs := 0.0
+	// The file is never levelled on disk (#2032): playout corrects every clip at air time by the one
+	// rule in `loudness`. The target is needed here only to refuse a clip that rule cannot rescue.
+	target := 0.0
 	if s.targetLUFS != nil {
-		lufs = s.targetLUFS()
+		target = s.targetLUFS()
 	}
 	ffmpeg := ""
 	if s.ffmpegPath != nil {
@@ -455,7 +458,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		In: inputFull, Out: stageFull,
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
 		InputProbe: &in,
-		TargetLUFS: lufs, Profile: s.profile,
+		Profile:    s.profile,
 		FFmpegPath: ffmpeg, Probe: s.probe,
 		Diagnostics: s.diagnostics,
 	}
@@ -525,10 +528,13 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		// file's container timeline. The transcode's detector pass watched the source on the
 		// source's timeline; a mezzanine starts at the AAC priming offset, so the two cannot
 		// agree interval for interval (#1719). The file's probed length must still be the
-		// measured container's, since the sidecar pairs the two.
-		if out.DurationMs != conditioningAfter.ContainerDurationMs {
+		// measured container's, since the sidecar pairs the two. Both read the same format.duration;
+		// the probe truncates it to the millisecond and the evidence rounds it, so a 1 ms gap is
+		// one length, and the file takes the evidence's.
+		if gap := conditioningAfter.ContainerDurationMs - out.DurationMs; gap < 0 || gap > 1 {
 			return conditioningReview(c, "staged file duration does not match post-rewrite measurement"), nil
 		}
+		out.DurationMs = conditioningAfter.ContainerDurationMs
 		quality = conditioningAfter.Quality
 	}
 	var playbackQC mediatools.DerivativeQC
@@ -537,9 +543,22 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			return StageResult{}, errors.New("playback derivative verification is unavailable")
 		}
 		playbackQC, err = s.verifyDerivative(ctx, ffmpeg, stageFull, out.DurationMs,
-			s.profile.KeyframeSeconds, !out.Silent, lufs)
+			s.profile.KeyframeSeconds, !out.Silent, 0)
 		if err != nil {
 			return StageResult{}, fmt.Errorf("verify playback derivative: %w", err)
+		}
+		// Verification has already refused audio without a valid measurement, so a clip with sound
+		// always reaches here measured.
+		if target != 0 && playbackQC.Loudness.Available {
+			measured := playbackQC.Loudness.IntegratedLUFS
+			if _, reachable := loudness.Correction(target, measured, nil); !reachable {
+				return StageResult{
+					Verdict: VerdictReject, Reason: ReasonTooQuiet,
+					Note: "too quiet to correct",
+					Detail: fmt.Sprintf("%.1f LUFS; reaching %.0f LUFS needs +%.1f dB, at most +%.0f dB",
+						measured, target, target-measured, loudness.MaxBoostDB),
+				}, nil
+			}
 		}
 		reportProgress(ctx, StageTranscode, 95)
 	}
@@ -551,7 +570,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	newFull := filepath.Join(s.clipDir, filepath.FromSlash(newRel))
 	assets := MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: sourceMaster, Evidence: evidence}
 	if evidence != nil {
-		playbackRecipe := mediatools.PlaybackDerivativeRecipe(s.profile, lufs)
+		playbackRecipe := mediatools.PlaybackDerivativeRecipe(s.profile, 0)
 		playbackRecipeDigest, recipeErr := playbackRecipe.Digest()
 		if recipeErr != nil {
 			return StageResult{}, recipeErr
@@ -598,7 +617,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			// commit. The marker distinguishes that recoverable saga state from an unrelated sparse-
 			// hash collision; retry the durable re-key without overwriting either file.
 			if err := validateRecoveredTranscode(ctx, stageFull, newFull, newHash, s.profile.ID(),
-				tags.ConditioningLineage, builtConditioning, quality, lufs, &assets); err != nil {
+				tags.ConditioningLineage, builtConditioning, quality, &assets); err != nil {
 				if builtConditioning != nil {
 					return conditioningReview(c, err.Error()), nil
 				}
@@ -671,9 +690,6 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	tags.MediaQuality = &quality
 	if conditioningBefore != nil {
 		tags.Conditioning = builtConditioning
-	}
-	if lufs != 0 {
-		tags.NormalizedLUFS = lufs
 	}
 	if err := WriteSidecarTags(stageFull, tags, false); err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: write replacement sidecar: %w", oldRel, err)
