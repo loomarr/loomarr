@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -1670,6 +1671,71 @@ func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got, found, err := cachedClipFingerprint(ctx, s, two.Hash, "creative-test"); err != nil || !found || len(got) != 1 || got[0] != 7 {
 		t.Errorf("kept clip lost its fingerprint: got=%v found=%v err=%v", got, found, err)
+	}
+}
+
+// testClipDefects pins the defect floor's record (#2034): it round-trips, a later measurement
+// replaces it, a re-key drops it because it describes the old bytes, and a pruned clip takes its
+// record with it.
+func testClipDefects(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	one := sampleClip("defects-one", "One", filler.Commercial, 1988, filler.General, "")
+	two := sampleClip("defects-two", "Two", filler.Commercial, 2012, filler.General, "")
+	for _, c := range []Clip{one, two} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record := func(hash string, era int, blur float64) store.ClipDefectRecord {
+		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
+		return store.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: defects.Assess(r, era), MeasuredAt: now}
+	}
+	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
+		t.Fatal("a record with no measurement or verdict version was stored")
+	}
+	if err := s.UpsertClipDefects(ctx, record(one.Hash, 1988, 4)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipDefects(ctx, record(one.Hash, 2012, 11)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClipDefects(ctx, record(two.Hash, 2012, 4)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ListClipDefects(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := record(one.Hash, 2012, 11); !reflect.DeepEqual(got[one.Hash], want) {
+		t.Fatalf("record = %+v, want the later measurement %+v", got[one.Hash], want)
+	}
+	if got[one.Hash].Assessment.Outcome != defects.Fail {
+		t.Fatalf("an HD-era blur of 11 was recorded as %q", got[one.Hash].Assessment.Outcome)
+	}
+
+	transformed := two
+	transformed.Hash = "defects-two-conditioned"
+	if err := s.ReplaceClipIdentity(ctx, two.Hash, transformed); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.ListClipDefects(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := got[two.Hash]; kept || len(got) != 1 {
+		t.Fatalf("records after re-key = %v, want only clip one's: the old bytes' verdict must not survive", got)
+	}
+	if _, err := s.DeleteClipsNotIn(ctx, []string{transformed.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.ListClipDefects(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("records = %v, want none: one was pruned with its clip, two re-keyed onto new bytes", got)
 	}
 }
 
@@ -6223,6 +6289,13 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	if err := s.MergeInferiorCopy(ctx, InferiorCopy{ClipHash: "gone", SourceHash: "x", SurvivorHash: survivor.Hash}); err == nil {
 		t.Fatal("a missing clip merged")
 	}
+	// The loser's defect record describes bytes that are about to be deleted (#2034).
+	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
+	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{
+		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988), MeasuredAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.MergeInferiorCopy(ctx, InferiorCopy{
 		ClipHash: loser.Hash, SourceHash: "loser-source", SurvivorHash: survivor.Hash, DecidedAt: now,
 	}); err != nil {
@@ -6231,6 +6304,11 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 
 	if _, err := s.GetClip(ctx, loser.Hash); err == nil {
 		t.Error("the losing copy's catalog row survived the merge")
+	}
+	if records, err := s.ListClipDefects(ctx); err != nil {
+		t.Fatal(err)
+	} else if _, ok := records[loser.Hash]; ok {
+		t.Error("the losing copy's defect record survived the merge")
 	}
 	got, err := s.GetClip(ctx, survivor.Hash)
 	if err != nil {

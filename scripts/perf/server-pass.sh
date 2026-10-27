@@ -58,7 +58,7 @@ print(",".join(c["id"] for c in sorted(d, key=lambda c: c.get("number", 0)) if c
 fi
 pprof() { curl -fsS "$BASE/debug/pprof/$1" -o "$out/$2"; }
 
-filler_jobs="filler-pipeline filler-split-sweep filler-identity filler-fetch channel-maintenance"
+filler_jobs="filler-pipeline filler-split-sweep filler-identity filler-defects filler-fetch channel-maintenance"
 pause_jobs() {
 	for j in $filler_jobs; do api -d "{\"paused\":$1}" "$BASE/v1/jobs/$j/pause" -o /dev/null || echo "server-pass: could not set $j paused=$1" >&2; done
 }

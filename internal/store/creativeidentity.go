@@ -70,6 +70,7 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 			[]any{loser, c.SourceHash, survivor, epoch(c.DecidedAt)}},
 		{`DELETE FROM clip_tags WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM filler_clip_fingerprints WHERE clip_hash = ?`, []any{loser}},
+		{`DELETE FROM filler_clip_defects WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM filler_clip_pipeline WHERE clip_hash = ?`, []any{loser}},
 		{`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`, []any{"clip", loser}},
 		{`DELETE FROM clips WHERE hash = ?`, []any{loser}},

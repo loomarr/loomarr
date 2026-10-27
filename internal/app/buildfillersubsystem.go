@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -24,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -274,6 +276,13 @@ func buildFillerSubsystem(
 			}
 			return lufs
 		}, time.Now, log,
+	)))
+	ffmpegPath := set.str("playout.ffmpeg_path")
+	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
+		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
+		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
+			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
+		}, layout.ClipDir(), time.Now, log,
 	)))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
 	// folder there is nothing to download into, and the cache lives in memory only.

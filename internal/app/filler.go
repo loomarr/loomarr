@@ -1781,6 +1781,40 @@ func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, la
 	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
+// fillerDefectStoreAdapter bridges the store to the defect floor (#2034). Held clips are listed:
+// the floor is judged before review, so its record can say what it would retire.
+type fillerDefectStoreAdapter struct{ st fillerstore.Store }
+
+func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler.DefectClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.DefectClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+	}
+	return out, nil
+}
+
+func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]filler.DefectRecord, error) {
+	rows, err := a.st.ListClipDefects(ctx)
+	if errors.Is(err, store.ErrCorruptClipDefects) {
+		err = fmt.Errorf("%w: %w", filler.ErrDefectRecordsCorrupt, err)
+	} else if err != nil {
+		return nil, err
+	}
+	out := make(map[string]filler.DefectRecord, len(rows))
+	for hash, r := range rows {
+		out[hash] = filler.DefectRecord(r)
+	}
+	return out, err
+}
+
+func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {
+	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
+}
+
 // (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its
 // candidate-list half is gone with the sweep — the split RUNG acts on the `is_composite` mark the
 // probe rung sets, so nothing lists the catalog looking for long files any more. Its

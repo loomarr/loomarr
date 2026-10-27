@@ -506,6 +506,54 @@ arm64.
 - The seam is `MediaTools.Transcribe(ctx, file, startMs, endMs)`; hosted is a second implementation
   behind it.
 
+## The defect floor (#2034)
+
+The floor judges what a clip actually shows and sounds like, against a bar set by its era. A
+1985 ad is held to good tape and a 2015 ad to real HD. Stated resolution and bitrate are never
+inputs. Until enforcement (#2036) a verdict is only recorded.
+
+- **One bounded pass per clip** (`mediatools.MeasureDefects`) measures the file that airs. It is
+  a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
+  to ride, and `cropdetect` logs every sampled frame, which in the transcode's bounded log would
+  push out the black and freeze evidence the publish gate reads.
+- **Picture detectors sample at 4 fps:**
+  - `blockdetect` for compression blocks;
+  - `blurdetect`;
+  - `signalstats` temporal outliers for tape dropouts and sparkle;
+  - `cropdetect` for the active picture;
+  - an upscale score: luma SSIM of each frame against itself halved and enlarged again.
+- **`idet` reads every frame.** Interlace is measured as how far one field order leads the other.
+  Woven fields keep one order, while fine detail fools `idet` evenly both ways.
+- **Sound is measured by `astats` over 16-bit samples**, so a clipped track flattens at full
+  scale.
+- **Eras fall into three bands:** tape (before 1995), SD (1995–2009, and any unknown era) and HD
+  (2010 on).
+  - Blocks, combing, windowboxing and clipping are rip damage, so one bar holds in every era.
+  - Softness and dropouts are era texture, so their bars relax with age.
+  - Only an HD-era ad is judged for upscaling.
+  - Letterbox and pillarbox are an aspect ratio. Windowboxing needs a border on both axes.
+- **Each check has two bars.** Below the lower bar is a pass, above the upper bar a fail, and
+  between them borderline. The borderline band is for a vision model to rule on (#2034 step 4b).
+  The worst finding is the clip's outcome. Too little picture (under two seconds of samples) is
+  undecided, never a pass.
+- **The bars are provisional** (`floor-v1-provisional`). They were set from synthetic damage
+  (`testkit.FillerDefectMedia`), and the labelled corpus calibrates them in step 4c.
+- **Records are versioned** (`filler_clip_defects`). The hourly `filler-defects` job
+  (`job.filler_defects.schedule`) handles each kind of staleness differently:
+  - no record, or one under an older measurement version: measured, within a bounded decode
+    budget;
+  - a newer floor version or a corrected era: judged again from the stored readings, with no
+    decode.
+
+  Held clips are judged too, so the record can say what the floor would retire. A re-key drops
+  the record, because it describes the old bytes, and so does merging a copy into its survivor.
+- **A clip that cannot be measured is recorded as undecided, with the reason** (no picture, a
+  stream the decoder rejects). It is not retried every hour, where it would keep spending the
+  budget ahead of healthy clips. A new measurement version measures it again. A failed read of the
+  records stops the pass rather than treating every clip as unmeasured.
+- **The pass runs with `-noautorotate`.** ffprobe reports the coded frame size, and a rotated
+  phone clip decoded upright would not match it.
+
 ## Source evidence and playable media
 
 A convenient rendition is not source evidence, so every clip that reaches transcode has three media
