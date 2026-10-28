@@ -47,6 +47,26 @@ func TestVerifyMaterializationAuthorityReconstructsExactWindowProtocol(t *testin
 	}
 }
 
+// Role slices still gate long-reel materialization (#1069), so an interval the families confirmed
+// as filler but named differently cannot pass until the final-child role module owns roles.
+func TestVerifyMaterializationAuthorityRejectsRolelessInterval(t *testing.T) {
+	agreed := windowAuthorityArtifactFixture(t)
+	authority := windowAuthorityFixture(agreed)
+	candidates := slices.Clone(agreed.Decision.Candidates)
+	candidates[1].Segments = slices.Clone(candidates[1].Segments)
+	candidates[1].Segments[0].Role = fillerstructure.RolePSA
+	roleless, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source: agreed.Decision.Source, Input: agreed.Decision.Input, BoundaryToleranceMS: agreed.BoundaryToleranceMS,
+		Candidates: candidates,
+	}, agreed.DecidedAt)
+	if err != nil || roleless.Decision.Status != fillerstructure.StatusConfirmed || roleless.Decision.Segments[0].Role != "" {
+		t.Fatalf("roleless decision = %+v err=%v", roleless.Decision, err)
+	}
+	if err := VerifyMaterializationAuthority(roleless, authority); err == nil {
+		t.Fatal("a role-less interval passed a role-sliced window authority")
+	}
+}
+
 func TestWindowMaterializationAuthorityCannotAuthorizeCompleteVideo(t *testing.T) {
 	windowArtifact := windowAuthorityArtifactFixture(t)
 	authority := windowAuthorityFixture(windowArtifact)

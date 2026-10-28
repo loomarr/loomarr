@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -139,6 +140,45 @@ func TestHeldCompleteTimelineDecisionDoesNotReplaceDetectorAssessment(t *testing
 	if updated.StructureDecision == nil || updated.StructureDecision.Decision.Status != fillerstructure.StatusHeld ||
 		updated.Structure == nil || updated.Structure.SHA256 != detectorSHA || updated.Structure.Plan[0].EndMs != 28_000 {
 		t.Fatalf("updated proposal=%+v", updated)
+	}
+}
+
+// A subtype disagreement confirms structure with no role, which cannot project yet (#1069). The paid
+// assessment must still be kept, so the next pass does not buy the same answer again.
+func TestRolelessConfirmedDecisionIsKeptWithoutReplacingDetectorAssessment(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/roleless-timeline.mp4", 60_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 28_000}, {StartMs: 28_000, EndMs: 60_000},
+	}}
+	splitter := newSplitter(st, tools, nil, t.TempDir())
+	proposal, err := splitter.Propose(t.Context(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detectorSHA := proposal.Structure.SHA256
+	agreed := structureDecisionArtifact(t, proposal.Source, 30_000, false).Decision
+	candidates := slices.Clone(agreed.Candidates)
+	candidates[1].Segments = slices.Clone(candidates[1].Segments)
+	candidates[1].Segments[0].Role = fillerstructure.RolePSA
+	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+		Source: agreed.Source, Input: agreed.Input, BoundaryToleranceMS: 2_000, Candidates: candidates,
+	}, time.Date(2026, time.October, 28, 7, 0, 0, 0, time.UTC))
+	if err != nil || artifact.Decision.Status != fillerstructure.StatusConfirmed || artifact.Decision.Segments[0].Role != "" {
+		t.Fatalf("roleless artifact = %+v err=%v", artifact.Decision, err)
+	}
+	decisioner := &capturedStructureDecisioner{artifact: artifact}
+	updated, err := splitter.AssessProposalStructure(t.Context(), *proposal, decisioner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.StructureDecision == nil || updated.StructureDecision.SHA256 != artifact.SHA256 ||
+		updated.Structure == nil || updated.Structure.SHA256 != detectorSHA {
+		t.Fatalf("updated proposal=%+v", updated)
+	}
+	stored, err := st.GetSplitProposal(t.Context(), proposal.ID)
+	if err != nil || stored.StructureDecision == nil || stored.StructureDecision.SHA256 != artifact.SHA256 {
+		t.Fatalf("stored proposal decision = %+v err=%v", stored.StructureDecision, err)
 	}
 }
 

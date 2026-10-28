@@ -39,6 +39,17 @@ func TestReduceConfirmsSubtypeDisagreementWithoutChoosingARole(t *testing.T) {
 	}
 }
 
+func TestReduceConfirmsProgrammeAgainstNonFillerAsADiscardWithoutARole(t *testing.T) {
+	request := fixtureRequest()
+	request.Candidates[0].Unit, request.Candidates[1].Unit = UnitProgrammeSpots, UnitProgrammeSpots
+	request.Candidates[0].Segments[1].Role = RoleProgrammeFragment
+	request.Candidates[1].Segments[1].Role = RoleNonFiller
+	decision := Reduce(request)
+	if decision.Status != StatusConfirmed || decision.Segments[1].Disposition != DispositionNonFiller || decision.Segments[1].Role != "" {
+		t.Fatalf("decision=%+v", decision)
+	}
+}
+
 func TestReduceConfirmsStandaloneSubtypeDisagreementWithoutARole(t *testing.T) {
 	request := fixtureRequest()
 	for index, role := range []Role{RoleCommercial, RolePSA} {
