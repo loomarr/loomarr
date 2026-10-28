@@ -4,8 +4,8 @@
 //
 // Readings come from one bounded ffmpeg pass (mediatools.MeasureDefects). Assess turns them into
 // a verdict per check. Detectors decide clear passes and fails; a check between its two bars is
-// borderline, and the borderline band is for a vision model to rule on (#2034 step 4b). Until the
-// enforcement step (#2036) a verdict is only recorded. Everything here is pure.
+// borderline, and the borderline band is for a vision model to rule on (#2034 step 4b). The filler
+// pipeline enforces the verdicts (#2036). Everything here is pure.
 package defects
 
 import "math"

@@ -596,7 +596,8 @@ arm64.
 
 The floor judges what a clip actually shows and sounds like, against a bar set by its era. A
 1985 ad is held to good tape and a 2015 ad to real HD. Stated resolution and bitrate are never
-inputs. Until enforcement (#2036) a verdict is only recorded.
+inputs. Its verdicts are enforced at admission and on every re-check (see
+[Enforcement](#enforcement-2036) below).
 
 - **One bounded pass per clip** (`mediatools.MeasureDefects`) measures the file that airs. It is
   a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
@@ -670,15 +671,15 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   whatever its provider is called. A ruling survives a re-assessment that asks the same question
   (the same band and borderline checks), so a recalibration that moves no clip in or out of the
   band costs no new look.
-- **Records are versioned** (`filler_clip_defects`). The hourly `filler-defects` job
-  (`job.filler_defects.schedule`) handles each kind of staleness differently:
+- **Records are versioned** (`filler_clip_defects`). The `filler-defects` job runs every five
+  minutes (`job.filler_defects.schedule`) and handles each kind of staleness differently:
   - no record, or one under an older measurement version: measured, within a bounded decode
-    budget;
+    budget, held clips first since admission waits on them;
   - a newer floor version or a corrected era: judged again from the stored readings, with no
     decode.
 
-  Held clips are judged too, so the record can say what the floor would retire. A re-key drops
-  the record, because it describes the old bytes, and so does merging a copy into its survivor.
+  A re-key drops the record, because it describes the old bytes, and so does merging a copy into
+  its survivor.
 - **A clip that cannot be measured is recorded as undecided, with the reason** (no picture, a
   stream the decoder rejects). It is not retried every hour, where it would keep spending the
   budget ahead of healthy clips. A new measurement version measures it again. A failed read of the
@@ -696,6 +697,59 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
     not scored.
   - Labels and real clips stay in the install's database: the repository is public, and only the
     synthetic corpus is committed.
+
+### Enforcement (#2036)
+
+- **Admission waits for a verdict.** The `defects` rung runs after screening and before
+  enrichment, so a copy that fails costs no transcription or hosted look. It measures nothing
+  itself: it waits, spending no attempt, until the floor job has a current record for the clip's
+  bytes and era. The floor measures a held clip only once its conveyor reaches this rung, so the
+  bytes are the transcoded ones that air and a whole break is judged through its cuts, never as
+  one ad. Then the rung admits a pass or an undecided clip and refuses a fail as `defect`, with
+  each failing check against its bar as the detail. A `defect` refusal is hard: there is no
+  override.
+- **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
+  ruling. A borderline clip failed only because no judge could rule (none configured, or it
+  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
+  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
+  on it again once a judge can.
+- **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
+  conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
+  fails and stands. In order:
+  1. The copy is fingerprinted, if it never was. A copy that cannot be
+     fingerprinted waits for a later pass, because deleting it would lose the ad rather than ask
+     for a better copy.
+  2. The row is tombstoned and reaped in one write (`RetireDefectiveCopy`), so nothing airs it and
+     a sync that no longer finds its file keeps the row.
+  3. Its playback file, sidecar, and the master and evidence copy only it names are deleted, as in
+     a creative-identity merge. References are counted over every clip, removed ones too, since a
+     removed clip can be restored. A copy identity merged away mid-pass is skipped.
+
+  Bulk restore, review restore and pipeline retry all skip a reaped row, since its file is gone.
+- **The retired rows are the "wanted: better copy" list** (`ListWantedCopies`). Each keeps its
+  fingerprint, its defect record and its airings. Every newly published copy from any source meets
+  the list in the creative-identity pass. A copy that is the same ad as a wanted one takes its
+  place through the ordinary merge: the wanted row's airings, plays and pins move to it, so the
+  ad returns to rotation where it left, and leaves the list.
+- **The best copy is the cleanest.** Creative identity ranks copies of one ad by their defect
+  findings first: fewer checks near or past their bar wins, then resolution and the rest of the
+  ladder. A cleaner copy of an ad already on air replaces it the same way, keeping its history.
+- **An admitted clip keeps its source master and its playback copy.** The floor's next pass drops
+  its evidence copy: the sidecar stops naming it first, then the file goes once no sidecar names
+  it. Screening and split read evidence before admission, and every later check reads the
+  playback file. A rewind to split or screening on such a clip starts at the transcode instead,
+  which rebuilds the evidence copy from the master.
+- **Breaks hold up while the pool refills.** A purge shrinks the pool below its target, and the
+  fetcher fetches toward the target again. Meanwhile pod assembly fills a break in this order:
+  1. a rested ad;
+  2. an ad still resting, least recently aired first, never twice in one break and never beside
+     another version of itself;
+  3. the channel's station material (bumpers and idents, resting or not);
+  4. the embedded card, which has no file.
+
+  As the pool reaches target, rested ads fill every break and the lower rungs go unused. The lower
+  rungs only fill breaks: a channel with no ad that fits at all, such as a Christmas-only catalog
+  in July, has no pool and gets no breaks.
 
 ## Source evidence and playable media
 
@@ -726,8 +780,10 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
   its own recorded recipe and measurement. Both derivatives are built from the master, staged,
   fully decoded and checked, then atomically named; a failed check holds the clip and keeps the
   master.
-- There is no automatic master garbage collection; masters stay until a complete ownership graph
-  can prove one unreferenced and regenerable.
+- A master is deleted only with the one clip whose sidecar names it: an inferior copy merged into
+  its survivor (#2033) or a defective copy retired (#2036). Otherwise masters stay. An admitted
+  clip's evidence copy is dropped and rebuilt from its master on demand (see
+  [Enforcement](#enforcement-2036)).
 
 ## Conditioning evidence for split children
 

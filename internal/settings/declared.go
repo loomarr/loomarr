@@ -1432,11 +1432,12 @@ func declared() []Setting {
 			Doc: "How often Loomarr looks for copies of the same ad, keeps the best one, and links shorter or alternate versions (cron).",
 		},
 		{
-			// Hourly at :40, clear of the :20 identity pass (#2033). A pass decodes within a bounded
-			// budget, so the first pass over a large catalog spreads across several hours (#2034).
+			// Every five minutes: a new clip waits at the defects rung for this pass's verdict
+			// (#2036), so the interval is how long admission waits. A pass decodes within a bounded
+			// budget, held clips first, and an idle pass reads the records and decodes nothing.
 			Key: "job.filler_defects.schedule", EnvVar: "JOB_FILLER_DEFECTS_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 40 * * * *",
-			Doc: "How often Loomarr measures ads' picture and sound defects against the standard for their era (cron). Verdicts are recorded only; nothing is removed for them yet.",
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr measures ads' picture and sound defects against the standard for their era (cron). A new ad waits for this check before it airs, and an ad that fails is removed and a better copy sought.",
 		},
 		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on

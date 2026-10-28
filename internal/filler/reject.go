@@ -34,8 +34,9 @@ const (
 	// budget that was meant to bound COST behaved as a ceiling on capability, and any reel larger
 	// than the budget could never be completed at all (§10 V54).
 	//
-	// ⚠ A rung must only return this when it actually advanced something. Deferring on a pass that
-	// achieved nothing is an infinite loop; the caller's own guard is `Looked > 0`.
+	// ⚠ A rung must only return this when it actually advanced something, or when it waits on a
+	// record another job writes (the defects rung waits for the floor's verdict). Deferring on a
+	// pass that achieved nothing is an infinite loop; the caller's own guard is `Looked > 0`.
 	VerdictDefer
 )
 
@@ -65,8 +66,11 @@ const (
 	// ReasonUnplayable — the transcode stage failed after retries, so nothing downstream can
 	// play it.
 	ReasonUnplayable RejectReason = "unplayable"
-	ReasonLanguage   RejectReason = "language"
-	ReasonDuplicate  RejectReason = "duplicate"
+	// ReasonDefect — the copy fails the defect floor for its era (#2036): blocks, blur, combing,
+	// dropouts, windowboxing, an upscale or clipped sound. The detail names each failing check.
+	ReasonDefect    RejectReason = "defect"
+	ReasonLanguage  RejectReason = "language"
+	ReasonDuplicate RejectReason = "duplicate"
 	// ReasonScreening is an authority-bound rendered-child refusal. Details name only the failed
 	// axis; restricted phrases and visual descriptions stay in the private evidence repository.
 	ReasonScreening RejectReason = "screening"

@@ -503,11 +503,16 @@ type ClipStore interface {
 	// measurement and its verdict. Corrupt rows are omitted with an error so they are measured again.
 	UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error
 	ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error)
+	GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error)
 	// SetClipDefectLabel/ListClipDefectLabels own the maintainer's labels on those records, which
 	// the household report scores the floor against (#2034 step 4c). Upserting a record keeps its
 	// label; dropping the record drops it.
 	SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error
 	ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error)
+	// RetireDefectiveCopy and ListWantedCopies own enforcement (#2036): a copy that fails is
+	// tombstoned and reaped, and the reaped failures are the ads wanting a better copy.
+	RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error
+	ListWantedCopies(ctx context.Context) ([]WantedCopy, error)
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error

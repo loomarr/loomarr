@@ -285,7 +285,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
   honours the full spacing and relaxes it only when the whole ladder is resting.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
+  with an ungrounded audience → the channel's station material (bumpers and idents, resting or not,
+  #2036) → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its

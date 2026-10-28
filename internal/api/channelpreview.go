@@ -64,8 +64,8 @@ type PodPoolDTO struct {
 	TotalMs int64         `json:"totalMs"`
 	// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
 	// is the answer to "why are my commercials wrong": exact means era+audience
-	// matched, and bumper_card means nothing matched and the channel is running on
-	// the embedded card alone.
+	// matched, and bumper_card means no ad matched and the pod is the channel's station
+	// material, else the embedded card alone.
 	// Enumerated so orval generates a union the FE can switch on exhaustively. Left
 	// as a bare string, the frontend would hand-mirror these values — and the one
 	// that already did drifted out of sync with the ladder's real levels.
@@ -141,7 +141,7 @@ type CoverageDTO struct {
 	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it."`
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder (V51f).
 	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
-	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
+	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means no ad matches and breaks run on station material, else the embedded card."`
 	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
 	// Geography is the location boundary those clips were limited to, so the page can name it.
 	Geography CoverageGeographyDTO `json:"geography" doc:"The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."`

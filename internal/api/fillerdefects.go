@@ -25,7 +25,7 @@ type FillerDefectReportDTO struct {
 
 type FillerDefectVerdictCountsDTO struct {
 	Pass      int `json:"pass"`
-	Fail      int `json:"fail" doc:"What the floor would retire once it is enforced (#2036)"`
+	Fail      int `json:"fail" doc:"Failing copies still in the catalog: the floor retires one on air at its next pass, and the defects rung refuses one held (#2036)"`
 	Undecided int `json:"undecided"`
 	Pending   int `json:"pending"`
 }

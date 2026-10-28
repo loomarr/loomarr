@@ -204,16 +204,16 @@ func fillerIdentityJob(ci *filler.CreativeIdentity) scheduler.Job {
 	}
 }
 
-// fillerDefectsJob keeps every clip's defect record current (#2034): it measures clips with no
-// current measurement and re-judges records after a floor recalibration or an era correction.
-// Record-only until #2036. Hourly at :40, clear of the identity pass; a pass decodes within a
-// bounded budget and leaves the rest for the next.
+// fillerDefectsJob keeps every clip's defect record current (#2034) and enforces it (#2036): it
+// measures clips with no current measurement, held ones first since admission waits on them,
+// re-judges records after a floor recalibration or an era correction, and retires every copy
+// that fails. Every five minutes; a pass decodes within a bounded budget and leaves the rest.
 func fillerDefectsJob(d *filler.DefectFloor) scheduler.Job {
 	return scheduler.Job{
 		Timeout: scheduler.LongJobTimeout,
 		Name:    "filler-defects", Group: scheduler.GroupFiller, Title: "Check ad picture and sound",
-		Description: "Measures each ad's picture and sound defects against the standard for its era and records the verdict.",
-		DefaultCron: "0 40 * * * *", ScheduleKey: "job.filler_defects.schedule",
+		Description: "Measures each ad's picture and sound defects against the standard for its era, removes copies that fail, and asks for a better copy.",
+		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.filler_defects.schedule",
 		Run: func(ctx context.Context) error { _, err := d.Run(ctx); return err },
 	}
 }

@@ -209,13 +209,33 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 type fillerIdentityStoreAdapter struct{ fillerstore.Store }
 
 func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
-	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true})
+	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
 	if err != nil {
+		return nil, err
+	}
+	// A corrupt defect row is omitted and that copy ranks as unmeasured; the rest still rank.
+	records, err := a.ListClipDefects(ctx)
+	if err != nil && !errors.Is(err, store.ErrCorruptClipDefects) {
 		return nil, err
 	}
 	out := make([]filler.IdentityClip, len(clips))
 	for i, c := range clips {
 		out[i] = filler.IdentityClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+		if r, ok := records[c.Hash]; ok {
+			out[i].Defects = &r.Assessment
+		}
+	}
+	return out, nil
+}
+
+func (a fillerIdentityStoreAdapter) ListWantedCopies(ctx context.Context) ([]filler.WantedCopy, error) {
+	wanted, err := a.Store.ListWantedCopies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.WantedCopy, len(wanted))
+	for i, w := range wanted {
+		out[i] = filler.WantedCopy{ClipHash: w.ClipHash, Path: w.Path}
 	}
 	return out, nil
 }
@@ -1783,18 +1803,59 @@ func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, la
 	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
-// fillerDefectStoreAdapter bridges the store to the defect floor (#2034). Held clips are listed:
-// the floor is judged before review, so its record can say what it would retire.
+// fillerDefectStoreAdapter bridges the store to the defect floor (#2034) and its enforcement
+// (#2036). Held clips are listed: admission waits at the defects rung for their verdict.
 type fillerDefectStoreAdapter struct{ st fillerstore.Store }
+
+func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
+	err := a.st.RetireDefectiveCopy(ctx, hash, at)
+	if errors.Is(err, store.ErrNotFound) {
+		return filler.ErrCopyGone
+	}
+	return err
+}
+
+func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
+	return fillerStoreAdapter(a).GetClip(ctx, hash)
+}
+
+func (a fillerDefectStoreAdapter) ListClipPaths(ctx context.Context) ([]string, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, len(clips))
+	for i, c := range clips {
+		paths[i] = c.Path
+	}
+	return paths, nil
+}
+
+func (a fillerDefectStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
+	return a.st.ListClipFingerprints(ctx, algorithm)
+}
+
+func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
+}
 
 func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler.DefectClip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		return nil, err
 	}
+	rows, err := a.st.ListClipPipelines(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}})
+	if err != nil {
+		return nil, err
+	}
+	stage := make(map[string]filler.StageID, len(rows))
+	for _, r := range rows {
+		stage[r.ClipHash] = r.Stage
+	}
 	out := make([]filler.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt,
+			Stage: stage[c.Hash]}
 	}
 	return out, nil
 }
@@ -1811,6 +1872,11 @@ func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[stri
 		out[hash] = filler.DefectRecord(r)
 	}
 	return out, err
+}
+
+func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (filler.DefectRecord, bool, error) {
+	r, ok, err := a.st.GetClipDefects(ctx, clipHash)
+	return filler.DefectRecord(r), ok, err
 }
 
 func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {

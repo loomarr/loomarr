@@ -365,6 +365,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
 		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		filler.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,

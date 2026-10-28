@@ -69,7 +69,7 @@ func runFloorProbing(t *testing.T, st *defectMemStore, judge DefectJudge, probe 
 		t.Fatal("a clip with a current measurement was decoded")
 		return defects.Readings{}, nil
 	}
-	res, err := NewDefectFloor(st, probe, measure, judge, t.TempDir(), time.Now, nil).Run(context.Background())
+	res, err := NewDefectFloor(st, probe, measure, someFingerprint, judge, t.TempDir(), time.Now, nil).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
