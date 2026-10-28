@@ -1186,6 +1186,7 @@ func (s *sqlStore) RetireDefectiveCopy(ctx context.Context, hash string, at time
 // better copy of it (#2036).
 type WantedCopy struct {
 	ClipHash   string
+	Path       string
 	Name       string
 	DurationMs int64
 	// Reason is the failing verdict's reason; RetiredAt is when the copy came off the catalog.
@@ -1197,7 +1198,7 @@ type WantedCopy struct {
 // later folds the entry into itself (MergeInferiorCopy), which is what removes it from this list.
 func (s *sqlStore) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT c.hash, c.name, c.duration_ms, d.verdict_reason, c.reaped_at
+		`SELECT c.hash, c.path, c.name, c.duration_ms, d.verdict_reason, c.reaped_at
 		   FROM clips c JOIN filler_clip_defects d ON d.clip_hash = c.hash
 		  WHERE c.reaped_at IS NOT NULL AND c.is_composite = ? AND d.verdict = ?
 		  ORDER BY c.reaped_at, c.hash`), false, string(defects.VerdictFail))
@@ -1209,7 +1210,7 @@ func (s *sqlStore) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
 	for rows.Next() {
 		var w WantedCopy
 		var retiredAt int64
-		if err := rows.Scan(&w.ClipHash, &w.Name, &w.DurationMs, &w.Reason, &retiredAt); err != nil {
+		if err := rows.Scan(&w.ClipHash, &w.Path, &w.Name, &w.DurationMs, &w.Reason, &retiredAt); err != nil {
 			return nil, fmt.Errorf("scan wanted copy: %w", err)
 		}
 		w.RetiredAt = fromEpoch(retiredAt)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/defects"
 )
 
 type identityMemStore struct {
@@ -20,6 +21,7 @@ type identityMemStore struct {
 	variants     map[string][]string
 	merges       []InferiorCopy
 	links        [][2]string
+	wanted       []WantedCopy
 }
 
 func (m *identityMemStore) ListIdentityClips(context.Context) ([]IdentityClip, error) {
@@ -46,7 +48,11 @@ func (m *identityMemStore) LinkClipVariants(_ context.Context, a, b string) erro
 }
 func (m *identityMemStore) MergeInferiorCopy(_ context.Context, c InferiorCopy) error {
 	m.merges = append(m.merges, c)
+	m.wanted = slices.DeleteFunc(m.wanted, func(w WantedCopy) bool { return w.ClipHash == c.ClipHash })
 	return nil
+}
+func (m *identityMemStore) ListWantedCopies(context.Context) ([]WantedCopy, error) {
+	return slices.Clone(m.wanted), nil
 }
 
 // identityTools fingerprints each clip from a table keyed by its content hash.
@@ -127,6 +133,63 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 // One pass over a catalog holding an ad twice and a cut-down of it: the sharper copy survives even
 // though the other arrived first, the other is merged with its source identity and its own files
 // (media, sidecar, source master) deleted, and the cut-down is linked to the survivor.
+// #2036: a copy of an ad the floor retired arrives cleaner from another source and takes the
+// retired copy's place, inheriting its rotation through the merge. Between two published copies,
+// the one with fewer defect findings wins even over a higher resolution.
+func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	clip := func(body, quality string, a *defects.Assessment) IdentityClip {
+		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
+		c := IdentityClip{CreatedAt: t0, Defects: a}
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Kind = hash, ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
+		c.Placement = PlacementBreakBody
+		return c
+	}
+	clean := &defects.Assessment{Outcome: defects.Pass, Findings: []defects.Finding{{Check: defects.CheckBlur, Outcome: defects.Pass}}}
+	soft := &defects.Assessment{Outcome: defects.Borderline, Findings: []defects.Finding{{Check: defects.CheckBlur, Outcome: defects.Borderline}}}
+
+	// A retired copy is a row whose file the floor already deleted.
+	retired := func(body string) WantedCopy {
+		c := clip(body, "", nil)
+		if err := os.Remove(filepath.Join(dir, c.Path)); err != nil {
+			t.Fatal(err)
+		}
+		return WantedCopy{ClipHash: c.Hash, Path: c.Path}
+	}
+	arrival := clip("the soap ad, clean, from a second source", "480p", clean)
+	cleanLow := clip("the cola ad, clean", "360p", clean)
+	softHigh := clip("the cola ad, sharper but smeared", "480p", soft)
+	retiredSoap, unmatched := retired("the soap ad, blocky"), retired("an ad nothing has matched")
+	soap, cola := identitySpot(1), identitySpot(2)
+	st := &identityMemStore{
+		clips:        []IdentityClip{arrival, cleanLow, softHigh},
+		fingerprints: map[string]creative.Fingerprint{retiredSoap.ClipHash: soap, unmatched.ClipHash: identitySpot(3)},
+		variants:     map[string][]string{},
+		wanted:       []WantedCopy{retiredSoap, unmatched},
+	}
+	tools := &identityTools{byHash: map[string]creative.Fingerprint{arrival.Hash: soap, cleanLow.Hash: cola, softHigh.Hash: cola}}
+
+	res, err := NewCreativeIdentity(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Upgraded != 1 || res.Merged != 1 {
+		t.Fatalf("pass = %+v, want 1 upgrade and 1 merge", res)
+	}
+	want := []InferiorCopy{
+		{ClipHash: softHigh.Hash, SourceHash: softHigh.Hash, SurvivorHash: cleanLow.Hash, DecidedAt: t0},
+		{ClipHash: retiredSoap.ClipHash, SourceHash: retiredSoap.ClipHash, SurvivorHash: arrival.Hash, DecidedAt: t0},
+	}
+	if !reflect.DeepEqual(st.merges, want) {
+		t.Fatalf("merges = %+v, want the smeared copy into the clean one, and the retired soap into its arrival", st.merges)
+	}
+	if len(st.wanted) != 1 || st.wanted[0].ClipHash != unmatched.ClipHash {
+		t.Fatalf("still wanted = %+v, want only the ad nothing has matched", st.wanted)
+	}
+}
+
 func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()

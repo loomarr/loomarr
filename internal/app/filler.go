@@ -213,9 +213,29 @@ func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]fi
 	if err != nil {
 		return nil, err
 	}
+	// A corrupt defect row is omitted and that copy ranks as unmeasured; the rest still rank.
+	records, err := a.ListClipDefects(ctx)
+	if err != nil && !errors.Is(err, store.ErrCorruptClipDefects) {
+		return nil, err
+	}
 	out := make([]filler.IdentityClip, len(clips))
 	for i, c := range clips {
 		out[i] = filler.IdentityClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+		if r, ok := records[c.Hash]; ok {
+			out[i].Defects = &r.Assessment
+		}
+	}
+	return out, nil
+}
+
+func (a fillerIdentityStoreAdapter) ListWantedCopies(ctx context.Context) ([]filler.WantedCopy, error) {
+	wanted, err := a.Store.ListWantedCopies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.WantedCopy, len(wanted))
+	for i, w := range wanted {
+		out[i] = filler.WantedCopy{ClipHash: w.ClipHash, Path: w.Path}
 	}
 	return out, nil
 }

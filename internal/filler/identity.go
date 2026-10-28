@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -37,18 +38,29 @@ type IdentityStore interface {
 	ListClipVariants(ctx context.Context) (map[string][]string, error)
 	LinkClipVariants(ctx context.Context, a, b string) error
 	MergeInferiorCopy(ctx context.Context, c InferiorCopy) error
+	// ListWantedCopies is every retired defective copy still waiting for a better one (#2036).
+	ListWantedCopies(ctx context.Context) ([]WantedCopy, error)
 }
 
 // IdentityClip is a catalog clip and when it was admitted, the last tie-break between copies.
 type IdentityClip struct {
 	StoreClip
 	CreatedAt time.Time
+	// Defects is the clip's current defect assessment; nil until the floor has measured it.
+	Defects *defects.Assessment
+}
+
+// WantedCopy is an ad whose only copy failed the defect floor and was retired. Its row keeps the
+// fingerprint and the airings a cleaner copy inherits.
+type WantedCopy struct {
+	ClipHash, Path string
 }
 
 // IdentityResult reports one pass.
 type IdentityResult struct {
 	Fingerprinted int // clips measured this pass
 	Merged        int // inferior copies folded into their survivor
+	Upgraded      int // retired defective copies a cleaner copy of the same ad replaced
 	Linked        int // new variant links
 	Pending       int // published clips still waiting for a fingerprint
 }
@@ -178,6 +190,9 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 			res.Merged++
 		}
 	}
+	if err := ci.upgradeWanted(ctx, cached, measured, fps, survivorOf, referenced, &res); err != nil {
+		return res, err
+	}
 
 	existing, err := ci.store.ListClipVariants(ctx)
 	if err != nil {
@@ -201,15 +216,59 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 	return res, nil
 }
 
+// upgradeWanted folds each retired defective copy into the best published copy of the same ad
+// (#2036). The merge moves the retired copy's airings, plays and pins to it, so the upgrade airs in
+// the old copy's place in rotation, and the ad leaves the wanted list. Every source's arrivals meet
+// this check once they are published and fingerprinted, here.
+func (ci *CreativeIdentity) upgradeWanted(ctx context.Context, cached map[string]creative.Fingerprint,
+	measured []IdentityClip, fps map[string]creative.Fingerprint, survivorOf []int, referenced map[string]int,
+	res *IdentityResult) error {
+	wanted, err := ci.store.ListWantedCopies(ctx)
+	if err != nil {
+		return err
+	}
+	for _, w := range wanted {
+		fp, ok := cached[w.ClipHash]
+		if !ok {
+			continue // retired before it could be fingerprinted; nothing can match it
+		}
+		best := -1
+		for i, c := range measured {
+			if survivorOf[i] != i || creative.Compare(fp, fps[c.Hash]) != creative.Same {
+				continue
+			}
+			if best < 0 || ci.compareCopies(c, measured[best]) < 0 {
+				best = i
+			}
+		}
+		if best < 0 {
+			continue
+		}
+		retired := IdentityClip{}
+		retired.Hash, retired.Path = w.ClipHash, w.Path
+		if err := ci.merge(ctx, retired, measured[best], referenced); err != nil {
+			ci.warn("identity: a retired copy could not be replaced by its upgrade", "clip", w.ClipHash,
+				"survivor", measured[best].Hash, "err", err)
+			continue
+		}
+		res.Upgraded++
+	}
+	return nil
+}
+
 // identityCandidate is a clip that airs as an ad of its own: published, not a compilation.
 func identityCandidate(c Clip) bool {
 	return !c.IsComposite && !c.Held && c.RemovedAt.IsZero() && c.Placement != PlacementNotPlayable
 }
 
-// compareCopies orders two copies of one ad best first. Until #2034 measures defects: the higher
-// resolution, then the copy needing less air-time loudness correction (within 1 dB is a tie), then
-// the more complete edit, then the earlier admission.
+// compareCopies orders two copies of one ad best first: the cleaner copy, with fewer checks near
+// or past their bar (#2036), then the higher resolution, then the copy needing less air-time
+// loudness correction (within 1 dB is a tie), then the more complete edit, then the earlier
+// admission. An unmeasured copy ranks after every measured one on the first rung.
 func (ci *CreativeIdentity) compareCopies(a, b IdentityClip) int {
+	if d := cmp.Compare(defectsFound(a), defectsFound(b)); d != 0 {
+		return d
+	}
 	if d := cmp.Compare(qualityRank(b.Quality), qualityRank(a.Quality)); d != 0 {
 		return d
 	}
@@ -217,6 +276,24 @@ func (ci *CreativeIdentity) compareCopies(a, b IdentityClip) int {
 		return cmp.Compare(ga, gb)
 	}
 	return cmp.Or(cmp.Compare(b.DurationMs, a.DurationMs), a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.Hash, b.Hash))
+}
+
+// defectsFound counts a copy's findings short of a clean pass, a failing one counting for more
+// than any number of borderline ones. An unmeasured copy counts as worst.
+func defectsFound(c IdentityClip) int {
+	if c.Defects == nil {
+		return math.MaxInt
+	}
+	n := 0
+	for _, f := range c.Defects.Findings {
+		switch f.Outcome {
+		case defects.Fail:
+			n += 1000
+		case defects.Borderline:
+			n++
+		}
+	}
+	return n
 }
 
 // correctionNeeded is how far a copy's measured playback loudness sits from the target, in dB. An
