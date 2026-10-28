@@ -80,6 +80,9 @@ type PackagerHLS struct {
 	budget *ResourceBudget
 	// ladderCfg tunes each airing's RungMonitor; zero is the defaults (a test seam for its dwell times).
 	ladderCfg RungMonitorConfig
+	// premiumLookup bounds how long a master waits for its premium lookup; zero is
+	// premiumLookupTimeout (a test seam).
+	premiumLookup time.Duration
 
 	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
 	life    context.Context
@@ -191,9 +194,14 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculativ
 	premium, found := new(*hlsVariant), make(chan struct{})
 	warmPremium := speculative && m.takesPremium(viewer)
 	admitted := make(chan bool, 1) // the baseline's admission, read only by a premium warm
+	lookup := m.premiumLookup
+	if lookup <= 0 {
+		lookup = premiumLookupTimeout
+	}
+	deadline := time.Now().Add(lookup)
 	go func() {
 		defer close(found)
-		ctx, cancel := context.WithTimeout(m.life, premiumLookupTimeout)
+		ctx, cancel := context.WithDeadline(m.life, deadline)
 		defer cancel()
 		class := m.source.Premium(ctx, channelID)
 		if warmPremium && class != "" && <-admitted {
@@ -212,11 +220,20 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculativ
 		await:   c.p.AwaitPlaylist,
 		snapshot: func(ctx context.Context) ([]byte, error) {
 			vs := []hlsVariant{c.variant(FormatBaseline)}
+			// ⚠ The deadline is the master's own, not only the lookup's context. The lookup walks the
+			// channel's whole cycle, and a step that outruns its context held every master behind it:
+			// one channel's took ~30 s, its players gave up at ~10 s, and the channel would not play.
+			// Past the deadline the master lists the baseline alone, as a failed lookup does.
+			wait := time.NewTimer(time.Until(deadline))
+			defer wait.Stop()
 			select {
 			case <-found:
 				if *premium != nil {
 					vs = append(vs, **premium)
 				}
+			case <-wait.C:
+				m.log.Warn("packager hls: premium lookup overran; offering the baseline only",
+					"channel", channelID, "after", lookup)
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
