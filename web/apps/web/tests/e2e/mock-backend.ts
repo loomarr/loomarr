@@ -227,16 +227,23 @@ interface MockBackend {
 
 // The location index slice the specs search and read back by id (`place` is the saved setting value).
 const MOCK_LOCATIONS: LocationDTO[] = [
-  { id: "5128581", label: "New York City, United States", country: "US", place: "5128581" },
+  {
+    id: "5128581",
+    label: "New York City, United States",
+    country: "US",
+    place: "5128581",
+    city: "New York City",
+  },
   {
     id: "5129061",
     label: "North Greenbush, United States",
     country: "US",
     place: "5129061",
+    city: "North Greenbush",
     region: "New York",
   },
   { id: "country-US", label: "United States", country: "US" },
-  { id: "2643743", label: "London, United Kingdom", country: "GB", place: "2643743" },
+  { id: "2643743", label: "London, United Kingdom", country: "GB", place: "2643743", city: "London" },
 ];
 
 const json = (route: Route, body: unknown, status = 200) =>

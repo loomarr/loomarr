@@ -21,6 +21,7 @@ type locationDTO struct {
 	Label       string `json:"label" example:"New York City, United States" doc:"Human place label"`
 	Country     string `json:"country" example:"US" minLength:"2" maxLength:"2" doc:"ISO 3166-1 alpha-2 setting value"`
 	Place       string `json:"place,omitempty" example:"5128581" doc:"filler.home_place (or a Channel's place) setting value; empty for a country-only choice"`
+	City        string `json:"city,omitempty" example:"New York City" doc:"Display-only city name; empty for a country-only choice"`
 	Region      string `json:"region,omitempty" example:"New York" doc:"Display-only first-level region used to distinguish search results"`
 	Source      string `json:"source,omitempty" enum:"device,cloudflare,cloudfront,vercel,proxy,ip" doc:"Evidence used for an automatic suggestion"`
 	Approximate bool   `json:"approximate,omitempty" doc:"True when the result came from IP/CDN evidence rather than selected device coordinates"`
@@ -216,7 +217,7 @@ func trustedLocationHeader(index *installationlocation.Index, request *http.Requ
 func locationDTOFrom(place installationlocation.Place) locationDTO {
 	dto := locationDTO{ID: place.ID, Label: place.Label, Country: place.Country, Region: place.Region}
 	if place.City != "" {
-		dto.Place = place.ID
+		dto.Place, dto.City = place.ID, place.City
 	}
 	return dto
 }

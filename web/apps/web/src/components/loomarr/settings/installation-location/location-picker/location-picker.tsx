@@ -215,9 +215,11 @@ const LocationPicker = ({
                       onClick={() => choose(candidate)}
                     >
                       <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{candidate.label}</span>
-                        {candidate.place && candidate.region && (
-                          <span className="text-muted-foreground truncate text-xs">{candidate.region}</span>
+                        <span className="truncate">{candidate.city || candidate.label}</span>
+                        {candidate.city && (
+                          <span className="text-muted-foreground truncate text-xs">
+                            {[candidate.region, countryName(candidate.country)].filter(Boolean).join(", ")}
+                          </span>
                         )}
                       </span>
                       {candidate.country === value.country && (candidate.place ?? "") === place && (

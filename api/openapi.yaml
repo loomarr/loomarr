@@ -6631,6 +6631,11 @@ components:
         attribution:
           description: Required data-provider attribution URL
           type: string
+        city:
+          description: Display-only city name; empty for a country-only choice
+          examples:
+            - New York City
+          type: string
         country:
           description: ISO 3166-1 alpha-2 setting value
           examples:
