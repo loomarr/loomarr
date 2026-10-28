@@ -457,10 +457,11 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 	}
 	out := make([]filler.FetchSource, 0, len(srcs))
 	for _, s := range srcs {
-		geographicallyEligible := true
+		geographicallyEligible, region := true, 0
 		if a.home != nil {
 			home := a.home().Normalize()
 			geographicallyEligible = home.Country != "" && s.GeographicallyEligible(home)
+			region = home.RegionRank(s.EffectiveGeography(home).Country)
 		}
 		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
 		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
@@ -473,7 +474,7 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 			every = 0
 		}
 		out = append(out, filler.FetchSource{
-			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled() && geographicallyEligible,
+			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled() && geographicallyEligible, Region: region,
 			NeverFetch:        !pollable,
 			Every:             every,
 			LastCheckedAt:     s.LastCheckedAt,

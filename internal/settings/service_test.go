@@ -78,6 +78,24 @@ func TestResolveMany_UsesOneSnapshotWithOrdinaryPrecedence(t *testing.T) {
 // failed the time.Duration assertion in set.dur → window 0 → no truncation → the whole
 // 800-episode run materialized. (The prior tests hid this by hand-typing their defaults
 // e.g. Default: 2; the real registry never does.)
+// A string list reads comma-joined through String, the form an operator types, so a live-config
+// reader of filler.region_fallback (#2035) does not panic.
+func TestString_AListReadsCommaJoined(t *testing.T) {
+	reg := newRegistry([]Setting{
+		{Key: "filler.region_fallback", EnvVar: "FILLER_REGION_FALLBACK", Owner: OwnerAdvanced, Kind: KindStringList, Default: "", Validate: countryCodeList, Doc: "x"},
+	})
+	s, err := New(context.Background(), reg, fakeLoader{m: map[string]string{"filler.region_fallback": "GB, CA"}}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got := s.String("filler.region_fallback"); got != "GB,CA" {
+		t.Fatalf("String = %q, want GB,CA", got)
+	}
+	if err := countryCodeList([]string{"GB", "Canada"}); err == nil {
+		t.Fatal("a country name passed as a code")
+	}
+}
+
 func TestResolve_StringDefaultParsesToTypedValue(t *testing.T) {
 	reg := newRegistry([]Setting{
 		{Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Owner: OwnerAdvanced, Kind: KindDuration, Default: "24h", Doc: "x"},

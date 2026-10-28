@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/config"
 )
@@ -203,13 +204,16 @@ func (s *Service) defaultResolved(set Setting, caution, unlocked bool) Resolved 
 	}
 }
 
-// String returns a key's resolved value as a string (empty for unset optionals).
-// Panics on a non-string/secret/enum/url Kind — callers wanting typed values use
-// the typed accessors below.
+// String returns a key's resolved value as a string (empty for unset optionals). A string list
+// reads comma-joined, the form it is typed in. Panics on any other non-string Kind — callers
+// wanting typed values use the typed accessors below.
 func (s *Service) String(key string) string {
 	r := s.Resolve(key)
 	if r.Value == nil {
 		return ""
+	}
+	if list, ok := r.Value.([]string); ok {
+		return strings.Join(list, ",")
 	}
 	str, ok := r.Value.(string)
 	if !ok {

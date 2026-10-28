@@ -214,6 +214,16 @@ fetchable and operator-removable.
 - **Licence metadata is passive provenance.** It is recorded when the provider supplies it; absence
   means "not provided", never public domain. It never ranks, filters, holds, rejects or admits, and
   it stays off the Sources UI.
+- **Region preference** (#2035). `filler.region_fallback` is an ordered list of countries after
+  `filler.home_country`, for example `GB, CA, AU`. A listed country's **national** commercials
+  pass the hard geography boundary and its country-wide sources may fetch; its local ones, and
+  every unlisted country's, never do.
+  - Within a ladder rung the home country's clips rank first, then each listed country's in
+    order. Region yields to era: a GB ad from the channel's own era outranks a US ad from a
+    widened one, which is what "when US supply for an era runs thin" means.
+  - An unattended pass asks home sources first, then each listed country's.
+  - A channel inherits the list. Non-target languages are still rejected by the language check.
+  - The list is edited under Filler › Settings › Automatic downloads.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
   live. An explicit country and market is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,

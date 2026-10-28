@@ -1,6 +1,7 @@
 package filler_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -36,6 +37,131 @@ func TestAssemble_GeographyIsNeverRelaxedOrBypassedByPin(t *testing.T) {
 		if seen[forbidden] {
 			t.Errorf("geographically incompatible pinned clip %q aired", forbidden)
 		}
+	}
+}
+
+// Region preference (#2035): a fallback country's national ads air behind the home country's within
+// an era, ahead of a home ad from a widened era, and in the order the countries are listed. Its local
+// ads never air.
+func TestAssemble_FallbackCountriesFillInBehindHomeWithinAnEra(t *testing.T) {
+	at := func(id, country string, scope filler.GeographicScope, era int) filler.Clip {
+		c := geoCommercial(id, scope, country, "")
+		c.Era = era
+		return c
+	}
+	catalog := []filler.Clip{
+		at("us-1992", "US", filler.GeographicNational, 1992),
+		at("au-1992", "AU", filler.GeographicNational, 1992),
+		at("gb-1992", "GB", filler.GeographicNational, 1992),
+		at("us-2000", "US", filler.GeographicNational, 2000), // the widened rung
+		at("gb-local", "GB", filler.GeographicLocal, 1992),
+		at("fr-1992", "FR", filler.GeographicNational, 1992), // not listed
+	}
+	policy := filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "gb, AU,US"}}
+	aired := func(podMax int) map[string]bool {
+		w := filler.Window{Seed: 3, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 300_000, PodMax: podMax}
+		seen := map[string]bool{}
+		for _, e := range filler.Assemble(catalog, w, policy, nil).Entries {
+			seen[e.Hash] = true
+		}
+		return seen
+	}
+	if got := aired(1); !got["us-1992"] || len(got) != 1 {
+		t.Fatalf("one-ad pod aired %v, want the home ad", got)
+	}
+	if got := aired(2); !got["us-1992"] || !got["gb-1992"] || len(got) != 2 {
+		t.Fatalf("two-ad pod aired %v, want home then the first fallback country", got)
+	}
+	if got := aired(3); !got["au-1992"] || got["us-2000"] {
+		t.Fatalf("three-ad pod aired %v, want the second fallback country before a widened home ad", got)
+	}
+	got := aired(10)
+	if got["gb-local"] || got["fr-1992"] {
+		t.Fatalf("pod aired %v: a fallback country's local ad or an unlisted country's ad", got)
+	}
+	if !got["us-2000"] {
+		t.Fatalf("pod aired %v, want the widened home ad once the era ran out", got)
+	}
+}
+
+// Region orders within a rung, so category variety still spans it: home, the fallback country's
+// different product, then home's second of the same product.
+func TestAssemble_FallbackRegionKeepsVarietyAcrossTheRung(t *testing.T) {
+	beer := func(id string) filler.Clip {
+		c := geoCommercial(id, filler.GeographicNational, "US", "")
+		c.Category = "beer"
+		return c
+	}
+	car := geoCommercial("gb-car", filler.GeographicNational, " gb ", "")
+	car.Category = "car"
+	pod := filler.Assemble([]filler.Clip{beer("us-beer-1"), beer("us-beer-2"), car},
+		filler.Window{Seed: 5, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 90_000, PodMax: 3},
+		filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "GB"}}, nil)
+	var cats []string
+	for _, e := range pod.Entries {
+		cats = append(cats, e.Category)
+	}
+	if want := []string{"beer", "car", "beer"}; !slices.Equal(cats, want) {
+		t.Fatalf("pod categories %v, want %v", cats, want)
+	}
+}
+
+// A channel narrowed to a market in the home country still inherits the preference, and a fallback
+// country's local ads stay out.
+func TestGeographicallyEligible_AMarketChannelInheritsTheFallback(t *testing.T) {
+	policy := filler.Policy{Geography: filler.Geography{Country: "US", Fallback: "GB"}}
+	w := filler.Window{Seed: 2, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120_000, PodMax: 4,
+		Geography: filler.Geography{Country: "US", Market: "Seattle"}}
+	seen := map[string]bool{}
+	for _, e := range filler.Assemble([]filler.Clip{
+		geoCommercial("gb-national", filler.GeographicNational, "gb", ""),
+		geoCommercial("gb-local", filler.GeographicLocal, "GB", "London"),
+	}, w, policy, nil).Entries {
+		seen[e.Hash] = true
+	}
+	if !seen["gb-national"] || seen["gb-local"] {
+		t.Fatalf("a Seattle channel aired %v, want the GB national ad only", seen)
+	}
+}
+
+func TestSourceGeographicallyEligible_AFallbackCountryIsNationalOnly(t *testing.T) {
+	home := filler.Geography{Country: "US", Fallback: "GB"}
+	cases := []struct {
+		source filler.Geography
+		want   bool
+	}{
+		{filler.Geography{Country: "gb"}, true},
+		{filler.Geography{Country: "GB", Market: "London"}, false},
+		{filler.Geography{Country: "AU"}, false},
+		{filler.Geography{Country: "US"}, true},
+	}
+	for _, tc := range cases {
+		if got := filler.SourceGeographicallyEligible(tc.source, home); got != tc.want {
+			t.Errorf("source %+v eligible = %v, want %v", tc.source, got, tc.want)
+		}
+	}
+	if got := home.Normalize().RegionRank("gb"); got != 1 {
+		t.Fatalf("GB ranks %d, want 1, behind home", got)
+	}
+	if got := (filler.Geography{Country: "US", Fallback: " gb, CA,,gb ,us"}).Normalize().Fallback; got != "GB,CA" {
+		t.Fatalf("normalized fallback %q, want GB,CA", got)
+	}
+}
+
+func TestFetch_AsksHomeSourcesBeforeFallbackCountries(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "au", Kind: "archive", URI: "au", Enabled: true, Region: 2},
+			{ID: "us", Kind: "archive", URI: "us", Enabled: true},
+			{ID: "gb", Kind: "archive", URI: "gb", Enabled: true, Region: 1},
+		},
+		offers: refs("a"),
+	}
+	if _, err := newFetcher(t, stub, limits(1, 2000)).Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"us", "gb", "au"}; !slices.Equal(stub.listed, want) {
+		t.Fatalf("listed %v, want %v", stub.listed, want)
 	}
 }
 

@@ -205,7 +205,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Automatic downloads",
       description: "Choose how often Loomarr looks for clips and how many each source may add.",
-      keys: ["filler.fetch.every", "filler.fetch.max_per_run"],
+      keys: ["filler.fetch.every", "filler.fetch.max_per_run", "filler.region_fallback"],
       footer: ({ liveValue }) => {
         const every = liveValue("filler.fetch.every") || "6h";
         const defaultMax = Math.max(1, Number(liveValue("filler.fetch.max_per_run")) || 10);

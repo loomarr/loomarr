@@ -134,10 +134,8 @@ func buildFillerSubsystem(
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		archiveFinder: clipfetch.NewArchiveSourceFinder(),
-		home: func() filler.Geography {
-			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
-		},
-		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		home:          set.homeGeography,
+		splitter:      splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
 		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
@@ -300,9 +298,7 @@ func buildFillerSubsystem(
 		fetchStoreAdapter{
 			st:         st,
 			fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") },
-			home: func() filler.Geography {
-				return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
-			},
+			home:       set.homeGeography,
 		},
 		sourceEnumerator, adapter,
 		filler.FetchLimits{

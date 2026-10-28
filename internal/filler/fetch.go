@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -59,6 +60,9 @@ type FetchSource struct {
 	Kind    string // "archive" | "youtube"
 	URI     string
 	Enabled bool
+	// Region is the source's country in the installation's preference order (#2035): 0 for home,
+	// then each fallback country. A pass asks home sources first.
+	Region int
 	// NeverFetch is the resolved automatic-download opt-out. It stays separate from Every so
 	// zero-value test and embedding sources remain immediately due without confusing that with
 	// the store's explicit `fetch_every_seconds = 0` state.
@@ -405,6 +409,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		res.StoppedBy = "target"
 		return res, nil
 	}
+	// Home sources first, then each fallback country's in preference order (#2035): a per-provider
+	// limit reached partway through the pass is then spent on the home country.
+	slices.SortStableFunc(due, func(a, b FetchSource) int { return a.Region - b.Region })
 
 	have, err := f.store.CatalogPaths(ctx)
 	if err != nil {

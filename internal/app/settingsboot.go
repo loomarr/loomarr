@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -91,12 +93,25 @@ func (r resolved) str(key string) string {
 	if value == nil {
 		return ""
 	}
+	// A string list reads comma-joined, as settings.Service.String gives it.
+	if list, ok := value.([]string); ok {
+		return strings.Join(list, ",")
+	}
 	str, ok := value.(string)
 	if !ok {
 		panic(fmt.Sprintf("app.resolved.str: %s is %T, not string", key, value))
 	}
 	return str
 }
+
+// homeGeography is the installation's location with its region preference (#2035).
+func (r resolved) homeGeography() filler.Geography {
+	return filler.Geography{
+		Country: r.str("filler.home_country"), Market: r.str("filler.home_market"),
+		Fallback: r.str("filler.region_fallback"),
+	}.Normalize()
+}
+
 func (r resolved) dur(key string) time.Duration {
 	if d, ok := r.value(key).(time.Duration); ok {
 		return d

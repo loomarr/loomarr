@@ -62,6 +62,8 @@ var fillerOwners = map[string]Owner{
 	"filler.fetch.every":              OwnerFillerDownloads,
 	"filler.fetch.max_per_run":        OwnerFillerDownloads,
 	"filler.acquisition.compilations": OwnerFillerDownloads,
+	// Edited beside the download limits; it also orders which countries' ads air.
+	"filler.region_fallback": OwnerFillerDownloads,
 
 	"filler.fetch.max_catalog_clips":    OwnerFillerStorage,
 	"filler.storage.library_budget_gb":  OwnerFillerStorage,
