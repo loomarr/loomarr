@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"slices"
@@ -124,6 +125,19 @@ type deckDealer struct {
 	warmUp    int64         // passes a chained walk deals before its anchor (see warmUpPasses)
 	chain     *dealChain    // shared across calls; nil unless reshuffling
 	bases     map[int64]dealt
+	ctx       context.Context // polled between deals (checkCancel); nil = never cancelled
+	deals     int             // how many passes this dealer has dealt, for the tests that pin the cost
+}
+
+// checkCancel unwinds to ComputeDesiredAtCtx when the computation's context is done. Called at the
+// top of each deal and each simulated window, the units the cost is made of.
+func (d *deckDealer) checkCancel() {
+	if d.ctx == nil {
+		return
+	}
+	if err := d.ctx.Err(); err != nil {
+		panic(computeCancelled{err})
+	}
 }
 
 type dealt struct {
@@ -191,6 +205,8 @@ func (d *deckDealer) warmUpPasses(runtime int64) int64 {
 
 // deal is the seeded, unrepaired deal of one pass.
 func (d *deckDealer) deal(pass int64) dealt {
+	d.checkCancel()
+	d.deals++
 	deck, applied := slotWithRelaxation(d.slots, d.rp, passSeed(d.seed, pass))
 	return dealt{deck, applied}
 }
@@ -403,9 +419,8 @@ func holdBack(next []Slot, release map[string]int64) []Slot {
 // deck, so a cold walk deals every pass from the walk's anchor; the memo makes that a once-per-
 // process cost, and each later pass one deal more.
 type dealChain struct {
-	mu       sync.Mutex
-	decks    map[int64][]Slot // checkpoints, plus the furthest pass walked
-	furthest int64            // -1: nothing walked yet
+	mu    sync.Mutex
+	decks map[int64][]Slot // checkpoints, plus every pass walked in the segments around the last asked
 }
 
 var (
@@ -456,7 +471,7 @@ func dealerKey(d *deckDealer) uint64 {
 	return h.Sum64()
 }
 
-func newDealChain() *dealChain { return &dealChain{decks: map[int64][]Slot{}, furthest: -1} }
+func newDealChain() *dealChain { return &dealChain{decks: map[int64][]Slot{}} }
 
 // stableDecks bounds what a tail-stable pool remembers: the few passes a window straddles.
 const stableDecks = 16
@@ -481,15 +496,10 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 
 	anchor := pass - pass%d.bound
 	at, cur := anchor, []Slot(nil)
-	switch {
-	case c.furthest >= anchor && c.furthest <= pass:
-		at, cur = c.furthest, c.decks[c.furthest]
-	default:
-		for p := pass - pass%checkpointEvery; p >= anchor; p -= checkpointEvery {
-			if deck, ok := c.decks[p]; ok {
-				at, cur = p, deck
-				break
-			}
+	for p := pass - 1; p >= anchor; p-- { // the nearest deck already walked before `pass`
+		if deck, ok := c.decks[p]; ok {
+			at, cur = p, deck
+			break
 		}
 	}
 	if cur == nil {
@@ -506,19 +516,26 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 
 	for p := at + 1; p <= pass; p++ {
 		cur = d.repair(cur, d.deal(p).deck)
-		if p%checkpointEvery == 0 {
-			c.decks[p] = cur
-		}
+		c.decks[p] = cur
 	}
-	// Only checkpoints and the head of the walk are kept; an earlier pass asked for out of order
-	// leaves the head where it was.
-	if pass > c.furthest {
-		if c.furthest%checkpointEvery != 0 {
-			delete(c.decks, c.furthest)
-		}
-		c.decks[pass], c.furthest = cur, pass
-	}
+	c.forgetFar(d, pass)
 	return cur
+}
+
+// forgetFar drops the decks kept only for being walked: every pass walked stays while the passes
+// around it are asked for, and the checkpoints stay for good. A caller that works around one pass
+// (the season simulation reads the pass before, the pass, and the one after, window after window)
+// would otherwise find every non-checkpoint deck gone and re-walk from the checkpoint, dealing the
+// same passes over again: 603 deals of 32 distinct passes in one preview, ~19 each. A segment is at
+// most chainBudget slot-deals (chainBound), so keeping the three nearest bounds the memo at three
+// segments of decks, a few hundred KB.
+func (c *dealChain) forgetFar(d *deckDealer, pass int64) {
+	seg := pass / d.bound
+	for p := range c.decks {
+		if p%checkpointEvery != 0 && (p/d.bound < seg-1 || p/d.bound > seg+1) {
+			delete(c.decks, p)
+		}
+	}
 }
 
 // warmedUp is the deck of the pass before `anchor`, walked from warmUp passes before the anchor as
