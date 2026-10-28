@@ -550,6 +550,8 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 		return "Media server library"
 	case "manual":
 		return "Manually added"
+	case filler.OpenSearchSourceID:
+		return "Search for nearby stations"
 	case "":
 		return ""
 	default:

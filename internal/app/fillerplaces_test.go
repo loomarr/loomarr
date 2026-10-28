@@ -1,11 +1,13 @@
 package app
 
 import (
+	"context"
 	"slices"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // A curated source names stations by hand, so a typo would switch it on for nobody. Every id must be
@@ -29,6 +31,46 @@ func TestShippedCuratedStationsAreInTheShippedDirectory(t *testing.T) {
 			} else if station.Country != src.Country {
 				t.Errorf("%s: station %s is in %s, the source in %q", src.Label, id, station.Country, src.Country)
 			}
+		}
+	}
+}
+
+type fixedDirectory struct{ *broadcaststation.Directory }
+
+func (d fixedDirectory) get(context.Context) (*broadcaststation.Directory, error) {
+	return d.Directory, nil
+}
+
+// The open-search gate admits a title naming a station near some current place, held on the
+// title's date (#2059 decision 11). Invented stations: fcc:1 near "harbor" was WAAA until
+// 1987-04-29 and WBBB after; fcc:3 near a channel's "lakeside" is WCCC; fcc:9 is WZZZ, near nothing.
+func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
+	directory := broadcaststation.NewDirectory([]broadcaststation.Station{
+		{ID: "fcc:1", Country: "US", CallSigns: []broadcaststation.CallSign{
+			{Sign: "WAAA", To: "1987-04-29"}, {Sign: "WBBB", From: "1987-04-29"}}},
+		{ID: "fcc:3", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WCCC"}}},
+		{ID: "fcc:9", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WZZZ"}}},
+	})
+	search := openArchiveSearch{
+		channels: &retirementFake{channels: []store.Channel{channelAt("US", "lakeside")}},
+		policy:   retirementPolicy("US"), stations: fixedDirectory{directory},
+		languages: func(context.Context) (string, error) { return "en", nil },
+	}
+	gate, err := search.Gate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	eras := []filler.EraRange{{From: 1980, To: 1999}}
+	for title, want := range map[string]string{
+		"WAAA-TV station ID 1984": "WAAA",
+		"WBBB-TV station ID 1990": "WBBB",
+		"WCCC-TV news open 1992":  "WCCC",
+		"WBBB-TV station ID 1984": "",
+		"WZZZ-TV station ID 1984": "",
+		"Fizzwell Cola ad, 1984":  "",
+	} {
+		if got, _ := gate.Admit(filler.DiscoveredRef{Title: title}, eras); got != want {
+			t.Errorf("%q admitted by %q, want %q", title, got, want)
 		}
 	}
 }

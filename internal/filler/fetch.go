@@ -259,6 +259,7 @@ type Fetcher struct {
 	log    *slog.Logger
 	now    func() time.Time
 	gaps   func(context.Context) (CoverageGaps, error)
+	open   OpenSearcher
 	// metUntil is when a met pool target is next read again, in Unix milliseconds. A met pass
 	// claims no source, so every source stays due and each minute's wake would otherwise re-read
 	// every channel's coverage and the household's airings.
@@ -274,6 +275,13 @@ const TargetRecheck = 15 * time.Minute
 // always has.
 func (f *Fetcher) WithCoverageGaps(gaps func(context.Context) (CoverageGaps, error)) *Fetcher {
 	f.gaps = gaps
+	return f
+}
+
+// WithOpenSearch lets a pass the sources left short search the whole provider for nearby stations
+// (#2059 decisions 10 and 11). Optional: without it a pass searches only inside its sources.
+func (f *Fetcher) WithOpenSearch(open OpenSearcher) *Fetcher {
+	f.open = open
 	return f
 }
 
@@ -762,6 +770,23 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		}
 	}
 
+	// Open search comes last (#2059 decision 10): only a pass the sources left short asks the whole
+	// provider, and only for nearby stations in the eras it is short of.
+	if scheduled && targeted && f.open != nil && res.StoppedBy != "target" && len(gaps.Stations) > 0 && len(gaps.Eras) > 0 {
+		count := globalPerRun
+		if gaps.Short > 0 {
+			count = min(count, gaps.Short-res.Queued)
+		}
+		count = min(count, providerLimit-providerQueued["archive"])
+		if count > 0 {
+			queued, err := f.openSearch(ctx, gaps, inPass, count)
+			if err != nil {
+				return res, err
+			}
+			res.Queued += queued
+			providerQueued["archive"] += queued
+		}
+	}
 	if res.Queued > 0 {
 		f.log.Info("filler auto-fetch", "sources", res.SourcesPolled, "queued", res.Queued, "skipped", res.Skipped)
 	}
@@ -918,6 +943,89 @@ func (f *Fetcher) withStationHits(ctx context.Context, src FetchSource, items []
 		}
 	}
 	return hits, found
+}
+
+// openSearch searches the whole provider for up to OpenSearchesPerPass of the pass's call signs and
+// queues at most count of the hits its listing gate admits. A failed search or gate costs only the
+// open search; only a context error ends the pass.
+func (f *Fetcher) openSearch(ctx context.Context, gaps CoverageGaps, inPass map[string]ExistingRemoteState, count int) (int, error) {
+	gate, err := f.open.Gate(ctx)
+	if err != nil {
+		f.log.Warn("filler auto-fetch: open search skipped; its listing gate is unavailable", "err", err)
+		return 0, nil
+	}
+	n := min(OpenSearchesPerPass, len(gaps.Stations))
+	start := int(f.now().Unix()/3600) % len(gaps.Stations)
+	seen := map[string]bool{}
+	refused := map[string]int{}
+	var candidates []AcquisitionCandidate
+	for i := range n {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		sign := gaps.Stations[(start+i)%len(gaps.Stations)]
+		refs, err := f.open.OpenSearch(ctx, sign, count*4)
+		if err != nil {
+			f.log.Warn("filler auto-fetch: open search failed", "call_sign", sign, "err", err)
+			continue
+		}
+		for _, ref := range refs {
+			if ref.ID == "" || seen[ref.ID] {
+				continue
+			}
+			seen[ref.ID] = true
+			callSign, why := gate.Admit(ref, gaps.Eras)
+			if why != "" {
+				refused[why]++
+				continue
+			}
+			candidates = append(candidates, AcquisitionCandidate{
+				Identity: RemoteIdentity{Provider: "archive", SourceID: OpenSearchSourceID, RemoteID: ref.ID},
+				URL:      ref.URL, Title: ref.Title, License: ref.License,
+				ObservedYear: ref.ObservedYear, PublishedAt: ref.PublishedAt,
+				DurationMS: ref.DurationMS, Height: ref.Height,
+				StationSearch: callSign,
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		f.log.Info("filler auto-fetch: open search admitted nothing", "searched", n, "refused", refused)
+		return 0, nil
+	}
+	selection, err := PlanAcquisitionFor(AcquisitionIntent{
+		Count:         count,
+		CatalogReason: "Open search for a nearby station: the registered sources left the pool short.",
+	}, candidates, inPass, gaps)
+	if err != nil {
+		f.log.Warn("filler auto-fetch: open-search hits could not be selected", "err", err)
+		return 0, nil
+	}
+	items := make([]DiscoveredRef, 0, len(selection.Selected))
+	urls := make([]string, 0, len(selection.Selected))
+	for _, decision := range selection.Selected {
+		c := decision.Candidate
+		urls = append(urls, c.URL)
+		items = append(items, DiscoveredRef{ID: c.Identity.RemoteID, URL: c.URL, Title: c.Title,
+			License: c.License, ObservedYear: c.ObservedYear, PublishedAt: c.PublishedAt,
+			DurationMS: c.DurationMS, Height: c.Height, Gap: decision.Gap})
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+	if identified, ok := f.ingest.(IdentifiedFetchIngestor); ok {
+		_, err = identified.IngestSourceItems(ctx, OpenSearchSourceID, "archive", items)
+	} else {
+		_, err = f.ingest.IngestSource(ctx, OpenSearchSourceID, "archive", urls)
+	}
+	if err != nil {
+		f.log.Warn("filler auto-fetch: queueing open-search hits failed", "err", err)
+		return 0, nil
+	}
+	for _, decision := range selection.Selected {
+		inPass[decision.Candidate.Identity.Key()] = RemoteQueued
+	}
+	f.log.Info("filler auto-fetch: open search", "searched", n, "queued", len(items), "refused", refused)
+	return len(items), nil
 }
 
 // logStop reports a limit that ended a pass. ⚠ At Info, not Debug: this is the answer to "why
