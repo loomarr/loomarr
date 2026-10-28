@@ -56,8 +56,11 @@ const analyzeWhenFree = async (page: Page) => {
 // ⚠ Every story sees the same "now". Fixtures carry absolute timestamps and the UI prints them
 // relative to the clock ("checked 89d ago"), so on a live clock a baseline goes stale the day a
 // count rolls over: FillerSources/WithRegisteredSources flipped to "90d ago" on 2026-10-27 and
-// failed every queue run. This is a moment when every committed baseline was green. Only Date is
-// fixed; timers keep running, so nothing that waits on one stalls.
+// failed every queue run. This is a moment when every committed baseline was green.
+//
+// The clock STARTS here and keeps running (`setSystemTime`), not `setFixedTime`: a frozen Date
+// stops anything that measures elapsed time with it, and the brand-launch intro and the guide's
+// keyboard story then render their first frame instead of their settled one.
 const GALLERY_NOW = new Date("2026-10-27T12:00:00Z");
 
 // A story whose meta carries `tags: ["route"]` renders a whole page or shell; the phone project
@@ -75,7 +78,7 @@ for (const story of stories) {
   const tag = [...(story.tags?.includes("route") ? ["@route"] : []), ...(showsMotion ? ["@motion"] : [])];
   test(`${story.title} — ${story.name}`, { tag }, async ({ page }) => {
     if (showsMotion) await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.clock.setFixedTime(GALLERY_NOW);
+    await page.clock.setSystemTime(GALLERY_NOW);
     await page.goto(`/iframe.html?id=${story.id}&viewMode=story`);
     // The preference this story is shot under, read in the page itself: the kit's setting was once
     // dropped without a word (#2004), and only the browser can say what it received.
