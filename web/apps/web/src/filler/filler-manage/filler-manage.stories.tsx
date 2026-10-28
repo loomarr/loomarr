@@ -7,9 +7,10 @@ import type {
   FillerWatchOutputBody,
   MeBody,
 } from "@loomarr/api";
+import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { readiness } from "@/test/fixtures/filler";
+import { defectReport, readiness } from "@/test/fixtures/filler";
 import { withRouter } from "@/test/story-utils";
 import { FillerManage } from "./filler-manage";
 
@@ -44,6 +45,8 @@ const hubReadiness: FillerReadinessDTO = readiness({
   pipeline: { ...readiness().pipeline, inProgress: 2 },
   pool: { ...readiness().pool, untagged: 23 },
 });
+// The Quality row's read. Without it the hub got the settings fallback and threw on `verdicts`.
+const quality: FillerDefectReportDTO = defectReport();
 
 const withManage = (
   activity: FillerDecisionActivityOutputBody,
@@ -88,7 +91,9 @@ const withManage = (
                 ? watch
                 : url.includes("/filler/readiness")
                   ? hubReadiness
-                  : { settings: [], features: { filler: true } };
+                  : url.includes("/filler/defects")
+                    ? quality
+                    : { settings: [], features: { filler: true } };
       return Promise.resolve(
         new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }),
       );

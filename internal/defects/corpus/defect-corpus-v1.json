@@ -1,0 +1,34 @@
+{
+  "version": "defect-corpus-v1",
+  "note": "Invented clips damaged in known ways. Each is labelled per era by how it was made: would a viewer call this damaged against a good copy of its era? Tape is held to good VHS (about 240 lines, so a 1.5 px blur and a 2x enlargement are its normal look), SD to good broadcast SD, HD to clean HD. Labels are policy, set before measuring; a disagreement is a bar to calibrate, never a label to change.",
+  "eras": [1985, 2002, 2015],
+  "thresholds": {
+    "maxFalseFails": 0,
+    "minCaught": 0.9
+  },
+  "cases": [
+    {"damage": "none", "severity": 0, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "rotated", "severity": 90, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+
+    {"damage": "blocks", "severity": 3, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "blocks", "severity": 28, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "blur", "severity": 0.8, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "blur", "severity": 1.5, "labels": {"1985": "pass", "2002": "fail", "2015": "fail"}},
+    {"damage": "blur", "severity": 3, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "upscale", "severity": 2, "labels": {"1985": "pass", "2002": "pass", "2015": "fail"}},
+    {"damage": "upscale", "severity": 4, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "windowbox", "severity": 0.95, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "windowbox", "severity": 0.75, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "combing", "severity": 1, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "dropouts", "severity": 2, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "dropouts", "severity": 12, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}},
+
+    {"damage": "clipping", "severity": 3, "labels": {"1985": "pass", "2002": "pass", "2015": "pass"}},
+    {"damage": "clipping", "severity": 30, "labels": {"1985": "fail", "2002": "fail", "2015": "fail"}}
+  ]
+}

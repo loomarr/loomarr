@@ -907,6 +907,19 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       }
       if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
       if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
+      // Manage › Quality reads the defect floor's report (#2034); the `{}` fallback would throw on `verdicts`.
+      if (path === "/v1/filler/defects") {
+        return json(route, {
+          floorVersion: "floor-v3-provisional",
+          clips: 0,
+          unmeasured: 0,
+          labelled: 0,
+          verdicts: { pass: 0, fail: 0, undecided: 0, pending: 0 },
+          scores: [],
+          total: 0,
+          rows: [],
+        });
+      }
       if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
         return json(route, {
           suggestions: [

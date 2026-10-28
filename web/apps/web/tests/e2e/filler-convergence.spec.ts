@@ -192,6 +192,19 @@ test("a fetched arrival becomes playable automatically after its checks complete
       });
     }
     if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
+    // Manage › Quality reads the defect floor's report (#2034); the clip has no record until the floor's pass.
+    if (path === "/v1/filler/defects") {
+      return reply({
+        floorVersion: "floor-v3-provisional",
+        clips: fetched ? 1 : 0,
+        unmeasured: fetched ? 1 : 0,
+        labelled: 0,
+        verdicts: { pass: 0, fail: 0, undecided: 0, pending: 0 },
+        scores: [],
+        total: 0,
+        rows: [],
+      });
+    }
     if (path === "/v1/filler/watch") {
       return reply({
         sourcesOn: 1,

@@ -18,6 +18,7 @@ import { usePhoneWidth } from "@/lib/use-phone-width";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
+import { FillerQuality } from "../filler-quality";
 import type { FillerSearch } from "../filler-search";
 import { FillerSettings, FillerSettingsIndex } from "../filler-settings";
 import { Incoming } from "../incoming";
@@ -128,7 +129,11 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
           activeId={
-            tab === "taxonomy" || tab === "settings" || tab === "sources" || tab === "incoming"
+            tab === "taxonomy" ||
+            tab === "settings" ||
+            tab === "sources" ||
+            tab === "incoming" ||
+            tab === "quality"
               ? "manage"
               : tab
           }
@@ -136,7 +141,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
-        {tab === "incoming" || tab === "sources" || tab === "taxonomy" ? (
+        {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
           <Link
             to="/filler/manage"
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
@@ -177,6 +182,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
           <Incoming />
         ) : tab === "manage" ? (
           <FillerManage />
+        ) : tab === "quality" && isAdmin ? (
+          <FillerQuality />
         ) : tab === "sources" ? (
           <SourcesTab
             selectedSourceID={sourceID}

@@ -21,8 +21,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
+| `defects` | 5 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
+| `filler` | 7 | `defects`, `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
@@ -39,7 +40,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `schedule` | 20 | `holidayvocab`, `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
 | `storagegovernor` | 6 | — |
-| `store` | 15 | `contact`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 15 | `contact`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -59,7 +60,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns person contact-address identity and normalization (§11).
 - **`creative`** · 4 importers
   Decides whether two filler clips are the same advert (#2033).
-- **`defects`** · 4 importers
+- **`defects`** · 5 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
@@ -297,7 +298,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 14
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `broadcaststation`, `buildinfo`, `channels`, `clipcatalog`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `broadcaststation`, `buildinfo`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 15

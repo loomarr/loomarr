@@ -1723,7 +1723,7 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Borderline tape softness, settled by the judge: the ruling round-trips with the record.
 	ruled := &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingPass, Reason: "clean enough", Model: "m1"}
-	if err := s.UpsertClipDefects(ctx, record(two.Hash, 1988, 10.5, ruled)); err != nil {
+	if err := s.UpsertClipDefects(ctx, record(two.Hash, 1988, 8.5, ruled)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ListClipDefects(ctx)
@@ -1736,8 +1736,43 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	if got[one.Hash].Assessment.Outcome != defects.Fail || got[one.Hash].Verdict != defects.VerdictFail {
 		t.Fatalf("an HD-era blur of 11 was recorded as %q / %q", got[one.Hash].Assessment.Outcome, got[one.Hash].Verdict)
 	}
-	if want := record(two.Hash, 1988, 10.5, ruled); !reflect.DeepEqual(got[two.Hash], want) || got[two.Hash].Verdict != defects.VerdictPass {
+	if want := record(two.Hash, 1988, 8.5, ruled); !reflect.DeepEqual(got[two.Hash], want) || got[two.Hash].Verdict != defects.VerdictPass {
 		t.Fatalf("judged record = %+v, want %+v", got[two.Hash], want)
+	}
+
+	// The maintainer's labels (#2034 step 4c): only on a measured clip, for the era its record was
+	// judged against, kept when the clip is judged again, cleared by an empty label.
+	if err := s.SetClipDefectLabel(ctx, "never-measured", defects.LabelFail, now); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("labelling a clip with no record = %v, want ErrNotFound", err)
+	}
+	if err := s.SetClipDefectLabel(ctx, one.Hash, "maybe", now); err == nil {
+		t.Fatal("an unknown label was stored")
+	}
+	if err := s.SetClipDefectLabel(ctx, one.Hash, defects.LabelFail, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipDefectLabel(ctx, two.Hash, defects.LabelPass, now); err != nil {
+		t.Fatal(err)
+	}
+	// Re-dated after labelling: the label keeps the era it was given for.
+	if err := s.UpsertClipDefects(ctx, record(one.Hash, 1999, 11, nil)); err != nil {
+		t.Fatal(err)
+	}
+	labels, err := s.ListClipDefectLabels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labelTwo := store.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
+	if want := map[string]store.ClipDefectLabel{
+		one.Hash: {Label: defects.LabelFail, Era: 2012, LabelledAt: now}, two.Hash: labelTwo,
+	}; !reflect.DeepEqual(labels, want) {
+		t.Fatalf("labels = %+v, want %+v: judging again must keep a label and the era it was given for", labels, want)
+	}
+	if err := s.SetClipDefectLabel(ctx, one.Hash, "", now); err != nil {
+		t.Fatal(err)
+	}
+	if labels, err = s.ListClipDefectLabels(ctx); err != nil || len(labels) != 1 || labels[two.Hash] != labelTwo {
+		t.Fatalf("labels after clearing one = %+v (%v), want only two's", labels, err)
 	}
 
 	transformed := two
@@ -1751,6 +1786,9 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, kept := got[two.Hash]; kept || len(got) != 1 {
 		t.Fatalf("records after re-key = %v, want only clip one's: the old bytes' verdict must not survive", got)
+	}
+	if labels, err = s.ListClipDefectLabels(ctx); err != nil || len(labels) != 0 {
+		t.Fatalf("labels after re-key = %+v (%v), want none: a label describes the old bytes", labels, err)
 	}
 	if _, err := s.DeleteClipsNotIn(ctx, []string{transformed.Hash}); err != nil {
 		t.Fatal(err)

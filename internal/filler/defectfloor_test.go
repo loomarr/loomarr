@@ -36,7 +36,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	dir := t.TempDir()
 	ctx := context.Background()
 	t0 := time.Unix(1_800_000_000, 0).UTC()
-	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 10.5}
+	soft := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 8.5}
 
 	clip := func(body string, era int, edit func(*DefectClip)) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")

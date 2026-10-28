@@ -596,12 +596,17 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
   to ride, and `cropdetect` logs every sampled frame, which in the transcode's bounded log would
   push out the black and freeze evidence the publish gate reads.
-- **Picture detectors sample at 4 fps:**
+- **The picture is measured inside its active area.** A first, 2 fps pass runs `cropdetect` over
+  the clip and takes the union of the non-black picture (`defects.ParseActiveArea`). Black borders
+  aligned to the coding blocks read as block edges, and letterboxed widescreen is common in SD-era
+  ads, so measuring the whole frame failed good clips. A box under 32 pixels on a side falls back
+  to the whole frame.
+- **Picture detectors sample the active area at 4 fps:**
   - `blockdetect` for compression blocks;
   - `blurdetect`;
   - `signalstats` temporal outliers for tape dropouts and sparkle;
-  - `cropdetect` for the active picture;
-  - an upscale score: luma SSIM of each frame against itself halved and enlarged again.
+  - two upscale scores: luma SSIM of each frame against itself shrunk and enlarged again, once by
+    half and once by a quarter.
 - **`idet` reads every frame.** Interlace is measured as how far one field order leads the other.
   Woven fields keep one order, while fine detail fools `idet` evenly both ways.
 - **Sound is measured by `astats` over 16-bit samples**, so a clipped track flattens at full
@@ -610,14 +615,24 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   (2010 on).
   - Blocks, combing, windowboxing and clipping are rip damage, so one bar holds in every era.
   - Softness and dropouts are era texture, so their bars relax with age.
-  - Only an HD-era ad is judged for upscaling.
+  - Upscaling is judged on the half-size score in the HD era. Good tape and SD have no detail at
+    half size, so older eras are judged on the quarter-size score, where only a tiny source
+    enlarged reads close to 1.
   - Letterbox and pillarbox are an aspect ratio. Windowboxing needs a border on both axes.
 - **Each picture check has two bars.** Below the lower bar is a pass, above the upper bar a fail,
   and between them borderline. The worst finding is the clip's outcome. Too little picture (under
   two seconds of samples) is undecided, never a pass. Clipping has one bar: the judge sees stills
   and cannot hear, so sound is settled by the detector alone.
-- **The bars are provisional** (`floor-v2-provisional`). They were set from synthetic damage
-  (`testkit.FillerDefectMedia`), and the labelled corpus calibrates them in step 4c.
+- **The bars are provisional** (`floor-v3-provisional`), fitted to a committed synthetic corpus
+  (`defects.CorpusVersion`). Each case is an invented clip damaged in a known way at a known
+  severity (`testkit.FillerDefectClip`), labelled pass or fail per era by how it was made, before
+  anything was measured. `TestDefectCorpus_ScoresEachEraBand` scores every era band: no clip
+  labelled pass may fail, and at least 90% of those labelled fail must fail or go to the judge.
+  - A corpus version is immutable. A disagreement is a bar to recalibrate, never a label to change;
+    new cases need a new version.
+  - The corpus proves the direction of each bar and catches regressions. Absolute readings depend
+    on content, so the household labelling report recalibrates the bars on real clips that never
+    leave the machine.
 - **A vision model rules on the borderline band** (`filler.VisionDefectJudge`). It sees six stills
   spread across the clip, the names of the borderline checks, and what a fair bar is for the era.
   It answers pass, fail or abstain with a reason (`defects.JudgeVersion`). The record keeps the
@@ -664,6 +679,17 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   records stops the pass rather than treating every clip as unmeasured.
 - **The pass runs with `-noautorotate`.** ffprobe reports the coded frame size, and a rotated
   phone clip decoded upright would not match it.
+- **The household report** (`filler.DefectReports`, `GET /v1/filler/defects`, admin only) shows
+  what the floor would retire on this install and every measured clip's findings, worst first.
+  - The maintainer labels a measured clip pass or fail (`PUT`/`DELETE
+    /v1/filler/defects/{clipId}/label`). The label is stored on the clip's record, in the same
+    statement that stamps it with the era the record was judged against. Measuring again keeps it;
+    a re-key or merge drops it with the record.
+  - The report scores the stored records against the labels per era band (`defects.Score`), the
+    judge's rulings included. A label for an era band the clip is no longer judged in is shown but
+    not scored.
+  - Labels and real clips stay in the install's database: the repository is public, and only the
+    synthetic corpus is committed.
 
 ## Source evidence and playable media
 

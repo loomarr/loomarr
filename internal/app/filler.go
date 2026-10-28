@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
@@ -1814,6 +1815,26 @@ func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[stri
 
 func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {
 	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
+}
+
+func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]filler.DefectLabel, error) {
+	rows, err := a.st.ListClipDefectLabels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]filler.DefectLabel, len(rows))
+	for hash, l := range rows {
+		out[hash] = filler.DefectLabel(l)
+	}
+	return out, nil
+}
+
+func (a fillerDefectStoreAdapter) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
+	err := a.st.SetClipDefectLabel(ctx, clipHash, label, at)
+	if errors.Is(err, store.ErrNotFound) {
+		return filler.ErrDefectNotMeasured
+	}
+	return err
 }
 
 // (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its

@@ -175,7 +175,14 @@ type HubRow = {
   tone: StatusTone;
   // A route to open, or a handler (Problems opens the diagnostics panel on this page).
   open?:
-    | { to: "/filler/sources" | "/filler/incoming" | "/filler/taxonomy" | "/filler/settings" }
+    | {
+        to:
+          | "/filler/sources"
+          | "/filler/incoming"
+          | "/filler/quality"
+          | "/filler/taxonomy"
+          | "/filler/settings";
+      }
     | (() => void);
 };
 
@@ -193,6 +200,14 @@ const ManageHub = ({
 }) => {
   const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
   const readiness = unwrap(fillerApi.useFillerReadiness().data, (body) => body);
+  // The same page of the report the Quality queue opens on, so the two counts agree.
+  const quality = unwrap(
+    fillerApi.useFillerDefectReport(
+      { unlabelled: true, limit: 1, offset: 0 },
+      { query: { enabled: isAdmin } },
+    ).data,
+    (body) => body,
+  );
 
   // "Need a choice" is the watch line's `held` (clips waiting for review in Incoming), so the hub
   // and the header's "N need you" are always the same number.
@@ -219,6 +234,16 @@ const ManageHub = ({
                 : `Nothing needs you · ${pluralize(preparing, "clip")} preparing`,
             tone: (needsChoice > 0 ? "warn" : "ok") as StatusTone,
             open: { to: "/filler/incoming" as const },
+          },
+          {
+            title: "Quality",
+            // Record-only until enforcement (#2036): nothing is retired yet, so a count to retire
+            // is information, not a warning.
+            summary: quality
+              ? `${quality.verdicts.fail} would be retired · ${pluralize(quality.total, "clip")} to label`
+              : "Checking…",
+            tone: (quality && quality.total > 0 ? "warn" : "ok") as StatusTone,
+            open: { to: "/filler/quality" as const },
           },
         ]
       : []),

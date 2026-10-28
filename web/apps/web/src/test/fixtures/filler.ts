@@ -1,3 +1,4 @@
+import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
 
 // Filler fixtures, typed against the generated DTOs so a new required field breaks the build here
@@ -41,4 +42,18 @@ const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO =
   };
 };
 
-export { readiness };
+// `defectReport()` is the defect floor's report (#2034) on an install it has measured, with nothing
+// it would retire and nothing left to label.
+const defectReport = (over: Partial<FillerDefectReportDTO> = {}): FillerDefectReportDTO => ({
+  floorVersion: "floor-v3-provisional",
+  clips: 25,
+  unmeasured: 0,
+  labelled: 0,
+  verdicts: { pass: 25, fail: 0, undecided: 0, pending: 0 },
+  scores: [],
+  total: 0,
+  rows: [],
+  ...over,
+});
+
+export { defectReport, readiness };

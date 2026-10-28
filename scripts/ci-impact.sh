@@ -523,6 +523,14 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
+    internal/defects/corpus/*)
+      # The defect floor's labelled synthetic corpus (#2034), embedded by corpus.go. The image
+      # gate runs `make test-ffmpeg`, the only job that renders and scores it.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      ;;
     internal/installationlocation/*.gz|internal/installationlocation/*.json)
       # Generated runtime indexes are embedded by data.go. They can change location
       # behavior and the production image, but they are not inputs to any native client.
