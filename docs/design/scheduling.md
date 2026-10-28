@@ -288,7 +288,9 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
   seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
   half of a break's commercials are in-season clips, and at least one when a rested one fits: the
-  best rested in-season commercial that fits leads the break. A tag counts only where the clip
+  best rested in-season commercial that fits is placed first, then takes a seeded spot among the
+  commercials that keeps category variety. The half yields only to the card: once no other clip
+  fits, the end-of-break top-up adds in-season commercials past it. A tag counts only where the clip
   asserts it, never through a rollup ancestor. The season is the household calendar programming
   reads (`filler.home_country`, the stored holidays, `guide.timezone`), dated at the break's start;
   a question asked without one (the pool check, coverage, a clip's fit, a Tunarr filler list) is
