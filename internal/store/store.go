@@ -503,6 +503,7 @@ type ClipStore interface {
 	// measurement and its verdict. Corrupt rows are omitted with an error so they are measured again.
 	UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error
 	ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error)
+	GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error)
 	// SetClipDefectLabel/ListClipDefectLabels own the maintainer's labels on those records, which
 	// the household report scores the floor against (#2034 step 4c). Upserting a record keeps its
 	// label; dropping the record drops it.

@@ -21,6 +21,7 @@ const (
 	StageTranscode  StageID = "transcode"
 	StageSplit      StageID = "split"
 	StageScreen     StageID = "screen"
+	StageDefects    StageID = "defects"
 	StageLanguage   StageID = "language"
 	StageTranscribe StageID = "transcribe"
 	StageVision     StageID = "vision"
@@ -34,12 +35,13 @@ const (
 // rewrites bytes so it must precede anything that hashes or reads frames; `split` spawns new
 // clips, so it runs before the per-clip metadata rungs that those children will each need;
 // `screen` evaluates only those children after their final transcode and before enrichment;
-// `transcribe` must precede `tag` because the transcript is one of the text signals `tag` grounds
+// `defects` waits for the floor's verdict on the bytes that air, before enrichment spends anything
+// on a copy that fails (#2036); `transcribe` must precede `tag` because the transcript is one of the text signals `tag` grounds
 // against (running them the other way round is what the cron schedule did, and why a clip could
 // be scored low against a transcript that arrived ten minutes later); `score` remains the final
 // descriptive rung, after which terminal readiness owns the effective publication transition.
 var StageOrder = []StageID{
-	StageProbe, StageTranscode, StageSplit, StageScreen, StageLanguage,
+	StageProbe, StageTranscode, StageSplit, StageScreen, StageDefects, StageLanguage,
 	StageTranscribe, StageVision, StageScore,
 }
 

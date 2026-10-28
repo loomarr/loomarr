@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,9 +73,7 @@ var ErrCorruptClipDefects = errors.New("corrupt clip defect records")
 // ListClipDefects reads every record in one query. A corrupt row is omitted and reported under
 // ErrCorruptClipDefects, so it is measured again rather than read as a verdict.
 func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT clip_hash, era, readings_json, assessment_json, judgement_json, judge_failures, verdict,
-		   verdict_reason, measured_at FROM filler_clip_defects`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+clipDefectColumns+` FROM filler_clip_defects`)
 	if err != nil {
 		return nil, fmt.Errorf("list clip defects: %w", err)
 	}
@@ -82,27 +81,15 @@ func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRe
 	out := map[string]ClipDefectRecord{}
 	var invalid []error
 	for rows.Next() {
-		var r ClipDefectRecord
-		var readings, assessment, judgement, verdict string
-		var measuredAt int64
-		if err := rows.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &judgement, &r.JudgeFailures, &verdict,
-			&r.VerdictReason, &measuredAt); err != nil {
-			return nil, fmt.Errorf("scan clip defects: %w", err)
-		}
-		r.Verdict = defects.Verdict(verdict)
-		if err := errors.Join(json.Unmarshal([]byte(readings), &r.Readings),
-			json.Unmarshal([]byte(assessment), &r.Assessment)); err != nil {
-			invalid = append(invalid, fmt.Errorf("clip defects %s: %w", r.ClipHash, err))
+		r, err := scanClipDefects(rows)
+		var corrupt *corruptClipDefects
+		switch {
+		case errors.As(err, &corrupt):
+			invalid = append(invalid, err)
 			continue
+		case err != nil:
+			return nil, err
 		}
-		if judgement != "" {
-			r.Judgement = &defects.Judgement{}
-			if err := json.Unmarshal([]byte(judgement), r.Judgement); err != nil {
-				invalid = append(invalid, fmt.Errorf("clip defects %s: %w", r.ClipHash, err))
-				continue
-			}
-		}
-		r.MeasuredAt = fromEpoch(measuredAt)
 		out[r.ClipHash] = r
 	}
 	if err := rows.Err(); err != nil {
@@ -172,6 +159,56 @@ func (s *sqlStore) ListClipDefectLabels(ctx context.Context) (map[string]ClipDef
 		return nil, fmt.Errorf("list clip defect labels: %w", err)
 	}
 	return out, nil
+}
+
+// GetClipDefects reads one clip's record. A corrupt row reads as no record, so the clip is
+// measured again rather than admitted on a verdict nobody can read.
+func (s *sqlStore) GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error) {
+	r, err := scanClipDefects(s.db.QueryRowContext(ctx, s.ph(
+		`SELECT `+clipDefectColumns+` FROM filler_clip_defects WHERE clip_hash = ?`), clipHash))
+	var corrupt *corruptClipDefects
+	switch {
+	case errors.Is(err, sql.ErrNoRows), errors.As(err, &corrupt):
+		return ClipDefectRecord{}, false, nil
+	case err != nil:
+		return ClipDefectRecord{}, false, fmt.Errorf("get clip defects %s: %w", clipHash, err)
+	}
+	return r, true, nil
+}
+
+const clipDefectColumns = `clip_hash, era, readings_json, assessment_json, judgement_json, judge_failures,
+	verdict, verdict_reason, measured_at`
+
+// corruptClipDefects is a row that scanned but whose JSON does not decode.
+type corruptClipDefects struct{ err error }
+
+func (e *corruptClipDefects) Error() string { return e.err.Error() }
+func (e *corruptClipDefects) Unwrap() error { return e.err }
+
+func scanClipDefects(row interface{ Scan(...any) error }) (ClipDefectRecord, error) {
+	var r ClipDefectRecord
+	var readings, assessment, judgement, verdict string
+	var measuredAt int64
+	if err := row.Scan(&r.ClipHash, &r.Era, &readings, &assessment, &judgement, &r.JudgeFailures, &verdict,
+		&r.VerdictReason, &measuredAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return r, err
+		}
+		return r, fmt.Errorf("scan clip defects: %w", err)
+	}
+	r.Verdict = defects.Verdict(verdict)
+	if err := errors.Join(json.Unmarshal([]byte(readings), &r.Readings),
+		json.Unmarshal([]byte(assessment), &r.Assessment)); err != nil {
+		return r, &corruptClipDefects{fmt.Errorf("clip defects %s: %w", r.ClipHash, err)}
+	}
+	if judgement != "" {
+		r.Judgement = &defects.Judgement{}
+		if err := json.Unmarshal([]byte(judgement), r.Judgement); err != nil {
+			return r, &corruptClipDefects{fmt.Errorf("clip defects %s: %w", r.ClipHash, err)}
+		}
+	}
+	r.MeasuredAt = fromEpoch(measuredAt)
+	return r, nil
 }
 
 func (s *sqlStore) pruneOrphanClipDefects(ctx context.Context) error {

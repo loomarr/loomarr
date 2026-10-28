@@ -384,6 +384,8 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 		return "Checking video safety"
 	case filler.StageSplit:
 		return "Checking for separate clips"
+	case filler.StageDefects:
+		return "Checking picture and sound quality"
 	case filler.StageLanguage:
 		return "Detecting the language"
 	case filler.StageTranscribe:
@@ -399,7 +401,7 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 
 func friendlyIncomingStage(stage filler.StageID) string {
 	switch stage {
-	case filler.StageProbe, filler.StageTranscode, filler.StageScreen:
+	case filler.StageProbe, filler.StageTranscode, filler.StageScreen, filler.StageDefects:
 		return "Checking video"
 	case filler.StageSplit:
 		return "Checking for separate clips"

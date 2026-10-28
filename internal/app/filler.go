@@ -1813,6 +1813,11 @@ func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[stri
 	return out, err
 }
 
+func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (filler.DefectRecord, bool, error) {
+	r, ok, err := a.st.GetClipDefects(ctx, clipHash)
+	return filler.DefectRecord(r), ok, err
+}
+
 func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {
 	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
 }

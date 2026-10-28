@@ -557,7 +557,7 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 // a break here (#2036), and a repeated ident is better than the card. It reports false when no
 // station clip fits.
 func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (Pod, bool) {
-	cands := sortByID(bookendCandidates(catalog, w, used))
+	cands := sortByID(bookendCandidates(catalog, w, policy, used))
 	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
 	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
 	pod := Pod{MatchLevel: MatchBumperCard}
