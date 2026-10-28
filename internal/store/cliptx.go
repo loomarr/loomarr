@@ -83,12 +83,16 @@ func (c ClipTx) FillLanguage(ctx context.Context, hash, language string, at time
 	return err
 }
 
-// FillGeography sets the geography of a clip whose scope is unknown and country empty, with the
-// evidence reference that justified it.
-func (c ClipTx) FillGeography(ctx context.Context, hash string, g ClipGeography, evidence string, at time.Time) error {
+// SetGeography projects an accepted geography answer onto the clip, with the evidence reference that
+// justified it. It overwrites: the enrichment axis already decided this answer beats the one it
+// replaces. A fill-only projection left a stronger answer unable to correct an older one (#2061:
+// Cleveland news stayed "national"). An operator's row (geo_evidence `operator`) is the one
+// exception: the clip edit writes it directly, and rows edited before the axis existed have no axis
+// state to protect them.
+func (c ClipTx) SetGeography(ctx context.Context, hash string, g ClipGeography, evidence string, at time.Time) error {
 	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = ?, country = ?, market = ?,
 		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ?
-		WHERE hash = ? AND (geographic_scope = '' OR geographic_scope = 'unknown') AND country = ''`),
+		WHERE hash = ? AND geo_evidence <> 'operator'`),
 		g.Scope, g.Country, g.Market, g.Network, g.Station, g.AirDate, evidence, epoch(at), hash)
 	return err
 }

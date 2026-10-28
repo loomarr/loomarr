@@ -162,7 +162,8 @@ func buildFillerSubsystem(
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
-	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS()}
+	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(),
+		stations: &stationDirectory{list: st.ListBroadcastStations}}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		enrichmentSignals.Load,

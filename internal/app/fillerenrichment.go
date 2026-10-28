@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
@@ -270,8 +272,30 @@ func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult
 }
 
 type fillerEnrichmentSignals struct {
-	store fillerstore.FillerSourceStore
-	files fs.FS
+	store    fillerstore.FillerSourceStore
+	files    fs.FS
+	stations *stationDirectory // nil: no station is ever named
+}
+
+// stationDirectory loads the broadcast station directory on first use. Boot seeds it and nothing
+// rewrites it while the process runs, so one load serves every pass; a failed load is retried.
+type stationDirectory struct {
+	list func(context.Context) ([]broadcaststation.Station, error)
+	mu   sync.Mutex
+	dir  *broadcaststation.Directory
+}
+
+func (s *stationDirectory) get(ctx context.Context) (*broadcaststation.Directory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dir == nil {
+		stations, err := s.list(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load broadcast stations: %w", err)
+		}
+		s.dir = broadcaststation.NewDirectory(stations)
+	}
+	return s.dir, nil
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
@@ -285,6 +309,17 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 		signals.OriginalName = metadata.OriginalName
 		signals.UploadDate = metadata.UploadDate
 		signals.SourceID = metadata.SourceID
+	}
+	if l.stations != nil {
+		directory, err := l.stations.get(ctx)
+		if err != nil {
+			return fillerenrichment.Signals{}, err
+		}
+		// The transcript is speech, where a spoken "WJW" is rarer than a misheard word; the item and
+		// on-screen text are where archives and stations write call signs.
+		if match, found := directory.Identify(signals.Title, signals.OriginalName, signals.Description, signals.VisibleText); found {
+			signals.Station = &match
+		}
 	}
 	if signals.SourceID == "" || l.store == nil {
 		return signals, nil

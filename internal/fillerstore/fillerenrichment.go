@@ -276,7 +276,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 			// it projected was a registered-source stamp; clear exactly that and nothing stronger.
 			err = clips.ClearSourceDefaultGeography(ctx, state.ClipHash, updatedAt)
 		} else if g != (fillerenrichment.Geography{}) {
-			err = clips.FillGeography(ctx, state.ClipHash, store.ClipGeography{
+			err = clips.SetGeography(ctx, state.ClipHash, store.ClipGeography{
 				Scope: g.Scope, Country: g.Country, Market: g.Market,
 				Network: g.Network, Station: g.Station, AirDate: g.AirDate,
 			}, state.Evidence.Reference, updatedAt)

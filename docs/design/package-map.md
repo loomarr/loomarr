@@ -49,7 +49,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 No internal dependencies. These are the vocabulary the rest agrees on.
 
-- **`broadcaststation`** · 1 importer
+- **`broadcaststation`** · 3 importers
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`buildinfo`** · 3 importers
   Carries the version stamped into the binary at build time.
@@ -183,7 +183,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 4
 
-- **`fillerenrichment`** · 3 importers · → `llm`, `taxonomy`
+- **`fillerenrichment`** · 3 importers · → `broadcaststation`, `llm`, `taxonomy`
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
@@ -302,7 +302,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->
