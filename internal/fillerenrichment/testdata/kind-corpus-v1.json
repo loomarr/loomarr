@@ -38,6 +38,13 @@
     { "title": "Space Rangers movie trailer 1985", "role": "trailer", "want": "other" },
     { "title": "Sunny Day orange juice 1983", "description": "A weather-themed spot with a cartoon sun.", "role": "commercial", "want": "other" },
     { "title": "Senator Snacks - the vote is in, they're delicious", "role": "commercial", "want": "other" },
-    { "title": "Evening News anchor promo 1992", "role": "commercial", "want": "other" }
+    { "title": "Evening News anchor promo 1992", "role": "commercial", "want": "other" },
+    { "title": "Orchard Computers Think Bigger campaign ad 1997", "role": "commercial", "want": "other" },
+    { "title": "Got Juice? campaign commercial", "role": "commercial", "want": "other" },
+    { "title": "Wear your seatbelt", "description": "Paid for by the Road Safety Council.", "role": "commercial", "want": "other" },
+    { "title": "Weather Report - Heavy Skies LP commercial", "role": "commercial", "want": "other" },
+    { "title": "Global News Channel promo 2001", "role": "commercial", "want": "other" },
+    { "title": "Headline News break bumper", "role": "bumper", "want": "other" },
+    { "title": "Commercial break 1987 (includes news update)", "role": "commercial", "want": "other" }
   ]
 }

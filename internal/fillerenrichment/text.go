@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	// v4 adds the political and news kinds (#2037); the new version re-runs every clip once.
+	// v4 adds the political and news kinds (#2037). The new version re-asks only the axes this model
+	// answered or no one has; a kind a source or the free pass recorded is not the model's to replace,
+	// so a source's "commercial" changes only through the free pass's wording rules or an operator.
 	textPromptVersion  = "filler-progressive-text-v4"
 	textModelBatchSize = 8
 	// The response contract is a small JSON record per clip. Keep an explicit ceiling so a

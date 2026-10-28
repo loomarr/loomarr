@@ -164,7 +164,10 @@ Each clip carries the metadata that lets the scheduler place it:
   wording (sponsor and stand-by-your-ad disclaimers, ballot asks, news and weather segment names) and
   that answer replaces a generic `commercial` or `interstitial`, never a specific role such as a PSA.
   Its rules are scored on a committed labelled corpus (`kind-corpus-v1`): neither may make a false
-  call. The text model is told the two kinds too, and its precision is not measured.
+  call. Within the generic and opt-in kinds a newer accepted answer replaces an older one, so a
+  corrected rule takes back a wrong label. The text model knows the two kinds but only answers a
+  kind no source or rule recorded, and its precision is not measured; a campaign ad whose wording
+  names no sponsor or office stays a commercial until an operator marks it.
 - `era` (decade or year), `audience` (`kids`, `family`, `general`, `late_night`), `category`,
   and `brand` (free text, grounded).
 - `duration` from Loomarr's own `ffprobe` scan, `rating`, `source`, and a persisted `transcript`.

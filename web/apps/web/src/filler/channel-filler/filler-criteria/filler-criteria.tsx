@@ -685,6 +685,11 @@ const FillerCriteria = ({
             </label>
           ))}
         </div>
+        {kindsUnknown && (
+          <p className="text-muted-foreground text-xs">
+            Clip kinds unlock once this channel's coverage check loads.
+          </p>
+        )}
       </div>
     </div>
   );

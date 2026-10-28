@@ -67,13 +67,17 @@ var fiveNetwork = regexp.MustCompile(`(?i)\b(?:broadcast|shown|aired)\b[^.\n]{0,
 // segment names archive titles use for a station's own news; a bare "news", "weather" or "forecast"
 // also appears in ad copy ("all-weather tyres", "network news tonight") and does not count, nor do
 // network newscast names ("Nightly News", "Evening News") or a slogan's "sign off".
-var stationMaterial = regexp.MustCompile(`(?i)\b(?:` + newsSegment + `|station\s+(?:id|ident|identification|sign[- ]off))\b`)
+var stationMaterial = regexp.MustCompile(`(?i)\b(?:news\s?(?:update|brief|break|channel|center|centre)|(?:eyewitness|action|local)\s+news|weather\s+(?:forecast|update|report|segment)|forecast\s+update|meteorologist|station\s+(?:id|ident|identification|sign[- ]off))\b`)
 
-// newsSegment is the news and weather half of stationMaterial. The same names make a clip the news
-// kind (#2037), wherever it was recorded.
-const newsSegment = `news\s?(?:update|brief|break|channel|center|centre)|(?:eyewitness|action|local)\s+news|weather\s+(?:forecast|update|report|segment)|forecast\s+update|meteorologist`
+// newsMaterial names a news or weather segment, which makes a clip the news kind (#2037). It is
+// narrower than stationMaterial's news half: "news break", "news channel" and "weather report" also
+// name network promos, bumpers and band names, which are not segments, so they locate a station's
+// material without labelling the clip news.
+var newsMaterial = regexp.MustCompile(`(?i)\b(?:news\s?(?:update|brief)|(?:eyewitness|action|local)\s+news|weather\s+(?:forecast|update|segment)|forecast\s+update|meteorologist)\b`)
 
-var newsMaterial = regexp.MustCompile(`(?i)\b(?:` + newsSegment + `)\b`)
+// adCompilation is an item that says it holds commercials. A news update mentioned in a reel's
+// description is one segment among the ads, not what the item is.
+var adCompilation = regexp.MustCompile(`(?i)\b(?:commercial\s+break|commercials|ads)\b`)
 
 // stationSubject is a title that leads with the station and names what of its own the clip is
 // ("WEWS 5 Promo", "WJW 8 sign-off"): the station is the subject, not the place it was recorded.
@@ -85,10 +89,12 @@ var stationNewsSubject = regexp.MustCompile(stationTitle + `(?i:news|weather)\b`
 
 const stationTitle = `^\s*(?:(?:ABC|CBS|NBC|FOX|PBS|UPN|WB|CW|IND)/)?[KW][A-Z]{2,3}(?:-[A-Z]{2})?(?:\s+(?i:News\s?Channel\s?|Channel\s?)?[0-9]{1,2})?\s+`
 
-// politicalAd is the wording of a campaign or issue ad (#2037): the US sponsor and stand-by-your-ad
-// disclaimers, a ballot-measure ask, or a title that names the ad as political. A bare "vote",
-// "election" or "president" also appears in ordinary ads and does not count.
-var politicalAd = regexp.MustCompile(`(?i)\b(?:paid\s+for\s+by|approve\s+this\s+message|(?:political|campaign|election)\s+(?:ads?|adverts?|advertisements?|commercials?|spots?)|vote\s+(?:yes|no)\s+on|for\s+(?:president|u\.?s\.?\s+senate|senate|congress|governor)\s+(?:19|20)[0-9]{2})\b`)
+// politicalAd is the wording of a campaign or issue ad (#2037): the stand-by-your-ad disclaimer, a
+// sponsor line that names a committee, campaign or cause, a ballot-measure ask, a candidate's office
+// and year, or a title that names the ad as political. A bare "vote", "election" or "president"
+// appears in ordinary ads, "campaign ad" is ordinary advertising language, and "paid for by" alone
+// also signs PSAs, so none of them count.
+var politicalAd = regexp.MustCompile(`(?i)\b(?:approve\s+this\s+message|paid\s+for\s+by\s+[^.\n]{0,60}\b(?:committee|campaign|pac|party|citizens\s+for|friends\s+of|(?:yes|no)\s+on)\b|(?:political|election)\s+(?:ads?|adverts?|advertisements?|commercials?|spots?)|vote\s+(?:yes|no)\s+on|for\s+(?:president|u\.?s\.?\s+senate|senate|congress|governor)\s+(?:19|20)[0-9]{2})\b`)
 
 // AnalyzeDeterministic performs the always-available free pass over preserved metadata. It emits
 // independent candidates; Apply owns precedence against existing state.
@@ -242,6 +248,8 @@ func optInKindFromText(signals Signals, itemText string) string {
 	switch {
 	case politicalAd.MatchString(itemText):
 		return "political"
+	case adCompilation.MatchString(itemText):
+		return ""
 	case newsMaterial.MatchString(itemText) || stationNewsSubject.MatchString(signals.Title) ||
 		stationNewsSubject.MatchString(strings.ReplaceAll(signals.OriginalName, "_", " ")):
 		return "news"

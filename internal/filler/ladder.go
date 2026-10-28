@@ -512,9 +512,10 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 //
 // Political and news clips are opt-in (#2037): the empty selection leaves them out, and only a
 // selection that names them lets them in. A station's own news is the exception. It is station
-// material like the station's idents, so it airs wherever station idents do; GeographicallyEligible
-// has already kept only the stations within the channel's radius.
-func filterKinds(clips []Clip, kinds []string) []Clip {
+// material like the station's idents, so it airs wherever station idents do, but only from a
+// station in `local`, the channel's resolved radius. The check is here rather than left to
+// GeographicallyEligible, which admits every clip on an installation with no location.
+func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 	allow := map[Kind]bool{}
 	if len(kinds) == 0 {
 		for _, k := range defaultKinds {
@@ -532,7 +533,7 @@ func filterKinds(clips []Clip, kinds []string) []Clip {
 		switch {
 		case len(kinds) == 0 && c.Kind == Unclassified, allow[c.Kind] && c.Kind != Unclassified:
 			out = append(out, c)
-		case c.Kind == News && c.GeographicScope == GeographicLocal && allow[StationID]:
+		case c.Kind == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
 			out = append(out, c)
 		}
 	}

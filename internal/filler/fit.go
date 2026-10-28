@@ -100,7 +100,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// KIND and DURATION gate everything, pins included: `pickPinned` reads the kind-filtered
 	// catalog and checks `durationEligible` itself, so these two reject a pinned clip as surely
 	// as an unpinned one.
-	if len(filterKinds(one, w.Kinds)) == 0 {
+	if len(filterKinds(one, w.Kinds, policy.area(w.Geography).Stations)) == 0 {
 		fit.Reason = FitKind
 		return fit
 	}

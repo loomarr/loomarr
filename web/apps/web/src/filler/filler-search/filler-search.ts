@@ -1,3 +1,5 @@
+import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+
 type FillerSearch = {
   q?: string;
   kind?: string;
@@ -11,7 +13,8 @@ type FillerSearch = {
   parent?: string;
 };
 
-const KINDS = ["unclassified", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
+// The generated enum, so a new kind (#2037) is a valid ?kind= link without a second list here.
+const KINDS: string[] = Object.values(ClipDTOKind);
 const AUDIENCES = ["kids", "family", "general", "late_night"];
 const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue", "presentation"] as const;
 
