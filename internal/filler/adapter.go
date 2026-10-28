@@ -143,14 +143,19 @@ const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duratio
 // gate meant an install with no Tunarr assembled a perfect pod and then got no breaks, because
 // none of its clips carried a uuid.
 //
-// A pod of ONLY the embedded fallback card is not a pool: there is nothing to play, and
-// promising breaks would render as empty channel-named blocks in the guide (§10).
+// A pod no ad fits is not a pool. The embedded fallback card alone has nothing to play, and
+// promising breaks would render as empty channel-named blocks in the guide (§10). Station material
+// alone is not a pool either: it covers a break whose ads are all resting (#2036), and is no reason
+// to give breaks to a channel with no ad, such as a Christmas-only catalog in July (#2030).
 func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, sel Selection) bool {
 	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler pool check failed (channel stays break-free)", "channel", channelID, "err", err)
 		}
+		return false
+	}
+	if pod.MatchLevel == MatchBumperCard {
 		return false
 	}
 	for _, e := range pod.Entries {

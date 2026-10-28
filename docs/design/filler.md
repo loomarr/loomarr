@@ -741,7 +741,9 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   3. the channel's station material (bumpers and idents, resting or not);
   4. the embedded card, which has no file.
 
-  As the pool reaches target, rested ads fill every break and the lower rungs go unused.
+  As the pool reaches target, rested ads fill every break and the lower rungs go unused. The lower
+  rungs only fill breaks: a channel with no ad that fits at all, such as a Christmas-only catalog
+  in July, has no pool and gets no breaks.
 
 ## Source evidence and playable media
 
