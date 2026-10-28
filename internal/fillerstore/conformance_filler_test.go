@@ -2887,8 +2887,8 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 
-	// ⚠ YouTube seeds PRESENT BUT EMPTY. §10: Loomarr never recommends YouTube content itself, so
-	// the operator brings the playlist — a seeded target would be that recommendation. The empty
+	// ⚠ YouTube seeds PRESENT BUT EMPTY: the row is the operator's own channel or playlist prompt.
+	// Recommended channels arrive as separate curated rows, switched off (decision 0045). The empty
 	// uri also fails `Fetchable()`, which keeps the row out of every pull plan until it is filled
 	// in; without that, approval would hand `Ingest` an empty string.
 	if yt, ok := findSource(t, s, "youtube"); !ok {
@@ -3456,8 +3456,8 @@ func testSeededDefaultSources(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// ⚠ The YouTube row is present but has NO target, and that is the design rather than an
-	// oversight. §10 says Loomarr never recommends YouTube content itself; the operator brings
-	// their own playlist. An empty uri also keeps the row out of every pull plan on its own,
+	// oversight: it prompts for the operator's own playlist, while recommended channels are separate
+	// curated rows (decision 0045). An empty uri also keeps the row out of every pull plan on its own,
 	// because Fetchable() requires one.
 	yt, ok := byID["youtube"]
 	if !ok {

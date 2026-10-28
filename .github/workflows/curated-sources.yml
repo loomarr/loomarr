@@ -1,0 +1,32 @@
+name: Curated sources
+
+# Weekly, and on a change to the list: every curated filler source (internal/filler/curated) must
+# still exist at its provider (#2035, decision 0045). A removed or renamed archive.org collection,
+# or a YouTube channel yt-dlp can no longer list, fails the run, so the list is fixed here before an
+# install offers a dead source. The logic lives in the script (shellchecked, runnable locally).
+on:
+  schedule:
+    - cron: "41 6 * * 2"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - internal/filler/curated/**
+      - scripts/check-curated-sources.sh
+      - .github/workflows/curated-sources.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: curated-sources-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check the curated sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check every entry against its provider
+        run: ./scripts/check-curated-sources.sh

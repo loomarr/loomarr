@@ -39,6 +39,28 @@ import (
 // EIGHT locals from earlier sections, while its 133-line suggester section reads far more.
 // Coupling, not size, predicts extraction cost — extract along the seam, not the line count.
 
+// offerCuratedSources offers this build's curated sources the install has not been offered, switched
+// off (#2035). Enabling one is the operator's consent to fetch from it. A failure costs only the
+// offer, never the boot: the next start tries again.
+func offerCuratedSources(ctx context.Context, st fillerstore.Store, log *slog.Logger) {
+	if st == nil {
+		return
+	}
+	list, err := filler.CuratedSources()
+	if err != nil {
+		log.Error("filler: curated sources unreadable", "err", err)
+		return
+	}
+	added, err := st.OfferCuratedSources(ctx, list, time.Now())
+	if err != nil {
+		log.Warn("filler: curated sources not offered", "version", list.Version, "err", err)
+		return
+	}
+	if added > 0 {
+		log.Info("filler: curated sources offered, switched off", "version", list.Version, "added", added)
+	}
+}
+
 // buildSyncer constructs the catalog syncer and its scan sources (§10 V38c).
 //
 // ⚠ Policy remains live, while the storage layout is immutable for this application generation.

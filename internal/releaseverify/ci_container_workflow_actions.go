@@ -163,6 +163,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "release.yml", job: "publish", step: 7}:                `{"name":"Install cosign","uses":"sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6","with":{"cosign-release":"v2.6.5"}}`,
 		{workflow: "deadcode.yml", job: "report", step: 0}:                `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "deadcode.yml", job: "report", step: 1}:                `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
+		{workflow: "curated-sources.yml", job: "check", step: 0}:          `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "go-maintenance.yml", job: "vulnerabilities", step: 0}: `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "go-maintenance.yml", job: "vulnerabilities", step: 1}: `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh", step: 0}:     `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,

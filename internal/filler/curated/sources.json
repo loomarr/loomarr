@@ -1,0 +1,50 @@
+{
+  "version": "curated-v1",
+  "sources": [
+    {
+      "kind": "archive",
+      "target": "classic_tv_commercials",
+      "label": "Classic TV Commercials",
+      "notes": "User uploads of classic commercials and public service announcements. Mixed eras and countries; declares no licence."
+    },
+    {
+      "kind": "archive",
+      "target": "vhscommercials",
+      "label": "Commercials From The Vault",
+      "notes": "VHS Vault compilations of commercials recorded off air. Mixed eras and countries; many items are long compilations, which the splitter cuts."
+    },
+    {
+      "kind": "archive",
+      "target": "tv_ads",
+      "label": "TV Ads",
+      "notes": "Commercials from recorded television, primarily in US markets."
+    },
+    {
+      "kind": "archive",
+      "target": "adviews",
+      "label": "AdViews (Duke University)",
+      "eraFrom": 1950,
+      "eraTo": 1989,
+      "country": "US",
+      "notes": "Benton & Bowles agency archive, digitised for Duke University Libraries: agency masters, not off-air recordings."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCk3KewaoNL1E-2pjxwnrjgQ/videos",
+      "label": "Retrontario",
+      "eraFrom": 1970,
+      "eraTo": 1999,
+      "country": "CA",
+      "notes": "Ontario television recorded off air: commercials among bumpers, news and programme segments."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UC9U4dy06AqtFwml8Yr8pJyQ/videos",
+      "label": "Retro Vancouver",
+      "eraFrom": 1980,
+      "eraTo": 2009,
+      "country": "CA",
+      "notes": "Vancouver-area television recorded off air, from VHS."
+    }
+  ]
+}

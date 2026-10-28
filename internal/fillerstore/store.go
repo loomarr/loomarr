@@ -258,6 +258,11 @@ type FillerSourceStore interface {
 	ListFillerSources(ctx context.Context) ([]FillerSource, error)
 	// UpsertFillerSource adds or updates one source by id.
 	UpsertFillerSource(ctx context.Context, src FillerSource) error
+	// OfferCuratedSources adds, switched off, each curated source this install has not been
+	// offered before (#2035), and returns how many rows it added. An offer outlives the row, so a
+	// curated source the operator deleted is not offered again; one they already added by hand is
+	// left as it is.
+	OfferCuratedSources(ctx context.Context, list filler.CuratedList, now time.Time) (int, error)
 	// DeleteFillerSource removes a source. Clips it already brought in are NOT deleted:
 	// they are files in the drop-folder, and forgetting where something came from is not a
 	// reason to throw it away.
