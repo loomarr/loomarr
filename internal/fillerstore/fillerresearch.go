@@ -203,7 +203,7 @@ func (s *sqlStore) SaveFillerResearchReport(ctx context.Context, report fillerre
 		report.Packet.AdapterVersion, report.InputRevision, string(raw), epoch(report.CompletedAt)); err != nil {
 		return fmt.Errorf("save filler context report: %w", err)
 	}
-	if state, ok := fillerResearchCountryState(report); ok {
+	if state, ok := fillerResearchGeographyState(report); ok {
 		if _, _, err := s.applyFillerEnrichmentTx(ctx, tx, state, report.CompletedAt); err != nil {
 			return fmt.Errorf("save filler context country: %w", err)
 		}
@@ -264,7 +264,7 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 	}
 	promoted := 0
 	for _, report := range reports {
-		state, ok := fillerResearchCountryState(report)
+		state, ok := fillerResearchGeographyState(report)
 		if !ok {
 			continue
 		}
@@ -292,8 +292,8 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 	return promoted, nil
 }
 
-func fillerResearchCountryState(report fillerresearch.Report) (fillerenrichment.State, bool) {
-	country, citationIDs, ok := report.CountryFact()
+func fillerResearchGeographyState(report fillerresearch.Report) (fillerenrichment.State, bool) {
+	scope, country, station, citationIDs, ok := report.GeographyFact()
 	if !ok {
 		return fillerenrichment.State{}, false
 	}
@@ -307,7 +307,7 @@ func fillerResearchCountryState(report fillerresearch.Report) (fillerenrichment.
 		Axis:     fillerenrichment.AxisGeography,
 		Status:   fillerenrichment.StatusComplete,
 		Value: fillerenrichment.Value{Geography: fillerenrichment.Geography{
-			Scope: "national", Country: country,
+			Scope: scope, Country: country, Station: station,
 		}},
 		Evidence: fillerenrichment.Evidence{
 			Kind: fillerenrichment.EvidenceInference, Reference: "context.report:" + report.Packet.Adapter + ":citations:" + strings.Join(ids, ","),

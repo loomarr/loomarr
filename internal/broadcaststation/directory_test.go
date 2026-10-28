@@ -109,6 +109,28 @@ func TestResolveOperatorStation(t *testing.T) {
 	}
 }
 
+// Research knows a clip's year or decade, not its day: a span that only one holder of a reused call
+// sign covers settles it, and a span both cover does not.
+func TestResolveDuringASpan(t *testing.T) {
+	d := shippedDirectory(t)
+	for _, c := range []struct{ from, to, want string }{
+		{"1962-01-01", "1963-01-01", "fcc:73195"}, // Cleveland's KYW
+		{"1980-01-01", "1990-01-01", "fcc:25453"}, // Philadelphia's
+		{"1960-01-01", "1970-01-01", ""},          // both held it during the 1960s
+	} {
+		got, ok := d.ResolveDuring("KYW", c.from, c.to)
+		if c.want == "" {
+			if ok {
+				t.Errorf("ResolveDuring(KYW, %s) = %s; want no station", c.from, got.ID)
+			}
+			continue
+		}
+		if !ok || got.ID != c.want {
+			t.Errorf("ResolveDuring(KYW, %s) = %s, %v; want %s", c.from, got.ID, ok, c.want)
+		}
+	}
+}
+
 // A description names the station but its dates and phone numbers are not the broadcast's.
 func TestIdentifyDatesComeFromTheTitle(t *testing.T) {
 	d := shippedDirectory(t)

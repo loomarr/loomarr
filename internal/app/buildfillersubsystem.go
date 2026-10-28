@@ -165,8 +165,8 @@ func buildFillerSubsystem(
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
-	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(),
-		stations: &stationDirectory{list: st.ListBroadcastStations}}
+	stations := &stationDirectory{list: st.ListBroadcastStations}
+	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		enrichmentSignals.Load,
@@ -237,7 +237,7 @@ func buildFillerSubsystem(
 				Now:    time.Now,
 			})
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
-				selection.Model, time.Now).WithFallback(web)
+				selection.Model, time.Now).WithFallback(web).WithStations(stations.resolveDuring(log))
 			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
 				func() int {

@@ -107,8 +107,12 @@ first and yields before optional enrichment starts.
 - **Context research** may fill a missing era or country for publicly acquired clips from fixed-host
   structured sources (Wikidata, Wikipedia, Archive.org, Library of Congress), each switchable, with a
   model interpreting only the retrieved packet. It saves a cited report. Only a cited ISO country with
-  confidence ≥ 60 may populate an empty geography, as `national`, which a station's local answer
-  outranks; the report cannot yet say `local` (#2063). Era stays descriptive. Local paths,
+  confidence ≥ 60 may populate an empty geography, as an inference any stronger answer outranks.
+  The model may also name a call sign and say whether the clip is that station's own material;
+  Loomarr resolves the call sign against the station directory in the clip's year or decade, which
+  is how a reused call sign is settled (#2063). A resolved station's own material is `local` to it,
+  and anything else keeps it as provenance on a `national` answer. A call sign that resolves to no
+  one station answers nothing, and without a station a report never says `local`. Era stays descriptive. Local paths,
   private metadata and transcripts never become public queries.
 - **Web search** (Brave, or an operator's SearXNG) is an optional last resort, at most once per clip
   revision, reserved against a durable monthly ceiling before dispatch. It stores titles, URLs and

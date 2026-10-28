@@ -167,19 +167,72 @@ func TestReportRejectsUncitedClaims(t *testing.T) {
 	}
 }
 
-func TestReportCountryFactRequiresCitedConfidentCountry(t *testing.T) {
+func TestReportGeographyFactRequiresCitedConfidentCountry(t *testing.T) {
 	report := Report{ClipHash: "hash", InputRevision: 1, Producer: "context-model:fixture", ProducerVersion: "v1",
 		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{
 			CountryCode: "US", Country: "United States", Confidence: MinCountryProjectionConfidence,
 			CitationIDs: []int{1},
 		}}
-	country, citations, ok := report.CountryFact()
-	if !ok || country != "US" || len(citations) != 1 || citations[0] != 1 {
-		t.Fatalf("CountryFact() = %q, %v, %v", country, citations, ok)
+	scope, country, station, citations, ok := report.GeographyFact()
+	if !ok || scope != "national" || country != "US" || station != "" || len(citations) != 1 || citations[0] != 1 {
+		t.Fatalf("GeographyFact() = %q %q %q, %v, %v", scope, country, station, citations, ok)
 	}
 	report.Suggestion.Confidence--
-	if _, _, ok := report.CountryFact(); ok {
+	if _, _, _, _, ok := report.GeographyFact(); ok {
 		t.Fatal("low-confidence country became authoritative")
+	}
+}
+
+// A named station decides the geography: its own material is local, anything else keeps it as
+// provenance, and a call sign that resolved to no one station answers nothing (#2063).
+func TestReportGeographyFactFollowsTheNamedStation(t *testing.T) {
+	for _, c := range []struct {
+		name           string
+		suggestion     Suggestion
+		scope, station string
+		ok             bool
+	}{
+		{"local resolved", Suggestion{Scope: "local", CallSign: "WQXT", Station: "fcc:1"}, "local", "fcc:1", true},
+		{"credited ad", Suggestion{Scope: "national", CallSign: "WQXT", Station: "fcc:1"}, "national", "fcc:1", true},
+		{"unresolved call sign", Suggestion{Scope: "local", CallSign: "WQXT"}, "", "", false},
+		{"unresolved credit", Suggestion{Scope: "national", CallSign: "WQXT"}, "", "", false},
+		{"local without a station", Suggestion{Scope: "local"}, "", "", false},
+	} {
+		s := c.suggestion
+		s.CountryCode, s.Confidence, s.CitationIDs = "US", MinCountryProjectionConfidence, []int{1}
+		report := Report{ClipHash: "hash", InputRevision: 1, Producer: "context-model:fixture", ProducerVersion: "v1",
+			CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: s}
+		scope, _, station, _, ok := report.GeographyFact()
+		if ok != c.ok || scope != c.scope || station != c.station {
+			t.Errorf("%s: GeographyFact() = %q %q %v; want %q %q %v", c.name, scope, station, ok, c.scope, c.station, c.ok)
+		}
+	}
+}
+
+// The model names a call sign; Loomarr resolves it in the clip's year and the model can never
+// supply the station id itself.
+func TestResearchResolvesTheNamedCallSignInTheClipsYear(t *testing.T) {
+	var asked []string
+	resolver := func(callSign, from, to string) (string, string, bool) {
+		asked = append(asked, callSign+" "+from+" "+to)
+		return "fcc:7", "US", callSign == "WQXT"
+	}
+	provider := &sequenceProvider{responses: []string{
+		`{"year":1984,"scope":"local","callSign":" wqxt ","station":"fcc:999","confidence":60,"explanation":"Station news.","citationIds":[1]}`,
+	}}
+	report, err := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now).
+		WithStations(resolver).Research(t.Context(), Input{
+		ClipHash: "hash", Title: "WQXT news update", InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0] != "WQXT 1984-01-01 1985-01-01" {
+		t.Fatalf("resolver asked %v; want WQXT during 1984", asked)
+	}
+	s := report.Suggestion
+	if s.Station != "fcc:7" || s.CountryCode != "US" || s.Scope != "local" {
+		t.Fatalf("suggestion = %+v; want local to the resolved station, its country filled", s)
 	}
 }
 

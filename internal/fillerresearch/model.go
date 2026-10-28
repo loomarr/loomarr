@@ -130,6 +130,12 @@ type Suggestion struct {
 	Decade      int    `json:"decade,omitempty"`
 	CountryCode string `json:"countryCode,omitempty"`
 	Country     string `json:"country,omitempty"`
+	// Scope is "local" for one TV station's own material (its news, weather, IDs, promos),
+	// "national" for anything aired nationally, or empty. CallSign is the station the evidence
+	// names. Station is the directory id Loomarr resolved CallSign to, never the model's (#2063).
+	Scope       string `json:"scope,omitempty"`
+	CallSign    string `json:"callSign,omitempty"`
+	Station     string `json:"station,omitempty"`
 	Confidence  int    `json:"confidence,omitempty"`
 	Explanation string `json:"explanation,omitempty"`
 	CitationIDs []int  `json:"citationIds,omitempty"`
@@ -147,15 +153,30 @@ type Report struct {
 	Packet          Packet     `json:"packet"`
 }
 
-// CountryFact returns the one context-research value allowed to become scheduling metadata.
+// GeographyFact returns the one context-research value allowed to become scheduling metadata.
 // Validate has already bound every returned citation ID to Loomarr's retrieved packet; keeping
 // this decision here prevents the store and pipeline from growing subtly different thresholds.
-func (r Report) CountryFact() (countryCode string, citationIDs []int, ok bool) {
-	if err := r.Validate(); err != nil || r.Suggestion.CountryCode == "" ||
-		r.Suggestion.Confidence < MinCountryProjectionConfidence || len(r.Suggestion.CitationIDs) == 0 {
-		return "", nil, false
+//
+// A named station decides the answer (#2059 decision 5): its own material is local to it, anything
+// else keeps it as provenance, and a call sign the directory could not resolve to one station
+// answers nothing, because a country alone would wrongly read as national. Without a station,
+// local is unanswerable and a country is national.
+func (r Report) GeographyFact() (scope, countryCode, station string, citationIDs []int, ok bool) {
+	s := r.Suggestion
+	if err := r.Validate(); err != nil || s.CountryCode == "" ||
+		s.Confidence < MinCountryProjectionConfidence || len(s.CitationIDs) == 0 {
+		return "", "", "", nil, false
 	}
-	return r.Suggestion.CountryCode, append([]int(nil), r.Suggestion.CitationIDs...), true
+	scope = "national"
+	switch {
+	case s.CallSign != "" && s.Station == "":
+		return "", "", "", nil, false
+	case s.CallSign != "" && s.Scope == "local":
+		scope = "local"
+	case s.CallSign == "" && s.Scope == "local":
+		return "", "", "", nil, false
+	}
+	return scope, s.CountryCode, s.Station, append([]int(nil), s.CitationIDs...), true
 }
 
 func (r Report) Validate() error {
@@ -179,6 +200,12 @@ func (r Report) Validate() error {
 	if s.CountryCode != "" && (len(s.CountryCode) != 2 || s.CountryCode != strings.ToUpper(s.CountryCode)) {
 		return fmt.Errorf("%w: country code must be uppercase ISO alpha-2", ErrInvalid)
 	}
+	if s.Scope != "" && s.Scope != "national" && s.Scope != "local" {
+		return fmt.Errorf("%w: suggested scope must be national or local", ErrInvalid)
+	}
+	if len(s.CallSign) > 12 || (s.Station != "" && s.CallSign == "") {
+		return fmt.Errorf("%w: suggested station is invalid", ErrInvalid)
+	}
 	if s.Confidence < 0 || s.Confidence > 80 || len(s.Explanation) > MaxExplanationLen {
 		return fmt.Errorf("%w: suggestion confidence or explanation is invalid", ErrInvalid)
 	}
@@ -193,7 +220,8 @@ func (r Report) Validate() error {
 		}
 		seen[id] = true
 	}
-	if (s.Year != 0 || s.Decade != 0 || s.CountryCode != "" || s.Country != "") && len(s.CitationIDs) == 0 {
+	if (s.Year != 0 || s.Decade != 0 || s.CountryCode != "" || s.Country != "" || s.Scope != "" || s.CallSign != "") &&
+		len(s.CitationIDs) == 0 {
 		return fmt.Errorf("%w: a contextual claim requires a citation", ErrInvalid)
 	}
 	return nil

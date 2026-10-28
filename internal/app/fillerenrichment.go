@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -296,6 +297,20 @@ func (s *stationDirectory) get(ctx context.Context) (*broadcaststation.Directory
 		s.dir = broadcaststation.NewDirectory(stations)
 	}
 	return s.dir, nil
+}
+
+// resolveDuring adapts the directory for research, which names a call sign and a span. An
+// unreadable directory resolves nothing, so the named station answers no geography.
+func (s *stationDirectory) resolveDuring(log *slog.Logger) fillerresearch.StationResolver {
+	return func(callSign, from, to string) (string, string, bool) {
+		dir, err := s.get(context.Background())
+		if err != nil {
+			log.Warn("filler research: broadcast stations unavailable; the named station is unresolved", "err", err)
+			return "", "", false
+		}
+		station, ok := dir.ResolveDuring(callSign, from, to)
+		return station.ID, station.Country, ok
+	}
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
