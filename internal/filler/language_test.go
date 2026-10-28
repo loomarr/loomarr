@@ -52,10 +52,41 @@ func TestLanguageRejects_OnlyOnAPositiveMismatch(t *testing.T) {
 		{"no speech to judge", filler.LangNone, "en", false},
 		{"gate disabled by an empty setting", "es", "", false},
 		{"an answer we could not parse", "", "en", false},
+
+		// #2030 decision 13: the gate admits a set, the channels' commercial languages.
+		{"a language some channel airs is kept", "es", "en,es", false},
+		{"a language no channel airs is refused", "fr", "en,es", true},
+		{"silence is kept against a set too", filler.LangNone, "en,es", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := filler.LanguageRejects(tc.detected, tc.want); got != tc.reject {
 				t.Errorf("LanguageRejects(%q, %q) = %v, want %v", tc.detected, tc.want, got, tc.reject)
+			}
+		})
+	}
+}
+
+// #2030 decision 13: intake admits every language some channel airs. A channel's commercial language
+// is its own, else the household's, so adding a channel in a new language opens the gate to it with
+// no settings change, and removing the last one closes it again.
+func TestIntakeLanguages_IsTheUnionOfTheChannelsLanguages(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		household string
+		channels  []string
+		want      string
+	}{
+		{"no channels yet: the household's language", "en", nil, "en"},
+		{"no channels and no household language: the gate is off", "", nil, ""},
+		{"a channel in a new language joins the household's", "en", []string{"", "es"}, "en,es"},
+		{"the household's language only counts through a channel using it", "en", []string{"es", "ja"}, "es,ja"},
+		// A channel with no language airs every language, so intake cannot refuse any.
+		{"a channel with no language turns the gate off", "", []string{"", "es"}, ""},
+		{"codes are mapped and counted once", "eng", []string{"spa", "ES", ""}, "en,es"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := filler.IntakeLanguages(tc.household, tc.channels); got != tc.want {
+				t.Errorf("IntakeLanguages(%q, %q) = %q, want %q", tc.household, tc.channels, got, tc.want)
 			}
 		})
 	}

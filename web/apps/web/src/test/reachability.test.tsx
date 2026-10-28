@@ -126,6 +126,8 @@ const stubReachable = () => {
       id: "sp-1",
       clipHash: "comp-hash",
       createdAt: "2026-07-25T20:00:00Z",
+      checkedLanguages: [],
+      currentLanguages: [],
       segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
     }),
     getDiscoverFillerMockHandler({

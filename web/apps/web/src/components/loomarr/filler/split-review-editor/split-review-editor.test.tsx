@@ -18,6 +18,8 @@ const proposal: SplitReviewProposalDTO = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
+  checkedLanguages: [],
+  currentLanguages: [],
   segments: [
     seg({
       index: 0,
@@ -354,6 +356,8 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     id: "sp-sub",
     clipHash: "comp-hash",
     createdAt: "2026-07-25T20:00:00Z",
+    checkedLanguages: [],
+    currentLanguages: [],
     segments: [
       seg({ index: 0, startMs: 1_500, endMs: 30_499, name: "First ad" }),
       seg({ index: 1, startMs: 30_499, endMs: 61_750, name: "Second ad" }),

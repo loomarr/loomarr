@@ -57,6 +57,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDecisions: opts.FillerDecisions, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
+		intakeLanguages:  opts.IntakeLanguages,
 		jobs:             opts.Jobs,
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,

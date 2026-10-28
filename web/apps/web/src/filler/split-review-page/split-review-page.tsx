@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
 import { Button } from "@/components/ui/button";
-import { languageName } from "@/lib/languages";
+import { languageList, languageName } from "@/lib/languages";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import type { SplitReviewOrigin, SplitReviewPageProps } from "./split-review-page.type";
 
@@ -27,7 +27,7 @@ const LanguageReceipt = ({
   checkedFor,
 }: {
   exclusions: SplitLanguageExclusion[];
-  checkedFor: string;
+  checkedFor: string[];
 }) => {
   if (exclusions.length === 0) return null;
   return (
@@ -39,7 +39,7 @@ const LanguageReceipt = ({
         </span>
       </summary>
       <p className="text-muted-foreground mt-2">
-        This split was checked for {languageName(checkedFor)}. These clips remain in the original compilation
+        This split was checked for {languageList(checkedFor)}. These clips remain in the original compilation
         but won’t be added as filler.
       </p>
       <ul className="mt-3 space-y-2">
@@ -125,19 +125,21 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
       (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
     ),
   );
-  const languageEntry = unwrap(settings.data, (body) =>
-    body.settings.find((entry) => entry.key === "filler.language"),
-  );
-  const currentLanguage = languageEntry?.value;
-  const checkedLanguage = p.languagePreference ?? "";
+  // What intake admits is the channels' commercial languages (#2030 decision 13), so a new channel's
+  // language changes it as surely as the household setting does. The server reports both sets.
+  const checked = p.checkedLanguages;
+  const current = p.currentLanguages;
   const languageChanged =
-    checkedLanguage !== "" && currentLanguage !== undefined && currentLanguage !== checkedLanguage;
-  const currentLanguageHeadline = currentLanguage
-    ? `Your commercial language is now ${languageName(currentLanguage)}`
-    : "Commercials can now use any language";
-  const recheckLabel = currentLanguage
-    ? `Recheck with ${languageName(currentLanguage)}`
-    : "Recheck without a language filter";
+    checked.length > 0 &&
+    (checked.length !== current.length || checked.some((code) => !current.includes(code)));
+  const currentLanguageHeadline =
+    current.length === 0
+      ? "Commercials can now use any language"
+      : current.length === 1
+        ? `Your commercial language is now ${languageList(current)}`
+        : `Your commercial languages are now ${languageList(current)}`;
+  const recheckLabel =
+    current.length > 0 ? `Recheck with ${languageList(current)}` : "Recheck without a language filter";
 
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
@@ -166,7 +168,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
           <div>
             <p className="font-medium">{currentLanguageHeadline}</p>
             <p className="text-muted-foreground mt-1 text-sm">
-              This split was checked for {languageName(checkedLanguage)}. Recheck it before you confirm.
+              This split was checked for {languageList(checked)}. Recheck it before you confirm.
             </p>
           </div>
           <Button
@@ -179,7 +181,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
           </Button>
         </div>
       ) : null}
-      <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checkedLanguage} />
+      <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checked} />
       <SplitReviewEditor
         proposal={p}
         {...(minClipDurationMs !== undefined ? { minClipDurationMs } : {})}

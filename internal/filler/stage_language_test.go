@@ -61,8 +61,47 @@ func langClip(path, language string) filler.StoreClip {
 
 func newLangStage(st filler.LanguageClipStore, d filler.LanguageDetector, want string) *filler.LanguageStage {
 	return filler.NewLanguageStage(d, st, "/filler",
-		func() string { return want },
+		func(context.Context) (string, error) { return want, nil },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
+}
+
+// #2030 decision 13: the stage admits every language some channel airs.
+func TestLanguageStage_KeepsALanguageAnyChannelAirs(t *testing.T) {
+	for _, tc := range []struct {
+		heard  string
+		reject bool
+	}{{"es", false}, {"en", false}, {"fr", true}} {
+		out, err := newLangStage(newFakeLangStore(), &fixedDetector{lang: tc.heard}, "en,es").
+			Run(context.Background(), langClip("a.mp4", ""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := out.Verdict == filler.VerdictReject; got != tc.reject {
+			t.Errorf("heard %s: rejected = %v, want %v (detail %q)", tc.heard, got, tc.reject, out.Detail)
+		}
+	}
+}
+
+// ⚠ The wanted set comes from the channels, so reading it can fail. A failure is not "gate off":
+// an inapplicable rung is skipped for good, and the clip would never be heard. It applies, and Run
+// fails before spending the detector, so the runner retries with backoff.
+func TestLanguageStage_AFailedChannelReadRetriesRatherThanSkipping(t *testing.T) {
+	det := &fixedDetector{lang: "es"}
+	st := newFakeLangStore()
+	stage := filler.NewLanguageStage(det, st, "/filler",
+		func(context.Context) (string, error) { return "", errors.New("db down") },
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
+	if applies, why := stage.Applies(context.Background(), langClip("a.mp4", "")); !applies {
+		t.Fatalf("a failed channel read skipped the rung (%q); the clip would never be heard", why)
+	}
+	out, err := stage.Run(context.Background(), langClip("a.mp4", ""))
+	if err == nil {
+		t.Fatal("want the read failure surfaced so the runner retries")
+	}
+	if out.Verdict == filler.VerdictReject || det.calls != 0 || len(st.langs) != 0 {
+		t.Errorf("verdict=%v calls=%d recorded=%v, want nothing done without the wanted set",
+			out.Verdict, det.calls, st.langs)
+	}
 }
 
 // Missing configuration is not a transient inference failure. It cannot improve with backoff, so

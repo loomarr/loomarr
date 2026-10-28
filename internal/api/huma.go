@@ -103,6 +103,8 @@ type Server struct {
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
+	// intakeLanguages is Options.IntakeLanguages; nil reports no intake language.
+	intakeLanguages func(context.Context) (string, error)
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -1068,7 +1070,10 @@ type Options struct {
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout
-	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	// IntakeLanguages is the languages intake admits now, the channels' commercial languages
+	// (filler.IntakeLanguages), read live. Split review compares a proposal with it; nil reports none.
+	IntakeLanguages func(context.Context) (string, error)
+	SystemLLM       SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). Production wires it on both backends so a reconnect can observe the
 	// successful cutover; nil is reserved for embeddings without migration status.

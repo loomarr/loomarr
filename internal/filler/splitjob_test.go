@@ -1045,7 +1045,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	}}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1086,6 +1086,57 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	}
 }
 
+// #2030 decision 13: a compilation keeps every segment in a language some channel airs, and the
+// proposal records the whole set it was checked against.
+func TestPropose_KeepsEveryLanguageAChannelAirs(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/three-languages.mp4", 60_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
+		{StartMs: 40_000, EndMs: 60_000, Title: "French advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{0, 20_000}: "en", {20_000, 40_000}: "es", {40_000, 60_000}: "fr",
+	}}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func(context.Context) (string, error) { return "spa, EN", nil },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposal.LanguagePreference != "en,es" {
+		t.Errorf("language preference = %q, want the normalized set en,es", proposal.LanguagePreference)
+	}
+	if len(proposal.Segments) != 2 || len(proposal.LanguageExclusions) != 1 ||
+		proposal.LanguageExclusions[0].DetectedLanguage != "fr" {
+		t.Fatalf("segments %+v exclusions %+v, want English and Spanish kept and French excluded",
+			proposal.Segments, proposal.LanguageExclusions)
+	}
+}
+
+// ⚠ The wanted set is read from the channels; a failed read must not be taken as "no language", or
+// the proposal would skip the check and present every segment as reviewable under no policy.
+func TestPropose_AFailedChannelReadFailsThePass(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unread.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "One"}, {StartMs: 20_000, EndMs: 40_000, Title: "Two"},
+	}}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: &spanLanguageDetector{answers: map[[2]int64]string{}},
+		Want:     func(context.Context) (string, error) { return "", errors.New("db down") },
+		Budget:   func() int { return 10 },
+	})
+	if proposal, err := sp.Propose(context.Background(), hash); err == nil {
+		t.Fatalf("proposal %+v made without the wanted languages; want the read failure surfaced", proposal)
+	}
+}
+
 func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/uncertain-language.mp4", 40_000)
@@ -1099,7 +1150,7 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1134,7 +1185,7 @@ func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing
 	detector := &spanLanguageDetector{unavailable: "the language model is not installed"}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1174,7 +1225,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 1 },
 	})
 	stage := filler.NewSplitStage(splitter, st)
@@ -1233,7 +1284,7 @@ func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForRevie
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 	stage := filler.NewSplitStage(splitter, st)
@@ -1764,7 +1815,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}}
 	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map

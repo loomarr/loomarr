@@ -1390,6 +1390,74 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 }
 
+// #2030 decision 13: review compares the languages a proposal was checked against with what intake
+// admits now, the channels' commercial languages, so a new channel's language shows as a change.
+func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/f.db")
+	t.Cleanup(func() { _ = st.Close() })
+	current := "en,fr"
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
+		IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+	}))
+	t.Cleanup(srv.Close)
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	read := func() map[string]any {
+		resp := do(t, srv, http.MethodGet, "/v1/filler/splits/sp_lang", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("get split → %d", resp.StatusCode)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return body
+	}
+	body := read()
+	if got := fmt.Sprint(body["checkedLanguages"]); got != "[en es]" {
+		t.Errorf("checkedLanguages = %s, want [en es]", got)
+	}
+	if got := fmt.Sprint(body["currentLanguages"]); got != "[en fr]" {
+		t.Errorf("currentLanguages = %s, want [en fr]", got)
+	}
+	// No intake language admits every language: an empty list on the wire, never null.
+	current = ""
+	if got, ok := read()["currentLanguages"].([]any); !ok || len(got) != 0 {
+		t.Errorf("currentLanguages with the gate off = %#v, want []", read()["currentLanguages"])
+	}
+}
+
+// The current set only decides whether review offers a recheck, so a failed channel read keeps the
+// proposal reviewable and reports it unchanged rather than guessing at a change.
+func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/f.db")
+	t.Cleanup(func() { _ = st.Close() })
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
+		IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+	}))
+	t.Cleanup(srv.Close)
+	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
+		ID: "sp_lang", ClipHash: "reel", CreatedAt: time.Now().UTC(), LanguagePreference: "en,es",
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "Ad"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler/splits/sp_lang", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get split with a failed channel read → %d, want 200", resp.StatusCode)
+	}
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if got := fmt.Sprint(body["currentLanguages"]); got != "[en es]" {
+		t.Errorf("currentLanguages = %s, want the checked set [en es] so no recheck is offered", got)
+	}
+}
+
 // Confirm maps the splitter's sentinels: 422 for a rejected edit, 404 for a
 // missing proposal — and reports how many clips it wrote.
 func TestConfirmFillerSplit_Route(t *testing.T) {

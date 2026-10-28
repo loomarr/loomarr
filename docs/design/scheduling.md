@@ -307,6 +307,13 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   channel's language is the household default. Pins skip the rule. Coverage names the language,
   counts it as a criterion and reports the undetermined commercials; a clip's fit reports
   `language`.
+- **Intake follows the channels (#2030 decision 13).** The language rung and the splitter's
+  per-segment check admit the union of the channels' commercial languages
+  (`filler.IntakeLanguages`), read live: adding a channel in a new language admits it with no
+  settings change, and removing the last such channel stops new admissions without touching clips
+  already catalogued. A detached channel does not count; a paused one does. A channel with no
+  language at all turns the gate off. A split proposal snapshots the set, and review offers a
+  recheck when the channels' set has changed since.
 - **Location.** A channel's own country and market replace the household's, another country
   included, so a channel of British shows can opt into British commercials. It is never inferred
   from the shows. The region preference stays the household's: the channel inherits it, less its

@@ -213,6 +213,32 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 	})
 }
 
+// intakeLanguages is the language gate's wanted set, read live (#2030 decision 13): the union of
+// the channels' commercial languages (filler.IntakeLanguages). A detached channel no longer airs,
+// so it no longer counts; a paused one resumes with its language, so it does.
+func intakeLanguages(st interface {
+	ListChannels(context.Context) ([]store.Channel, error)
+}, set resolved) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		channels, err := st.ListChannels(ctx)
+		if err != nil {
+			return "", err
+		}
+		own := make([]string, 0, len(channels))
+		for _, ch := range channels {
+			if ch.Status == schedule.StatusDetached {
+				continue
+			}
+			lang := ""
+			if ch.Policy.Filler != nil {
+				lang = ch.Policy.Filler.Language
+			}
+			own = append(own, lang)
+		}
+		return filler.IntakeLanguages(set.str("filler.language"), own), nil
+	}
+}
+
 // buildPipeline constructs the ingest pipeline: one driver over ten rungs (§10 V51b/V61).
 //
 // ⚠ **This block was measured as an 11-input seam and skipped on that basis. The measurement
@@ -236,14 +262,15 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
-	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
-	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
-	// exists to be seen and paused.
+	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
+	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
+	// pays nothing and the Tasks row still exists to be seen and paused.
 	//
 	// ⚠ The DETECTOR is chosen at construction, not per run, because the two backends need
 	// entirely different collaborators — one a local binary and a model file, the other an
-	// HTTP client with a key. `filler.language` and the reject rule still hot-apply; changing
+	// HTTP client with a key. The wanted languages and the reject rule still hot-apply; changing
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
+	wantLanguages := intakeLanguages(st, set)
 	var langDetect filler.LanguageDetector
 	if set.str("asr.provider") == "hosted" {
 		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint
@@ -337,20 +364,19 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
 		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
-		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
-			func() string { return set.str("filler.language") }, time.Now),
+		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
 		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),
 	}
 	if splitter != nil {
 		// A compilation can contain adverts in several languages, so the whole-clip language rung
-		// cannot make this decision. Attach the same detector and installation choice to the
+		// cannot make this decision. Attach the same detector and intake languages to the
 		// splitter: both scheduled and explicitly requested proposals finish bounded per-segment
 		// checks before becoming reviewable, and confirmed children reuse the result.
 		splitter.WithSegmentLanguage(filler.SegmentLanguagePolicy{
 			Detector: langDetect,
-			Want:     func() string { return set.str("filler.language") },
+			Want:     wantLanguages,
 			Budget:   func() int { return set.intv("filler.pipeline.max_whisper") },
 		})
 		autoSplitPolicy := &filler.AutoSplitPolicy{

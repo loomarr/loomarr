@@ -113,6 +113,8 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
   channel can play Japanese audio with English commercials. A break plays clips in that language
   and clips with no speech; when those run out, the channel's card plays instead. A clip whose
   language Loomarr couldn't work out plays only on channels using your household's language.
+  New clips are kept when they're in a language one of your channels uses, so adding a Spanish
+  channel starts keeping Spanish commercials without changing a setting.
 
 ### Holidays
 
