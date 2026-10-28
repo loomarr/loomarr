@@ -68,9 +68,9 @@ const (
 	ReasonUnplayable RejectReason = "unplayable"
 	// ReasonDefect — the copy fails the defect floor for its era (#2036): blocks, blur, combing,
 	// dropouts, windowboxing, an upscale or clipped sound. The detail names each failing check.
-	ReasonDefect   RejectReason = "defect"
-	ReasonLanguage RejectReason = "language"
-	ReasonDuplicate  RejectReason = "duplicate"
+	ReasonDefect    RejectReason = "defect"
+	ReasonLanguage  RejectReason = "language"
+	ReasonDuplicate RejectReason = "duplicate"
 	// ReasonScreening is an authority-bound rendered-child refusal. Details name only the failed
 	// axis; restricted phrases and visual descriptions stay in the private evidence repository.
 	ReasonScreening RejectReason = "screening"
