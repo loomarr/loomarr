@@ -32,6 +32,9 @@ interface FillerSourcesProps {
   /** Folder/library add flow, rendered inside the first-class Your files group. */
   renderLocalSetup?: ReactNode;
   error?: string | null;
+  // Injectable clock (§5.2) for "checked 47d ago". Without it the stories' fixed check dates
+  // aged a day per day, and the visual gate failed whichever filler PR next re-rendered them.
+  now?: number;
   className?: string;
 }
 

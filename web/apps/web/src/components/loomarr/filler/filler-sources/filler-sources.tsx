@@ -125,6 +125,7 @@ const FillerSources = ({
   renderProviderSetup,
   renderLocalSetup,
   error,
+  now,
   className,
 }: FillerSourcesProps) => {
   const childrenByProvider = new Map<string, typeof sources>();
@@ -145,7 +146,7 @@ const FillerSources = ({
             ? `${source.count} ready`
             : `${source.count} ${source.count === 1 ? "clip" : "clips"}`,
           ...(source.incoming > 0 ? [`${source.incoming} being checked`] : []),
-          ...(source.lastCheckedAt ? [`checked ${formatRelative(source.lastCheckedAt)}`] : []),
+          ...(source.lastCheckedAt ? [`checked ${formatRelative(source.lastCheckedAt, now)}`] : []),
         ].join(" · ");
     const details = (
       <>
