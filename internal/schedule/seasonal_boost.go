@@ -849,6 +849,7 @@ func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
 	var owed []Slot // dealt in season but cut for the features, in deal order
 	owing := map[string]bool{}
 	for v := anchor; v <= end; v++ {
+		p.ring.d.checkCancel()
 		pooled := p.pooled(v)
 		need := p.window.Milliseconds()
 		for _, f := range p.features(v) {

@@ -255,7 +255,10 @@ func (e *Engine) reconcileOnce(
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
-	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	if err != nil {
+		return fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+	}
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {

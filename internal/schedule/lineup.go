@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"time"
@@ -306,6 +307,38 @@ func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, polic
 // breaks (§10, unchanged). The channel's Strategy supplies the ordering when the
 // policy omits it (a policy-less channel keeps its existing behavior).
 func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pending PendingPolicy, policy ChannelPolicy, now time.Time) DesiredLineup {
+	return computeDesiredAt(context.Background(), ch, entries, avail, pending, policy, now)
+}
+
+// ComputeDesiredAtCtx is ComputeDesiredAt that gives up when ctx is done, returning ctx's error
+// and no lineup. The cost of a cycle is in dealing decks and simulating the season, which are
+// loops of their own: they stop at the next deal or window, not at the end of the computation, so a
+// request that has timed out stops spending CPU. What was dealt before the stop stays memoised, so
+// a retry resumes rather than starts over.
+func ComputeDesiredAtCtx(ctx context.Context, ch Channel, entries []LineupEntry, avail Availability, pending PendingPolicy, policy ChannelPolicy, now time.Time) (desired DesiredLineup, err error) {
+	if err := ctx.Err(); err != nil {
+		return DesiredLineup{}, err
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			c, ok := r.(computeCancelled)
+			if !ok {
+				panic(r)
+			}
+			desired, err = DesiredLineup{}, c.err
+		}
+	}()
+	return computeDesiredAt(ctx, ch, entries, avail, pending, policy, now), nil
+}
+
+// computeCancelled is the panic value that unwinds a cancelled computation to ComputeDesiredAtCtx.
+// The loops that poll ctx sit many frames below it and return no error, so threading one through
+// each would change every signature between; unwinding is confined to this package, as
+// encoding/json does, and nothing it passes through holds state that a panic would leave half
+// written (the memos store a deck only once it is complete, and release their locks by defer).
+type computeCancelled struct{ err error }
+
+func computeDesiredAt(ctx context.Context, ch Channel, entries []LineupEntry, avail Availability, pending PendingPolicy, policy ChannelPolicy, now time.Time) DesiredLineup {
 	// Curation rules (§6.5): pick the active rule for this wall-clock, if any. Its WHAT
 	// narrows the pool and its HOW/Window override ordering + the horizon. No matching
 	// rule ⇒ the channel's base whole-policy behavior (rule == zero value).
@@ -439,6 +472,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// passes rather than a count from 1970: that is what lets each pass be repaired against the
 	// deck that really aired before it (passes.go).
 	dealer := newDeckDealer(collapsed, rp, seed, window)
+	dealer.ctx = ctx
 	age := windowIdx - windowIndex(dealOriginOf(ch), window, ch.WindowZone)
 	dealtTile, pass := windowSliceDealt(dealer, window, age)
 	ordered := dealer.deck(pass)

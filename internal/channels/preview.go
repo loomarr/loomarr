@@ -160,7 +160,10 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		pw.PrewarmDurations(ids)
 	}
 
-	desired := schedule.ComputeDesiredAt(chDomain, lineup, availability, e.policy, ch.Policy, at)
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, lineup, availability, e.policy, ch.Policy, at)
+	if err != nil {
+		return CycleResult{}, fmt.Errorf("compute cycle for channel %s: %w", ch.ID, err)
+	}
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
 	}

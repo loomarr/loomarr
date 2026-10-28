@@ -51,11 +51,64 @@ func separationRepair(programs []Slot, rp ResolvedPolicy) []Slot {
 		return programs
 	}
 
-	if solved, ok := backtrackArrange(programs, rp); ok {
-		return solved
+	// A pool the rules provably cannot satisfy skips the search: it would spend its whole budget
+	// (backtrackBudget steps, each an O(n) candidate scan) only to land on the greedy order below.
+	if !separationUnsatisfiable(programs, rp) {
+		if solved, ok := backtrackArrange(programs, rp); ok {
+			return solved
+		}
 	}
 	// Unsatisfiable within the budget → greedy least-bad (ladder records the miss).
 	return greedyArrange(programs, rp)
+}
+
+// separationUnsatisfiable reports whether NO ordering of programs can satisfy rp, by counting. It
+// is a sufficient test for impossibility, never a necessary one: false means "unknown", and the
+// search decides.
+//
+// Why it exists. backtrackArrange proves a pool unsolvable only by exhausting backtrackBudget, so
+// each such deal cost 50,000 placement attempts. A 4-series syndication channel under a 2h
+// seriesMinGap is such a pool (a series needs ~5 other episodes between its airings, and three
+// other series cannot supply them without repeating themselves), and the ladder deals it once per
+// pass: 603 deals, 30M attempts, ~4.5s, every one ending in the greedy order this returns to.
+// Skipping the search when it cannot succeed returns the same arrangement, because the search's
+// only other outcome on such a pool is its failure.
+//
+// The two conditions are necessary for any linear order, and the search accepts only linear
+// orders that pass separationOK at every position:
+//   - seriesMinGap g: the k airings of a series leave k-1 gaps, each of at least g of runtime
+//     and made only of OTHER series' programmes, and the gaps do not overlap. So (k-1)*g can
+//     not exceed the runtime of the other series.
+//   - blockMax b: the k airings sit in runs of at most b, and runs are split by programmes of
+//     other series, so k <= b*(others+1).
+func separationUnsatisfiable(programs []Slot, rp ResolvedPolicy) bool {
+	type tally struct {
+		count   int64
+		runtime int64
+	}
+	byKey := map[provision.Key]*tally{}
+	var total int64
+	for _, s := range programs {
+		t := byKey[seriesKeyOf(s)]
+		if t == nil {
+			t = &tally{}
+			byKey[seriesKeyOf(s)] = t
+		}
+		t.count++
+		t.runtime += s.DurationMs
+		total += s.DurationMs
+	}
+	gap := rp.Sep.SeriesMinGap.Milliseconds()
+	block := int64(rp.Sep.BlockMax)
+	for _, t := range byKey {
+		if gap > 0 && (t.count-1)*gap > total-t.runtime {
+			return true
+		}
+		if block > 0 && t.count > block*(int64(len(programs))-t.count+1) {
+			return true
+		}
+	}
+	return false
 }
 
 // backtrackBudget bounds the number of placement attempts so a pathological pool
