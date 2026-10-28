@@ -51,7 +51,7 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 	seen := map[string]bool{}
 	for rung, pl := range pools {
 		for _, c := range sortByID(pl.clips) {
-			if used[c.ID()] || seen[c.ID()] {
+			if taken(used, c) || seen[c.ID()] {
 				continue
 			}
 			seen[c.ID()] = true
@@ -80,7 +80,7 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 		for _, mode := range []struct{ allowRepeat, relaxed bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
 			allowRepeat := mode.allowRepeat
 			for i, c := range cands {
-				if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+				if taken(used, c.Clip) || c.DurationMs <= 0 || c.DurationMs > remainingMs {
 					continue
 				}
 				if c.rung >= 0 && adsPlaced >= podMax {

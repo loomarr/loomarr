@@ -203,6 +203,22 @@ func UsableIn(c Clip, areas []Area) bool {
 	return false
 }
 
+// isStationSegment reports a station's own material: its news, weather, ID or promo. A local
+// advertiser's commercial is an ordinary ad (#2059 decision 12).
+func isStationSegment(c Clip) bool {
+	return c.GeographicScope == GeographicLocal && c.Kind != Commercial
+}
+
+// stationSegmentKey marks a break's reservation set once it holds its one station segment. No clip
+// hash collides with it.
+const stationSegmentKey = "\x00station-segment"
+
+// taken reports whether a break may not add c: it is already reserved, or it is a station segment
+// and the break has one (#2065).
+func taken(used map[string]bool, c Clip) bool {
+	return used[c.ID()] || (isStationSegment(c) && used[stationSegmentKey])
+}
+
 func filterGeography(clips []Clip, target Area) []Clip {
 	if target.Country == "" {
 		return clips
