@@ -209,7 +209,7 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 type fillerIdentityStoreAdapter struct{ fillerstore.Store }
 
 func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
-	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true})
+	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
 	if err != nil {
 		return nil, err
 	}
@@ -1808,7 +1808,27 @@ func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, la
 type fillerDefectStoreAdapter struct{ st fillerstore.Store }
 
 func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
-	return a.st.RetireDefectiveCopy(ctx, hash, at)
+	err := a.st.RetireDefectiveCopy(ctx, hash, at)
+	if errors.Is(err, store.ErrNotFound) {
+		return filler.ErrCopyGone
+	}
+	return err
+}
+
+func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
+	return fillerStoreAdapter{st: a.st}.GetClip(ctx, hash)
+}
+
+func (a fillerDefectStoreAdapter) ListClipPaths(ctx context.Context) ([]string, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, len(clips))
+	for i, c := range clips {
+		paths[i] = c.Path
+	}
+	return paths, nil
 }
 
 func (a fillerDefectStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
@@ -1824,9 +1844,18 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 	if err != nil {
 		return nil, err
 	}
+	rows, err := a.st.ListClipPipelines(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}})
+	if err != nil {
+		return nil, err
+	}
+	stage := make(map[string]filler.StageID, len(rows))
+	for _, r := range rows {
+		stage[r.ClipHash] = r.Stage
+	}
 	out := make([]filler.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt,
+			Stage: stage[c.Hash]}
 	}
 	return out, nil
 }

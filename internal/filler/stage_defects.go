@@ -43,7 +43,8 @@ func (s *DefectsStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 }
 
 // Run admits a clip that passed, or that had too little picture to judge, and refuses one that
-// failed. Without a current verdict the clip waits its turn, spending no attempt.
+// failed. Without a current verdict the clip waits its turn, spending no attempt. A held clip that
+// fails is refused here, by the pipeline; the floor retires only copies already on air.
 func (s *DefectsStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 	rec, ok, err := s.verdicts.GetClipDefects(ctx, c.Hash)
 	if err != nil {
@@ -62,7 +63,9 @@ func (s *DefectsStage) Run(ctx context.Context, c StoreClip) (StageResult, error
 		if definitiveFail(rec) {
 			return StageResult{Verdict: VerdictReject, Reason: ReasonDefect, Detail: defectDetail(rec)}, nil
 		}
-		return StageResult{Verdict: VerdictDefer, Note: "waiting for a vision model to rule on a borderline picture"}, nil
+		// No judge could rule: none is configured, or it would not answer. Nothing automatic will
+		// settle the clip, so it is the operator's call rather than a wait with no end.
+		return StageResult{Verdict: VerdictReview, Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
 	default:
 		return StageResult{Verdict: VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
 	}

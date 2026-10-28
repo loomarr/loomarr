@@ -134,7 +134,7 @@ const (
 	MatchExact      MatchLevel = "exact"       // exact-era + audience matches filled the pod
 	MatchWidened    MatchLevel = "widened"     // era widened to the decade / any-era to fill
 	MatchAudience   MatchLevel = "audience"    // any appropriate-audience clip, era ignored
-	MatchBumperCard MatchLevel = "bumper_card" // only the embedded fallback card — never dead air
+	MatchBumperCard MatchLevel = "bumper_card" // no ad fits: station material, else the embedded card — never dead air
 )
 
 // Window describes the break to fill (§10). It carries the deterministic seed

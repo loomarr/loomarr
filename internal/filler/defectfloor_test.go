@@ -19,9 +19,14 @@ type defectMemStore struct {
 	records map[string]DefectRecord
 	fps     map[string]creative.Fingerprint
 	retired []string
+	// gone is copies merged away after the listing; heldNow is clips held after it.
+	gone, heldNow map[string]bool
 }
 
 func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at time.Time) error {
+	if m.gone[hash] {
+		return ErrCopyGone
+	}
 	for i := range m.clips {
 		if m.clips[i].Hash == hash {
 			m.clips[i].RemovedAt = at
@@ -29,7 +34,25 @@ func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at 
 			return nil
 		}
 	}
-	return errors.New("no such clip")
+	return ErrCopyGone
+}
+
+func (m *defectMemStore) GetClip(_ context.Context, hash string) (StoreClip, bool, error) {
+	for _, c := range m.clips {
+		if c.Hash == hash {
+			c.Held = c.Held || m.heldNow[hash]
+			return c.StoreClip, true, nil
+		}
+	}
+	return StoreClip{}, false, nil
+}
+
+func (m *defectMemStore) ListClipPaths(context.Context) ([]string, error) {
+	paths := make([]string, len(m.clips))
+	for i, c := range m.clips {
+		paths[i] = c.Path
+	}
+	return paths, nil
 }
 
 func (m *defectMemStore) ListClipFingerprints(context.Context, string) (map[string]creative.Fingerprint, error) {
@@ -85,7 +108,9 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		return c
 	}
 	fresh := clip("fresh", 1988, nil)
-	held := clip("held", 2012, func(c *DefectClip) { c.Held = true })
+	held := clip("held", 2012, func(c *DefectClip) { c.Held, c.Stage = true, StageDefects })
+	// Held short of the rung: its bytes may not be the ones that air, or it may be a whole break.
+	early := clip("early", 2012, func(c *DefectClip) { c.Held, c.Stage = true, StageTranscode })
 	current := clip("current", 1988, nil)
 	recorrected := clip("re-dated", 2015, nil) // judged as 1988 before an operator fixed its era
 	broken := clip("broken", 1999, nil)
@@ -93,7 +118,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	unplayable := clip("unplayable", 1990, func(c *DefectClip) { c.Placement = PlacementNotPlayable })
 
 	st := &defectMemStore{
-		clips: []DefectClip{fresh, held, current, recorrected, broken, composite, unplayable},
+		clips: []DefectClip{fresh, held, early, current, recorrected, broken, composite, unplayable},
 		records: map[string]DefectRecord{
 			current.Hash:     {ClipHash: current.Hash, Readings: soft, Era: 1988, Assessment: defects.Assess(soft, 1988)},
 			recorrected.Hash: {ClipHash: recorrected.Hash, Readings: soft, Era: 1988, Assessment: defects.Assess(soft, 1988)},
@@ -118,27 +143,31 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		t.Fatal(err)
 	}
 	// Ruled: fresh and current are borderline tape softness, recorded as having no judge.
-	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1, Ruled: 2, Retired: 2}) {
-		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed, 2 ruled, 2 retired", res)
+	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1, Ruled: 2, Retired: 1}) {
+		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed, 2 ruled, 1 retired", res)
 	}
-	// #2036: the HD-era copies fail on the detectors' own reading and are retired, held or on air,
-	// files and all. The tape-era one failed only for want of a judge, so it keeps its file.
-	if !slices.Equal(st.retired, []string{held.Hash, recorrected.Hash}) {
-		t.Fatalf("retired %v, want the held clip first, then the re-dated one", st.retired)
+	// #2036: the HD-era copies fail on the detectors' own reading. The one on air is retired, files
+	// and all; the held one is left to the defects rung, which refuses it and settles its conveyor.
+	// The tape-era one failed only for want of a judge, so it keeps its file.
+	if !slices.Equal(st.retired, []string{recorrected.Hash}) {
+		t.Fatalf("retired %v, want only the re-dated copy on air", st.retired)
 	}
-	for _, c := range []DefectClip{held, recorrected} {
-		if _, err := os.Stat(filepath.Join(dir, c.Path)); !os.IsNotExist(err) {
-			t.Errorf("retired copy %s is still on disk (err %v)", c.Hash, err)
+	if _, err := os.Stat(filepath.Join(dir, recorrected.Path)); !os.IsNotExist(err) {
+		t.Errorf("retired copy is still on disk (err %v)", err)
+	}
+	if _, ok := st.fps[recorrected.Hash]; !ok {
+		t.Error("retired copy has no fingerprint to match a better copy against")
+	}
+	for _, c := range []DefectClip{fresh, held} {
+		if _, err := os.Stat(filepath.Join(dir, c.Path)); err != nil {
+			t.Errorf("copy %s the floor does not retire lost its file: %v", c.Hash, err)
 		}
-		if _, ok := st.fps[c.Hash]; !ok {
-			t.Errorf("retired copy %s has no fingerprint to match a better copy against", c.Hash)
-		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, fresh.Path)); err != nil {
-		t.Errorf("the provisionally failed copy lost its file: %v", err)
+	if got := st.records[held.Hash]; got.Verdict != defects.VerdictFail {
+		t.Fatalf("held record verdict %q, want the fail the rung acts on", got.Verdict)
 	}
-	if len(decoded) != 3 {
-		t.Fatalf("decoded %d clips, want only fresh, held and broken", len(decoded))
+	if len(decoded) != 3 || slices.Contains(decoded, early.Hash) {
+		t.Fatalf("decoded %v, want only fresh, held and broken", decoded)
 	}
 	if got := st.records[recorrected.Hash]; got.Era != 2015 || got.Assessment.Outcome != defects.Fail {
 		t.Fatalf("re-dated record = era %d %q, want the HD bar's fail at 2015", got.Era, got.Assessment.Outcome)
@@ -147,7 +176,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		got.Verdict != defects.VerdictFail || got.Judgement == nil || got.Judgement.Ruling != defects.RulingNoJudge {
 		t.Fatalf("fresh tape-era record = %+v, want borderline softness failed for want of a judge", got)
 	}
-	for _, skipped := range []string{composite.Hash, unplayable.Hash} {
+	for _, skipped := range []string{early.Hash, composite.Hash, unplayable.Hash} {
 		if _, ok := st.records[skipped]; ok {
 			t.Errorf("clip %s got a record", skipped)
 		}
@@ -199,13 +228,22 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, ClipRelPath(hash, ".mp4"), 1988, Commercial, PlacementBreakBody, 30_000
 		return c
 	}
-	shared, own := master("shared-source.mkv"), master("own-source.mkv")
+	shared, own, twins, kept := master("shared-source.mkv"), master("own-source.mkv"), master("twins-source.mkv"), master("kept-source.mkv")
 	failing := clip("blocky copy", own)
 	sibling := clip("blocky cut", shared) // also fails, but shares its master with a clean clip
 	clean := clip("clean copy", shared)
 	unfingerprintable := clip("blocky, no picture to fingerprint", MediaAssetIdentity{})
+	// Two failing cuts of one master, retired in one pass: the master goes with the second.
+	twinA, twinB := clip("blocky twin", twins), clip("blocky twin, other cut", twins)
+	// A failing cut whose master an operator-removed clip also names: that clip can be restored.
+	beside, removed := clip("blocky beside a removed cut", kept), clip("removed cut", kept)
+	removed.RemovedAt = t0
+	// Merged into a better copy by creative identity after the floor listed it.
+	merged := clip("blocky, merged away mid-pass", MediaAssetIdentity{})
+	merged.CreatedAt = t0.Add(-time.Hour) // first in line, so the rest of the pass must still run
 
-	st := &defectMemStore{clips: []DefectClip{failing, sibling, clean, unfingerprintable}, records: map[string]DefectRecord{}}
+	st := &defectMemStore{clips: []DefectClip{failing, sibling, clean, unfingerprintable, twinA, twinB, beside, removed, merged},
+		records: map[string]DefectRecord{}, gone: map[string]bool{merged.Hash: true}}
 	measure := func(_ context.Context, file string, _, _ int, _ bool) (defects.Readings, error) {
 		if strings.Contains(file, clean.Hash) {
 			return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
@@ -223,8 +261,11 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Retired != 2 || !slices.Contains(st.retired, failing.Hash) || !slices.Contains(st.retired, sibling.Hash) {
-		t.Fatalf("pass = %+v retired %v, want the two blocky copies that could be fingerprinted", res, st.retired)
+	want := []string{failing.Hash, sibling.Hash, twinA.Hash, twinB.Hash, beside.Hash}
+	slices.Sort(want)
+	got := slices.Sorted(slices.Values(st.retired))
+	if res.Retired != len(want) || !slices.Equal(got, want) {
+		t.Fatalf("pass = %+v retired %v, want the blocky copies still in the catalog that could be fingerprinted", res, st.retired)
 	}
 	exists := func(rel string) bool {
 		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
@@ -233,8 +274,14 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	if exists(own.Path) || exists(failing.Path) || exists(sibling.Path) {
 		t.Error("a retired copy's own file or master survived")
 	}
+	if exists(twins.Path) {
+		t.Error("the master of two copies retired in one pass leaked")
+	}
 	if !exists(shared.Path) || !exists(clean.Path) {
 		t.Error("a master the clean copy still names, or the clean copy itself, was deleted")
+	}
+	if !exists(kept.Path) {
+		t.Error("a master a removed, restorable clip names was deleted")
 	}
 	if !exists(unfingerprintable.Path) {
 		t.Error("a failing copy with no fingerprint was deleted, losing the ad")
@@ -267,7 +314,11 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 		return c
 	}
 	admitted, waiting := clip("an admitted ad", false), clip("an ad still at the defects rung", true)
-	st := &defectMemStore{clips: []DefectClip{admitted, waiting}, records: map[string]DefectRecord{}}
+	waiting.Stage = StageDefects
+	// Listed as admitted, then held by an operator's rewind while the pass was judging.
+	rewound := clip("an ad rewound mid-pass", false)
+	st := &defectMemStore{clips: []DefectClip{admitted, waiting, rewound}, records: map[string]DefectRecord{},
+		heldNow: map[string]bool{rewound.Hash: true}}
 	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
 		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
 	}
@@ -288,6 +339,9 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	if tags, _ := ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 		t.Fatal("a held clip's evidence was released before admission")
 	}
+	if tags, _ := ReadSidecarTags(filepath.Join(dir, rewound.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+		t.Fatal("a clip held since the listing had its evidence released under its re-run")
+	}
 	if _, err := os.Stat(evidenceFile); err != nil {
 		t.Fatalf("evidence the held clip still names was deleted: %v", err)
 	}
@@ -296,14 +350,15 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 		t.Fatal("a rewind would not know which clip must rebuild its evidence from the transcode")
 	}
 
-	// Admitted too, now: the last clip naming the file releases it, and the file goes.
+	// Both admitted, now: the last clip naming the file releases it, and the file goes.
 	for i := range st.clips {
 		if st.clips[i].Hash == waiting.Hash {
 			st.clips[i].Held = false
 		}
 	}
-	if res, err := floor.Run(ctx); err != nil || res.Released != 1 {
-		t.Fatalf("second pass = %+v (err %v), want the other clip released", res, err)
+	st.heldNow = nil
+	if res, err := floor.Run(ctx); err != nil || res.Released != 2 {
+		t.Fatalf("second pass = %+v (err %v), want the other two clips released", res, err)
 	}
 	if _, err := os.Stat(evidenceFile); !os.IsNotExist(err) {
 		t.Fatalf("evidence no clip names any more is still on disk (err %v)", err)

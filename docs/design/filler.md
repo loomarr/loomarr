@@ -697,22 +697,27 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
 - **Admission waits for a verdict.** The `defects` rung runs after screening and before
   enrichment, so a copy that fails costs no transcription or hosted look. It measures nothing
   itself: it waits, spending no attempt, until the floor job has a current record for the clip's
-  bytes and era. Then it admits a pass or an undecided clip and refuses a fail as `defect`, with
+  bytes and era. The floor measures a held clip only once its conveyor reaches this rung, so the
+  bytes are the transcoded ones that air and a whole break is judged through its cuts, never as
+  one ad. Then the rung admits a pass or an undecided clip and refuses a fail as `defect`, with
   each failing check against its bar as the detail. A `defect` refusal is hard: there is no
   override.
 - **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
   ruling. A borderline clip failed only because no judge could rule (none configured, or it
-  abstained) is ruled on again once one can. So it waits at the rung, off air, and keeps its file.
-  An admitted ad in that state keeps airing until a judge rules.
-- **A failing copy is retired, held or on air.** Each pass retires every clip whose verdict fails
-  and stands. In order:
-  1. The copy is fingerprinted, if it never was (a held copy never was). A copy that cannot be
+  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
+  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
+  on it again once a judge can.
+- **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
+  conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
+  fails and stands. In order:
+  1. The copy is fingerprinted, if it never was. A copy that cannot be
      fingerprinted waits for a later pass, because deleting it would lose the ad rather than ask
      for a better copy.
   2. The row is tombstoned and reaped in one write (`RetireDefectiveCopy`), so nothing airs it and
      a sync that no longer finds its file keeps the row.
   3. Its playback file, sidecar, and the master and evidence copy only it names are deleted, as in
-     a creative-identity merge.
+     a creative-identity merge. References are counted over every clip, removed ones too, since a
+     removed clip can be restored. A copy identity merged away mid-pass is skipped.
 
   Bulk restore, review restore and pipeline retry all skip a reaped row, since its file is gone.
 - **The retired rows are the "wanted: better copy" list** (`ListWantedCopies`). Each keeps its

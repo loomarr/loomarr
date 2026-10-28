@@ -44,11 +44,20 @@ type DefectRecord struct {
 // the map is usable. Any other error is a failed read.
 var ErrDefectRecordsCorrupt = errors.New("some defect records are corrupt")
 
+// ErrCopyGone is RetireDefectiveCopy finding no row to retire: creative identity merged it away
+// since the pass listed it.
+var ErrCopyGone = errors.New("the copy is no longer in the catalog")
+
 // DefectStore is what the defect floor reads and writes.
 type DefectStore interface {
 	// ListDefectClips is every catalog clip, held ones included: admission waits at the defects
-	// rung for a held clip's verdict.
+	// rung for a held clip's verdict. A held clip carries its conveyor's stage.
 	ListDefectClips(ctx context.Context) ([]DefectClip, error)
+	// GetClip re-reads one clip, so evidence is released only from a clip still unheld.
+	GetClip(ctx context.Context, hash string) (StoreClip, bool, error)
+	// ListClipPaths is every clip's path, removed ones included: a removed clip can be restored,
+	// and the assets its sidecar names must survive until then.
+	ListClipPaths(ctx context.Context) ([]string, error)
 	ListClipDefects(ctx context.Context) (map[string]DefectRecord, error)
 	UpsertClipDefects(ctx context.Context, r DefectRecord) error
 	// RetireDefectiveCopy takes a failing copy off the catalog for good, keeping its row as the
@@ -65,14 +74,23 @@ type FingerprintFunc func(ctx context.Context, file string, durationMs int64) (c
 type DefectClip struct {
 	StoreClip
 	CreatedAt time.Time
+	// Stage is a held clip's conveyor rung. The floor measures it only once it reaches the
+	// defects rung: before then the bytes are not yet the ones that air, and a whole break not yet
+	// split would be judged as one ad.
+	Stage StageID
+}
+
+// awaitingFloor is a clip the floor should measure now: published, or held at or past the rung.
+func (c DefectClip) awaitingFloor() bool {
+	return !c.Held || StageIndex(c.Stage) >= StageIndex(StageDefects)
 }
 
 // MeasureDefectsFunc decodes one file's defect readings (mediatools.MeasureDefects).
 type MeasureDefectsFunc func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error)
 
 // DefectFloor is the standing job that keeps every clip's defect record current (#2034) and
-// enforces it (#2036). The defects rung admits a held clip on its verdict; a copy that definitively
-// fails, held or on air, is retired here and its files deleted.
+// enforces it (#2036). The defects rung admits or refuses a held clip on its verdict; a copy on air
+// that definitively fails is retired here and its files deleted.
 type DefectFloor struct {
 	store       DefectStore
 	probe       Prober
@@ -140,7 +158,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 	judge := d.judgeNow(ctx)
 	var asks []defectAsk
 	for _, c := range clips {
-		if !defectCandidate(c.Clip) {
+		if !defectCandidate(c.Clip) || !c.awaitingFloor() {
 			continue
 		}
 		rec, known := records[c.Hash]
@@ -212,7 +230,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 	if err := d.retireFailures(ctx, clips, final, &res); err != nil {
 		return res, err
 	}
-	d.releaseEvidence(clips, final, &res)
+	d.releaseEvidence(ctx, clips, final, &res)
 	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0 || res.Ruled > 0 || res.Retired > 0 || res.Released > 0) {
 		d.log.Info("defects: records current", "measured", res.Measured, "reassessed", res.Reassessed,
 			"pending", res.Pending, "failed", res.Failed, "ruled", res.Ruled, "held", res.Held,
@@ -226,7 +244,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 // creative identity) reads the playback file. A rewind to a rung that needs it starts at the
 // transcode instead, which rebuilds it from the source master. The sidecar stops naming it before
 // the file goes, so a failed unlink leaves only bytes.
-func (d *DefectFloor) releaseEvidence(clips []DefectClip, final map[string]DefectRecord, res *DefectFloorResult) {
+func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, final map[string]DefectRecord, res *DefectFloorResult) {
 	var admitted []DefectClip
 	for _, c := range clips {
 		rec, ok := final[c.Hash]
@@ -247,12 +265,16 @@ func (d *DefectFloor) releaseEvidence(clips []DefectClip, final map[string]Defec
 			d.released[c.Hash] = true
 			continue
 		}
+		// The judge can hold a pass for minutes, and a rewind holds the clip before it reads the
+		// sidecar. Re-read here, so a clip re-entering the conveyor keeps its evidence.
+		if now, found, err := d.store.GetClip(ctx, c.Hash); err != nil || !found || now.Held {
+			continue
+		}
 		if referenced == nil {
-			paths := make([]string, len(clips))
-			for i, c := range clips {
-				paths[i] = c.Path
+			if referenced, err = d.referenced(ctx); err != nil {
+				d.warn("defects: evidence copies were not released; the catalog could not be listed", "err", err)
+				return
 			}
-			referenced = referencedAssets(d.clipDir, paths)
 		}
 		evidence := derivativePath(tags.MediaAssets.Evidence)
 		tags.MediaAssets.Evidence = nil
@@ -272,13 +294,14 @@ func (d *DefectFloor) releaseEvidence(clips []DefectClip, final map[string]Defec
 	}
 }
 
-// retireFailures retires every candidate whose verdict definitively fails. A clip that cannot be
+// retireFailures retires every published copy whose verdict definitively fails; a held one is
+// refused at the defects rung instead, which settles its conveyor row. A clip that cannot be
 // fingerprinted is left for the next pass: without its fingerprint no cleaner copy of the ad could
 // ever be recognised, so deleting it would lose the ad rather than ask for a better one.
 func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, final map[string]DefectRecord, res *DefectFloorResult) error {
 	var failing []DefectClip
 	for _, c := range clips {
-		if rec, ok := final[c.Hash]; ok && definitiveFail(rec) {
+		if rec, ok := final[c.Hash]; ok && !c.Held && definitiveFail(rec) {
 			failing = append(failing, c)
 		}
 	}
@@ -289,11 +312,10 @@ func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, fi
 	if err != nil {
 		d.warn("defects: some cached fingerprints were unreadable", "err", err)
 	}
-	paths := make([]string, len(clips))
-	for i, c := range clips {
-		paths[i] = c.Path
+	referenced, err := d.referenced(ctx)
+	if err != nil {
+		return err
 	}
-	referenced := referencedAssets(d.clipDir, paths)
 	for _, c := range failing {
 		if ctx.Err() != nil {
 			return nil
@@ -309,7 +331,7 @@ func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, fi
 	return nil
 }
 
-// retire records the copy's fingerprint when it has none (a held copy never had one), takes it off
+// retire records the copy's fingerprint when it has none (identity has not reached it yet), takes it off
 // the catalog, then deletes its own files. The durable write commits before any unlink, as in
 // CreativeIdentity.merge, so a failed unlink leaves only bytes, never a failing copy on air.
 func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]creative.Fingerprint, referenced map[string]int) (bool, error) {
@@ -338,7 +360,9 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 		}
 	}
 	tags, _ := ReadSidecarTags(full)
-	if err := d.store.RetireDefectiveCopy(ctx, c.Hash, d.now().UTC()); err != nil {
+	if err := d.store.RetireDefectiveCopy(ctx, c.Hash, d.now().UTC()); errors.Is(err, ErrCopyGone) {
+		return false, nil // merged into a better copy, its files with it
+	} else if err != nil {
 		return false, err
 	}
 	for f, err := range removeOwnFiles(d.clipDir, full, tags, referenced) {
@@ -346,6 +370,15 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 			"clip", c.Hash, "file", f, "err", err)
 	}
 	return true, nil
+}
+
+// referenced counts the sidecars naming each media asset across every clip, removed ones included.
+func (d *DefectFloor) referenced(ctx context.Context) (map[string]int, error) {
+	paths, err := d.store.ListClipPaths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return referencedAssets(d.clipDir, paths), nil
 }
 
 // judgeState is the judge as one pass sees it: asked which model it is once, then counted down.

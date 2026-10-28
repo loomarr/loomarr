@@ -30,8 +30,9 @@ type InferiorCopy struct {
 
 // IdentityStore is the slice of the store creative identity needs.
 type IdentityStore interface {
-	// ListIdentityClips is every catalog clip, composites and held clips included, with its
-	// admission time. Only published clips are compared, but every sidecar guards shared assets.
+	// ListIdentityClips is every catalog clip, composites, held and removed clips included, with
+	// its admission time. Only published clips are compared, but every sidecar guards shared
+	// assets: a removed clip can be restored.
 	ListIdentityClips(ctx context.Context) ([]IdentityClip, error)
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
@@ -237,6 +238,9 @@ func (ci *CreativeIdentity) upgradeWanted(ctx context.Context, cached map[string
 			if survivorOf[i] != i || creative.Compare(fp, fps[c.Hash]) != creative.Same {
 				continue
 			}
+			if c.Defects != nil && c.Defects.Outcome == defects.Fail {
+				continue // no upgrade: the floor retires it in turn
+			}
 			if best < 0 || ci.compareCopies(c, measured[best]) < 0 {
 				best = i
 			}
@@ -357,11 +361,16 @@ func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityC
 func removeOwnFiles(clipDir, full string, tags SidecarTags, referenced map[string]int) map[string]error {
 	files := []string{full, sidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
-		// An asset another clip's sidecar also names is shared; it stays.
+		// An asset another clip's sidecar also names is shared; it stays. The count drops either
+		// way, so the last of two copies removed in one pass takes it.
 		for _, asset := range []string{m.SourceMaster.Path, derivativePath(m.Evidence)} {
-			if asset != "" && referenced[asset] == 1 {
+			if asset == "" {
+				continue
+			}
+			if referenced[asset] == 1 {
 				files = append(files, filepath.Join(clipDir, filepath.FromSlash(asset)))
 			}
+			referenced[asset]--
 		}
 	}
 	failed := map[string]error{}

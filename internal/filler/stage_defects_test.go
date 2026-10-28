@@ -15,8 +15,8 @@ func (f fakeDefectVerdicts) GetClipDefects(_ context.Context, hash string) (Defe
 }
 
 // #2036: the defects rung admits a copy the floor passed, refuses one that definitively failed
-// with the failing checks as the detail, and holds every other clip until the floor has a
-// current, standing verdict.
+// with the failing checks as the detail, sends one no judge could rule on to review, and holds
+// every other clip until the floor has a current verdict.
 func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 	current := func(v defects.Verdict, findings ...defects.Finding) DefectRecord {
 		return DefectRecord{
@@ -55,9 +55,10 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 		{"too little picture", ptr(current(defects.VerdictUndecided)), VerdictContinue, ""},
 		{"failed by the detectors", &failed, VerdictReject, "blocks 61; bar 50"},
 		{"failed by the judge", &ruled, VerdictReject, "judge: smeared"},
-		// Failed only because nobody could look: held until a judge rules, never refused.
-		{"borderline with no judge", &unjudged, VerdictDefer, ""},
-		{"borderline the judge abstained on", &abstained, VerdictDefer, ""},
+		// Failed only because nobody could look: the operator's call, never refused and never an
+		// endless wait.
+		{"borderline with no judge", &unjudged, VerdictReview, ""},
+		{"borderline the judge abstained on", &abstained, VerdictReview, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

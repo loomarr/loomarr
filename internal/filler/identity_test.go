@@ -162,14 +162,19 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	cleanLow := clip("the cola ad, clean", "360p", clean)
 	softHigh := clip("the cola ad, sharper but smeared", "480p", soft)
 	retiredSoap, unmatched := retired("the soap ad, blocky"), retired("an ad nothing has matched")
-	soap, cola := identitySpot(1), identitySpot(2)
+	// Its only new copy fails the floor as well: no upgrade, and the floor retires that one next.
+	retiredJuice := retired("the juice ad, blocky")
+	blockyJuice := clip("the juice ad, blocky again", "480p", &defects.Assessment{Outcome: defects.Fail})
+	soap, cola, juice := identitySpot(1), identitySpot(2), identitySpot(4)
 	st := &identityMemStore{
-		clips:        []IdentityClip{arrival, cleanLow, softHigh},
-		fingerprints: map[string]creative.Fingerprint{retiredSoap.ClipHash: soap, unmatched.ClipHash: identitySpot(3)},
-		variants:     map[string][]string{},
-		wanted:       []WantedCopy{retiredSoap, unmatched},
+		clips: []IdentityClip{arrival, cleanLow, softHigh, blockyJuice},
+		fingerprints: map[string]creative.Fingerprint{retiredSoap.ClipHash: soap, unmatched.ClipHash: identitySpot(3),
+			retiredJuice.ClipHash: juice},
+		variants: map[string][]string{},
+		wanted:   []WantedCopy{retiredSoap, unmatched, retiredJuice},
 	}
-	tools := &identityTools{byHash: map[string]creative.Fingerprint{arrival.Hash: soap, cleanLow.Hash: cola, softHigh.Hash: cola}}
+	tools := &identityTools{byHash: map[string]creative.Fingerprint{arrival.Hash: soap, cleanLow.Hash: cola, softHigh.Hash: cola,
+		blockyJuice.Hash: juice}}
 
 	res, err := NewCreativeIdentity(st, tools, dir, nil, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
@@ -185,8 +190,8 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	if !reflect.DeepEqual(st.merges, want) {
 		t.Fatalf("merges = %+v, want the smeared copy into the clean one, and the retired soap into its arrival", st.merges)
 	}
-	if len(st.wanted) != 1 || st.wanted[0].ClipHash != unmatched.ClipHash {
-		t.Fatalf("still wanted = %+v, want only the ad nothing has matched", st.wanted)
+	if len(st.wanted) != 2 || st.wanted[0].ClipHash != unmatched.ClipHash || st.wanted[1].ClipHash != retiredJuice.ClipHash {
+		t.Fatalf("still wanted = %+v, want the ad nothing has matched and the one matched only by a failing copy", st.wanted)
 	}
 }
 

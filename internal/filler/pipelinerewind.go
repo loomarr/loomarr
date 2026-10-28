@@ -111,13 +111,6 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	if clip.Path == "" {
 		return fmt.Errorf("clip %s has no playable path", hash)
 	}
-	// An admitted clip's evidence copy is released (#2036), and split and screening read it. The
-	// transcode rebuilds it from the source master, so the re-run starts there. The cost is the
-	// one the operator asked for: re-checking with evidence the clip no longer keeps.
-	if (from == StageSplit || from == StageScreen) && p.evidenceReleased(clip) {
-		from, idx = StageTranscode, StageIndex(StageTranscode)
-	}
-
 	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
 	// "preparing", and the terminal Ready transaction then rejects it forever because publication
 	// requires the current catalog row to be held. Hold first, before invalidating any derived
@@ -130,6 +123,14 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 		return fmt.Errorf("hold clip for pipeline restart: clip %s changed before restart", hash)
 	}
 	clip.Held = true
+
+	// An admitted clip's evidence copy is released (#2036), and split and screening read it. The
+	// transcode rebuilds it from the source master, so the re-run starts there. The cost is the
+	// one the operator asked for: re-checking with evidence the clip no longer keeps. Checked after
+	// the hold, because the defect floor releases evidence only from an unheld clip.
+	if (from == StageSplit || from == StageScreen) && p.evidenceReleased(clip) {
+		from, idx = StageTranscode, StageIndex(StageTranscode)
+	}
 
 	if err := p.invalidate(ctx, clip, idx); err != nil {
 		return err
