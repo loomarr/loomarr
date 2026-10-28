@@ -170,6 +170,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               <SelectItem value="psa">PSA</SelectItem>
               <SelectItem value="trailer">Trailer</SelectItem>
               <SelectItem value="interstitial">Interstitial</SelectItem>
+              <SelectItem value="political">Political ad</SelectItem>
+              <SelectItem value="news">News &amp; weather</SelectItem>
             </SelectContent>
           </Select>
         </div>

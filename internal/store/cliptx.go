@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
@@ -53,10 +54,27 @@ func (c ClipTx) EnrichmentRevision(ctx context.Context, hash string) (int64, err
 }
 
 // ClassifyKind sets the kind of a clip that is still unclassified; a classified clip keeps its kind.
+// The opt-in kinds are the exception (#2037). Sources file campaign ads and weather reports as
+// commercials, so commercial, interstitial, political and news replace one another: an accepted
+// answer can relabel a campaign ad, and a corrected rule can take a wrong label back. Enrichment's
+// precedence has already decided the answer wins, so an operator's choice is never overwritten. A
+// specific role, such as a PSA, keeps its kind.
 func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clipcatalog.Kind, at time.Time) error {
-	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind = ?`),
-		string(kind), epoch(at), hash, string(clipcatalog.Unclassified))
+	replaceable := []any{string(clipcatalog.Unclassified)}
+	if optInGroup[kind] {
+		for k := range optInGroup {
+			replaceable = append(replaceable, string(k))
+		}
+	}
+	args := append([]any{string(kind), epoch(at), hash}, replaceable...)
+	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind IN (`+
+		strings.TrimSuffix(strings.Repeat("?, ", len(replaceable)), ", ")+`)`), args...)
 	return err
+}
+
+// optInGroup is the generic break-body kinds and the opt-in kinds they are filed as (#2037).
+var optInGroup = map[clipcatalog.Kind]bool{
+	clipcatalog.Commercial: true, clipcatalog.Interstitial: true, clipcatalog.Political: true, clipcatalog.News: true,
 }
 
 // SetEra sets the clip's era year.

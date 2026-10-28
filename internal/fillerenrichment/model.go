@@ -259,7 +259,7 @@ func validateValue(axis Axis, value Value) error {
 	switch axis {
 	case AxisKind:
 		switch value.Text {
-		case "", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial":
+		case "", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial", "political", "news":
 		default:
 			return fmt.Errorf("%w: kind is outside the supported vocabulary", ErrInvalidState)
 		}

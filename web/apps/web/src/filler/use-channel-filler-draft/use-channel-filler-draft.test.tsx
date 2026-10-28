@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft } from "./use-channel-filler-draft";
 
@@ -31,6 +32,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
     geography: { country: "", place: "" },
     language: "",
     undeterminedLanguage: 0,
+    defaultKinds: DEFAULT_KINDS,
     criteria: [
       { criterion: "era", clips: 1 },
       { criterion: "audience", clips: 1 },

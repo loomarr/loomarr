@@ -15,7 +15,9 @@ const (
 	// yield to British "advert" wording (#1670). The bump re-runs every clip so v3 stamps retract.
 	// 5: a broadcast station the item names locates its station material (#2061), so Cleveland news
 	// recorded off WEWS is local to Cleveland instead of national.
-	DeterministicProducerVersion = "5"
+	// 6: political and news are kinds (#2037). Wording that names one replaces a source's generic
+	// role, so a campaign ad or a weather report filed as a commercial is relabelled on the re-run.
+	DeterministicProducerVersion = "6"
 	ControlledTaxonomyVersion    = "seed-v2"
 )
 
@@ -67,10 +69,32 @@ var fiveNetwork = regexp.MustCompile(`(?i)\b(?:broadcast|shown|aired)\b[^.\n]{0,
 // network newscast names ("Nightly News", "Evening News") or a slogan's "sign off".
 var stationMaterial = regexp.MustCompile(`(?i)\b(?:news\s?(?:update|brief|break|channel|center|centre)|(?:eyewitness|action|local)\s+news|weather\s+(?:forecast|update|report|segment)|forecast\s+update|meteorologist|station\s+(?:id|ident|identification|sign[- ]off))\b`)
 
+// newsMaterial names a news or weather segment, which makes a clip the news kind (#2037). It is
+// narrower than stationMaterial's news half: "news break", "news channel" and "weather report" also
+// name network promos, bumpers and band names, which are not segments, so they locate a station's
+// material without labelling the clip news.
+var newsMaterial = regexp.MustCompile(`(?i)\b(?:news\s?(?:update|brief)|(?:eyewitness|action|local)\s+news|weather\s+(?:forecast|update|segment)|forecast\s+update|meteorologist)\b`)
+
+// adCompilation is an item that says it holds commercials. A news update mentioned in a reel's
+// description is one segment among the ads, not what the item is.
+var adCompilation = regexp.MustCompile(`(?i)\b(?:commercial\s+break|commercials|ads)\b`)
+
 // stationSubject is a title that leads with the station and names what of its own the clip is
 // ("WEWS 5 Promo", "WJW 8 sign-off"): the station is the subject, not the place it was recorded.
 // The call sign stays case-sensitive; the segment word is any case.
-var stationSubject = regexp.MustCompile(`^\s*(?:(?:ABC|CBS|NBC|FOX|PBS|UPN|WB|CW|IND)/)?[KW][A-Z]{2,3}(?:-[A-Z]{2})?(?:\s+(?i:News\s?Channel\s?|Channel\s?)?[0-9]{1,2})?\s+(?i:news|weather|promo|ident|id|station id|sign[- ]?(?:on|off))\b`)
+var stationSubject = regexp.MustCompile(stationTitle + `(?i:news|weather|promo|ident|id|station id|sign[- ]?(?:on|off))\b`)
+
+// stationNewsSubject is a stationSubject title whose segment is the station's news or weather.
+var stationNewsSubject = regexp.MustCompile(stationTitle + `(?i:news|weather)\b`)
+
+const stationTitle = `^\s*(?:(?:ABC|CBS|NBC|FOX|PBS|UPN|WB|CW|IND)/)?[KW][A-Z]{2,3}(?:-[A-Z]{2})?(?:\s+(?i:News\s?Channel\s?|Channel\s?)?[0-9]{1,2})?\s+`
+
+// politicalAd is the wording of a campaign or issue ad (#2037): the stand-by-your-ad disclaimer, a
+// sponsor line that names a committee, campaign or cause, a ballot-measure ask, a candidate's office
+// and year, or a title that names the ad as political. A bare "vote", "election" or "president"
+// appears in ordinary ads, "campaign ad" is ordinary advertising language, and "paid for by" alone
+// also signs PSAs, so none of them count.
+var politicalAd = regexp.MustCompile(`(?i)\b(?:approve\s+this\s+message|paid\s+for\s+by\s+[^.\n]{0,60}\b(?:committee|campaign|pac|party|citizens\s+for|friends\s+of|(?:yes|no)\s+on)\b|(?:political|election)\s+(?:ads?|adverts?|advertisements?|commercials?|spots?)|vote\s+(?:yes|no)\s+on|for\s+(?:president|u\.?s\.?\s+senate|senate|congress|governor)\s+(?:19|20)[0-9]{2})\b`)
 
 // AnalyzeDeterministic performs the always-available free pass over preserved metadata. It emits
 // independent candidates; Apply owns precedence against existing state.
@@ -122,11 +146,19 @@ func AnalyzeDeterministic(signals Signals) []State {
 		kind = kindFromText(lower)
 		kindReference = "item.title_description_or_original_name"
 	}
+	// A source's role is generic: archive collections file campaign ads and weather reports as
+	// commercials. Wording that names the opt-in kinds outranks it (#2037), but not a specific role
+	// such as a PSA or a station ident.
+	if specific := optInKindFromText(signals, itemText); specific != "" &&
+		(kind == "" || kind == "unclassified" || kind == "commercial" || kind == "interstitial") {
+		kind = specific
+		kindReference = "item.title_description_or_original_name"
+	}
 	if kind != "" && kind != "unclassified" {
 		appendState(AxisKind, Value{Text: kind}, itemEvidence(kindReference, 100))
 		format := map[string]string{
 			"commercial": "commercial", "psa": "psa", "promo": "promo", "bumper": "bumper",
-			"station_id": "ident", "interstitial": "interstitial",
+			"station_id": "ident", "interstitial": "interstitial", "political": "political", "news": "news",
 		}[kind]
 		if format != "" {
 			evidence := itemEvidence("clip.role", 100)
@@ -208,6 +240,22 @@ func AnalyzeDeterministic(signals Signals) []State {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Axis < out[j].Axis })
 	return out
+}
+
+// optInKindFromText is political or news when the item's wording names one, else "". Political is
+// checked first: a campaign ad that quotes a news story is still a campaign ad.
+func optInKindFromText(signals Signals, itemText string) string {
+	switch {
+	case politicalAd.MatchString(itemText):
+		return "political"
+	case adCompilation.MatchString(itemText):
+		return ""
+	case newsMaterial.MatchString(itemText) || stationNewsSubject.MatchString(signals.Title) ||
+		stationNewsSubject.MatchString(strings.ReplaceAll(signals.OriginalName, "_", " ")):
+		return "news"
+	default:
+		return ""
+	}
 }
 
 func kindFromText(lower string) string {

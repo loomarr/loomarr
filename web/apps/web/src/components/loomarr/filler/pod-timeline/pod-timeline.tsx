@@ -32,6 +32,9 @@ const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
   trailer: "bg-signal-tint-30",
   psa: "bg-signal-tint-30",
   interstitial: "bg-static-700",
+  // A political ad is an ad, and news is an interstitial (#2037): each reads as its family.
+  political: "bg-suggest-tint-30",
+  news: "bg-static-700",
 };
 
 const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
@@ -41,6 +44,8 @@ const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
   trailer: "TRL",
   psa: "PSA",
   interstitial: "INT",
+  political: "POL",
+  news: "NEWS",
 };
 
 // The full word behind each abbreviation, for the legend. The segments stay abbreviated
@@ -54,6 +59,8 @@ const SEGMENT_WORD: Record<PodEntryDTO["kind"], string> = {
   trailer: "trailer",
   psa: "PSA",
   interstitial: "interstitial",
+  political: "political ad",
+  news: "news",
 };
 
 const PodTimeline = ({

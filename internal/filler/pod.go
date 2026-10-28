@@ -270,7 +270,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	}
 	//  - KINDS: narrow the catalog to the selected kinds before anything picks from
 	//    it, so the choice shapes bumpers (pickBumper) as well as the commercial fill.
-	catalog = filterKinds(catalog, w.Kinds)
+	catalog = filterKinds(catalog, w.Kinds, policy.area(w.Geography).Stations)
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
 	// A station segment closes a break, before the programme returns; it never opens one (#2065).

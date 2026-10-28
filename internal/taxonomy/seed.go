@@ -20,7 +20,19 @@ func progressiveEnrichmentSeed() []Taxon {
 // records each version after inserting only missing slugs; this is the convergence path for an
 // installation whose non-empty, operator-owned taxonomy cannot be reseeded wholesale.
 func SeedRevisions() []SeedRevision {
-	return []SeedRevision{{Version: 2, Taxa: progressiveEnrichmentSeed()}, {Version: 3, Taxa: holidayCalendarSeed()}}
+	return []SeedRevision{
+		{Version: 2, Taxa: progressiveEnrichmentSeed()}, {Version: 3, Taxa: holidayCalendarSeed()},
+		{Version: 4, Taxa: optInFormatSeed()},
+	}
+}
+
+// optInFormatSeed adds the formats of the two opt-in clip kinds (#2037): a campaign or issue ad,
+// and a news or weather segment, which is a kind of interstitial.
+func optInFormatSeed() []Taxon {
+	return []Taxon{
+		{Slug: "political", Label: "Political ad", Axis: AxisFormat, Synonyms: []string{"campaign-ad", "issue-ad"}},
+		{Slug: "news", Label: "News & weather", Parent: "interstitial", Axis: AxisFormat, Synonyms: []string{"weather", "newscast"}},
+	}
 }
 
 // holidayCalendarSeed adds the seasonal taxa for the calendar holidays the original seed lacked, so

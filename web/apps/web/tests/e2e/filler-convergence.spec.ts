@@ -265,6 +265,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
         level: "exact",
         total: readyCommitted ? 1 : 0,
         geography: { country: "US", place: "" },
+        defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
         rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
         criteria: [
           { criterion: "era", clips: readyCommitted ? 1 : 0 },
@@ -283,6 +284,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
           level: "exact",
           total: readyCommitted ? 1 : 0,
           geography: { country: "US", place: "" },
+          defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
           rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
           criteria: [],
         },

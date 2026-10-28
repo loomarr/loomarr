@@ -78,6 +78,8 @@ const clipFill = {
   bumper: "guideClipTune",
   station_id: "guideClipSuggest",
   interstitial: "guideClipPlain",
+  political: "guideClipSignal",
+  news: "guideClipPlain",
 } as const;
 
 const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({

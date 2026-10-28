@@ -265,7 +265,7 @@ func uniqueAudiences(in []Audience) []Audience {
 
 func validKind(value Kind) bool {
 	switch value {
-	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial:
+	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial, Political, News:
 		return true
 	default:
 		return false

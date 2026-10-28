@@ -52,6 +52,8 @@ const (
 	PSA          = clipcatalog.PSA
 	Trailer      = clipcatalog.Trailer
 	Interstitial = clipcatalog.Interstitial
+	Political    = clipcatalog.Political
+	News         = clipcatalog.News
 
 	PlacementNotPlayable = clipcatalog.PlacementNotPlayable
 	PlacementBreakBody   = clipcatalog.PlacementBreakBody
@@ -72,7 +74,7 @@ func PlacementForRole(kind Kind, enrolled, composite bool) Placement {
 	switch kind {
 	case Bumper, StationID:
 		return PlacementBookend
-	case Commercial, PSA, Trailer, Interstitial, Unclassified:
+	case Commercial, PSA, Trailer, Interstitial, Political, News, Unclassified:
 		return PlacementBreakBody
 	default:
 		return PlacementNotPlayable

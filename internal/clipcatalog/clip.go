@@ -21,6 +21,11 @@ const (
 	PSA          Kind = "psa"
 	Trailer      Kind = "trailer"
 	Interstitial Kind = "interstitial"
+	// Political is a campaign or issue ad, and News is a news or weather segment (#2037). Both
+	// download and pass the floor like any clip, but a channel airs them only once it opts in; a
+	// station's own news within the channel's radius is the exception (see filler's filterKinds).
+	Political Kind = "political"
+	News      Kind = "news"
 )
 
 // Placement says where a Ready clip may be scheduled. It is deliberately separate from Kind:
@@ -354,7 +359,7 @@ func (c Clip) EffectivePlacement() Placement {
 	switch c.Kind {
 	case Bumper, StationID:
 		return PlacementBookend
-	case Commercial, PSA, Trailer, Interstitial:
+	case Commercial, PSA, Trailer, Interstitial, Political, News:
 		return PlacementBreakBody
 	default:
 		return PlacementNotPlayable

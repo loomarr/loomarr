@@ -253,7 +253,7 @@ type ClipDTO struct {
 	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
-	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
@@ -558,7 +558,7 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 }
 
 type listFillerInput struct {
-	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `query:"era"`
 	Audience        string `query:"audience" enum:"kids,family,general,late_night"`
 	Category        string `query:"category"`
@@ -757,7 +757,7 @@ type patchClipInput struct {
 		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
 		// wrong kind yields structurally wrong pods rather than just a mis-tagged clip.
 		// Empty means "leave it alone", so a tag-only edit never rewrites kind.
-		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,"`
+		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news,"`
 		// Geography is a complete, grounded replacement. Omit to leave it unchanged; use scope
 		// unknown to clear a bad classification. Operator edits are recorded as their own evidence.
 		Geography *ClipGeographyDTO `json:"geography,omitempty"`
