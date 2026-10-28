@@ -52,7 +52,6 @@ func ownerFor(setting Setting) Owner {
 var fillerOwners = map[string]Owner{
 	"filler.home_country":    OwnerLocation,
 	"filler.home_market":     OwnerLocation,
-	"filler.region_fallback": OwnerLocation,
 	"filler.breaks_per_hour": OwnerDefaults,
 
 	"filler.dir":                   OwnerFillerFolders,
@@ -63,6 +62,8 @@ var fillerOwners = map[string]Owner{
 	"filler.fetch.every":              OwnerFillerDownloads,
 	"filler.fetch.max_per_run":        OwnerFillerDownloads,
 	"filler.acquisition.compilations": OwnerFillerDownloads,
+	// Edited beside the download limits; it also orders which countries' ads air.
+	"filler.region_fallback": OwnerFillerDownloads,
 
 	"filler.fetch.max_catalog_clips":    OwnerFillerStorage,
 	"filler.storage.library_budget_gb":  OwnerFillerStorage,
