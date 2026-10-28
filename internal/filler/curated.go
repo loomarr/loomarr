@@ -4,6 +4,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // The curated sources are Loomarr's vetted list of archive.org collections and YouTube channels
@@ -34,7 +36,12 @@ type CuratedSource struct {
 	// Country is where its commercials aired, when the source is of one country. Empty is mixed or
 	// undeclared, and asserts nothing about its clips.
 	Country string `json:"country,omitempty"`
-	Notes   string `json:"notes"`
+	// Stations are the broadcast stations whose material the source mostly holds, by station id
+	// (#2059 decision 10). They choose only where to look: a household near one of them gets the
+	// source switched on, while each clip's locality is still decided on arrival. Empty for a source
+	// that is not one market's.
+	Stations []string `json:"stations,omitempty"`
+	Notes    string   `json:"notes"`
 }
 
 // SourceID is the row id adding the source by hand would give it, so an operator who already
@@ -64,6 +71,11 @@ func CuratedSources() (CuratedList, error) {
 		}
 		if err := (Geography{Country: s.Country}).Validate(); err != nil {
 			return CuratedList{}, fmt.Errorf("curated source %q: %w", s.Target, err)
+		}
+		for i, id := range s.Stations {
+			if !strings.HasPrefix(id, "fcc:") && !strings.HasPrefix(id, "wd:") || slices.Contains(s.Stations[:i], id) {
+				return CuratedList{}, fmt.Errorf("curated source %q: station %q is not a distinct fcc: or wd: id", s.Target, id)
+			}
 		}
 		seen[s.SourceID()] = true
 	}

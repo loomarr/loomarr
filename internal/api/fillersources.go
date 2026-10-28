@@ -83,6 +83,9 @@ type FillerSourceDTO struct {
 	// rewrote every child.
 	EffectiveEnabled bool `json:"effectiveEnabled"`
 	ProviderEnabled  bool `json:"providerEnabled"`
+	// OnForPlace is true when Loomarr switched this curated source on because it covers a station
+	// near the household's or a channel's place (#2059 decision 10). Switching it off keeps it off.
+	OnForPlace bool `json:"onForPlace,omitempty"`
 	// Switchable is false for a row with no work to stop — a switch there would dim a row and
 	// change nothing.
 	//
@@ -1175,6 +1178,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				Enabled:          src.Enabled,
 				EffectiveEnabled: src.EffectiveEnabled(),
 				ProviderEnabled:  src.ProviderEnabled,
+				OnForPlace:       src.OnForPlace,
 				Switchable:       true,
 				Removable:        true,
 				Target:           label,

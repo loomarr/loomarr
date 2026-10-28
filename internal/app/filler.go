@@ -568,7 +568,38 @@ const archiveRuntimeBudget = 20 * time.Second
 // archiveCatalog is the metadata-only half of the Archive.org downloader.
 type archiveCatalog interface {
 	EnumerateCollection(ctx context.Context, ref string, limit int) (clipfetch.DiscoveryResult, error)
+	SearchCollection(ctx context.Context, ref, query string, limit int) (clipfetch.DiscoveryResult, error)
 	Enrich(ctx context.Context, items []clipfetch.DiscoveredItem)
+}
+
+// Search finds items inside one archive collection, for the station searches of a short pass
+// (#2059 decision 9). A YouTube channel cannot be searched within, so it yields nothing: a
+// station-tagged channel is already that station's material, and its listing is the search.
+func (e registeredSourceEnumerator) Search(ctx context.Context, source filler.FetchSource, query string, limit int) ([]filler.DiscoveredRef, error) {
+	if source.Kind != "archive" {
+		return nil, nil
+	}
+	archive := e.archive
+	if archive == nil {
+		archive = clipfetch.NewArchiveDownloader()
+	}
+	res, err := archive.SearchCollection(ctx, source.URI, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return archiveRefs(res.Items), nil
+}
+
+func archiveRefs(items []clipfetch.DiscoveredItem) []filler.DiscoveredRef {
+	out := make([]filler.DiscoveredRef, 0, len(items))
+	for _, it := range items {
+		out = append(out, filler.DiscoveredRef{
+			ID: it.ID, URL: "https://archive.org/details/" + it.ID,
+			Title: it.Title, License: it.License, ObservedYear: it.Year,
+			PublishedAt: it.Date, DurationMS: it.DurationMS, Height: it.Height,
+		})
+	}
+	return out
 }
 
 func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
@@ -597,15 +628,7 @@ func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler
 			archive.Enrich(budget, res.Items)
 			cancel()
 		}
-		out := make([]filler.DiscoveredRef, 0, len(res.Items))
-		for _, it := range res.Items {
-			out = append(out, filler.DiscoveredRef{
-				ID: it.ID, URL: "https://archive.org/details/" + it.ID,
-				Title: it.Title, License: it.License, ObservedYear: it.Year,
-				PublishedAt: it.Date, DurationMS: it.DurationMS, Height: it.Height,
-			})
-		}
-		return out, res.Total, nil
+		return archiveRefs(res.Items), res.Total, nil
 	case "youtube":
 		if e.youtube == nil {
 			return nil, 0, fmt.Errorf("youtube enumerator is unavailable")

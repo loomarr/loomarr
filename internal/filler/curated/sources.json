@@ -45,6 +45,66 @@
       "eraTo": 2009,
       "country": "CA",
       "notes": "Vancouver-area television recorded off air, from VHS."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCSJBjd1i_0pCHi5EBGYny_Q/videos",
+      "label": "RetroTVNewYork",
+      "eraFrom": 1965,
+      "eraTo": 1990,
+      "country": "US",
+      "stations": ["fcc:9610", "fcc:74197", "fcc:47535", "fcc:1328", "fcc:73881", "fcc:22206", "fcc:18795", "fcc:73333"],
+      "notes": "New York television recorded off air, mostly the 1970s: station IDs, promos, bumpers and local commercials. A few cartoons and off-market IDs."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCn-J1bT-ax13A19dTVYOVuQ/videos",
+      "label": "The Scott Vincent Archive",
+      "eraFrom": 1960,
+      "eraTo": 1979,
+      "country": "US",
+      "stations": ["fcc:1328"],
+      "notes": "One New York station's material: station IDs, movie opens, promos and news, some of it whole newscasts, which the splitter cuts."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCgm30d3L6IxRlgm6euuMktA/videos",
+      "label": "Philly-Jersey Girl",
+      "eraFrom": 1978,
+      "eraTo": 2000,
+      "country": "US",
+      "stations": ["fcc:8616", "fcc:63153", "fcc:25453", "fcc:51568", "fcc:73879"],
+      "notes": "Philadelphia and South Jersey television recorded off air: local commercials, station IDs, bumpers and promos, tagged with station and air date."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCO8D9NU84Bvy1UHvUnf-Uig/videos",
+      "label": "Garbage Pail Flix VHS",
+      "eraFrom": 1985,
+      "eraTo": 1999,
+      "country": "US",
+      "stations": ["fcc:73226", "fcc:48772", "fcc:72115", "fcc:22211", "fcc:47905", "fcc:9617", "fcc:71428", "fcc:12498"],
+      "notes": "Chicago late-night commercial breaks and bumpers recorded off air, with some cable and network breaks."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCzQYrZJragvGNt8YVtdZ5iQ/videos",
+      "label": "TelevisionDetroit",
+      "eraFrom": 1980,
+      "eraTo": 2005,
+      "country": "US",
+      "stations": ["fcc:73123", "fcc:10267", "fcc:51570", "fcc:53114", "fcc:74211"],
+      "notes": "Detroit television recorded off air: station promos, news promos and local commercials."
+    },
+    {
+      "kind": "youtube",
+      "target": "https://www.youtube.com/channel/UCNpjD6Hzf7nORkkxJEHw8oQ/videos",
+      "label": "Junkie's Tape Bin",
+      "eraFrom": 1980,
+      "eraTo": 2010,
+      "country": "US",
+      "stations": ["fcc:73942", "fcc:74422", "fcc:73363", "fcc:11970"],
+      "notes": "Albany-Schenectady-Troy television recorded off air: commercial breaks, news opens and some whole newscasts."
     }
   ]
 }

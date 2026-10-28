@@ -18,6 +18,25 @@ func TestNormalizeCallSign(t *testing.T) {
 	}
 }
 
+// An invented station that changed call sign on 1987-04-29: a span either side, or across it.
+func TestCallSignsDuring(t *testing.T) {
+	s := Station{ID: "fcc:1", CallSigns: []CallSign{{Sign: "WAAA", To: "1987-04-29"}, {Sign: "WBBB", From: "1987-04-29"}}}
+	for _, c := range []struct {
+		from, to string
+		want     []string
+	}{
+		{"1980-01-01", "1986-01-01", []string{"WAAA"}},
+		{"1990-01-01", "2000-01-01", []string{"WBBB"}},
+		{"1985-01-01", "1990-01-01", []string{"WAAA", "WBBB"}},
+		{"1987-04-29", "1988-01-01", []string{"WBBB"}},
+		{"", "", []string{"WAAA", "WBBB"}},
+	} {
+		if got := s.CallSignsDuring(c.from, c.to); !slices.Equal(got, c.want) {
+			t.Errorf("CallSignsDuring(%q, %q) = %v, want %v", c.from, c.to, got, c.want)
+		}
+	}
+}
+
 func TestSeedRoundTripsAndRejectsInvalidStations(t *testing.T) {
 	stations := []Station{
 		{ID: "fcc:74197", Country: "US", City: "Secaucus", Region: "NJ", Latitude: 40.78096, Longitude: -74.06624,

@@ -140,6 +140,10 @@ type AcquisitionCandidate struct {
 	ObservedRoles []Kind         `json:"observedRoles,omitempty"`
 	Audiences     []Audience     `json:"audiences,omitempty"`
 	Taxonomy      []string       `json:"taxonomy,omitempty"`
+	// StationSearch is the call sign whose station search found this item (#2059 decision 9). The
+	// hit's title names the station, which proves nothing about its locality: that is still decided
+	// on arrival. It ranks the item as filling a station gap.
+	StationSearch string `json:"stationSearch,omitempty"`
 }
 
 // CandidateDisposition is a stable explanation for a selected or excluded remote item.

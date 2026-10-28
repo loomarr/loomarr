@@ -164,6 +164,7 @@ const FillerSources = ({
             {source.readiness === "ready" &&
               source.locationSource === "source" &&
               source.effectiveCountry && <Badge variant="neutral">{source.effectiveCountry}</Badge>}
+            {source.onForPlace && source.enabled && <Badge variant="neutral">For your area</Badge>}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"

@@ -177,6 +177,30 @@ describe("FillerSources registered peers", () => {
     }),
   ];
 
+  // #2059 decision 10: a curated source Loomarr switched on for a nearby station says so while on.
+  it("marks a source switched on for the household's area", () => {
+    const near = source({
+      kind: "archive",
+      id: "archive:harbor",
+      target: "Harbor airchecks",
+      onForPlace: true,
+    });
+    const off = source({
+      kind: "archive",
+      id: "archive:lakeside",
+      target: "Lakeside airchecks",
+      onForPlace: true,
+      enabled: false,
+    });
+    render(<FillerSources sources={[near, off]} />);
+    expect(
+      within(screen.getByText("Harbor airchecks").parentElement!).getByText("For your area"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText("Lakeside airchecks").parentElement!).queryByText("For your area"),
+    ).not.toBeInTheDocument();
+  });
+
   it("lists the specific sources an operator added", () => {
     render(<FillerSources sources={flat} />);
     expect(screen.getByText("Classic TV commercials")).toBeInTheDocument();

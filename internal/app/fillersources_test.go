@@ -486,6 +486,10 @@ func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (
 	return out, nil
 }
 
+func (f *fakeArchiveCatalog) SearchCollection(context.Context, string, string, int) (clipfetch.DiscoveryResult, error) {
+	return clipfetch.DiscoveryResult{}, nil
+}
+
 func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.DiscoveredItem) {
 	f.enriched++
 	if deadline, ok := ctx.Deadline(); ok {
