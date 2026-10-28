@@ -45,6 +45,10 @@ func Default() (*Index, error) {
 	return defaultIndex, defaultErr
 }
 
+// Places returns every embedded place, coordinates included. cmd/station-data geocodes each
+// station's community of license from them.
+func Places() ([]Place, error) { return readPlaces() }
+
 func readPlaces() ([]Place, error) {
 	reader, err := gzip.NewReader(bytes.NewReader(placesData))
 	if err != nil {

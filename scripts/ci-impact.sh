@@ -531,6 +531,21 @@ classify() {
       select_gate go
       select_gate image
       ;;
+    internal/broadcaststation/*.gz|internal/broadcaststation/*.json)
+      # The generated station seed is embedded by seed.go and applied by every store open,
+      # so it reaches the Postgres store suite as well as the image.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate postgres
+      select_gate image
+      ;;
+    cmd/station-data/*.rq|cmd/station-data/*.tsv)
+      # Generator inputs only: a change matters once `go generate` rewrites the seed above.
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
     internal/watermark/fonts/*)
       # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered
       # watermark and the production image, but no native client reads them.

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -27,6 +28,9 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 		return err
 	}
 	if err := s.healUndatedHolidays(ctx, now); err != nil {
+		return err
+	}
+	if err := s.convergeBroadcastStationSeed(ctx, broadcaststation.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the

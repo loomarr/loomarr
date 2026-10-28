@@ -155,6 +155,8 @@ filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercor
 filler-corpus-commons	internal/fillercorpus/corpus/pilot/commons.json	contracts,go
 filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
 installation-location-data	internal/installationlocation/places.tsv.gz;internal/installationlocation/ip-country.csv.gz;internal/installationlocation/location-data.generated.json	contracts,go,image
+broadcast-station-seed	internal/broadcaststation/stations.tsv.gz;internal/broadcaststation/station-data.generated.json	contracts,go,postgres,image
+broadcast-station-generator-inputs	cmd/station-data/wikidata-call-signs.rq;cmd/station-data/wikidata-call-signs.tsv	contracts,go
 openrouter-catalog-leaf	internal/openroutercatalog/openrouter_route.go	contracts,go,postgres,image
 research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs
 filler-eval-doc	research/docs/filler-certification.md	docs

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/creative"
@@ -441,6 +442,9 @@ type ClipStore interface {
 	// ListHolidays returns every stored holiday definition in display order (#2030). Each owns the
 	// seasonal taxon of its id; ApplyTaxonomyEdit keeps the two one-to-one.
 	ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error)
+	// ListBroadcastStations returns the shipped broadcast station directory (#2060) with each
+	// station's dated call signs. Boot seeds it; nothing else writes it.
+	ListBroadcastStations(ctx context.Context) ([]broadcaststation.Station, error)
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
 	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from

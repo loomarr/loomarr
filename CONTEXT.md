@@ -463,6 +463,14 @@ _Avoid_: region, location type, reach
 An operator-visible local broadcast area within one country, such as New York or Seattle. It is an explicit identity, never inferred from a timezone.
 _Avoid_: timezone, city (a Market may cover more than one city), region
 
+**Broadcast station**:
+An over-the-air TV station from the shipped station directory (#2059), identified by its FCC facility and located at its community of license. Station material recorded off one is local to it. It is never a Loomarr Channel.
+_Avoid_: station (alone; it means a Channel's own idents elsewhere), affiliate, network
+
+**Call sign**:
+The base letters a Broadcast station held for a dated span (WOR until 1987, then WWOR), without licensing suffixes such as -TV. One station holds a call sign at a time; where the directory still shows two at once, a clip naming it resolves to no station rather than a guess.
+_Avoid_: callsign handle, station name, branding
+
 ### People and access
 
 **The allowlist**:
