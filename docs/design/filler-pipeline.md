@@ -75,6 +75,29 @@ first and yields before optional enrichment starts.
   else: it never displaces another producer's value or an operator's. That is how a corrected rule
   un-labels clips it labelled before. Bumping the producer version re-runs every clip, so no
   migration rewrites state. Withdrawing a geography clears only a `registered_source:` stamp.
+- **The clip row mirrors accepted geography.** Airing reads the clip's geography columns, so every
+  accepted geography answer overwrites them; precedence was already settled on the axis (#2061).
+  A fill-only projection left Cleveland station news "national" after a stronger answer arrived.
+  Rows located before the axis existed keep their value until an answer replaces it, and an
+  operator's row (`geo_evidence = operator`) is never overwritten by the projection.
+- **Broadcast stations** (#2061). The free pass resolves call signs in the title, filename,
+  description and on-screen text against the broadcast station directory, on the clip's date. Only
+  a cued call sign counts, because many are words (KING, WHO, WEEK): a licence suffix (`WABC-TV`),
+  a network prefix (`ABC/WABC`) or a following channel number (`WJW 8`). A channel number counts
+  only in mixed-case text that mentions broadcasting; all-capitals text and on-screen text (OCR is
+  capitals and ad copy) need a suffix or prefix. The date comes from the title and filename only
+  (one full date, else one year, else any time), because a description often dates the
+  digitisation; digit runs joined to other digits by a hyphen are phone numbers, not years. Exactly
+  one station must match; two mean none. The station's own material is `local` to it as a trusted
+  mapping: a station ID, a named local segment (news update, eyewitness news, weather forecast,
+  meteorologist, station sign-off) in the item text, or a title that leads with the station and
+  names its promo, ident, news, weather or sign-off. On-screen text never makes a clip local. A bare
+  "news", "weather" or "forecast", a network newscast ("Nightly News") and a slogan's "sign off" are
+  not the station's own material. Anything else credited to a station, such as a network promo or an ad
+  recorded off it, is `national` in the station's country, as a confidence-60 inference that keeps
+  the station as provenance: a source's declaration outranks it, and research citing a local
+  advertiser may overturn it. A `local` clip airs only where the channel's place is near the
+  station; until places replace markets (#2062) it airs nowhere.
 - **Passes, cheapest first:** a free local pass over preserved titles, descriptions, filenames,
   provenance and trusted mappings; then an automatic text pass when a text provider is configured
   (at most eight clips per JSON call, validated per item, brands only when literally present, never
@@ -84,7 +107,8 @@ first and yields before optional enrichment starts.
 - **Context research** may fill a missing era or country for publicly acquired clips from fixed-host
   structured sources (Wikidata, Wikipedia, Archive.org, Library of Congress), each switchable, with a
   model interpreting only the retrieved packet. It saves a cited report. Only a cited ISO country with
-  confidence ≥ 60 may populate an empty geography, as `national`; era stays descriptive. Local paths,
+  confidence ≥ 60 may populate an empty geography, as `national`, which a station's local answer
+  outranks; the report cannot yet say `local` (#2063). Era stays descriptive. Local paths,
   private metadata and transcripts never become public queries.
 - **Web search** (Brave, or an operator's SearXNG) is an optional last resort, at most once per clip
   revision, reserved against a durable monthly ceiling before dispatch. It stores titles, URLs and

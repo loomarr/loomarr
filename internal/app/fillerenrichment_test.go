@@ -253,6 +253,50 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	}
 }
 
+// #2061, the reported case end to end: Cleveland station news that research had already called
+// "national US" (so a US household aired it anywhere) becomes local to its station on the next
+// deterministic pass, and the clip row, which airing reads, follows the axis.
+func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAnswer(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "cleveland-news", Path: "cleveland-news.mp4", Name: "WEWS NewsChannel 5 News Update 03/10/1991",
+		Kind: filler.Interstitial, Placement: filler.PlacementBreakBody,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	research := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography, Status: fillerenrichment.StatusComplete,
+		Value: fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "US"}},
+		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceInference, Reference: "context.report:context-stack:citations:1",
+			Confidence: 80, Producer: "context-model:test", ProducerVersion: "filler-context-v2", ObservedAt: at}}
+	if _, changed, err := st.ApplyFillerEnrichment(t.Context(), research, at); err != nil || !changed {
+		t.Fatalf("apply research = changed %v, err %v", changed, err)
+	}
+	if got, _ := st.GetClip(t.Context(), clip.Hash); got.GeographicScope != filler.GeographicNational {
+		t.Fatalf("precondition: research projected %+v, want national", got.Clip)
+	}
+
+	runner := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: &stationDirectory{list: st.ListBroadcastStations}}.Load,
+		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
+		t.Fatalf("Run() = %+v, err %v", result, err)
+	}
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
+		t.Fatalf("after the station pass the clip row = %+v, want local to WEWS (fcc:59441) on 1991-03-10", got.Clip)
+	}
+	if filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+		t.Fatal("Cleveland station news is still eligible for a US household with no local area")
+	}
+}
+
 // #1412 end to end through the scheduler driver: production has no text model configured and a
 // preparation backlog that does not drain. The deterministic pass must still be recorded for an
 // existing clip that has never had one.
