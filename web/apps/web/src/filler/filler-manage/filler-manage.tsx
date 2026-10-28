@@ -237,8 +237,8 @@ const ManageHub = ({
           },
           {
             title: "Quality",
-            // Record-only until enforcement (#2036): nothing is retired yet, so a count to retire
-            // is information, not a warning.
+            // The floor retires a failing copy on its own within a pass (#2036), so a count to
+            // retire is information, not a warning.
             summary: quality
               ? `${quality.verdicts.fail} would be retired · ${pluralize(quality.total, "clip")} to label`
               : "Checking…",

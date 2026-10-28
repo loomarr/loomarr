@@ -4303,7 +4303,7 @@ components:
       additionalProperties: false
       properties:
         fail:
-          description: What the floor would retire once it is enforced (#2036)
+          description: "Failing copies still in the catalog: the floor retires one on air at its next pass, and the defects rung refuses one held (#2036)"
           format: int64
           type: integer
         pass:
