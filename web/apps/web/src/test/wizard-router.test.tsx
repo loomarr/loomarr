@@ -66,7 +66,7 @@ const stubWizard = (opts: {
   publicUrl?: string;
   publicUrlPinned?: boolean;
   country?: string;
-  market?: string;
+  place?: string;
   settingsDelayMs?: number;
   settingsFailures?: number;
 }) => {
@@ -74,7 +74,7 @@ const stubWizard = (opts: {
   let backend = opts.backend ?? "tunarr";
   let publicUrl = opts.publicUrl ?? "http://loomarr:8080";
   let country = opts.country ?? "US";
-  let market = opts.market ?? "";
+  let place = opts.place ?? "";
   let settingsFailures = opts.settingsFailures ?? 0;
   const seq: string[] = [];
   const patches: string[] = [];
@@ -106,10 +106,10 @@ const stubWizard = (opts: {
         value: country,
       }),
       setting({
-        key: "filler.home_market",
+        key: "filler.home_place",
         label: "Local area",
         group: "filler",
-        value: market,
+        value: place,
       }),
       setting({
         key: "filler.language",
@@ -174,7 +174,7 @@ const stubWizard = (opts: {
           id: "5128581",
           label: "New York City, United States",
           country: "US",
-          market: "New York City",
+          place: "5128581",
           source: "proxy",
           approximate: true,
         },
@@ -207,7 +207,7 @@ const stubWizard = (opts: {
         }
         if (key === "playout.backend" && (value === "internal" || value === "tunarr")) backend = value;
         if (key === "filler.home_country") country = value;
-        if (key === "filler.home_market") market = value;
+        if (key === "filler.home_place") place = value;
         return { key, status: "saved" as const };
       });
       return { results };
@@ -279,7 +279,7 @@ describe("wizard", () => {
 
     await vi.waitFor(() => expect(seq).toContain("patch"));
     expect(patches.join()).toMatch(/filler\.home_country/);
-    expect(patches.join()).toMatch(/filler\.home_market/);
+    expect(patches.join()).toMatch(/filler\.home_place/);
     expect(patches.join()).toMatch(/filler\.language/);
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });

@@ -211,7 +211,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" || got.Market != "" {
+	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" {
 		t.Fatalf("inherited source invented clip geography = %+v", got.Clip)
 	}
 }
@@ -221,7 +221,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	at := time.Unix(1_700_000_400, 0).UTC()
 	source := fillerstore.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
 		"Regional source", at)
-	source.Geography = filler.Geography{Country: "GB", Market: "London"}
+	source.Geography = filler.Geography{Country: "GB"}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
@@ -248,8 +248,9 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "GB" || got.Market != "London" {
-		t.Fatalf("explicit source geography = %+v, want local GB / London", got.Clip)
+	// A source declares a country, so its default is national; only a station makes a clip local.
+	if got.GeographicScope != filler.GeographicNational || got.Country != "GB" {
+		t.Fatalf("explicit source geography = %+v, want national GB", got.Clip)
 	}
 }
 
@@ -292,7 +293,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
 		t.Fatalf("after the station pass the clip row = %+v, want local to WEWS (fcc:59441) on 1991-03-10", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
 		t.Fatal("Cleveland station news is still eligible for a US household with no local area")
 	}
 }
@@ -382,7 +383,7 @@ func TestFillerEnrichmentUndeclaredSourceLeavesClipGeographyUnknown(t *testing.T
 	if got.Country != "" || got.GeographicScope == filler.GeographicNational {
 		t.Fatalf("undeclared source labelled the clip %+v; want unknown geography", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
 		t.Fatalf("clip from an undeclared source passed the US-only filter: %+v", got.Clip)
 	}
 	if pod := usPod(got.Clip); pod.MatchLevel != filler.MatchBumperCard {
@@ -449,7 +450,7 @@ func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Country != "" || got.GeoEvidence != "" || filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+	if got.Country != "" || got.GeoEvidence != "" || filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
 		t.Fatalf("re-enrichment kept the inherited US stamp: %+v", got.Clip)
 	}
 	states, err := st.ListFillerEnrichment(t.Context(), clip.Hash)

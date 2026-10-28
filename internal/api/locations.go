@@ -9,7 +9,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/installationlocation"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 const dbIPAttribution = "https://db-ip.com"
@@ -18,7 +20,7 @@ type locationDTO struct {
 	ID          string `json:"id" doc:"Stable place identifier"`
 	Label       string `json:"label" example:"New York City, United States" doc:"Human place label"`
 	Country     string `json:"country" example:"US" minLength:"2" maxLength:"2" doc:"ISO 3166-1 alpha-2 setting value"`
-	Market      string `json:"market,omitempty" example:"New York City" doc:"Local market setting value; empty for a country-only choice"`
+	Place       string `json:"place,omitempty" example:"5128581" doc:"filler.home_place (or a Channel's place) setting value; empty for a country-only choice"`
 	Region      string `json:"region,omitempty" example:"New York" doc:"Display-only first-level region used to distinguish search results"`
 	Source      string `json:"source,omitempty" enum:"device,cloudflare,cloudfront,vercel,proxy,ip" doc:"Evidence used for an automatic suggestion"`
 	Approximate bool   `json:"approximate,omitempty" doc:"True when the result came from IP/CDN evidence rather than selected device coordinates"`
@@ -67,6 +69,11 @@ func (s *Server) registerLocations(api huma.API) {
 		Tags: []string{"settings"},
 	}, RoleAdmin), s.locationResolve)
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "locations-get", Method: http.MethodGet, Path: "/v1/locations/{id}",
+		Summary: "Get a saved place", Description: "Admin only. Returns the embedded index entry for a saved city place id, so a form can show the place it holds.",
+		Tags: []string{"settings"},
+	}, RoleAdmin), s.locationGet)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "locations-suggestion", Method: http.MethodGet, Path: "/v1/locations/suggestion",
 		Summary: "Suggest an approximate installation location", Description: "Admin only. Uses trusted CDN geography or the effective public client IP against Loomarr's embedded index. Never saves the suggestion.",
 		Tags: []string{"settings"},
@@ -99,6 +106,29 @@ func (s *Server) locationResolve(_ context.Context, input *locationResolveInput)
 	out.Body.Location = locationDTOFrom(place)
 	out.Body.Location.Source = "device"
 	return out, nil
+}
+
+// validateChannelPlace rejects a channel place the location index does not hold as a city in the
+// channel's own country. The schedule package cannot read the index, so the write path checks it.
+func validateChannelPlace(policy schedule.ChannelPolicy) error {
+	if policy.Filler == nil || policy.Filler.Geography == nil {
+		return nil
+	}
+	geo := filler.Geography{Country: policy.Filler.Geography.Country, Place: policy.Filler.Geography.Place}.Normalize()
+	if geo.Place == "" {
+		return nil
+	}
+	if geo.Country == "" {
+		return errUnprocessable("Invalid location", "Choose the channel's country along with its city.")
+	}
+	index, err := installationlocation.Default()
+	if err != nil {
+		return errServiceUnavailable("Location check unavailable", "The built-in location index couldn't be opened. Try again.")
+	}
+	if place, ok := index.Lookup(geo.Place); !ok || place.Country != geo.Country {
+		return errUnprocessable("Invalid location", "That city isn't one Loomarr knows in "+geo.Country+". Search for it again.")
+	}
+	return nil
 }
 
 func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {
@@ -184,5 +214,27 @@ func trustedLocationHeader(index *installationlocation.Index, request *http.Requ
 }
 
 func locationDTOFrom(place installationlocation.Place) locationDTO {
-	return locationDTO{ID: place.ID, Label: place.Label, Country: place.Country, Market: place.Market, Region: place.Region}
+	dto := locationDTO{ID: place.ID, Label: place.Label, Country: place.Country, Region: place.Region}
+	if place.City != "" {
+		dto.Place = place.ID
+	}
+	return dto
+}
+
+type locationGetInput struct {
+	ID string `path:"id" minLength:"1" maxLength:"40" doc:"A saved place id (filler.home_place or a Channel's place)"`
+}
+
+func (s *Server) locationGet(_ context.Context, input *locationGetInput) (*locationOutput, error) {
+	index, err := installationlocation.Default()
+	if err != nil {
+		return nil, errServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
+	}
+	place, ok := index.Lookup(input.ID)
+	if !ok {
+		return nil, errNotFound("Place not found", "That saved place isn't in Loomarr's location index. Search for your city again.")
+	}
+	out := &locationOutput{}
+	out.Body.Location = locationDTOFrom(place)
+	return out, nil
 }

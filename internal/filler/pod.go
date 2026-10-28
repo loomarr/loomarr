@@ -184,6 +184,9 @@ type Policy struct {
 	// Language is the household's commercial language (`filler.language`), every channel's default.
 	// Empty is no language boundary on a channel that names none.
 	Language string
+	// LocalStations resolves a place to the broadcast stations within the local radius
+	// (`filler.local_radius_km`). Nil means no clip is local anywhere.
+	LocalStations LocalStations
 	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
 	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
 	//
@@ -253,7 +256,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	rng := rand.New(rand.NewSource(w.Seed))
 
 	// The outer boundary: no pin or relaxed ladder rung may bypass geography.
-	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	catalog = filterGeography(catalog, policy.area(w.Geography))
 
 	// Per-channel selection (§10), all no-ops when unset:
 	//  - EXCLUDE: seed the no-repeat set with the excluded ids. Because `used` is

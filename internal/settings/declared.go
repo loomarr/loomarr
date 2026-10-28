@@ -222,6 +222,33 @@ func countryCodeList(v any) error {
 	return nil
 }
 
+// optionalPlaceID accepts an empty place or a city id from the embedded location index (numeric
+// GeoNames ids). Whether the id exists is the location search's business; an unknown id resolves
+// to no place, so local filler fails closed.
+func optionalPlaceID(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want a place id")
+	}
+	for _, r := range strings.TrimSpace(s) {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("want a place id from the location search")
+		}
+	}
+	return nil
+}
+
+func localRadiusKM(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number of kilometres")
+	}
+	if n < 10 || n > 400 {
+		return fmt.Errorf("want 10-400 km (got %d)", n)
+	}
+	return nil
+}
+
 func optionalCountryCode(v any) error {
 	s, ok := v.(string)
 	if !ok {
@@ -789,9 +816,16 @@ func declared() []Setting {
 			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty, or a country Loomarr has no holidays for yet, keeps the US calendar.",
 		},
 		{
-			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
-			Kind: KindString, Default: "",
-			Doc: "Optional. Add a city or TV market when you want local filler, such as New York or Seattle.",
+			// #2062: a picked place (an embedded location index id), never a typed name — a name
+			// could not be measured against a broadcast station's community of license.
+			Key: "filler.home_place", Label: "Home city", EnvVar: "FILLER_HOME_PLACE", Group: GroupFiller,
+			Kind: KindString, Default: "", Validate: optionalPlaceID,
+			Doc: "Optional. Pick your city to get local TV material, such as station news and weather, from stations near you. Without it, only national filler airs.",
+		},
+		{
+			Key: "filler.local_radius_km", Label: "Local station radius", EnvVar: "FILLER_LOCAL_RADIUS_KM", Group: GroupFiller,
+			Kind: KindInt, Default: "100", Validate: localRadiusKM,
+			Doc: "How far from your city a TV station can be and still count as local, in kilometres.",
 		},
 		{
 			Key: "filler.region_fallback", Label: "Other countries", EnvVar: "FILLER_REGION_FALLBACK", Group: GroupFiller,

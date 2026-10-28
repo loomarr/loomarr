@@ -88,8 +88,8 @@ type FillerSource struct {
 	// FetchEverySeconds=0 says, and saying it twice invites the two to disagree. The API rejects
 	// it; the store does not need to.
 	FetchMaxPerRun *int
-	// Geography is asserted source coverage. Country-only sources may feed any market in that
-	// country; a market-scoped source may feed only that market. Empty means unknown.
+	// Geography is asserted source coverage: the country it serves (a source has no place).
+	// Empty means unknown.
 	Geography filler.Geography
 }
 
@@ -141,9 +141,9 @@ func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
 // never "where did its clips air": clip enrichment reads only the declared Geography, because
 // copying this inheritance into clips labelled British archive ads as US (#1670).
 func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography {
-	coverage := f.Geography.Normalize()
+	coverage := filler.Geography{Country: f.Geography.Normalize().Country}
 	if coverage.Country == "" {
-		return home.Normalize()
+		return filler.Geography{Country: home.Normalize().Country} // a source covers a country, never a place
 	}
 	return coverage
 }
@@ -217,7 +217,7 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 
 const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.last_fetched_at, s.last_checked_at,
 	s.check_failure_count, s.check_retry_at, s.check_lease_until, s.created_at, s.enabled,
-	s.fetch_every_seconds, s.fetch_max_per_run, s.country, s.market,
+	s.fetch_every_seconds, s.fetch_max_per_run, s.country,
 	s.scan_cursor, s.scan_watermark, s.scan_pending_watermark,
 	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
 	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
@@ -250,7 +250,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
 			&fetchedAt, &checkedAt, &src.CheckFailureCount, &retryAt, &leaseUntil,
 			&createdAt, &src.Enabled, &every, &perRun,
-			&src.Geography.Country, &src.Geography.Market,
+			&src.Geography.Country,
 			&src.ScanCheckpoint.Cursor, &src.ScanCheckpoint.Watermark,
 			&src.ScanCheckpoint.PendingWatermark, &src.ProviderEnabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
@@ -373,15 +373,15 @@ func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) err
 		// SetFillerSourceFetchPolicy is their only writer.
 		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at,
 		   check_failure_count, check_retry_at, check_lease_until, created_at, enabled,
-		   fetch_every_seconds, fetch_max_per_run, country, market)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   fetch_every_seconds, fetch_max_per_run, country)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
 		epoch(src.LastFetchedAt), epoch(src.LastCheckedAt), src.CheckFailureCount,
 		epoch(src.CheckRetryAt), epoch(src.CheckLeaseUntil), epoch(src.CreatedAt), src.Enabled,
 		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun),
-		src.Geography.Normalize().Country, src.Geography.Normalize().Market)
+		src.Geography.Normalize().Country)
 	if err != nil {
 		return fmt.Errorf("upsert filler source %s: %w", src.ID, err)
 	}
@@ -415,8 +415,8 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		}
 		geography := filler.Geography{Country: c.Country}.Normalize()
 		res, err = tx.ExecContext(ctx, s.ph(`INSERT INTO filler_sources (id, kind, uri, label, license,
-			  last_fetched_at, created_at, enabled, country, market)
-			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, '') ON CONFLICT DO NOTHING`),
+			  last_fetched_at, created_at, enabled, country)
+			VALUES (?, ?, ?, ?, '', 0, ?, ?, ?) ON CONFLICT DO NOTHING`),
 			c.SourceID(), c.Kind, c.Target, c.Label, epoch(now), false, geography.Country)
 		if err != nil {
 			return 0, fmt.Errorf("add curated source %s: %w", c.SourceID(), err)
@@ -437,8 +437,8 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
 	geography = geography.Normalize()
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE filler_sources SET country = ?, market = ? WHERE id = ?`),
-		geography.Country, geography.Market, id)
+		`UPDATE filler_sources SET country = ? WHERE id = ?`),
+		geography.Country, id)
 	if err != nil {
 		return fmt.Errorf("set filler source geography %s: %w", id, err)
 	}

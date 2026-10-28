@@ -34,7 +34,7 @@ type pool struct {
 // Each rung is filtered to eligible durations (density, §10). Clips already used
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
-	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	catalog = filterGeography(catalog, policy.area(w.Geography))
 	catalog = filterSeason(catalog, w)
 	catalog = filterLanguage(catalog, w, policy)
 	body := make([]Clip, 0, len(catalog))

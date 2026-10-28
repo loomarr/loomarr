@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/mediatools"
 
+	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -503,10 +504,16 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	//
 	// config-design §3 defines hot-apply for long-lived clients; `AutoSplitPolicy` already
 	// resolves per call and says so. This is that contract, honoured by the pod path too.
+	// The radius is read per call like the rest of the policy; the resolver memoises per radius.
+	// A closure, not the method value: the store is read only when a place is set.
+	list := func(ctx context.Context) ([]broadcaststation.Station, error) { return st.ListBroadcastStations(ctx) }
+	local := &localStations{stations: &stationDirectory{list: list},
+		radiusKM: func() int { return set.intv("filler.local_radius_km") }, log: log}
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
 		return filler.Policy{
 			Geography:       set.homeGeography(),
 			Language:        set.str("filler.language"),
+			LocalStations:   local.resolve,
 			PodMax:          set.intv("filler.pod_max"),
 			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor

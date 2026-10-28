@@ -261,11 +261,11 @@ type FillerSelection struct {
 	Language string `json:"language,omitempty"`
 }
 
-// FillerGeography is a Channel's explicit audience geography. Market is optional so a
-// country-wide Channel can use national Clips while excluding every local market.
+// FillerGeography is a Channel's explicit audience geography. Place (an installationlocation id)
+// is optional: empty inherits the Installation's place (#2059 decision 8).
 type FillerGeography struct {
 	Country string `json:"country"`
-	Market  string `json:"market,omitempty"`
+	Place   string `json:"place,omitempty"`
 }
 
 // SeedFillerSelection hands the approved proposal's grounded scheduling facts to the

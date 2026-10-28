@@ -45,7 +45,7 @@ const renderSection = (ui: ReactNode) => {
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
 const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
-  geography: { country: "", market: "" },
+  geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
 };
@@ -156,7 +156,7 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
       criteria: HEALTHY,
-      geography: { country: "US", market: "" },
+      geography: { country: "US", place: "" },
       language: "en",
       undeterminedLanguage: 0,
     }),

@@ -24,6 +24,13 @@ vi.mock(import("@loomarr/api/endpoints/settings"), async (importOriginal) => {
         isFetching: false,
       };
     }) as unknown as typeof actual.useLocationsSearch,
+    useLocationsGet: ((id: string) => {
+      const location = mocks.locations.find((candidate) => candidate.place === id);
+      return {
+        data: location ? { status: 200, data: { location } } : undefined,
+        isError: false,
+      };
+    }) as unknown as typeof actual.useLocationsGet,
     useLocationsResolve: (() => ({
       mutateAsync: mocks.resolve,
       isPending: false,
@@ -57,7 +64,7 @@ const entry = (key: string, value = ""): SettingEntry => ({
     : {}),
 });
 
-const entries = () => [entry("filler.home_country"), entry("filler.home_market")];
+const entries = () => [entry("filler.home_country"), entry("filler.home_place")];
 
 describe("InstallationLocation", () => {
   beforeEach(() => {
@@ -68,13 +75,13 @@ describe("InstallationLocation", () => {
     Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
   });
 
-  it("edits country and market through one searchable Location field", async () => {
+  it("edits country and place through one searchable Location field", async () => {
     mocks.locations = [
       {
         id: "5128581",
         label: "New York City, United States",
         country: "US",
-        market: "New York City",
+        place: "5128581",
         region: "New York",
       },
     ];
@@ -86,11 +93,36 @@ describe("InstallationLocation", () => {
     await userEvent.type(screen.getByRole("combobox", { name: "Location" }), "New York");
     const option = screen.getByRole("option", { name: "New York City, United States" });
     await waitFor(() => expect(option).toBeEnabled());
-    expect(option).toHaveTextContent("New York, United States");
+    expect(option).toHaveTextContent("New York City, United States");
     await userEvent.click(option);
 
     expect(onChange).toHaveBeenNthCalledWith(1, "filler.home_country", "US");
-    expect(onChange).toHaveBeenNthCalledWith(2, "filler.home_market", "New York City");
+    expect(onChange).toHaveBeenNthCalledWith(2, "filler.home_place", "5128581");
+  });
+
+  it("shows the saved place by its label and edits the station radius beside it", async () => {
+    mocks.locations = [
+      { id: "5128581", label: "New York City, United States", country: "US", place: "5128581" },
+    ];
+    const onChange = vi.fn();
+    // The radius renders through the registry's SettingField, like every other setting.
+    render(
+      <InstallationLocation
+        entries={[
+          entry("filler.home_country", "US"),
+          entry("filler.home_place", "5128581"),
+          { ...entry("filler.local_radius_km", "100"), label: "Local station radius", kind: "int" },
+        ]}
+        values={{}}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("New York City, United States");
+    const radius = screen.getByLabelText("Local station radius");
+    expect(radius).toHaveValue(100);
+    await userEvent.type(radius, "5");
+    expect(onChange).toHaveBeenCalledWith("filler.local_radius_km", "1005");
   });
 
   it("chooses the installation language by its friendly name beside Location", async () => {
@@ -143,7 +175,7 @@ describe("InstallationLocation", () => {
           id: "5128581",
           label: "New York City, United States",
           country: "US",
-          market: "New York City",
+          place: "5128581",
           source: "device",
         },
       },
@@ -177,7 +209,7 @@ describe("InstallationLocation", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
 
     expect(onChange).toHaveBeenCalledWith("filler.home_country", "CA");
-    expect(onChange).toHaveBeenCalledWith("filler.home_market", "");
+    expect(onChange).toHaveBeenCalledWith("filler.home_place", "");
     expect(screen.getByText(/approximate/i)).toBeInTheDocument();
   });
 
@@ -196,7 +228,7 @@ describe("InstallationLocation", () => {
       <InstallationLocation
         entries={[
           { ...entry("filler.home_country", "US"), provenance: "env", envVar: "FILLER_HOME_COUNTRY" },
-          entry("filler.home_market", "New York City"),
+          entry("filler.home_place", "5128581"),
         ]}
         values={{}}
         onChange={vi.fn()}

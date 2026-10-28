@@ -258,9 +258,10 @@ type ClipDTO struct {
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
 	Country         string `json:"country,omitempty" doc:"ISO 3166-1 alpha-2 country when grounded"`
-	Market          string `json:"market,omitempty" doc:"Local broadcast market when geographicScope is local"`
 	Network         string `json:"network,omitempty"`
-	Station         string `json:"station,omitempty"`
+	Station         string `json:"station,omitempty" doc:"Broadcast station directory id (fcc:<facility> or wd:<item>); a local clip airs near it"`
+	StationCallSign string `json:"stationCallSign,omitempty" example:"WEWS" doc:"The station's call sign on the air date"`
+	StationLabel    string `json:"stationLabel,omitempty" example:"WEWS · Cleveland, OH" doc:"The station's call sign on the air date and its community of license"`
 	AirDate         string `json:"airDate,omitempty" doc:"Grounded broadcast date in YYYY-MM-DD form"`
 	GeoEvidence     string `json:"geographyEvidence,omitempty" doc:"Literal source evidence or operator attribution"`
 	// Category is the DERIVED product-leaf shadow of Tags (§10 V45a) — kept for readers that show a
@@ -503,7 +504,7 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
-		GeographicScope: string(c.GeographicScope), Country: c.Country, Market: c.Market,
+		GeographicScope: string(c.GeographicScope), Country: c.Country,
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
@@ -563,7 +564,6 @@ type listFillerInput struct {
 	Category        string `query:"category"`
 	GeographicScope string `query:"geographicScope" enum:"unknown,national,local"`
 	Country         string `query:"country" minLength:"2" maxLength:"2"`
-	Market          string `query:"market"`
 	Taxon           string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
 	Unclassified    bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
 	WithoutAxis     string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue,presentation" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
@@ -639,7 +639,6 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		Category:            in.Category,
 		GeographicScope:     filler.GeographicScope(in.GeographicScope),
 		Country:             in.Country,
-		Market:              in.Market,
 		Taxon:               in.Taxon,
 		WithoutTaxonomyTags: in.Unclassified,
 		WithoutTaxonomyAxis: taxonomy.Axis(in.WithoutAxis),
@@ -687,9 +686,11 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	for _, source := range sources {
 		sourceLabels[source.ID] = source.Label
 	}
+	stations := s.labelStations(ctx)
 	for _, c := range clips {
 		d := clipToDTO(c, s.playsCounted(), img)
 		d.SourceLabel = fillerSourceLabel(c.Source, sourceLabels)
+		d.StationCallSign, d.StationLabel = stationNames(stations, c.Station, c.AirDate)
 		if len(in.Hashes) == 1 {
 			states, err := s.store.ListFillerEnrichment(ctx, c.Hash)
 			if err != nil {
@@ -766,9 +767,8 @@ type patchClipInput struct {
 type ClipGeographyDTO struct {
 	Scope   string `json:"scope" enum:"unknown,national,local"`
 	Country string `json:"country,omitempty" maxLength:"2"`
-	Market  string `json:"market,omitempty" maxLength:"120"`
 	Network string `json:"network,omitempty" maxLength:"120"`
-	Station string `json:"station,omitempty" maxLength:"120"`
+	Station string `json:"station,omitempty" maxLength:"120" doc:"A call sign (WEWS, WABC-TV) or station id; required for a local clip and resolved against the broadcast station directory on the air date"`
 	AirDate string `json:"airDate,omitempty" doc:"YYYY-MM-DD when known"`
 }
 type clipOutput struct{ Body ClipDTO }
@@ -881,23 +881,9 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Geography != nil {
 		g := in.Body.Geography
 		scope := filler.GeographicScope(g.Scope)
-		geo := filler.Geography{Country: g.Country, Market: g.Market}.Normalize()
+		geo := filler.Geography{Country: g.Country}.Normalize()
 		if err := geo.Validate(); err != nil {
 			return nil, errUnprocessable("Invalid geography", err.Error())
-		}
-		switch scope {
-		case filler.GeographicUnknown:
-			geo = filler.Geography{}
-		case filler.GeographicNational:
-			if geo.Country == "" || geo.Market != "" {
-				return nil, errUnprocessable("Invalid geography", "National clips require a country and cannot carry a local market.")
-			}
-		case filler.GeographicLocal:
-			if geo.Country == "" || geo.Market == "" {
-				return nil, errUnprocessable("Invalid geography", "Local clips require both a country and a local market.")
-			}
-		default:
-			return nil, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
 		}
 		airDate := strings.TrimSpace(g.AirDate)
 		if airDate != "" {
@@ -905,13 +891,44 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 				return nil, errUnprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
 			}
 		}
-		if err := s.store.UpdateClipGeography(ctx, clip.Hash, string(scope), geo.Country, geo.Market,
-			strings.TrimSpace(g.Network), strings.TrimSpace(g.Station), airDate, "operator", now); err != nil {
+		// Every station resolves against the directory (#2059 decision 5): a local clip airs near
+		// it, and a national one keeps it as provenance.
+		station := ""
+		if typed := strings.TrimSpace(g.Station); typed != "" && scope != filler.GeographicUnknown {
+			dir, err := s.stationDirectory(ctx)
+			if err != nil {
+				return nil, huma.Error500InternalServerError("load broadcast stations", err)
+			}
+			found, ok := dir.Resolve(typed, airDate)
+			if !ok {
+				return nil, errUnprocessable("Unknown station", "That call sign doesn't match exactly one TV station on that air date. Check the call sign and date.")
+			}
+			if geo.Country != "" && geo.Country != found.Country {
+				return nil, errUnprocessable("Invalid geography", "That station is in "+found.Country+", not "+geo.Country+".")
+			}
+			station, geo.Country = found.ID, found.Country
+		}
+		switch scope {
+		case filler.GeographicUnknown:
+			geo = filler.Geography{}
+		case filler.GeographicNational:
+			if geo.Country == "" {
+				return nil, errUnprocessable("Invalid geography", "National clips require a country.")
+			}
+		case filler.GeographicLocal:
+			if station == "" {
+				return nil, errUnprocessable("Invalid geography", "Local clips require the broadcast station they belong to.")
+			}
+		default:
+			return nil, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
+		}
+		if err := s.store.UpdateClipGeography(ctx, clip.Hash, string(scope), geo.Country,
+			strings.TrimSpace(g.Network), station, airDate, "operator", now); err != nil {
 			return nil, err
 		}
 		operatorGeography = &fillerenrichment.Value{Geography: fillerenrichment.Geography{
-			Scope: string(scope), Country: geo.Country, Market: geo.Market,
-			Network: strings.TrimSpace(g.Network), Station: strings.TrimSpace(g.Station), AirDate: airDate,
+			Scope: string(scope), Country: geo.Country,
+			Network: strings.TrimSpace(g.Network), Station: station, AirDate: airDate,
 		}}
 	}
 	if in.Body.Brand != nil {
@@ -972,7 +989,10 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	s.reconcileChannelsForFillerChange(ctx, clip.Clip, c.Clip)
-	return &clipOutput{Body: clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []store.Clip{c}))}, nil
+	out := clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []store.Clip{c}))
+	stations := s.labelStations(ctx)
+	out.StationCallSign, out.StationLabel = stationNames(stations, c.Station, c.AirDate)
+	return &clipOutput{Body: out}, nil
 }
 
 type syncFillerOutput struct {

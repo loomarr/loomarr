@@ -15,7 +15,7 @@ it("chooses one server-resolved location from the typeahead", async () => {
           id: "5129061",
           label: "North Greenbush, United States",
           country: "US",
-          market: "North Greenbush",
+          place: "5129061",
           region: "New York",
         },
       ],
@@ -30,7 +30,5 @@ it("chooses one server-resolved location from the typeahead", async () => {
   await userEvent.type(screen.getByRole("combobox", { name: "Location" }), "North Greenbush");
   await userEvent.click(await screen.findByRole("option", { name: "North Greenbush, United States" }));
 
-  expect(onChange).toHaveBeenCalledWith(
-    expect.objectContaining({ country: "US", market: "North Greenbush" }),
-  );
+  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ country: "US", place: "5129061" }));
 });

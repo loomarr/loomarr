@@ -44,26 +44,24 @@ func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
 	}
 }
 
-func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfMarketSources(t *testing.T) {
+func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfCountrySources(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	for _, tc := range []struct {
-		id, country, market string
+		id, country string
 	}{
-		{"us-wide", "US", ""},
-		{"ny-local", "US", "New York"},
-		{"california", "US", "California"},
-		{"canadian", "CA", ""},
-		{"unknown", "", ""},
+		{"us-wide", "US"},
+		{"canadian", "CA"},
+		{"unknown", ""},
 	} {
 		src := fillerstore.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
-		src.Geography = filler.Geography{Country: tc.country, Market: tc.market}
+		src.Geography = filler.Geography{Country: tc.country}
 		if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 			t.Fatal(err)
 		}
 	}
 	adapter := fetchStoreAdapter{
 		st: st, fetchEvery: func() time.Duration { return time.Hour },
-		home: func() filler.Geography { return filler.Geography{Country: "US", Market: "New York"} },
+		home: func() filler.Geography { return filler.Geography{Country: "US", Place: "4560349"} },
 	}
 	sources, err := adapter.ListFetchSources(t.Context())
 	if err != nil {
@@ -73,15 +71,13 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfMarketSou
 	for _, src := range sources {
 		got[src.ID] = src.Enabled
 	}
-	californiaEnabled, californiaPresent := got["california"]
 	canadianEnabled, canadianPresent := got["canadian"]
 	// Sources without their own geography—including the built-in starters and the
-	// explicit "unknown" row above—inherit the Installation location. Explicitly conflicting
+	// explicit "unknown" row above—inherit the Installation country. Explicitly conflicting
 	// sources stay visible to the fetcher as disabled so a manual check returns a refusal rather
 	// than pretending that an absent source was checked successfully.
-	if !got["us-wide"] || !got["ny-local"] || !got["unknown"] || !californiaPresent || californiaEnabled ||
-		!canadianPresent || canadianEnabled {
-		t.Fatalf("fetch sources = %v, want inherited/matching sources enabled and out-of-market sources disabled", got)
+	if !got["us-wide"] || !got["unknown"] || !canadianPresent || canadianEnabled {
+		t.Fatalf("fetch sources = %v, want inherited/matching sources enabled and out-of-country sources disabled", got)
 	}
 }
 

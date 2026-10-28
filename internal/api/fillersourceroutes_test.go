@@ -44,7 +44,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
-		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us","market":" New   York "}`, adminToken)
+		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us"}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -79,20 +79,8 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	if !got[0].Enabled {
 		t.Error("persisted source is disabled")
 	}
-	if got[0].Geography != (filler.Geography{Country: "US", Market: "New York"}) {
+	if got[0].Geography != (filler.Geography{Country: "US"}) {
 		t.Errorf("persisted geography = %+v", got[0].Geography)
-	}
-}
-
-func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
-		`{"kind":"archive","uri":"classic_tv_commercials","market":"New York"}`, adminToken)
-	if res.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("status = %d, want 422", res.StatusCode)
-	}
-	if got := registeredSources(t, st); len(got) != 0 {
-		t.Errorf("stored %d sources with an invalid geography", len(got))
 	}
 }
 
@@ -667,7 +655,7 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 
 func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
+		return map[string]string{"filler.home_country": "US", "filler.home_place": "4560349"}[key]
 	})
 	ctx := context.Background()
 
@@ -689,7 +677,6 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 			Ready            bool     `json:"ready"`
 			LocationSource   string   `json:"locationSource"`
 			EffectiveCountry string   `json:"effectiveCountry"`
-			EffectiveMarket  string   `json:"effectiveMarket"`
 			Actions          []string `json:"actions"`
 		} `json:"sources"`
 	}
@@ -697,20 +684,21 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	byID := map[string]struct {
-		readiness, source, country, market string
-		ready                              bool
-		actions                            []string
+		readiness, source, country string
+		ready                      bool
+		actions                    []string
 	}{}
 	for _, row := range body.Sources {
 		byID[row.ID] = struct {
-			readiness, source, country, market string
-			ready                              bool
-			actions                            []string
-		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.EffectiveMarket, row.Ready, row.Actions}
+			readiness, source, country string
+			ready                      bool
+			actions                    []string
+		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.Ready, row.Actions}
 	}
+	// A source inherits the installation country; the household's place is not a source's.
 	got := byID["archive:inherited"]
 	if !got.ready || got.readiness != "ready" || got.source != "installation" ||
-		got.country != "US" || got.market != "New York" || !slices.Contains(got.actions, "fetch") {
+		got.country != "US" || !slices.Contains(got.actions, "fetch") {
 		t.Fatalf("inherited source projection = %+v", got)
 	}
 	got = byID["archive:canada"]

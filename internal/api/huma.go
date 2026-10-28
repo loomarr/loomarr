@@ -33,10 +33,13 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store   fillerstore.Store
-	auth    Authorizer
-	log     *slog.Logger
-	metrics *metrics.Recorder
+	store fillerstore.Store
+	// stations is the broadcast station directory, read once from the store (it changes only
+	// with a seed revision at boot).
+	stations stationCache
+	auth     Authorizer
+	log      *slog.Logger
+	metrics  *metrics.Recorder
 	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
 	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
 	backupSQLite BackupStreamer

@@ -384,8 +384,8 @@ func TestMigrateToPostgresRollsBackTheWholeDataCopy(t *testing.T) {
 	if _, err := src.(*sqlStore).db.ExecContext(ctx,
 		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at,
 		   check_failure_count, check_retry_at, check_lease_until, created_at, enabled,
-		   fetch_every_seconds, fetch_max_per_run, country, market)
-		 VALUES (?, ?, ?, ?, '', 0, 0, 0, 0, 0, ?, ?, NULL, NULL, '', '')`,
+		   fetch_every_seconds, fetch_max_per_run, country)
+		 VALUES (?, ?, ?, ?, '', 0, 0, 0, 0, 0, ?, ?, NULL, NULL, '')`,
 		"operator:keep", "archive", "operator_collection", "Operator source", epoch(time.Now()), true); err != nil {
 		t.Fatal(err)
 	}

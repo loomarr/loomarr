@@ -64,9 +64,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
   const [brand, setBrand] = useState(clip?.brand ?? "");
   const [geoScope, setGeoScope] = useState<ClipGeographyDTO["scope"]>(clip?.geographicScope ?? "unknown");
   const [country, setCountry] = useState(clip?.country ?? "");
-  const [market, setMarket] = useState(clip?.market ?? "");
   const [network, setNetwork] = useState(clip?.network ?? "");
-  const [station, setStation] = useState(clip?.station ?? "");
+  // `station` on the clip is a directory id; the editor takes the call sign it held on the air date.
+  const [station, setStation] = useState(clip?.stationCallSign ?? "");
   const [airDate, setAirDate] = useState(clip?.airDate ?? "");
   // Tags are the operator's chosen taxonomy leaves (§10 V45a) — a SET, not one category. Seeded from
   // the clip's asserted tags; `category` is derived server-side from these, never sent.
@@ -108,9 +108,15 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         geography: {
           scope: geoScope,
           country: geoScope === "unknown" ? undefined : country.trim().toUpperCase(),
-          market: geoScope === "local" ? market.trim() : undefined,
           network: network.trim() || undefined,
-          station: station.trim() || undefined,
+          // An unchanged call sign sends the stored station id: a reused call sign with no air date
+          // would otherwise resolve to two stations and refuse an unrelated edit.
+          station:
+            geoScope === "unknown"
+              ? undefined
+              : station.trim() === (clip.stationCallSign ?? "")
+                ? clip.station
+                : station.trim(),
           airDate: airDate || undefined,
         },
       },
@@ -228,16 +234,12 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
           </div>
           <div className="sm:col-span-2">
             <LocationPicker
-              value={{
-                country: geoScope === "unknown" ? "" : country,
-                market: geoScope === "local" ? market : undefined,
-              }}
+              value={{ country: geoScope === "unknown" ? "" : country }}
               allowDetection={false}
               emptyHint="Leave this unknown if you are not sure."
               onChange={(location) => {
                 setCountry(location.country);
-                setMarket(location.market ?? "");
-                if (geoScope === "unknown") setGeoScope(location.market ? "local" : "national");
+                if (geoScope === "unknown") setGeoScope("national");
               }}
             />
           </div>
@@ -251,16 +253,21 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               placeholder="Fox"
             />
           </div>
-          <div>
-            <Label htmlFor="tag-station">Station (optional)</Label>
-            <Input
-              id="tag-station"
-              maxLength={120}
-              value={station}
-              onChange={(event) => setStation(event.target.value)}
-              placeholder="WNYW"
-            />
-          </div>
+          {geoScope !== "unknown" && (
+            <div>
+              {/* A national clip keeps the station it was recorded off; a local one airs near it. */}
+              <Label htmlFor="tag-station">
+                {geoScope === "local" ? "Station call sign" : "Station call sign (optional)"}
+              </Label>
+              <Input
+                id="tag-station"
+                maxLength={120}
+                value={station}
+                onChange={(event) => setStation(event.target.value)}
+                placeholder="WEWS"
+              />
+            </div>
+          )}
           <div>
             <Label htmlFor="tag-air-date">Air date (optional)</Label>
             <Input

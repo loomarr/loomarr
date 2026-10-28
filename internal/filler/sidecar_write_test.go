@@ -125,8 +125,8 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 		Category:        "general",
 		Brand:           "Sparkra-Cola",
 		Transcript:      "Have a Sparkra and a smile — the bright thing.",
-		GeographicScope: "local", Country: "US", Market: "New York", Network: "Kestrel One",
-		Station: "WKTL", AirDate: "1985-05-06", GeoEvidence: "operator",
+		GeographicScope: "local", Country: "US", Network: "Kestrel One",
+		Station: "fcc:900001", AirDate: "1985-05-06", GeoEvidence: "operator",
 	}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)

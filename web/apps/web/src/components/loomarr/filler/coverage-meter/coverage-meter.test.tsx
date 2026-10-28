@@ -31,7 +31,7 @@ const HEALTHY: CoverageDTO["criteria"] = [
 ];
 
 const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
-  geography: { country: "", market: "" },
+  geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
 };

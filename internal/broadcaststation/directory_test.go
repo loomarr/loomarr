@@ -71,6 +71,44 @@ func TestIdentifyFilenamesAndOnScreenText(t *testing.T) {
 	}
 }
 
+// A household in Philadelphia receives KYW Philadelphia, and at 150 km New York's WABC, but never
+// Cleveland's WEWS.
+func TestNearIsTheHouseholdsReach(t *testing.T) {
+	d := shippedDirectory(t)
+	near := d.Near("US", 39.95238, -75.16362, 100)
+	if !near["fcc:25453"] || near["fcc:1328"] || near["fcc:59441"] {
+		t.Errorf("Near(Philadelphia, 100 km): KYW %v, WABC %v, WEWS %v; want KYW only",
+			near["fcc:25453"], near["fcc:1328"], near["fcc:59441"])
+	}
+	if !d.Near("US", 39.95238, -75.16362, 150)["fcc:1328"] {
+		t.Error("Near(Philadelphia, 150 km) lacks WABC")
+	}
+	if len(d.Near("CA", 39.95238, -75.16362, 100)) != 0 {
+		t.Error("Near crossed the border")
+	}
+}
+
+func TestResolveOperatorStation(t *testing.T) {
+	d := shippedDirectory(t)
+	for _, c := range []struct{ value, airDate, want string }{
+		{"WABC-TV", "", "fcc:1328"},
+		{"wews", "1991-03-10", "fcc:59441"},
+		{"KYW", "1962-05-01", "fcc:73195"},
+		{"KYW", "1975-05-01", "fcc:25453"},
+		{"fcc:59441", "", "fcc:59441"},
+	} {
+		if got, ok := d.Resolve(c.value, c.airDate); !ok || got.ID != c.want {
+			t.Errorf("Resolve(%q, %q) = %s, %v; want %s", c.value, c.airDate, got.ID, ok, c.want)
+		}
+	}
+	// No TV station held WOR in 2010 (it was WWOR); KQQQ never existed; a name is not a call sign.
+	for _, value := range []string{"WOR", "KQQQ", "Kestrel One"} {
+		if got, ok := d.Resolve(value, "2010-01-01"); ok {
+			t.Errorf("Resolve(%q, 2010) = %s; want no station", value, got.ID)
+		}
+	}
+}
+
 // A description names the station but its dates and phone numbers are not the broadcast's.
 func TestIdentifyDatesComeFromTheTitle(t *testing.T) {
 	d := shippedDirectory(t)

@@ -67,7 +67,7 @@ const canonicalize = (s: FillerDraft): string => {
     kinds: list(s.kinds),
     pinned: list(s.pinned),
     excluded: list(s.excluded),
-    geography: s.geography ? { country: s.geography.country, market: s.geography.market ?? null } : null,
+    geography: s.geography ? { country: s.geography.country, place: s.geography.place ?? null } : null,
   });
 };
 

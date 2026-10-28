@@ -118,7 +118,7 @@ func TestPlanAcquisition_ExplainsPriorStateAndDuplicates(t *testing.T) {
 func TestDefaultAcquisitionIntent_NamesTheCoverageProjection(t *testing.T) {
 	intent := filler.DefaultAcquisitionIntent(filler.PoolReport{Channels: []filler.ChannelCoverage{{
 		Name: "Saturday Mornings", Report: filler.CoverageReport{Level: filler.MatchBumperCard},
-	}}}, filler.Geography{Country: "us", Market: "new york"})
+	}}}, filler.Geography{Country: "us", Place: "5128581"})
 	if intent.CatalogReason != "Improve filler coverage for Saturday Mornings; its current match level is bumper_card." {
 		t.Fatalf("reason = %q", intent.CatalogReason)
 	}

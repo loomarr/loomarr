@@ -26,7 +26,7 @@ const HEALTHY = [
   { criterion: "quality" as const, clips: 9 },
 ];
 
-const NO_LIMIT = { geography: { country: "", market: "" }, language: "", undeterminedLanguage: 0 };
+const NO_LIMIT = { geography: { country: "", place: "" }, language: "", undeterminedLanguage: 0 };
 
 // The healthy case: era- and audience-matched commercials are available.
 const Exact: Story = {

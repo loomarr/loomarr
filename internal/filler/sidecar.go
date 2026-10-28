@@ -146,7 +146,6 @@ type SidecarTags struct {
 	Brand           string `json:"brand,omitempty"`
 	GeographicScope string `json:"geographicScope,omitempty"`
 	Country         string `json:"country,omitempty"`
-	Market          string `json:"market,omitempty"`
 	Network         string `json:"network,omitempty"`
 	Station         string `json:"station,omitempty"`
 	AirDate         string `json:"airDate,omitempty"`

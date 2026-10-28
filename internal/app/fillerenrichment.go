@@ -337,14 +337,12 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 		// that inheritance into a clip labelled British archive ads "US" and let them past the
 		// US-only filter (#1670). An undeclared source contributes nothing; the clip stays
 		// unknown until item, content, or cited evidence says otherwise.
+		// A source declares only a country (#2062), so its default is national; only a broadcast
+		// station makes a clip local.
 		geography := source.Geography.Normalize()
-		scope := ""
-		if geography.Market != "" {
-			scope = string(filler.GeographicLocal)
-		} else if geography.Country != "" {
-			scope = string(filler.GeographicNational)
+		if geography.Country != "" {
+			signals.Source = fillerenrichment.Geography{Scope: string(filler.GeographicNational), Country: geography.Country}
 		}
-		signals.Source = fillerenrichment.Geography{Scope: scope, Country: geography.Country, Market: geography.Market}
 		break
 	}
 	return signals, nil

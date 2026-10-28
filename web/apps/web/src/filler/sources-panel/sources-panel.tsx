@@ -281,7 +281,6 @@ const SourcesPanel = ({
   // mean follow the Installation geography; an explicit value is tucked under Source settings for a
   // collection whose real coverage differs.
   const [sourceCountry, setSourceCountry] = useState("");
-  const [sourceMarket, setSourceMarket] = useState("");
   const resolveSourcePreview = fillerApi.useResolveFillerSource();
   const openSource = (source: (typeof sources)[number]) => {
     sourceTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -297,7 +296,6 @@ const SourcesPanel = ({
     initializedSourceID.current = selectedSource.id;
     setCheckResult(undefined);
     setSourceCountry(selectedSource.country ?? "");
-    setSourceMarket(selectedSource.market ?? "");
     setSourceQuery("");
     setSubmittedQuery("");
     setStatIds([]);
@@ -972,18 +970,8 @@ const SourcesPanel = ({
                             Change this only when the source covers a different area from your location.
                           </p>
                           <LocationPicker
-                            value={
-                              sourceCountry
-                                ? { country: sourceCountry, market: sourceMarket }
-                                : {
-                                    country: selectedSource.effectiveCountry ?? "",
-                                    market: selectedSource.effectiveMarket ?? "",
-                                  }
-                            }
-                            onChange={(location) => {
-                              setSourceCountry(location.country);
-                              setSourceMarket(location.market ?? "");
-                            }}
+                            value={{ country: sourceCountry || (selectedSource.effectiveCountry ?? "") }}
+                            onChange={(location) => setSourceCountry(location.country)}
                           />
                           <div className="flex flex-wrap gap-2">
                             <Button
@@ -996,10 +984,7 @@ const SourcesPanel = ({
                                   id: selectedSource.id,
                                   data: {
                                     enabled: selectedSource.enabled,
-                                    geography: {
-                                      country: sourceCountry.trim().toUpperCase(),
-                                      market: sourceMarket.trim(),
-                                    },
+                                    geography: { country: sourceCountry.trim().toUpperCase() },
                                   },
                                 });
                               }}
@@ -1014,7 +999,6 @@ const SourcesPanel = ({
                                 onClick={() => {
                                   if (selectedSource.locationSource !== "source") {
                                     setSourceCountry("");
-                                    setSourceMarket("");
                                     return;
                                   }
                                   setTogglingSource(selectedSource.id);
@@ -1023,15 +1007,10 @@ const SourcesPanel = ({
                                       id: selectedSource.id,
                                       data: {
                                         enabled: selectedSource.enabled,
-                                        geography: { country: "", market: "" },
+                                        geography: { country: "" },
                                       },
                                     },
-                                    {
-                                      onSuccess: () => {
-                                        setSourceCountry("");
-                                        setSourceMarket("");
-                                      },
-                                    },
+                                    { onSuccess: () => setSourceCountry("") },
                                   );
                                 }}
                               >

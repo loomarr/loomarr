@@ -227,10 +227,6 @@ components:
         label:
           description: Operator-facing name; falls back to the identifier
           type: string
-        market:
-          description: Local source market; omit for country-wide
-          maxLength: 120
-          type: string
         uri:
           description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
           minLength: 1
@@ -2107,9 +2103,6 @@ components:
         license:
           description: The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none.
           type: string
-        market:
-          description: Local broadcast market when geographicScope is local
-          type: string
         media:
           $ref: "#/components/schemas/ClipMediaDTO"
           description: Prepared playback file facts; included only for an exact single-clip detail read
@@ -2141,6 +2134,17 @@ components:
           description: Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID.
           type: string
         station:
+          description: Broadcast station directory id (fcc:<facility> or wd:<item>); a local clip airs near it
+          type: string
+        stationCallSign:
+          description: The station's call sign on the air date
+          examples:
+            - WEWS
+          type: string
+        stationLabel:
+          description: The station's call sign on the air date and its community of license
+          examples:
+            - WEWS · Cleveland, OH
           type: string
         suggestedEra:
           description: AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion.
@@ -2245,9 +2249,6 @@ components:
         country:
           maxLength: 2
           type: string
-        market:
-          maxLength: 120
-          type: string
         network:
           maxLength: 120
           type: string
@@ -2258,6 +2259,7 @@ components:
             - local
           type: string
         station:
+          description: A call sign (WEWS, WABC-TV) or station id; required for a local clip and resolved against the broadcast station directory on the air date
           maxLength: 120
           type: string
       required:
@@ -2476,12 +2478,12 @@ components:
         country:
           description: ISO 3166-1 alpha-2 country code, or empty for no location limit
           type: string
-        market:
-          description: Local market inside that country, or empty for the whole country
+        place:
+          description: Location index id of the place whose nearby stations count as local, or empty for national filler only
           type: string
       required:
         - country
-        - market
+        - place
       type: object
     CoverageRungDTO:
       additionalProperties: false
@@ -4120,7 +4122,7 @@ components:
       properties:
         country:
           type: string
-        market:
+        place:
           type: string
       required:
         - country
@@ -4437,9 +4439,6 @@ components:
           type: string
         effectiveEnabled:
           type: boolean
-        effectiveMarket:
-          description: Local market this source uses after Installation geography inheritance
-          type: string
         enabled:
           type: boolean
         fetchable:
@@ -4473,9 +4472,6 @@ components:
             - installation
             - source
             - missing
-          type: string
-        market:
-          description: Local market asserted for this source; absent means country-wide
           type: string
         parentId:
           type: string
@@ -4813,7 +4809,7 @@ components:
       properties:
         country:
           type: string
-        market:
+        place:
           type: string
       type: object
     GetDocOutputBody:
@@ -6650,10 +6646,10 @@ components:
           examples:
             - New York City, United States
           type: string
-        market:
-          description: Local market setting value; empty for a country-only choice
+        place:
+          description: filler.home_place (or a Channel's place) setting value; empty for a country-only choice
           examples:
-            - New York City
+            - "5128581"
           type: string
         region:
           description: Display-only first-level region used to distinguish search results
@@ -9048,8 +9044,6 @@ components:
         lastFetchedAt:
           description: RFC3339; absent if never fetched
           type: string
-        market:
-          type: string
         uri:
           type: string
       required:
@@ -10245,9 +10239,6 @@ components:
       properties:
         country:
           maxLength: 2
-          type: string
-        market:
-          maxLength: 120
           type: string
       type: object
     SplitFillerInputBody:
@@ -14397,11 +14388,6 @@ paths:
             maxLength: 2
             minLength: 2
             type: string
-        - explode: false
-          in: query
-          name: market
-          schema:
-            type: string
         - description: Match clips carrying this taxon directly or through a descendant rollup
           explode: false
           in: query
@@ -16382,6 +16368,36 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Suggest an approximate installation location
+      tags:
+        - settings
+  /v1/locations/{id}:
+    get:
+      description: Admin only. Returns the embedded index entry for a saved city place id, so a form can show the place it holds.
+      operationId: locations-get
+      parameters:
+        - description: A saved place id (filler.home_place or a Channel's place)
+          in: path
+          name: id
+          required: true
+          schema:
+            description: A saved place id (filler.home_place or a Channel's place)
+            maxLength: 40
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a saved place
       tags:
         - settings
   /v1/me/channels:

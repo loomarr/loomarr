@@ -1,6 +1,10 @@
-import { getListTaxonomyMockHandler } from "@loomarr/api/msw";
+import {
+  getListTaxonomyMockHandler,
+  getLocationsGetMockHandler,
+  getLocationsSearchMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -284,20 +288,33 @@ describe("FillerCriteria era", () => {
 });
 
 describe("FillerCriteria geography", () => {
-  it("shows the inherited installation country and market", () => {
+  it("shows the inherited installation country and the label of its place", async () => {
+    server.use(
+      getLocationsGetMockHandler({
+        location: { id: "5128581", label: "New York City, United States", country: "US", place: "5128581" },
+      }),
+    );
     renderCriteria(
       <FillerCriteria
         selection={{}}
         onChange={vi.fn()}
-        installationGeography={{ country: "US", market: "New York" }}
+        installationGeography={{ country: "US", place: "5128581" }}
       />,
     );
-    expect(screen.getByTestId("geography-inherited")).toHaveTextContent(
-      "Following this installation (US · New York)",
+    await waitFor(() =>
+      expect(screen.getByTestId("geography-inherited")).toHaveTextContent(
+        "Following this installation (US · New York City, United States)",
+      ),
     );
+    expect(screen.getByTestId("geography-inherited")).not.toHaveTextContent("5128581");
   });
 
   it("creates an explicit channel override and can return to inheritance", async () => {
+    server.use(
+      getLocationsGetMockHandler({
+        location: { id: "5128581", label: "New York City, United States", country: "US", place: "5128581" },
+      }),
+    );
     const onChange = vi.fn();
     const { rerender } = renderCriteria(
       <FillerCriteria
@@ -312,7 +329,7 @@ describe("FillerCriteria geography", () => {
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <FillerCriteria
-          selection={{ audience: "kids", geography: { country: "US", market: "New York" } }}
+          selection={{ audience: "kids", geography: { country: "US", place: "5128581" } }}
           onChange={onChange}
         />
       </QueryClientProvider>,
@@ -324,7 +341,7 @@ describe("FillerCriteria geography", () => {
   it("keeps an explicit Channel inside the Installation country", () => {
     renderCriteria(
       <FillerCriteria
-        selection={{ geography: { country: "CA", market: "Toronto" } }}
+        selection={{ geography: { country: "CA", place: "6167865" } }}
         onChange={vi.fn()}
         installationGeography={{ country: "US" }}
       />,
@@ -332,5 +349,30 @@ describe("FillerCriteria geography", () => {
     const country = screen.getByLabelText("Country code");
     expect(country).toHaveValue("US");
     expect(country).toBeDisabled();
+  });
+
+  it("picks a channel place through the location picker, limited to the installation country", async () => {
+    server.use(
+      getLocationsSearchMockHandler({
+        locations: [
+          { id: "5128581", label: "New York City, United States", country: "US", place: "5128581" },
+          { id: "2643743", label: "London, United Kingdom", country: "GB", place: "2643743" },
+        ],
+      }),
+    );
+    const onChange = vi.fn();
+    renderCriteria(
+      <FillerCriteria
+        selection={{ geography: { country: "US" } }}
+        onChange={onChange}
+        installationGeography={{ country: "US" }}
+      />,
+    );
+    await userEvent.type(screen.getByRole("combobox", { name: "Location" }), "New York");
+    expect(await screen.findByRole("option", { name: "New York City, United States" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "London, United Kingdom" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "New York City, United States" }));
+
+    expect(onChange).toHaveBeenCalledWith({ geography: { country: "US", place: "5128581" } });
   });
 });

@@ -132,9 +132,8 @@ type Clip struct {
 	Audience        Audience  // kids | family | general | late_night; "" = untagged
 	GeographicScope GeographicScope
 	Country         string // ISO 3166-1 alpha-2 when known
-	Market          string // local broadcast market; meaningful only for local scope
 	Network         string // grounded broadcast network context
-	Station         string // grounded station/callsign context
+	Station         string // broadcast station directory id; a local clip is local to it
 	AirDate         string // grounded YYYY-MM-DD broadcast date
 	GeoEvidence     string // literal source evidence or "operator" correction attribution
 	// Category is the DERIVED SHADOW of the taxonomy tags (§10 V45a): the primary product leaf of
@@ -301,7 +300,7 @@ type Clip struct {
 	// ("its identity is a path that now means twenty clips"); V45 keeps the parent as a composite and
 	// points each segment back at it. That is what makes "which break did this advert air in?"
 	// answerable (channel theming needs it), a re-split possible (detection improves), and the
-	// parent's broadcast context (network/market/date) inheritable by every segment for free.
+	// parent's broadcast context (network/station/date) inheritable by every segment for free.
 	ParentHash string
 	// Variants are the hashes of other versions of the same ad — a cut-down, an alternate ending, a
 	// different voiceover (#2033). Loaded for pod assembly only: a break never carries two versions
