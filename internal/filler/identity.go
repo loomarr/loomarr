@@ -210,9 +210,10 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 		existing[a], existing[b] = append(existing[a], b), append(existing[b], a)
 		res.Linked++
 	}
-	if ci.log != nil && (res.Merged > 0 || res.Linked > 0) {
+	if ci.log != nil && (res.Merged > 0 || res.Linked > 0 || res.Upgraded > 0) {
 		ci.log.Info("identity: catalog holds each ad once",
-			"merged", res.Merged, "linked", res.Linked, "fingerprinted", res.Fingerprinted, "pending", res.Pending)
+			"merged", res.Merged, "upgraded", res.Upgraded, "linked", res.Linked, "fingerprinted", res.Fingerprinted,
+			"pending", res.Pending)
 	}
 	return res, nil
 }
