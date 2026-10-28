@@ -509,6 +509,10 @@ type ClipStore interface {
 	// label; dropping the record drops it.
 	SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error
 	ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error)
+	// RetireDefectiveCopy and ListWantedCopies own enforcement (#2036): a copy that fails is
+	// tombstoned and reaped, and the reaped failures are the ads wanting a better copy.
+	RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error
+	ListWantedCopies(ctx context.Context) ([]WantedCopy, error)
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error

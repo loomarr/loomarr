@@ -185,17 +185,20 @@ func (c ClipTx) Reject(ctx context.Context, hash string, at time.Time) (bool, er
 		true, false, epoch(at), epoch(at), hash)
 }
 
-// RestoreHeld brings a held or removed clip back as present and held, for review.
+// RestoreHeld brings a held or removed clip back as present and held, for review. A reaped clip
+// has no file and is never restored.
 func (c ClipTx) RestoreHeld(ctx context.Context, hash string, at time.Time) (bool, error) {
 	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
-		WHERE hash = ? AND (held = ? OR removed_at <> 0)`,
+		WHERE hash = ? AND (held = ? OR removed_at <> 0) AND reaped_at IS NULL`,
 		true, false, epoch(at), hash, true)
 }
 
 // RestoreForRetry brings the clip back as present and held whatever state it is in, for a pipeline
 // retry of a rejected clip. Unlike RestoreHeld it does not require the clip to be held or removed.
+// A reaped clip has no file and is never restored.
 func (c ClipTx) RestoreForRetry(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ?`,
+	return c.affectedOne(ctx, `UPDATE clips SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ?
+		WHERE hash = ? AND reaped_at IS NULL`,
 		true, false, epoch(at), hash)
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -1159,6 +1160,67 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 	return nil
 }
 
+// RetireDefectiveCopy takes a copy that failed the defect floor off the catalog for good (#2036):
+// removed, so nothing airs it, and reaped, so a sync that no longer finds its file keeps the row.
+// The row, its fingerprint, its defect record and its airings stay: together they are the "wanted:
+// better copy" entry that a cleaner copy of the same ad is matched against, and that copy inherits
+// its rotation. The caller deletes the file after this commits.
+func (s *sqlStore) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET removed_at = ?, reaped_at = ?, updated_at = ? WHERE hash = ? AND is_composite = ?`),
+		epoch(at), epoch(at), epoch(at), hash, false)
+	if err != nil {
+		return fmt.Errorf("retire defective copy %s: %w", hash, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("retire defective copy %s: %w", hash, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// WantedCopy is an ad whose only copy failed the defect floor and was retired: Loomarr wants a
+// better copy of it (#2036).
+type WantedCopy struct {
+	ClipHash   string
+	Name       string
+	DurationMs int64
+	// Reason is the failing verdict's reason; RetiredAt is when the copy came off the catalog.
+	Reason    string
+	RetiredAt time.Time
+}
+
+// ListWantedCopies is every retired defective copy still waiting for a better one. A copy found
+// later folds the entry into itself (MergeInferiorCopy), which is what removes it from this list.
+func (s *sqlStore) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT c.hash, c.name, c.duration_ms, d.verdict_reason, c.reaped_at
+		   FROM clips c JOIN filler_clip_defects d ON d.clip_hash = c.hash
+		  WHERE c.reaped_at IS NOT NULL AND c.is_composite = ? AND d.verdict = ?
+		  ORDER BY c.reaped_at, c.hash`), false, string(defects.VerdictFail))
+	if err != nil {
+		return nil, fmt.Errorf("list wanted copies: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []WantedCopy
+	for rows.Next() {
+		var w WantedCopy
+		var retiredAt int64
+		if err := rows.Scan(&w.ClipHash, &w.Name, &w.DurationMs, &w.Reason, &retiredAt); err != nil {
+			return nil, fmt.Errorf("scan wanted copy: %w", err)
+		}
+		w.RetiredAt = fromEpoch(retiredAt)
+		out = append(out, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list wanted copies: %w", err)
+	}
+	return out, nil
+}
+
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
@@ -1429,7 +1491,12 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 		placeholders[i] = "?"
 		args = append(args, p)
 	}
+	// ⚠ A reaped row has no file (a swept reel, a retired defective copy), so restoring it would
+	// put a missing file on air. It stays removed; removing one again is harmless.
 	q := `UPDATE clips SET removed_at = ? WHERE path IN (` + strings.Join(placeholders, ",") + `)`
+	if at.IsZero() {
+		q += ` AND reaped_at IS NULL`
+	}
 	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
 	if err != nil {
 		return 0, fmt.Errorf("set clips removed: %w", err)
