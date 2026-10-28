@@ -20,8 +20,8 @@ def rejects(message)
 end
 
 [
-  [ReactNativeDependenciesUtils, :download_stable_rndeps, :podspec_source_download_prebuild_release_tarball, '0.86.2'],
-  [ReactNativeCoreUtils, :download_stable_rncore, :podspec_source_download_prebuild_stable_tarball, '0.86.2-0']
+  [ReactNativeDependenciesUtils, :download_stable_rndeps, :podspec_source_download_prebuild_release_tarball, '0.88.0'],
+  [ReactNativeCoreUtils, :download_stable_rncore, :podspec_source_download_prebuild_stable_tarball, '0.88.0-0']
 ].each do |consumer, download, source_method, version|
   Dir.mktmpdir('native contract#%') do |root|
     pods = File.join(root, 'pods')

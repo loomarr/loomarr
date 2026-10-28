@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+// The installed SDK's catalog of native module versions, which expo-doctor also enforces.
+const bundledNativeModules = async () =>
+  JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
+  );
 
 // The paired runtime (catalog, guide, diagnostics, event stream, lifecycle) is shared with the phone, so it
 // lives in the player package's usePairedClient; the TV supplies its identity and tune marks.
@@ -212,9 +219,10 @@ test("declares the shared TV journey and native playback boundaries", async () =
 
   assert.equal(manifest.dependencies["@loomarr/player"], "workspace:*");
   assert.equal(manifest.dependencies["@loomarr/ui-tv"], "workspace:*");
-  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.86.2-0");
+  const bundled = await bundledNativeModules();
+  assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
+  assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
+  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.0-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
 });
@@ -262,7 +270,10 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
     (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
   );
 
-  assert.equal(manifest.dependencies["expo-splash-screen"], manifest.dependencies.expo);
+  assert.equal(
+    `~${manifest.dependencies["expo-splash-screen"]}`,
+    (await bundledNativeModules())["expo-splash-screen"],
+  );
   assert.equal(splashPlugin?.[1].backgroundColor, "#0B0C0E");
   assert.equal(splashPlugin?.[1].dark.backgroundColor, "#0B0C0E");
   assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
@@ -398,7 +409,10 @@ test("routes the native remote through TV adapters and preserves platform-home B
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   assert.match(appSource, /useTVEventHandler/);
-  assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), eventKeyAction\)/);
+  assert.match(
+    appSource,
+    /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), keyActionOf\(eventKeyAction\)\)/,
+  );
   assert.match(appSource, /event && event\.key !== "select"/);
   assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs\)/);
   // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
@@ -430,7 +444,8 @@ test("offers digit entry only on a remote with number keys", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   // The Siri Remote has no digits (#1500 audit #3): no "0–9 jump" hint, no channel-number wait.
-  assert.match(appSource, /const remoteHasDigits = !Platform\.isTVOS/);
+  assert.match(appSource, /const isTvOS = Platform\.OS === "ios" && Platform\.isTV;/);
+  assert.match(appSource, /const remoteHasDigits = !isTvOS/);
   assert.match(appSource, /channelDigits=\{remoteHasDigits\}/);
   assert.match(appSource, /autoTune=\{\s*remoteHasDigits\s*\?/);
 });

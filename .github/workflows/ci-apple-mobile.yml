@@ -13,7 +13,7 @@ env:
 jobs:
   run:
     name: Apple mobile — native build + launch
-    # iOS 27 requires UIScene adoption at launch. The pinned Expo SDK 58 canary generates
+    # iOS 27 requires UIScene adoption at launch. The pinned Expo SDK 58 generates
     # the complete scene lifecycle, and GitHub's dedicated preview image makes that contract
     # executable instead of merely compiling against the older SDK. The verifier fails closed
     # on another Xcode major so an image-default change cannot silently alter this proof.

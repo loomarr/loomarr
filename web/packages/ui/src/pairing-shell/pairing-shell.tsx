@@ -14,7 +14,7 @@ import {
   semanticSpace,
   Text,
 } from "@loomarr/design-system";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ComponentRef, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, type ScrollView } from "react-native";
 
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
@@ -63,7 +63,7 @@ const PairingShell = ({
   const [, setTick] = useState(0);
   // A phone's keyboard covers the bottom of the page, where Continue is: when it opens, the page
   // (already lifted above it) scrolls to its end so the field and Continue both show.
-  const page = useRef<ScrollView>(null);
+  const page = useRef<ComponentRef<typeof ScrollView>>(null);
   useEffect(() => {
     if (density !== "touch") return undefined;
     const subscription = Keyboard.addListener("keyboardDidShow", () =>

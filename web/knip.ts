@@ -48,10 +48,9 @@ const config: KnipConfig = {
       // CLIs run by package.json scripts, shell scripts (capture-tv-native-references.sh)
       // and the Makefile.
       entry: ["scripts/*.{mjs,cjs}"],
-      // Both tests resolve these through Expo's own chain on purpose (createRequire from expo →
-      // @expo/metro-config → metro; the app's .bin/expo-modules-autolinking): they assert what
-      // the native build loads, so declaring a second copy would test the wrong one.
-      ignoreDependencies: ["metro", "expo-modules-autolinking"],
+      // The app config tests run the app's own .bin/expo-modules-autolinking on purpose: they
+      // assert what the native build loads, so declaring a second copy would test the wrong one.
+      ignoreDependencies: ["expo-modules-autolinking"],
       // Written by `sb-rn-get-stories` (native-storybook:check) and gitignored.
       ignoreUnresolved: ["./storybook.requires"],
     },

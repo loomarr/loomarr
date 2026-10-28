@@ -1,5 +1,6 @@
 diff --git a/scripts/cocoapods/pinned_artifacts.rb b/scripts/cocoapods/pinned_artifacts.rb
 new file mode 100644
+index 0000000..6a8a1cb
 --- /dev/null
 +++ b/scripts/cocoapods/pinned_artifacts.rb
 @@ -0,0 +1,52 @@
@@ -56,25 +57,52 @@ new file mode 100644
 +  end
 +end
 diff --git a/scripts/cocoapods/rncore.rb b/scripts/cocoapods/rncore.rb
+index ae6669e..20872de 100644
 --- a/scripts/cocoapods/rncore.rb
 +++ b/scripts/cocoapods/rncore.rb
-@@ -10,2 +10,3 @@
+@@ -8,6 +8,7 @@ require 'net/http'
+ require 'rexml/document'
+ 
  require_relative './utils.rb'
 +require_relative './pinned_artifacts.rb'
-
-@@ -80,3 +81,4 @@
+ 
+ ### Adds ReactNativeCore-prebuilt as a dependency to the given podspec if we're not
+ ### building ReactNativeCore from source (then this function does nothing).
+@@ -64,7 +65,8 @@ class ReactNativeCoreUtils
+             end
+ 
              use_local_xcframework = ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"] && File.exist?(ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"])
 -            artifacts_exists = ENV["RCT_USE_PREBUILT_RNCORE"] == "1" && (@@use_nightly ? nightly_artifact_exists(@@react_native_version) : release_artifact_exists(@@react_native_version))
 +            # A transient HTTP failure cannot select a different dependency graph.
 +            artifacts_exists = ENV["RCT_USE_PREBUILT_RNCORE"] == "1"
              @@build_from_source = !use_local_xcframework && !artifacts_exists
-@@ -164,4 +166,3 @@
-
+ 
+             if @@build_from_source && ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"] && !use_local_xcframework
+@@ -148,8 +150,7 @@ class ReactNativeCoreUtils
+         rncore_log("  #{Pathname.new(destinationDebug).relative_path_from(Pathname.pwd).to_s}")
+         rncore_log("  #{Pathname.new(destinationRelease).relative_path_from(Pathname.pwd).to_s}")
+ 
 -        return {:http => stable_tarball_url(@@react_native_version, :debug) } unless @@download_dsyms
 -        return {:http => ReactNativePodsUtils.local_file_uri(destinationDebug) }
 +        return ReactNativePinnedArtifacts.local_source(destinationDebug)
      end
-@@ -427,65 +428,4 @@
+ 
+     def self.podspec_source_download_prebuilt_nightly_tarball()
+@@ -352,8 +353,9 @@ class ReactNativeCoreUtils
+     end
+ 
+     def self.stable_tarball_url(version, build_type, dsyms = false)
+-        candidates = stable_tarball_urls(version, build_type, dsyms)
+-        return candidates.find { |url| artifact_exists(url) } || candidates.first
++        # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++        # chosen without an HTTP availability probe; acquisition verifies its digest.
++        return stable_tarball_urls(version, build_type, dsyms).last
+     end
+ 
+     def self.stable_tarball_urls(version, build_type, dsyms = false)
+@@ -426,69 +428,8 @@ class ReactNativeCoreUtils
+         filename = configuration == nil ?
+             "reactnative-core-#{version}#{dsyms ? "-dSYM" : ""}.tar.gz" :
              "reactnative-core-#{version}#{dsyms ? "-dSYM" : ""}-#{configuration}.tar.gz"
 -        destination_path = "#{artifacts_dir()}/#{filename}"
 -
@@ -142,35 +170,64 @@ diff --git a/scripts/cocoapods/rncore.rb b/scripts/cocoapods/rncore.rb
 +        ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
 +          ReactNativePodsUtils.shared_cache_dir(), ReactNativePodsUtils.skip_caches?)
      end
+ 
+     def self.release_artifact_exists(version)
 diff --git a/scripts/cocoapods/rndependencies.rb b/scripts/cocoapods/rndependencies.rb
+index c240b0b..b330fd6 100644
 --- a/scripts/cocoapods/rndependencies.rb
 +++ b/scripts/cocoapods/rndependencies.rb
-@@ -10,2 +10,3 @@
+@@ -8,6 +8,7 @@ require 'net/http'
+ require 'rexml/document'
+ 
  require_relative './utils.rb'
 +require_relative './pinned_artifacts.rb'
-
-@@ -96,4 +97,3 @@
+ 
+ ## There are two environment variables that is related to ReactNativeDependencies:
+ ## - RCT_USE_RN_DEP: If set to 1, it will use the release tarball from Maven instead of building from source.
+@@ -96,8 +97,7 @@ class ReactNativeDependenciesUtils
+     end
+ 
      ## Sets up wether react-native-dependencies should be built from source or not.
 -    ## If RCT_USE_RN_DEP is set to 1 and the artifacts exists on Maven, it will
 -    ## not build from source. Otherwise, it will build from source.
 +    ## RCT_USE_RN_DEP selects the build mode; acquisition failures abort that mode.
      def self.setup_react_native_dependencies(react_native_path, react_native_version)
-@@ -119,3 +119,4 @@
-
+         # We don't want setup to be called multiple times, so we check if the variables are already set.
+         if @@react_native_version == ""
+@@ -119,7 +119,8 @@ class ReactNativeDependenciesUtils
+               abort_if_use_local_rndeps_with_no_file()
+             end
+ 
 -            artifacts_exists = ENV["RCT_USE_RN_DEP"] == "1" && (@@use_nightly ? nightly_artifact_exists(@@react_native_version) : release_artifact_exists(@@react_native_version))
 +            # A transient HTTP failure cannot select a different dependency graph.
 +            artifacts_exists = ENV["RCT_USE_RN_DEP"] == "1"
              use_local_xcframework = ENV["RCT_USE_LOCAL_RN_DEP"] && File.exist?(ENV["RCT_USE_LOCAL_RN_DEP"])
-@@ -160,6 +161,6 @@
+ 
+             @@build_from_source = !use_local_xcframework && !artifacts_exists
+@@ -225,15 +226,16 @@ class ReactNativeDependenciesUtils
+ 
+         url = release_tarball_url(@@react_native_version, :debug)
          rndeps_log("Using tarball from URL: #{url}")
 -        download_stable_rndeps(@@react_native_path, @@react_native_version, :debug)
 +        destinationDebug = download_stable_rndeps(@@react_native_path, @@react_native_version, :debug)
          download_stable_rndeps(@@react_native_path, @@react_native_version, :release)
-
+ 
 -        return {:http => url }
 +        return ReactNativePinnedArtifacts.local_source(destinationDebug)
      end
-@@ -248,65 +249,4 @@
+ 
+     def self.release_tarball_url(version, build_type)
+-        candidates = release_tarball_urls(version, build_type)
+-        return candidates.find { |url| artifact_exists(url) } || candidates.first
++        # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++        # chosen without an HTTP availability probe; acquisition verifies its digest.
++        return release_tarball_urls(version, build_type).last
+     end
+ 
+     def self.release_tarball_urls(version, build_type)
+@@ -318,69 +320,8 @@ class ReactNativeDependenciesUtils
+         filename = configuration == nil ?
+             "reactnative-dependencies-#{version}.tar.gz" :
              "reactnative-dependencies-#{version}-#{configuration}.tar.gz"
 -        destination_path = "#{artifacts_dir()}/#{filename}"
 -
@@ -238,29 +295,38 @@ diff --git a/scripts/cocoapods/rndependencies.rb b/scripts/cocoapods/rndependenc
 +        ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
 +          ReactNativePodsUtils.shared_cache_dir(), ReactNativePodsUtils.skip_caches?)
      end
+ 
+     def self.release_artifact_exists(version)
 diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-utils.rb
+index a0bd11a..a8f9635 100644
 --- a/sdks/hermes-engine/hermes-utils.rb
 +++ b/sdks/hermes-engine/hermes-utils.rb
-@@ -6,2 +6,3 @@
+@@ -5,6 +5,7 @@
+ 
+ require_relative '../../scripts/cocoapods/utils.rb'
  require 'digest'
 +require_relative '../../scripts/cocoapods/pinned_artifacts'
- require 'net/http'
-@@ -66,11 +67,5 @@
-
+ 
+ HERMES_GITHUB_URL = "https://github.com/facebook/hermes.git"
+ ENV_BUILD_FROM_SOURCE = "RCT_BUILD_HERMES_FROM_SOURCE"
+@@ -72,11 +73,9 @@ def hermes_source_type(version, react_native_path)
+         return HermesEngineSourceType::BUILD_FROM_GITHUB_STABLE_BRANCH
+     end
+ 
 -    if release_artifact_exists(version)
 -        return HermesEngineSourceType::DOWNLOAD_PREBUILD_RELEASE_TARBALL
 -    end
 -
--    if nightly_artifact_exists(version)
--        return HermesEngineSourceType::DOWNLOAD_PREBUILT_NIGHTLY_TARBALL
--    end
--
--    return HermesEngineSourceType::BUILD_FROM_GITHUB_MAIN
+-    return HermesEngineSourceType::BUILD_FROM_GITHUB_STABLE_BRANCH
 +    # Loomarr: this exact npm release owns the Hermes version. HTTP availability
-+    # must never change that selection to nightly metadata or a moving source ref.
++    # must never change that selection to a moving source ref.
 +    return HermesEngineSourceType::DOWNLOAD_PREBUILD_RELEASE_TARBALL
  end
-@@ -206,5 +201,7 @@
+ 
+ def override_hermes_nightly_build_version_defined()
+@@ -195,9 +194,11 @@ end
+ def podspec_source_download_prebuild_release_tarball(react_native_path, version)
+     url = release_tarball_url(version, :debug)
      hermes_log("Using release tarball from URL: #{url}")
 -    download_stable_hermes(react_native_path, version, :debug)
 +    debug_path = download_stable_hermes(react_native_path, version, :debug)
@@ -270,8 +336,24 @@ diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-util
 +    # source type so the original compiler and configuration replacement still run.
 +    return ReactNativePinnedArtifacts.local_source(debug_path)
  end
-@@ -254,6 +251,5 @@
-
+ 
+ # HELPERS
+@@ -211,8 +212,9 @@ def hermestag_file(react_native_path)
+ end
+ 
+ def release_tarball_url(version, build_type)
+-    candidates = release_tarball_urls(version, build_type)
+-    return candidates.find { |url| hermes_artifact_exists(url) } || candidates.first
++    # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++    # chosen without an HTTP availability probe; acquisition verifies its digest.
++    return release_tarball_urls(version, build_type).last
+ end
+ 
+ def release_tarball_urls(version, build_type)
+@@ -257,99 +259,21 @@ def shared_cache_dir()
+     return File.join(Dir.home, "Library", "Caches", "ReactNative")
+ end
+ 
 -def fetch_maven_sha1(tarball_url)
 -    sha1 = `curl -sL "#{tarball_url}.sha1"`.strip
 -    return sha1.downcase if $?.success? && sha1.match?(/\A[a-fA-F0-9]{40}\z/)
@@ -280,10 +362,11 @@ diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-util
 +def hermes_fetch(url, destination)
 +    ReactNativePinnedArtifacts.fetch(url, destination)
  end
-@@ -262,18 +258,2 @@
+ 
+ def skip_caches?
      ENV['RCT_SKIP_CACHES'] == '1'
--end
--
+ end
+ 
 -def validate_hermes_tarball(path, tarball_url)
 -    expected_sha1 = fetch_maven_sha1(tarball_url)
 -    basename = File.basename(path)
@@ -298,8 +381,11 @@ diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-util
 -    end
 -    hermes_log("SHA1 mismatch for #{basename}: expected #{expected_sha1}, got #{actual_sha1}", :error)
 -    return false
- end
-@@ -284,65 +264,4 @@
+-end
+-
+ def download_hermes_tarball(react_native_path, tarball_url, version, configuration)
+     filename = configuration == nil ?
+         "hermes-ios-#{version}.tar.gz" :
          "hermes-ios-#{version}-#{configuration}.tar.gz"
 -    destination_path = "#{artifacts_dir()}/#{filename}"
 -
@@ -367,3 +453,5 @@ diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-util
 +    ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
 +      shared_cache_dir(), skip_caches?, method(:hermes_fetch))
  end
+ 
+ def resolve_url_redirects(url)

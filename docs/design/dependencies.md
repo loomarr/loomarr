@@ -6,15 +6,17 @@ place. A new dependency adds its row here in the same PR (AGENTS.md).
 **Pins are exact.** Manifests use one concrete version, never a range; container images and CI
 actions use digests or commit SHAs; Renovate proposes the next exact pin. Peer ranges are
 compatibility contracts only. A platform hold (for example Expo's) stays exact and is documented next
-to the dependency. The Expo/Metro graph carries a local source patch on `image-size@1.2.1` (#1162) so
-malformed ICNS/JXL/HEIF boxes fail instead of looping; retire it only when a compatible upstream fix
-passes the same consumer tests. The phone builds `expo-video` from source on iOS because the
-canary's precompiled xcframework links Swift Testing, which kills the app at launch
-(`web/patches/expo-video-58.0.0-canary-20260812-27f94d4.md`). It also builds `expo-modules-core`,
-and through it every Expo pod, from source: the canary's precompiled ExpoModulesCore was compiled
-against an older React Native whose `ShadowNodeFamily` lacks the 64-byte `nativePropsMutex` that
-react-native-tvos 0.86.2-0 has. Every mounted Expo view (the Watching picture) overflowed the heap,
-and the phone crashed later in unrelated text layout or mounting (#1816).
+to the dependency. The native clients pin Expo SDK 58 stable and take every native module version
+from its `bundledNativeModules` catalog (React Native 0.88 through `react-native-tvos` 0.88.0-0, which
+requires React 19.3.0); expo-doctor enforces it. Metro 0.87.1 measures image assets with its own
+parser chosen by the declared asset type, so the former `image-size@1.2.1` source patch (#1162) is
+retired; `web/scripts/metro-asset-size.test.mjs` keeps the malformed ICNS/JXL/HEIF payloads failing,
+bounded, and fails if Metro resolves image-size again. The phone builds `expo-modules-core`, and
+through it every Expo pod (expo-video included), from source on iOS: Expo's precompiled
+ExpoModulesCore is compiled against upstream React Native, not react-native-tvos, and the SDK 58
+canary's was compiled against an older React Native whose `ShadowNodeFamily` lacked the 64-byte
+`nativePropsMutex` that react-native-tvos had. Every mounted Expo view (the Watching picture)
+overflowed the heap, and the phone crashed later in unrelated text layout or mounting (#1816).
 `web/scripts/check-ios-pods-binaries.sh` fails a Simulator or TestFlight build whose Pods contain
 any precompiled framework other than React Native's own release archives. Remove
 `expo-modules-core` from `buildFromSource` only when Expo publishes prebuilds compiled against the
@@ -80,7 +82,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Phone pairing approval | `expo-web-browser` | a phone approves itself on the server's `/pair` page in an SFSafariViewController (Android: Custom Tab) sheet that closes once paired, instead of a QR code meant for a second device |
 | Native type | `expo-font` (config plugin), `@expo-google-fonts/geist`, `@expo-google-fonts/geist-mono` | the native mock sets Geist, with Geist Mono for numbers and times. iOS has no `monospace` family and neither platform ships Geist, so each app embeds the seven static weights the type scale draws at build time (`web/scripts/with-loomarr-fonts.cjs`, OFL-1.1). The web's woff2 files don't load on iOS |
 | Native haptics | `expo-haptics` (the SDK's bundled version, behind `@loomarr/design-system/haptics`) | a channel step, a tune, an approval and a pairing give the iPhone the selection tick or success tap a native app has; a no-op on the web and on TV, and only ever on a viewer's own press |
-| Phone crash reports | `expo-file-system` | the global JS error handler must persist a fatal report synchronously before React Native ends the app; first-party Expo, already shipped inside `expo`, pinned with it. Reports go only to the paired server, never a third-party crash service, and native iOS crashes come from Apple's MetricKit |
+| Phone crash reports | `expo-file-system` | the global JS error handler must persist a fatal report synchronously before React Native ends the app; first-party Expo, already shipped inside `expo`, pinned at the version the SDK bundles. Reports go only to the paired server, never a third-party crash service, and native iOS crashes come from Apple's MetricKit |
 | Native session ids | `expo-crypto` | Hermes has no `crypto.randomUUID`; the playback session id needs a cryptographically secure source, never `Math.random()` |
 | Server discovery | `grandcat/zeroconf` (server), Android `NsdManager`, Apple `Network.framework` (`NWBrowser`) | find a local server without typing a URL from a TV or an iPhone; system APIs only, manual entry stays |
 | Android tooling | ccache (pinned), `bundletool` (pinned) | compiler cache; installing split APKs from the exact CI bundle |

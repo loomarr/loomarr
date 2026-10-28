@@ -7,8 +7,8 @@ require File.realpath(File.join(__dir__, '../apps/mobile/node_modules/react-nati
 
 failures = []
 [
-  [ReactNativeDependenciesUtils, 'RCT_USE_RN_DEP', :setup_react_native_dependencies, :build_react_native_deps_from_source, '0.86.2'],
-  [ReactNativeCoreUtils, 'RCT_USE_PREBUILT_RNCORE', :setup_rncore, :build_rncore_from_source, '0.86.2-0']
+  [ReactNativeDependenciesUtils, 'RCT_USE_RN_DEP', :setup_react_native_dependencies, :build_react_native_deps_from_source, '0.88.0'],
+  [ReactNativeCoreUtils, 'RCT_USE_PREBUILT_RNCORE', :setup_rncore, :build_rncore_from_source, '0.88.0-0']
 ].each do |consumer, variable, setup, from_source, version|
   consumer.define_singleton_method(:resolve_podspec_source) { {http: 'fixture-with-no-network'} }
   consumer.define_singleton_method(:rndeps_log) { |*| }

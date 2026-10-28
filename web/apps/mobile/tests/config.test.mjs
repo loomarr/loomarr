@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+// The installed SDK's catalog of native module versions, which expo-doctor also enforces.
+const bundledNativeModules = async () =>
+  JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
+  );
 
 const autolinkedNativeModules = async (platform) => {
   const autolinking = fileURLToPath(
@@ -150,8 +157,11 @@ test("fails closed when a TestFlight build has an invalid channel or version met
 test("captures crashes for the paired server, with MetricKit linked into the iPhone app only", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["@loomarr/crash-reports-native"], "workspace:*");
-  // The synchronous file API the fatal handler writes with; first-party Expo, pinned with expo.
-  assert.equal(manifest.dependencies["expo-file-system"], manifest.dependencies.expo);
+  // The synchronous file API the fatal handler writes with; first-party Expo, at the version the SDK bundles.
+  assert.equal(
+    `~${manifest.dependencies["expo-file-system"]}`,
+    (await bundledNativeModules())["expo-file-system"],
+  );
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
   assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
 
@@ -197,15 +207,17 @@ test("pauses the picture off Watching and forgets the pause before tuning from t
 test("builds the Expo modules core from source on iOS, against react-native-tvos", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-  // The canary's precompiled ExpoModulesCore sizes React's ShadowNodeFamily 64 bytes smaller
-  // than react-native-tvos 0.86.2-0 does, so every Expo view overflowed the heap (#1816).
-  // Building it from source also builds every Expo pod that depends on it from source.
-  assert.ok(manifest.expo.autolinking.ios.buildFromSource.includes("expo-modules-core"));
+  // Expo's precompiled ExpoModulesCore is built against upstream React Native, not
+  // react-native-tvos. The SDK 58 canary's sized React's ShadowNodeFamily 64 bytes smaller than
+  // react-native-tvos did, so every Expo view overflowed the heap (#1816). Building it from
+  // source also builds every Expo pod that depends on it (expo-video included) from source.
+  assert.deepEqual(manifest.expo.autolinking.ios.buildFromSource, ["expo-modules-core"]);
 });
 
-test("pins the native modules the shared player imports to the expo version", async () => {
+test("pins the native modules the shared player imports to the versions the SDK bundles", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const bundled = await bundledNativeModules();
 
-  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
+  assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
+  assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
 });

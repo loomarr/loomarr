@@ -19,7 +19,7 @@ import {
   Text,
   type TextTone,
 } from "@loomarr/design-system";
-import { memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
@@ -114,7 +114,7 @@ const Block = ({
   selected,
   timezone,
 }: BlockProps) => {
-  const ref = useRef<View>(null);
+  const ref = useRef<ComponentRef<typeof View>>(null);
   const [focused, setFocused] = useState(false);
   const a = airing.source;
   const kind = a.kind;
