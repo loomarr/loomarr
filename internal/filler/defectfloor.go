@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -81,6 +82,9 @@ type DefectFloor struct {
 	clipDir     string
 	now         func() time.Time
 	log         *slog.Logger
+	// released remembers the admitted clips already holding no evidence copy, so a pass reads only
+	// new arrivals' sidecars. It is per process: a restart reads each sidecar once more.
+	released map[string]bool
 }
 
 // DefectFloorResult counts one pass.
@@ -92,13 +96,14 @@ type DefectFloorResult struct {
 	Ruled      int // borderline clips the judge ruled on, or recorded as having no judge
 	Held       int // borderline clips left waiting: the judge was out of reach, out of budget or out of turns
 	Retired    int // copies that definitively failed, taken off the catalog and deleted
+	Released   int // admitted clips whose evidence copy was dropped
 }
 
 // NewDefectFloor builds the defect floor job. A nil judge is the same as no vision model.
 func NewDefectFloor(store DefectStore, probe Prober, measure MeasureDefectsFunc, fingerprint FingerprintFunc,
 	judge DefectJudge, clipDir string, now func() time.Time, log *slog.Logger) *DefectFloor {
 	return &DefectFloor{store: store, probe: probe, measure: measure, fingerprint: fingerprint, judge: judge,
-		clipDir: clipDir, now: now, log: log}
+		clipDir: clipDir, now: now, log: log, released: map[string]bool{}}
 }
 
 // Run measures every clip without a current measurement, held clips first since admission waits
@@ -207,11 +212,64 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 	if err := d.retireFailures(ctx, clips, final, &res); err != nil {
 		return res, err
 	}
-	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0 || res.Ruled > 0 || res.Retired > 0) {
+	d.releaseEvidence(clips, final, &res)
+	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0 || res.Ruled > 0 || res.Retired > 0 || res.Released > 0) {
 		d.log.Info("defects: records current", "measured", res.Measured, "reassessed", res.Reassessed,
-			"pending", res.Pending, "failed", res.Failed, "ruled", res.Ruled, "held", res.Held, "retired", res.Retired)
+			"pending", res.Pending, "failed", res.Failed, "ruled", res.Ruled, "held", res.Held,
+			"retired", res.Retired, "released", res.Released)
 	}
 	return res, ctx.Err()
+}
+
+// releaseEvidence drops the evidence copy of every admitted clip (#2036). Admission is the last
+// reader: screening and split read it before a clip airs, and every later check (this floor,
+// creative identity) reads the playback file. A rewind to a rung that needs it starts at the
+// transcode instead, which rebuilds it from the source master. The sidecar stops naming it before
+// the file goes, so a failed unlink leaves only bytes.
+func (d *DefectFloor) releaseEvidence(clips []DefectClip, final map[string]DefectRecord, res *DefectFloorResult) {
+	var admitted []DefectClip
+	for _, c := range clips {
+		rec, ok := final[c.Hash]
+		if !ok || c.Held || d.released[c.Hash] ||
+			rec.Verdict != defects.VerdictPass && rec.Verdict != defects.VerdictUndecided {
+			continue
+		}
+		admitted = append(admitted, c)
+	}
+	var referenced map[string]int
+	for _, c := range admitted {
+		full, err := ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
+		if err != nil {
+			continue
+		}
+		tags, ok := ReadSidecarTags(full)
+		if !ok || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+			d.released[c.Hash] = true
+			continue
+		}
+		if referenced == nil {
+			paths := make([]string, len(clips))
+			for i, c := range clips {
+				paths[i] = c.Path
+			}
+			referenced = referencedAssets(d.clipDir, paths)
+		}
+		evidence := derivativePath(tags.MediaAssets.Evidence)
+		tags.MediaAssets.Evidence = nil
+		if err := WriteSidecarTags(full, tags, false); err != nil {
+			d.warn("defects: an admitted clip's evidence copy could not be released", "clip", c.Hash, "err", err)
+			continue
+		}
+		d.released[c.Hash] = true
+		res.Released++
+		referenced[evidence]--
+		if referenced[evidence] > 0 {
+			continue // another clip's sidecar names it too
+		}
+		if err := os.Remove(filepath.Join(d.clipDir, filepath.FromSlash(evidence))); err != nil && !os.IsNotExist(err) {
+			d.warn("defects: a released evidence copy could not be removed", "clip", c.Hash, "file", evidence, "err", err)
+		}
+	}
 }
 
 // retireFailures retires every candidate whose verdict definitively fails. A clip that cannot be

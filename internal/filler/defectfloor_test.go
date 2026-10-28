@@ -241,6 +241,92 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	}
 }
 
+// #2036: an admitted clip keeps its source master and playback copy; its evidence copy is
+// dropped, the sidecar first, and is rebuilt by a rewind that starts at the transcode. A copy
+// still in the conveyor needs it, so one it shares stays on disk.
+func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	manifest := screeningSubjectManifest(t)
+	evidenceFile := filepath.Join(dir, filepath.FromSlash(manifest.Evidence.Asset.Path))
+	if err := os.MkdirAll(filepath.Dir(evidenceFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(evidenceFile, []byte("evidence"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clip := func(body string, held bool) DefectClip {
+		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
+		m := manifest
+		if err := WriteSidecarTags(filepath.Join(dir, ClipRelPath(hash, ".mp4")), SidecarTags{MediaAssets: &m}, false); err != nil {
+			t.Fatal(err)
+		}
+		c := DefectClip{CreatedAt: t0}
+		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.Held = hash, ClipRelPath(hash, ".mp4"), 1988, Commercial, PlacementBreakBody, held
+		return c
+	}
+	admitted, waiting := clip("an admitted ad", false), clip("an ad still at the defects rung", true)
+	st := &defectMemStore{clips: []DefectClip{admitted, waiting}, records: map[string]DefectRecord{}}
+	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
+		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
+	}
+	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	floor := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil)
+
+	res, err := floor.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Released != 1 {
+		t.Fatalf("pass = %+v, want the admitted clip's evidence released", res)
+	}
+	if tags, ok := ReadSidecarTags(filepath.Join(dir, admitted.Path)); !ok || tags.MediaAssets == nil ||
+		tags.MediaAssets.Evidence != nil || tags.MediaAssets.SourceMaster != manifest.SourceMaster || tags.MediaAssets.Playback == nil {
+		t.Fatalf("admitted sidecar = %+v (ok %v), want the master and playback kept and no evidence", tags.MediaAssets, ok)
+	}
+	if tags, _ := ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+		t.Fatal("a held clip's evidence was released before admission")
+	}
+	if _, err := os.Stat(evidenceFile); err != nil {
+		t.Fatalf("evidence the held clip still names was deleted: %v", err)
+	}
+	if !(&Pipeline{clipDir: dir}).evidenceReleased(StoreClip{Clip: admitted.Clip}) ||
+		(&Pipeline{clipDir: dir}).evidenceReleased(StoreClip{Clip: waiting.Clip}) {
+		t.Fatal("a rewind would not know which clip must rebuild its evidence from the transcode")
+	}
+
+	// Admitted too, now: the last clip naming the file releases it, and the file goes.
+	for i := range st.clips {
+		if st.clips[i].Hash == waiting.Hash {
+			st.clips[i].Held = false
+		}
+	}
+	if res, err := floor.Run(ctx); err != nil || res.Released != 1 {
+		t.Fatalf("second pass = %+v (err %v), want the other clip released", res, err)
+	}
+	if _, err := os.Stat(evidenceFile); !os.IsNotExist(err) {
+		t.Fatalf("evidence no clip names any more is still on disk (err %v)", err)
+	}
+	if res, err := floor.Run(ctx); err != nil || res.Released != 0 {
+		t.Fatalf("third pass = %+v (err %v), want nothing left to release", res, err)
+	}
+
+	// Two admitted clips sharing one evidence copy, released in the same pass: the file goes with
+	// the last of them, not never.
+	if err := os.WriteFile(evidenceFile, []byte("evidence"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pair := &defectMemStore{clips: []DefectClip{clip("one cut", false), clip("its twin", false)}, records: map[string]DefectRecord{}}
+	res, err = NewDefectFloor(pair, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	if err != nil || res.Released != 2 {
+		t.Fatalf("pair pass = %+v (err %v), want both released", res, err)
+	}
+	if _, err := os.Stat(evidenceFile); !os.IsNotExist(err) {
+		t.Fatalf("evidence both clips released in one pass is still on disk (err %v)", err)
+	}
+}
+
 type failingDefectStore struct{ defectMemStore }
 
 func (failingDefectStore) ListClipDefects(context.Context) (map[string]DefectRecord, error) {
