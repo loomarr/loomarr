@@ -38,7 +38,10 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 		return SplitProposal{}, fmt.Errorf("assess proposal structure: decision is invalid or source-drifted")
 	}
 	updated := proposal
-	if artifact.Decision.Status == fillerstructure.StatusConfirmed {
+	// A confirmed decision whose assessors disputed a filler subtype has no role to project until
+	// the final-child role module owns roles (#1069). Keep it like a held one, so the paid
+	// assessment is retained rather than repeated, and the detector plan stays the reviewable one.
+	if artifact.Decision.Status == fillerstructure.StatusConfirmed && everyIntervalHasRole(artifact.Decision) {
 		assessment, projectionErr := ProjectConfirmedStructureDecision(source, proposal.Structure, artifact)
 		if projectionErr != nil {
 			return SplitProposal{}, projectionErr
@@ -52,4 +55,13 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 		return SplitProposal{}, err
 	}
 	return updated, nil
+}
+
+func everyIntervalHasRole(decision fillerstructure.Decision) bool {
+	for _, segment := range decision.Segments {
+		if segment.Role == "" {
+			return false
+		}
+	}
+	return true
 }

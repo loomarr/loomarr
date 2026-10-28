@@ -74,9 +74,20 @@ keeps the derived kind so a rebuild cannot collapse children to the parent's kin
 **Materialization needs agreement.** A deterministic **structure-decision reducer** takes complete
 candidate assessments from at least two independently locked producer families (two routes to one
 model family count once). They must agree on the source unit, interval count, each interval's
-disposition and role, and the ordered joins, with joins within the locked tolerance (the reducer
-takes the midpoint and revalidates coverage). Any conflict, failure, gap, disagreement or
-unsupported candidate is an explicit hold; majority voting never decides.
+**disposition** (`filler_candidate`, `non_filler` or `unresolved`) and the ordered joins, with
+joins within the locked tolerance (the reducer takes the midpoint and revalidates coverage). Any
+conflict, failure, gap, disagreement or unsupported candidate is an explicit hold; majority voting
+never decides.
+
+- **Structure owns where the source divides, not what each child is** (#1069). A commercial
+  against a PSA is one filler candidate on both sides, so the structure confirms. A filler role
+  against programme or non-filler, or any `ambiguous` or `unusable` interval, always holds.
+- The decision keeps an interval's role only when every assessor gave the same one, as a
+  diagnostic. It never takes the first answer or a majority; each candidate's own role stays in
+  the artifact as evidence.
+- The exact role is the **final child's** to establish, from its conditioned bytes, through a
+  separately certified role module. Until that module exists, an interval with no unanimous role
+  is not materialized: the role-sliced authority and the V67 projection both hold it.
 
 - A **complete-timeline assessor** sees no peer answer and must describe every millisecond. One
   content-addressed assessment-media contract owns the derivative: MP4, H.264/yuv420p, 960×720 at

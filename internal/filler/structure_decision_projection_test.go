@@ -101,10 +101,24 @@ func TestProjectConfirmedStructureDecisionRejectsHeldOrDriftedEvidence(t *testin
 		{StartMS: 30_000, EndMS: 60_000, Role: fillerstructure.RolePromo},
 	}
 	second := slices.Clone(first)
-	second[1].Role = fillerstructure.RolePSA
+	second[1].Role = fillerstructure.RoleProgrammeFragment
 	held := projectedStructureArtifact(t, source, fillerstructure.UnitCompilation, first, second)
+	if held.Decision.Status != fillerstructure.StatusHeld {
+		t.Fatalf("filler against programme confirmed: %+v", held.Decision)
+	}
 	if _, err := ProjectConfirmedStructureDecision(source, nil, held); err == nil {
 		t.Fatal("held artifact projected")
+	}
+
+	// Promo against PSA confirms structure with no role. Until the final-child role module owns the
+	// role (#1069), the projection must hold such an interval rather than invent one.
+	second[1].Role = fillerstructure.RolePSA
+	roleless := projectedStructureArtifact(t, source, fillerstructure.UnitCompilation, first, second)
+	if roleless.Decision.Status != fillerstructure.StatusConfirmed || roleless.Decision.Segments[1].Role != "" {
+		t.Fatalf("subtype disagreement decision = %+v", roleless.Decision)
+	}
+	if _, err := ProjectConfirmedStructureDecision(source, nil, roleless); err == nil {
+		t.Fatal("a role-less interval projected into a role-bearing plan")
 	}
 
 	confirmed := projectedStructureArtifact(t, source, fillerstructure.UnitCompilation, first, first)
