@@ -1816,7 +1816,7 @@ func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash 
 }
 
 func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (filler.StoreClip, bool, error) {
-	return fillerStoreAdapter{st: a.st}.GetClip(ctx, hash)
+	return fillerStoreAdapter(a).GetClip(ctx, hash)
 }
 
 func (a fillerDefectStoreAdapter) ListClipPaths(ctx context.Context) ([]string, error) {
