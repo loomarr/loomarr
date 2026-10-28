@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/mediatools"
 
 	"path/filepath"
@@ -91,53 +92,10 @@ func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 	return start, start + LanguageSampleMs
 }
 
-// NormalizeLanguage reduces a code to its base tag for comparison: `en-US`, `EN`, `eng ` all
-// become `en`.
-//
-// ⚠ Comparing raw codes is the obvious implementation and it is wrong in a way that only shows up
-// on real data: whisper answers `en`, a hosted model may answer `en-US` or `English`, and an
-// operator may type `EN` into the setting. Any of those mismatching the others means the gate
-// rejects every English clip in the catalog — the loudest possible failure, arrived at honestly.
-func NormalizeLanguage(code string) string {
-	c := strings.ToLower(strings.TrimSpace(code))
-	if c == "" {
-		return ""
-	}
-	// Strip a region or script subtag: en-US, zh-Hans, pt_BR.
-	for _, sep := range []string{"-", "_"} {
-		if i := strings.Index(c, sep); i > 0 {
-			c = c[:i]
-			break
-		}
-	}
-	// A few spellings a model may return in prose rather than as a code. Deliberately SHORT:
-	// this is a safety net for the common case, not a language database — an unrecognised name
-	// stays as-is and simply will not match, which is the honest outcome.
-	switch c {
-	case "english":
-		return "en"
-	case "spanish", "espanol", "español":
-		return "es"
-	case "french", "francais", "français":
-		return "fr"
-	case "german", "deutsch":
-		return "de"
-	}
-	// ISO 639-2 → 639-1 for the handful whisper can emit in three-letter form.
-	if len(c) == 3 {
-		switch c {
-		case "eng":
-			return "en"
-		case "spa":
-			return "es"
-		case "fra", "fre":
-			return "fr"
-		case "deu", "ger":
-			return "de"
-		}
-	}
-	return c
-}
+// NormalizeLanguage reduces a code to the detector's base tag for comparison: `en-US`, `EN`,
+// `eng`, `English` all become `en` (langcode.Normalize). Any of those mismatching the others
+// means the gate rejects every English clip in the catalog — the loudest possible failure.
+func NormalizeLanguage(code string) string { return langcode.Normalize(code) }
 
 // LanguageRejects decides whether a detected code means "drop this clip".
 //

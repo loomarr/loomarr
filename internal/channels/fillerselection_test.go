@@ -111,3 +111,20 @@ func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
 		t.Errorf("era = %+v, want the scope era", got)
 	}
 }
+
+// #2030 decisions 12 and 16: a channel's commercial language and location are its own filler
+// settings. Japanese audio does not make Japanese commercials, and nothing about the shows sets a
+// location, so an unset channel inherits the household's at assembly.
+func TestSelectionForChannel_LanguageAndLocationAreNeverInferred(t *testing.T) {
+	ch := store.Channel{Lineup: []schedule.LineupEntry{{OfficialRating: "TV-14", Year: 1999}}}
+	ch.Policy.Playout = &schedule.PlayoutPolicy{AudioLanguage: "jpn"}
+	if got := channels.SelectionForChannel(ch); got.Language != "" || got.Geography != (filler.Geography{}) {
+		t.Errorf("inferred language=%q geography=%+v, want neither", got.Language, got.Geography)
+	}
+
+	ch.Policy.Filler = &schedule.FillerSelection{Language: "spa", Geography: &schedule.FillerGeography{Country: "gb"}}
+	got := channels.SelectionForChannel(ch)
+	if got.Language != "es" || got.Geography != (filler.Geography{Country: "GB"}) {
+		t.Errorf("language=%q geography=%+v, want es and GB", got.Language, got.Geography)
+	}
+}

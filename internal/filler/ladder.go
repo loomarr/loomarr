@@ -36,6 +36,7 @@ type pool struct {
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
 	catalog = filterSeason(catalog, w)
+	catalog = filterLanguage(catalog, w, policy)
 	body := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
 		// ⚠ The quality floor applies to break-body clips only, alongside the duration bounds —

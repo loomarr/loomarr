@@ -150,6 +150,8 @@ type Window struct {
 	EraWindows []EraRange
 	Audience   Audience
 	Geography  Geography
+	// Language is the channel's commercial language; "" inherits Policy.Language (language_boundary.go).
+	Language string
 	// GapMs is the flex gap to fill.
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
@@ -179,6 +181,9 @@ type Window struct {
 type Policy struct {
 	// Geography is the live Installation default. Empty preserves legacy behaviour.
 	Geography Geography
+	// Language is the household's commercial language (`filler.language`), every channel's default.
+	// Empty is no language boundary on a channel that names none.
+	Language string
 	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
 	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
 	//
@@ -496,12 +501,12 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 	}
 }
 
-// bookendCandidates is every unused, in-season-or-year-round bumper/station-id the window may draw
-// on: the era-matching ones when there are any, else all of them.
-func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
+// bookendCandidates is every unused, in-season-or-year-round bumper/station-id in the channel's
+// language the window may draw on: the era-matching ones when there are any, else all of them.
+func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.ID()] && !outOfSeason(c, w) {
+		if c.IsBumper() && !used[c.ID()] && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
 			bumpers = append(bumpers, c)
 		}
 	}
@@ -514,7 +519,7 @@ func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
 // avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
 func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
-	bumpers := bookendCandidates(catalog, w, used)
+	bumpers := bookendCandidates(catalog, w, policy, used)
 	if len(bumpers) == 0 {
 		return PodEntry{}, false
 	}

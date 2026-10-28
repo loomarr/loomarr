@@ -24,7 +24,7 @@ type tailCandidate struct {
 // top-up also draws on bookend clips the break has not used.
 //
 // Rules held identical to the ads' own: the candidates are the same ladder pools (so audience
-// ceiling, era rungs, geography, quality and duration bounds all apply), the same `used` set (no
+// ceiling, era rungs, geography, language, quality and duration bounds all apply), the same `used` set (no
 // repeat in a window, exclusions win), and rotation held strictly: a clip resting inside its
 // cooldown is never used here — a short tail beats a repeat — then category variety, relaxed
 // rather than leaving time unused. Ads respect the pod's clip ceiling and the in-season half
@@ -58,7 +58,7 @@ func (p *Pod) fillTail(catalog []Clip, pools []pool, w Window, policy Policy, us
 			cands = append(cands, tailCandidate{Clip: c, rung: rung})
 		}
 	}
-	for _, c := range sortByID(bookendCandidates(catalog, w, used)) {
+	for _, c := range sortByID(bookendCandidates(catalog, w, policy, used)) {
 		if !seen[c.ID()] {
 			seen[c.ID()] = true
 			cands = append(cands, tailCandidate{Clip: c, rung: -1})

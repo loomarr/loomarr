@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -254,6 +255,10 @@ type FillerSelection struct {
 	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
 	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
 	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
+	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
+	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
+	// channel with Japanese audio keeps English commercials.
+	Language string `json:"language,omitempty"`
 }
 
 // FillerGeography is a Channel's explicit audience geography. Market is optional so a
@@ -343,6 +348,9 @@ func (f *FillerSelection) validate() error {
 		if !fillerKinds[k] {
 			return fmt.Errorf("filler: unknown kind %q", k)
 		}
+	}
+	if f.Language != "" && !langcode.Valid(f.Language) {
+		return fmt.Errorf("filler: unknown language %q", f.Language)
 	}
 	// ⚠ Categories are NOT validated here (§10 V45a). They are taxonomy slugs — an open, operator-
 	// editable set — so they are opaque to this pure domain package, exactly like Pinned/Excluded clip

@@ -282,6 +282,8 @@ const stubReachable = () => {
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
       geography: { country: "", market: "" },
+      language: "",
+      undeterminedLanguage: 0,
       // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
       // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
       criteria: [
@@ -346,7 +348,15 @@ const stubReachable = () => {
       totalMs: 0,
       matchLevel: "exact",
       // The draft preview answers with its own coverage since V51f — same selection, one response.
-      coverage: { level: "exact", total: 0, rungs: [], criteria: [], geography: { country: "", market: "" } },
+      coverage: {
+        level: "exact",
+        total: 0,
+        rungs: [],
+        criteria: [],
+        geography: { country: "", market: "" },
+        language: "",
+        undeterminedLanguage: 0,
+      },
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
     getChannelTracksMockHandler({ audio: [], subtitles: [] }),
