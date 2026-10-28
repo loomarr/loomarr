@@ -36,8 +36,11 @@ func (s *DefectsStage) Cost() StageCost { return CostCheap }
 
 // Applies to every clip that may air as an ad of its own, the clips the floor judges.
 func (s *DefectsStage) Applies(_ context.Context, c StoreClip) (bool, string) {
-	if !defectCandidate(c.Clip) {
+	switch {
+	case c.IsComposite:
 		return false, "a recording of a whole break is judged through its segments"
+	case !defectCandidate(c.Clip):
+		return false, "not a clip that airs"
 	}
 	return true, ""
 }

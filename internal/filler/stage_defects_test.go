@@ -80,6 +80,15 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 	}
 }
 
+// A clip in the conveyor is not placed until the score rung, so it reads as not playable; the rung
+// must still judge it, or nothing new is ever held to the floor.
+func TestDefectsStage_AppliesToAHeldClipNotYetPlaced(t *testing.T) {
+	c := StoreClip{Clip: Clip{Hash: "h", Held: true, Placement: PlacementNotPlayable, Kind: Unclassified}}
+	if ok, why := NewDefectsStage(fakeDefectVerdicts{}).Applies(t.Context(), c); !ok {
+		t.Fatalf("a new arrival skipped the floor: %s", why)
+	}
+}
+
 func TestDefectsStage_SkipsARecordedBreak(t *testing.T) {
 	if ok, _ := NewDefectsStage(fakeDefectVerdicts{}).Applies(t.Context(), StoreClip{Clip: Clip{Hash: "r", IsComposite: true}}); ok {
 		t.Fatal("a composite recording was put to the floor; its segments are judged instead")

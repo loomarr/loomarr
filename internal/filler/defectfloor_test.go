@@ -108,9 +108,10 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		return c
 	}
 	fresh := clip("fresh", 1988, nil)
-	held := clip("held", 2012, func(c *DefectClip) { c.Held, c.Stage = true, StageDefects })
+	// A held clip reads as not playable until the score rung, last in the conveyor, places it.
+	held := clip("held", 2012, func(c *DefectClip) { c.Held, c.Stage, c.Placement = true, StageDefects, PlacementNotPlayable })
 	// Held short of the rung: its bytes may not be the ones that air, or it may be a whole break.
-	early := clip("early", 2012, func(c *DefectClip) { c.Held, c.Stage = true, StageTranscode })
+	early := clip("early", 2012, func(c *DefectClip) { c.Held, c.Stage, c.Placement = true, StageTranscode, PlacementNotPlayable })
 	current := clip("current", 1988, nil)
 	recorrected := clip("re-dated", 2015, nil) // judged as 1988 before an operator fixed its era
 	broken := clip("broken", 1999, nil)
