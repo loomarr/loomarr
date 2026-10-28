@@ -113,7 +113,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	regionOf := effectiveGeography(w.Geography, policy.Geography).regionRanker()
 	for rung, p := range pools {
 		for _, c := range sortByID(p.clips) {
-			if used[c.ID()] || seen[c.ID()] {
+			if taken(used, c) || seen[c.ID()] {
 				continue
 			}
 			seen[c.ID()] = true
@@ -147,6 +147,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	var totalMs int64
 	loosest := -1
 	lastCat := ""
+	segment := false // a break holds one station segment (#2065)
 	// Two passes per BAND (one rung, rested or resting — see ladderBand): first honor category
 	// variety strictly; the fallback pass allows a repeat only if the pod would otherwise be short
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
@@ -164,7 +165,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			// ⚠ Keyed by HASH (Clip.ID()), not Path — `used` is seeded by hash-keyed pinned/excluded
 			// and reserved by hash everywhere (§10 V45a). Path keying here meant a pinned/excluded
 			// clip was never recognised as used, so it could be double-placed or ignore its exclusion.
-			if used[c.ID()] || contains(out, c.ID()) {
+			if used[c.ID()] || contains(out, c.ID()) || (segment && isStationSegment(c.Clip)) {
 				continue
 			}
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
@@ -180,6 +181,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			out = append(out, c.Clip)
 			totalMs += c.DurationMs
 			lastCat = c.Category
+			segment = segment || isStationSegment(c.Clip)
 			if c.rung > loosest {
 				loosest = c.rung
 			}

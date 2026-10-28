@@ -123,6 +123,8 @@ type PodEntry struct {
 	// variants are the clip's other versions (Clip.Variants), reserved with it so a break never
 	// carries two versions of one ad. Unexported: assembly state, not part of what a break shows.
 	variants []string
+	// stationSegment marks a station's own material, which a break holds at most one of (#2065).
+	stationSegment bool
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -271,7 +273,10 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	catalog = filterKinds(catalog, w.Kinds)
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
-	intro, hasIntro := pickBumper(catalog, w, policy, used, rng)
+	// A station segment closes a break, before the programme returns; it never opens one (#2065).
+	introUsed := cloneSet(used)
+	introUsed[stationSegmentKey] = true
+	intro, hasIntro := pickBumper(catalog, w, policy, introUsed, rng)
 	if hasIntro && intro.DurationMs > w.GapMs {
 		hasIntro = false
 	}
@@ -364,6 +369,9 @@ func reserve(used map[string]bool, e PodEntry) {
 	for _, v := range e.variants {
 		used[v] = true
 	}
+	if e.stationSegment {
+		used[stationSegmentKey] = true
+	}
 }
 
 // assembleBreak builds one break around the given bookends (either may be nil) and reports
@@ -431,6 +439,7 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
 	// whatever the ads could not was the "commercial breaks feel short" complaint.
 	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials), &share)
+	pod.stationSegmentLast()
 
 	if ret != nil {
 		pod.append(*ret, used)
@@ -464,7 +473,7 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 			break
 		}
 		c, ok := byID[id]
-		if !ok || used[id] || !durationEligible(c, policy) {
+		if !ok || taken(used, c) || !durationEligible(c, policy) {
 			continue
 		}
 		if totalMs+c.DurationMs > budget {
@@ -476,6 +485,17 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 		reserve(used, PodEntry{Hash: id, variants: c.Variants})
 	}
 	return out
+}
+
+// stationSegmentLast moves the break's one station segment to the end of its body, so it airs last
+// before the return bumper (#2065). A station segment that is itself the return bumper is already there.
+func (p *Pod) stationSegmentLast() {
+	for i, e := range p.Entries {
+		if e.stationSegment {
+			p.Entries = append(append(p.Entries[:i:i], p.Entries[i+1:]...), e)
+			return
+		}
+	}
 }
 
 func (p *Pod) append(e PodEntry, used map[string]bool) {
@@ -499,8 +519,9 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
 		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
-		RecentRepeat: tier == rotationRecent,
-		variants:     c.Variants,
+		RecentRepeat:   tier == rotationRecent,
+		variants:       c.Variants,
+		stationSegment: isStationSegment(c),
 	}
 }
 
@@ -509,7 +530,7 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.ID()] && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
+		if c.IsBumper() && !taken(used, c) && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
 			bumpers = append(bumpers, c)
 		}
 	}

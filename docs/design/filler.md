@@ -258,6 +258,12 @@ fetchable and operator-removable.
   inferred geography is never a reason to remove a clip. Removal is the ordinary catalog tombstone,
   so the clip's hash stays known and fetching never pulls it again. Nothing restores it when a place
   changes later.
+- **A break holds at most one station segment, last** (#2059 decision 12; #2065). A station
+  segment is a `local` clip that is not a commercial: the station's news, weather, ID or promo. Once
+  a break has one, no other is picked, and it moves to the end of the break body so it airs right
+  before the return bumper (or is that bumper). It never opens a break. Local clips have no quota,
+  and a local advertiser's commercial is an ordinary ad. Spacing and household rotation apply as
+  to any clip.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
   live. An explicit country is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,

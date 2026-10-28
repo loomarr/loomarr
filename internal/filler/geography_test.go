@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -325,6 +326,64 @@ func TestAssemble_ChannelPlaceOverridesOrInherits(t *testing.T) {
 		if aired != c.want {
 			t.Errorf("%s: lakeside clip aired = %v, want %v (%+v)", c.name, aired, c.want, pod.Entries)
 		}
+	}
+}
+
+// A break holds at most one station segment, last before the programme returns; local ads are
+// ordinary ads and a local station ID never opens a break (#2065).
+func TestBreakHoldsOneStationSegmentLast(t *testing.T) {
+	segment := func(id string, kind filler.Kind) filler.Clip {
+		c := geoCommercial(id, filler.GeographicLocal, "US", "fcc:1")
+		c.Kind, c.DurationMs = kind, 15_000
+		return c
+	}
+	bumper := geoCommercial("bumper-us", filler.GeographicNational, "US", "")
+	bumper.Kind, bumper.DurationMs = filler.Bumper, 5_000
+	catalog := []filler.Clip{
+		segment("segment-news", filler.Interstitial), segment("segment-weather", filler.Interstitial),
+		segment("segment-promo", filler.Interstitial), bumper,
+		geoCommercial("local-ad", filler.GeographicLocal, "US", "fcc:2"),
+		geoCommercial("ad-a", filler.GeographicNational, "US", ""), geoCommercial("ad-b", filler.GeographicNational, "US", ""),
+		geoCommercial("ad-c", filler.GeographicNational, "US", ""),
+	}
+	// The only bookend is a local station ID: it may close a break, never open one.
+	for seed := int64(1); seed <= 20; seed++ {
+		w := filler.Window{Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 240_000, PodMax: 8}
+		idOnly := append([]filler.Clip{segment("segment-id", filler.StationID)}, catalog[4:]...)
+		if pod := filler.Assemble(idOnly, w, harborPolicy(), nil); pod.Entries[0].Hash == "segment-id" {
+			t.Fatalf("seed %d: a local station ID opened the break", seed)
+		}
+	}
+	sawSegment, sawLocalAd := false, false
+	for seed := int64(1); seed <= 40; seed++ {
+		w := filler.Window{Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 240_000, PodMax: 8}
+		pod := filler.Assemble(catalog, w, harborPolicy(), nil)
+		segments := []int{}
+		for i, e := range pod.Entries {
+			if strings.HasPrefix(e.Hash, "segment-") {
+				segments = append(segments, i)
+			}
+			sawLocalAd = sawLocalAd || e.Hash == "local-ad"
+		}
+		if len(segments) > 1 {
+			t.Fatalf("seed %d: %d station segments in one break: %+v", seed, len(segments), pod.Entries)
+		}
+		if len(segments) == 0 {
+			continue
+		}
+		sawSegment = true
+		at, n := segments[0], len(pod.Entries)
+		if at == 0 && n > 1 {
+			t.Fatalf("seed %d: a station segment opened the break", seed)
+		}
+		// Last, or second to last before the return bumper.
+		last := at == n-1 || (at == n-2 && pod.Entries[n-1].Hash == "bumper-us")
+		if !last {
+			t.Fatalf("seed %d: station segment at %d of %d: %+v", seed, at, n, pod.Entries)
+		}
+	}
+	if !sawSegment || !sawLocalAd {
+		t.Fatalf("segment seen %v, local ad seen %v; the catalog should air both", sawSegment, sawLocalAd)
 	}
 }
 
