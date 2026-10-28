@@ -155,7 +155,7 @@ jobs:
           #
           # The embedded help set (`docs/get-started.md`, `docs/guides/`, `docs/explanation/`,
           # frozen links in `docs/testdata/`) was `docs/help/` until #1572.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^internal/broadcaststation/|^cmd/station-data/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -231,7 +231,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^internal/broadcaststation/|^cmd/station-data/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"

@@ -233,6 +233,20 @@ fetchable and operator-removable.
   source itself declares is clip evidence (`registered_source:<id>`). An undeclared source
   contributes nothing, so its clips stay unknown and a household country excludes them (#1670:
   British archive ads aired as "US" when enrichment copied the inheritance).
+- **The broadcast station directory is shipped data in the database** (#2059, #2060). Every US
+  full-power and Class A TV station (`broadcast_stations`) has its community of license and the
+  dated base call signs it held (`broadcast_station_call_signs`; WOR 1949-1987 then WWOR). It is the
+  only source of a station's location: "local" means a station within the household's radius, and
+  a call sign from any evidence step must resolve here or it carries no location. `cmd/station-data`
+  builds it from the frozen FCC CDBS files plus a committed Wikidata snapshot for history CDBS never
+  recorded (Cleveland's KYW 1956-1965). Its rules: CDBS's first row opens a tenure rather than
+  dating it; a later row dated earlier corrects the rows it predates; an open start ends where
+  another station's dated tenure of the same call sign ended; a full-power station keeps a call
+  sign it shares with a Class A one (WWNY-TV over WWNY-CD); a Wikidata item without an FCC id joins
+  the one FCC station holding its call signs over the same years. Pairs still shown holding a call
+  sign at once are counted by the generator and resolve to no station. Boot applies the newest
+  unapplied seed revision by replacing every row; nothing else writes it. Canada and call-sign
+  changes after October 2023 are known gaps.
 - **Attribution gap.** The folder scan writes `Source = "filler-dir"` for every clip and the
   sidecar does not record which remote source fetched it, so per-source clip counts are sums of
   what children claim. Per-source attribution is an intake change, tracked separately.

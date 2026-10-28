@@ -1,0 +1,34 @@
+{
+  "version": "cdbs-2023-10+wikidata-2026-10-28",
+  "sources": [
+    {
+      "url": "https://transition.fcc.gov/Bureaus/MB/Databases/cdbs/facility.zip",
+      "sha256": "42a08c870feea389416533375ba8923ba4e449d6912a28aa5ad1c9d51f943d62",
+      "credit": "FCC Consolidated Database System (CDBS) public data, a US Government work: https://www.fcc.gov/media/radio/cdbs-database-public-files"
+    },
+    {
+      "url": "https://transition.fcc.gov/Bureaus/MB/Databases/cdbs/call_sign_history.zip",
+      "sha256": "b012b007ac287c09cd987d2eb938880431093094603f5407a1794b2ae4c40c0c",
+      "credit": "FCC Consolidated Database System (CDBS) public data, a US Government work: https://www.fcc.gov/media/radio/cdbs-database-public-files"
+    },
+    {
+      "url": "https://transition.fcc.gov/Bureaus/MB/Databases/cdbs/tv_eng_data.zip",
+      "sha256": "e61d1026fdac3131ed561dd3edf7ad8f75d4232a01aa0cd63fccd0d44e1ffdc3",
+      "credit": "FCC Consolidated Database System (CDBS) public data, a US Government work: https://www.fcc.gov/media/radio/cdbs-database-public-files"
+    },
+    {
+      "url": "cmd/station-data/wikidata-call-signs.tsv",
+      "sha256": "5e5939a1888ec118882119a54d22c3198af6d99af1b2ad59acfe2e46554b3849",
+      "credit": "Wikidata, CC0: https://www.wikidata.org/"
+    }
+  ],
+  "outputs": [
+    {
+      "file": "stations.tsv.gz",
+      "sha256": "d1828fdc234c4ef6048e173641689a9c30d0b9dfb195b95ba8b2cd16c69e8e95",
+      "rows": 3334
+    }
+  ],
+  "stations": 2090,
+  "ambiguousCallSignPairs": 3
+}
