@@ -869,6 +869,47 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	}
 }
 
+// stalledPremiumSource is a lineup lookup that ignores its context, as a slow cycle walk did on a
+// live channel.
+type stalledPremiumSource struct {
+	premiumSource
+	unblock chan struct{}
+}
+
+func (s *stalledPremiumSource) Premium(context.Context, string) FormatClass {
+	<-s.unblock
+	return Format4KHDR
+}
+
+// A premium lookup that outruns its bound must not hold the master: the master lists the baseline
+// alone at the deadline, well inside a player's request timeout.
+func TestPackagerHLSMasterDoesNotWaitPastThePremiumLookupBound(t *testing.T) {
+	source := &stalledPremiumSource{unblock: make(chan struct{})}
+	t.Cleanup(func() { close(source.unblock) })
+	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.premiumLookup = 100 * time.Millisecond
+	t.Cleanup(m.Stop)
+
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	body, err := lease.snapshot(ctx)
+	if err != nil {
+		t.Fatalf("master waited on the stalled lookup until its request gave up: %v", err)
+	}
+	master := string(body)
+	if !strings.Contains(master, "1080p-h264-sdr.m3u8") || strings.Contains(master, "4k-hevc-hdr.m3u8") {
+		t.Fatalf("master = %q, want the baseline alone", master)
+	}
+}
+
 // Playing the premium variant starts the channel's second packager, admitted at the premium class's
 // own measured price (NVENC 2.4x = a 0.5 GPU share, 0.5 cores), never the item's; a premium the
 // channel does not air is not served and starts nothing.
