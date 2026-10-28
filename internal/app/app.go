@@ -155,7 +155,8 @@ func buildHandler(
 	jobReg, activityRec := foundation.jobs, foundation.activity
 	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
 	// service a custom upload is read from is bound once the suggestions build makes it.
-	// One household calendar (#2030): the channel engine and the on-screen logo date holidays alike.
+	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
+	// breaks date holidays alike.
 	calendar := householdCalendar(set, foundation.holidays, log)
 	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
@@ -190,7 +191,7 @@ func buildHandler(
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
-		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays,
+		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays, calendar,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.

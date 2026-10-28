@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Exposure is one clip's watched-airing history across the household, as one break sees it (§10
@@ -169,6 +170,9 @@ type Window struct {
 	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
 	Exposures  map[string]Exposure
 	SnapshotAt time.Time
+	// Season is the household calendar at the break's start (season.go). The zero value names no
+	// holiday, so every clip is year-round.
+	Season schedule.HolidaySeason
 }
 
 // Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
@@ -210,6 +214,9 @@ type Policy struct {
 	// Cooldown is a preference, never permission to leave a break empty. Rotation ranks new clips,
 	// then least-recently played clips outside this interval, then deterministically relaxes it.
 	Cooldown time.Duration
+	// Calendar is the household's holiday calendar, the one programming reads (#2030): it dates
+	// each break's Window.Season.
+	Calendar schedule.Calendar
 }
 
 // FallbackCard is the embedded default bumper-card asset (§10): Loomarr ships one
@@ -372,10 +379,12 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 	pinWindow := w
 	pinWindow.GapMs -= pod.TotalMs + returnMs
 	pinned := pickPinned(catalog, pinWindow, policy, used)
+	var share seasonShare
 	for _, c := range pinned {
 		e := clipToEntry(c, w, policy)
 		e.RotationPinned = true
 		pod.append(e, used)
+		share.add(c, w)
 	}
 
 	// Fill the rest with matched commercials from the tightest non-empty pool,
@@ -391,7 +400,7 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 	pools := candidatePools(catalog, remaining, policy)
 	if remainMax := w.PodMax - len(pinned); remainMax > 0 {
 		remaining.PodMax = remainMax
-		level, commercials = fillCommercials(pools, remaining, policy, used, rng)
+		level, commercials = fillCommercials(pools, remaining, policy, used, rng, &share)
 		if level != "" {
 			pod.MatchLevel = level
 		}
@@ -413,7 +422,7 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 
 	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
 	// whatever the ads could not was the "commercial breaks feel short" complaint.
-	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials))
+	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials), &share)
 
 	if ret != nil {
 		pod.append(*ret, used)
@@ -487,12 +496,12 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 	}
 }
 
-// bookendCandidates is every unused bumper/station-id the window may draw on: the era-matching
-// ones when there are any, else all of them.
+// bookendCandidates is every unused, in-season-or-year-round bumper/station-id the window may draw
+// on: the era-matching ones when there are any, else all of them.
 func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.ID()] {
+		if c.IsBumper() && !used[c.ID()] && !outOfSeason(c, w) {
 			bumpers = append(bumpers, c)
 		}
 	}

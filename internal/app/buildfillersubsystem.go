@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -67,6 +68,7 @@ func buildFillerSubsystem(
 	playbackHeadroom filler.PlaybackHeadroom,
 	owner *generationLifecycle,
 	holidaysChanged func(context.Context),
+	calendar func() schedule.Calendar,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -144,7 +146,7 @@ func buildFillerSubsystem(
 		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
 	}
 
-	pods := buildPodAdapter(st, set, log).WithMetrics(metricRecorder)
+	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
 	result.preview = podPreviewAdapter{store: st, pods: pods}
 	adapter.pool = result.preview.Pool
 	if playoutResolver != nil {

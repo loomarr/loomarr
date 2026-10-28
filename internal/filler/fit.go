@@ -34,6 +34,7 @@ const (
 	FitAudience  FitReason = "audience"  // wrong audience, and not a general-audience clip
 	FitGeography FitReason = "geography" // foreign, out-of-market, or unknown geography
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
+	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)
 )
 
 // Fit reports how one clip relates to one channel's selection.
@@ -118,6 +119,11 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// it was being honoured. Caught by asserting against `Assemble` rather than re-asserting the
 	// predicates this function calls.
 	if fit.Pinned {
+		return fit
+	}
+	// Out of season a holiday clip airs nowhere in the break, bookend or body.
+	if outOfSeason(c, w) {
+		fit.Reason = FitSeason
 		return fit
 	}
 

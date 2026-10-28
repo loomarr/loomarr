@@ -35,6 +35,7 @@ type pool struct {
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	catalog = filterSeason(catalog, w)
 	body := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
 		// ⚠ The quality floor applies to break-body clips only, alongside the duration bounds —
@@ -92,8 +93,10 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     whole window. Nothing is added to `used` here — Assemble does that as it appends.
 //   - Deterministic: all randomness comes from the seeded rng, and candidates are sorted
 //     by Path (the identity) before any pick so catalog input order can't leak into output.
+//   - SEASON SHARE: in-season clips stay at most half of the break's commercials (`share`, which
+//     already counts the pins), and with none yet the best rested in-season clip leads (season.go).
 //   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
-func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
+func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, share *seasonShare) (MatchLevel, []Clip) {
 	// w.GapMs is already net of the intro and return bumpers: Assemble subtracts their real
 	// lengths before it calls here, so the ads below fill exactly what the break has left.
 	budget := w.GapMs
@@ -125,6 +128,15 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making the
 	// ladder and durable rotation authoritative (see ladderLess).
 	sort.SliceStable(cands, func(i, j int) bool { return ladderLess(cands[i], cands[j], w, policy) })
+	// At least one in-season commercial when one is rested: the first that fits leads the break.
+	if share.in == 0 {
+		for i, c := range cands {
+			if inSeason(c.Clip, w) && !resting(c.Clip, w, policy) && c.DurationMs <= budget {
+				cands = append([]rungClip{c}, slices.Delete(cands, i, i+1)...)
+				break
+			}
+		}
+	}
 
 	var out []Clip
 	var totalMs int64
@@ -156,6 +168,10 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if totalMs+c.DurationMs > budget {
 				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
 			}
+			if !share.admits(c.Clip, w) {
+				continue // the break already holds its half of in-season clips
+			}
+			share.add(c.Clip, w)
 			out = append(out, c.Clip)
 			totalMs += c.DurationMs
 			lastCat = c.Category

@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip
@@ -38,6 +40,8 @@ type PodAdapter struct {
 	policy  func() Policy
 	log     *slog.Logger
 	metrics PodMetrics
+	// now dates the season of a question asked without a break start (seasonAt).
+	now func() time.Time
 }
 
 // PodMetrics observes only attached pods; previews deliberately do not count.
@@ -97,7 +101,23 @@ type Selection struct {
 // ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
 func NewPodAdapter(catalog CatalogReader, airings AiringReader, policy func() Policy, log *slog.Logger) *PodAdapter {
-	return &PodAdapter{catalog: catalog, airings: airings, policy: policy, log: log}
+	return &PodAdapter{catalog: catalog, airings: airings, policy: policy, log: log, now: time.Now}
+}
+
+// WithClock replaces the wall clock seasonAt falls back to.
+func (a *PodAdapter) WithClock(now func() time.Time) *PodAdapter {
+	a.now = now
+	return a
+}
+
+// seasonAt is the household calendar's season for a break starting at t. A question with no
+// break start (the reconciler's pool check, a Tunarr filler list, coverage, a clip's fit) is
+// answered for now, as programming's seasonality is: the periodic sweep rolls it with the date.
+func (a *PodAdapter) seasonAt(pol Policy, t time.Time) schedule.HolidaySeason {
+	if t.IsZero() {
+		t = a.now()
+	}
+	return pol.Calendar.SeasonAt(t)
 }
 
 // WithMetrics binds generation-scoped observations without coupling filler to Prometheus.
@@ -151,12 +171,13 @@ func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, 
 // timeline walked from the anchor shifted by tens of seconds or minutes at each reconcile, and
 // the viewer was thrown back into the programme or into the same break again (live smoke,
 // 2026-10-24). Rotation still decides WHICH clips air: PreviewAt assembles each break to this
-// length from its own history snapshot.
+// length from its own history snapshot. Holiday seasons are left out for the same reason: a
+// season opening at midnight must not re-size every break (#2030).
 func (a *PodAdapter) PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel Selection) int64 {
 	clips, err := a.catalog.AllClips(ctx)
 	var pod Pod
 	if err == nil && len(clips) > 0 {
-		pod = a.assemble(clips, nil, channelID, Break{Seed: seed}, sel, a.pol())
+		pod = a.assemble(clips, nil, channelID, Break{Seed: seed, yearRound: true}, sel, a.pol())
 	}
 	if err != nil {
 		if a.log != nil {
@@ -234,6 +255,9 @@ type Break struct {
 	Seed   int64
 	Start  time.Time
 	Length time.Duration
+	// yearRound assembles with no holiday seasons, every clip year-round: PlayableDurationMs sizes
+	// breaks with it so a season opening or closing never re-sizes the timeline.
+	yearRound bool
 }
 
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
@@ -299,7 +323,11 @@ func (a *PodAdapter) assemble(clips []Clip, history *AiringHistory, channelID st
 	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
-	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
+	var season schedule.HolidaySeason
+	if !b.yearRound {
+		season = a.seasonAt(pol, breakStart)
+	}
+	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs, season)
 	if history != nil {
 		w.Exposures = ExposuresBefore(*history, breakStart)
 		w.SnapshotAt = breakStart
@@ -386,8 +414,9 @@ const maxPodClips = 64
 // They already share the ladder (both end up in `candidatePools`); this is the step before it,
 // and duplicating it is how a meter ends up reporting on a slightly different window than the
 // pod it claims to describe — an off-by-one-field bug that no ladder test would catch.
-func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64) Window {
+func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64, season schedule.HolidaySeason) Window {
 	return Window{
+		Season:    season,
 		ChannelID: channelID, Seed: seed,
 		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography,
 		EraWindows: append([]EraRange(nil), sel.EraWindows...),
@@ -439,7 +468,7 @@ func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection)
 	}
 	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
 	// so nobody threads a real seed through expecting it to matter.
-	w := a.windowFor(channelID, 0, sel, podMax, breakDurationMs)
+	w := a.windowFor(channelID, 0, sel, podMax, breakDurationMs, a.seasonAt(pol, time.Time{}))
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Coverage(clips, w, pol)
 }
@@ -459,7 +488,7 @@ func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit 
 	}
 	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
 	// of one break, so a real seed would imply an answer that varies per pod.
-	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs), pol)
+	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs, a.seasonAt(pol, time.Time{})), pol)
 }
 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material

@@ -1217,7 +1217,9 @@ components:
             - quality
             - category
             - audience
+            - geography
             - excluded
+            - season
           type: string
       required:
         - channelId

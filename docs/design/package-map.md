@@ -22,7 +22,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `storagegovernor`, `taxonomy` |
+| `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
@@ -36,7 +36,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 23 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
-| `schedule` | 19 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 20 | `holidayvocab`, `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
 | `storagegovernor` | 6 | — |
 | `store` | 15 | `contact`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
@@ -161,7 +161,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 19 importers · → `holidayvocab`, `inventory`, `provision`
+- **`schedule`** · 20 importers · → `holidayvocab`, `inventory`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
@@ -216,7 +216,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 7 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `loudness`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 7 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8

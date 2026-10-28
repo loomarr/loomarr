@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -466,7 +467,7 @@ func hostedSpeechClient(set resolved, recorder *metrics.Recorder) mediatools.Aud
 // back-patches (the resolver is built with the channel engine, the adapter needs the filler
 // catalog), and pulling them in here would mean handing a builder the two services it exists to
 // stay independent of.
-func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.PodAdapter {
+func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Calendar, log *slog.Logger) *filler.PodAdapter {
 	// ⚠ **A CLOSURE, not a struct literal — the whole filler policy is resolved per pod.**
 	// This was a value built here at boot, so every reader took a snapshot: writing
 	// `filler.pod_max`, `filler.min_quality`, `filler.min_clip_duration` or
@@ -495,6 +496,9 @@ func buildPodAdapter(st store.Store, set resolved, log *slog.Logger) *filler.Pod
 			MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
 			MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
 			Cooldown:  time.Duration(set.intv("filler.cooldown_seconds")) * time.Second,
+			// The household calendar programming reads (#2030): a holiday's commercials air only
+			// in its season.
+			Calendar: calendar(),
 		}
 	}, log)
 	return podAdapter
