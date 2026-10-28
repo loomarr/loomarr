@@ -366,6 +366,8 @@ func buildFillerSubsystem(
 		}
 		return gaps, nil
 	})
+	autoFetch.WithOpenSearch(openArchiveSearch{archive: clipfetch.NewArchiveDownloader(), channels: st,
+		policy: placePolicy, stations: stations, languages: result.intakeLanguages})
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	jobs.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))

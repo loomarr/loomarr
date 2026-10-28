@@ -392,6 +392,18 @@ An enabled source is checked on its effective policy and new items download with
     listing, with the gap key `station:<CALL>`. A hit only says where to look: each clip's locality
     is still decided on arrival. Nearby call signs never make a target unmet. YouTube sources are
     not searched.
+  - **Open search** (#2067) comes after the sources. Only a pass they left short, and only one with
+    nearby stations in a short era, searches all of archive.org. It looks for two of those call
+    signs a pass, also rotating hourly, and takes no more than the remaining shortfall. A hit is
+    from nowhere vetted, so a deterministic listing gate (`filler.ListingGate`) reads its title
+    before anything is downloaded. The title must:
+    - carry no word from the safety list;
+    - name no language, and use no script, that no channel airs;
+    - give a year, with every year it gives inside a short era;
+    - name a station near some current place, under the call sign it held that year.
+
+    The gate asks no model. A hit that passes is acquired under `search:archive`, a source id no
+    row has, and then runs the whole pipeline, which decides its locality afresh.
 
 Unattended fetching can fill a disk, so it is bounded by limits that fail toward doing less:
 

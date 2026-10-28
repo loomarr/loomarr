@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -76,6 +77,53 @@ func (l localCuratedSources) Run(ctx context.Context) {
 	if len(on) > 0 || len(off) > 0 {
 		l.log.Info("filler: curated sources switched for the places' nearby stations", "on", on, "off", off)
 	}
+}
+
+// openArchiveSearch searches all of archive.org for a nearby station (#2059 decisions 10 and 11).
+// Its gate admits a hit whose title names a station near some current place, held on the title's
+// date.
+type openArchiveSearch struct {
+	archive interface {
+		Search(ctx context.Context, query string, limit int) (clipfetch.DiscoveryResult, error)
+	}
+	channels interface {
+		ListChannels(ctx context.Context) ([]store.Channel, error)
+	}
+	policy   func() filler.Policy
+	stations interface {
+		get(context.Context) (*broadcaststation.Directory, error)
+	}
+	languages func(context.Context) (string, error)
+}
+
+func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]filler.DiscoveredRef, error) {
+	res, err := o.archive.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return archiveRefs(res.Items), nil
+}
+
+func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error) {
+	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())
+	if err != nil {
+		return filler.ListingGate{}, err
+	}
+	directory, err := o.stations.get(ctx)
+	if err != nil {
+		return filler.ListingGate{}, err
+	}
+	languages, err := o.languages(ctx)
+	if err != nil {
+		return filler.ListingGate{}, err
+	}
+	return filler.ListingGate{Languages: languages, Station: func(title string) (string, bool) {
+		match, ok := directory.Identify(title, "", "", "")
+		if !ok || !near[match.Station.ID] {
+			return "", false
+		}
+		return match.CallSign, true
+	}}, nil
 }
 
 // nearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
