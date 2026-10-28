@@ -127,6 +127,8 @@ const stubFiller = ({
       id: "sp-1",
       clipHash: "c1",
       createdAt: "2026-07-25T20:00:00Z",
+      checkedLanguages: [],
+      currentLanguages: [],
       segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
     }),
     getTagFillerClipMockHandler(async ({ request }) => {

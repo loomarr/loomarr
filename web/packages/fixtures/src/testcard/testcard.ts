@@ -357,6 +357,8 @@ const splitProposal: SplitReviewProposalDTO = {
   id: "split-testcard",
   clipHash: "c5e2000000000000000000000000000000000000000000000000000000000080",
   createdAt: "2026-07-25T20:00:00Z",
+  checkedLanguages: [],
+  currentLanguages: [],
   segments: [
     {
       index: 0,

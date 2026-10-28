@@ -343,7 +343,8 @@ type SplitDetectionProgress struct {
 }
 
 // SplitLanguageProgress is the private durable cursor between boundary detection and review.
-// The wanted language is snapshotted so a settings edit cannot judge one reel under two policies.
+// The wanted languages (IntakeLanguages) are snapshotted so a settings edit or a new channel cannot
+// judge one reel under two policies.
 type SplitLanguageProgress struct {
 	Want string `json:"want"`
 	Next int    `json:"next"`
@@ -362,13 +363,14 @@ const (
 )
 
 // SplitLanguageExclusion is the durable, user-visible receipt for one detected span that the
-// installation language kept out of review. It retains the exact interval and the evidence behind
+// intake languages (no channel airs it) kept out of review. It retains the exact interval and the evidence behind
 // the decision without putting the excluded span back into the editable candidate list.
 type SplitLanguageExclusion struct {
 	StartMs          int64  `json:"startMs"`
 	EndMs            int64  `json:"endMs"`
 	Name             string `json:"name"`
 	DetectedLanguage string `json:"detectedLanguage"`
+	// ExpectedLanguage is the set the span was checked against, comma-joined ("en,es").
 	ExpectedLanguage string `json:"expectedLanguage"`
 	Reason           string `json:"reason"`
 }
@@ -403,9 +405,10 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
-	// LanguagePreference is the installation choice this finished proposal was checked against.
-	// It lets review disclose a later settings change and offer an explicit recheck rather than
-	// silently presenting an old decision as current policy.
+	// LanguagePreference is the set of languages (IntakeLanguages, comma-joined) this finished
+	// proposal was checked against. It lets review disclose a later change, to the setting or to the
+	// channels, and offer an explicit recheck rather than silently presenting an old decision as
+	// current policy.
 	LanguagePreference string `json:"languagePreference,omitempty"`
 	// LanguageExclusions accounts for confidently mismatched spans omitted before review. It is
 	// receipt data, not an admission signal: unknown and wordless spans remain in Segments.

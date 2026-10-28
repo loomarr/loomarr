@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -104,13 +105,67 @@ func NormalizeLanguage(code string) string { return langcode.Normalize(code) }
 // the clip. A gate over a probabilistic signal has to fail toward keeping, because the cost of the
 // two mistakes is not symmetric: a foreign advert that slips through plays once and annoys, while
 // a wrongly-rejected clip is deleted from the catalog and the operator is never told which.
+//
+// `want` is a set (IntakeLanguages): a clip in any of its languages is kept.
 func LanguageRejects(detected, want string) bool {
-	d, w := NormalizeLanguage(detected), NormalizeLanguage(want)
+	d, w := NormalizeLanguage(detected), LanguageSet(want)
 	if w == "" || d == "" || d == LangNone {
 		return false // gate off, not yet checked, or nothing to judge
 	}
-	return d != w
+	return !slices.Contains(strings.Split(w, ","), d)
 }
+
+// IntakeLanguages is the set the intake gate admits (#2030 decision 13): the union of the
+// channels' commercial languages, each the channel's own or else the household's. Adding a channel
+// in a new language opens the gate to it with no settings change; removing the last one closes it
+// to new clips and leaves catalogued ones alone.
+//
+// Empty turns the gate off. A channel with no language airs every language, so intake cannot
+// refuse one; with no channels yet, the household's language stands alone.
+//
+// ⚠ Comma-joined and sorted ("en,es"), not a slice, for the same reason as Geography.Fallback: a
+// split proposal snapshots it, and a single language persists exactly as it always did.
+func IntakeLanguages(household string, channels []string) string {
+	household = NormalizeLanguage(household)
+	if len(channels) == 0 {
+		return household
+	}
+	set := make([]string, 0, len(channels))
+	for _, own := range channels {
+		lang := NormalizeLanguage(own)
+		if lang == "" {
+			lang = household
+		}
+		if lang == "" {
+			return ""
+		}
+		set = append(set, lang)
+	}
+	return LanguageSet(strings.Join(set, ","))
+}
+
+// LanguageSet normalizes a comma-joined set of languages: each code mapped, once, sorted.
+func LanguageSet(raw string) string {
+	var set []string
+	for code := range strings.SplitSeq(raw, ",") {
+		if lang := NormalizeLanguage(code); lang != "" {
+			set = append(set, lang)
+		}
+	}
+	slices.Sort(set)
+	return strings.Join(slices.Compact(set), ",")
+}
+
+// LanguageList splits a set into its codes; an empty set is an empty list.
+func LanguageList(set string) []string {
+	if set = LanguageSet(set); set == "" {
+		return []string{}
+	}
+	return strings.Split(set, ",")
+}
+
+// languageNames renders a set for a reject detail: "en, es".
+func languageNames(set string) string { return strings.ReplaceAll(LanguageSet(set), ",", ", ") }
 
 // --- the local backend ---
 

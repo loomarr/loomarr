@@ -10317,19 +10317,25 @@ components:
           format: uri
           readOnly: true
           type: string
+        checkedLanguages:
+          items:
+            type: string
+          type: array
         clipHash:
           type: string
         createdAt:
           format: date-time
           type: string
+        currentLanguages:
+          items:
+            type: string
+          type: array
         id:
           type: string
         languageExclusions:
           items:
             $ref: "#/components/schemas/SplitLanguageExclusion"
           type: array
-        languagePreference:
-          type: string
         segments:
           items:
             $ref: "#/components/schemas/SplitReviewSegmentDTO"
@@ -10339,6 +10345,8 @@ components:
         - clipHash
         - createdAt
         - segments
+        - checkedLanguages
+        - currentLanguages
       type: object
     SplitReviewSegmentDTO:
       additionalProperties: false

@@ -39,6 +39,8 @@ type fillerBuild struct {
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
+	// intakeLanguages is the language gate's live wanted set, for split review to compare against.
+	intakeLanguages func(context.Context) (string, error)
 }
 
 // compilationGate reads `filler.acquisition.compilations` against the same single-clip ceiling
@@ -75,6 +77,7 @@ func buildFillerSubsystem(
 		return result
 	}
 	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
+	result.intakeLanguages = intakeLanguages(st, set)
 	decisionService, err := fillerdecision.New(st)
 	if err != nil {
 		log.Error("could not construct filler decision service", "err", err)

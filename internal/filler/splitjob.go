@@ -137,11 +137,12 @@ type SplitArtworkWriter interface {
 	IngestSplitArtwork(ctx context.Context, proposalID string, segment SplitSegment, jpeg []byte) (string, error)
 }
 
-// SegmentLanguagePolicy applies the installation language to each detected span before the split
-// becomes reviewable. Budget is the existing per-pass whisper allowance, not another user knob.
+// SegmentLanguagePolicy applies the intake languages (IntakeLanguages) to each detected span before
+// the split becomes reviewable. Budget is the existing per-pass whisper allowance, not another user
+// knob.
 type SegmentLanguagePolicy struct {
 	Detector LanguageDetector
-	Want     func() string
+	Want     func(context.Context) (string, error)
 	Budget   func() int
 }
 
@@ -163,7 +164,7 @@ func (sp *Splitter) WithStorageGovernor(governor *storagegovernor.Governor) *Spl
 	return sp
 }
 
-// WithSegmentLanguage attaches the installation language check to proposal preparation. Keeping
+// WithSegmentLanguage attaches the intake language check to proposal preparation. Keeping
 // it on Splitter makes scheduled and explicitly requested proposals use the same path.
 func (sp *Splitter) WithSegmentLanguage(policy SegmentLanguagePolicy) *Splitter {
 	if sp != nil {
@@ -251,18 +252,23 @@ func (sp *Splitter) prepareArtwork(ctx context.Context, p SplitProposal) (SplitP
 	return p, pending, nil
 }
 
-func (sp *Splitter) startSegmentLanguage(p *SplitProposal) bool {
+func (sp *Splitter) startSegmentLanguage(ctx context.Context, p *SplitProposal) (bool, error) {
 	policy := sp.segmentLanguage
 	if policy == nil || policy.Detector == nil || policy.Want == nil {
-		return false
+		return false, nil
 	}
-	want := NormalizeLanguage(policy.Want())
+	raw, err := policy.Want(ctx)
+	if err != nil {
+		// Not "no language": that would present every segment as reviewable under no policy.
+		return false, fmt.Errorf("read the channels' commercial languages: %w", err)
+	}
+	want := LanguageSet(raw)
 	if want == "" {
-		return false
+		return false, nil
 	}
 	p.LanguagePreference = want
 	p.Language = &SplitLanguageProgress{Want: p.LanguagePreference}
-	return true
+	return true, nil
 }
 
 func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *SplitProposal) (bool, error) {
@@ -648,7 +654,10 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	p.Segments = segs
 	p.Structure = &structure
 	p.Detection = nil
-	languagePending := sp.startSegmentLanguage(p)
+	languagePending, err := sp.startSegmentLanguage(ctx, p)
+	if err != nil {
+		return p, false, err
+	}
 	if p.Dropped.Count > 0 && sp.log != nil {
 		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is
 		// logged because it costs recording time the operator can otherwise only infer from

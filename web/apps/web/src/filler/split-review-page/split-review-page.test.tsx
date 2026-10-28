@@ -41,7 +41,8 @@ const PROPOSAL = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
-  languagePreference: "en",
+  checkedLanguages: ["en"],
+  currentLanguages: ["en"],
   languageExclusions: [
     {
       startMs: 61000,
@@ -76,34 +77,13 @@ const PROPOSAL = {
   ],
 };
 
-const languageSetting = (value: string) => ({
-  key: "filler.language",
-  label: "Commercial language",
-  group: "filler",
-  kind: "enum",
-  owner: "installation_location",
-  presentation: "language",
-  value,
-  provenance: "default" as const,
-  apply: "live" as const,
-  advanced: false,
-  secret: false,
-  set: true,
-  doc: "Commercial language",
-  enum: ["en", "es", "pl"],
-  enumOptions: [
-    { value: "en", label: "en" },
-    { value: "es", label: "es" },
-    { value: "pl", label: "pl" },
-  ],
-});
-
 // ⚠ The stub this replaced dispatched by URL SUBSTRING, in order, with a catch-all `{}` at the
 // end — and the ordering was load-bearing: `/v1/filler/splits/sp-1/confirm` had to be tested
 // before `/v1/filler/splits/`, which had to precede `/v1/filler`. A prefix that also matches its
 // own sibling is a bug waiting for someone to reorder the list. Route-bound handlers have no
 // order at all.
-const stubSplit = (me: MeBody = ADMIN, language = "en") => {
+// `current` is what intake admits now, the channels' commercial languages (#2030 decision 13).
+const stubSplit = (me: MeBody = ADMIN, current: string[] = ["en"]) => {
   const confirms: unknown[] = [];
   const rewinds: unknown[] = [];
   const composite = {
@@ -121,8 +101,8 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
   };
   server.use(
     getMeMockHandler({ ...me }),
-    getSettingsListMockHandler({ settings: [languageSetting(language)], features: {} }),
-    getGetFillerSplitMockHandler(() => PROPOSAL),
+    getSettingsListMockHandler({ settings: [], features: {} }),
+    getGetFillerSplitMockHandler(() => ({ ...PROPOSAL, currentLanguages: current })),
     getListFillerMockHandler(({ request }) => {
       const params = new URL(request.url).searchParams;
       // Match the real catalog boundary: composites are non-airable and invisible unless the
@@ -191,10 +171,11 @@ describe("SplitReviewPage", () => {
     fireEvent.click(screen.getByText(/show skipped clip/i));
     expect(screen.getByText(/polish supermarket advert/i)).toBeInTheDocument();
     expect(screen.getByText(/polish.*01:01.*01:31/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /recheck/i })).not.toBeInTheDocument();
   });
 
   it("offers to recheck a persisted split when the household language changed", async () => {
-    const { rewinds } = stubSplit(ADMIN, "es");
+    const { rewinds } = stubSplit(ADMIN, ["es"]);
     renderPage();
 
     expect(await screen.findByText(/commercial language is now spanish/i)).toBeInTheDocument();
@@ -204,8 +185,18 @@ describe("SplitReviewPage", () => {
     expect(rewinds).toEqual([{ hash: "comp-hash", from: "split" }]);
   });
 
+  // A channel in a new language widens what intake admits (#2030 decision 13), with no settings change.
+  it("offers to recheck when a channel adds a language", async () => {
+    stubSplit(ADMIN, ["en", "es"]);
+    renderPage();
+
+    expect(await screen.findByText(/commercial languages are now english and spanish/i)).toBeInTheDocument();
+    expect(screen.getByText(/checked for english\. recheck it before you confirm/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /recheck with english and spanish/i })).toBeInTheDocument();
+  });
+
   it("uses plain wording when the household turns the language filter off", async () => {
-    stubSplit(ADMIN, "");
+    stubSplit(ADMIN, []);
     renderPage();
 
     expect(await screen.findByText(/commercials can now use any language/i)).toBeInTheDocument();

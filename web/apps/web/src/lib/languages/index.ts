@@ -1,1 +1,1 @@
-export { languageName } from "./languages";
+export { languageList, languageName } from "./languages";

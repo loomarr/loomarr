@@ -1349,11 +1349,16 @@ type SplitReviewSegmentDTO struct {
 // SplitReviewProposalDTO keeps detector state private while giving the review surface complete
 // image records in one read. Hashes and filesystem paths are not a frontend rendering contract.
 type SplitReviewProposalDTO struct {
-	ID                 string                          `json:"id"`
-	ClipHash           string                          `json:"clipHash"`
-	CreatedAt          time.Time                       `json:"createdAt"`
-	Segments           []SplitReviewSegmentDTO         `json:"segments"`
-	LanguagePreference string                          `json:"languagePreference,omitempty"`
+	ID        string                  `json:"id"`
+	ClipHash  string                  `json:"clipHash"`
+	CreatedAt time.Time               `json:"createdAt"`
+	Segments  []SplitReviewSegmentDTO `json:"segments"`
+	// CheckedLanguages is the set this proposal was checked against; empty when it was not checked.
+	CheckedLanguages []string `json:"checkedLanguages"`
+	// CurrentLanguages is what intake admits now, the channels' commercial languages (#2030
+	// decision 13); empty admits every language. Review offers a recheck when the two differ. When
+	// the channels cannot be read it repeats CheckedLanguages, so no recheck is offered on a guess.
+	CurrentLanguages   []string                        `json:"currentLanguages"`
 	LanguageExclusions []filler.SplitLanguageExclusion `json:"languageExclusions,omitempty"`
 }
 
@@ -1388,9 +1393,21 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 			Artwork:      byHash[segment.ArtworkImageHash],
 		})
 	}
+	// The current set only decides whether review offers a recheck, so a failed read must not make
+	// the proposal unreviewable. Unknown reads as unchanged: no recheck is offered on a guess.
+	current := p.LanguagePreference
+	if s.intakeLanguages != nil {
+		if read, err := s.intakeLanguages(ctx); err != nil {
+			s.log.Warn("split review: could not read the channels' commercial languages", "proposal", p.ID, "err", err)
+		} else {
+			current = read
+		}
+	}
 	return &getFillerSplitOutput{Body: SplitReviewProposalDTO{
 		ID: p.ID, ClipHash: p.ClipHash, CreatedAt: p.CreatedAt, Segments: segments,
-		LanguagePreference: p.LanguagePreference, LanguageExclusions: p.LanguageExclusions,
+		CheckedLanguages:   filler.LanguageList(p.LanguagePreference),
+		CurrentLanguages:   filler.LanguageList(current),
+		LanguageExclusions: p.LanguageExclusions,
 	}}, nil
 }
 
