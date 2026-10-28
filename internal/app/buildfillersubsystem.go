@@ -250,7 +250,14 @@ func buildFillerSubsystem(
 				})
 		}
 	}
-	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}
+	local := &localStations{stations: stations,
+		radiusKM: func() int { return set.intv("filler.local_radius_km") }, log: log}
+	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
+		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now,
+			policy: func() filler.Policy {
+				return filler.Policy{LocalStations: local.resolve, Geography: filler.Geography{
+					Country: set.str("filler.home_country"), Place: set.str("filler.home_place")}}
+			}}}
 	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {

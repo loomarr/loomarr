@@ -176,6 +176,33 @@ func (p Policy) area(channel Geography) Area {
 	return effectiveGeography(channel, p.Geography).Resolve(p.LocalStations)
 }
 
+// UsableAreas is every area a current place can air filler in: the installation's own and each
+// channel's (#2059 decision 14). It is nil when the installation has no country, because then no
+// clip is out of bounds.
+func (p Policy) UsableAreas(channels []Geography) []Area {
+	if p.Geography.Normalize().Country == "" {
+		return nil
+	}
+	areas := []Area{p.area(Geography{})}
+	for _, channel := range channels {
+		areas = append(areas, p.area(channel))
+	}
+	return areas
+}
+
+// UsableIn reports whether some area can air c. No areas means no boundary, so every clip is usable.
+func UsableIn(c Clip, areas []Area) bool {
+	if len(areas) == 0 {
+		return true
+	}
+	for _, area := range areas {
+		if GeographicallyEligible(c, area) {
+			return true
+		}
+	}
+	return false
+}
+
 func filterGeography(clips []Clip, target Area) []Clip {
 	if target.Country == "" {
 		return clips

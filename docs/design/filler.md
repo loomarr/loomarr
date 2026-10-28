@@ -250,6 +250,14 @@ fetchable and operator-removable.
   outside the country all fail closed. A `national` clip needs only the country. There is no typed
   market anywhere: the free-text `filler.home_market`, channel market, source market and clip
   market are gone, because a name like "New York" could not be matched against a station.
+- **A clip no current place can air is removed** (#2059 decision 14; #2064). After each
+  enrichment and research pass, a clip whose geography is settled is checked against every current
+  place: the Installation's area and each Channel's. It is removed when none can air it: a `local`
+  clip whose station is outside every place's radius, or a `national` clip from another country.
+  "Settled" means a `national` or `local` answer on evidence stronger than an inference; unknown or
+  inferred geography is never a reason to remove a clip. Removal is the ordinary catalog tombstone,
+  so the clip's hash stays known and fetching never pulls it again. Nothing restores it when a place
+  changes later.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
   live. An explicit country is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,
