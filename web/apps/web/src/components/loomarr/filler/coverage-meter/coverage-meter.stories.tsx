@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 
@@ -26,7 +27,12 @@ const HEALTHY = [
   { criterion: "quality" as const, clips: 9 },
 ];
 
-const NO_LIMIT = { geography: { country: "", place: "" }, language: "", undeterminedLanguage: 0 };
+const NO_LIMIT = {
+  geography: { country: "", place: "" },
+  language: "",
+  undeterminedLanguage: 0,
+  defaultKinds: DEFAULT_KINDS,
+};
 
 // The healthy case: era- and audience-matched commercials are available.
 const Exact: Story = {

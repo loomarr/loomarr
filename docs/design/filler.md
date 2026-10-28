@@ -150,9 +150,21 @@ the application persists it before the file is eligible for intake.
 
 Each clip carries the metadata that lets the scheduler place it:
 
-- `kind`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer` or
-  `interstitial`. `unclassified` means no exact role is established; it is descriptive, not a
-  lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+- `kind`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer`,
+  `interstitial`, `political` or `news`. `unclassified` means no exact role is established; it is
+  descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+- **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
+  news or weather segment, whose format tag sits under `interstitial`. Both download and pass the
+  defect floor like any clip, so opting in is instant, but a channel that chose no kinds airs every
+  kind except these two, and only a channel that names one airs it. A station's own news is the
+  exception: it is station material, so it airs wherever that station's idents air, and only within
+  the channel's radius. The coverage answer carries the default set, so the channel page shows it
+  ticked without a copy of the rule.
+- Sources file campaign ads and weather reports as commercials. The free pass reads the item's
+  wording (sponsor and stand-by-your-ad disclaimers, ballot asks, news and weather segment names) and
+  that answer replaces a generic `commercial` or `interstitial`, never a specific role such as a PSA.
+  Its rules are scored on a committed labelled corpus (`kind-corpus-v1`): neither may make a false
+  call. The text model is told the two kinds too, and its precision is not measured.
 - `era` (decade or year), `audience` (`kids`, `family`, `general`, `late_night`), `category`,
   and `brand` (free text, grounded).
 - `duration` from Loomarr's own `ffprobe` scan, `rating`, `source`, and a persisted `transcript`.
@@ -509,8 +521,8 @@ queueing one item. It is captured when the clip enters the conveyor, so disablin
 stops future work without rewriting outcomes. Nobody is asked for per-clip approval because an
 optional classifier could not name the role.
 
-**Role and placement are separate.** A commercial, promo, PSA, trailer or interstitial places in the
-break body; a bumper or station ID places as a bookend. Enrollment grounds break-body placement for
+**Role and placement are separate.** A commercial, promo, PSA, trailer, interstitial, political ad
+or news segment places in the break body; a bumper or station ID places as a bookend. Enrollment grounds break-body placement for
 an unclassified clip without relabelling it. Composites and programme excerpts are not playable. An
 explicit channel kind filter still narrows to known roles.
 

@@ -43,6 +43,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -286,6 +287,7 @@ const stubReachable = () => {
       geography: { country: "", place: "" },
       language: "",
       undeterminedLanguage: 0,
+      defaultKinds: DEFAULT_KINDS,
       // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
       // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
       criteria: [
@@ -358,6 +360,7 @@ const stubReachable = () => {
         geography: { country: "", place: "" },
         language: "",
         undeterminedLanguage: 0,
+        defaultKinds: DEFAULT_KINDS,
       },
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.

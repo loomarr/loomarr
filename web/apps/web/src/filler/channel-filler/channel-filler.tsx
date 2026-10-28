@@ -442,6 +442,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           scopeEra={eraOf(policy?.scope?.dates)}
           programmingDates={policy?.scope?.dates}
           installationGeography={{ country: homeCountry, place: homePlace }}
+          defaultKinds={coverage?.defaultKinds}
         />
       </section>
 

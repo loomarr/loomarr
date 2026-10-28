@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -44,10 +45,11 @@ const renderSection = (ui: ReactNode) => {
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
-const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultKinds"> = {
   geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
+  defaultKinds: DEFAULT_KINDS,
 };
 
 const HEALTHY: CoverageDTO["criteria"] = [
@@ -159,6 +161,7 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       geography: { country: "US", place: "" },
       language: "en",
       undeterminedLanguage: 0,
+      defaultKinds: DEFAULT_KINDS,
     }),
   );
 

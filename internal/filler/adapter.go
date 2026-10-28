@@ -85,7 +85,7 @@ type Selection struct {
 	EraWindows []EraRange // normalized union; when present, authoritative over Era
 	Audience   Audience   // "" = any
 	Categories []string   // empty = any
-	Kinds      []string   // empty = the default kinds
+	Kinds      []string   // empty = the default kinds (all but political and news)
 	Pinned     []string   // clip ids always included
 	Excluded   []string   // clip ids never used
 	Geography  Geography  // zero country inherits Installation geography from Policy

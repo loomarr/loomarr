@@ -46,7 +46,7 @@ func TestSeedForest_VocabularyGrowsThroughAdditiveRevisions(t *testing.T) {
 		}
 	}
 	revisions := taxonomy.SeedRevisions()
-	if len(revisions) != 2 || revisions[0].Version != 2 || len(revisions[0].Taxa) != 3 {
+	if len(revisions) != 3 || revisions[0].Version != 2 || len(revisions[0].Taxa) != 3 {
 		t.Fatalf("SeedRevisions() = %+v, want the v2 presentation revision first", revisions)
 	}
 	// v3 adds the seasonal taxa for the holidays the original seed lacked (#2030).
@@ -60,6 +60,18 @@ func TestSeedForest_VocabularyGrowsThroughAdditiveRevisions(t *testing.T) {
 		if got, ok := f.Resolve(tx.Slug); !ok || got != tx.Slug {
 			t.Errorf("Resolve(%q) = (%q,%v), want the seeded seasonal taxon", tx.Slug, got, ok)
 		}
+	}
+	// v4 adds the formats of the opt-in kinds (#2037); news is an interstitial.
+	if revisions[2].Version != 4 {
+		t.Fatalf("third revision = v%d, want v4", revisions[2].Version)
+	}
+	for raw, want := range map[string]string{"political": "political", "campaign-ad": "political", "weather": "news"} {
+		if got, ok := f.Resolve(raw); !ok || got != want {
+			t.Errorf("Resolve(%q) = (%q,%v), want (%q,true)", raw, got, ok, want)
+		}
+	}
+	if news, _ := f.Get("news"); news.Parent != "interstitial" || news.Axis != taxonomy.AxisFormat {
+		t.Errorf("news taxon = %+v, want a format under interstitial", news)
 	}
 }
 

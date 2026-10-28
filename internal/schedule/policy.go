@@ -251,7 +251,7 @@ type FillerSelection struct {
 	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
 	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
 	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Kinds      []string         `json:"kinds,omitempty"`      // empty = the default kinds; else the chosen subset
+	Kinds      []string         `json:"kinds,omitempty"`      // empty = the default kinds (all but political and news); else the chosen subset
 	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
 	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
 	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
@@ -320,6 +320,7 @@ var (
 	fillerKinds = map[string]bool{
 		"commercial": true, "bumper": true, "station_id": true,
 		"psa": true, "trailer": true, "interstitial": true,
+		"political": true, "news": true,
 	}
 	fillerAudiences = map[string]bool{
 		"kids": true, "family": true, "general": true, "late_night": true,

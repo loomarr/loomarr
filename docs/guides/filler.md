@@ -48,6 +48,10 @@ era, audience or tags.
 On the same section you can change how often the channel breaks, and which clips it draws from.
 Once you edit that choice, it's yours: later refinements don't overwrite it.
 
+Political ads and news and weather segments stay off every channel until you tick them under
+**Clip kinds**. They still download and get checked, so ticking one takes effect at once. A nearby
+station's own news is the exception: it plays wherever that station's idents play.
+
 ## If a clip gets stuck
 
 Each check retries on its own, with backoff. To retry now, fix the cause, then expand the clip's

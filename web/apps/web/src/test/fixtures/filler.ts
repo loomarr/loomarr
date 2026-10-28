@@ -1,3 +1,4 @@
+import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
 
@@ -56,4 +57,15 @@ const defectReport = (over: Partial<FillerDefectReportDTO> = {}): FillerDefectRe
   ...over,
 });
 
-export { defectReport, readiness };
+// `DEFAULT_KINDS` is what the server's coverage answer says a channel that chose no kinds airs:
+// every kind except the opt-in political and news (#2037).
+const DEFAULT_KINDS: CoverageDTO["defaultKinds"] = [
+  "commercial",
+  "bumper",
+  "station_id",
+  "psa",
+  "trailer",
+  "interstitial",
+];
+
+export { DEFAULT_KINDS, defectReport, readiness };

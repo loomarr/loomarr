@@ -22,6 +22,8 @@ const KIND_LABEL: Record<ClipDTO["kind"], string> = {
   psa: "PSA",
   trailer: "Trailer",
   interstitial: "Interstitial",
+  political: "Political ad",
+  news: "News & weather",
 };
 
 // Keyed loosely because ClipDTO's audience includes "" (unset); the guard below skips it.

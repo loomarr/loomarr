@@ -67,6 +67,8 @@ const KIND_LABEL: Record<(typeof KINDS)[number], string> = {
   psa: "PSAs",
   trailer: "Trailers",
   interstitial: "Interstitials",
+  political: "Political ads",
+  news: "News & weather",
 };
 
 const AUDIENCE_LABEL: Record<(typeof AUDIENCES)[number], string> = {
@@ -84,6 +86,16 @@ const toggle = (list: string[] | null | undefined, value: string): string[] | un
   if (set.has(value)) set.delete(value);
   else set.add(value);
   return set.size === 0 ? undefined : [...set];
+};
+
+// toggleKind — toggle a clip kind against what the checklist SHOWS. No kinds chosen shows the
+// server's default set ticked (#2037), so the first tick starts from it rather than from nothing;
+// a set that matches the default again saves as no choice, so the channel keeps following it.
+const toggleKind = (shown: string[], value: string, defaults: string[]): string[] | undefined => {
+  const next = toggle(shown, value);
+  const isDefault =
+    next !== undefined && next.length === defaults.length && defaults.every((kind) => next.includes(kind));
+  return isDefault ? undefined : next;
 };
 
 const YEAR_MIN = 1900;
@@ -286,6 +298,7 @@ const FillerCriteria = ({
   scopeEra,
   programmingDates,
   installationGeography,
+  defaultKinds,
 }: {
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
@@ -297,6 +310,9 @@ const FillerCriteria = ({
   scopeEra?: { from?: number; to?: number };
   programmingDates?: DateScope;
   installationGeography?: { country?: string; place?: string };
+  // The kinds a channel that chose none airs, from the server's coverage answer. Until it arrives
+  // the checklist cannot show the default, so it stays disabled rather than narrowing from nothing.
+  defaultKinds?: string[];
 }) => {
   const installationPlaceLabel = usePlaceLabel(installationGeography?.place);
   const era = selection.era;
@@ -317,7 +333,9 @@ const FillerCriteria = ({
     : undefined;
   const scopeLabel = rangesLabel(inheritedWindows) ?? scalarScopeLabel(scopeEra);
   const categories = selection.categories ?? [];
-  const kinds = selection.kinds ?? [];
+  const chosenKinds = selection.kinds ?? [];
+  const kinds = chosenKinds.length > 0 ? chosenKinds : (defaultKinds ?? []);
+  const kindsUnknown = chosenKinds.length === 0 && defaultKinds === undefined;
   const productCategories = useProductCategories();
   const [choosingCategories, setChoosingCategories] = useState(false);
   const fixedCountry = installationGeography?.country?.trim().toUpperCase();
@@ -644,10 +662,10 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Kinds — checkboxes over the six playable clip kinds. None checked means the default set
-          (commercials + bumpers + station IDs). */}
+      {/* Kinds — checkboxes over the playable clip kinds. A channel that chose none shows the
+          server's default ticked: every kind except political ads and news (#2037). */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).">
+        <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -660,8 +678,8 @@ const FillerCriteria = ({
               <Checkbox
                 id={`filler-kind-${k}`}
                 checked={kinds.includes(k)}
-                disabled={disabled}
-                onChange={() => onChange({ ...selection, kinds: toggle(kinds, k) })}
+                disabled={disabled || kindsUnknown}
+                onChange={() => onChange({ ...selection, kinds: toggleKind(kinds, k, defaultKinds ?? []) })}
               />
               {KIND_LABEL[k]}
             </label>

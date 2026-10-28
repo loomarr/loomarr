@@ -276,7 +276,8 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 	switch state.Axis {
 	case fillerenrichment.AxisKind:
 		if kind := filler.Kind(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
-			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial {
+			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial ||
+			kind == filler.Political || kind == filler.News {
 			err = clips.ClassifyKind(ctx, state.ClipHash, kind, updatedAt)
 		}
 	case fillerenrichment.AxisEra:

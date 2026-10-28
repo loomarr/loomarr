@@ -47,6 +47,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipCreatedAt", func(t *testing.T) { testClipCreatedAt(t, newStore) })
 		t.Run("FillerProgressiveEnrichment", func(t *testing.T) { testFillerProgressiveEnrichment(t, newStore) })
 		t.Run("FillerEnrichmentCandidateSelection", func(t *testing.T) { testFillerEnrichmentCandidateSelection(t, newStore) })
+		t.Run("OptInKindProjection", func(t *testing.T) { testOptInKindProjection(t, newStore) })
 		t.Run("FillerContextResearch", func(t *testing.T) { testFillerContextResearch(t, newStore) })
 		t.Run("SettledGeographyClips", func(t *testing.T) { testSettledGeographyClips(t, newStore) })
 		t.Run("FillerResearchWebUsage", func(t *testing.T) { testFillerResearchWebUsage(t, newStore) })

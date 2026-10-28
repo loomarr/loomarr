@@ -98,6 +98,8 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
       level: "exact",
       total: 0,
       geography: { country: "US", place: "" },
+      // Without it the Clip kinds checklist stays disabled, waiting for the default (#2037).
+      defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
     }),
   ],
   [/^\/v1\/filler$/, (): ListFillerOutputBody => ({ clips: [], total: 0 })],

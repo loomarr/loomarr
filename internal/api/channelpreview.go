@@ -31,7 +31,7 @@ type PodEntryDTO struct {
 	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on member-readable routes (#1980); clients address real clips by hash."`
 	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
 	Name            string `json:"name" doc:"The clip's display name. On member-readable routes (the Guide, a channel's pods) it is viewer copy, and empty when the catalogue name came from the filename, however it reads (#1980, #1988). Clients then show the break's own label. The admin draft preview keeps the filename."`
-	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
 	// Era and Quality are DISPLAY context for the guide's pod hover card (§12): they explain
@@ -148,6 +148,8 @@ type CoverageDTO struct {
 	// Language is the commercial language those clips were limited to (#2030 decision 14).
 	Language             string `json:"language" doc:"The language every counted clip speaks, or wordless: the channel's own commercial language, else the household's. Empty means no language limit."`
 	UndeterminedLanguage int    `json:"undeterminedLanguage" doc:"Commercials whose language could not be determined. They count only on a channel whose commercial language is the household default."`
+	// DefaultKinds lets the page show what "no kinds chosen" airs without its own copy of the rule.
+	DefaultKinds []string `json:"defaultKinds" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news" doc:"The clip kinds a channel that chose none airs: every kind except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."`
 }
 
 // CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
@@ -214,6 +216,7 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		},
 		Language:             report.Language,
 		UndeterminedLanguage: report.UndeterminedLanguage,
+		DefaultKinds:         filler.DefaultKinds(),
 	}
 }
 

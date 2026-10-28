@@ -2,6 +2,7 @@ import type { CoverageDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { RouterHarness } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 
@@ -30,10 +31,11 @@ const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "quality", clips: 9 },
 ];
 
-const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage"> = {
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultKinds"> = {
   geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
+  defaultKinds: DEFAULT_KINDS,
 };
 
 const full: CoverageDTO = {
