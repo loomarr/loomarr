@@ -321,6 +321,8 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
         "filler.pipeline.max_vision",
         "filler.pipeline.max_split_vision",
         "filler.pipeline.max_splits",
+        "filler.defects.judge_look_cents",
+        "filler.defects.judge_daily_cents",
       ],
     },
     {

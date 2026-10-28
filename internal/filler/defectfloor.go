@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -17,13 +18,24 @@ import (
 // for the next; only a first pass over a large catalog takes more than one.
 const defectMeasureBudget = 40 * time.Second
 
+// defectJudgeCalls bounds how many borderline clips one pass puts to the judge. A hosted look is
+// a charge and takes seconds; the rest wait for the next pass.
+const defectJudgeCalls = 6
+
 // DefectRecord is one clip's latest defect measurement and the verdict it earned (#2034).
 type DefectRecord struct {
 	ClipHash   string
 	Readings   defects.Readings
 	Era        int
 	Assessment defects.Assessment
-	MeasuredAt time.Time
+	// Judgement is the judge's ruling on a borderline assessment; nil until one is had.
+	Judgement *defects.Judgement
+	// JudgeFailures counts asks that brought back no ruling since the last one; the clip waits
+	// behind clips with fewer.
+	JudgeFailures int
+	Verdict       defects.Verdict
+	VerdictReason string
+	MeasuredAt    time.Time
 }
 
 // ErrDefectRecordsCorrupt marks a ListClipDefects result that omitted unreadable rows; the rest of
@@ -54,6 +66,7 @@ type DefectFloor struct {
 	store   DefectStore
 	probe   Prober
 	measure MeasureDefectsFunc
+	judge   DefectJudge
 	clipDir string
 	now     func() time.Time
 	log     *slog.Logger
@@ -65,12 +78,14 @@ type DefectFloorResult struct {
 	Reassessed int // judged again from stored readings: a new floor version or a corrected era
 	Pending    int // left for the next pass when the decode budget ran out
 	Failed     int // could not be probed or measured; recorded as undecided with the reason
+	Ruled      int // borderline clips the judge ruled on, or recorded as having no judge
+	Held       int // borderline clips left waiting: the judge was out of reach, out of budget or out of turns
 }
 
-// NewDefectFloor builds the defect floor job.
-func NewDefectFloor(store DefectStore, probe Prober, measure MeasureDefectsFunc, clipDir string,
+// NewDefectFloor builds the defect floor job. A nil judge is the same as no vision model.
+func NewDefectFloor(store DefectStore, probe Prober, measure MeasureDefectsFunc, judge DefectJudge, clipDir string,
 	now func() time.Time, log *slog.Logger) *DefectFloor {
-	return &DefectFloor{store: store, probe: probe, measure: measure, clipDir: clipDir, now: now, log: log}
+	return &DefectFloor{store: store, probe: probe, measure: measure, judge: judge, clipDir: clipDir, now: now, log: log}
 }
 
 // Run measures every clip without a current measurement and re-judges every record whose floor
@@ -95,53 +110,194 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.Hash, b.Hash))
 	})
 	deadline := d.now().Add(defectMeasureBudget)
+	judge := d.judgeNow(ctx)
+	var asks []defectAsk
 	for _, c := range clips {
 		if !defectCandidate(c.Clip) {
 			continue
 		}
 		rec, known := records[c.Hash]
+		changed := false
 		if known && rec.Readings.Version == defects.MeasurementVersion {
-			if rec.Assessment.Version == defects.FloorVersion && rec.Era == c.Era {
-				continue
+			if rec.Assessment.Version != defects.FloorVersion || rec.Era != c.Era {
+				a := defects.Assess(rec.Readings, c.Era)
+				if !defects.SameQuestion(rec.Assessment, a) {
+					rec.Judgement = nil // it ruled on checks this assessment no longer asks about
+				}
+				rec.Era, rec.Assessment = c.Era, a
+				changed = true
+				res.Reassessed++
 			}
-			rec.Era, rec.Assessment = c.Era, defects.Assess(rec.Readings, c.Era)
-			if err := d.store.UpsertClipDefects(ctx, rec); err != nil {
-				return res, err
-			}
-			res.Reassessed++
-			continue
-		}
-		if ctx.Err() != nil || d.now().After(deadline) {
-			res.Pending++
-			continue
-		}
-		readings, err := d.measureClip(ctx, c.Clip)
-		if err != nil {
-			if ctx.Err() != nil {
-				res.Pending++ // the pass was cancelled, not the clip
-				continue
-			}
-			// Recorded rather than retried: a clip with no picture, or one the decoder rejects, fails
-			// the same way every hour and would keep spending the budget ahead of healthy clips. A
-			// new MeasurementVersion measures it again.
-			d.warn("defects: clip could not be measured", "clip", c.Hash, "err", err)
-			readings = defects.Readings{Version: defects.MeasurementVersion, Unmeasurable: err.Error()}
-			res.Failed++
 		} else {
-			res.Measured++
+			if ctx.Err() != nil || d.now().After(deadline) {
+				res.Pending++
+				continue
+			}
+			readings, err := d.measureClip(ctx, c.Clip)
+			if err != nil {
+				if ctx.Err() != nil {
+					res.Pending++ // the pass was cancelled, not the clip
+					continue
+				}
+				// Recorded rather than retried: a clip with no picture, or one the decoder rejects, fails
+				// the same way every hour and would keep spending the budget ahead of healthy clips. A
+				// new MeasurementVersion measures it again.
+				d.warn("defects: clip could not be measured", "clip", c.Hash, "err", err)
+				readings = defects.Readings{Version: defects.MeasurementVersion, Unmeasurable: err.Error()}
+				res.Failed++
+			} else {
+				res.Measured++
+			}
+			rec = DefectRecord{ClipHash: c.Hash, Readings: readings, Era: c.Era,
+				Assessment: defects.Assess(readings, c.Era), MeasuredAt: d.now()}
+			changed = true
 		}
-		if err := d.store.UpsertClipDefects(ctx, DefectRecord{
-			ClipHash: c.Hash, Readings: readings, Era: c.Era,
-			Assessment: defects.Assess(readings, c.Era), MeasuredAt: d.now(),
-		}); err != nil {
+		switch {
+		case rec.Assessment.Outcome != defects.Borderline:
+			if rec.Judgement != nil || rec.JudgeFailures != 0 {
+				rec.Judgement, rec.JudgeFailures, changed = nil, 0, true
+			}
+		case !needsRuling(rec.Judgement, judge):
+		case errors.Is(judge.err, ErrNoDefectJudge):
+			rec.Judgement, changed = &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingNoJudge}, true
+			res.Ruled++
+		default:
+			asks = append(asks, defectAsk{clip: c, rec: rec})
+		}
+		if err := d.save(ctx, &rec, changed); err != nil {
 			return res, err
 		}
 	}
-	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0) {
+	// The judge's turn, after every clip is measured: fewest failed asks first, so a clip the judge
+	// keeps failing on falls behind the rest instead of taking every turn.
+	slices.SortStableFunc(asks, func(a, b defectAsk) int { return cmp.Compare(a.rec.JudgeFailures, b.rec.JudgeFailures) })
+	for _, ask := range asks {
+		changed, err := d.ask(ctx, &ask, &judge, &res)
+		if err != nil {
+			return res, err
+		}
+		if err := d.save(ctx, &ask.rec, changed); err != nil {
+			return res, err
+		}
+	}
+	if d.log != nil && (res.Measured > 0 || res.Reassessed > 0 || res.Failed > 0 || res.Ruled > 0) {
 		d.log.Info("defects: records current", "measured", res.Measured, "reassessed", res.Reassessed,
-			"pending", res.Pending, "failed", res.Failed)
+			"pending", res.Pending, "failed", res.Failed, "ruled", res.Ruled, "held", res.Held)
 	}
 	return res, ctx.Err()
+}
+
+// judgeState is the judge as one pass sees it: asked which model it is once, then counted down.
+type judgeState struct {
+	model string
+	err   error // ErrNoDefectJudge, or why the judge could not be reached
+	calls int
+}
+
+func (d *DefectFloor) judgeNow(ctx context.Context) judgeState {
+	if d.judge == nil {
+		return judgeState{err: ErrNoDefectJudge}
+	}
+	model, err := d.judge.Model(ctx)
+	return judgeState{model: model, err: err}
+}
+
+// defectAsk is a borderline clip waiting for the judge this pass.
+type defectAsk struct {
+	clip DefectClip
+	rec  DefectRecord
+}
+
+// save decides the record's verdict and writes it when anything changed.
+func (d *DefectFloor) save(ctx context.Context, rec *DefectRecord, changed bool) error {
+	verdict, reason := defects.Decide(rec.Assessment, rec.Judgement)
+	if verdict != rec.Verdict || reason != rec.VerdictReason {
+		rec.Verdict, rec.VerdictReason, changed = verdict, reason, true
+	}
+	if !changed {
+		return nil
+	}
+	return d.store.UpsertClipDefects(ctx, *rec)
+}
+
+// ask puts one borderline clip to the judge and reports whether its record changed. A failure that
+// belongs to the clip is counted against it and the next clip is asked; a failure of the judge
+// itself (an outage, a spent budget) ends the asking for this pass, and every clip still waiting
+// stays pending for the next.
+func (d *DefectFloor) ask(ctx context.Context, ask *defectAsk, judge *judgeState, res *DefectFloorResult) (bool, error) {
+	rec, c := &ask.rec, ask.clip.Clip
+	if errors.Is(judge.err, ErrNoDefectJudge) {
+		rec.Judgement = &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingNoJudge}
+		res.Ruled++
+		return true, nil
+	}
+	if judge.err != nil || judge.calls >= defectJudgeCalls || ctx.Err() != nil {
+		res.Held++
+		return false, nil
+	}
+	judge.calls++
+	j, err := d.ruleOn(ctx, rec, c)
+	switch {
+	case err == nil:
+		rec.Judgement, rec.JudgeFailures = &j, 0
+		res.Ruled++
+		return true, nil
+	case errors.Is(err, ErrNoDefectJudge):
+		// The settings changed under the pass: record it, and every clip after it, as having none.
+		judge.err = ErrNoDefectJudge
+		rec.Judgement = &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingNoJudge}
+		res.Ruled++
+		return true, nil
+	case errors.Is(err, ErrDefectJudgeHeld):
+		judge.err = err
+		res.Held++
+		return false, nil
+	case ctx.Err() != nil:
+		res.Held++ // the pass was cancelled, not the clip
+		return false, nil
+	}
+	d.warn("defects: judge could not rule", "clip", c.Hash, "err", err)
+	rec.JudgeFailures++
+	res.Held++
+	if !errors.Is(err, ErrDefectJudgeClip) {
+		judge.err = err // the judge itself failed: no more asks this pass
+	}
+	return true, nil
+}
+
+// ruleOn asks the judge about one clip, probing the file for its length when the catalog has none.
+func (d *DefectFloor) ruleOn(ctx context.Context, rec *DefectRecord, c Clip) (defects.Judgement, error) {
+	file, err := ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
+	if err != nil {
+		return defects.Judgement{}, fmt.Errorf("%w: %w", ErrDefectJudgeClip, err)
+	}
+	durationMs := c.DurationMs
+	if durationMs <= 0 && d.probe != nil {
+		if p, err := d.probe(ctx, file); err == nil {
+			durationMs = p.DurationMs
+		}
+	}
+	if durationMs <= 0 {
+		return defects.Judgement{}, fmt.Errorf("%w: the clip's length is unknown", ErrDefectJudgeClip)
+	}
+	return d.judge.Rule(ctx, DefectJudgeRequest{
+		ClipHash: c.Hash, File: file, DurationMs: durationMs, Era: rec.Era, Assessment: rec.Assessment,
+	})
+}
+
+// needsRuling reports whether a borderline clip should be put to the judge as it stands now. A
+// ruling under an older judge contract is asked again; a "no judge" record once a judge exists;
+// an abstention only of a different model, since the same one would answer the same.
+func needsRuling(j *defects.Judgement, judge judgeState) bool {
+	switch {
+	case j == nil || j.Version != defects.JudgeVersion:
+		return true
+	case j.Ruling == defects.RulingNoJudge:
+		return judge.err == nil
+	case j.Ruling == defects.RulingAbstain:
+		return judge.err == nil && j.Model != judge.model
+	}
+	return false
 }
 
 // measureClip probes the playback file for its frame size and sound, then measures it. The file

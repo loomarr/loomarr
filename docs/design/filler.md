@@ -564,12 +564,43 @@ inputs. Until enforcement (#2036) a verdict is only recorded.
   - Softness and dropouts are era texture, so their bars relax with age.
   - Only an HD-era ad is judged for upscaling.
   - Letterbox and pillarbox are an aspect ratio. Windowboxing needs a border on both axes.
-- **Each check has two bars.** Below the lower bar is a pass, above the upper bar a fail, and
-  between them borderline. The borderline band is for a vision model to rule on (#2034 step 4b).
-  The worst finding is the clip's outcome. Too little picture (under two seconds of samples) is
-  undecided, never a pass.
-- **The bars are provisional** (`floor-v1-provisional`). They were set from synthetic damage
+- **Each picture check has two bars.** Below the lower bar is a pass, above the upper bar a fail,
+  and between them borderline. The worst finding is the clip's outcome. Too little picture (under
+  two seconds of samples) is undecided, never a pass. Clipping has one bar: the judge sees stills
+  and cannot hear, so sound is settled by the detector alone.
+- **The bars are provisional** (`floor-v2-provisional`). They were set from synthetic damage
   (`testkit.FillerDefectMedia`), and the labelled corpus calibrates them in step 4c.
+- **A vision model rules on the borderline band** (`filler.VisionDefectJudge`). It sees six stills
+  spread across the clip, the names of the borderline checks, and what a fair bar is for the era.
+  It answers pass, fail or abstain with a reason (`defects.JudgeVersion`). The record keeps the
+  ruling and a final verdict (`defects.Decide`):
+  - pass, fail or undecided straight from the detectors outside the band;
+  - the judge's pass or fail inside it;
+  - **fail when the judge abstains, or when no vision model is configured**, each with a reason that
+    says so. A "no judge" record is put to the judge once one is configured; an abstention only to
+    a different model (provider and model), since the same one would answer the same;
+  - **pending** when no ruling came back. The next pass asks again (#548).
+
+  The judge is asked after every clip is measured, at most six times a pass, clips with the fewest
+  failed asks first. A failure of the judge itself (an outage, a spent budget) ends the asking for
+  the pass. A failure that belongs to the clip (stills that cannot be read, a garbled reply, no
+  known length) is counted against the clip and the next one is asked, so a clip the judge keeps
+  failing on waits behind the rest instead of taking every turn. A garbled reply is not an
+  abstention: the model did not decline. The model's reason is stored as valid UTF-8 with no
+  control characters, cut to 200 runes.
+
+  The judge is the vision rung's model (`filler.vision.*`), so it needs vision switched on, and a
+  ruling names the model the endpoint actually serves. Each hosted look is reserved in the filler
+  inference ledger (#551) at `filler.defects.judge_look_cents` before the call and settled outside
+  the pass's context, so a shutdown does not lose a paid answer. A reported charge is recorded
+  even on a failed call; a hosted call that reported none counts at its reservation, failed or
+  not, since a provider may bill a call that timed out. The per-look ceiling is what is reserved,
+  not a hard cap: a charge above it is recorded and counts toward the day. A look waits once the
+  day's metered filler spend would pass `filler.defects.judge_daily_cents`. An operator-run
+  endpoint (Ollama, or an OpenAI-compatible server on the operator's network) reserves nothing,
+  whatever its provider is called. A ruling survives a re-assessment that asks the same question
+  (the same band and borderline checks), so a recalibration that moves no clip in or out of the
+  band costs no new look.
 - **Records are versioned** (`filler_clip_defects`). The hourly `filler-defects` job
   (`job.filler_defects.schedule`) handles each kind of staleness differently:
   - no record, or one under an older measurement version: measured, within a bounded decode
