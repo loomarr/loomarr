@@ -2443,7 +2443,7 @@ components:
           description: "The language every counted clip speaks, or wordless: the channel's own commercial language, else the household's. Empty means no language limit."
           type: string
         level:
-          description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card.
+          description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means no ad matches and breaks run on station material, else the embedded card.
           enum:
             - exact
             - widened
@@ -3855,6 +3855,7 @@ components:
             - transcode
             - split
             - screen
+            - defects
             - language
             - transcribe
             - tag
@@ -7958,7 +7959,7 @@ components:
           format: int64
           type: integer
         level:
-          description: Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays.
+          description: "Which ladder rung this channel's breaks resolve at. bumper_card means no ad can fill them: the channel's station material plays, else the embedded card."
           enum:
             - exact
             - widened
@@ -9478,6 +9479,7 @@ components:
             - transcode
             - split
             - screen
+            - defects
             - language
             - transcribe
             - vision

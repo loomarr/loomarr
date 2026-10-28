@@ -26,3 +26,11 @@ best source representation, not the cheapest file.
   disposable.
 - Split children bind the parent's media-asset digest and source role, so a later playback-recipe
   change cannot change what a split meant.
+
+## Amendment (2026-10-27, #2036)
+
+**An admitted ad keeps its master and its playback copy; its evidence copy is dropped.** Every
+reader of evidence runs before admission, so after it the evidence copy is only storage. A rewind
+that needs it again starts at the transcode, which rebuilds it from the master under the same
+recipe. A master is deleted only with the one clip that names it, when that clip is merged into a
+better copy of its ad or retired for failing the defect floor.
