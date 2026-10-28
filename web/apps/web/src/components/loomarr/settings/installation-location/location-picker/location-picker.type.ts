@@ -2,7 +2,7 @@ import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 
 interface LocationValue {
   country: string;
-  market?: string;
+  place?: string;
 }
 
 interface LocationPickerProps {
@@ -13,6 +13,8 @@ interface LocationPickerProps {
   locked?: boolean;
   lockedLabel?: string;
   error?: string;
+  // Only results in this country are offered (the installation country, for a channel).
+  restrictCountry?: string;
 }
 
 export type { LocationPickerProps, LocationValue };

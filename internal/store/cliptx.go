@@ -25,7 +25,7 @@ func (s *sqlStore) clipsIn(tx Querier) ClipTx { return ClipTx{s: s, tx: tx} }
 
 // ClipGeography is the broadcast provenance a clip's geography columns hold.
 type ClipGeography struct {
-	Scope, Country, Market, Network, Station, AirDate string
+	Scope, Country, Network, Station, AirDate string
 }
 
 // Require reports ErrNotFound for a clip that does not exist.
@@ -90,10 +90,10 @@ func (c ClipTx) FillLanguage(ctx context.Context, hash, language string, at time
 // exception: the clip edit writes it directly, and rows edited before the axis existed have no axis
 // state to protect them.
 func (c ClipTx) SetGeography(ctx context.Context, hash string, g ClipGeography, evidence string, at time.Time) error {
-	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = ?, country = ?, market = ?,
+	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = ?, country = ?,
 		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ?
 		WHERE hash = ? AND geo_evidence <> 'operator'`),
-		g.Scope, g.Country, g.Market, g.Network, g.Station, g.AirDate, evidence, epoch(at), hash)
+		g.Scope, g.Country, g.Network, g.Station, g.AirDate, evidence, epoch(at), hash)
 	return err
 }
 
@@ -101,7 +101,7 @@ func (c ClipTx) SetGeography(ctx context.Context, hash string, g ClipGeography, 
 // a registered-source default (geo_evidence `registered_source:<id>`). Locations from item metadata,
 // content, research, or an operator carry other evidence and are left alone.
 func (c ClipTx) ClearSourceDefaultGeography(ctx context.Context, hash string, at time.Time) error {
-	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = 'unknown', country = '', market = '',
+	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET geographic_scope = 'unknown', country = '',
 		network = '', station = '', air_date = '', geo_evidence = '', updated_at = ?
 		WHERE hash = ? AND geo_evidence LIKE 'registered_source:%'`), epoch(at), hash)
 	return err

@@ -102,7 +102,8 @@ const AccessSettings = () => {
             entries={entries}
             values={{
               "filler.home_country": liveValue("filler.home_country"),
-              "filler.home_market": liveValue("filler.home_market"),
+              "filler.home_place": liveValue("filler.home_place"),
+              "filler.local_radius_km": liveValue("filler.local_radius_km"),
             }}
             onChange={setEdit}
             card

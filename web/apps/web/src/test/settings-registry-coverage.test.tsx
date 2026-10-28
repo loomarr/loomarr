@@ -113,7 +113,9 @@ const ALLOWLIST: Record<string, string> = {
     "Edited through AiModelSettings' vision picker (AI page footer), not a blocks[].keys row.",
   "filler.home_country":
     "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
-  "filler.home_market":
+  "filler.home_place":
+    "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
+  "filler.local_radius_km":
     "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
   "channel.reconcile_every":
     "No row today — Channel defaults' 'Schedule horizon' block only lists sched.window_hours for the channels group.",

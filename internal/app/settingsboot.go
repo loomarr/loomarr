@@ -107,7 +107,7 @@ func (r resolved) str(key string) string {
 // homeGeography is the installation's location with its region preference (#2035).
 func (r resolved) homeGeography() filler.Geography {
 	return filler.Geography{
-		Country: r.str("filler.home_country"), Market: r.str("filler.home_market"),
+		Country: r.str("filler.home_country"), Place: r.str("filler.home_place"),
 		Fallback: r.str("filler.region_fallback"),
 	}.Normalize()
 }

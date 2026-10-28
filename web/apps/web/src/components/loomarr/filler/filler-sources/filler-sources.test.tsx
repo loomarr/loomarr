@@ -126,7 +126,6 @@ describe("FillerSources", () => {
           source({
             kind: "archive",
             effectiveCountry: "US",
-            effectiveMarket: "New York",
           }),
         ]}
       />,

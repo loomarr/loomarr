@@ -6,6 +6,7 @@ import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
+import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -295,8 +296,9 @@ const FillerCriteria = ({
   // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
   scopeEra?: { from?: number; to?: number };
   programmingDates?: DateScope;
-  installationGeography?: { country?: string; market?: string };
+  installationGeography?: { country?: string; place?: string };
 }) => {
+  const installationPlaceLabel = usePlaceLabel(installationGeography?.place);
   const era = selection.era;
   const eraWindows = selection.eraWindows;
   // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
@@ -325,13 +327,13 @@ const FillerCriteria = ({
     // (checkbox row) span both columns.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Country is a hard boundary. A local market also excludes local clips from every other market; timezone is never used as location.">
+        <FieldLabel help="Country is a hard boundary. A place also limits local clips to TV stations near it; timezone is never used as location.">
           Geography
         </FieldLabel>
         {selection.geography == null ? (
           <p className="text-muted-foreground text-xs" data-testid="geography-inherited">
             {installationGeography?.country
-              ? `Following this installation (${installationGeography.country}${installationGeography.market ? ` · ${installationGeography.market}` : ""}).`
+              ? `Following this installation (${installationGeography.country}${installationPlaceLabel ? ` · ${installationPlaceLabel}` : ""}).`
               : "No installation geography is configured; legacy unrestricted matching remains active."}{" "}
             <button
               type="button"
@@ -342,10 +344,8 @@ const FillerCriteria = ({
               onClick={() =>
                 onChange({
                   ...selection,
-                  geography: {
-                    country: installationGeography?.country ?? "US",
-                    market: installationGeography?.market,
-                  },
+                  // The place stays empty, so the channel keeps following the installation's.
+                  geography: { country: installationGeography?.country ?? "US" },
                 })
               }
             >
@@ -377,23 +377,21 @@ const FillerCriteria = ({
                   }
                 />
               </div>
-              <div className="flex min-w-52 flex-1 flex-col gap-1">
-                <Label htmlFor="filler-market" className="text-muted-foreground text-xs">
-                  Local market (optional)
-                </Label>
-                <Input
-                  id="filler-market"
-                  disabled={disabled}
-                  defaultValue={selection.geography.market ?? ""}
-                  key={`market-${selection.geography.market ?? ""}`}
-                  placeholder="New York"
-                  onBlur={(event) =>
+              <div className="min-w-52 flex-1">
+                <LocationPicker
+                  value={{
+                    country: fixedCountry ?? selection.geography.country,
+                    place: selection.geography.place,
+                  }}
+                  restrictCountry={fixedCountry}
+                  locked={disabled}
+                  onChange={(location) =>
                     onChange({
                       ...selection,
                       geography: {
                         ...selection.geography!,
-                        country: fixedCountry ?? selection.geography!.country,
-                        market: event.target.value.trim() || undefined,
+                        country: fixedCountry ?? location.country,
+                        place: location.place || undefined,
                       },
                     })
                   }
@@ -401,7 +399,7 @@ const FillerCriteria = ({
               </div>
             </div>
             <p className="text-muted-foreground text-xs">
-              A blank market means country-wide national filler only.{" "}
+              A blank place follows the installation's city; with no city, only national filler airs.{" "}
               <button
                 type="button"
                 className="text-signal underline-offset-2 hover:underline disabled:opacity-50"

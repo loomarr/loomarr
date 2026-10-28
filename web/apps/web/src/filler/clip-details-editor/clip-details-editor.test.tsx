@@ -3,6 +3,7 @@ import { getListTaxonomyMockHandler, getTagFillerClipMockHandler } from "@loomar
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
@@ -125,5 +126,75 @@ describe("optional clip detail correction", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save details" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
     expect(payload).toMatchObject({ hash: "correction-clip", name: "Fizzbolt Summer Sale" });
+  });
+
+  it("pre-fills a local clip's call sign and sends it", async () => {
+    let payload: unknown;
+    const onSaved = vi.fn();
+    server.use(
+      getTagFillerClipMockHandler(async ({ request }) => {
+        payload = await request.json();
+        return clip;
+      }),
+    );
+    const local: ClipDTO = {
+      ...clip,
+      geographicScope: "local",
+      station: "fcc:12345",
+      stationCallSign: "WQXT",
+      stationLabel: "WQXT · Harborview, OH",
+    };
+    render(<ClipDetailsEditor clip={local} onSaved={onSaved} />, { wrapper });
+    const station = screen.getByLabelText("Station call sign");
+    expect(station).toHaveValue("WQXT");
+    await userEvent.clear(station);
+    await userEvent.type(station, "WZZB-TV");
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(payload).toMatchObject({ geography: { scope: "local", country: "US", station: "WZZB-TV" } });
+  });
+
+  it("keeps a national clip's station by id when another detail changes", async () => {
+    let payload: unknown;
+    const onSaved = vi.fn();
+    server.use(
+      getTagFillerClipMockHandler(async ({ request }) => {
+        payload = await request.json();
+        return clip;
+      }),
+    );
+    const credited: ClipDTO = {
+      ...clip,
+      geographicScope: "national",
+      station: "fcc:12345",
+      stationCallSign: "WQXT",
+      stationLabel: "WQXT · Harborview, OH",
+    };
+    render(<ClipDetailsEditor clip={credited} onSaved={onSaved} />, { wrapper });
+    expect(screen.getByLabelText("Station call sign (optional)")).toHaveValue("WQXT");
+    await userEvent.clear(screen.getByLabelText("Advertiser"));
+    await userEvent.type(screen.getByLabelText("Advertiser"), "Fizzbolt");
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(payload).toMatchObject({ geography: { scope: "national", station: "fcc:12345" } });
+  });
+
+  it("shows the server's reason when the call sign is not recognised", async () => {
+    server.use(
+      http.patch("*/v1/filler/tags", () =>
+        HttpResponse.json(
+          {
+            title: "Unprocessable Entity",
+            status: 422,
+            detail: "No station is called WZZB-TV on that date.",
+          },
+          { status: 422, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      ),
+    );
+    render(<ClipDetailsEditor clip={{ ...clip, geographicScope: "local" }} />, { wrapper });
+    await userEvent.type(screen.getByLabelText("Station call sign"), "WZZB-TV");
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    expect(await screen.findByText(/No station is called WZZB-TV/)).toBeInTheDocument();
   });
 });

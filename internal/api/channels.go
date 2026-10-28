@@ -541,6 +541,9 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
+	if err := validateChannelPlace(ch.Policy); err != nil {
+		return nil, err
+	}
 	ch.UpdatedAt = time.Now().Unix() // SaveChannel does not stamp this
 	saved, err := s.store.SaveChannel(ctx, ch)
 	if err != nil {

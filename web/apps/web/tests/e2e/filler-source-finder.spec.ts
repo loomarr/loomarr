@@ -337,7 +337,6 @@ test("registered sources stay compact and open a scalable source workspace", asy
       ready: !attention,
       locationSource: "installation",
       effectiveCountry: "US",
-      effectiveMarket: "New York City",
       actions: attention ? ["enable"] : ["fetch", "search", "disable", "remove", "edit_location"],
     };
   });
@@ -638,7 +637,7 @@ for (const viewport of [
               readiness: locationReady ? "ready" : "needs_location",
               ready: locationReady,
               locationSource: locationReady ? "installation" : "missing",
-              ...(locationReady ? { effectiveCountry: "US", effectiveMarket: "New York City" } : {}),
+              ...(locationReady ? { effectiveCountry: "US" } : {}),
               actions: locationReady
                 ? ["fetch", "search", "disable", "remove", "edit_location"]
                 : ["set_location", "disable", "remove"],
@@ -688,7 +687,7 @@ for (const viewport of [
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("region", { name: "Unsaved changes" })).toHaveCount(0);
     expect(backend.state.edits["filler.home_country"]).toBe("US");
-    expect(backend.state.edits["filler.home_market"]).toBe("New York City");
+    expect(backend.state.edits["filler.home_place"]).toBe("5128581");
 
     await page.goto("/filler/sources");
     await expect(page.getByText("2 of 2 ready")).toBeVisible();

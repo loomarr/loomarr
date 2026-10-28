@@ -200,7 +200,7 @@ func (s *Server) fillerHomeGeography() filler.Geography {
 	}
 	return filler.Geography{
 		Country:  s.liveConfig("filler.home_country"),
-		Market:   s.liveConfig("filler.home_market"),
+		Place:    s.liveConfig("filler.home_place"),
 		Fallback: s.liveConfig("filler.region_fallback"),
 	}.Normalize()
 }

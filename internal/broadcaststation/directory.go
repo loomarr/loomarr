@@ -5,12 +5,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/installationlocation"
 )
 
 // Directory resolves the call signs a clip's text names to stations. It is immutable once built and
 // safe for concurrent use.
 type Directory struct {
-	bySign map[string][]holding
+	stations []Station
+	byID     map[string]int
+	bySign   map[string][]holding
 }
 
 type holding struct {
@@ -20,14 +24,67 @@ type holding struct {
 
 // NewDirectory indexes stations by every call sign they held.
 func NewDirectory(stations []Station) *Directory {
-	d := &Directory{bySign: map[string][]holding{}}
+	d := &Directory{stations: stations, byID: map[string]int{}, bySign: map[string][]holding{}}
 	for i := range stations {
 		s := &stations[i]
+		d.byID[s.ID] = i
 		for _, c := range s.CallSigns {
 			d.bySign[c.Sign] = append(d.bySign[c.Sign], holding{station: s, span: c})
 		}
 	}
 	return d
+}
+
+// Near returns the ids of the stations in country whose community of license lies within km of the
+// coordinates: the stations a household there could receive (#2059 decision 2).
+func (d *Directory) Near(country string, latitude, longitude, km float64) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range d.stations {
+		if s.Country == country && installationlocation.DistanceKM(latitude, longitude, s.Latitude, s.Longitude) <= km {
+			out[s.ID] = true
+		}
+	}
+	return out
+}
+
+// Station returns the station with the given id.
+func (d *Directory) Station(id string) (Station, bool) {
+	at, ok := d.byID[id]
+	if !ok {
+		return Station{}, false
+	}
+	return d.stations[at], true
+}
+
+// Resolve returns the station an operator means by a call sign (with or without its suffix) or a
+// station id, on airDate when one is given. Like Identify, two candidates mean no station.
+func (d *Directory) Resolve(callSignOrID, airDate string) (Station, bool) {
+	value := strings.TrimSpace(callSignOrID)
+	if s, ok := d.Station(value); ok {
+		return s, true
+	}
+	sign := NormalizeCallSign(value)
+	if sign == "" {
+		return Station{}, false
+	}
+	window := CallSign{}
+	if day, err := time.Parse(time.DateOnly, airDate); err == nil {
+		window = CallSign{From: airDate, To: day.AddDate(0, 0, 1).Format(time.DateOnly)}
+	}
+	var found *Station
+	for _, h := range d.bySign[sign] {
+		if !overlaps(h.span, window) {
+			continue
+		}
+		if found != nil && found.ID != h.station.ID {
+			return Station{}, false
+		}
+		found = h.station
+	}
+	if found == nil {
+		return Station{}, false
+	}
+	return *found, true
 }
 
 // Match is the one station a clip's text names, and the call sign and date that named it.

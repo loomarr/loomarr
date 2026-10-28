@@ -18,11 +18,6 @@ const countryName = (country: string) => {
   }
 };
 
-const locationLabel = (country: string, market: string) => {
-  const name = countryName(country);
-  return market ? `${market}, ${name || country}` : name || country;
-};
-
 // One location control for setup, settings, and source-specific exceptions. Search result
 // behavior and optional device/network detection stay behind this interface so every caller gets
 // the same keyboard, loading, and error behavior.
@@ -34,16 +29,28 @@ const LocationPicker = ({
   locked = false,
   lockedLabel,
   error,
+  restrictCountry,
 }: LocationPickerProps) => {
   const listID = useId();
-  const selectedLabel = locationLabel(value.country, value.market ?? "");
+  const place = value.place ?? "";
+  const [evidence, setEvidence] = useState<LocationDTO>();
+  // A saved place is an opaque id; its label is fetched. A place just picked here already
+  // carries its label, and a country-only value labels itself.
+  const pickedLabel = evidence && (evidence.place ?? "") === place ? evidence.label : undefined;
+  const savedPlace = settingsApi.useLocationsGet(place, {
+    query: { enabled: Boolean(place) && pickedLabel === undefined, retry: false },
+  });
+  const savedLabel = unwrap(savedPlace.data, (body) => body.location)?.label;
+  const countryLabel = countryName(value.country);
+  const selectedLabel = place
+    ? (pickedLabel ?? savedLabel ?? (savedPlace.isError ? countryLabel : ""))
+    : countryLabel;
   const [query, setQuery] = useState(selectedLabel);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [detecting, setDetecting] = useState(false);
   const [locationError, setLocationError] = useState<string>();
-  const [evidence, setEvidence] = useState<LocationDTO>();
 
   useEffect(() => setQuery(selectedLabel), [selectedLabel]);
 
@@ -67,7 +74,10 @@ const LocationPicker = ({
       },
     },
   );
-  const locations = unwrap(search.data, (body) => body.locations) ?? [];
+  const found = unwrap(search.data, (body) => body.locations) ?? [];
+  const locations = restrictCountry
+    ? found.filter((candidate) => candidate.country === restrictCountry)
+    : found;
   const trimmedQuery = query.trim();
   const showResults = !locked && open && trimmedQuery.length >= 2 && query !== selectedLabel;
   const waitingForQuery = debouncedQuery !== trimmedQuery;
@@ -75,12 +85,12 @@ const LocationPicker = ({
   const searching = waitingForQuery || search.isFetching;
   const resolve = settingsApi.useLocationsResolve();
 
-  const choose = (place: LocationDTO) => {
-    setQuery(place.label);
-    setEvidence(place);
+  const choose = (picked: LocationDTO) => {
+    setQuery(picked.label);
+    setEvidence(picked);
     setLocationError(undefined);
     setOpen(false);
-    onChange(place);
+    onChange(picked);
   };
 
   const approximateSuggestion = async () => {
@@ -107,9 +117,9 @@ const LocationPicker = ({
           const response = await resolve.mutateAsync({
             data: { latitude: position.coords.latitude, longitude: position.coords.longitude },
           });
-          const place = unwrap(response, (body) => body.location);
-          if (place) {
-            choose(place);
+          const located = unwrap(response, (body) => body.location);
+          if (located) {
+            choose(located);
             return;
           }
         } catch {
@@ -187,13 +197,13 @@ const LocationPicker = ({
                   role="listbox"
                   className={cn("max-h-64 overflow-auto p-1", !choicesReady && "opacity-50")}
                 >
-                  {locations.map((place, index) => (
+                  {locations.map((candidate, index) => (
                     <button
                       type="button"
                       id={`${listID}-${index}`}
-                      key={place.id}
+                      key={candidate.id}
                       role="option"
-                      aria-label={place.label}
+                      aria-label={candidate.label}
                       tabIndex={-1}
                       aria-selected={index === active}
                       disabled={!choicesReady}
@@ -202,17 +212,17 @@ const LocationPicker = ({
                         index === active ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
                       )}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => choose(place)}
+                      onClick={() => choose(candidate)}
                     >
                       <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{place.market || place.label}</span>
-                        {place.market && (
+                        <span className="truncate">{candidate.city || candidate.label}</span>
+                        {candidate.city && (
                           <span className="text-muted-foreground truncate text-xs">
-                            {[place.region, countryName(place.country)].filter(Boolean).join(", ")}
+                            {[candidate.region, countryName(candidate.country)].filter(Boolean).join(", ")}
                           </span>
                         )}
                       </span>
-                      {place.country === value.country && (place.market ?? "") === (value.market ?? "") && (
+                      {candidate.country === value.country && (candidate.place ?? "") === place && (
                         <Check className="ml-3 size-4 shrink-0" aria-hidden />
                       )}
                     </button>

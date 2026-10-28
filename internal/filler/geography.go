@@ -17,10 +17,11 @@ const (
 	GeographicLocal    = clipcatalog.GeographicLocal
 )
 
-// Geography identifies the audience location a Channel serves.
+// Geography identifies the audience location a Channel serves: a country and, optionally, a Place
+// (an installationlocation id) whose nearby broadcast stations are local to it (#2062).
 type Geography struct {
 	Country string `json:"country,omitempty"`
-	Market  string `json:"market,omitempty"`
+	Place   string `json:"place,omitempty"`
 	// Fallback is the installation's ordered region preference after Country (#2035): countries
 	// whose national commercials air, and whose sources fetch, behind the home country's. It is
 	// the installation's alone, so a channel never stores one; a channel inherits it.
@@ -36,7 +37,7 @@ type Geography struct {
 
 func (g Geography) Normalize() Geography {
 	g.Country = strings.ToUpper(strings.TrimSpace(g.Country))
-	g.Market = strings.Join(strings.Fields(strings.TrimSpace(g.Market)), " ")
+	g.Place = strings.TrimSpace(g.Place)
 	g.Fallback = strings.Join(fallbackCountries(g.Fallback, g.Country), ",")
 	return g
 }
@@ -81,8 +82,8 @@ func (g Geography) regionRanker() func(country string) int {
 func (g Geography) Validate() error {
 	g = g.Normalize()
 	if g.Country == "" {
-		if g.Market != "" {
-			return fmt.Errorf("market requires a country")
+		if g.Place != "" {
+			return fmt.Errorf("place requires a country")
 		}
 		return nil
 	}
@@ -92,10 +93,36 @@ func (g Geography) Validate() error {
 	return nil
 }
 
+// LocalStations returns the ids of the broadcast stations within the local radius of a place in
+// country, or nil when the place is unknown or not in that country.
+type LocalStations func(country, place string) map[string]bool
+
+// Area is a resolved Geography: its country, its fallback countries, and the broadcast stations
+// local to its place.
+type Area struct {
+	Country  string
+	Fallback string
+	Stations map[string]bool
+}
+
+func (a Area) fallsBackTo(country string) bool {
+	return Geography{Country: a.Country, Fallback: a.Fallback}.fallsBackTo(country)
+}
+
+// Resolve turns a Geography into the Area eligibility checks. A nil resolver or an unknown place
+// leaves no local stations, so local clips fail closed.
+func (g Geography) Resolve(local LocalStations) Area {
+	g = g.Normalize()
+	area := Area{Country: g.Country, Fallback: g.Fallback}
+	if local != nil && g.Country != "" && g.Place != "" {
+		area.Stations = local(g.Country, g.Place)
+	}
+	return area
+}
+
 // GeographicallyEligible applies the hard boundary before every matching rung.
 // An empty target preserves legacy behaviour until Installation geography is set.
-func GeographicallyEligible(c Clip, target Geography) bool {
-	target = target.Normalize()
+func GeographicallyEligible(c Clip, target Area) bool {
 	if target.Country == "" {
 		return true
 	}
@@ -105,49 +132,52 @@ func GeographicallyEligible(c Clip, target Geography) bool {
 		// A fallback country's national ads air; its local ones are for someone else's town.
 		return country == target.Country || target.fallsBackTo(country)
 	case GeographicLocal:
-		return country == target.Country && target.Market != "" &&
-			strings.EqualFold(strings.Join(strings.Fields(c.Market), " "), target.Market)
+		return country == target.Country && target.Stations[c.Station]
 	default:
 		return false
 	}
 }
 
 // SourceGeographicallyEligible determines whether an acquisition source can contribute to an
-// installation. Country-only sources are country-wide; a market makes the source local. Once an
-// installation country is configured, an unclassified source is not safe for unattended pulls.
+// installation: it must serve the installation's country. Once an installation country is
+// configured, an unclassified source is not safe for unattended pulls.
 func SourceGeographicallyEligible(source, target Geography) bool {
 	target = target.Normalize()
 	if target.Country == "" {
 		return true
 	}
 	source = source.Normalize()
-	if source.Market == "" && target.fallsBackTo(source.Country) {
-		return true
-	}
-	if source.Country == "" || source.Country != target.Country {
-		return false
-	}
-	if source.Market == "" {
-		return true
-	}
-	return target.Market != "" && strings.EqualFold(source.Market, target.Market)
+	return source.Country != "" && (source.Country == target.Country || target.fallsBackTo(source.Country))
 }
 
 // effectiveGeography is the channel's own location when it names one, else the household's (#2030
-// decision 16). The channel's country and market replace the household's, so a channel of British
-// shows in a US household can opt into British commercials; it is never inferred from where the
-// shows are from. The region preference stays the household's (#2035): a channel inherits it,
-// and Normalize drops the channel's own country from it.
+// decision 16). The channel's country replaces the household's, so a channel of British shows in a
+// US household can opt into British commercials; it is never inferred from where the shows are
+// from. The region preference stays the household's (#2035): a channel inherits it, and Normalize
+// drops the channel's own country from it.
+//
+// An empty place inherits the household's only within the household's country (#2059 decision 8):
+// a household city abroad would put foreign stations in reach, so a channel of another country
+// without a place of its own airs no local clips.
 func effectiveGeography(channel, installation Geography) Geography {
-	if channel = channel.Normalize(); channel.Country != "" {
-		channel.Fallback = installation.Fallback
-		return channel.Normalize()
+	channel, installation = channel.Normalize(), installation.Normalize()
+	if channel.Country == "" {
+		return installation
 	}
-	return installation.Normalize()
+	channel.Fallback = installation.Fallback
+	if channel.Place == "" && channel.Country == installation.Country {
+		channel.Place = installation.Place
+	}
+	return channel.Normalize()
 }
 
-func filterGeography(clips []Clip, target Geography) []Clip {
-	if target.Normalize().Country == "" {
+// area is the resolved boundary a channel's breaks are limited to.
+func (p Policy) area(channel Geography) Area {
+	return effectiveGeography(channel, p.Geography).Resolve(p.LocalStations)
+}
+
+func filterGeography(clips []Clip, target Area) []Clip {
+	if target.Country == "" {
 		return clips
 	}
 	out := make([]Clip, 0, len(clips))

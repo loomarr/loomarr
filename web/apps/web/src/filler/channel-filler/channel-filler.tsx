@@ -11,6 +11,7 @@ import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-se
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
+import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -187,12 +188,15 @@ const DurationChoiceField = ({
 
 // The one-line summary of what this channel's pool is limited to, from the coverage the backend
 // computed: its location boundary and how many commercials fit. Undefined until coverage loads.
-const poolSummary = (coverage: CoverageDTO | undefined): string | undefined => {
+const poolSummary = (
+  coverage: CoverageDTO | undefined,
+  placeLabel: string | undefined,
+): string | undefined => {
   if (!coverage) return undefined;
-  const { country, market } = coverage.geography;
+  const { country } = coverage.geography;
   const fits = `${coverage.total} ${coverage.total === 1 ? "fits" : "fit"} this channel`;
   if (!country) return fits;
-  return `${market ? `${market}, ${country}` : country} commercials only · ${fits}`;
+  return `${placeLabel ?? country} commercials only · ${fits}`;
 };
 
 // The persisted pointer has three meaningful states. This field owns that encoding so the
@@ -334,7 +338,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   const defaultSpacingSeconds = settingEntries.find((e) => e.key === "filler.cooldown_seconds")?.value;
   const defaultCommercialSpacing = defaultSpacingSeconds ? `${defaultSpacingSeconds}s` : undefined;
   const homeCountry = settingEntries.find((e) => e.key === "filler.home_country")?.value;
-  const homeMarket = settingEntries.find((e) => e.key === "filler.home_market")?.value;
+  const homePlace = settingEntries.find((e) => e.key === "filler.home_place")?.value;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.
@@ -342,6 +346,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
     query: { retry: false },
   });
   const coverage = unwrap(coverageQuery.data);
+  const poolPlaceLabel = usePlaceLabel(coverage?.geography.place);
 
   const entries = preview?.entries ?? [];
 
@@ -375,7 +380,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         <div>
           <h3 className="text-base font-semibold">What this channel can play</h3>
           <p className="text-muted-foreground text-sm">
-            {poolSummary(coverage) ?? "Clips that fit this channel's settings right now."}
+            {poolSummary(coverage, poolPlaceLabel) ?? "Clips that fit this channel's settings right now."}
           </p>
         </div>
         {coverageQuery.isLoading ? (
@@ -436,7 +441,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           disabled={isApplying}
           scopeEra={eraOf(policy?.scope?.dates)}
           programmingDates={policy?.scope?.dates}
-          installationGeography={{ country: homeCountry, market: homeMarket }}
+          installationGeography={{ country: homeCountry, place: homePlace }}
         />
       </section>
 

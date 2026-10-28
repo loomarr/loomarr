@@ -719,7 +719,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 		sel.Pinned = append([]string(nil), f.Pinned...)
 		sel.Excluded = append([]string(nil), f.Excluded...)
 		if f.Geography != nil {
-			sel.Geography = filler.Geography{Country: f.Geography.Country, Market: f.Geography.Market}.Normalize()
+			sel.Geography = filler.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
 		}
 		sel.Language = filler.NormalizeLanguage(f.Language)
 		if f.Era != nil {

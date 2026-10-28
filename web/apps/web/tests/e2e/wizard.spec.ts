@@ -59,7 +59,7 @@ test.describe("operator first-run wizard", () => {
     await page.getByRole("option", { name: "New York City, United States" }).click();
     await page.getByRole("button", { name: "Continue" }).click();
     expect(backend.state.edits["filler.home_country"]).toBe("US");
-    expect(backend.state.edits["filler.home_market"]).toBe("New York City");
+    expect(backend.state.edits["filler.home_place"]).toBe("5128581");
 
     // --- step 4: connection checklist -------------------------------------------
     await shot(page, "step-3-checklist", /connect your services/i);

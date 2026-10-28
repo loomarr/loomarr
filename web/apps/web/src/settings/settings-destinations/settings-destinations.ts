@@ -92,7 +92,7 @@ const SETTINGS_DESTINATIONS = [
     owner: "settings.location",
     label: "Your location",
     description: "Set the country and local area Loomarr uses for relevant content.",
-    aliases: ["where I live", "country", "city", "area", "market", "geography"],
+    aliases: ["where I live", "country", "city", "area", "radius", "local stations", "geography"],
     group: "setup",
     path: "/settings/access",
     role: "admin",

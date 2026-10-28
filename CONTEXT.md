@@ -444,24 +444,24 @@ _Avoid_: allocation, downloaded size
 ### Filler geography
 
 **Installation geography**:
-The instance-wide viewer location: a home country and optional local market that constrain automated filler use and supply the default for Channels and Sources without their own geography.
+The instance-wide viewer location: a home country and an optional Place that constrain automated filler use and supply the default for Channels and Sources without their own geography.
 _Avoid_: guide timezone, locale, server location
 
 **Channel geography**:
-The country and optional local market whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may choose a market but cannot escape a configured Installation country.
+The country and optional Place whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may pick its own Place but cannot escape a configured Installation country.
 _Avoid_: station location, timezone, region
 
 **Source geography**:
-The asserted country and optional local market served by a registered filler Source. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
+The country a registered filler Source asserts it serves. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
 _Avoid_: provider location, uploader location, inferred locale
 
 **Geographic scope**:
-Whether a Clip is applicable throughout its country (`national`), only inside one named market (`local`), or is not yet known (`unknown`).
+Whether a Clip is applicable throughout its country (`national`), only near one Broadcast station (`local`), or is not yet known (`unknown`).
 _Avoid_: region, location type, reach
 
-**Market**:
-An operator-visible local broadcast area within one country, such as New York or Seattle. It is an explicit identity, never inferred from a timezone.
-_Avoid_: timezone, city (a Market may cover more than one city), region
+**Place**:
+A city or municipality picked from Loomarr's embedded location index, identified by its index id and located by its coordinates. A `local` Clip airs where its Broadcast station's community of license lies within the local radius (`filler.local_radius_km`) of the Place.
+_Avoid_: market (retired: a typed local-area name), DMA, timezone, region
 
 **Broadcast station**:
 An over-the-air TV station from the shipped station directory (#2059), identified by its FCC facility and located at its community of license. Station material recorded off one is local to it. It is never a Loomarr Channel.

@@ -246,7 +246,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			Kind:            kind,
 			Era:             EraFromName(heuristicName),
 			GeographicScope: GeographicScope(tags.GeographicScope),
-			Country:         tags.Country, Market: tags.Market, Network: tags.Network,
+			Country:         tags.Country, Network: tags.Network,
 			Station: tags.Station, AirDate: tags.AirDate, GeoEvidence: tags.GeoEvidence,
 			DurationMs: pr.DurationMs,
 			// Quality is DERIVED, not probed: a clip with no video stream (or an

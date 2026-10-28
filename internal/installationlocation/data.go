@@ -71,7 +71,7 @@ func readPlaces() ([]Place, error) {
 		}
 		place := Place{ID: record[0], Name: record[1], SearchText: record[2], Country: record[3], CountryName: record[4], Region: record[5]}
 		if record[9] != "country" {
-			place.Market = record[1]
+			place.City = record[1]
 			place.Latitude, err = strconv.ParseFloat(record[6], 64)
 			if err != nil {
 				return nil, fmt.Errorf("installationlocation: parse latitude: %w", err)

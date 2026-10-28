@@ -110,7 +110,6 @@ func (k EvidenceKind) Rank() (EvidenceRank, bool) {
 type Geography struct {
 	Scope   string `json:"scope,omitempty"`
 	Country string `json:"country,omitempty"`
-	Market  string `json:"market,omitempty"`
 	Network string `json:"network,omitempty"`
 	Station string `json:"station,omitempty"`
 	AirDate string `json:"airDate,omitempty"`
@@ -133,7 +132,6 @@ func (v Value) canonical() Value {
 	v.Text = strings.TrimSpace(v.Text)
 	v.Geography.Scope = strings.TrimSpace(v.Geography.Scope)
 	v.Geography.Country = strings.ToUpper(strings.TrimSpace(v.Geography.Country))
-	v.Geography.Market = strings.TrimSpace(v.Geography.Market)
 	v.Geography.Network = strings.TrimSpace(v.Geography.Network)
 	v.Geography.Station = strings.TrimSpace(v.Geography.Station)
 	v.Geography.AirDate = strings.TrimSpace(v.Geography.AirDate)

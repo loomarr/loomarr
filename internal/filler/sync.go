@@ -69,7 +69,6 @@ type RawClip struct {
 	Era             int // initial era from filename; 0 if none
 	GeographicScope GeographicScope
 	Country         string
-	Market          string
 	Network         string
 	Station         string
 	AirDate         string
@@ -505,7 +504,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
 		merged.GeographicScope = rc.GeographicScope
-		merged.Country, merged.Market = rc.Country, rc.Market
+		merged.Country = rc.Country
 		merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = rc.Network, rc.Station, rc.AirDate, rc.GeoEvidence
 		// Quality is scan-owned like duration: it is a property of the FILE, so a re-encode
 		// that changes the resolution should be reflected, and there is no hand-edited value
@@ -547,7 +546,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
 			merged.GeographicScope = existing.GeographicScope
-			merged.Country, merged.Market = existing.Country, existing.Market
+			merged.Country = existing.Country
 			merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = existing.Network, existing.Station, existing.AirDate, existing.GeoEvidence
 			merged.Source = existing.Source
 			// The era suggestion (V34) is loomarr-owned too — a scan knows nothing

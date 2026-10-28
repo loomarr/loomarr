@@ -153,7 +153,7 @@ type CoverageDTO struct {
 // CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
 type CoverageGeographyDTO struct {
 	Country string `json:"country" doc:"ISO 3166-1 alpha-2 country code, or empty for no location limit"`
-	Market  string `json:"market" doc:"Local market inside that country, or empty for the whole country"`
+	Place   string `json:"place" doc:"Location index id of the place whose nearby stations count as local, or empty for national filler only"`
 }
 
 type channelCoverageOutput struct {
@@ -210,7 +210,7 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		Level:    string(report.Level),
 		Total:    report.Total,
 		Geography: CoverageGeographyDTO{
-			Country: report.Geography.Country, Market: report.Geography.Market,
+			Country: report.Geography.Country, Place: report.Geography.Place,
 		},
 		Language:             report.Language,
 		UndeterminedLanguage: report.UndeterminedLanguage,

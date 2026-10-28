@@ -252,10 +252,9 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		return n
 	}
 
+	area := policy.area(w.Geography)
 	return []CriterionCoverage{
-		{CriterionGeography, count(func(c Clip) bool {
-			return GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography))
-		})},
+		{CriterionGeography, count(func(c Clip) bool { return GeographicallyEligible(c, area) })},
 		{CriterionLanguage, count(func(c Clip) bool { return speaksTheChannelsLanguage(c, w, policy) })},
 		{CriterionEra, count(func(c Clip) bool { return len(filterEraWindows([]Clip{c}, w.eraWindows())) > 0 })},
 		{CriterionAudience, count(func(c Clip) bool {
@@ -313,7 +312,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	assembled := Assemble(catalog, fresh, policy, nil).MatchLevel
 
 	geography := effectiveGeography(w.Geography, policy.Geography)
-	catalog = filterGeography(catalog, geography)
+	catalog = filterGeography(catalog, geography.Resolve(policy.LocalStations))
 	catalog = filterKinds(catalog, w.Kinds)
 
 	pools := candidatePools(catalog, w, policy)

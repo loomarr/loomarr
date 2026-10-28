@@ -32,7 +32,7 @@ const (
 	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
 	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
 	FitAudience  FitReason = "audience"  // wrong audience, and not a general-audience clip
-	FitGeography FitReason = "geography" // foreign, out-of-market, or unknown geography
+	FitGeography FitReason = "geography" // foreign, out-of-radius local, or unknown geography
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
 	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)
 	FitLanguage  FitReason = "language"  // not in the channel's commercial language (language_boundary.go)
@@ -90,7 +90,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitExcluded
 		return fit
 	}
-	if !GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography)) {
+	if !GeographicallyEligible(c, policy.area(w.Geography)) {
 		fit.Reason = FitGeography
 		return fit
 	}

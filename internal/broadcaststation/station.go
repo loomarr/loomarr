@@ -57,6 +57,22 @@ func NormalizeCallSign(s string) string {
 	return s
 }
 
+// CallSignOn returns the call sign the station held on date (YYYY-MM-DD), or its latest when the
+// date is empty or outside every span.
+func (s Station) CallSignOn(date string) string {
+	if len(s.CallSigns) == 0 {
+		return ""
+	}
+	if date != "" {
+		for _, c := range s.CallSigns {
+			if (c.From == "" || c.From <= date) && (c.To == "" || date < c.To) {
+				return c.Sign
+			}
+		}
+	}
+	return s.CallSigns[len(s.CallSigns)-1].Sign
+}
+
 // Validate reports a station the directory could not resolve against.
 func (s Station) Validate() error {
 	if !strings.HasPrefix(s.ID, "fcc:") && !strings.HasPrefix(s.ID, "wd:") {

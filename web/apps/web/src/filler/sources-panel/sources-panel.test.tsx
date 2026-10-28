@@ -121,7 +121,7 @@ const stubSources = () => {
           id: "6167865",
           label: "Toronto, Canada",
           country: "CA",
-          market: "Toronto",
+          place: "6167865",
           region: "Ontario",
         },
       ],
@@ -709,7 +709,7 @@ describe("SourcesPanel", () => {
       expect(enables).toEqual([
         {
           id: "archive:classic",
-          body: { enabled: true, geography: { country: "CA", market: "Toronto" } },
+          body: { enabled: true, geography: { country: "CA" } },
         },
       ]);
     });
@@ -769,23 +769,21 @@ describe("SourcesPanel", () => {
         id: "archive:classic",
         target: "Classic TV",
         country: "CA",
-        market: "Toronto",
         effectiveCountry: "CA",
-        effectiveMarket: "Toronto",
         locationSource: "source",
       }),
     ]);
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
-    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("Toronto, Canada");
+    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("Canada");
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
 
     await waitFor(() => {
       expect(enables).toEqual([
         {
           id: "archive:classic",
-          body: { enabled: true, geography: { country: "", market: "" } },
+          body: { enabled: true, geography: { country: "" } },
         },
       ]);
     });

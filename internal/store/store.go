@@ -475,7 +475,7 @@ type ClipStore interface {
 	RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error
 	// UpdateClipGeography records grounded broadcast applicability and context. It is hash-keyed;
 	// callers validate scope/country/date and provide the evidence attribution.
-	UpdateClipGeography(ctx context.Context, hash, scope, country, market, network, station, airDate, evidence string, updatedAt time.Time) error
+	UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)

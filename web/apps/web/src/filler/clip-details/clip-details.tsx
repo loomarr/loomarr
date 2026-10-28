@@ -26,7 +26,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
       : undefined;
   const verifiedLocation =
     clip.geographicScope === "national" || clip.geographicScope === "local"
-      ? [clip.country, clip.geographicScope === "local" ? clip.market : "National"]
+      ? [clip.country, clip.geographicScope === "local" ? (clip.stationLabel ?? clip.station) : "National"]
           .filter(Boolean)
           .join(" · ")
       : undefined;

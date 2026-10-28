@@ -96,8 +96,8 @@ first and yields before optional enrichment starts.
   not the station's own material. Anything else credited to a station, such as a network promo or an ad
   recorded off it, is `national` in the station's country, as a confidence-60 inference that keeps
   the station as provenance: a source's declaration outranks it, and research citing a local
-  advertiser may overturn it. A `local` clip airs only where the channel's place is near the
-  station; until places replace markets (#2062) it airs nowhere.
+  advertiser may overturn it. A `local` clip airs only where the channel's place is within the local
+  radius of the station (#2062).
 - **Passes, cheapest first:** a free local pass over preserved titles, descriptions, filenames,
   provenance and trusted mappings; then an automatic text pass when a text provider is configured
   (at most eight clips per JSON call, validated per item, brands only when literally present, never

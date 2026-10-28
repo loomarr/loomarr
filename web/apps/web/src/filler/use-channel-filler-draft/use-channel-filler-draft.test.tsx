@@ -28,7 +28,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
     level: "exact",
     total: 1,
     rungs: [{ level: "exact", clips: 1 }],
-    geography: { country: "", market: "" },
+    geography: { country: "", place: "" },
     language: "",
     undeterminedLanguage: 0,
     criteria: [
@@ -221,14 +221,14 @@ describe("useChannelFillerDraft", () => {
         { from: 2005, to: 2009 },
         { from: 1990, to: 1999 },
       ],
-      geography: { country: "US", market: "New York" },
+      geography: { country: "US", place: "5128581" },
     };
     const selection = {
       eraWindows: [
         { from: 1990, to: 1999 },
         { from: 2005, to: 2009 },
       ],
-      geography: { country: "US", market: "New York" },
+      geography: { country: "US", place: "5128581" },
     };
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),

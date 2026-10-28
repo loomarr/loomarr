@@ -240,8 +240,18 @@ fetchable and operator-removable.
   - A channel inherits the list, a channel in another country too (#2030 decision 16), less that
     channel's own country. A language no channel uses is still rejected by the language check.
   - The list is edited under Filler › Settings › Automatic downloads.
+- **Local means near a broadcast station** (#2059 decisions 2, 7, 8; #2062). The Installation picks
+  a place from the embedded location index (`filler.home_place`, an index id; the country stays
+  `filler.home_country`), and `filler.local_radius_km` (default 100) sets how far its stations
+  reach. A Channel may pick its own place; without one it inherits the Installation's, but only
+  in the Installation's country, so a channel set to another country airs no local clips until it
+  names a place there. A `local` clip is eligible only when its broadcast station's community of license is within
+  the radius of the effective place, so a station with no place, a clip with no station and a place
+  outside the country all fail closed. A `national` clip needs only the country. There is no typed
+  market anywhere: the free-text `filler.home_market`, channel market, source market and clip
+  market are gone, because a name like "New York" could not be matched against a station.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
-  live. An explicit country and market is an Advanced override. The read model reports the
+  live. An explicit country is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,
   `needs_location`, `not_configured`, `out_of_area`). Candidate geography stays a hard acquisition
   constraint, and Installation or inherited geography is never copied into a clip's location:

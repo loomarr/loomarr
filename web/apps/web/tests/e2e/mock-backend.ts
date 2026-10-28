@@ -5,6 +5,7 @@ import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
 import type { IconSuggestionsOutputBody } from "@loomarr/api/models/iconSuggestionsOutputBody";
 import type { ListFillerOutputBody } from "@loomarr/api/models/listFillerOutputBody";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
+import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
 import type { PreviewCycleOutputBody } from "@loomarr/api/models/previewCycleOutputBody";
 import type { PreviewProgrammingChangesOutputBody } from "@loomarr/api/models/previewProgrammingChangesOutputBody";
@@ -96,7 +97,7 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
       criteria: [],
       level: "exact",
       total: 0,
-      geography: { country: "US", market: "" },
+      geography: { country: "US", place: "" },
     }),
   ],
   [/^\/v1\/filler$/, (): ListFillerOutputBody => ({ clips: [], total: 0 })],
@@ -223,6 +224,27 @@ interface MockBackend {
     };
   };
 }
+
+// The location index slice the specs search and read back by id (`place` is the saved setting value).
+const MOCK_LOCATIONS: LocationDTO[] = [
+  {
+    id: "5128581",
+    label: "New York City, United States",
+    country: "US",
+    place: "5128581",
+    city: "New York City",
+  },
+  {
+    id: "5129061",
+    label: "North Greenbush, United States",
+    country: "US",
+    place: "5129061",
+    city: "North Greenbush",
+    region: "New York",
+  },
+  { id: "country-US", label: "United States", country: "US" },
+  { id: "2643743", label: "London, United Kingdom", country: "GB", place: "2643743", city: "London" },
+];
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -1261,18 +1283,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     }
     if (path === "/v1/locations" && method === "GET") {
       const query = (url.searchParams.get("q") ?? "").toLowerCase();
-      const locations = [
-        { id: "5128581", label: "New York City, United States", country: "US", market: "New York City" },
-        {
-          id: "5129061",
-          label: "North Greenbush, United States",
-          country: "US",
-          market: "North Greenbush",
-          region: "New York",
-        },
-        { id: "country-US", label: "United States", country: "US" },
-        { id: "2643743", label: "London, United Kingdom", country: "GB", market: "London" },
-      ].filter((location) => location.label.toLowerCase().includes(query));
+      const locations = MOCK_LOCATIONS.filter((location) => location.label.toLowerCase().includes(query));
       return json(route, { locations });
     }
     if (path === "/v1/locations/resolve" && method === "POST") {
@@ -1281,7 +1292,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           id: "5128581",
           label: "New York City, United States",
           country: "US",
-          market: "New York City",
+          place: "5128581",
           source: "device",
         },
       });
@@ -1296,6 +1307,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           approximate: true,
         },
       });
+    }
+    const savedLocation = path.match(/^\/v1\/locations\/([^/]+)$/);
+    if (savedLocation && method === "GET") {
+      const location = MOCK_LOCATIONS.find((candidate) => candidate.id === savedLocation[1]);
+      return location
+        ? json(route, { location })
+        : json(route, { title: "Not Found", status: 404, detail: "Unknown place." }, 404);
     }
     if (path === "/v1/settings") {
       // A field per connection group so the Connections step (config-design §6) renders its
@@ -1375,16 +1393,28 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             value: state.edits["filler.home_country"] ?? "",
           },
           {
-            key: "filler.home_market",
+            key: "filler.home_place",
             label: "Local area",
             group: "filler",
             kind: "string",
-            doc: "Local area where the channels are watched.",
+            doc: "City whose nearby TV stations count as local.",
             advanced: false,
             secret: false,
-            set: Boolean(state.edits["filler.home_market"]),
+            set: Boolean(state.edits["filler.home_place"]),
             provenance: "db",
-            value: state.edits["filler.home_market"] ?? "",
+            value: state.edits["filler.home_place"] ?? "",
+          },
+          {
+            key: "filler.local_radius_km",
+            label: "Local station radius",
+            group: "filler",
+            kind: "int",
+            doc: "How far from your city a TV station can be and still count as local, in kilometres.",
+            advanced: false,
+            secret: false,
+            set: Boolean(state.edits["filler.local_radius_km"]),
+            provenance: "db",
+            value: state.edits["filler.local_radius_km"] ?? "100",
           },
           ...(opts.fillerEnabled
             ? [

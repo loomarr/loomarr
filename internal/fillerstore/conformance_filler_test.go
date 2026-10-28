@@ -161,8 +161,8 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	c1 := sampleClip("c1", "Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal")
-	c1.GeographicScope, c1.Country, c1.Market = filler.GeographicLocal, "US", "New York"
-	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Kestrel One", "WKTL", "1992-04-03", "filename: WKTL 1992-04-03"
+	c1.GeographicScope, c1.Country = filler.GeographicLocal, "US"
+	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Kestrel One", "fcc:900001", "1992-04-03", "filename: WKTL 1992-04-03"
 	_ = s.UpsertClip(ctx, c1)
 	_ = s.UpsertClip(ctx, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
 	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
@@ -179,8 +179,8 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if got.DurationMs != 30000 {
 		t.Errorf("duration lost: %d", got.DurationMs)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
-		got.Network != "Kestrel One" || got.Station != "WKTL" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" ||
+		got.Network != "Kestrel One" || got.Station != "fcc:900001" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
 		t.Errorf("geography round-trip mismatch: %+v", got.Clip)
 	}
 	if _, err := s.GetClip(ctx, "nope"); !errors.Is(err, ErrNotFound) {
@@ -199,11 +199,11 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if len(kids92) != 1 || kids92[0].Hash != "c1" {
 		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
 	}
-	ny, _ := s.ListClips(ctx, ClipFilter{GeographicScope: filler.GeographicLocal, Country: "us", Market: "new york"})
-	if len(ny) != 1 || ny[0].Hash != "c1" {
-		t.Errorf("US/New York geography = %+v, want just c1", ids2(ny))
+	local, _ := s.ListClips(ctx, ClipFilter{GeographicScope: filler.GeographicLocal, Country: "us"})
+	if len(local) != 1 || local[0].Hash != "c1" {
+		t.Errorf("US local geography = %+v, want just c1", ids2(local))
 	}
-	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "", "Loon Network", "", "", "operator", time.Now()); err != nil {
+	if err := s.UpdateClipGeography(ctx, "c1", "national", "CA", "Loon Network", "", "", "operator", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := s.GetClip(ctx, "c1")
@@ -2914,7 +2914,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
 		Label:     "Classic TV commercials",
 		License:   "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-		Geography: filler.Geography{Country: "US", Market: "New York"},
+		Geography: filler.Geography{Country: "US"},
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
 		// common one — both are covered.
 		CreatedAt: created,
@@ -2976,10 +2976,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if added[0].Geography != src.Geography {
 		t.Errorf("source geography = %+v, want %+v", added[0].Geography, src.Geography)
 	}
-	if err := s.SetFillerSourceGeography(ctx, "src-1", filler.Geography{Country: "ca", Market: " Toronto "}); err != nil {
+	if err := s.SetFillerSourceGeography(ctx, "src-1", filler.Geography{Country: "ca"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := findSource(t, s, "src-1"); got.Geography != (filler.Geography{Country: "CA", Market: "Toronto"}) {
+	if got, _ := findSource(t, s, "src-1"); got.Geography != (filler.Geography{Country: "CA"}) {
 		t.Errorf("updated source geography = %+v", got.Geography)
 	}
 	if added[1].License != "" {
@@ -4678,7 +4678,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if projected.GeographicScope != filler.GeographicNational || projected.Country != "US" ||
-		projected.Market != "" || !strings.HasPrefix(projected.GeoEvidence, "context.report:mediawiki:citations:") {
+		projected.Station != "" || !strings.HasPrefix(projected.GeoEvidence, "context.report:mediawiki:citations:") {
 		t.Fatalf("cited country projection = %+v", projected.Clip)
 	}
 	states, err := s.ListFillerEnrichment(ctx, clip.Hash)
@@ -4706,7 +4706,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Simulate a pre-projection database: the cited report and accepted state exist, but the clip
 	// projection is absent. The bounded catch-up must repair it without another retrieval.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", "", at.Add(2*time.Second)); err != nil {
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3)
@@ -4719,7 +4719,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 	// A newer report that abstains supersedes an older confident suggestion for catch-up. Do not
 	// resurrect stale context just because it is the newest report that happens to qualify.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", "", at.Add(3*time.Second)); err != nil {
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	abstained := report

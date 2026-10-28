@@ -673,16 +673,25 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "geo", filler.Commercial, 1994, "kids", "cereal")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
-		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"us","market":" New York ","network":"Kestrel One","station":"WKTL","airDate":"1994-05-06"}}`)
+		`{"hash":"geo","era":1991,"audience":"kids","geography":{"scope":"local","network":"Kestrel One","station":"wews-tv","airDate":"1991-03-10"}}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("geography patch → %d", resp.StatusCode)
+	}
+	var dto api.ClipDTO
+	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
+		t.Fatal(err)
+	}
+	if dto.StationCallSign != "WEWS" || dto.StationLabel != "WEWS · Cleveland, OH" {
+		t.Errorf("station = %q / %q, want the call sign and its community of license", dto.StationCallSign, dto.StationLabel)
 	}
 	got, err := st.GetClip(context.Background(), "geo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Market != "New York" ||
-		got.Network != "Kestrel One" || got.Station != "WKTL" || got.AirDate != "1994-05-06" || got.GeoEvidence != "operator" {
+	// The typed call sign resolves against the broadcast station directory: the station's id and
+	// country are stored, never the text (#2059 decision 5).
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Network != "Kestrel One" ||
+		got.Station != "fcc:59441" || got.AirDate != "1991-03-10" || got.GeoEvidence != "operator" {
 		t.Fatalf("stored geography = %+v", got.Clip)
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "geo")
@@ -696,7 +705,7 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 		}
 		foundGeography = true
 		if state.Evidence.Kind != fillerenrichment.EvidenceOperator || state.Value.Geography.Country != "US" ||
-			state.Value.Geography.Market != "New York" || state.Value.Geography.AirDate != "1994-05-06" {
+			state.Value.Geography.Station != "fcc:59441" || state.Value.Geography.AirDate != "1991-03-10" {
 			t.Fatalf("geography evidence = %+v", state)
 		}
 	}
@@ -704,10 +713,29 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 		t.Fatal("operator geography evidence was not recorded")
 	}
 
-	bad := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
-		`{"hash":"geo","era":1994,"audience":"kids","geography":{"scope":"local","country":"US"}}`)
-	if bad.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("local without market → %d, want 422", bad.StatusCode)
+	for name, body := range map[string]string{
+		"local without station": `{"scope":"local","country":"US"}`,
+		"unknown call sign":     `{"scope":"local","station":"KQQQ"}`,
+		"station abroad":        `{"scope":"local","country":"CA","station":"WEWS"}`,
+		"ambiguous call sign":   `{"scope":"local","station":"KYW"}`, // Cleveland 1956–65, Philadelphia since
+	} {
+		bad := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+			`{"hash":"geo","era":1991,"audience":"kids","geography":`+body+`}`)
+		if bad.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s → %d, want 422", name, bad.StatusCode)
+		}
+	}
+
+	// The editor sends an unchanged station back by id, so that ambiguity never blocks an
+	// unrelated edit, and a national clip keeps the station it was recorded off.
+	kept := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"geo","era":1991,"audience":"kids","geography":{"scope":"national","station":"fcc:25453"}}`)
+	if kept.StatusCode != http.StatusOK {
+		t.Fatalf("station by id → %d, want 200", kept.StatusCode)
+	}
+	if got, err := st.GetClip(context.Background(), "geo"); err != nil || got.Station != "fcc:25453" ||
+		got.GeographicScope != filler.GeographicNational || got.Country != "US" {
+		t.Fatalf("national clip kept station = %+v (%v)", got.Clip, err)
 	}
 }
 

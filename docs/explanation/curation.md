@@ -80,8 +80,8 @@ Matching a clip to a channel needs several separate facts:
   clip may play.
 - **Era** and **audience:** scheduling facts, each checked on its own.
 - **Brand:** shown only when the clip's own text or picture supports it.
-- **Geography:** national or local, with a country and an optional market. Unknown means it
-  still needs review; it never means local.
+- **Geography:** national or local, with a country. A local clip also names the TV station it
+  aired on. Unknown means it still needs review; it never means local.
 - **Tags:** what the clip is about (products and topics, format, seasonal and audience cues),
   from the vocabulary under **Filler → Manage**.
 
@@ -101,13 +101,14 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
   matching its era and audience: a kids channel starts from kids-safe filler, and any other
   channel from general-audience filler. Loomarr doesn't guess product categories from the
   shows' genres.
-- **Geography is never loosened.** A channel set to a US market takes US-national clips and that
-  market's local clips, plus the national clips of any country in your region preference. Clips
-  from other countries or markets stay in the library but never enter that channel's pool,
-  whatever the fallback. A channel follows your household's location
-  unless you give it its own, which may be another country: a channel of British shows can take
-  British commercials. Loomarr never works a location out from the shows, and the guide's time
-  zone only changes how times are shown; it never sets a country.
+- **Geography is never loosened.** A channel set to a US city takes US-national clips and the
+  local clips of stations within the local radius of that city, plus the national clips of any
+  country in your region preference. Clips from other countries or other cities' stations stay
+  in the library but never enter that channel's pool, whatever the fallback. A channel follows
+  your household's location unless you give it its own, which may be another country: a channel
+  of British shows can take British commercials, and British station clips once you give it a
+  British city. Loomarr never works a location out from the shows, and the guide's time zone
+  only changes how times are shown; it never sets a country.
 - **Language is never loosened either.** Each channel has a commercial language, your household's
   unless you give it its own, and it is separate from the channel's audio language: an anime
   channel can play Japanese audio with English commercials. A break plays clips in that language

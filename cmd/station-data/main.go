@@ -525,7 +525,7 @@ func placesByName() map[string][]installationlocation.Place {
 	must(err)
 	out := map[string][]installationlocation.Place{}
 	for _, place := range all {
-		if place.Market == "" {
+		if place.City == "" {
 			continue // a country row
 		}
 		key := normalizeCity(place.Name)

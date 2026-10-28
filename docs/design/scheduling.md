@@ -178,14 +178,16 @@ same channel with no history.
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.
 
-- **Matching:** country and local market first, then era to the block, audience to the channel, and
-  category variety within a pod.
+- **Matching:** country and place first (a `local` clip's broadcast station within
+  `filler.local_radius_km` of the channel's place), then era to the block, audience to the channel,
+  and category variety within a pod.
 - **Per-channel selection (`policy.filler`, `FillerSelection`)** narrows `era`, `audience`,
   `categories`, `kinds`, `pinned` and `excluded`. `era` has three states: unset inherits the era
   `policy.scope.dates` implies, `{0,0}` is explicitly any, and a range matches both bounds. Exclusion wins
   over a pin. Optional `geography` replaces the installation's, another country included (#2030
-  decision 16; the channel page still offers only a market until the filler UI work), and is
-  applied before pins. Optional `language` is the channel's commercial language (below). On first approval of a generated channel, one pure function seeds the
+  decision 16), and is applied before pins. An empty place inherits the installation's only in
+  the installation's country (#2059 decision 8). Optional `language` is the channel's commercial
+  language (below). On first approval of a generated channel, one pure function seeds the
   selection from the Proposal (the era its scope dates imply; `TV-Y`/`TV-Y7` → `kids`, `G`…`TV-PG` → `family`, anything
   else → `general`); after that the operator owns it and refine or re-curation never overwrite it.
 - **Derived context.** Where the operator left audience or era unset, `schedule.DeriveFiller`

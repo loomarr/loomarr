@@ -144,13 +144,14 @@ brand is dropped; no brand is the honest common case.
 Transcript, brand and visible text persist to the sidecar as well as the store.
 
 **Broadcast context (V45).** A parser over titles and filenames (Go `regexp` plus a callsign table)
-extracts network, station, market and full air date, only when they literally appear. It runs on the
-composite and its output propagates to every child.
+extracts network, station and full air date, only when they literally appear. A station is the
+broadcast station directory's id (#2061); its community of license is the only location a local
+clip has. It runs on the composite and its output propagates to every child.
 
 **Thematic tags rank; structured filters decide.** The tagger extracts closed-vocabulary mood, tone,
 topic, channel-fit and sensitivity labels from the segment's transcript and vision text. Pod
 eligibility stays exact, deterministic `WHERE` clauses (era, audience, category, no repeat brand,
-network and market), and the theme tags only order an already-eligible pool. Embeddings were
+network and station distance), and the theme tags only order an already-eligible pool. Embeddings were
 measured and rejected for theme matching; duplicates use persisted creative fingerprints. There is no
 vector column, `sqlite-vec`, pgvector or embedding role.
 
@@ -190,7 +191,7 @@ seeded with a default forest.
   clip editor can correct or clear brand.
 
 With brand, broadcast context and tags, pod assembly can avoid repeat advertisers, filter by network,
-market and era window, pace breaks by measured loudness, and rank by theme, all from auditable
+station distance and era window, pace breaks by measured loudness, and rank by theme, all from auditable
 signals. Operator exclusions and quotas use the scheduling rules layer.
 
 **Tagging confidence (V38)** is a 0–100 diagnostic score. Grounding facts cap it (an ungrounded era

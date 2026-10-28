@@ -148,11 +148,9 @@ type FillerSourceDTO struct {
 	// recorded it.
 	License string `json:"license,omitempty" doc:"Licence the source declared; absent means unknown, NOT public domain"`
 	Country string `json:"country,omitempty" doc:"ISO 3166-1 alpha-2 country asserted for this source"`
-	Market  string `json:"market,omitempty" doc:"Local market asserted for this source; absent means country-wide"`
-	// EffectiveCountry/Market are what this source uses now. They differ from Country/Market
-	// when the row follows Installation geography, which is the ordinary zero-config path.
+	// EffectiveCountry is what this source uses now. It differs from Country when the row
+	// follows Installation geography, which is the ordinary zero-config path.
 	EffectiveCountry string                     `json:"effectiveCountry,omitempty" doc:"Country this source uses after Installation geography inheritance"`
-	EffectiveMarket  string                     `json:"effectiveMarket,omitempty" doc:"Local market this source uses after Installation geography inheritance"`
 	LocationSource   FillerSourceLocationSource `json:"locationSource" enum:"installation,source,missing" doc:"Where the effective location came from"`
 	// Readiness and Actions are the server-owned answer to whether this row can do useful work.
 	// The browser must not infer readiness from enabled/configured/fetchable flags that answer
@@ -343,7 +341,6 @@ type RemoteSourceDTO struct {
 	Label   string `json:"label"`
 	URI     string `json:"uri"`
 	Country string `json:"country,omitempty"`
-	Market  string `json:"market,omitempty"`
 	// LastFetchedAt is absent when never fetched — rendered as "never" rather than as an
 	// epoch date nobody meant.
 	LastFetchedAt string `json:"lastFetchedAt,omitempty" doc:"RFC3339; absent if never fetched"`
@@ -680,7 +677,6 @@ type addFillerSourceInput struct {
 		URI     string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
 		Label   string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
 		Country string `json:"country,omitempty" maxLength:"2" doc:"ISO 3166-1 alpha-2 source country"`
-		Market  string `json:"market,omitempty" maxLength:"120" doc:"Local source market; omit for country-wide"`
 	}
 }
 
@@ -833,7 +829,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
 	src := fillerstore.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
-	src.Geography = filler.Geography{Country: in.Body.Country, Market: in.Body.Market}.Normalize()
+	src.Geography = filler.Geography{Country: in.Body.Country}.Normalize()
 	if err := src.Geography.Validate(); err != nil {
 		return nil, errUnprocessable("Invalid source geography", err.Error())
 	}
@@ -848,7 +844,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	}
 	return &addFillerSourceOutput{Body: RemoteSourceDTO{
 		ID: src.ID, Label: src.Label, URI: src.URI, Enabled: src.Enabled,
-		Country: src.Geography.Country, Market: src.Geography.Market,
+		Country: src.Geography.Country,
 	}}, nil
 }
 
@@ -879,7 +875,6 @@ type SourceAutomaticDownloadsDTO struct {
 
 type SourceGeographyDTO struct {
 	Country string `json:"country,omitempty" maxLength:"2"`
-	Market  string `json:"market,omitempty" maxLength:"120"`
 }
 
 type setFillerSourceEnabledOutput struct {
@@ -962,7 +957,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
 		}
-		geography := filler.Geography{Country: in.Body.Geography.Country, Market: in.Body.Geography.Market}.Normalize()
+		geography := filler.Geography{Country: in.Body.Geography.Country}.Normalize()
 		if err := geography.Validate(); err != nil {
 			return nil, errUnprocessable("Invalid source geography", err.Error())
 		}
@@ -1214,7 +1209,6 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// declare no licence at all.
 			row.License = src.License
 			row.Country = src.Geography.Country
-			row.Market = src.Geography.Market
 			// ⚠ The parent is DERIVED from the kind here, at the one place a row is built. Any
 			// other arrangement — a stored column, a second pass that assigns parents — is a
 			// place the parent could disagree with the kind.
@@ -1317,9 +1311,9 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 	}
 
 	home = home.Normalize()
-	effective := filler.Geography{Country: row.Country, Market: row.Market}.Normalize()
+	effective := filler.Geography{Country: row.Country}.Normalize()
 	if effective.Country == "" {
-		effective = home
+		effective = filler.Geography{Country: home.Country} // a source inherits the country, never a place
 		if effective.Country == "" {
 			row.LocationSource = FillerSourceLocationMissing
 		} else {
@@ -1328,7 +1322,7 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 	} else {
 		row.LocationSource = FillerSourceLocationExplicit
 	}
-	row.EffectiveCountry, row.EffectiveMarket = effective.Country, effective.Market
+	row.EffectiveCountry = effective.Country
 
 	switch {
 	case !row.Configured:

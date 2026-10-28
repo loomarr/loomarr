@@ -163,13 +163,7 @@ const FillerSources = ({
             {source.readiness === "unavailable" && <Badge variant="caution">Needs attention</Badge>}
             {source.readiness === "ready" &&
               source.locationSource === "source" &&
-              source.effectiveCountry && (
-                <Badge variant="neutral">
-                  {source.effectiveMarket
-                    ? `${source.effectiveCountry} · ${source.effectiveMarket}`
-                    : source.effectiveCountry}
-                </Badge>
-              )}
+              source.effectiveCountry && <Badge variant="neutral">{source.effectiveCountry}</Badge>}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"

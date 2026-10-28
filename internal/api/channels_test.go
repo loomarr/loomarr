@@ -1254,6 +1254,29 @@ func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T
 	}
 }
 
+func TestUpdateChannel_FillerPlaceMustBeACityInItsCountry(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
+	mkChannel(t, srv, "c1", "A", 5)
+
+	for name, geography := range map[string]string{
+		"unknown place":     `{"country":"US","place":"999999999"}`,
+		"place in another":  `{"country":"CA","place":"4560349"}`,
+		"place without one": `{"country":"","place":"4560349"}`,
+	} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1",
+			`{"policy":{"filler":{"geography":`+geography+`}}}`))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s → %d, want 422", name, resp.StatusCode)
+		}
+	}
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1",
+		`{"policy":{"filler":{"geography":{"country":"US","place":"4560349"}}}}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Philadelphia → %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store

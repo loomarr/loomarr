@@ -9,9 +9,10 @@ it, channels leave the gaps empty and play fine. For how Loomarr picks a clip fo
 
 ## 1. Set your area
 
-Open **Settings → Your location** and fill in **Your area and language**: your country, and
-a city or TV market if you want local adverts. Channels inherit it. Once it's set, Loomarr fetches
-only from sources in your country, and your market if you gave one.
+Open **Settings → Your location** and fill in **Your area and language**: your country, or
+your city if you want local news, weather and adverts. A local clip airs only when its TV station
+is within the local radius of your city (100 km unless you change it). Channels inherit all of
+this. Once it's set, Loomarr fetches only from sources in your country.
 
 ## 2. Add clips
 
@@ -20,7 +21,7 @@ There are two ways in, and both go through the same checks.
 - **Drop files** into the drop folder (`filler.watch_dir`, by default `_watch` inside the clip
   library at `/data/filler`). Loomarr empties it at least every 15 minutes.
 - **Add a source** under **Filler → Sources**: a folder, a media library, a YouTube playlist or
-  an Archive.org collection. Give each source a country, and a market if it's local. Use
+  an Archive.org collection. Give each source a country. Use
   **Fetch now** to check one source straight away; otherwise enabled sources are checked every
   6 hours.
 

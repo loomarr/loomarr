@@ -22,7 +22,7 @@ type Place struct {
 	Country     string
 	CountryName string
 	Region      string
-	Market      string
+	City        string // empty for a country-only choice
 	Latitude    float64
 	Longitude   float64
 	Population  int64
@@ -49,13 +49,14 @@ type ipv6Range struct {
 type Index struct {
 	places    []Place
 	countries map[string]Place
+	byID      map[string]int // city places by id
 	v4        []ipv4Range
 	v6        []ipv6Range
 }
 
 // NewIndex validates and compacts generated/test data.
 func NewIndex(places []Place, ranges []IPRange) (*Index, error) {
-	idx := &Index{places: make([]Place, 0, len(places)), countries: make(map[string]Place)}
+	idx := &Index{places: make([]Place, 0, len(places)), countries: make(map[string]Place), byID: make(map[string]int)}
 	for _, place := range places {
 		place.Country = strings.ToUpper(strings.TrimSpace(place.Country))
 		if len(place.Country) != 2 || strings.TrimSpace(place.Name) == "" {
@@ -65,15 +66,17 @@ func NewIndex(places []Place, ranges []IPRange) (*Index, error) {
 			place.CountryName = place.Name
 		}
 		if place.Label == "" {
-			if place.Market == "" {
+			if place.City == "" {
 				place.Label = place.CountryName
 			} else {
-				place.Label = place.Market + ", " + place.CountryName
+				place.Label = place.City + ", " + place.CountryName
 			}
 		}
 		idx.places = append(idx.places, place)
-		if place.Market == "" {
+		if place.City == "" {
 			idx.countries[place.Country] = place
+		} else {
+			idx.byID[place.ID] = len(idx.places) - 1
 		}
 	}
 
@@ -139,7 +142,7 @@ func (i *Index) Search(query string, limit int) []Place {
 		switch {
 		case query == name || query == label:
 			rank = 0
-		case query == country && place.Market == "":
+		case query == country && place.City == "":
 			rank = 0
 		case strings.HasPrefix(name, query) || strings.HasPrefix(label, query):
 			rank = 1
@@ -166,9 +169,9 @@ func (i *Index) Search(query string, limit int) []Place {
 	for _, candidate := range matches {
 		place := candidate.place
 		// City and administrative datasets can describe the same choice with different
-		// GeoNames ids. The persisted identity is country + market; region keeps distinct
+		// GeoNames ids. Either id is a valid saved place (Lookup knows both); region keeps distinct
 		// same-named places visible while collapsing a city/municipality pair.
-		key := place.Country + "\x00" + normalize(place.Region) + "\x00" + normalize(place.Market)
+		key := place.Country + "\x00" + normalize(place.Region) + "\x00" + normalize(place.City)
 		if _, duplicate := seen[key]; duplicate {
 			continue
 		}
@@ -181,6 +184,18 @@ func (i *Index) Search(query string, limit int) []Place {
 	return out
 }
 
+// Lookup returns the city place a saved id names (`filler.home_place`, a Channel's place).
+func (i *Index) Lookup(id string) (Place, bool) {
+	at, ok := i.byID[strings.TrimSpace(id)]
+	if !ok {
+		return Place{}, false
+	}
+	return i.places[at], true
+}
+
+// DistanceKM is the great-circle distance between two coordinates.
+func DistanceKM(lat1, lon1, lat2, lon2 float64) float64 { return haversineKM(lat1, lon1, lat2, lon2) }
+
 // Resolve returns the nearest indexed city within a deliberately bounded distance.
 func (i *Index) Resolve(latitude, longitude float64) (Place, bool) {
 	if math.IsNaN(latitude) || math.IsNaN(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 {
@@ -189,7 +204,7 @@ func (i *Index) Resolve(latitude, longitude float64) (Place, bool) {
 	bestDistance := math.MaxFloat64
 	var best Place
 	for _, place := range i.places {
-		if place.Market == "" {
+		if place.City == "" {
 			continue
 		}
 		distance := haversineKM(latitude, longitude, place.Latitude, place.Longitude)

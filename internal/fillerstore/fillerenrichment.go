@@ -277,7 +277,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 			err = clips.ClearSourceDefaultGeography(ctx, state.ClipHash, updatedAt)
 		} else if g != (fillerenrichment.Geography{}) {
 			err = clips.SetGeography(ctx, state.ClipHash, store.ClipGeography{
-				Scope: g.Scope, Country: g.Country, Market: g.Market,
+				Scope: g.Scope, Country: g.Country,
 				Network: g.Network, Station: g.Station, AirDate: g.AirDate,
 			}, state.Evidence.Reference, updatedAt)
 		}
@@ -414,13 +414,13 @@ func (s *sqlStore) backfillFillerEnrichment(ctx context.Context, completedAt tim
 		if clip.Language != "" {
 			states = append(states, base(fillerenrichment.AxisLanguage, fillerenrichment.Value{Text: clip.Language}, fillerenrichment.EvidenceContent, "catalog.language"))
 		}
-		if clip.Country != "" || clip.Market != "" || clip.Network != "" || clip.Station != "" {
+		if clip.Country != "" || clip.Network != "" || clip.Station != "" {
 			kind := fillerenrichment.EvidenceItem
 			if strings.EqualFold(clip.GeoEvidence, "operator") {
 				kind = fillerenrichment.EvidenceOperator
 			}
 			states = append(states, base(fillerenrichment.AxisGeography, fillerenrichment.Value{Geography: fillerenrichment.Geography{
-				Scope: string(clip.GeographicScope), Country: clip.Country, Market: clip.Market,
+				Scope: string(clip.GeographicScope), Country: clip.Country,
 				Network: clip.Network, Station: clip.Station, AirDate: clip.AirDate,
 			}}, kind, "catalog.geography"))
 		}
