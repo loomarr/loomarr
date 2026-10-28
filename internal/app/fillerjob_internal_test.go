@@ -19,7 +19,7 @@ import (
 func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 	cases := map[string]scheduler.Job{
 		"filler-sync":        fillerSyncJob(nil),
-		"filler-fetch":       fillerFetchJob(nil),
+		"filler-fetch":       fillerFetchJob(nil, localCuratedSources{}),
 		"filler-pipeline":    fillerPipelineJob(nil),
 		"filler-split-sweep": fillerSplitSweepJob(nil),
 		"filler-identity":    fillerIdentityJob(nil),
@@ -93,7 +93,7 @@ func TestFillerPipelineDriverDefersDetailsWhilePreparationCanAdvance(t *testing.
 }
 
 func TestFillerFetchJobUsesOnlyAnInternalWakeSchedule(t *testing.T) {
-	job := fillerFetchJob(nil)
+	job := fillerFetchJob(nil, localCuratedSources{})
 	if job.DefaultCron != "0 * * * * *" {
 		t.Fatalf("filler fetch wake = %q, want the fixed one-minute internal wake", job.DefaultCron)
 	}

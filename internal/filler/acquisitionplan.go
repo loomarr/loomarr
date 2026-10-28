@@ -59,6 +59,8 @@ func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandid
 			decision.Detail = "selected first: it fills a channel coverage gap (" + gap + ")"
 			if strings.HasPrefix(gap, "era:") {
 				decision.Detail = fmt.Sprintf("selected first: its year %d falls in a channel coverage gap", decision.Candidate.ObservedYear)
+			} else if strings.HasPrefix(gap, "station:") {
+				decision.Detail = "selected first: a search for " + decision.Candidate.StationSearch + ", a station near a channel's place, found it"
 			}
 		}
 		plan.Selected = append(plan.Selected, decision)
@@ -182,15 +184,23 @@ type CoverageGaps struct {
 	// Short is how many commercials the shortest channel's exact rung lacks of its pool target
 	// (#2035). Zero with no gap is a met target: an unattended pass has nothing to fetch.
 	Short int
+	// Stations are the call signs a pass searches each archive source for (#2059 decision 9): those
+	// in-radius stations held during the era gaps, sorted. They steer where a short pass looks and
+	// never make a target unmet: local material is a flavour, not a quota.
+	Stations []string
 }
 
 // Met reports whether every channel is at its target and nothing is missing.
 func (g CoverageGaps) Met() bool { return g.Short <= 0 && len(g.Eras) == 0 && len(g.Roles) == 0 }
 
-// gapFilled returns the gap key a candidate fills, era first. Only OBSERVED facts count: a
-// candidate with no observed year fills no era gap, and one with no role token fills no role gap,
-// because missing metadata never satisfies a target (see AcquisitionIntent).
+// gapFilled returns the gap key a candidate fills: a station search's hit first, then era, then
+// role. Only OBSERVED facts count: a candidate with no observed year fills no era gap, and one with
+// no role token fills no role gap, because missing metadata never satisfies a target (see
+// AcquisitionIntent).
 func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
+	if c.StationSearch != "" && slices.Contains(gaps.Stations, c.StationSearch) {
+		return StationGapKey(c.StationSearch), true
+	}
 	if c.ObservedYear > 0 {
 		for _, r := range gaps.Eras {
 			if !r.Any() && r.Contains(c.ObservedYear) {
@@ -221,6 +231,9 @@ func observedRoles(c AcquisitionCandidate) []Kind {
 
 // RoleGapKey is the stable record of a role gap an acquisition was for: "role:station_id".
 func RoleGapKey(role Kind) string { return "role:" + string(role) }
+
+// StationGapKey is the stable record of a station search an acquisition came from: "station:WPIX".
+func StationGapKey(callSign string) string { return "station:" + callSign }
 
 // EraGapKey is the stable record of an era gap an acquisition was for (#749): "era:1990-1999",
 // "era:2005-" or "era:-1979"; "" for any era, which is never a gap. The "era:" prefix leaves room

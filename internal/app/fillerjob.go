@@ -115,7 +115,11 @@ func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 //
 // A separate row on the Tasks page also means the fetch has its own last-run and its own error,
 // which is what an operator asking "why is nothing arriving?" actually needs to see.
-func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
+//
+// Each pass first switches the curated sources for the places' nearby stations (#2059 decision
+// 10), so a place set or moved since the last pass is fetched for in this one. A failure there costs
+// only the switch: the pass still runs with the sources as they are.
+func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) scheduler.Job {
 	return scheduler.Job{
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.
@@ -125,7 +129,11 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 		// Fixed, cheap due-source wake. The user cadence lives only in filler.fetch.every and the
 		// per-source policy; an idle pass makes no provider request.
 		DefaultCron: "0 * * * * *",
-		Run:         func(ctx context.Context) error { _, err := f.Run(ctx); return err },
+		Run: func(ctx context.Context) error {
+			local.Run(ctx)
+			_, err := f.Run(ctx)
+			return err
+		},
 	}
 }
 

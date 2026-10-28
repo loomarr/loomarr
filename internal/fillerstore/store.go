@@ -270,6 +270,10 @@ type FillerSourceStore interface {
 	// curated source the operator deleted is not offered again; one they already added by hand is
 	// left as it is.
 	OfferCuratedSources(ctx context.Context, list filler.CuratedList, now time.Time) (int, error)
+	// SwitchLocalCuratedSources switches on the curated sources covering a station in near, and
+	// back off the ones it switched on that no longer do, never touching one the operator switched
+	// (#2059 decision 10). It returns the ids switched on and off.
+	SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
 	// DeleteFillerSource removes a source. Clips it already brought in are NOT deleted:
 	// they are files in the drop-folder, and forgetting where something came from is not a
 	// reason to throw it away.

@@ -630,7 +630,12 @@ const SourcesPanel = ({
                   <h3 id="source-status-heading" className="font-medium">
                     {readinessLabel(selectedSource)}
                   </h3>
-                  <p className="text-muted-foreground mt-1 text-sm">{selectedSource.detail}</p>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {selectedSource.detail}
+                    {selectedSource.onForPlace &&
+                      selectedSource.enabled &&
+                      " Loomarr switched this on because it covers TV stations near your location. If you switch it off, it stays off."}
+                  </p>
                   <p className="text-muted-foreground mt-1 text-xs">
                     {selectedSource.incoming > 0
                       ? `${selectedSource.count} ready · `

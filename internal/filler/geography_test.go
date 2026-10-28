@@ -414,6 +414,12 @@ func TestUsableAreasKeepClipsAnyPlaceCanAir(t *testing.T) {
 	if filler.UsableIn(lakesideLocal, withCanada) {
 		t.Error("a Canadian channel kept a US station's clip")
 	}
+	// A region fallback country's national clips air at home, so they stay (#2035).
+	withFallback := harborPolicy()
+	withFallback.Geography.Fallback = "CA"
+	if !filler.UsableIn(canadian, withFallback.UsableAreas(nil)) {
+		t.Error("a national clip from the region fallback was out of bounds")
+	}
 	if !filler.UsableIn(canadian, filler.Policy{}.UsableAreas(nil)) {
 		t.Error("with no installation country, a clip was out of bounds")
 	}

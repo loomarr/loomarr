@@ -255,12 +255,13 @@ func buildFillerSubsystem(
 	}
 	local := &localStations{stations: stations,
 		radiusKM: func() int { return set.intv("filler.local_radius_km") }, log: log}
+	// The places' policy: the household's geography, region fallback included, so a fallback
+	// country's national clips stay usable.
+	placePolicy := func() filler.Policy {
+		return filler.Policy{LocalStations: local.resolve, Geography: set.homeGeography()}
+	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
-		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now,
-			policy: func() filler.Policy {
-				return filler.Policy{LocalStations: local.resolve, Geography: filler.Geography{
-					Country: set.str("filler.home_country"), Place: set.str("filler.home_place")}}
-			}}}
+		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
 	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
@@ -349,11 +350,25 @@ func buildFillerSubsystem(
 		}
 		now := time.Now()
 		spacing := time.Duration(set.intv("filler.cooldown_seconds")) * time.Second
-		return filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year()), nil
+		gaps := filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year())
+		if !gaps.Met() {
+			// A short pass also looks for the stations near each place, in the eras it is short of
+			// (#2059 decision 9). Without them it still fetches; it just doesn't look for local.
+			if near, err := nearbyPlaceStations(ctx, st, placePolicy()); err != nil {
+				log.Warn("filler auto-fetch: nearby stations unavailable; not searching for them", "err", err)
+			} else if len(near) > 0 {
+				if directory, err := stations.get(ctx); err != nil {
+					log.Warn("filler auto-fetch: broadcast stations unavailable; not searching for them", "err", err)
+				} else {
+					gaps.Stations = nearbyCallSigns(near, gaps.Eras, directory)
+				}
+			}
+		}
+		return gaps, nil
 	})
 	adapter.autoFetch = autoFetch
 	result.service = adapter
-	jobs.Add(fillerFetchJob(autoFetch))
+	jobs.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
 	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
 		"max_per_run", set.intv("filler.fetch.max_per_run"))
 	return result

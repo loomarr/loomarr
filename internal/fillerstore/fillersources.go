@@ -3,7 +3,10 @@ package fillerstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -72,6 +75,9 @@ type FillerSource struct {
 	// by ListFillerSources for remote kinds and deliberately does not overwrite Enabled, which is
 	// the operator's remembered choice for this exact target.
 	ProviderEnabled bool
+	// OnForPlace reports a curated source Loomarr switched on because it covers a station near a
+	// current place (#2059 decision 10), so Sources can say why it is on.
+	OnForPlace bool
 	// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c). A busy archive
 	// collection and a small playlist want different numbers, and one global figure serves
 	// neither well.
@@ -219,8 +225,10 @@ const fillerSourceSelect = `SELECT s.id, s.kind, s.uri, s.label, s.license, s.la
 	s.check_failure_count, s.check_retry_at, s.check_lease_until, s.created_at, s.enabled,
 	s.fetch_every_seconds, s.fetch_max_per_run, s.country,
 	s.scan_cursor, s.scan_watermark, s.scan_pending_watermark,
-	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END
-	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind`
+	CASE WHEN s.kind IN ('archive', 'youtube') THEN COALESCE(p.enabled, FALSE) ELSE TRUE END,
+	COALESCE(o.local_state, '') = 'on'
+	FROM filler_sources s LEFT JOIN filler_providers p ON p.kind = s.kind
+	LEFT JOIN filler_curated_offers o ON o.source_id = s.id`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
 // left to the engine: an unordered list reshuffles between reads on Postgres, and a Sources
@@ -252,7 +260,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			&createdAt, &src.Enabled, &every, &perRun,
 			&src.Geography.Country,
 			&src.ScanCheckpoint.Cursor, &src.ScanCheckpoint.Watermark,
-			&src.ScanCheckpoint.PendingWatermark, &src.ProviderEnabled); err != nil {
+			&src.ScanCheckpoint.PendingWatermark, &src.ProviderEnabled, &src.OnForPlace); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -408,9 +416,17 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		if err != nil {
 			return 0, fmt.Errorf("offer curated source %s: %w", c.SourceID(), err)
 		}
-		if n, err := res.RowsAffected(); err != nil {
+		n, err := res.RowsAffected()
+		if err != nil {
 			return 0, fmt.Errorf("offer curated source %s: %w", c.SourceID(), err)
-		} else if n == 0 {
+		}
+		// The covered stations are the shipped list's, not the operator's: every version refreshes
+		// them, an earlier offer's included (#2059 decision 10).
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_curated_offers SET stations = ? WHERE source_id = ?`),
+			strings.Join(c.Stations, ","), c.SourceID()); err != nil {
+			return 0, fmt.Errorf("tag curated source %s: %w", c.SourceID(), err)
+		}
+		if n == 0 {
 			continue
 		}
 		geography := filler.Geography{Country: c.Country}.Normalize()
@@ -431,6 +447,76 @@ func (s *sqlStore) OfferCuratedSources(ctx context.Context, list filler.CuratedL
 		return 0, fmt.Errorf("offer curated sources: %w", err)
 	}
 	return added, nil
+}
+
+// SwitchLocalCuratedSources switches curated sources on and off for the stations near the current
+// places (#2059 decision 10, clarified: setting a place is the consent for its local sources), and
+// returns the ids it switched on and off. One transaction, following each offer's local_state:
+//   - near, untouched and off: switched on ('on').
+//   - near, untouched and already on: the operator's ('operator'), never touched again.
+//   - 'on' but now off: the operator switched it off, so it stays off ('off').
+//   - 'on', on, and no longer near: switched back off and untouched again (”).
+func (s *sqlStore) SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("switch local curated sources: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `SELECT o.source_id, o.stations, o.local_state, s.enabled
+		FROM filler_curated_offers o JOIN filler_sources s ON s.id = o.source_id
+		WHERE o.stations <> '' ORDER BY o.source_id`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list local curated sources: %w", err)
+	}
+	type offer struct {
+		id, stations, state string
+		enabled             bool
+	}
+	var offers []offer
+	for rows.Next() {
+		var o offer
+		if err := rows.Scan(&o.id, &o.stations, &o.state, &o.enabled); err != nil {
+			_ = rows.Close()
+			return nil, nil, fmt.Errorf("scan local curated source: %w", err)
+		}
+		offers = append(offers, o)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, nil, fmt.Errorf("list local curated sources: %w", err)
+	}
+	set := func(id, state string, enabled *bool) error {
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_curated_offers SET local_state = ? WHERE source_id = ?`), state, id); err != nil {
+			return fmt.Errorf("record local curated source %s: %w", id, err)
+		}
+		if enabled == nil {
+			return nil
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_sources SET enabled = ? WHERE id = ?`), *enabled, id); err != nil {
+			return fmt.Errorf("switch local curated source %s: %w", id, err)
+		}
+		return nil
+	}
+	yes, no := true, false
+	for _, o := range offers {
+		covers := slices.ContainsFunc(strings.Split(o.stations, ","), func(id string) bool { return near[id] })
+		switch {
+		case o.state == "" && covers && !o.enabled:
+			err, on = set(o.id, "on", &yes), append(on, o.id)
+		case o.state == "" && covers:
+			err = set(o.id, "operator", nil)
+		case o.state == "on" && !o.enabled:
+			err = set(o.id, "off", nil)
+		case o.state == "on" && !covers:
+			err, off = set(o.id, "", &no), append(off, o.id)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("switch local curated sources: %w", err)
+	}
+	return on, off, nil
 }
 
 // SetFillerSourceGeography is the sole writer for an existing source's asserted coverage.

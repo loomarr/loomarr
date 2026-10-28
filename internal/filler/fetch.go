@@ -204,6 +204,18 @@ type SourceEnumerator interface {
 	Enumerate(ctx context.Context, source FetchSource, limit int) ([]DiscoveredRef, int, error)
 }
 
+// SourceSearcher is an enumerator that can also search inside one source, for the station
+// searches of a short pass (#2059 decision 9). Optional: an enumerator without it lists only.
+// A source kind it cannot search returns no items and no error.
+type SourceSearcher interface {
+	Search(ctx context.Context, source FetchSource, query string, limit int) ([]DiscoveredRef, error)
+}
+
+// StationSearchesPerSource bounds the station searches one source gets in one pass. The call signs
+// rotate by the hour, so a long list is worked through across passes instead of in one burst
+// against the provider.
+const StationSearchesPerSource = 4
+
 // DiscoveredRef is one item a source offers — an id stable enough to dedupe on, and the URL to
 // hand the ingest path.
 type DiscoveredRef struct {
@@ -539,6 +551,10 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
 			continue
 		}
+		var stationHits map[string]string
+		if scheduled && targeted && src.Kind == "archive" {
+			items, stationHits = f.withStationHits(ctx, src, items, gaps.Stations, listFor)
+		}
 		outcomes := SourceCheckSummary{}
 		checkpoint := src.ScanCheckpoint
 		replaceOutcomes := true
@@ -645,6 +661,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 				URL:      item.URL, Title: item.Title, License: item.License,
 				ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
 				DurationMS: item.DurationMS, Height: item.Height,
+				StationSearch: stationHits[item.ID],
 			}
 			candidates = append(candidates, candidate)
 			if src.Kind == "youtube" && len(candidates) == perRun {
@@ -863,6 +880,44 @@ func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (So
 		}
 	}
 	return "", false
+}
+
+// withStationHits searches the source for up to StationSearchesPerSource of the pass's call signs
+// and puts the hits ahead of its listing, returning which call sign found each hit. A search that
+// fails costs only its hits: the listing still runs the pass.
+func (f *Fetcher) withStationHits(ctx context.Context, src FetchSource, items []DiscoveredRef, callSigns []string, limit int) ([]DiscoveredRef, map[string]string) {
+	searcher, ok := f.enum.(SourceSearcher)
+	if !ok || len(callSigns) == 0 {
+		return items, nil
+	}
+	n := min(StationSearchesPerSource, len(callSigns))
+	start := int(f.now().Unix()/3600) % len(callSigns)
+	found := map[string]string{}
+	var hits []DiscoveredRef
+	for i := range n {
+		sign := callSigns[(start+i)%len(callSigns)]
+		refs, err := searcher.Search(ctx, src, sign, limit)
+		if err != nil {
+			f.log.Warn("filler auto-fetch: station search failed", "source", src.ID, "call_sign", sign, "err", err)
+			continue
+		}
+		for _, ref := range refs {
+			if ref.ID == "" || found[ref.ID] != "" {
+				continue
+			}
+			found[ref.ID] = sign
+			hits = append(hits, ref)
+		}
+	}
+	if len(hits) == 0 {
+		return items, nil
+	}
+	for _, item := range items {
+		if found[item.ID] == "" {
+			hits = append(hits, item)
+		}
+	}
+	return hits, found
 }
 
 // logStop reports a limit that ended a pass. ⚠ At Info, not Debug: this is the answer to "why

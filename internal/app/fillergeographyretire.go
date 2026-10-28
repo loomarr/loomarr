@@ -30,18 +30,10 @@ type fillerGeographyRetirement struct {
 }
 
 func (r fillerGeographyRetirement) Run(ctx context.Context) (int, error) {
-	channels, err := r.store.ListChannels(ctx)
+	areas, err := currentAreas(ctx, r.store, r.policy())
 	if err != nil {
-		return 0, fmt.Errorf("retire unusable filler: list channels: %w", err)
+		return 0, fmt.Errorf("retire unusable filler: %w", err)
 	}
-	places := make([]filler.Geography, 0, len(channels))
-	for _, ch := range channels {
-		if ch.Policy.Filler != nil && ch.Policy.Filler.Geography != nil {
-			places = append(places, filler.Geography{Country: ch.Policy.Filler.Geography.Country,
-				Place: ch.Policy.Filler.Geography.Place})
-		}
-	}
-	areas := r.policy().UsableAreas(places)
 	if len(areas) == 0 {
 		return 0, nil
 	}

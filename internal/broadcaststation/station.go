@@ -73,6 +73,19 @@ func (s Station) CallSignOn(date string) string {
 	return s.CallSigns[len(s.CallSigns)-1].Sign
 }
 
+// CallSignsDuring returns every call sign the station held on some day in [from, to), oldest first.
+// Bounds are YYYY-MM-DD and an empty bound is open, so ("", "") is every call sign it ever held.
+func (s Station) CallSignsDuring(from, to string) []string {
+	span := CallSign{From: from, To: to}
+	var out []string
+	for _, c := range s.CallSigns {
+		if overlaps(c, span) {
+			out = append(out, c.Sign)
+		}
+	}
+	return out
+}
+
 // Validate reports a station the directory could not resolve against.
 func (s Station) Validate() error {
 	if !strings.HasPrefix(s.ID, "fcc:") && !strings.HasPrefix(s.ID, "wd:") {

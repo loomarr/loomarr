@@ -194,6 +194,55 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	}
 }
 
+// searchingStub also searches inside a source, as the archive enumerator does.
+type searchingStub struct {
+	*fetchStub
+	hits     map[string][]filler.DiscoveredRef
+	searched []string
+}
+
+func (s *searchingStub) Search(_ context.Context, source filler.FetchSource, query string, _ int) ([]filler.DiscoveredRef, error) {
+	s.searched = append(s.searched, source.URI+"?"+query)
+	return s.hits[query], nil
+}
+
+// #2059 decision 9: a short pass searches each archive source for the in-radius call signs and takes
+// a station hit ahead of a better-looking listed item; a pass at target searches nothing.
+func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
+	stub := &searchingStub{
+		fetchStub: &fetchStub{
+			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+			offers:  []filler.DiscoveredRef{{ID: "listed-hd", URL: "https://archive.org/details/listed-hd", Height: 1080}},
+		},
+		hits: map[string][]filler.DiscoveredRef{
+			"WAAA": {{ID: "waaa-news", URL: "https://archive.org/details/waaa-news", Title: "WAAA news update 1991", Height: 360}},
+		},
+	}
+	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{
+		fetchStub:        stub.fetchStub,
+		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) { return nil, nil },
+	}, stub, stub.fetchStub, limits(1, 2000), discardLog()).
+		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil })
+	if _, err := fetcher.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stub.searched, []string{"coll?WAAA", "coll?WBBB"}) &&
+		!reflect.DeepEqual(stub.searched, []string{"coll?WBBB", "coll?WAAA"}) {
+		t.Fatalf("searched %v, want each nearby call sign inside the source", stub.searched)
+	}
+	if len(stub.queuedIDs) != 1 || stub.queuedIDs[0] != "waaa-news" {
+		t.Fatalf("queued %v, want the station hit ahead of the listed item", stub.queuedIDs)
+	}
+	if !reflect.DeepEqual(stub.queuedGaps, []string{"station:WAAA"}) {
+		t.Fatalf("queued gaps %q, want the download tagged with the station search that found it", stub.queuedGaps)
+	}
+	// Local material is a flavour, not a quota: nearby stations alone never make a target unmet.
+	if !(filler.CoverageGaps{Stations: []string{"WAAA"}}).Met() {
+		t.Fatal("station searches made a met target unmet")
+	}
+}
+
 // After a purge (#2035), an undersized pool refills unattended, without a pull or an approval: each
 // pass fetches what the pool is short, however many sources are due, and the pass after the target
 // is met fetches nothing.

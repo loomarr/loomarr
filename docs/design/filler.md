@@ -207,6 +207,15 @@ fetchable and operator-removable.
   - **Offered once, switched off.** Each boot offers the entries this install has not been offered
     (`filler_curated_offers`), as sources switched off. Enabling one is the consent to fetch from
     it.
+  - **Except a source for a nearby station** (#2059 decision 10; #2066). An entry may list the
+    broadcast stations whose material it mostly holds (`stations`, station ids), stored on its
+    offer and refreshed by every list version. Setting a place is the consent for its local
+    sources. Before each fetch pass, an entry covering a station within the radius of the
+    installation's or a channel's place is switched on. It is switched back off when no place is
+    near any more. One the operator already had on is theirs and is never touched. One the
+    operator switched off after Loomarr switched it on stays off (`local_state`: `on`, `operator`,
+    `off`). Sources shows "For your area" on such a row. Coverage only chooses where to look: each
+    clip's locality is still decided on arrival.
   - **Operator rows are never overwritten.** A source the operator already added by hand keeps its
     label, switch and geography, since the curated id is the one adding it by hand would give. One
     they deleted is not offered again.
@@ -362,6 +371,12 @@ An enabled source is checked on its effective policy and new items download with
     to one pass.
   - To serve this, airings are kept whole for eight weeks (`clipcatalog.AiringHistoryAge`), not
     one day; beyond that a clip keeps its newest four.
+  - A short pass also **searches each enabled archive.org source for nearby stations** (#2066).
+    The search covers the call signs of stations in a place's radius that were held during a short
+    channel's era. A pass asks at most four of them, rotating hourly. Hits rank ahead of the
+    listing, with the gap key `station:<CALL>`. A hit only says where to look: each clip's locality
+    is still decided on arrival. Nearby call signs never make a target unmet. YouTube sources are
+    not searched.
 
 Unattended fetching can fill a disk, so it is bounded by limits that fail toward doing less:
 

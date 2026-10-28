@@ -4732,6 +4732,8 @@ components:
             - source
             - missing
           type: string
+        onForPlace:
+          type: boolean
         parentId:
           type: string
         providerEnabled:
