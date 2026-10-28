@@ -327,3 +327,35 @@ func TestAssemble_ChannelPlaceOverridesOrInherits(t *testing.T) {
 		}
 	}
 }
+
+// A clip stays while any current place can air it: the installation's area or a channel's own
+// place. A foreign national clip, or a local one no place is near, has no area (#2064).
+func TestUsableAreasKeepClipsAnyPlaceCanAir(t *testing.T) {
+	lakesideLocal := geoCommercial("lakeside-local", filler.GeographicLocal, "US", "fcc:3")
+	canadian := geoCommercial("canadian", filler.GeographicNational, "CA", "")
+	harborLocal := geoCommercial("harbor-local", filler.GeographicLocal, "US", "fcc:1")
+
+	installationOnly := harborPolicy().UsableAreas(nil)
+	if !filler.UsableIn(harborLocal, installationOnly) {
+		t.Error("the installation's own station is unusable")
+	}
+	if filler.UsableIn(lakesideLocal, installationOnly) || filler.UsableIn(canadian, installationOnly) {
+		t.Error("a clip no place can air is still usable")
+	}
+	withLakeside := harborPolicy().UsableAreas([]filler.Geography{{Country: "US", Place: "lakeside"}})
+	if !filler.UsableIn(lakesideLocal, withLakeside) {
+		t.Error("a channel's own place did not keep its station's clip")
+	}
+	// A channel in another country airs that country's national clips (#2030 decision 16), so it
+	// keeps them; without a place there it keeps no local clip of its own.
+	withCanada := harborPolicy().UsableAreas([]filler.Geography{{Country: "CA"}})
+	if !filler.UsableIn(canadian, withCanada) {
+		t.Error("a Canadian channel did not keep a Canadian national clip")
+	}
+	if filler.UsableIn(lakesideLocal, withCanada) {
+		t.Error("a Canadian channel kept a US station's clip")
+	}
+	if !filler.UsableIn(canadian, filler.Policy{}.UsableAreas(nil)) {
+		t.Error("with no installation country, a clip was out of bounds")
+	}
+}

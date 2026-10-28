@@ -47,6 +47,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerProgressiveEnrichment", func(t *testing.T) { testFillerProgressiveEnrichment(t, newStore) })
 		t.Run("FillerEnrichmentCandidateSelection", func(t *testing.T) { testFillerEnrichmentCandidateSelection(t, newStore) })
 		t.Run("FillerContextResearch", func(t *testing.T) { testFillerContextResearch(t, newStore) })
+		t.Run("SettledGeographyClips", func(t *testing.T) { testSettledGeographyClips(t, newStore) })
 		t.Run("FillerResearchWebUsage", func(t *testing.T) { testFillerResearchWebUsage(t, newStore) })
 		t.Run("CompositeLineage", func(t *testing.T) { testCompositeLineage(t, newStore) })
 		t.Run("SplitConfirmationAtomic", func(t *testing.T) { testSplitConfirmationAtomic(t, newStore) })

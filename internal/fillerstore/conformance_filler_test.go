@@ -4645,6 +4645,57 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// Only geography no later pass can change is grounds for removal: a settled national or local
+// answer on an active clip, never an inference or unknown (#2064).
+func testSettledGeographyClips(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_700_000_900, 0).UTC()
+	apply := func(id string, geography fillerenrichment.Geography, kind fillerenrichment.EvidenceKind) string {
+		clip := sampleClip(id, id, filler.Commercial, 1990, "", "")
+		if err := s.UpsertClip(ctx, clip); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+			ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography, Status: fillerenrichment.StatusComplete,
+			Value: fillerenrichment.Value{Geography: geography},
+			Evidence: fillerenrichment.Evidence{Kind: kind, Reference: "test:" + id, Confidence: 90,
+				Producer: "test", ProducerVersion: "1", ObservedAt: at},
+		}, at); err != nil {
+			t.Fatal(err)
+		}
+		return clip.Hash
+	}
+	declared := apply("declared-foreign", fillerenrichment.Geography{Scope: "national", Country: "GB"}, fillerenrichment.EvidenceSourceDefault)
+	station := apply("station-local", fillerenrichment.Geography{Scope: "local", Country: "US", Station: "fcc:7"}, fillerenrichment.EvidenceTrustedMap)
+	apply("inferred-foreign", fillerenrichment.Geography{Scope: "national", Country: "GB"}, fillerenrichment.EvidenceInference)
+	if err := s.UpsertClip(ctx, sampleClip("unknown", "unknown", filler.Commercial, 1990, "", "")); err != nil {
+		t.Fatal(err)
+	}
+	removed := apply("removed-local", fillerenrichment.Geography{Scope: "local", Country: "US", Station: "fcc:8"}, fillerenrichment.EvidenceTrustedMap)
+	removedClip, err := s.GetClip(ctx, removed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{removedClip.Path}, at); err != nil {
+		t.Fatal(err)
+	}
+
+	settled, err := s.ListSettledGeographyClips(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]SettledGeographyClip{}
+	for _, c := range settled {
+		got[c.Hash] = c
+	}
+	if len(got) != 2 || got[declared].Country != "GB" || got[declared].Scope != "national" ||
+		got[station].Station != "fcc:7" || got[station].Scope != "local" || got[station].Path == "" {
+		t.Fatalf("settled geography clips = %+v; want the declared foreign and the station-local clip only", settled)
+	}
+}
+
 func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)

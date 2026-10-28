@@ -37,6 +37,32 @@ func (s *sqlStore) ListFillerEnrichment(ctx context.Context, clipHash string) ([
 	return out, rows.Err()
 }
 
+// ListSettledGeographyClips lists the active clips whose accepted geography is national or local on
+// evidence stronger than an inference. Unknown geography and inferred answers are never listed: a
+// later pass may still change them, so they are not grounds to remove a clip (#2059 decision 14).
+func (s *sqlStore) ListSettledGeographyClips(ctx context.Context) ([]SettledGeographyClip, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.hash, c.path, c.geographic_scope, c.country, c.station
+		FROM clips c JOIN filler_enrichment_axes e ON e.clip_hash = c.hash AND e.axis = ?
+		WHERE c.removed_at = 0 AND c.is_composite = false AND c.geographic_scope IN (?, ?)
+		  AND e.state = ? AND e.evidence_kind <> ?
+		ORDER BY c.hash`),
+		string(fillerenrichment.AxisGeography), string(filler.GeographicNational), string(filler.GeographicLocal),
+		string(fillerenrichment.StatusComplete), string(fillerenrichment.EvidenceInference))
+	if err != nil {
+		return nil, fmt.Errorf("list settled geography clips: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []SettledGeographyClip
+	for rows.Next() {
+		var c SettledGeographyClip
+		if err := rows.Scan(&c.Hash, &c.Path, &c.Scope, &c.Country, &c.Station); err != nil {
+			return nil, fmt.Errorf("scan settled geography clip: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error) {
 	return s.listFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit, true)
 }

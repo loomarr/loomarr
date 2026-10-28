@@ -254,22 +254,26 @@ func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.
 type fillerDetailRunner struct {
 	enrichment fillerEnrichmentRunner
 	research   *fillerresearch.Runner
+	retire     *fillerGeographyRetirement // runs last, once geography has had every pass
 }
 
 func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult, error) {
 	var out fillerenrichment.RunResult
-	var enrichmentErr error
+	var enrichmentErr, researchErr, retireErr error
 	if r.enrichment != nil {
 		out, enrichmentErr = r.enrichment.Run(ctx)
 	}
-	if r.research == nil {
-		return out, enrichmentErr
+	if r.research != nil {
+		var researched fillerresearch.RunResult
+		researched, researchErr = r.research.Run(ctx)
+		out.Considered += researched.Considered
+		out.Updated += researched.Updated
+		out.Failed += researched.Failed
 	}
-	researched, researchErr := r.research.Run(ctx)
-	out.Considered += researched.Considered
-	out.Updated += researched.Updated
-	out.Failed += researched.Failed
-	return out, errors.Join(enrichmentErr, researchErr)
+	if r.retire != nil {
+		_, retireErr = r.retire.Run(ctx)
+	}
+	return out, errors.Join(enrichmentErr, researchErr, retireErr)
 }
 
 type fillerEnrichmentSignals struct {

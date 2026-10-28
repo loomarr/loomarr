@@ -142,6 +142,13 @@ type FillerEnrichmentStore interface {
 	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
 	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
+	ListSettledGeographyClips(ctx context.Context) ([]SettledGeographyClip, error)
+}
+
+// SettledGeographyClip is an active clip whose national or local geography rests on evidence no
+// inference can overturn, so whether any current place can use it is a final answer (#2064).
+type SettledGeographyClip struct {
+	Hash, Path, Scope, Country, Station string
 }
 
 // FillerResearchStore owns cited context reports and their narrowly bounded country projection.
