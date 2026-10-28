@@ -14,8 +14,9 @@ func (f fakeDefectVerdicts) GetClipDefects(_ context.Context, hash string) (Defe
 	return r, ok, nil
 }
 
-// #2036: the defects rung admits a copy the floor passed, refuses one it failed with the failing
-// checks as the detail, and holds every other clip until the floor has a current verdict.
+// #2036: the defects rung admits a copy the floor passed, refuses one that definitively failed
+// with the failing checks as the detail, and holds every other clip until the floor has a
+// current, standing verdict.
 func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 	current := func(v defects.Verdict, findings ...defects.Finding) DefectRecord {
 		return DefectRecord{
@@ -28,6 +29,18 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 	stale.Assessment.Version = "floor-v1"
 	otherEra := current(defects.VerdictPass)
 	otherEra.Era = 2005
+	failed := current(defects.VerdictFail,
+		defects.Finding{Check: defects.CheckBlocks, Outcome: defects.Fail, Measured: 61, Bar: 50},
+		defects.Finding{Check: defects.CheckBlur, Outcome: defects.Pass, Measured: 2, Bar: 9})
+	failed.Assessment.Outcome = defects.Fail
+	borderline := current(defects.VerdictFail,
+		defects.Finding{Check: defects.CheckBlur, Outcome: defects.Borderline, Measured: 10, Bar: 9})
+	borderline.Assessment.Outcome = defects.Borderline
+	unjudged, abstained, ruled := borderline, borderline, borderline
+	unjudged.Judgement = &defects.Judgement{Ruling: defects.RulingNoJudge}
+	abstained.Judgement = &defects.Judgement{Ruling: defects.RulingAbstain}
+	ruled.Judgement = &defects.Judgement{Ruling: defects.RulingFail, Reason: "smeared"}
+	ruled.VerdictReason = "judge: smeared"
 	cases := []struct {
 		name   string
 		rec    *DefectRecord
@@ -40,10 +53,11 @@ func TestDefectsStage_ActsOnTheFloorsCurrentVerdict(t *testing.T) {
 		{"waiting for the judge", ptr(current(defects.VerdictPending)), VerdictDefer, ""},
 		{"passed", ptr(current(defects.VerdictPass)), VerdictContinue, ""},
 		{"too little picture", ptr(current(defects.VerdictUndecided)), VerdictContinue, ""},
-		{"failed", ptr(current(defects.VerdictFail,
-			defects.Finding{Check: defects.CheckBlocks, Outcome: defects.Fail, Measured: 61, Bar: 50},
-			defects.Finding{Check: defects.CheckBlur, Outcome: defects.Pass, Measured: 2, Bar: 9})),
-			VerdictReject, "blocks 61; bar 50"},
+		{"failed by the detectors", &failed, VerdictReject, "blocks 61; bar 50"},
+		{"failed by the judge", &ruled, VerdictReject, "judge: smeared"},
+		// Failed only because nobody could look: held until a judge rules, never refused.
+		{"borderline with no judge", &unjudged, VerdictDefer, ""},
+		{"borderline the judge abstained on", &abstained, VerdictDefer, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

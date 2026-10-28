@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
@@ -292,12 +293,16 @@ func buildFillerSubsystem(
 	)))
 	ffmpegPath := set.str("playout.ffmpeg_path")
 	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
-	defectJudge := filler.NewVisionDefectJudge(judgeVision, buildFillerMediaTools(set, metricRecorder),
+	defectTools := buildFillerMediaTools(set, metricRecorder)
+	defectJudge := filler.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
 	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
+		},
+		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
+			return defectTools.Fingerprint(ctx, file, 0, durationMs)
 		}, defectJudge, layout.ClipDir(), time.Now, log,
 	)))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler

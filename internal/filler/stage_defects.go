@@ -59,10 +59,23 @@ func (s *DefectsStage) Run(ctx context.Context, c StoreClip) (StageResult, error
 	case defects.VerdictUndecided:
 		return StageResult{Verdict: VerdictContinue, Note: "too little picture to judge against the floor"}, nil
 	case defects.VerdictFail:
-		return StageResult{Verdict: VerdictReject, Reason: ReasonDefect, Detail: defectDetail(rec)}, nil
+		if definitiveFail(rec) {
+			return StageResult{Verdict: VerdictReject, Reason: ReasonDefect, Detail: defectDetail(rec)}, nil
+		}
+		return StageResult{Verdict: VerdictDefer, Note: "waiting for a vision model to rule on a borderline picture"}, nil
 	default:
 		return StageResult{Verdict: VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
 	}
+}
+
+// definitiveFail is a failing verdict that stands: the detectors' own, or the judge's ruling. A
+// borderline clip failed only because no judge could rule (none configured, or it abstained) is
+// ruled on again once one can, so it is held off air but keeps its file.
+func definitiveFail(rec DefectRecord) bool {
+	if rec.Verdict != defects.VerdictFail {
+		return false
+	}
+	return rec.Assessment.Outcome == defects.Fail || rec.Judgement != nil && rec.Judgement.Ruling == defects.RulingFail
 }
 
 // defectDetail is the measured fact behind a refusal: each failing check against its bar, or the

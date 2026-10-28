@@ -148,7 +148,11 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 	for i := range measured {
 		members[group.find(i)] = append(members[group.find(i)], i)
 	}
-	referenced := referencedAssets(ci.clipDir, all)
+	paths := make([]string, len(all))
+	for i, c := range all {
+		paths[i] = c.Path
+	}
+	referenced := referencedAssets(ci.clipDir, paths)
 	survivorOf := make([]int, len(measured))
 	for i := range survivorOf {
 		survivorOf[i] = i
@@ -263,22 +267,33 @@ func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityC
 	}); err != nil {
 		return err
 	}
+	for f, err := range removeOwnFiles(ci.clipDir, full, tags, referenced) {
+		ci.warn("identity: an inferior copy's file could not be removed; it is already off the catalog",
+			"clip", loser.Hash, "file", f, "err", err)
+	}
+	return nil
+}
+
+// removeOwnFiles deletes a clip that is already off the catalog from disk: its playback file, its
+// sidecar, and the source master and evidence copy its sidecar names, unless another clip's sidecar
+// names them too. It reports each file it could not remove.
+func removeOwnFiles(clipDir, full string, tags SidecarTags, referenced map[string]int) map[string]error {
 	files := []string{full, sidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays.
 		for _, asset := range []string{m.SourceMaster.Path, derivativePath(m.Evidence)} {
 			if asset != "" && referenced[asset] == 1 {
-				files = append(files, filepath.Join(ci.clipDir, filepath.FromSlash(asset)))
+				files = append(files, filepath.Join(clipDir, filepath.FromSlash(asset)))
 			}
 		}
 	}
+	failed := map[string]error{}
 	for _, f := range files {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
-			ci.warn("identity: an inferior copy's file could not be removed; it is already off the catalog",
-				"clip", loser.Hash, "file", f, "err", err)
+			failed[f] = err
 		}
 	}
-	return nil
+	return failed
 }
 
 func derivativePath(d *MediaDerivativeLineage) string {
@@ -289,10 +304,10 @@ func derivativePath(d *MediaDerivativeLineage) string {
 }
 
 // referencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
-func referencedAssets(clipDir string, clips []IdentityClip) map[string]int {
+func referencedAssets(clipDir string, paths []string) map[string]int {
 	out := map[string]int{}
-	for _, c := range clips {
-		full, err := ClipPath(clipDir, c.Path, filepath.Ext(c.Path))
+	for _, path := range paths {
+		full, err := ClipPath(clipDir, path, filepath.Ext(path))
 		if err != nil {
 			continue
 		}

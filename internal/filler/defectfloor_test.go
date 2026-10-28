@@ -3,17 +3,54 @@ package filler
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
 )
 
 type defectMemStore struct {
 	clips   []DefectClip
 	records map[string]DefectRecord
+	fps     map[string]creative.Fingerprint
+	retired []string
+}
+
+func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at time.Time) error {
+	for i := range m.clips {
+		if m.clips[i].Hash == hash {
+			m.clips[i].RemovedAt = at
+			m.retired = append(m.retired, hash)
+			return nil
+		}
+	}
+	return errors.New("no such clip")
+}
+
+func (m *defectMemStore) ListClipFingerprints(context.Context, string) (map[string]creative.Fingerprint, error) {
+	out := map[string]creative.Fingerprint{}
+	for k, v := range m.fps {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func (m *defectMemStore) UpsertClipFingerprint(_ context.Context, hash, _ string, fp creative.Fingerprint) error {
+	if m.fps == nil {
+		m.fps = map[string]creative.Fingerprint{}
+	}
+	m.fps[hash] = fp
+	return nil
+}
+
+// someFingerprint stands in for a real one: the floor only needs one to exist.
+func someFingerprint(context.Context, string, int64) (creative.Fingerprint, error) {
+	return creative.Fingerprint{DurationMs: 30_000, Video: []uint64{1}}, nil
 }
 
 func (m *defectMemStore) ListDefectClips(context.Context) ([]DefectClip, error) { return m.clips, nil }
@@ -76,13 +113,29 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	}
 	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
 
-	res, err := NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Ruled: fresh and current are borderline tape softness, recorded as having no judge.
-	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1, Ruled: 2}) {
-		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed, 2 ruled", res)
+	if res != (DefectFloorResult{Measured: 2, Reassessed: 1, Failed: 1, Ruled: 2, Retired: 2}) {
+		t.Fatalf("pass = %+v, want 2 measured (fresh, held), 1 re-judged, 1 failed, 2 ruled, 2 retired", res)
+	}
+	// #2036: the HD-era copies fail on the detectors' own reading and are retired, held or on air,
+	// files and all. The tape-era one failed only for want of a judge, so it keeps its file.
+	if !slices.Equal(st.retired, []string{held.Hash, recorrected.Hash}) {
+		t.Fatalf("retired %v, want the held clip first, then the re-dated one", st.retired)
+	}
+	for _, c := range []DefectClip{held, recorrected} {
+		if _, err := os.Stat(filepath.Join(dir, c.Path)); !os.IsNotExist(err) {
+			t.Errorf("retired copy %s is still on disk (err %v)", c.Hash, err)
+		}
+		if _, ok := st.fps[c.Hash]; !ok {
+			t.Errorf("retired copy %s has no fingerprint to match a better copy against", c.Hash)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, fresh.Path)); err != nil {
+		t.Errorf("the provisionally failed copy lost its file: %v", err)
 	}
 	if len(decoded) != 3 {
 		t.Fatalf("decoded %d clips, want only fresh, held and broken", len(decoded))
@@ -105,9 +158,86 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 
 	// The next pass decodes nothing: the failure is recorded, not retried every hour.
 	decoded = nil
-	res, err = NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err = NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil || len(decoded) != 0 || res != (DefectFloorResult{}) {
 		t.Fatalf("second pass = %+v, decoded %v, err %v; want nothing to do", res, decoded, err)
+	}
+}
+
+// #2036: retiring a copy deletes only what is its own. A source master another clip's sidecar also
+// names stays. A copy that cannot be fingerprinted keeps its file until a later pass can: without a
+// fingerprint, no cleaner copy of the ad could be recognised.
+func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	blocky := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlockMean: 90}
+
+	master := func(name string) MediaAssetIdentity {
+		src := filepath.Join(dir, name)
+		if err := os.WriteFile(src, []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		hash, err := ClipID(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := preserveSourceMaster(ctx, dir, src, hash, SidecarTags{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	clip := func(body string, m MediaAssetIdentity) DefectClip {
+		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
+		if err := WriteSidecarTags(filepath.Join(dir, ClipRelPath(hash, ".mp4")), SidecarTags{MediaAssets: &MediaAssetManifest{
+			Version: mediaAssetManifestVersion, SourceMaster: m,
+		}}, false); err != nil {
+			t.Fatal(err)
+		}
+		c := DefectClip{CreatedAt: t0}
+		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, ClipRelPath(hash, ".mp4"), 1988, Commercial, PlacementBreakBody, 30_000
+		return c
+	}
+	shared, own := master("shared-source.mkv"), master("own-source.mkv")
+	failing := clip("blocky copy", own)
+	sibling := clip("blocky cut", shared) // also fails, but shares its master with a clean clip
+	clean := clip("clean copy", shared)
+	unfingerprintable := clip("blocky, no picture to fingerprint", MediaAssetIdentity{})
+
+	st := &defectMemStore{clips: []DefectClip{failing, sibling, clean, unfingerprintable}, records: map[string]DefectRecord{}}
+	measure := func(_ context.Context, file string, _, _ int, _ bool) (defects.Readings, error) {
+		if strings.Contains(file, clean.Hash) {
+			return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
+		}
+		return blocky, nil
+	}
+	fingerprint := func(ctx context.Context, file string, ms int64) (creative.Fingerprint, error) {
+		if strings.Contains(file, unfingerprintable.Hash) {
+			return creative.Fingerprint{}, errors.New("no frames")
+		}
+		return someFingerprint(ctx, file, ms)
+	}
+	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	res, err := NewDefectFloor(st, probe, measure, fingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Retired != 2 || !slices.Contains(st.retired, failing.Hash) || !slices.Contains(st.retired, sibling.Hash) {
+		t.Fatalf("pass = %+v retired %v, want the two blocky copies that could be fingerprinted", res, st.retired)
+	}
+	exists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
+		return err == nil
+	}
+	if exists(own.Path) || exists(failing.Path) || exists(sibling.Path) {
+		t.Error("a retired copy's own file or master survived")
+	}
+	if !exists(shared.Path) || !exists(clean.Path) {
+		t.Error("a master the clean copy still names, or the clean copy itself, was deleted")
+	}
+	if !exists(unfingerprintable.Path) {
+		t.Error("a failing copy with no fingerprint was deleted, losing the ad")
 	}
 }
 
@@ -124,7 +254,7 @@ func TestDefectFloor_AFailedRecordReadStopsThePass(t *testing.T) {
 		t.Fatal("a clip was decoded after the record read failed")
 		return defects.Readings{}, nil
 	}
-	if _, err := NewDefectFloor(st, nil, measure, nil, t.TempDir(), time.Now, nil).Run(context.Background()); err == nil {
+	if _, err := NewDefectFloor(st, nil, measure, someFingerprint, nil, t.TempDir(), time.Now, nil).Run(context.Background()); err == nil {
 		t.Fatal("the pass carried on past a failed record read")
 	}
 }
@@ -146,7 +276,7 @@ func TestDefectFloor_StopsDecodingWhenTheBudgetRunsOut(t *testing.T) {
 		return defects.Readings{Version: defects.MeasurementVersion}, nil
 	}
 	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
-	res, err := NewDefectFloor(st, probe, measure, nil, dir, func() time.Time { return clock }, nil).Run(context.Background())
+	res, err := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return clock }, nil).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

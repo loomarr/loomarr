@@ -1783,9 +1783,21 @@ func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, la
 	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
-// fillerDefectStoreAdapter bridges the store to the defect floor (#2034). Held clips are listed:
-// the floor is judged before review, so its record can say what it would retire.
+// fillerDefectStoreAdapter bridges the store to the defect floor (#2034) and its enforcement
+// (#2036). Held clips are listed: admission waits at the defects rung for their verdict.
 type fillerDefectStoreAdapter struct{ st fillerstore.Store }
+
+func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
+	return a.st.RetireDefectiveCopy(ctx, hash, at)
+}
+
+func (a fillerDefectStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
+	return a.st.ListClipFingerprints(ctx, algorithm)
+}
+
+func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
+	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
+}
 
 func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler.DefectClip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
