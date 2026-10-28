@@ -11,7 +11,11 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 )
 
-const PromptVersion = "filler-context-v2"
+const PromptVersion = "filler-context-v3"
+
+// StationResolver finds the one broadcast station that held callSign during [from, to) (YYYY-MM-DD,
+// either open when empty) and its country, the way broadcaststation.Directory.ResolveDuring does.
+type StationResolver func(callSign, from, to string) (id, country string, ok bool)
 
 // researchMaxTokens bounds the answer: the schema is ~130 tokens on average, so 512 costs nothing.
 const researchMaxTokens = 512
@@ -19,6 +23,7 @@ const researchMaxTokens = 512
 type Researcher struct {
 	retriever Retriever
 	fallback  Retriever
+	stations  StationResolver // nil: no call sign resolves, so a named station answers nothing
 	provider  llm.Provider
 	producer  string
 	version   string
@@ -28,6 +33,13 @@ type Researcher struct {
 func (r *Researcher) WithFallback(fallback Retriever) *Researcher {
 	if r != nil {
 		r.fallback = fallback
+	}
+	return r
+}
+
+func (r *Researcher) WithStations(stations StationResolver) *Researcher {
+	if r != nil {
+		r.stations = stations
 	}
 	return r
 }
@@ -158,7 +170,7 @@ func (r *Researcher) interpret(ctx context.Context, input Input, packet Packet) 
 		requested = append(requested, "likely year or decade")
 	}
 	if strings.TrimSpace(input.KnownCountry) == "" {
-		requested = append(requested, "likely country/market")
+		requested = append(requested, "likely country, and whether it is one TV station's own local material")
 	}
 	packetJSON, err := json.Marshal(packet.Citations)
 	if err != nil {
@@ -170,8 +182,11 @@ The pages may describe a product or campaign rather than the exact archived cut.
 answer as likely in the explanation and keep confidence at or below 70. Abstain when evidence is weak.
 Use only citation IDs present in the packet. Never return a URL.
 Year is a four-digit exact likely year or 0. Decade is a four-digit decade start or 0. CountryCode is
-uppercase ISO alpha-2 or empty. Confidence is 0 through 80.
-JSON keys: year, decade, countryCode, country, confidence, explanation, citationIds.`
+uppercase ISO alpha-2 or empty. Scope is "local" only for one TV station's own news, weather,
+station ID or promo; "national" when it aired across the country; otherwise empty. An advert
+recorded off a station is not local. CallSign is the call sign of the station the evidence names,
+such as WABC, or empty. Confidence is 0 through 80.
+JSON keys: year, decade, countryCode, country, scope, callSign, confidence, explanation, citationIds.`
 	user := fmt.Sprintf("Public source title: %s\nPublic source description: %s\nRequested context: %s\nEvidence packet:\n%s",
 		input.Title, input.Description, strings.Join(requested, ", "), packetJSON)
 	response, err := r.provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
@@ -186,9 +201,13 @@ JSON keys: year, decade, countryCode, country, confidence, explanation, citation
 	if input.KnownEra > 0 {
 		suggestion.Year, suggestion.Decade = 0, 0
 	}
+	suggestion.Station = "" // Loomarr resolves the station; the model only names one
+	suggestion.Scope = strings.ToLower(strings.TrimSpace(suggestion.Scope))
+	suggestion.CallSign = strings.ToUpper(strings.TrimSpace(suggestion.CallSign))
 	if strings.TrimSpace(input.KnownCountry) != "" {
-		suggestion.CountryCode, suggestion.Country = "", ""
+		suggestion.CountryCode, suggestion.Country, suggestion.Scope, suggestion.CallSign = "", "", "", ""
 	}
+	r.resolveStation(&suggestion, input.KnownEra)
 	if suggestion.Confidence > 80 {
 		suggestion.Confidence = 80
 	}
@@ -199,6 +218,32 @@ JSON keys: year, decade, countryCode, country, confidence, explanation, citation
 		return Report{}, err
 	}
 	return report, nil
+}
+
+// resolveStation binds a named call sign to the one directory station that held it in the clip's
+// year or decade (#2059 decision 15). An unresolved call sign stays named with no station, which
+// answers no geography; a station in another country than the model's contradicts it, so neither
+// stands.
+func (r *Researcher) resolveStation(s *Suggestion, knownEra int) {
+	if s.CallSign == "" || r.stations == nil {
+		return
+	}
+	from, to := "", ""
+	switch year := max(s.Year, knownEra); {
+	case year > 0:
+		from, to = fmt.Sprintf("%04d-01-01", year), fmt.Sprintf("%04d-01-01", year+1)
+	case s.Decade > 0:
+		from, to = fmt.Sprintf("%04d-01-01", s.Decade), fmt.Sprintf("%04d-01-01", s.Decade+10)
+	}
+	id, country, ok := r.stations(s.CallSign, from, to)
+	if !ok {
+		return
+	}
+	if s.CountryCode != "" && s.CountryCode != country {
+		s.CountryCode, s.Country, s.Scope, s.CallSign = "", "", "", ""
+		return
+	}
+	s.Station, s.CountryCode = id, country
 }
 
 // withSourceCitation makes preserved provider metadata first-class evidence without another fetch.

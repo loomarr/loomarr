@@ -60,6 +60,18 @@ func (d *Directory) Station(id string) (Station, bool) {
 // station id, on airDate when one is given. Like Identify, two candidates mean no station.
 func (d *Directory) Resolve(callSignOrID, airDate string) (Station, bool) {
 	value := strings.TrimSpace(callSignOrID)
+	window := CallSign{}
+	if day, err := time.Parse(time.DateOnly, airDate); err == nil {
+		window = CallSign{From: airDate, To: day.AddDate(0, 0, 1).Format(time.DateOnly)}
+	}
+	return d.ResolveDuring(value, window.From, window.To)
+}
+
+// ResolveDuring is Resolve for an air date known only as a span, such as a year or a decade
+// (YYYY-MM-DD bounds, To exclusive, either open when empty). A call sign two stations held during
+// the span is no station.
+func (d *Directory) ResolveDuring(callSignOrID, from, to string) (Station, bool) {
+	value := strings.TrimSpace(callSignOrID)
 	if s, ok := d.Station(value); ok {
 		return s, true
 	}
@@ -67,10 +79,7 @@ func (d *Directory) Resolve(callSignOrID, airDate string) (Station, bool) {
 	if sign == "" {
 		return Station{}, false
 	}
-	window := CallSign{}
-	if day, err := time.Parse(time.DateOnly, airDate); err == nil {
-		window = CallSign{From: airDate, To: day.AddDate(0, 0, 1).Format(time.DateOnly)}
-	}
+	window := CallSign{From: from, To: to}
 	var found *Station
 	for _, h := range d.bySign[sign] {
 		if !overlaps(h.span, window) {

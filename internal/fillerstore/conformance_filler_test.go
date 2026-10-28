@@ -4732,6 +4732,19 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 0 {
 		t.Fatalf("promotion after newer abstention = %d, %v, want 0", promoted, err)
 	}
+	// A station's own material, named and resolved, is local to that station (#2063).
+	local := report
+	local.ProducerVersion = "prompt:local"
+	local.CompletedAt = at.Add(4500 * time.Millisecond)
+	local.Suggestion.Scope, local.Suggestion.CallSign, local.Suggestion.Station = "local", "WQXT", "fcc:7"
+	if err := s.SaveFillerResearchReport(ctx, local); err != nil {
+		t.Fatal(err)
+	}
+	projected, err = s.GetClip(ctx, clip.Hash)
+	if err != nil || projected.GeographicScope != filler.GeographicLocal || projected.Country != "US" ||
+		projected.Station != "fcc:7" {
+		t.Fatalf("local research projection = %+v, err %v", projected.Clip, err)
+	}
 	// An explicit operator clear is terminal even when an older report was confident.
 	if _, _, err := s.ApplyFillerEnrichment(ctx, fillerenrichment.State{
 		ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography, Status: fillerenrichment.StatusComplete,
