@@ -27,7 +27,7 @@ func syndicatedComedyChannel(episodes, halloween int) (schedule.Channel, []sched
 	var entries []schedule.LineupEntry
 	titles := []string{"The Mudpuddles", "Kettle Street", "Two Doors Down Under", "Lamplight Lane"}
 	for si, title := range titles {
-		key := provision.Key(fmt.Sprintf("series:tvdb:9007%04d", si))
+		key := provision.Key(fmt.Sprintf("series:tvdb:%d", 90070000+si))
 		entries = append(entries, schedule.LineupEntry{
 			Key: key, Title: title, OfficialRating: "TV-PG", Genres: []string{"Comedy"}, Year: 1982 + si,
 		})
