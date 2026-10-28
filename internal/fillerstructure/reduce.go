@@ -43,14 +43,11 @@ func Reduce(request Request) Decision {
 	if unit == UnitUnclear || unit == UnitUnusable {
 		reasons[ReasonUnsupportedUnit] = struct{}{}
 	}
+	// A standalone role is always a filler role, so a subtype disagreement leaves the role absent
+	// rather than holding the structure; the exact role is the final child's to establish (#1069).
 	role := Role("")
 	if unit == UnitStandalone {
-		role = candidates[0].Role
-		for _, candidate := range candidates[1:] {
-			if candidate.Role != role {
-				reasons[ReasonRoleDisagreement] = struct{}{}
-			}
-		}
+		role = unanimousRole(candidates, func(candidate Candidate) Role { return candidate.Role })
 	}
 	intervals := len(candidates[0].Segments)
 	for _, candidate := range candidates[1:] {
@@ -63,17 +60,17 @@ func Reduce(request Request) Decision {
 		return decision
 	}
 
+	// Intervals must agree on disposition, never on subtype: commercial against PSA is still one
+	// filler candidate, while filler against programme or an unresolved role always holds.
 	for index := range intervals {
-		segmentRole := candidates[0].Segments[index].Role
-		if segmentRole == RoleAmbiguous || segmentRole == RoleUnusable {
-			reasons[ReasonUnresolvedInterval] = struct{}{}
-		}
-		for _, candidate := range candidates[1:] {
-			if candidate.Segments[index].Role != segmentRole {
-				reasons[ReasonIntervalRole] = struct{}{}
-			}
-			if candidate.Segments[index].Role == RoleAmbiguous || candidate.Segments[index].Role == RoleUnusable {
+		disposition := DispositionForRole(candidates[0].Segments[index].Role)
+		for _, candidate := range candidates {
+			candidateDisposition := DispositionForRole(candidate.Segments[index].Role)
+			if candidateDisposition == DispositionUnresolved {
 				reasons[ReasonUnresolvedInterval] = struct{}{}
+			}
+			if candidateDisposition != disposition {
+				reasons[ReasonIntervalDisposition] = struct{}{}
 			}
 		}
 	}
@@ -113,13 +110,25 @@ func Reduce(request Request) Decision {
 	decision.ReasonCodes = []string{ReasonAgreement}
 	decision.Unit, decision.Role = unit, role
 	for index := range intervals {
-		segmentRole := candidates[0].Segments[index].Role
 		decision.Segments = append(decision.Segments, DecisionSegment{
 			StartMS: boundaries[index], EndMS: boundaries[index+1],
-			Disposition: DispositionForRole(segmentRole), Role: segmentRole,
+			Disposition: DispositionForRole(candidates[0].Segments[index].Role),
+			Role:        unanimousRole(candidates, func(candidate Candidate) Role { return candidate.Segments[index].Role }),
 		})
 	}
 	return decision
+}
+
+// unanimousRole is a diagnostic: the role every candidate gave, or absent. It never picks the first
+// answer or a majority, because no certified module has established a role the assessors dispute.
+func unanimousRole(candidates []Candidate, roleOf func(Candidate) Role) Role {
+	role := roleOf(candidates[0])
+	for _, candidate := range candidates[1:] {
+		if roleOf(candidate) != role {
+			return ""
+		}
+	}
+	return role
 }
 
 // DispositionForRole projects one interval role without weakening unresolved roles.

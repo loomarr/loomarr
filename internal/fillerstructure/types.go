@@ -50,16 +50,15 @@ const (
 )
 
 const (
-	ReasonAgreement          = "independent_model_family_agreement"
-	ReasonInvalidCandidate   = "invalid_candidate"
-	ReasonOperationalFailure = "operational_failure"
-	ReasonUnitDisagreement   = "unit_disagreement"
-	ReasonUnsupportedUnit    = "unsupported_unit"
-	ReasonRoleDisagreement   = "role_disagreement"
-	ReasonIntervalCount      = "interval_count_disagreement"
-	ReasonIntervalRole       = "interval_role_disagreement"
-	ReasonBoundary           = "boundary_disagreement"
-	ReasonUnresolvedInterval = "unresolved_interval"
+	ReasonAgreement           = "independent_model_family_agreement"
+	ReasonInvalidCandidate    = "invalid_candidate"
+	ReasonOperationalFailure  = "operational_failure"
+	ReasonUnitDisagreement    = "unit_disagreement"
+	ReasonUnsupportedUnit     = "unsupported_unit"
+	ReasonIntervalCount       = "interval_count_disagreement"
+	ReasonIntervalDisposition = "interval_disposition_disagreement"
+	ReasonBoundary            = "boundary_disagreement"
+	ReasonUnresolvedInterval  = "unresolved_interval"
 )
 
 type Source struct {
@@ -113,20 +112,24 @@ type Request struct {
 	Candidates          []Candidate
 }
 
+// DecisionSegment is structure authority over one interval: its bounds and coarse disposition. Role
+// is diagnostic only, present when every assessor gave the same one; exact child roles are
+// established from the final child, not here (#1069).
 type DecisionSegment struct {
 	StartMS     int64       `json:"startMs"`
 	EndMS       int64       `json:"endMs"`
 	Disposition Disposition `json:"disposition"`
-	Role        Role        `json:"role"`
+	Role        Role        `json:"role,omitempty"`
 }
 
 type Decision struct {
-	Source      Source            `json:"source"`
-	Input       AssessmentInput   `json:"input"`
-	Status      Status            `json:"status"`
-	ReasonCodes []string          `json:"reasonCodes"`
-	Unit        Unit              `json:"unit,omitempty"`
-	Role        Role              `json:"role,omitempty"`
-	Segments    []DecisionSegment `json:"segments,omitempty"`
-	Candidates  []Candidate       `json:"candidates"`
+	Source      Source          `json:"source"`
+	Input       AssessmentInput `json:"input"`
+	Status      Status          `json:"status"`
+	ReasonCodes []string        `json:"reasonCodes"`
+	Unit        Unit            `json:"unit,omitempty"`
+	// Role is the unanimous standalone role, diagnostic like DecisionSegment.Role.
+	Role       Role              `json:"role,omitempty"`
+	Segments   []DecisionSegment `json:"segments,omitempty"`
+	Candidates []Candidate       `json:"candidates"`
 }

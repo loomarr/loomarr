@@ -50,13 +50,37 @@ func TestVerifyAuthorityRejectsHeldDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := fixtureRequest()
-	request.Candidates[1].Segments[0].Role = RolePSA
+	request.Candidates[1].Segments[0].Role = RoleProgrammeFragment
 	held, err := NewArtifact(request, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
+	if held.Decision.Status != StatusHeld {
+		t.Fatalf("filler against programme confirmed: %+v", held.Decision)
+	}
 	if err := VerifyAuthority(held, fixtureAuthority(passing)); err == nil {
 		t.Fatal("held decision was authorized")
+	}
+}
+
+// The role slices still gate materialization until disposition slices replace them (#1069), so a
+// confirmed interval with no unanimous role cannot pass a role-sliced authority.
+func TestVerifyAuthorityRejectsRolelessInterval(t *testing.T) {
+	passing, err := NewArtifact(fixtureRequest(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := fixtureRequest()
+	request.Candidates[1].Segments[0].Role = RolePSA
+	roleless, err := NewArtifact(request, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roleless.Decision.Status != StatusConfirmed {
+		t.Fatalf("subtype disagreement held: %+v", roleless.Decision)
+	}
+	if err := VerifyAuthority(roleless, fixtureAuthority(passing)); err == nil {
+		t.Fatal("a role-less interval passed a role-sliced authority")
 	}
 }
 

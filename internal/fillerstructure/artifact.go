@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	ArtifactSchemaVersion   = 4
-	ArtifactContractVersion = "filler-structure-decision-artifact-v4"
-	ReducerContractVersion  = "filler-structure-agreement-v2"
+	ArtifactSchemaVersion   = 5
+	ArtifactContractVersion = "filler-structure-decision-artifact-v5"
+	ReducerContractVersion  = "filler-structure-agreement-v3"
 )
 
 // Artifact is the durable production evidence for one complete-timeline reduction. It retains

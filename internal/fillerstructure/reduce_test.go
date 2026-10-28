@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReduceConfirmsOnlyIndependentCompleteTimelineAgreement(t *testing.T) {
@@ -15,6 +16,61 @@ func TestReduceConfirmsOnlyIndependentCompleteTimelineAgreement(t *testing.T) {
 	decision := Reduce(request)
 	if decision.Status != StatusConfirmed || decision.Unit != UnitCompilation || len(decision.Segments) != 2 || decision.Segments[0].EndMS != 4_500 || decision.Segments[0].Disposition != DispositionFillerCandidate || decision.Segments[1].Role != RolePromo || !slices.Equal(decision.ReasonCodes, []string{ReasonAgreement}) {
 		t.Fatalf("decision=%+v", decision)
+	}
+}
+
+// The measured #1069 case: both families find the same cuts and agree the span is filler, but one
+// calls a PSA a commercial. Structure confirms; the disputed role stays absent, never voted.
+func TestReduceConfirmsSubtypeDisagreementWithoutChoosingARole(t *testing.T) {
+	request := fixtureRequest()
+	request.Candidates[1].Segments[0].Role = RolePSA
+	decision := Reduce(request)
+	if decision.Status != StatusConfirmed || len(decision.Segments) != 2 || !slices.Equal(decision.ReasonCodes, []string{ReasonAgreement}) {
+		t.Fatalf("decision=%+v", decision)
+	}
+	if decision.Segments[0].Disposition != DispositionFillerCandidate || decision.Segments[0].Role != "" {
+		t.Fatalf("disputed interval = %+v, want a filler candidate with no role", decision.Segments[0])
+	}
+	if decision.Segments[1].Role != RolePromo {
+		t.Fatalf("unanimous interval = %+v, want its role kept", decision.Segments[1])
+	}
+	if decision.Candidates[0].Segments[0].Role != RoleCommercial || decision.Candidates[1].Segments[0].Role != RolePSA {
+		t.Fatalf("candidate observations were rewritten: %+v", decision.Candidates)
+	}
+}
+
+func TestReduceConfirmsStandaloneSubtypeDisagreementWithoutARole(t *testing.T) {
+	request := fixtureRequest()
+	for index, role := range []Role{RoleCommercial, RolePSA} {
+		candidate := &request.Candidates[index]
+		candidate.Unit, candidate.Role = UnitStandalone, role
+		candidate.Segments = []Segment{{StartMS: 0, EndMS: 10_000, Role: role}}
+	}
+	decision := Reduce(request)
+	if decision.Status != StatusConfirmed || decision.Unit != UnitStandalone || decision.Role != "" ||
+		len(decision.Segments) != 1 || decision.Segments[0].Role != "" || decision.Segments[0].Disposition != DispositionFillerCandidate {
+		t.Fatalf("decision=%+v", decision)
+	}
+	request.Candidates[1].Role, request.Candidates[1].Segments[0].Role = RoleCommercial, RoleCommercial
+	if decision := Reduce(request); decision.Status != StatusConfirmed || decision.Role != RoleCommercial || decision.Segments[0].Role != RoleCommercial {
+		t.Fatalf("unanimous standalone = %+v", decision)
+	}
+}
+
+func TestReduceRoleDisagreementReplaysThroughTheArtifact(t *testing.T) {
+	request := fixtureRequest()
+	request.Candidates[1].Segments[0].Role = RolePSA
+	artifact, err := NewArtifact(request, time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Decision.Status != StatusConfirmed || ValidateArtifact(artifact) != nil {
+		t.Fatalf("artifact = %+v", artifact.Decision)
+	}
+	artifact.Decision.Segments[0].Role = RoleCommercial
+	artifact.SHA256 = ArtifactSHA256(artifact)
+	if ValidateArtifact(artifact) == nil {
+		t.Fatal("an artifact that chose the first assessor's role replayed as valid")
 	}
 }
 
@@ -38,7 +94,15 @@ func TestReduceHoldsRatherThanVotingAcrossConflicts(t *testing.T) {
 			request.Candidates[1].Failure, request.Candidates[1].Unit, request.Candidates[1].Segments = "timeout", "", nil
 		}, reason: ReasonOperationalFailure},
 		{name: "unit", mutate: func(request *Request) { request.Candidates[1].Unit = UnitProgrammeSpots }, reason: ReasonUnitDisagreement},
-		{name: "role", mutate: func(request *Request) { request.Candidates[1].Segments[0].Role = RolePSA }, reason: ReasonIntervalRole},
+		{name: "filler against programme", mutate: func(request *Request) {
+			request.Candidates[1].Segments[0].Role = RoleProgrammeFragment
+		}, reason: ReasonIntervalDisposition},
+		{name: "filler against non-filler", mutate: func(request *Request) { request.Candidates[1].Segments[1].Role = RoleNonFiller }, reason: ReasonIntervalDisposition},
+		{name: "unresolved role", mutate: func(request *Request) { request.Candidates[1].Segments[0].Role = RoleAmbiguous }, reason: ReasonUnresolvedInterval},
+		{name: "both unresolved", mutate: func(request *Request) {
+			request.Candidates[0].Segments[1].Role = RoleUnusable
+			request.Candidates[1].Segments[1].Role = RoleUnusable
+		}, reason: ReasonUnresolvedInterval},
 		{name: "count", mutate: func(request *Request) {
 			request.Candidates[1].Segments = []Segment{{StartMS: 0, EndMS: 10_000, Role: RoleCommercial}}
 		}, reason: ReasonIntervalCount},

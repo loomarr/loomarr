@@ -214,6 +214,13 @@ _Avoid_: compilation, reel, source clip
 A Clip produced by splitting a Composite, carrying lineage back to its parent (§10 V45).
 _Avoid_: cut, chunk, part
 
+**Structure disposition**:
+What the structure decision says about one interval of a Composite: `filler_candidate`,
+`non_filler` or `unresolved`. It decides whether the span may become a Segment, never which kind
+of filler it is. The exact role (commercial, PSA, …) belongs to the final Segment
+(`docs/design/filler-structure.md`, #1069).
+_Avoid_: role, kind (for this coarse answer)
+
 **Taxon** (and **Tag**):
 The clip vocabulary is a **forest of taxa on independent axes** — product, format, seasonal,
 audience-cue — where a leaf tag like `beer` rolls up to `alcohol` and `drinks`. A Clip carries
