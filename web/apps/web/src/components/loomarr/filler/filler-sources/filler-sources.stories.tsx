@@ -16,12 +16,16 @@ const noop = () => {};
 // rather than at every story that happened to hand-roll the same shape.
 const SOURCES = fillerSources;
 
+// A fixed clock the fixtures' check dates are read against (§5.2), so "checked 47d ago" is the
+// same on every snapshot run.
+const NOW = Date.parse("2026-09-15T09:14:00Z");
+
 const meta = {
   title: "Filler/FillerSources",
   component: FillerSources,
   // ⚠ No `total`. This header reads "N of M on"; the catalog size belongs to the page header's
   // `watchLine` pill, not here — two components reporting it is how they start disagreeing.
-  args: { sources: SOURCES, onSelect: noop },
+  args: { sources: SOURCES, onSelect: noop, now: NOW },
   decorators: [widthFrame(760)],
 } satisfies Meta<typeof FillerSources>;
 
