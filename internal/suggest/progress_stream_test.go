@@ -81,7 +81,7 @@ func TestPickStream_EscapedQuoteDoesNotEndTheString(t *testing.T) {
 // "4 of about 8 picked" is honest only while 8 is what the model is actually asked for.
 func TestLineupPickCap_MatchesThePrompt(t *testing.T) {
 	want := fmt.Sprintf("Select at most %d picks total", LineupPickCap)
-	if !strings.Contains(systemPrompt, want) {
-		t.Fatalf("systemPrompt no longer says %q; update LineupPickCap or the prompt together", want)
+	if !strings.Contains(usPrompt, want) {
+		t.Fatalf("the system prompt no longer says %q; update LineupPickCap or the prompt together", want)
 	}
 }
