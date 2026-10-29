@@ -367,6 +367,7 @@ type SettingEntry struct {
 	Kind         string              `json:"kind"`
 	Apply        string              `json:"apply" enum:"live,restart" doc:"When a saved value becomes active: live on the next owning operation, or restart in the next app generation."`
 	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Unit         string              `json:"unit,omitempty" doc:"What a plain number counts, shown beside its input, e.g. GiB, MiB or %. Empty for a bare count."`
 	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
 	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
 	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`

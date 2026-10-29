@@ -1,3 +1,4 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,8 @@ const SettingsSaveBarHost = () => {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
+          // The storage summary beside the allowance is derived from the settings just saved.
+          queryClient.invalidateQueries({ queryKey: fillerApi.getFillerReadinessQueryKey() }),
         ]);
         if (response.status !== 200) return;
         const saved = (response.data.results ?? [])

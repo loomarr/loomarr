@@ -391,7 +391,9 @@ Two consequences worth stating, because both are easy to "fix" wrongly later:
 (`plain`, `duration`, `bytes`, `cron`, `path`, `language`, `switch`) beside its validation kind. Validation
 still decides what may be stored; presentation decides how the same value is explained and edited.
 This keeps `720h` as the stable wire/storage value while every UI says “30 days”, and keeps a byte
-ceiling from appearing as an unexplained integer. Enum options remain
+ceiling from appearing as an unexplained integer. A plain number stored in a larger unit declares
+that `Unit` (`GiB`, `MiB`, `%`), which the editor shows beside the box. The key suffix (`_gb`, `_mb`,
+`_pct`) and the declared unit must agree, and a registry test enforces it. Enum options remain
 `[]EnumOption{Value, Label}` for the same reason. **Language presentation is the intentional
 localization exception:** the registry owns the supported BCP 47 codes, while a client renders those
 codes in its active interface locale through CLDR/`Intl.DisplayNames`; the enum label is only a
