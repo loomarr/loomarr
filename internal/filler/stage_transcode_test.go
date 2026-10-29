@@ -1528,13 +1528,16 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 	}
 }
 
-func TestTranscodeStage_BackfillsQualityWithoutReencodingOldMezzanine(t *testing.T) {
+// The state a transcode leaves when its verdict's hold/tombstone write failed: the mezzanine and
+// an anomalous report are on disk. The next pass must re-emit that verdict from the sidecar.
+func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testing.T) {
 	dir := t.TempDir()
-	hash := writeContentAddressedClip(t, dir, []byte("old mezzanine"), ".mp4")
+	hash := writeContentAddressedClip(t, dir, []byte("mezzanine"), ".mp4")
 	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
 	full := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := WriteSidecarTags(full, SidecarTags{
-		OriginalName: "Old advert", Mezzanine: mediatools.DefaultMezzanine().ID(),
+		OriginalName: "Silent advert", Mezzanine: mediatools.DefaultMezzanine().ID(),
+		MediaQuality: &MediaQuality{DurationMs: 30_000, Silence: []Interval{{StartMs: 0, EndMs: 29_000}}},
 	}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -1542,33 +1545,18 @@ func TestTranscodeStage_BackfillsQualityWithoutReencodingOldMezzanine(t *testing
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
 	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
-		t.Fatal("an existing mezzanine must not be re-encoded to backfill quality")
+		t.Fatal("a persisted verdict must not be re-encoded")
 		return MediaQuality{}, nil
-	}
-	stage.inspect = func(context.Context, string, string, int64, bool) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000, Silence: []Interval{{StartMs: 0, EndMs: 29_000}}}, nil
-	}
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: hash, Path: rel, Name: "Old advert", Kind: Commercial,
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Verdict != VerdictReject || out.Reason != ReasonSilentContent {
-		t.Fatalf("backfill verdict = %v/%q", out.Verdict, out.Reason)
-	}
-	tags, ok := ReadSidecarTags(full)
-	if !ok || tags.MediaQuality == nil {
-		t.Fatal("quality backfill was not persisted beside the old mezzanine")
-	}
-	if applies, _ := stage.Applies(context.Background(), out.Clip); !applies {
-		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
 	}
 	stage.inspect = func(context.Context, string, string, int64, bool) (MediaQuality, error) {
 		t.Fatal("retry must use the persisted quality evidence")
 		return MediaQuality{}, nil
 	}
-	retry, err := stage.Run(context.Background(), out.Clip)
+	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Silent advert", Kind: Commercial}}
+	if applies, _ := stage.Applies(context.Background(), clip); !applies {
+		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
+	}
+	retry, err := stage.Run(context.Background(), clip)
 	if err != nil || retry.Verdict != VerdictReject || retry.Reason != ReasonSilentContent {
 		t.Fatalf("persisted quality retry = %+v, %v", retry, err)
 	}

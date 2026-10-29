@@ -59,22 +59,6 @@ func StageIndex(id StageID) int {
 	return -1
 }
 
-// SegmentScreeningCompleted reports that a child advanced beyond the screening rung through its
-// ordinary success path. A StatusDone record alone is insufficient because review verdicts also
-// close their current rung before waiting on a person; requiring the row to be later in the ladder
-// prevents an unrelated lifecycle write from turning an unresolved screen into release authority.
-func SegmentScreeningCompleted(row ClipPipeline) bool {
-	if StageIndex(row.Stage) <= StageIndex(StageScreen) {
-		return false
-	}
-	for _, record := range row.Stages {
-		if record.Stage == StageScreen && record.Status == StatusDone {
-			return true
-		}
-	}
-	return false
-}
-
 // StageStatus is how the CURRENT stage is going.
 type StageStatus string
 

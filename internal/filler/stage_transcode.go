@@ -388,29 +388,6 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		return mediaQualityResult(c, *tags.MediaQuality), nil
 	}
 
-	// Older mezzanines already carry the profile marker but predate content inspection. Re-encoding
-	// would add a needless generation of loss, so spend this rung's bounded transcode budget on one
-	// detector-only decode, persist the evidence beside the bytes, and decide from that.
-	if hasTags && tags.Mezzanine == s.profile.ID() && tags.MediaQuality == nil {
-		in, err := s.probe(ctx, oldFull)
-		if err != nil {
-			return StageResult{}, fmt.Errorf("re-probe %s before quality backfill: %w", oldRel, err)
-		}
-		ffmpeg := ""
-		if s.ffmpegPath != nil {
-			ffmpeg = s.ffmpegPath()
-		}
-		quality, err := s.inspect(ctx, ffmpeg, oldFull, in.DurationMs, !in.Silent)
-		if err != nil {
-			return StageResult{}, err
-		}
-		tags.MediaQuality = &quality
-		if err := WriteSidecarTags(oldFull, tags, false); err != nil {
-			return StageResult{}, fmt.Errorf("persist quality inspection %s: %w", oldRel, err)
-		}
-		return mediaQualityResult(c, quality), nil
-	}
-
 	stageDir := filepath.Join(s.clipDir, transcodeStagingDir)
 	if err := os.MkdirAll(stageDir, 0o755); err != nil {
 		return StageResult{}, fmt.Errorf("create transcode staging folder: %w", err)

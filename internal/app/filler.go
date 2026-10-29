@@ -135,9 +135,6 @@ func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []
 func (a fillerPipelineClipAdapter) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.HoldClips(ctx, paths, at)
 }
-func (a fillerPipelineClipAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
-	return a.st.ReleaseCompositeHolds(ctx, paths, at)
-}
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }

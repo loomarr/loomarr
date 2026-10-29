@@ -584,8 +584,8 @@ video stream.
 
 **The transcode pass inspects what it already decodes.** `blackdetect`, `silencedetect` and
 `freezedetect` ride the mezzanine encode's filter chains and their intervals go into the sidecar.
-An older mezzanine without a report gets one bounded inspection-only pass (the marker stops a
-re-encode), within the ordinary transcode budget.
+The encode writes the profile marker and the report together; a sidecar with the marker but no
+report is not a finished encode, so the rung encodes it again.
 
 - At least 90% black or 90% silent is a hard reject, recorded with its coverage.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
