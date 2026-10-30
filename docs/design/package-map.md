@@ -26,7 +26,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `creative` | 6 | — |
 | `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `filler` | 10 | `bgexec`, `creative`, `defects`, `diagnostics`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy` |
+| `encode` | 6 | — |
+| `filler` | 10 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
@@ -36,10 +37,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
-| `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `playout` |
+| `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
-| `playout` | 6 | `diagnostics`, `provision`, `schedule` |
+| `playout` | 6 | `diagnostics`, `encode`, `provision`, `schedule` |
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
@@ -69,7 +70,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`encode`** · 4 importers
+- **`encode`** · 6 importers
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
@@ -199,7 +200,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 6 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `playout`
+- **`mediatools`** · 6 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`playoutbench`** · → `encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
@@ -230,7 +231,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
+- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`images`** · 2 importers · → `images/rustgen`, `jobs`, `logchange`
   One pipeline every image in Loomarr travels (§22).

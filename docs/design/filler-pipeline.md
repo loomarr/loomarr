@@ -56,6 +56,26 @@ software evidence recipe these levels replace (libx264 `slow`, CRF 14: VMAF p10 
 | VAAPI (`-rc_mode CQP`) | — | — | — | — | not yet measured on an Arc: encodes in software |
 | VideoToolbox (`-q:v`) | — | — | — | — | unverified: no Mac |
 
+**One graph per derivative.** The host is the channels' own: the operator's pinned
+`playout.encoder`, else the encoder detection published, and software until detection settles. The
+stage reads it once per clip, so the recipes it records always name the encoder that made the bytes.
+Decoded frames split once:
+
+- The **encode branch** only converts the pixel format, on the device that holds the frames. On
+  NVENC and VAAPI the source decodes on the GPU and never leaves it. If GPU decode fails, the
+  encode runs once more with CPU decode before it counts as a failure (the playout ladder's rule).
+- The **detector branch** downloads the full frames and runs `blackdetect` and `freezedetect` on
+  them, exactly as before. A 160-pixel thumbnail was tried and rejected. On 74 real masters it
+  matched `blackdetect`, but it averaged away the motion `freezedetect` measures: it invented
+  freezes in 4 clips and doubled one clip's frozen time, enough to send good adverts to review. The
+  full-size branch matched the CPU detectors exactly on every clip that diverged, and cost about
+  13% more detector CPU with no extra wall time.
+
+Evidence and playback encode at the same level, so the evidence picture is the one that airs. The
+evidence copy keeps its 1-second keyframes and its own audio rate. Recipes are `filler-*-v2`, and
+the libx264 v1 records written before this change still validate, so no stored clip's lineage
+breaks.
+
 The next level up fails the floor on both measured families (NVENC `-cq 27`: p10 94.1; x264 CRF 18:
 p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 against 91 at these
 levels). It is a pooled-minimum outlier, not what the floor gates on, and is noted here so a later

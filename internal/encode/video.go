@@ -43,6 +43,8 @@ type File struct {
 	// KeyframeSeconds forces a keyframe at frame 0 and every N seconds, so a cut or a seek lands
 	// instantly rather than decoding from the previous GOP.
 	KeyframeSeconds int
+	// Preset is the x264 preset; empty is the measured `veryfast`. The hardware families ignore it.
+	Preset string
 }
 
 // FileLevel is the measured constant-quality level for an offline derivative on the family: the
@@ -90,7 +92,11 @@ func FileVideoArgs(family Family, f File) []string {
 	case FamilyVideoToolbox:
 		args = []string{"-c:v", string(EncoderVideoToolbox), "-profile:v", "high", "-allow_sw", "0", "-q:v", q}
 	default:
-		args = []string{"-c:v", string(EncoderSoftware), "-preset", "veryfast", "-profile:v", "high", "-crf", q}
+		preset := f.Preset
+		if preset == "" {
+			preset = "veryfast"
+		}
+		args = []string{"-c:v", string(EncoderSoftware), "-preset", preset, "-profile:v", "high", "-crf", q}
 	}
 	if f.KeyframeSeconds > 0 {
 		// `expr:gte(t,n_forced*N)` is the form that also guarantees the FIRST frame is an IDR — a

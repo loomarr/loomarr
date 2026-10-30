@@ -168,7 +168,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
-		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
+		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver)
 	stations := &stationDirectory{list: st.ListBroadcastStations}
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichment := fillerenrichment.NewRunner(
