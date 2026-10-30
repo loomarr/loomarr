@@ -1,6 +1,7 @@
 import type { ClientObservation as BrowserClientObservation } from "@loomarr/core/client-diagnostics";
 import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LIVE_DVR_HORIZON_MS, liveSeek } from "../live-seek";
 import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
 import { type LiveAudioRendition, selectAudioRendition } from "./live-audio";
@@ -13,7 +14,6 @@ import {
   selectLiveLevel,
   selectQualityLevel,
 } from "./live-level";
-import { LIVE_DVR_HORIZON_MS, liveSeek } from "./live-seek";
 import {
   type LiveSubtitles,
   type LiveSubtitleTrack,

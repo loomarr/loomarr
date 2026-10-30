@@ -25,6 +25,7 @@ const setup = () => {
       pause: vi.fn(),
       play: vi.fn(),
       replace: vi.fn().mockResolvedValue(undefined),
+      seek: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
     },
   });

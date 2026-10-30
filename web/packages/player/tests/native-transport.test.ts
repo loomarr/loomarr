@@ -311,6 +311,66 @@ describe("Expo video transport", () => {
     });
   });
 
+  describe("seeking within the window (#2088 decision 2)", () => {
+    const now = new Date("2026-08-26T20:00:00Z").getTime();
+    // A viewer two seconds behind live, at media time 100 s.
+    const tuned = async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+      const { player, raw } = nativePlayer();
+      raw.currentLiveTimestamp = now - 2_000;
+      raw.currentOffsetFromLive = 2;
+      raw.currentTime = 100;
+      const transport = createNativePlayerTransport(player);
+      const events: PlayerTransportEvent[] = [];
+      transport.subscribe((event) => events.push(event));
+      await transport.replace(
+        { uri: "https://loomarr.test/live.m3u8" },
+        { attemptId: 9, signal: new AbortController().signal },
+      );
+      const lastState = () => {
+        const last = events.filter((event) => event.type === "live-state").at(-1);
+        return last?.type === "live-state" ? last.state : undefined;
+      };
+      return { lastState, raw, transport };
+    };
+
+    it("moves the media time by the wall-clock difference and watches behind live", async () => {
+      const { lastState, raw, transport } = await tuned();
+      transport.seek(now - 60_000);
+      expect(raw.currentTime).toBe(42);
+      expect(lastState()).toEqual({
+        lagSeconds: 60,
+        mode: "behind",
+        noticeRevision: 0,
+        viewerTimeMs: now - 60_000,
+      });
+    });
+
+    it("goes live, and plays, for a target at the live edge", async () => {
+      const { lastState, raw, transport } = await tuned();
+      transport.seek(now + 10_000);
+      expect(raw.seekBy).toHaveBeenCalledWith(2);
+      expect(raw.play).toHaveBeenCalled();
+      expect(lastState()?.mode).toBe("live");
+    });
+
+    it("lands just inside the window for a target older than the stream still holds", async () => {
+      const { lastState, transport } = await tuned();
+      transport.seek(now - 20 * 60_000);
+      expect(lastState()?.viewerTimeMs).toBe(now - 15 * 60_000 + 5_000);
+    });
+
+    it("keeps a paused viewer paused at the new point", async () => {
+      const { lastState, raw, transport } = await tuned();
+      transport.pause();
+      transport.seek(now - 30_000);
+      expect(raw.currentTime).toBe(72);
+      expect(lastState()).toMatchObject({ mode: "paused", viewerTimeMs: now - 30_000 });
+      expect(raw.play).not.toHaveBeenCalled();
+    });
+  });
+
   it("expires an old paused point once and resets the notice for a new Channel", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-08-26T20:00:00Z");

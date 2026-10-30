@@ -35,6 +35,7 @@ const harness = (
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
+    seek: vi.fn(),
     subscribe: vi.fn((listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -226,9 +227,11 @@ describe("player controller", () => {
     controller.pause();
     await controller.play();
     await controller.goLive();
+    controller.seek(900);
     expect(transport.pause).not.toHaveBeenCalled();
     expect(transport.play).not.toHaveBeenCalled();
     expect(transport.goLive).not.toHaveBeenCalled();
+    expect(transport.seek).not.toHaveBeenCalled();
 
     await controller.reconcile(channels);
     const firstAttempt = controller.getSnapshot().attemptId!;
@@ -255,6 +258,8 @@ describe("player controller", () => {
     await controller.goLive();
     expect(transport.play).toHaveBeenCalledTimes(2);
     expect(transport.goLive).toHaveBeenCalledOnce();
+    controller.seek(400);
+    expect(transport.seek).toHaveBeenCalledWith(400);
 
     await controller.tuneChannel("thirty");
     expect(controller.getSnapshot().livePlayback).toEqual({
@@ -268,12 +273,15 @@ describe("player controller", () => {
     vi.mocked(transport.pause).mockClear();
     vi.mocked(transport.play).mockClear();
     vi.mocked(transport.goLive).mockClear();
+    vi.mocked(transport.seek).mockClear();
     controller.pause();
     await controller.play();
     await controller.goLive();
+    controller.seek(400);
     expect(transport.pause).not.toHaveBeenCalled();
     expect(transport.play).not.toHaveBeenCalled();
     expect(transport.goLive).not.toHaveBeenCalled();
+    expect(transport.seek).not.toHaveBeenCalled();
     now.mockRestore();
   });
 

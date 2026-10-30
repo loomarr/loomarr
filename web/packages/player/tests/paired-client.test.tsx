@@ -94,6 +94,7 @@ const mountClient = async (diagnostics?: { platform: string }, lastChannel?: Las
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
+    seek: vi.fn(),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

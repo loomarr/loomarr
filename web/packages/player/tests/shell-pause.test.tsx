@@ -33,6 +33,7 @@ const idleController = () => {
     pause: vi.fn(() => void calls.push("pause")),
     play: vi.fn(() => void calls.push("play")),
     replace: vi.fn(async (source) => void calls.push(`replace:${source.uri}`)),
+    seek: vi.fn(),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

@@ -36,6 +36,11 @@ interface PlayerTransport {
   pause: () => void;
   play: () => Promise<void> | void;
   replace: (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => Promise<void>;
+  /**
+   * Moves the picture to a wall-clock instant within the channel's window (#2088 decision 2): the
+   * ±10 s controls, Start over and the playbar's past. At or past the live edge it goes live.
+   */
+  seek: (wallMs: number) => void;
   subscribe: (listener: (event: PlayerTransportEvent) => void) => () => void;
 }
 
@@ -105,6 +110,8 @@ interface PlayerController {
   previous: () => Promise<void>;
   reconcile: (channels: readonly PlayerChannel[]) => Promise<void>;
   retry: () => Promise<void>;
+  /** Seeks the tuned channel to a wall-clock instant within its window; see `PlayerTransport.seek`. */
+  seek: (wallMs: number) => void;
   step: (direction: TuneDirection) => Promise<void>;
   subscribe: (listener: (snapshot: PlayerSnapshot) => void) => () => void;
   tuneChannel: (channelId: string) => Promise<void>;

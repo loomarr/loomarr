@@ -26,6 +26,7 @@ const harness = (source: PlayerSourcePort = mintedSource()) => {
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
+    seek: vi.fn(),
     subscribe: vi.fn((listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

@@ -2,6 +2,7 @@ import type { PairingCredential } from "@loomarr/core/pairing";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useSyncExternalStore } from "react";
 import { Image, type ImageProps } from "react-native";
+import { LIVE_DVR_HORIZON_MS, liveSeek } from "../live-seek";
 import { nativeErrorCause } from "../native-playback-diagnostics";
 import { createPlaybackMarks, type PlaybackMarks } from "../playback-marks";
 import type {
@@ -50,7 +51,6 @@ const pairedNativeImageSource = (
   }
 };
 
-const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 /**
  * A stall that leaves a live viewer further behind than this rejoins the live edge: AVPlayer resumes
  * where it froze, and a viewer who didn't pause shouldn't be left watching the past.
@@ -303,8 +303,7 @@ const createNativePlayerTransport = (
     play: () => {
       if (!player) return;
       if (liveMode === "paused") {
-        const lagSeconds = Math.max(0, Math.round((liveNow() - viewerTimeMs) / 1_000));
-        if (lagSeconds >= LIVE_DVR_HORIZON_SECONDS) {
+        if (liveNow() - viewerTimeMs >= LIVE_DVR_HORIZON_MS) {
           noticeRevision += 1;
           seekToLiveEdge(player);
           emitLiveState(null, 0);
@@ -347,6 +346,30 @@ const createNativePlayerTransport = (
       } finally {
         replacing -= 1;
       }
+    },
+    seek: (wallMs) => {
+      if (!player) return;
+      const current = player;
+      // Refresh the displayed frame's wall time first: the seek is measured from it.
+      liveState();
+      const offset = current.currentOffsetFromLive;
+      const target = liveSeek({
+        currentTime: current.currentTime,
+        displayedWallMs: viewerTimeMs,
+        liveEdge: offset !== null && Number.isFinite(offset) ? current.currentTime + offset : undefined,
+        nowMs: liveNow(),
+        targetWallMs: wallMs,
+      });
+      if (target.kind === "live") {
+        seekToLiveEdge(current);
+        emitLiveState(null, 0);
+        current.play();
+        return;
+      }
+      current.currentTime = target.mediaTime;
+      // A paused viewer stays paused at the new point; a playing one now watches behind live.
+      if (liveMode === "live") liveMode = "behind";
+      emitLiveState(target.wallMs, null);
     },
     resume: () => {
       if (disposed || player) return;

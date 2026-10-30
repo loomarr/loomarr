@@ -348,6 +348,10 @@ const createPlayerController = ({
       if (disposed || !snapshot.channel) return;
       await transport.play();
     },
+    seek: (wallMs) => {
+      if (disposed || !snapshot.channel || snapshot.status === "failed") return;
+      transport.seek(wallMs);
+    },
     previous: async () => {
       const channel = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
       if (channel) await tune(channel, "previous");
