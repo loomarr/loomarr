@@ -26,7 +26,7 @@ func NewLookup(results map[string]LookupResult) *Lookup {
 	return &Lookup{Results: results}
 }
 
-// Lookup implements reconcile.LibraryLookup without opening a socket.
+// Lookup implements provisionbackstop.LibraryLookup without opening a socket.
 func (l *Lookup) Lookup(
 	_ context.Context,
 	_ library.ProviderKind,

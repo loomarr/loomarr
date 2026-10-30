@@ -140,7 +140,7 @@ type seerrMediaPage struct {
 	Results []seerrMediaItem `json:"results"`
 }
 
-// QueueStatus implements reconcile.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
+// QueueStatus implements provisionbackstop.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
 // (one /queue fetch + one lookup per title), Seerr answers the whole in-flight set in ONE call:
 // GET /api/v1/media?filter=processing returns every media item Seerr considers in progress. We
 // index those by TMDB id and, for each requested title, map the enum to a coarse QueueItem.

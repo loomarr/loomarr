@@ -31,13 +31,13 @@ PKG = {}
 for sub, pkgs in {
     "API": "api httpx auth web setup invitation contact secretprotection",
     "scheduler/guide": "schedule binder programmer channels plannerreference channelmaint",
-    "jobs runtime": "scheduler bgexec",
+    "jobs runtime": "jobs bgexec",
     "filler": "filler filleradmission fillerairworthiness fillercorpus fillerdecision fillerenrichment fillereval "
               "fillerresearch fillersafety fillerstructure fillerstructuremedia fillerstructurewindow "
               "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
     "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
                 "moviecollections tmdb catalog reference quality",
-    "library sync": "library inventory requester provision reconcile",
+    "library sync": "library inventory requester provision provisionbackstop",
     "images": "images",
     "database": "store fillerstore",
     "playout": "playout watermark viewing playoutbench",
@@ -67,7 +67,7 @@ GC = ("runtime.gcBgMarkWorker", "runtime.bgsweep", "runtime.bgscavenge", "runtim
 ENTRY = [
     ("net/http.(*conn).serve", "HTTP request"),
     ("github.com/riverqueue/river", "River job"),
-    (MOD + "internal/scheduler", "cron job"),
+    (MOD + "internal/jobs", "cron job"),
     (MOD + "internal/playout", "playout loop"),
     ("main.main", "startup (retained since boot)"),
 ]
