@@ -206,17 +206,11 @@ func (p *Packager) run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err != nil || item.Duration <= 0 || item.Open == nil {
-			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, and a
-			// failed lookup for SlateRetry; either way the schedule is asked again at most that late.
-			d := p.cfg.SlateRetry
-			if err == nil && item.Duration > 0 {
-				d = min(item.Duration, d)
-			} else {
-				p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
-			}
+		if err != nil || item.Duration <= 0 {
+			// A failed lookup slates for SlateRetry, then the schedule is asked again.
+			p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
 			tuneIn = false
-			if err := p.fillSlate(ctx, p.slotFor(airAt, d)); err != nil {
+			if err := p.fillSlate(ctx, p.slotFor(airAt, p.cfg.SlateRetry)); err != nil {
 				return err
 			}
 			continue
@@ -225,8 +219,19 @@ func (p *Packager) run(ctx context.Context) error {
 		if slot.Frames <= 0 {
 			// Less than half a frame of this airing is left: the previous slot's rounding already
 			// covered it. Ask what airs at its end, on the same timeline position (a frame of slate
-			// here was a black frame at every boundary whose rounding fell short).
+			// here was a black frame at every boundary whose rounding fell short). ⚠ A card slot too:
+			// its slate would round to no frames, the timeline would not move, and the same instant
+			// would be asked for forever (a break whose clips ran out, frozen on its last commercial).
 			lookAt = at.Add(item.Duration)
+			continue
+		}
+		if item.Open == nil {
+			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, at most
+			// SlateRetry, so the schedule is asked again at most that late.
+			tuneIn = false
+			if err := p.fillSlate(ctx, p.slotFor(airAt, min(item.Duration, p.cfg.SlateRetry))); err != nil {
+				return err
+			}
 			continue
 		}
 		// An item must be producing SlateLead before it airs. When the timeline leads by less than

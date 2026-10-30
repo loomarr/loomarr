@@ -53,6 +53,11 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
   VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
   early end, including a stream that ended on a bad fragment, rejoins at once.
+  A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
+  asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
+  frames, the timeline would never pass the boundary, and the packager would ask for that same
+  instant forever. That happened live at the end of a break whose clips ran out before the break
+  did (2026-10-29): a core spun and the picture froze on the last commercial.
 - **Two audiences, one timeline.** A browser tunes a **master playlist** naming a `<format>.m3u8`
   variant, with `BANDWIDTH`, `CODECS` (read from the channel init), `RESOLUTION` and `FRAME-RATE`.
   Asset names are flat: `<format>-init.mp4` and `<format>-segNNNNNNNN.m4s`. A media server's tuner
