@@ -51,6 +51,10 @@ type PodEntryDTO struct {
 	// makes a vision-grounded brand/era AUDITABLE — the frame text the tag was read from — so the
 	// card can show the evidence, not just the conclusion. Empty when no vision pass ran or it read nothing.
 	VisibleText string `json:"visibleText,omitempty" doc:"On-screen text a vision pass read off the frame (V44); empty when none"`
+	// ThumbImage is filled only by the Watch timeline (#2088): the preview playbar draws one tick
+	// per spot and lists each with its still. The Guide's pods leave it absent — its airing
+	// already carries one hover image, and a still per entry would swell its payload.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The clip's still as an image-service record; absent when the clip has none (or for the fallback card)"`
 }
 
 type previewPodsInput struct {

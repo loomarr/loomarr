@@ -3,9 +3,12 @@ package api
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -116,7 +119,7 @@ func (s *Server) resolveTimelineThumbs(
 type timelineOutput struct {
 	Body struct {
 		ServerNowMs int64         `json:"serverNowMs" doc:"Server wall-clock at projection time, used to compare the displayed frame with schedule truth without trusting device clock"`
-		Airings     []GuideAiring `json:"airings" doc:"The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block"`
+		Airings     []GuideAiring `json:"airings" doc:"The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block and each break's pod (every spot with its still)"`
 	}
 }
 
@@ -172,15 +175,124 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 		thumbHashes = append(thumbHashes, thumbs[key].hash)
 	}
 
+	// Each break carries its pod, so the preview playbar can draw one tick per spot and list
+	// them (§9.3, #2088).
+	s.attachTimelinePods(ctx, ch.ID, bs, airings)
+	podStills := s.podStillHashes(ctx, airings)
+
 	// One deduplicated pass for every block's image record (§22) — the shape imageDTOsByHash
-	// exists to enforce, rather than a lookup inside the loop above.
-	byHash := s.imageDTOsByHash(ctx, thumbHashes)
+	// exists to enforce, rather than a lookup inside the loop above. The programme blocks'
+	// images and the pod entries' stills share the one pass.
+	stillHashes := make([]string, 0, len(thumbHashes)+len(podStills))
+	stillHashes = append(stillHashes, thumbHashes...)
+	stillHashes = slices.AppendSeq(stillHashes, maps.Values(podStills))
+	byHash := s.imageDTOsByHash(ctx, stillHashes)
 	for i := range airings {
 		if thumbHashes[i] != "" {
 			airings[i].ThumbImage = byHash[thumbHashes[i]]
+		}
+		if airings[i].Pod == nil {
+			continue
+		}
+		for j := range airings[i].Pod.Entries {
+			if hash := podStills[podEntryRef{airing: i, entry: j}]; hash != "" {
+				airings[i].Pod.Entries[j].ThumbImage = byHash[hash]
+			}
 		}
 	}
 
 	out.Body.Airings = airings
 	return out, nil
+}
+
+// attachTimelinePods sets Pod on every filler block, exactly as the Guide does: one batched
+// PreviewAtMany over the break blocks, then the member-readable pool projection (viewer names, no
+// paths — #1980/#1988). It is best-effort: no assembler or a failed preview leaves the breaks
+// without a pod, and the strip still renders.
+func (s *Server) attachTimelinePods(
+	ctx context.Context, channelID string, bs []playout.Broadcast, airings []GuideAiring,
+) {
+	if s.pods == nil {
+		return
+	}
+	var idx []int
+	var slots []filler.BreakSlot
+	for i, b := range bs {
+		if b.Kind == schedule.SlotFiller {
+			idx = append(idx, i)
+			slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
+		}
+	}
+	if len(slots) == 0 {
+		return
+	}
+	pods, err := s.pods.PreviewAtMany(ctx, channelID, slots)
+	if err != nil {
+		s.log.Warn("timeline: pod preview failed", "channel", channelID, "err", err)
+		return
+	}
+	for j, pod := range pods {
+		if j >= len(idx) || len(pod.Entries) == 0 {
+			continue
+		}
+		dto := viewerPoolDTO(pod)
+		airings[idx[j]].Pod = &dto
+	}
+}
+
+// podEntryRef addresses one pod entry on the strip: the airing's index and the entry's index in
+// its pod.
+type podEntryRef struct{ airing, entry int }
+
+// podStillHashes resolves each attached pod entry's clip still (store.Clip.ThumbImageHash, not the
+// hover loop) with ONE ListClips call for every distinct clip on the strip. Best-effort: a failed
+// lookup logs and leaves the stills absent. The result is keyed by entry so the caller can project
+// it back after its single image-record pass.
+func (s *Server) podStillHashes(ctx context.Context, airings []GuideAiring) map[podEntryRef]string {
+	if s.images == nil {
+		return nil
+	}
+	var clipHashes []string
+	seen := map[string]struct{}{}
+	for _, a := range airings {
+		if a.Pod == nil {
+			continue
+		}
+		for _, e := range a.Pod.Entries {
+			if e.Hash == "" {
+				continue // the embedded fallback card has no clip
+			}
+			if _, dup := seen[e.Hash]; dup {
+				continue
+			}
+			seen[e.Hash] = struct{}{}
+			clipHashes = append(clipHashes, e.Hash)
+		}
+	}
+	if len(clipHashes) == 0 {
+		return nil
+	}
+	clips, err := s.store.ListClips(ctx, store.ClipFilter{Hashes: clipHashes})
+	if err != nil {
+		s.log.Warn("timeline: pod still lookup failed", "err", err)
+		return nil
+	}
+	stillOf := make(map[string]string, len(clips))
+	for _, clip := range clips {
+		if clip.ThumbImageHash != "" {
+			stillOf[clip.Hash] = clip.ThumbImageHash
+		}
+	}
+	refs := map[podEntryRef]string{}
+	for i, a := range airings {
+		if a.Pod == nil {
+			continue
+		}
+		for j, e := range a.Pod.Entries {
+			if hash := stillOf[e.Hash]; hash != "" {
+				refs[podEntryRef{airing: i, entry: j}] = hash
+			}
+		}
+	}
+	return refs
 }

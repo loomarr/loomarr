@@ -7921,6 +7921,9 @@ components:
         quality:
           description: Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only
           type: string
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The clip's still as an image-service record; absent when the clip has none (or for the fallback card)
         tunarrProgramId:
           description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash.
           type: string
@@ -11550,7 +11553,7 @@ components:
           readOnly: true
           type: string
         airings:
-          description: The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block
+          description: The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block and each break's pod (every spot with its still)
           items:
             $ref: "#/components/schemas/GuideAiring"
           type: array
