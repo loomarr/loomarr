@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -15,7 +15,7 @@ const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id,
 	credentials_encrypted, created_at, updated_at
 	FROM notification_destinations`
 
-func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destination notifications.DestinationRecord) error {
+func (s *Store) SaveNotificationDestinationRecord(ctx context.Context, destination notifications.DestinationRecord) error {
 	if err := destination.Validate(); err != nil {
 		return fmt.Errorf("validate notification destination record: %w", err)
 	}
@@ -31,7 +31,7 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 	if err != nil {
 		return fmt.Errorf("encode notification destination credential keys: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(`INSERT INTO notification_destinations
+	_, err = s.h.ExecContext(ctx, s.h.Rebind(`INSERT INTO notification_destinations
 		(id, means, label, scope, owner_id, audience, topics_json, enabled,
 		 configuration_json, subscription_fingerprint, credential_keys_json,
 		 credentials_encrypted, created_at, updated_at)
@@ -62,9 +62,9 @@ func (s *sqlStore) SaveNotificationDestinationRecord(ctx context.Context, destin
 	return nil
 }
 
-func (s *sqlStore) GetNotificationDestinationRecord(ctx context.Context, id string) (notifications.DestinationRecord, error) {
-	destination, err := scanNotificationDestinationRecord(s.db.QueryRowContext(
-		ctx, s.ph(notificationDestinationSelect+` WHERE id = ?`), id,
+func (s *Store) GetNotificationDestinationRecord(ctx context.Context, id string) (notifications.DestinationRecord, error) {
+	destination, err := scanNotificationDestinationRecord(s.h.QueryRowContext(
+		ctx, s.h.Rebind(notificationDestinationSelect+` WHERE id = ?`), id,
 	))
 	if err != nil {
 		return notifications.DestinationRecord{}, err
@@ -72,8 +72,8 @@ func (s *sqlStore) GetNotificationDestinationRecord(ctx context.Context, id stri
 	return destination, nil
 }
 
-func (s *sqlStore) ListNotificationDestinationRecords(ctx context.Context) ([]notifications.DestinationRecord, error) {
-	rows, err := s.db.QueryContext(ctx, notificationDestinationSelect+` ORDER BY updated_at DESC, id ASC`)
+func (s *Store) ListNotificationDestinationRecords(ctx context.Context) ([]notifications.DestinationRecord, error) {
+	rows, err := s.h.QueryContext(ctx, notificationDestinationSelect+` ORDER BY updated_at DESC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list notification destinations: %w", err)
 	}
@@ -92,10 +92,10 @@ func (s *sqlStore) ListNotificationDestinationRecords(ctx context.Context) ([]no
 	return destinations, nil
 }
 
-func (s *sqlStore) ListNotificationDestinationHealth(
+func (s *Store) ListNotificationDestinationHealth(
 	ctx context.Context,
 ) (map[string]notifications.DestinationHealth, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT d.id,
+	rows, err := s.h.QueryContext(ctx, `SELECT d.id,
 		COALESCE(MAX(CASE WHEN a.status = 'delivered' THEN a.finished_at ELSE 0 END), 0),
 		COALESCE(MAX(CASE WHEN a.status = 'failed' AND NOT EXISTS (
 			SELECT 1 FROM notification_delivery_attempts later
@@ -146,8 +146,8 @@ func (s *sqlStore) ListNotificationDestinationHealth(
 	return health, nil
 }
 
-func (s *sqlStore) DeleteNotificationDestination(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM notification_destinations WHERE id = ?`), id)
+func (s *Store) DeleteNotificationDestination(ctx context.Context, id string) error {
+	result, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM notification_destinations WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete notification destination: %w", err)
 	}

@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const notificationIntentSelect = `SELECT id, topic, recipient_kind, recipient_id,
@@ -20,7 +21,7 @@ const notificationAttemptSelect = `SELECT id, intent_id, means, destination_ref,
  lease_expires_at, started_at, finished_at, provider_message_id, failure_class,
  outcome_code, created_at FROM notification_delivery_attempts`
 
-func (s *sqlStore) CreateNotificationIntent(
+func (s *Store) CreateNotificationIntent(
 	ctx context.Context,
 	intent notifications.Intent,
 	attempts []notifications.Attempt,
@@ -54,12 +55,12 @@ func (s *sqlStore) CreateNotificationIntent(
 		return notifications.Intent{}, false, fmt.Errorf("marshal notification template data: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return notifications.Intent{}, false, fmt.Errorf("create notification intent: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, s.ph(`INSERT INTO notification_intents
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO notification_intents
 		(id, topic, recipient_kind, recipient_id, reference_kind, reference_id,
 		 recipient_policy, template_json, idempotency_key, created_at, terminal_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -78,7 +79,7 @@ func (s *sqlStore) CreateNotificationIntent(
 		return notifications.Intent{}, false, fmt.Errorf("create notification intent: affected rows: %w", err)
 	}
 	if inserted == 0 {
-		existing, err := scanNotificationIntent(tx.QueryRowContext(ctx, s.ph(
+		existing, err := scanNotificationIntent(tx.QueryRowContext(ctx, s.h.Rebind(
 			notificationIntentSelect+` WHERE idempotency_key = ?`), intent.IdempotencyKey))
 		if err != nil {
 			return notifications.Intent{}, false, fmt.Errorf("create notification intent: load idempotent row: %w", err)
@@ -93,7 +94,7 @@ func (s *sqlStore) CreateNotificationIntent(
 	}
 
 	for _, attempt := range attempts {
-		if err := insertNotificationAttempt(ctx, tx, s.ph, attempt); err != nil {
+		if err := insertNotificationAttempt(ctx, tx, s.h.Rebind, attempt); err != nil {
 			if isConstraintViolation(err) {
 				return notifications.Intent{}, false, notifications.ErrConflict
 			}
@@ -106,8 +107,8 @@ func (s *sqlStore) CreateNotificationIntent(
 	return intent, true, nil
 }
 
-func (s *sqlStore) GetNotificationIntent(ctx context.Context, id string) (notifications.Intent, error) {
-	intent, err := scanNotificationIntent(s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetNotificationIntent(ctx context.Context, id string) (notifications.Intent, error) {
+	intent, err := scanNotificationIntent(s.h.QueryRowContext(ctx, s.h.Rebind(
 		notificationIntentSelect+` WHERE id = ?`), id))
 	if err != nil {
 		return notifications.Intent{}, err
@@ -115,12 +116,12 @@ func (s *sqlStore) GetNotificationIntent(ctx context.Context, id string) (notifi
 	return intent, nil
 }
 
-func (s *sqlStore) ListNotificationIntentsByReference(
+func (s *Store) ListNotificationIntentsByReference(
 	ctx context.Context,
 	kind notifications.ReferenceKind,
 	id string,
 ) ([]notifications.Intent, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(notificationIntentSelect+
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(notificationIntentSelect+
 		` WHERE reference_kind = ? AND reference_id = ? ORDER BY created_at DESC, id DESC`), string(kind), id)
 	if err != nil {
 		return nil, fmt.Errorf("list notification intents by reference: %w", err)
@@ -137,8 +138,8 @@ func (s *sqlStore) ListNotificationIntentsByReference(
 	return intents, rows.Err()
 }
 
-func (s *sqlStore) ListNotificationAttempts(ctx context.Context, intentID string) ([]notifications.Attempt, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(notificationAttemptSelect+
+func (s *Store) ListNotificationAttempts(ctx context.Context, intentID string) ([]notifications.Attempt, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(notificationAttemptSelect+
 		` WHERE intent_id = ? ORDER BY attempt_number, id`), intentID)
 	if err != nil {
 		return nil, fmt.Errorf("list notification attempts: %w", err)
@@ -157,7 +158,7 @@ func (s *sqlStore) ListNotificationAttempts(ctx context.Context, intentID string
 
 // ClaimDueNotificationAttempt conservatively closes an abandoned sending lease as ambiguous before
 // claiming new work. Once an adapter started, a crashed process cannot prove remote non-acceptance.
-func (s *sqlStore) ClaimDueNotificationAttempt(
+func (s *Store) ClaimDueNotificationAttempt(
 	ctx context.Context,
 	owner string,
 	now time.Time,
@@ -166,28 +167,28 @@ func (s *sqlStore) ClaimDueNotificationAttempt(
 	if owner == "" || len(owner) > 200 || lease <= 0 || now.IsZero() {
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt requires owner, time, and lease")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE notification_delivery_attempts
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE notification_delivery_attempts
 		SET status='failed', lease_owner='', lease_expires_at=0, finished_at=?,
 		    failure_class='ambiguous_acceptance', outcome_code='worker_interrupted'
 		WHERE status='sending' AND lease_expires_at <= ?`), epoch(now), epoch(now)); err != nil {
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt: recover expired leases: %w", err)
 	}
-	if err := terminalizeNotificationIntents(ctx, tx, s.ph, now); err != nil {
+	if err := terminalizeNotificationIntents(ctx, tx, s.h.Rebind, now); err != nil {
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt: terminalize recovered intents: %w", err)
 	}
 
 	query := notificationAttemptSelect +
 		` WHERE status = 'queued' AND available_at <= ? ORDER BY available_at, id LIMIT 1`
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		query += ` FOR UPDATE SKIP LOCKED`
 	}
-	attempt, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.ph(query), epoch(now)))
+	attempt, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.h.Rebind(query), epoch(now)))
 	if errors.Is(err, notifications.ErrNotFound) {
 		if commitErr := tx.Commit(); commitErr != nil {
 			return notifications.Attempt{}, fmt.Errorf("claim notification attempt: commit recovery: %w", commitErr)
@@ -197,7 +198,7 @@ func (s *sqlStore) ClaimDueNotificationAttempt(
 	if err != nil {
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt: select: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, s.ph(`UPDATE notification_delivery_attempts
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE notification_delivery_attempts
 		SET status='sending', lease_owner=?, lease_expires_at=?, started_at=?
 		WHERE id=? AND status='queued' AND available_at <= ?`),
 		owner, epoch(now.Add(lease)), epoch(now), attempt.ID, epoch(now))
@@ -218,13 +219,13 @@ func (s *sqlStore) ClaimDueNotificationAttempt(
 	return attempt, nil
 }
 
-func (s *sqlStore) CompleteNotificationAttempt(ctx context.Context, completion notifications.Completion) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) CompleteNotificationAttempt(ctx context.Context, completion notifications.Completion) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("complete notification attempt: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	current, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.ph(
+	current, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.h.Rebind(
 		notificationAttemptSelect+` WHERE id = ?`), completion.AttemptID))
 	if err != nil {
 		return err
@@ -235,7 +236,7 @@ func (s *sqlStore) CompleteNotificationAttempt(ctx context.Context, completion n
 	if err := completion.Validate(current); err != nil {
 		return fmt.Errorf("complete notification attempt: validate: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, s.ph(`UPDATE notification_delivery_attempts
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE notification_delivery_attempts
 		SET status=?, lease_owner='', lease_expires_at=0, finished_at=?, provider_message_id=?,
 		    failure_class=?, outcome_code=?
 		WHERE id=? AND status='sending' AND lease_owner=?`),
@@ -249,14 +250,14 @@ func (s *sqlStore) CompleteNotificationAttempt(ctx context.Context, completion n
 		return notifications.ErrConflict
 	}
 	if completion.Next != nil {
-		if err := insertNotificationAttempt(ctx, tx, s.ph, *completion.Next); err != nil {
+		if err := insertNotificationAttempt(ctx, tx, s.h.Rebind, *completion.Next); err != nil {
 			if isConstraintViolation(err) {
 				return notifications.ErrConflict
 			}
 			return fmt.Errorf("complete notification attempt: insert retry: %w", err)
 		}
 	}
-	if err := terminalizeNotificationIntents(ctx, tx, s.ph, completion.FinishedAt); err != nil {
+	if err := terminalizeNotificationIntents(ctx, tx, s.h.Rebind, completion.FinishedAt); err != nil {
 		return fmt.Errorf("complete notification attempt: terminalize intent: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -265,8 +266,8 @@ func (s *sqlStore) CompleteNotificationAttempt(ctx context.Context, completion n
 	return nil
 }
 
-func (s *sqlStore) PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error) {
-	result, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error) {
+	result, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM notification_intents WHERE terminal_at > 0 AND terminal_at <= ?`), epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge terminal notifications: %w", err)
@@ -277,7 +278,7 @@ func (s *sqlStore) PurgeTerminalNotifications(ctx context.Context, before time.T
 
 func insertNotificationAttempt(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx storedb.Querier,
 	placeholder func(string) string,
 	attempt notifications.Attempt,
 ) error {
@@ -296,7 +297,7 @@ func insertNotificationAttempt(
 
 func terminalizeNotificationIntents(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx storedb.Querier,
 	placeholder func(string) string,
 	at time.Time,
 ) error {

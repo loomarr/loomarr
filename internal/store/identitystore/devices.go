@@ -1,9 +1,11 @@
-package store
+package identitystore
 
 import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // DevicePairing is an in-flight pairing: a code shown on a TV, waiting for a human to approve it in
@@ -39,8 +41,8 @@ type DeviceToken struct {
 
 // --- device pairings ---
 
-func (s *sqlStore) CreateDevicePairing(ctx context.Context, p DevicePairing) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) CreateDevicePairing(ctx context.Context, p DevicePairing) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO device_pairings
 		   (device_code, user_code, user_id, device_name, created_at, expires_at, approved_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`),
@@ -51,21 +53,21 @@ func (s *sqlStore) CreateDevicePairing(ctx context.Context, p DevicePairing) err
 
 // GetDevicePairing resolves a pairing by its device-code hash, treating an expired row as absent on
 // the same "expiry is immediate, purging is eventual" rule GetSession uses.
-func (s *sqlStore) GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error) {
-	return s.scanPairing(s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error) {
+	return s.scanPairing(s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT device_code, user_code, user_id, device_name, created_at, expires_at, approved_at
 		 FROM device_pairings WHERE device_code = ? AND expires_at > ?`), codeHash, epoch(now)))
 }
 
 // GetDevicePairingByUserCode resolves the pairing a human is approving. The user code is what they
 // read off the TV, so this is the lookup the approval endpoint uses.
-func (s *sqlStore) GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error) {
-	return s.scanPairing(s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error) {
+	return s.scanPairing(s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT device_code, user_code, user_id, device_name, created_at, expires_at, approved_at
 		 FROM device_pairings WHERE user_code = ? AND expires_at > ?`), userCode, epoch(now)))
 }
 
-func (s *sqlStore) scanPairing(row *sql.Row) (DevicePairing, error) {
+func (s *Store) scanPairing(row *sql.Row) (DevicePairing, error) {
 	var p DevicePairing
 	var user sql.NullString
 	var created, expires, approved int64
@@ -90,8 +92,8 @@ func (s *sqlStore) scanPairing(row *sql.Row) (DevicePairing, error) {
 // merely in the handler. Two humans racing on the same code, or one clicking twice, must produce one
 // credential — a check-then-write in Go would let both through. The enabled-user predicate is the
 // same kind of guard against a disable racing the approval (see enabledUserSQL).
-func (s *sqlStore) ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error) {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE device_pairings SET user_id = ?, approved_at = ?
 		 WHERE user_code = ? AND approved_at = 0 AND expires_at > ?
 		   AND EXISTS (`+s.enabledUserSQL()+`)`),
@@ -104,15 +106,15 @@ func (s *sqlStore) ApproveDevicePairing(ctx context.Context, userCode, userID st
 }
 
 // DeleteDevicePairing consumes a pairing once its token has been issued.
-func (s *sqlStore) DeleteDevicePairing(ctx context.Context, codeHash string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteDevicePairing(ctx context.Context, codeHash string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_pairings WHERE device_code = ?`), codeHash)
 	return err
 }
 
 // PurgeExpiredDevicePairings sweeps codes nobody completed.
-func (s *sqlStore) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_pairings WHERE expires_at <= ?`), epoch(now))
 	return err
 }
@@ -120,8 +122,8 @@ func (s *sqlStore) PurgeExpiredDevicePairings(ctx context.Context, now time.Time
 // RevokeDevicePairingsForUser deletes every pairing a user has approved but no device has redeemed
 // yet — called when a user is disabled, alongside RevokeDeviceTokensForUser. Otherwise a pairing
 // approved before the disable could still mint a device token after it.
-func (s *sqlStore) RevokeDevicePairingsForUser(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM device_pairings WHERE user_id = ?`), userID)
+func (s *Store) RevokeDevicePairingsForUser(ctx context.Context, userID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM device_pairings WHERE user_id = ?`), userID)
 	return err
 }
 
@@ -133,9 +135,9 @@ func (s *sqlStore) RevokeDevicePairingsForUser(ctx context.Context, userID strin
 // already holds. Postgres runs READ COMMITTED: without FOR SHARE, a write whose snapshot predates the
 // disable could commit after the delete's snapshot and leave a credential behind. FOR SHARE makes it
 // wait on the disabling UPDATE's row lock and re-read the flag.
-func (s *sqlStore) enabledUserSQL() string {
+func (s *Store) enabledUserSQL() string {
 	q := `SELECT 1 FROM users WHERE id = ? AND disabled = ?`
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		q += ` FOR SHARE`
 	}
 	return q
@@ -145,10 +147,10 @@ func (s *sqlStore) enabledUserSQL() string {
 
 // CreateDeviceToken issues a device credential for an enabled user. It returns ErrNotFound when the
 // user is unknown or disabled, the same answer ResolveDevice gives for a disabled user's device.
-func (s *sqlStore) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
+func (s *Store) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
 	// INSERT … SELECT rather than VALUES so the enabled-user check is part of the insert. The casts
 	// give Postgres the parameter types it cannot infer from a SELECT list.
-	res, err := s.db.ExecContext(ctx, s.ph(
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO device_tokens (token_hash, user_id, device_name, created_at, last_seen_at)
 		 SELECT CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS BIGINT), CAST(? AS BIGINT)
 		 WHERE EXISTS (`+s.enabledUserSQL()+`)`),
@@ -165,8 +167,8 @@ func (s *sqlStore) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
 
 // GetDeviceToken resolves a device credential. Unlike GetSession there is no expiry predicate: a
 // device token lives until it is revoked.
-func (s *sqlStore) GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
 		 FROM device_tokens WHERE token_hash = ?`), tokenHash)
 	var t DeviceToken
@@ -187,8 +189,8 @@ func (s *sqlStore) GetDeviceToken(ctx context.Context, tokenHash string) (Device
 // use. Best-effort by design: a failure here must never fail the request that carried the token.
 //
 // A paired TV acts as the person who paired it, so its use is that person's last-seen too (#1667).
-func (s *sqlStore) TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE device_tokens SET last_seen_at = ? WHERE token_hash = ?`), epoch(at), tokenHash); err != nil {
 		return err
 	}
@@ -196,8 +198,8 @@ func (s *sqlStore) TouchDeviceToken(ctx context.Context, tokenHash string, at ti
 }
 
 // ListDeviceTokensForUser returns a user's paired devices, newest first — the revocation UI's read.
-func (s *sqlStore) ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT token_hash, user_id, device_name, created_at, last_seen_at
 		 FROM device_tokens WHERE user_id = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
@@ -220,8 +222,8 @@ func (s *sqlStore) ListDeviceTokensForUser(ctx context.Context, userID string) (
 
 // DeleteDeviceToken revokes one device. Scoped by user so a caller can only revoke a device it owns
 // — the authorisation is in the WHERE clause, not left to the handler.
-func (s *sqlStore) DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error) {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_tokens WHERE token_hash = ? AND user_id = ?`), tokenHash, userID)
 	if err != nil {
 		return false, err
@@ -233,8 +235,8 @@ func (s *sqlStore) DeleteDeviceToken(ctx context.Context, tokenHash, userID stri
 // RevokeDeviceTokensForUser deletes every device a user paired — called when a user is disabled.
 // Disable alone is not enough: a re-enabled user must not get back a lost device that now acts with
 // their role (ADR 0043).
-func (s *sqlStore) RevokeDeviceTokensForUser(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM device_tokens WHERE user_id = ?`), userID)
+func (s *Store) RevokeDeviceTokensForUser(ctx context.Context, userID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM device_tokens WHERE user_id = ?`), userID)
 	return err
 }
 

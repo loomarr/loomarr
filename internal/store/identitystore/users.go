@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -51,11 +51,8 @@ type Session struct {
 
 // --- users ---
 
-func (s *sqlStore) GetUser(ctx context.Context, id string) (User, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
-		 FROM users WHERE id = ?`), id)
-	return scanUser(row)
+func (s *Store) GetUser(ctx context.Context, id string) (User, error) {
+	return GetUserIn(ctx, s.h, s.h.Rebind, id)
 }
 
 // UpsertUser writes a user. A sync of an imported user passes an empty
@@ -65,19 +62,19 @@ func (s *sqlStore) GetUser(ctx context.Context, id string) (User, error) {
 // GetUserByName returns a user by name (§11: local login resolves the username to
 // the allowlist row). Names are unique per install by convention; the first match
 // wins deterministically (ORDER BY id). ErrNotFound when absent.
-func (s *sqlStore) GetUserByName(ctx context.Context, name string) (User, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetUserByName(ctx context.Context, name string) (User, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users WHERE name = ? ORDER BY id LIMIT 1`), name)
 	return scanUser(row)
 }
 
-func (s *sqlStore) UpsertUser(ctx context.Context, u User) error {
+func (s *Store) UpsertUser(ctx context.Context, u User) error {
 	var hash any
 	if u.PasswordHash != "" {
 		hash = u.PasswordHash
 	}
-	_, err := s.db.ExecContext(ctx, s.ph(
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO users (id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
@@ -91,7 +88,7 @@ func (s *sqlStore) UpsertUser(ctx context.Context, u User) error {
 	return err
 }
 
-func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error {
+func (s *Store) CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error {
 	kind := invitation.KindLocal
 	identityKey := invitation.NormalizeLocalIdentity(u.Name)
 	if u.MediaServerLinked {
@@ -99,19 +96,19 @@ func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time
 		identityKey = u.ID
 	}
 	return s.withInvitationIdentityLock(ctx, kind, identityKey, func(ctx context.Context) error {
-		tx, err := s.db.BeginTx(ctx, nil)
+		tx, err := s.h.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("create user: begin: %w", err)
 		}
 		defer func() { _ = tx.Rollback() }()
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
 			SET status = 'expired', terminal_at = expires_at
 			WHERE kind = ? AND identity_key = ? AND status = 'pending' AND expires_at <= ?`),
 			string(kind), identityKey, epoch(now)); err != nil {
 			return fmt.Errorf("create user: expire reservation: %w", err)
 		}
 		var exists int
-		err = tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM invitations
+		err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT 1 FROM invitations
 			WHERE kind = ? AND identity_key = ? AND status = 'pending' LIMIT 1`),
 			string(kind), identityKey).Scan(&exists)
 		if err == nil {
@@ -124,7 +121,7 @@ func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time
 		if u.PasswordHash != "" {
 			hash = u.PasswordHash
 		}
-		_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO users
+		_, err = tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO users
 			(id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 			u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, u.MediaServerLinked,
@@ -139,8 +136,8 @@ func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time
 	})
 }
 
-func (s *sqlStore) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
 		 FROM users ORDER BY name`))
 	if err != nil {
@@ -160,9 +157,9 @@ func (s *sqlStore) ListUsers(ctx context.Context) ([]User, error) {
 
 // CountAdmins reports how many enabled admins exist — powers the first-admin
 // bootstrap decision (§11).
-func (s *sqlStore) CountAdmins(ctx context.Context) (int, error) {
+func (s *Store) CountAdmins(ctx context.Context) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, s.ph(
+	err := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = ?`), false).Scan(&n)
 	return n, err
 }
@@ -173,8 +170,8 @@ func (s *sqlStore) CountAdmins(ctx context.Context) (int, error) {
 // or disabled, which login maps to the same refusal as a disabled login. The check is part of the
 // INSERT (see enabledUserSQL), so a disable that lands between login's Disabled check and this write
 // cannot leave a session behind for a later re-enable to revive.
-func (s *sqlStore) CreateSession(ctx context.Context, sess Session) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) CreateSession(ctx context.Context, sess Session) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
 		 SELECT CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS BIGINT), CAST(? AS BIGINT)
 		 WHERE EXISTS (`+s.enabledUserSQL()+`)`),
@@ -192,8 +189,8 @@ func (s *sqlStore) CreateSession(ctx context.Context, sess Session) error {
 // GetSession returns the session for a token hash if it exists and is unexpired
 // as of now. Expired sessions are treated as not found (the janitor deletes them
 // eventually; this makes expiry immediate for auth).
-func (s *sqlStore) GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT `+sessionColumns+` FROM sessions WHERE token_hash = ? AND expires_at > ?`), tokenHash, epoch(now))
 	sess, err := scanSession(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -228,8 +225,8 @@ const lastSeenGranularity = time.Minute
 
 // TouchSession records a use of a session: it slides the expiry (§11) and notes when and from what
 // client it was used, plus the person's last-seen (#1667).
-func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE sessions SET expires_at = ?, last_seen_at = ?,
 		   client_label = CASE WHEN ? <> '' THEN ? ELSE client_label END
 		 WHERE token_hash = ?`),
@@ -241,8 +238,8 @@ func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, seen Sess
 
 // bumpUserLastSeen moves the owner of a session or device token (ownerQuery) to `at`, at most
 // once per lastSeenGranularity.
-func (s *sqlStore) bumpUserLastSeen(ctx context.Context, ownerQuery, tokenHash string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) bumpUserLastSeen(ctx context.Context, ownerQuery, tokenHash string, at time.Time) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE users SET last_seen_at = ? WHERE id = (`+ownerQuery+`) AND last_seen_at < ?`),
 		epoch(at), tokenHash, epoch(at.Add(-lastSeenGranularity)))
 	return err
@@ -250,8 +247,8 @@ func (s *sqlStore) bumpUserLastSeen(ctx context.Context, ownerQuery, tokenHash s
 
 // UserLastSeen maps each person who has been seen to when (#1667, the People roster). One query;
 // someone never seen since the column arrived has no entry.
-func (s *sqlStore) UserLastSeen(ctx context.Context) (map[string]time.Time, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, last_seen_at FROM users WHERE last_seen_at > 0`)
+func (s *Store) UserLastSeen(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT id, last_seen_at FROM users WHERE last_seen_at > 0`)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +269,8 @@ func (s *sqlStore) UserLastSeen(ctx context.Context) (map[string]time.Time, erro
 // excluded on the same "expiry is immediate, purging is eventual" rule GetSession uses
 // (§11) — an admin reviewing who is signed in must not see sessions that can no longer
 // authenticate, or they would revoke things that were already dead and mistrust the list.
-func (s *sqlStore) ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT `+sessionColumns+` FROM sessions WHERE user_id = ? AND expires_at > ?
 		 ORDER BY created_at DESC`), userID, epoch(now))
 	if err != nil {
@@ -293,21 +290,21 @@ func (s *sqlStore) ListSessionsForUser(ctx context.Context, userID string, now t
 }
 
 // RevokeSession deletes one session (logout).
-func (s *sqlStore) RevokeSession(ctx context.Context, tokenHash string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM sessions WHERE token_hash = ?`), tokenHash)
+func (s *Store) RevokeSession(ctx context.Context, tokenHash string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM sessions WHERE token_hash = ?`), tokenHash)
 	return err
 }
 
 // RevokeSessionsForUser deletes all of a user's sessions — called when a user is
 // disabled (§11: disabling a user kills their sessions immediately).
-func (s *sqlStore) RevokeSessionsForUser(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM sessions WHERE user_id = ?`), userID)
+func (s *Store) RevokeSessionsForUser(ctx context.Context, userID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM sessions WHERE user_id = ?`), userID)
 	return err
 }
 
 // PurgeExpiredSessions removes sessions past their expiry (janitor, §5).
-func (s *sqlStore) PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error) {
-	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM sessions WHERE expires_at <= ?`), epoch(now))
+func (s *Store) PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM sessions WHERE expires_at <= ?`), epoch(now))
 	if err != nil {
 		return 0, err
 	}

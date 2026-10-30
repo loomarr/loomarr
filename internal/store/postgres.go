@@ -87,5 +87,5 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}, nil
+	return bindIdentity(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}), nil
 }
