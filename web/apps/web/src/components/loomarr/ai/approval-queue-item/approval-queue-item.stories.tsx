@@ -76,5 +76,18 @@ const WithRefused: Story = {
   },
 };
 
+// A holiday the household's country doesn't keep (#2030 decision 38): the channel won't follow its
+// season, and the card says so before approval.
+const WithSeasonNotKept: Story = {
+  args: {
+    title: "Thanksgiving Movies",
+    summary: "Family films for the long weekend.",
+    requestedBy: "ada",
+    acquisitions: 0,
+    status: "pending",
+    seasonNotKept: { country: "GB", holidays: ["Thanksgiving"] },
+  },
+};
+
 export default meta;
-export { Approving, Denied, Pending, WithRefused };
+export { Approving, Denied, Pending, WithRefused, WithSeasonNotKept };

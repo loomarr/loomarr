@@ -192,6 +192,37 @@ func TestAGroupHolidayIsInSeasonWithAnyMember(t *testing.T) {
 	}
 }
 
+// #2030 decision 38: a holiday is kept where it has a season. A group is kept where a member is; an
+// unknown or undated holiday is kept nowhere; an unlisted country reads the US calendar.
+func TestKeptInFollowsTheCountry(t *testing.T) {
+	v := Default()
+	for _, tc := range []struct {
+		id, country string
+		want        bool
+	}{
+		{"thanksgiving", "US", true},
+		{"thanksgiving", "CA", true},
+		{"thanksgiving", "GB", false},
+		{"bonfire-night", "GB", true},
+		{"bonfire-night", "US", false},
+		{"independence-day", "", true},
+		{"independence-day", "DE", true},
+		{GenericHoliday, "GB", true},
+		{"no-such-holiday", "US", false},
+	} {
+		if got := v.KeptIn(tc.id, tc.country); got != tc.want {
+			t.Errorf("KeptIn(%q, %q) = %v, want %v", tc.id, tc.country, got, tc.want)
+		}
+	}
+	undated, err := New([]Holiday{{ID: "harvest", Label: "Harvest"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undated.KeptIn("harvest", "US") {
+		t.Error("an undated holiday is kept somewhere")
+	}
+}
+
 // Stored holidays are validated: a rule of an unknown kind, an impossible date, a group with dates
 // of its own, or a member that is no holiday is refused rather than guessed at.
 func TestNewRejectsWhatItCannotEvaluate(t *testing.T) {

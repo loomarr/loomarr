@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // assistantToolCallMsg builds the assistant message that carries the model's
@@ -14,8 +15,22 @@ func assistantToolCallMsg(calls []llm.ToolCall) llm.Message {
 	return llm.Message{Role: llm.Assistant, ToolCalls: calls}
 }
 
-// systemPrompt forbids invention and constrains the model to tool results (§8).
-const systemPrompt = `You are Loomarr's channel planner. You build TV channels from real content only.
+// holidayIDsSlot is where systemPromptTemplate lists the holiday ids the planner may name.
+const holidayIDsSlot = "{{holidayIDs}}"
+
+// systemPrompt forbids invention and constrains the model to tool results (§8). It offers the
+// holidays cal's country keeps, from the loaded definitions (#2030 decision 39), so a British
+// household is offered Bonfire Night and not Thanksgiving. The text is fixed per household, so a
+// prompt-caching server still reuses the prefix across requests.
+func systemPrompt(cal schedule.Calendar) string {
+	var ids []string
+	for _, o := range cal.Vocab().Calendar(cal.Country) {
+		ids = append(ids, o.ID)
+	}
+	return strings.Replace(systemPromptTemplate, holidayIDsSlot, strings.Join(ids, ", "), 1)
+}
+
+const systemPromptTemplate = `You are Loomarr's channel planner. You build TV channels from real content only.
 RULES:
 - Follow the catalog_search argument schema exactly. If the provider exposes a required input object, place every search field and dateMeaning inside input; do not send flat fields outside that wrapper.
 - Every catalog_search call MUST carry dateMeaning with kind, anchors, and axes. Your final JSON carries dateMeaning (same shape) only when you made no catalog_search call; after a call Loomarr applies the accepted one itself, so omit it. It interprets submitted intent text, never a guessed title date. An anchor is a nonempty half-open rune span in description, era, refineText, mustInclude, or mustExclude; array fields require their element index. kind=none has empty anchors and axes when no date constraint is requested; title years alone are not filters. kind=ambiguous has anchors and no axes when a dated request needs clarification. kind=constraints has one to three independent axes (movie_release, series_premiere, series_airing), each with any or all and anchored inclusive 1900-2099 intervals. Combine ordinary "90s and 2000s movies" as an any union; use all only for an explicit same-axis intersection. Coalesce overlapping or adjacent any ranges.
@@ -48,9 +63,9 @@ RULES:
   - audience.ceiling: a KIDS/TEEN safety cap or the user's EXPLICIT rating limit — set it when the intent asks for a young audience ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14") or says a cap such as "keep it PG-13". For a channel with neither, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
   - genres.include/exclude: genre names implied by the intent.
   - ordering: "syndication" (rerun feel — episodes are curated into a no-repeat deck and different series intermix), "sequential" (strict order), or "shuffle". Use "syndication" for MORE THAN ONE series and for a single-series CURATED/RERUN intent such as "classic Simpsons", "best episodes", or "favorites". Use "sequential" only when the intent explicitly asks for chronological order, start-to-finish, binge, or marathon. Movie franchises are kept together in release order by the scheduler even when the surrounding channel is shuffled/syndicated.
-  - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen). For an exclusive channel include seasonal.holidays with only the matching ids: christmas, halloween, thanksgiving, newyear, valentines.
+  - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen). For an exclusive channel include seasonal.holidays with only the matching ids: {{holidayIDs}}.
   - rules: OPTIONAL time-of-day / calendar programming, ONLY if the intent asks for it ("weekend marathons", "holiday specials in December", "kids in the morning"). Each rule is {when, what, how} from a CLOSED vocabulary — do NOT invent times or predicates:
-    - when: "weekend" | "weekday" | "mornings" | "daytime" | "primetime" | "late-night" | "overnight" | "holiday:christmas" | "holiday:halloween" | "holiday:thanksgiving" | "holiday:newyear" | "holiday:valentines" | a composite like "weekend-mornings".
+    - when: "weekend" | "weekday" | "mornings" | "daytime" | "primetime" | "late-night" | "overnight" | "holiday:<id>" | a composite like "weekend-mornings".
     - what (optional; omit to keep the whole channel): "series:<the exact key of a pick>" | "genre:<name>" | "kids" | "family" | "holiday-matched" | "all".
     - how (optional; omit to keep the channel's ordering): "marathon" (binge one show, no breaks) | "syndication" | "shuffle".
     Examples: a weekend TNG marathon → {"when":"weekend","what":"series:...","how":"marathon"}; December holiday programming → {"when":"holiday:christmas","what":"holiday-matched"}. Omit "rules" for a plain channel; unknown tokens are dropped.

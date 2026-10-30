@@ -10,11 +10,12 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 const (
 	PlannerSourceVersion             = "reference-source-v6"
-	PlannerPromptVersion             = "suggester-prompt-v16"
+	PlannerPromptVersion             = "suggester-prompt-v17"
 	PlannerToolSchemaVersion         = "catalog-search-v9"
 	PlannerMessageTemplateVersion    = "planner-tool-result-finalization-v3"
 	PlannerDiagnosticToolCallID      = "planner-diagnostic-call-1"
@@ -79,7 +80,8 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 		return ToolFinalizationDiagnostic{}, fmt.Errorf("marshal diagnostic tool result: %w", err)
 	}
 	messages := []llm.Message{
-		{Role: llm.System, Content: systemPrompt},
+		// The shipped definitions on the US calendar: the diagnostic carries no installation data.
+		{Role: llm.System, Content: systemPrompt(schedule.Calendar{})},
 		{Role: llm.User, Content: userPrompt(Intent{Description: plannerDiagnosticIntent})},
 		assistantToolCallMsg([]llm.ToolCall{toolCall}),
 		{Role: llm.Tool, Content: string(result), ToolCallID: PlannerDiagnosticToolCallID},
