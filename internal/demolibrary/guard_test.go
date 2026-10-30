@@ -134,7 +134,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
 	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
-	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
 	"web/apps/web/src/design-system/identity.stories.tsx",
 	"web/apps/web/src/design-system/overlay.stories.tsx",
 	"web/native-stories/identity.stories.tsx",

@@ -346,13 +346,14 @@ const latestWarmAt = (page: Page, number: number) =>
     adjacentWarmMarkName(channelId(number)),
   );
 
+// The player's frame: the surface the channel keys land on (↑/↓, PgUp/PgDn, a remote's CH±).
+const playerFrame = (page: Page) => page.locator("video").locator("..");
+
 const channelUp = async (page: Page) => {
-  // Keep the real focusable control as the input seam, but activate it the way a keyboard/remote
-  // does. Pointer activation can race the player's auto-hidden control bar in slow WebKit; focus
-  // holds the chrome open and Enter is the same button action a TV remote will deliver.
-  const button = page.getByRole("button", { name: "Channel up" });
-  await button.focus();
-  await page.keyboard.press("Enter");
+  // The §9 chrome has no channel buttons on a pointer screen: ↑ on the player is the control, as a
+  // remote's CH+ is. Focus the frame first so the key cannot land on a chrome button instead.
+  await playerFrame(page).focus();
+  await page.keyboard.press("ArrowUp");
 };
 
 const waitForAdjacentWarm = async (
@@ -657,10 +658,10 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     started: performance.now(),
   }));
   await channelUp(page);
-  await page.evaluate((remaining) => {
+  await playerFrame(page).evaluate((frame, remaining) => {
     for (const direction of remaining) {
-      const label = direction > 0 ? "Channel up" : "Channel down";
-      (document.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement | null)?.click();
+      const key = direction > 0 ? "ArrowUp" : "ArrowDown";
+      frame.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     }
   }, directions.slice(1));
 

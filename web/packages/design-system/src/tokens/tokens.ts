@@ -201,8 +201,56 @@ const iconography = {
     control: 24,
     touch: 28,
     tv: 36,
+    // The player's tools (§9.4): one size and one weight, lighter than the app's glyphs.
+    player: 18,
   },
   strokeWidth: 2,
+  playerStrokeWidth: 1.75,
+} as const;
+
+// Player chrome (frontend-design §9.1). It always sits over a moving picture, so it is the same in
+// both themes, and takes its elevation from glass and soft shadows, never hairlines: a translucent
+// fill lit from the top, a faint ring, backdrop blur, and a drop shadow per plane. `glassSolid` is
+// the same luminance for a platform with no backdrop blur. The amber and red are the brand's signal
+// and on-air; the break tint is the tune cyan.
+const playerChrome = {
+  glassTop: "rgba(255, 255, 255, 0.10)",
+  glassBottom: "rgba(255, 255, 255, 0.03)",
+  glassHighlight: "rgba(255, 255, 255, 0.10)",
+  glassRing: "rgba(255, 255, 255, 0.10)",
+  glassSolid: "rgba(28, 30, 35, 0.94)",
+  glassBlur: 24,
+  panelTop: "rgba(19, 21, 25, 0.85)",
+  panelBottom: "rgba(11, 12, 14, 0.90)",
+  sheet: "rgba(11, 12, 14, 0.92)",
+  // Behind the picture's lower planes, and behind an open sheet.
+  scrimFoot: "rgba(0, 0, 0, 0.85)",
+  scrimMid: "rgba(0, 0, 0, 0.45)",
+  dim: "rgba(0, 0, 0, 0.60)",
+  shadowPlane: "0 22px 48px -14px rgba(0, 0, 0, 0.95)",
+  shadowCapsule: "0 10px 26px -12px rgba(0, 0, 0, 0.95)",
+  shadowCard: "0 28px 60px -14px rgba(0, 0, 0, 0.95)",
+  signal: "#FFB020",
+  signalDeep: "#E89A10",
+  signalWash: "rgba(255, 176, 32, 0.22)",
+  signalPast: "rgba(255, 176, 32, 0.12)",
+  signalPastRing: "rgba(255, 176, 32, 0.25)",
+  signalGlow: "0 0 10px rgba(255, 176, 32, 0.9)",
+  live: "#E85A5F",
+  breakTint: "rgba(76, 201, 232, 0.15)",
+  breakRing: "rgba(76, 201, 232, 0.35)",
+  breakAccent: "#4CC9E8",
+  focusRing: "rgba(255, 255, 255, 0.9)",
+  // A future segment, further away: dimmer and less saturated (§9.2).
+  futureFilter: "brightness(0.72) saturate(0.7)",
+  litFilter: "brightness(1.1)",
+  track: "rgba(255, 255, 255, 0.15)",
+  disc: "#FFFFFF",
+  discInk: "#0B0C0E",
+  text: "#F4F6FA",
+  textSecondary: "#B8BECA",
+  textMuted: "#8B93A3",
+  tooltip: "rgba(11, 12, 14, 0.95)",
 } as const;
 
 const typography = {
@@ -376,6 +424,7 @@ export {
   brandContract,
   iconography,
   nativeFontFace,
+  playerChrome,
   semanticColors,
   semanticMotion,
   semanticRadius,

@@ -59,11 +59,24 @@ const makeWrapper = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // The player chrome is the shared @loomarr/ui one, which main.tsx themes app-wide.
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
+      <LoomarrProvider theme="dark">
+        <TooltipProvider>{children}</TooltipProvider>
+      </LoomarrProvider>
     </QueryClientProvider>
   );
+};
+
+// The tuner's wash: up while a channel is tuning in, under the chrome.
+const wash = () => document.querySelector<HTMLElement>("[data-wash]");
+const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull());
+
+// The Settings sheet, opened from the transport's ⚙.
+const openSettings = async () => {
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  return screen.getByRole("dialog", { name: "Settings" });
 };
 
 // stubTracks makes GET /v1/channels/:id/tracks return the given media tracks, and
@@ -113,16 +126,9 @@ describe("ChannelWatch pickers", () => {
       noticeRevision: 0,
     };
   });
-  // The audio control lives IN the player's bar (V47), so the player must be running
-  // before they render.
-  //
-  // ⚠ **No click any more: Watch tunes in on mount (§9.1 V54).** This used to press the
-  // "Watch live" poster, which no longer exists for a playing channel — the poster is now reserved
-  // for paused/off-air, where there genuinely is nothing to play. Asserting the player is present
-  // instead of clicking to summon it keeps the test on the behaviour rather than on the affordance
-  // that used to precede it.
+  // Watch tunes in on mount (§9.1 V54): the chrome's transport is there once the player is.
   const startWatching = async () => {
-    expect(await screen.findByRole("button", { name: "Audio" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
   };
 
   it("does not probe the network-mounted source until the first frame is playing", async () => {
@@ -133,14 +139,14 @@ describe("ChannelWatch pickers", () => {
       wrapper: makeWrapper(),
     });
 
-    expect(await screen.findByText("Tuning in…")).toBeInTheDocument();
+    await tuningIn();
     expect(wasProbed()).toBe(false);
     hls.status = "playing";
     rerender(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />);
     await waitFor(() => expect(wasProbed()).toBe(true));
   });
 
-  it("builds the Audio menu from the AIRING media's tracks, not a hardcoded list", async () => {
+  it("lists Settings' audio from the AIRING media's tracks, not a hardcoded list", async () => {
     // The airing programme carries English + Russian audio — so those, and only those (plus Auto),
     // are the choices. A hardcoded list would show French/Spanish/Japanese, which this asserts absent.
     stubTracks({
@@ -153,15 +159,19 @@ describe("ChannelWatch pickers", () => {
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
 
-    // Open the Audio menu (an icon button in the player bar). Its items are menuitemcheckboxes.
-    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /English/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: /Russian/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: /Auto/ })).toBeInTheDocument();
-    // Nothing the media does not carry.
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: /French|Spanish|Japanese/ }),
-    ).not.toBeInTheDocument();
+    const settings = await openSettings();
+    const languages = within(settings).getByRole("list", { name: "Audio language" });
+    await waitFor(() => expect(within(languages).getAllByRole("listitem")).toHaveLength(3));
+    const items = within(languages)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+    expect(items).toEqual([
+      expect.stringMatching(/Auto/),
+      expect.stringMatching(/English/),
+      expect.stringMatching(/Russian/),
+    ]);
+    // The channel's own choice (Auto, unset) is the one marked.
+    expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
@@ -179,7 +189,7 @@ describe("ChannelWatch pickers", () => {
     expect(wasProbed()).toBe(false);
   });
 
-  it("renders accessible Channel Up/Down controls that share the tuner step action", async () => {
+  it("steps channels from the arrow keys through the tuner, once its manifest has warmed the neighbours", async () => {
     stubTracks();
     const step = vi.fn();
     const ready = vi.fn();
@@ -198,9 +208,19 @@ describe("ChannelWatch pickers", () => {
     act(() => hls.onManifest?.());
     expect(ready).toHaveBeenCalledWith("ch-1");
 
-    await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
-    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
+    // The live player takes focus on mount, so the arrows reach it without a click.
+    await userEvent.keyboard("{ArrowUp}{ArrowDown}");
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  it("goes live from the chrome when the viewer is behind", async () => {
+    stubTracks();
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 23, viewerTimeMs: 977_000, noticeRevision: 0 };
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("23s behind")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Go live" }));
+    expect(hls.liveTransport.goLive).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
   });
 
   it("keeps programme context on the viewer's paused broadcast time", async () => {
@@ -228,8 +248,9 @@ describe("ChannelWatch pickers", () => {
 
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
-    expect(await screen.findByText("0:30")).toBeInTheDocument();
-    expect(screen.getByText("1m left")).toBeInTheDocument();
+    // The lower third reads the programme under the paused playhead, and how far behind live it is.
+    expect(await screen.findByText("Paused Programme")).toBeInTheDocument();
+    expect(screen.getByText(/m in · 30s behind$/)).toBeInTheDocument();
     await waitFor(() =>
       expect(diagnosticsRecord).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -285,7 +306,9 @@ describe("ChannelWatch — full-bleed route", () => {
       wrapper: makeWrapper(),
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Leave Watch" }));
+    expect(await screen.findByText(/is off air$/)).toBeInTheDocument();
+    expect(screen.getByText("This channel is paused, so there's nothing to watch.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Leave" }));
     expect(onLeave).toHaveBeenCalledOnce();
   });
 
@@ -293,12 +316,51 @@ describe("ChannelWatch — full-bleed route", () => {
     stubTracks({ audio: [{ index: 0, language: "eng" }] });
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /English/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
+    const settings = await openSettings();
+    // A list to read, not a choice to make: nothing in it is a control.
+    expect(within(settings).getByRole("list", { name: "Audio language" })).toBeInTheDocument();
+    expect(within(settings).queryByRole("radio")).not.toBeInTheDocument();
+    expect(within(settings).getByText(/An admin sets it on the channel’s page/)).toBeInTheDocument();
+  });
+
+  it("closes Settings from its ✕ and from Escape, handing focus back to ⚙", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    await openSettings();
+    await userEvent.click(screen.getByRole("button", { name: "Close Settings" }));
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+
+    await openSettings();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
+  });
+
+  it("covers the picture when the stream stops, with Retry and the way out", async () => {
+    stubTracks();
+    hls.status = "error";
+    const retry = vi.fn();
+    const onLeave = vi.fn();
+    render(
+      <ChannelWatch
+        channel={live}
+        isAdmin
+        onLeave={onLeave}
+        tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune: vi.fn(), retry }}
+      />,
+      { wrapper: makeWrapper() },
     );
-    expect(screen.getByText(/an admin changes it for everyone/)).toBeInTheDocument();
+
+    const cover = await screen.findByRole("alert");
+    expect(cover).toHaveTextContent("The stream stopped.");
+    expect(cover).toHaveTextContent("CH 42 · Late Night Noir");
+    // The cover takes the chrome's place: no playbar or transport over a stream that stopped.
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    await userEvent.click(within(cover).getByRole("button", { name: "Retry channel" }));
+    expect(retry).toHaveBeenCalledOnce();
+    await userEvent.click(within(cover).getByRole("button", { name: "Leave" }));
+    expect(onLeave).toHaveBeenCalledOnce();
   });
 });
 
@@ -314,11 +376,13 @@ describe("ChannelWatch switch readout", () => {
     tune: vi.fn(),
     retry: vi.fn(),
   });
-  const wash = () => document.querySelector<HTMLElement>("[data-wash]");
-  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD.
+  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD, not
+  // the chrome while it is hidden under the wash.
   const visibleNames = (name: string) =>
     screen
-      .queryAllByText(name)
+      .queryAllByText(
+        (_, el) => el?.childNodes[0]?.nodeType === Node.TEXT_NODE && (el.textContent ?? "").includes(name),
+      )
       .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
   const switchTo = async (target: typeof next) => {
     hls.status = "playing";
@@ -328,7 +392,7 @@ describe("ChannelWatch switch readout", () => {
         wrapper: makeWrapper(),
       },
     );
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
     hls.status = "loading";
     view.rerender(
       <ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor(target)} />,
@@ -383,19 +447,19 @@ describe("ChannelWatch switch readout", () => {
     render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
       wrapper: makeWrapper(),
     });
-    await screen.findByText("Tuning in…");
+    await tuningIn();
     expect(switchSound).not.toHaveBeenCalled();
   });
 
-  it("lets any viewer turn the sound off from the Audio menu, and remembers it", async () => {
+  it("lets any viewer turn the sound off from Settings, and remembers it", async () => {
     hls.status = "playing";
     render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />, {
       wrapper: makeWrapper(),
     });
-    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-    const toggle = await screen.findByRole("menuitemcheckbox", { name: "Channel-change sound" });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    expect(toggle).not.toHaveAttribute("aria-disabled", "true");
+    const settings = await openSettings();
+    const toggle = within(settings).getByRole("switch", { name: "Channel-change sound" });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
     await userEvent.click(toggle);
     expect(localStorage.getItem("loomarr.player.channel-change-sound")).toBe("off");
   });
@@ -412,7 +476,7 @@ describe("ChannelWatch switch readout", () => {
       <ChannelWatch channel={live} isAdmin onLeave={vi.fn()} tuner={tunerFor()} />,
       { wrapper: makeWrapper() },
     );
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
 
     hls.status = "loading";
     rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />);
@@ -426,7 +490,7 @@ describe("ChannelWatch switch readout", () => {
       wrapper: makeWrapper(),
     });
 
-    await screen.findByText("Tuning in…");
+    await tuningIn();
     expect(wash()).toHaveAttribute("data-wash", "rest");
   });
 
@@ -468,7 +532,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   it("records the tune once its first frame plays", async () => {
     stubTracks();
     const { onTuneSettled } = renderWatch();
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
     expect(onTuneSettled).toHaveBeenCalledTimes(1);
     expect(onTuneSettled).toHaveBeenCalledWith("ch-1");
   });
@@ -506,7 +570,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   it("tunes a typed channel number, and names a number no channel has", async () => {
     stubTracks();
     const { tune } = renderWatch();
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
     await userEvent.keyboard("7{Enter}");
     expect(tune).toHaveBeenCalledWith("ch-2");
 
@@ -537,17 +601,14 @@ describe("ChannelWatch at phone width", () => {
     const tune = vi.fn();
     const onFavourite = vi.fn();
     render(
-      // The panel under the picture is the shared @loomarr/ui one, which main.tsx themes app-wide.
-      <LoomarrProvider theme="dark">
-        <ChannelWatch
-          channel={live}
-          isAdmin={false}
-          onLeave={vi.fn()}
-          tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
-          drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
-          phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
-        />
-      </LoomarrProvider>,
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onLeave={vi.fn()}
+        tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
+        drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
+        phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
+      />,
       { wrapper: makeWrapper() },
     );
     return { onFavourite, step, tune };

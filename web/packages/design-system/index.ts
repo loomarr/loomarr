@@ -78,7 +78,7 @@ export {
   Text,
 } from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
-export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
+export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
 export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
@@ -107,6 +107,7 @@ export {
   brandContract,
   iconography,
   nativeFontFace,
+  playerChrome,
   semanticColors,
   semanticMotion,
   semanticRadius,

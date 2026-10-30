@@ -15,12 +15,32 @@ describe("useAutoHideControls", () => {
     expect(result.current.controlsShown).toBe(true);
   });
 
-  it("keeps controls shown while the pointer rests on the frame during playback", () => {
+  // A full-bleed player's frame is the whole window, so a pointer that never leaves it must still let
+  // the picture go bare (Emby-style), and a move brings the controls back.
+  it("hides after the idle window with the pointer resting on the frame, and a move reveals", () => {
     const { result } = renderHook(() => useAutoHideControls(true));
     act(() => result.current.onPointerActive());
-    // Idle window elapses, but the pointer is still here ⇒ stays shown.
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => vi.advanceTimersByTime(2000));
     expect(result.current.controlsShown).toBe(true);
+    act(() => vi.advanceTimersByTime(1000)); // past IDLE
+    expect(result.current.controlsShown).toBe(false);
+
+    act(() => result.current.onPointerActive());
+    expect(result.current.controlsShown).toBe(true);
+  });
+
+  it("gives a menu closed under a resting pointer the idle window, not the short grace", () => {
+    const { result } = renderHook(() => useAutoHideControls(true));
+    act(() => result.current.onPointerActive());
+    act(() => result.current.holdControls.hold(true));
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current.controlsShown).toBe(true);
+
+    act(() => result.current.holdControls.hold(false));
+    act(() => vi.advanceTimersByTime(700));
+    expect(result.current.controlsShown).toBe(true);
+    act(() => vi.advanceTimersByTime(2200));
+    expect(result.current.controlsShown).toBe(false);
   });
 
   it("hides shortly after the pointer leaves during playback", () => {
