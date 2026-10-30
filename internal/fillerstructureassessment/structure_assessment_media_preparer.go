@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -25,7 +26,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	sourceRoot string
 	mediaRoot  string
 	ffmpegPath string
-	probe      Prober
+	probe      filler.Prober
 	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
 	decode     func(context.Context, string, string) error
@@ -40,32 +41,32 @@ func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath
 		return nil, errors.New("structure assessment media preparer requires clean absolute source and media roots")
 	}
 	return &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, probe: FFprobeNextTo(ffmpegPath),
+		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, probe: filler.FFprobeNextTo(ffmpegPath),
 		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
-		snapshot: snapshotOwnedFile,
+		snapshot: filler.SnapshotOwnedFile,
 	}, nil
 }
 
-func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, input StructureAssessmentSource) (StructureAssessmentMedia, error) {
+func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, input filler.StructureAssessmentSource) (filler.StructureAssessmentMedia, error) {
 	if p == nil || p.run == nil || p.decode == nil {
-		return StructureAssessmentMedia{}, errors.New("structure assessment media preparer is unavailable")
+		return filler.StructureAssessmentMedia{}, errors.New("structure assessment media preparer is unavailable")
 	}
 	prepared, err := p.prepareSource(ctx, input)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	defer func() { _ = os.Remove(prepared.SnapshotPath) }()
-	stageDir := filepath.Join(p.mediaRoot, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, filler.MediaAssetRootName, ".staging")
 	profile, tool, sourceIdentity := prepared.Profile, prepared.Tool, prepared.Identity
 	operation := structureAssessmentOperationSHA256(sourceIdentity, profile, tool)
-	if !isContentHash(operation) {
-		return StructureAssessmentMedia{}, errors.New("structure assessment media operation identity is invalid")
+	if !filler.IsContentHash(operation) {
+		return filler.StructureAssessmentMedia{}, errors.New("structure assessment media operation identity is invalid")
 	}
 	indexPath := structureAssessmentIndexPath(p.mediaRoot, operation)
 	index, found, err := loadStructureAssessmentIndex(indexPath, operation)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	if found {
 		return p.reuse(ctx, input.Source, sourceIdentity, profile, tool, operation, index)
@@ -73,32 +74,32 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 
 	outputMarker, err := os.CreateTemp(stageDir, "structure-media-*.mp4")
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	outputPath := outputMarker.Name()
 	if err := outputMarker.Close(); err != nil {
 		_ = os.Remove(outputPath)
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	_ = os.Remove(outputPath)
 	defer func() { _ = os.Remove(outputPath) }()
 	arguments := fillerstructuremedia.PartArguments(prepared.SnapshotPath, 0, input.Source.DurationMs, outputPath)
 	if err := p.run(ctx, mediatools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("render structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("render structure assessment media: %w", err)
 	}
 	outputProbe, err := p.probe(ctx, outputPath)
 	if err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("probe structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("probe structure assessment media: %w", err)
 	}
 	if err := validateStructureAssessmentOutput(outputPath, outputProbe, input.Source, profile); err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	if err := p.decode(ctx, p.ffmpegPath, outputPath); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("decode structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("decode structure assessment media: %w", err)
 	}
-	mediaSHA, mediaBytes, err := FileSHA256(outputPath)
+	mediaSHA, mediaBytes, err := filler.FileSHA256(outputPath)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	lineage := StructureAssessmentMediaLineage{
 		SchemaVersion: structureAssessmentMediaSchemaVersion, ContractVersion: structureAssessmentMediaContractVersion,
@@ -107,19 +108,19 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	}
 	lineage.SHA256 = structureAssessmentLineageSHA256(lineage)
 	if err := validateStructureAssessmentLineage(lineage); err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	mediaPath := structureAssessmentMediaPath(p.mediaRoot, mediaSHA)
 	if err := publishStructureAssessmentMedia(ctx, outputPath, mediaPath, mediaSHA, mediaBytes); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment media: %w", err)
 	}
 	lineageStage, lineageRaw, err := writeStructureAssessmentJSON(stageDir, "structure-lineage-*", lineage)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	defer func() { _ = os.Remove(lineageStage) }()
 	if err := publishStructureAssessmentArtifact(ctx, lineageStage, structureAssessmentLineagePath(p.mediaRoot, lineage.SHA256), lineageRaw); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment lineage: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment lineage: %w", err)
 	}
 	index = structureAssessmentMediaIndex{
 		SchemaVersion: structureAssessmentIndexSchemaVersion, ContractVersion: structureAssessmentIndexContractVersion,
@@ -127,54 +128,54 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	}
 	indexStage, indexRaw, err := writeStructureAssessmentJSON(stageDir, "structure-index-*", index)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	defer func() { _ = os.Remove(indexStage) }()
 	if err := publishStructureAssessmentArtifact(ctx, indexStage, indexPath, indexRaw); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment index: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("publish structure assessment index: %w", err)
 	}
 	return preparedStructureAssessmentMedia(input.Source, lineage, mediaPath), nil
 }
 
-func (p *FFmpegStructureAssessmentMediaPreparer) reuse(ctx context.Context, source SplitSourceAsset, sourceIdentity StructureAssessmentMediaSourceIdentity, profile fillerstructuremedia.Profile, tool mediatools.MediaToolIdentity, operation string, index structureAssessmentMediaIndex) (StructureAssessmentMedia, error) {
+func (p *FFmpegStructureAssessmentMediaPreparer) reuse(ctx context.Context, source filler.SplitSourceAsset, sourceIdentity StructureAssessmentMediaSourceIdentity, profile fillerstructuremedia.Profile, tool mediatools.MediaToolIdentity, operation string, index structureAssessmentMediaIndex) (filler.StructureAssessmentMedia, error) {
 	lineage, err := loadStructureAssessmentLineage(structureAssessmentLineagePath(p.mediaRoot, index.LineageSHA256), index.LineageSHA256)
 	if err != nil {
-		return StructureAssessmentMedia{}, err
+		return filler.StructureAssessmentMedia{}, err
 	}
 	if lineage.OperationSHA256 != operation || lineage.Source != sourceIdentity || lineage.Profile != profile || lineage.Tool != tool {
-		return StructureAssessmentMedia{}, errors.New("structure assessment media reuse authority drifted")
+		return filler.StructureAssessmentMedia{}, errors.New("structure assessment media reuse authority drifted")
 	}
 	mediaPath := structureAssessmentMediaPath(p.mediaRoot, lineage.Media.SHA256)
-	mediaSHA, mediaBytes, err := FileSHA256(mediaPath)
+	mediaSHA, mediaBytes, err := filler.FileSHA256(mediaPath)
 	if err != nil || mediaSHA != lineage.Media.SHA256 || mediaBytes != lineage.Media.Bytes {
-		return StructureAssessmentMedia{}, errors.New("reused structure assessment media bytes do not match lineage")
+		return filler.StructureAssessmentMedia{}, errors.New("reused structure assessment media bytes do not match lineage")
 	}
 	probe, err := p.probe(ctx, mediaPath)
 	if err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("probe reused structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("probe reused structure assessment media: %w", err)
 	}
 	if err := validateStructureAssessmentOutput(mediaPath, probe, source, profile); err != nil || probe.DurationMs != lineage.Media.DurationMS {
-		return StructureAssessmentMedia{}, errors.New("reused structure assessment media profile does not match lineage")
+		return filler.StructureAssessmentMedia{}, errors.New("reused structure assessment media profile does not match lineage")
 	}
 	if err := p.decode(ctx, p.ffmpegPath, mediaPath); err != nil {
-		return StructureAssessmentMedia{}, fmt.Errorf("decode reused structure assessment media: %w", err)
+		return filler.StructureAssessmentMedia{}, fmt.Errorf("decode reused structure assessment media: %w", err)
 	}
 	return preparedStructureAssessmentMedia(source, lineage, mediaPath), nil
 }
 
-func validateStructureAssessmentSourceSnapshot(path string, source SplitSourceAsset) error {
-	digest, size, err := FileSHA256(path)
+func validateStructureAssessmentSourceSnapshot(path string, source filler.SplitSourceAsset) error {
+	digest, size, err := filler.FileSHA256(path)
 	if err != nil || digest != source.SHA256 || size != source.Bytes {
 		return errors.New("structure assessment source bytes do not match authority")
 	}
-	sparse, err := ClipID(path)
+	sparse, err := filler.ClipID(path)
 	if err != nil || sparse != source.ClipHash {
 		return errors.New("structure assessment source sparse identity does not match authority")
 	}
 	return nil
 }
 
-func validateStructureAssessmentOutput(path string, probe Probed, source SplitSourceAsset, profile fillerstructuremedia.Profile) error {
+func validateStructureAssessmentOutput(path string, probe filler.Probed, source filler.SplitSourceAsset, profile fillerstructuremedia.Profile) error {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > profile.MaximumVideoBytes {
 		return errors.New("structure assessment media is not a bounded regular file")
@@ -192,8 +193,8 @@ func validateStructureAssessmentOutput(path string, probe Probed, source SplitSo
 	return nil
 }
 
-func preparedStructureAssessmentMedia(source SplitSourceAsset, lineage StructureAssessmentMediaLineage, path string) StructureAssessmentMedia {
-	return StructureAssessmentMedia{
+func preparedStructureAssessmentMedia(source filler.SplitSourceAsset, lineage StructureAssessmentMediaLineage, path string) filler.StructureAssessmentMedia {
+	return filler.StructureAssessmentMedia{
 		Source: source,
 		Assessment: fillerstructure.AssessmentMedia{
 			SHA256: lineage.Media.SHA256, Bytes: lineage.Media.Bytes, DurationMS: lineage.Media.DurationMS,

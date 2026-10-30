@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -16,7 +17,7 @@ import (
 
 // PrepareWindows renders and verifies every normalized interval in one immutable plan. It returns
 // no usable authority unless the complete ordered media set validates.
-func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Context, input StructureAssessmentSource, plan fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error) {
+func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Context, input filler.StructureAssessmentSource, plan fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error) {
 	if p == nil || p.run == nil || p.decode == nil {
 		return StructureAssessmentWindowMediaSet{}, errors.New("structure assessment window preparer is unavailable")
 	}
@@ -59,7 +60,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Cont
 
 func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Context, plan fillerstructurewindow.Plan, prepared preparedStructureAssessmentSource, window fillerstructurewindow.Window) (StructureAssessmentWindowMedia, error) {
 	operation := structureAssessmentWindowOperationSHA256(plan, prepared.Identity, window, prepared.Profile, prepared.Tool)
-	if !isContentHash(operation) {
+	if !filler.IsContentHash(operation) {
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window operation identity is invalid")
 	}
 	indexPath := structureAssessmentWindowIndexPath(p.mediaRoot, operation)
@@ -71,7 +72,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 		return p.reuseWindow(ctx, plan, prepared, window, operation, index)
 	}
 
-	stageDir := filepath.Join(p.mediaRoot, MediaAssetRootName, ".staging")
+	stageDir := filepath.Join(p.mediaRoot, filler.MediaAssetRootName, ".staging")
 	output, err := os.CreateTemp(stageDir, "structure-window-*.mp4")
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
@@ -98,7 +99,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	if err := p.decode(ctx, p.ffmpegPath, outputPath); err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("decode: %w", err)
 	}
-	mediaSHA, mediaBytes, err := FileSHA256(outputPath)
+	mediaSHA, mediaBytes, err := filler.FileSHA256(outputPath)
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, err
 	}
@@ -158,7 +159,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 		return StructureAssessmentWindowMedia{}, errors.New("structure assessment window reuse authority drifted")
 	}
 	mediaPath := structureAssessmentMediaPath(p.mediaRoot, lineage.Media.SHA256)
-	mediaSHA, mediaBytes, err := FileSHA256(mediaPath)
+	mediaSHA, mediaBytes, err := filler.FileSHA256(mediaPath)
 	if err != nil || mediaSHA != lineage.Media.SHA256 || mediaBytes != lineage.Media.Bytes {
 		return StructureAssessmentWindowMedia{}, errors.New("reused structure assessment window bytes do not match lineage")
 	}
@@ -176,7 +177,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 	return preparedStructureAssessmentWindowMedia(window, lineage, mediaPath), nil
 }
 
-func validateStructureAssessmentWindowOutput(path string, probe Probed, window fillerstructurewindow.Window, profile fillerstructurewindow.Profile) error {
+func validateStructureAssessmentWindowOutput(path string, probe filler.Probed, window fillerstructurewindow.Window, profile fillerstructurewindow.Profile) error {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > profile.MaximumWindowBytes {
 		return errors.New("structure assessment window is not a bounded regular file")

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
@@ -233,7 +233,7 @@ func assessorRouteAuthority(baseURL string, now time.Time) openroutermedia.Route
 	return authority
 }
 
-func assessorMediaFixture(t *testing.T) (fillerstructurewindow.MediaSet, filler.StructureAssessmentWindowMedia) {
+func assessorMediaFixture(t *testing.T) (fillerstructurewindow.MediaSet, fillerstructureassessment.StructureAssessmentWindowMedia) {
 	t.Helper()
 	raw := []byte("fixture window mp4 bytes")
 	digest := sha256.Sum256(raw)
@@ -254,7 +254,7 @@ func assessorMediaFixture(t *testing.T) (fillerstructurewindow.MediaSet, filler.
 	if err != nil {
 		t.Fatal(err)
 	}
-	return set, filler.StructureAssessmentWindowMedia{Window: plan.Windows[0], Media: set.Windows[0], FullPath: path}
+	return set, fillerstructureassessment.StructureAssessmentWindowMedia{Window: plan.Windows[0], Media: set.Windows[0], FullPath: path}
 }
 
 func successResponse(content, selectedModel string) string {

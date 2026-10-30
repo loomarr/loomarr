@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
 )
 
 const (
@@ -27,11 +28,11 @@ type SegmentScreeningEvidenceRepository interface {
 // FileSegmentScreeningEvidenceRepository stores rendered-child aggregates separately from
 // complete-timeline assessment records while reusing the same private immutable-file discipline.
 type FileSegmentScreeningEvidenceRepository struct {
-	files *filler.FileStructureAssessmentEvidenceRepository
+	files *fillerstructureassessment.FileStructureAssessmentEvidenceRepository
 }
 
 func NewFileSegmentScreeningEvidenceRepository(root string) (*FileSegmentScreeningEvidenceRepository, error) {
-	files, err := filler.NewFileStructureAssessmentEvidenceRepository(root)
+	files, err := fillerstructureassessment.NewFileStructureAssessmentEvidenceRepository(root)
 	if err != nil {
 		return nil, err
 	}

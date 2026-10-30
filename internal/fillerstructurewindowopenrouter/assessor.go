@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
@@ -42,7 +42,7 @@ func New(config Config) (*Assessor, error) {
 
 func (a *Assessor) Profile() fillerstructure.AssessorProfile { return a.config.Profile }
 
-func (a *Assessor) AssessWindow(ctx context.Context, set fillerstructurewindow.MediaSet, media filler.StructureAssessmentWindowMedia) (fillerstructurewindow.RecordedAssessment, error) {
+func (a *Assessor) AssessWindow(ctx context.Context, set fillerstructurewindow.MediaSet, media fillerstructureassessment.StructureAssessmentWindowMedia) (fillerstructurewindow.RecordedAssessment, error) {
 	video, err := readBoundWindowVideo(ctx, set, media)
 	if err != nil {
 		return fillerstructurewindow.RecordedAssessment{}, err
@@ -131,7 +131,7 @@ func validMetadataSnapshotSHA256(value string) bool {
 	return err == nil && strings.ToLower(value) == value
 }
 
-func readBoundWindowVideo(ctx context.Context, set fillerstructurewindow.MediaSet, media filler.StructureAssessmentWindowMedia) ([]byte, error) {
+func readBoundWindowVideo(ctx context.Context, set fillerstructurewindow.MediaSet, media fillerstructureassessment.StructureAssessmentWindowMedia) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -168,4 +168,4 @@ func readBoundWindowVideo(ctx context.Context, set fillerstructurewindow.MediaSe
 	return raw, nil
 }
 
-var _ filler.CompleteWindowStructureAssessor = (*Assessor)(nil)
+var _ fillerstructureassessment.CompleteWindowStructureAssessor = (*Assessor)(nil)

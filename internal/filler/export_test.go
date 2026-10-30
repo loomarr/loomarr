@@ -2,14 +2,9 @@ package filler
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
 // CertifiedShadowFixture exposes the certified two-segment proposal and its policies to the
@@ -111,26 +106,3 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 	}
 	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
 }
-
-// Assess plans and prepares the windows itself, then runs AssessPrepared. Production's hosted
-// adapter prepares first and calls AssessPrepared directly.
-func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input StructureAssessmentSource) (fillerstructure.Artifact, error) {
-	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.preparer == nil || r.evidence == nil || r.now == nil {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
-	}
-	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime source is invalid")
-	}
-	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
-	}
-	prepared, err := r.preparer.PrepareWindows(ctx, input, plan)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("prepare structure windows: %w", err)
-	}
-	return r.AssessPrepared(ctx, input, prepared)
-}
-
-var _ CompleteTimelineStructureDecisioner = (*StructureWindowAssessmentRuntime)(nil)

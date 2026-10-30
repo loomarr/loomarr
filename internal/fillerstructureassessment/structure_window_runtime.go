@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
@@ -74,7 +75,7 @@ func NewStructureWindowAssessmentRuntime(assessors []CompleteWindowStructureAsse
 // adapters use this seam after local preparation succeeds, so capability refresh and paid calls
 // cannot happen before media preflight. The full source and plan are rederived here rather than
 // trusting the adapter that supplied prepared.
-func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, input StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) (fillerstructure.Artifact, error) {
+func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, input filler.StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) (fillerstructure.Artifact, error) {
 	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.evidence == nil || r.now == nil {
 		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
 	}
@@ -113,8 +114,8 @@ func (r *StructureWindowAssessmentRuntime) AssessPrepared(ctx context.Context, i
 
 // ValidatePreparedStructureAssessmentWindows closes the local preflight boundary shared by
 // provider-neutral execution and hosted adapters. It performs no inference, persistence, or I/O.
-func ValidatePreparedStructureAssessmentWindows(input StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) error {
-	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
+func ValidatePreparedStructureAssessmentWindows(input filler.StructureAssessmentSource, prepared StructureAssessmentWindowMediaSet) error {
+	if err := input.Source.Validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
 		return errors.New("structure window runtime source is invalid")
 	}
 	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}

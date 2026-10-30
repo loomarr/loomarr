@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -36,7 +37,7 @@ func TestStructureAssessmentWindowPreparerRendersCompleteSetAndReusesVerifiedMed
 		window := plan.Windows[ordinal]
 		if prepared.Window != window || prepared.Media != first.Authority.Windows[ordinal] ||
 			prepared.Media.Media.ProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 ||
-			!isContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
+			!filler.IsContentHash(prepared.Media.Media.LineageSHA256) || !filepath.IsAbs(prepared.FullPath) {
 			t.Fatalf("prepared window %d = %+v", ordinal, prepared)
 		}
 		want := fillerstructuremedia.PartArguments(calls.snapshots[ordinal], window.MediaStartMS, window.MediaEndMS-window.MediaStartMS, calls.outputs[ordinal])
@@ -159,7 +160,7 @@ func TestStructureAssessmentWindowOutputRejectsPerWindowByteOverrun(t *testing.T
 	}
 	profile := fillerstructurewindow.CanonicalProfile()
 	window := fillerstructurewindow.Window{MediaStartMS: 0, MediaEndMS: 10_000}
-	probe := Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
+	probe := filler.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}
 	if err := validateStructureAssessmentWindowOutput(path, probe, window, profile); err == nil {
 		t.Fatal("oversized normalized window was accepted")
 	}
@@ -172,7 +173,7 @@ type structureAssessmentWindowCalls struct {
 	outputs          []string
 }
 
-func structureAssessmentWindowSource(t *testing.T) (string, StructureAssessmentSource, fillerstructurewindow.Plan) {
+func structureAssessmentWindowSource(t *testing.T) (string, filler.StructureAssessmentSource, fillerstructurewindow.Plan) {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "incoming", "compilation.mp4")
@@ -182,16 +183,16 @@ func structureAssessmentWindowSource(t *testing.T) (string, StructureAssessmentS
 	if err := os.WriteFile(path, []byte(strings.Repeat("long-source", 128)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := FileSHA256(path)
+	digest, size, err := filler.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(path)
+	clipHash, err := filler.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := StructureAssessmentSource{Source: SplitSourceAsset{
-		Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
+	input := filler.StructureAssessmentSource{Source: filler.SplitSourceAsset{
+		Role: filler.SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
 		Path: "incoming/compilation.mp4", DurationMs: 300_000,
 	}, FullPath: path}
 	plan, err := fillerstructurewindow.NewPlan(fillerstructure.Source{SHA256: digest, Bytes: size, DurationMS: 300_000})
@@ -205,7 +206,7 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan fi
 	t.Helper()
 	calls := &structureAssessmentWindowCalls{}
 	preparer := &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: snapshotOwnedFile,
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: filler.SnapshotOwnedFile,
 		identify: func(context.Context, string) (mediatools.MediaToolIdentity, error) {
 			return structureAssessmentToolFixture(), nil
 		},
@@ -233,13 +234,13 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan fi
 		calls.outputs = append(calls.outputs, output)
 		return os.WriteFile(output, []byte(strings.Repeat("window-"+strconv.Itoa(ordinal), 128)), 0o600)
 	}
-	preparer.probe = func(_ context.Context, path string) (Probed, error) {
+	preparer.probe = func(_ context.Context, path string) (filler.Probed, error) {
 		if strings.Contains(filepath.Base(path), "structure-source-") {
-			return Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+			return filler.Probed{DurationMs: plan.Source.DurationMS, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return Probed{}, err
+			return filler.Probed{}, err
 		}
 		ordinal := -1
 		for candidate := range plan.Windows {
@@ -249,10 +250,10 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan fi
 			}
 		}
 		if ordinal < 0 {
-			return Probed{}, errors.New("unknown fixture media")
+			return filler.Probed{}, errors.New("unknown fixture media")
 		}
 		window := plan.Windows[ordinal]
-		return Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+		return filler.Probed{DurationMs: window.MediaEndMS - window.MediaStartMS, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 	}
 	preparer.decode = func(_ context.Context, _ string, _ string) error {
 		calls.decodes++

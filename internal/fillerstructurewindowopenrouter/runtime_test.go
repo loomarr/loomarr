@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
 )
@@ -85,11 +86,11 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 
 type capturedRuntimePreparer struct {
 	calls    int
-	prepared filler.StructureAssessmentWindowMediaSet
+	prepared fillerstructureassessment.StructureAssessmentWindowMediaSet
 	err      error
 }
 
-func (p *capturedRuntimePreparer) PrepareWindows(context.Context, filler.StructureAssessmentSource, fillerstructurewindow.Plan) (filler.StructureAssessmentWindowMediaSet, error) {
+func (p *capturedRuntimePreparer) PrepareWindows(context.Context, filler.StructureAssessmentSource, fillerstructurewindow.Plan) (fillerstructureassessment.StructureAssessmentWindowMediaSet, error) {
 	p.calls++
 	return p.prepared, p.err
 }
@@ -154,7 +155,7 @@ func TestCertifiedRuntimeChecksReviewedMediaEnvelopeBeforeProviderMetadata(t *te
 	}
 }
 
-func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS int64) (filler.StructureAssessmentSource, filler.StructureAssessmentWindowMediaSet) {
+func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS int64) (filler.StructureAssessmentSource, fillerstructureassessment.StructureAssessmentWindowMediaSet) {
 	t.Helper()
 	source := filler.SplitSourceAsset{
 		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
@@ -177,9 +178,9 @@ func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared := filler.StructureAssessmentWindowMediaSet{Source: source, Authority: set}
+	prepared := fillerstructureassessment.StructureAssessmentWindowMediaSet{Source: source, Authority: set}
 	for ordinal, window := range plan.Windows {
-		prepared.Windows = append(prepared.Windows, filler.StructureAssessmentWindowMedia{
+		prepared.Windows = append(prepared.Windows, fillerstructureassessment.StructureAssessmentWindowMedia{
 			Window: window, Media: set.Windows[ordinal], FullPath: filepath.Join(t.TempDir(), "window.mp4"),
 		})
 	}
