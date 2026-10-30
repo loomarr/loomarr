@@ -1461,6 +1461,23 @@ components:
             - 24h
           type: string
       type: object
+    ChannelSubtitlesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ChannelSubtitlesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        airings:
+          items:
+            $ref: "#/components/schemas/SubtitleAiringDTO"
+          type: array
+      required:
+        - airings
+      type: object
     ChannelTracksOutputBody:
       additionalProperties: false
       properties:
@@ -11017,6 +11034,59 @@ components:
       required:
         - jobId
       type: object
+    SubtitleAiringDTO:
+      additionalProperties: false
+      properties:
+        cues:
+          items:
+            $ref: "#/components/schemas/SubtitleCueDTO"
+          type: array
+        startMs:
+          format: int64
+          type: integer
+        stopMs:
+          format: int64
+          type: integer
+        tracks:
+          items:
+            $ref: "#/components/schemas/SubtitleTrackDTO"
+          type: array
+      required:
+        - startMs
+        - stopMs
+        - tracks
+        - cues
+      type: object
+    SubtitleCueDTO:
+      additionalProperties: false
+      properties:
+        endMs:
+          format: int64
+          type: integer
+        startMs:
+          format: int64
+          type: integer
+        text:
+          description: "WebVTT cue text: lines joined by a newline, with <i>/<b> kept."
+          type: string
+      required:
+        - startMs
+        - endMs
+        - text
+      type: object
+    SubtitleTrackDTO:
+      additionalProperties: false
+      properties:
+        language:
+          description: ISO 639-2 code, lowercased; empty when the media left it untagged.
+          type: string
+        title:
+          description: The stream's title when the media carries one; empty otherwise.
+          type: string
+      required:
+        - language
+        - title
+      type: object
     SuggestionEvent:
       additionalProperties: false
       properties:
@@ -13306,6 +13376,66 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/subtitles:
+    get:
+      description: "Any signed-in user. The soft subtitles the player shows beside the stream (#2088): each airing in [from, to) with the text subtitle tracks its programme carries, and with `language` the cues of that track (matched with `title` first), placed on the wall clock. Breaks and programmes without text subtitles list no tracks. The window is clamped to the seekable past and a little ahead of live. Best-effort: a probe or extraction failure lists fewer tracks or cues, never an error."
+      operationId: channel-subtitles
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - description: Window start, Unix milliseconds.
+          explode: false
+          in: query
+          name: from
+          required: true
+          schema:
+            description: Window start, Unix milliseconds.
+            format: int64
+            type: integer
+        - description: Window end (exclusive), Unix milliseconds.
+          explode: false
+          in: query
+          name: to
+          required: true
+          schema:
+            description: Window end (exclusive), Unix milliseconds.
+            format: int64
+            type: integer
+        - description: The track to read cues from, by ISO 639-2 language; omitted lists tracks only.
+          explode: false
+          in: query
+          name: language
+          schema:
+            description: The track to read cues from, by ISO 639-2 language; omitted lists tracks only.
+            type: string
+        - description: "With language: the track's title, preferred over the language's first track."
+          explode: false
+          in: query
+          name: title
+          schema:
+            description: "With language: the track's title, preferred over the language's first track."
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSubtitlesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Subtitle cues for a window of the channel's wall clock
+      tags:
+        - channels
   /v1/channels/{id}/timeline:
     get:
       description: The current programme, the next few, and the commercial breaks between them, from internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).

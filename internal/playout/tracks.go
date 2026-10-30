@@ -28,6 +28,9 @@ type Track struct {
 	// Title is the container's free-text stream title when present ("Director's Commentary",
 	// "Forced"), shown beside the language because two English tracks are otherwise indistinct.
 	Title string
+	// Codec is ffprobe's codec name ("subrip", "hdmv_pgs_subtitle"). It tells a text subtitle, which
+	// becomes cues, from an image one, which cannot (IsTextSubtitle).
+	Codec string
 }
 
 // MediaTracks is a source's selectable tracks, split by type.

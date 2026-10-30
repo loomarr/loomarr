@@ -895,6 +895,9 @@ type PlayoutResolver interface {
 	// the Watch surface's pickers (§9.1, V46). Best-effort: empty when nothing airs or the probe
 	// fails, so a UI request never blocks on a bad probe.
 	Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error)
+	// Subtitles is the subtitles sidecar (#2088 step 7): each airing in [from, to) of the channel's
+	// wall clock with its text subtitle tracks, and with a pick, that track's cues on the wall clock.
+	Subtitles(ctx context.Context, channelID string, from, to time.Time, pick *playout.SubtitlePick) ([]playout.SubtitleAiring, error)
 	// LineupFormats returns the inventory stream facts of each distinct programme in the channel's
 	// lineup (zero for an unmeasured item), from which the channel's formats are derived (#1512 G10).
 	LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error)

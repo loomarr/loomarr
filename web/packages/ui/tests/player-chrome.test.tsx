@@ -191,6 +191,18 @@ describe("PlayerChrome", () => {
     expect(button(open, "Exit picture-in-picture")).toBeDefined();
   });
 
+  it("offers Subtitles only when the programme carries a track, naming the next step while on", () => {
+    const onSubtitles = vi.fn();
+    expect(button(mount(chrome()), "Subtitles")).toBeUndefined();
+    const off = mount(chrome({ transport: transport({ onSubtitles, subtitlesOn: false }) }));
+    act(() => button(off, "Subtitles")?.click());
+    expect(onSubtitles).toHaveBeenCalledOnce();
+
+    const on = mount(chrome({ transport: transport({ onSubtitles, subtitlesOn: true }) }));
+    expect(button(on, "Subtitles")).toBeUndefined();
+    expect(button(on, "Next subtitles")).toBeDefined();
+  });
+
   it("offers Info when there is a programme to describe", () => {
     const onInfo = vi.fn();
     expect(button(mount(chrome()), "Info")).toBeUndefined();
@@ -302,6 +314,37 @@ describe("PlayerSettings", () => {
         "Playback info",
       ),
     ).toBeUndefined();
+  });
+
+  it("lists Off and each subtitle track as a choice, only when the programme carries any", () => {
+    const onSelect = vi.fn();
+    const host = mount(
+      <PlayerSettings
+        audio={[]}
+        density="pointer"
+        onSwitchSound={vi.fn()}
+        subtitles={{
+          onSelect,
+          options: [
+            { label: "Off", selected: false, value: "off" },
+            { label: "English", selected: true, value: "0" },
+          ],
+        }}
+        switchSound
+      />,
+    );
+    const radios = Array.from(
+      host.querySelectorAll('[role="radiogroup"][aria-label="Subtitles"] [role="radio"]'),
+    );
+    expect(radios.map((r) => [r.getAttribute("aria-label"), r.getAttribute("aria-checked")])).toEqual([
+      ["Off", "false"],
+      ["English", "true"],
+    ]);
+    act(() => radios[0]?.click());
+    expect(onSelect).toHaveBeenCalledWith("off");
+
+    const none = mount(<PlayerSettings audio={[]} density="pointer" onSwitchSound={vi.fn()} switchSound />);
+    expect(none.querySelector('[aria-label="Subtitles"]')).toBeNull();
   });
 });
 

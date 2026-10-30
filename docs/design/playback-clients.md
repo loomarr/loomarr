@@ -152,10 +152,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   open to everyone: members see rung, resolution, codec, bitrate, buffer and lag; admins also see
   the encoder, transcode reason and session, and get **Copy stream URL**), Channels (`G`) and
   Shortcuts (`?`, replacing the always-visible hint line). One sheet is open at a time.
-- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
-  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
-  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
-  restarts the encoder.
+- **Audio, subtitles and quality are per viewer and remembered.** Audio and quality are chosen
+  among the renditions the Channel publishes: the default audio plus at most one alternate. Soft
+  subtitles come from the subtitles sidecar beside the stream, for the programme at the playhead
+  (`C` cycles them; [`playout.md`](playout.md)). No choice restarts the encoder.
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
   The route hides the app nav and has a ✕/back control. The authed layout, not the route, draws

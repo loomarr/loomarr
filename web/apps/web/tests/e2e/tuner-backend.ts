@@ -263,6 +263,8 @@ const startTunerServer = () => {
       if (/^\/v1\/channels\/ch-\d+\/tracks$/.test(path)) {
         return sendJSON(response, { audio: [], subtitles: [] });
       }
+      // The subtitles sidecar (#2088 step 7): nothing on the fixture is subtitled.
+      if (/^\/v1\/channels\/ch-\d+\/subtitles$/.test(path)) return sendJSON(response, { airings: [] });
       // Watch's drawer reads the viewer's favourites and recent channels, and a tune records one;
       // every answer carries both required lists, so the catch-all `{}` would crash the page.
       if (path === "/v1/me/channels" || /^\/v1\/me\/(favourites|recent-channels)\//.test(path)) {

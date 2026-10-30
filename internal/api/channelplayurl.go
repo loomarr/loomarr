@@ -45,6 +45,17 @@ func (s *Server) registerChannelPlayURL(api huma.API) {
 			"nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default.",
 		Tags: []string{"channels"},
 	}, RoleMember), s.channelTracks)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "channel-subtitles", Method: http.MethodGet, Path: "/v1/channels/{id}/subtitles",
+		Summary: "Subtitle cues for a window of the channel's wall clock",
+		Description: "Any signed-in user. The soft subtitles the player shows beside the stream (#2088): each airing in " +
+			"[from, to) with the text subtitle tracks its programme carries, and with `language` the cues of that track " +
+			"(matched with `title` first), placed on the wall clock. Breaks and programmes without text subtitles list " +
+			"no tracks. The window is clamped to the seekable past and a little ahead of live. Best-effort: a probe or " +
+			"extraction failure lists fewer tracks or cues, never an error.",
+		Tags: []string{"channels"},
+	}, RoleMember), s.channelSubtitles)
 }
 
 type playURLInput struct {

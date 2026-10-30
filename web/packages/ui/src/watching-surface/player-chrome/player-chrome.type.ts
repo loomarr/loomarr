@@ -136,6 +136,9 @@ interface PlayerTransportProps {
   /** Settings (⚙): open or close the settings sheet. */
   settingsOpen: boolean;
   onSettings: () => void;
+  /** Subtitles (CC, `C`): the next track or off; omitted while the programme carries none. */
+  subtitlesOn?: boolean;
+  onSubtitles?: () => void;
   /** Info (ⓘ): open or close the info sheet; omitted while there is no programme to describe. */
   infoOpen?: boolean;
   onInfo?: () => void;

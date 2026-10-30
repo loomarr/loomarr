@@ -517,14 +517,25 @@ it plays. So:
 - The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a
   separate, unscoped feature.
 
-**Subtitles are soft renditions, with GPU burn-in only for image formats (#2088; not yet built).** The
-track probe reports what the current item carries; today the encoder maps video plus one audio
-stream and drops subtitles (the inert V55-era burn-in controls were retired). The decided shape:
+**Subtitles travel beside the stream, with GPU burn-in only for image formats (#2088).** The encoder
+maps video plus one audio stream and drops subtitles (the inert V55-era burn-in controls were
+retired); soft subtitles never enter the stream:
 
-- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are extracted to one **WebVTT rendition per
-  language** per channel, in the master playlist's subtitle group. Each viewer turns them on or off
-  and picks the language in the player, and the choice is remembered per viewer. The cost is a cheap
-  text extraction per channel, never a video re-encode.
+- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are served by a **sidecar**,
+  `GET /v1/channels/{id}/subtitles?from&to[&language&title]`. For each airing in a window of the
+  channel's wall clock it lists the text tracks the programme carries, and with a pick it returns
+  that track's cues placed on the wall clock. The player reads the window around its playhead, live
+  or seeked back, and shows the cues on the `<video>`'s own text track, which the platform renders
+  in a phone's native fullscreen too. Each viewer turns them on or off and picks the track, and the
+  choice is remembered per viewer.
+  - *Why not an HLS subtitle rendition (#2088 decision 5, reversed 2026-10-30):* a live channel's
+    master playlist is read once per tune, but subtitle languages change programme by programme, so
+    a rendition group could only ever describe the programme a viewer tuned into. The cost of the
+    sidecar is that clients pulling the bare stream (a media server's Live TV, the tuner) get no soft
+    subtitles.
+  - *Cost:* never on the broadcast path and never a re-encode. The server probes a source's tracks
+    once and extracts a track in five-minute source chunks (an input seek, `-c:s webvtt`), cached
+    in memory and shared by every viewer (`internal/app/playoutsubtitles.go`). Breaks carry none.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
   An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
   video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track

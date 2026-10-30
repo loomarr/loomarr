@@ -13,6 +13,13 @@ import {
   selectQualityLevel,
 } from "./live-level";
 import { LIVE_DVR_HORIZON_MS, liveSeek } from "./live-seek";
+import {
+  type LiveSubtitles,
+  type LiveSubtitleTrack,
+  nextSubtitles,
+  selectSubtitleTrack,
+} from "./live-subtitles";
+import { type LiveSubtitleCue, type LiveSubtitleCues, syncSubtitleTrack } from "./subtitle-track";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -76,6 +83,12 @@ interface BrowserHlsPlayerOptions {
    */
   quality?: LiveQuality;
   recordDiagnostic: (observation: BrowserClientObservation) => void;
+  /**
+   * The chosen track's cues on the wall clock, from the subtitles sidecar (#2088 step 7); omitted
+   * hides subtitles. Shown on the element's own text track, placed by the player's wall-clock anchor;
+   * changing them never re-binds the source.
+   */
+  subtitleCues?: LiveSubtitleCues;
 }
 
 interface UseBrowserHlsPlayer {
@@ -123,6 +136,10 @@ const canPlayMime = (mime: string) => typeof MediaSource !== "undefined" && Medi
 
 const levelsOf = (hls: Hls): LiveLevel[] =>
   hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange }));
+
+// Wall clock − media time from the player's anchor: what places a sidecar cue on the element.
+const mediaOffsetMs = (anchor: DisplayedClockAnchor | undefined) =>
+  anchor ? anchor.wallClockMs - anchor.mediaTimeSeconds * 1_000 : undefined;
 
 let cachedHlsController: typeof Hls | undefined;
 
@@ -347,11 +364,14 @@ function useBrowserHlsPlayer({
   onManifest,
   quality = "auto",
   recordDiagnostic,
+  subtitleCues,
 }: BrowserHlsPlayerOptions): UseBrowserHlsPlayer {
   const onManifestRef = useRef(onManifest);
   onManifestRef.current = onManifest;
   const qualityRef = useRef(quality);
   qualityRef.current = quality;
+  const subtitleCuesRef = useRef(subtitleCues);
+  subtitleCuesRef.current = subtitleCues;
   const [ladder, setLadder] = useState<{ channelId: string; rungs: LiveRung[]; height?: number }>({
     channelId,
     rungs: [],
@@ -442,6 +462,9 @@ function useBrowserHlsPlayer({
         const sample = displayedWallClockMs(active.video, active.hls, fallback, active.clockAnchor);
         active.clockAnchor = sample.anchor;
         clock.viewerTimeMs = sample.wallClockMs;
+        // Each tick re-checks the cues' placement: a retune or a seek across a reload moves the anchor.
+        if (active.video)
+          syncSubtitleTrack(active.video, subtitleCuesRef.current, mediaOffsetMs(active.clockAnchor));
       }
       setTransportState({ channelId, value: liveStateAt(clock, at) });
     },
@@ -1190,6 +1213,12 @@ function useBrowserHlsPlayer({
     if (level !== hls.currentLevel) hls.currentLevel = level;
   }, [quality]);
 
+  // New cues, or subtitles turned off: place them now rather than at the next tick.
+  useEffect(() => {
+    const active = activeRef.current;
+    if (active.video) syncSubtitleTrack(active.video, subtitleCues, mediaOffsetMs(active.clockAnchor));
+  }, [subtitleCues]);
+
   const playbackFacts = useCallback((): LivePlaybackFacts | undefined => {
     const bound = boundRef.current;
     if (!bound || bound.channelId !== channelIdentityRef.current) return undefined;
@@ -1237,6 +1266,20 @@ export type {
   LivePlaybackFacts,
   LiveQuality,
   LiveRung,
+  LiveSubtitleCue,
+  LiveSubtitleCues,
+  LiveSubtitles,
+  LiveSubtitleTrack,
   UseBrowserHlsPlayer,
 };
-export { liveHlsConfig, liveSeek, playableRungs, selectLiveLevel, selectQualityLevel, useBrowserHlsPlayer };
+export {
+  liveHlsConfig,
+  liveSeek,
+  nextSubtitles,
+  playableRungs,
+  selectLiveLevel,
+  selectQualityLevel,
+  selectSubtitleTrack,
+  syncSubtitleTrack,
+  useBrowserHlsPlayer,
+};

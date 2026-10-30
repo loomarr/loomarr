@@ -1,6 +1,7 @@
 import {
   getChannelFillerCoverageMockHandler,
   getChannelsNowNextMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
@@ -365,6 +366,8 @@ const stubReachable = () => {
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
     getChannelTracksMockHandler({ audio: [], subtitles: [] }),
+    // The player's subtitles sidecar (#2088 step 7).
+    getChannelSubtitlesMockHandler({ airings: [] }),
     ...appHandlers(),
   );
 };

@@ -3,6 +3,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
+import { type LiveSubtitleCues, nextSubtitles } from "@loomarr/player/browser";
 import {
   PlayerChrome,
   PlayerCover,
@@ -22,8 +23,10 @@ import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-defau
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { PlaybackInfoSheet } from "@/channels/playback-info-sheet";
 import { useHlsPlayer } from "@/channels/use-hls-player";
+import { useLiveSubtitles } from "@/channels/use-live-subtitles";
 import { useNumberEntry } from "@/channels/use-number-entry";
 import { useQualityPreference } from "@/channels/use-quality-preference";
+import { useSubtitlesPreference } from "@/channels/use-subtitles-preference";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
@@ -123,14 +126,16 @@ const ReportPictureInPicture = ({
 };
 
 // The `?` sheet's rows (#2088 decision 11), only for what this Watch answers: the tuner's keys with a
-// tuner, Info with a programme, picture-in-picture where the browser has it. Subtitles join with C.
+// tuner, Info with a programme, picture-in-picture where the browser has it, Subtitles with a track.
 const shortcutRows = ({
   info,
   pictureInPicture,
+  subtitles,
   tuner,
 }: {
   info: boolean;
   pictureInPicture: boolean;
+  subtitles: boolean;
   tuner: boolean;
 }): (readonly [string, string])[] => [
   ["Space / K", "Pause / play"],
@@ -147,6 +152,7 @@ const shortcutRows = ({
   ["− / =", "Volume down / up"],
   ["F", "Fullscreen"],
   ...(pictureInPicture ? ([["P", "Picture-in-picture"]] as const) : []),
+  ...(subtitles ? ([["C", "Subtitles"]] as const) : []),
   ...(info ? ([["I", "Info"]] as const) : []),
   ["?", "This sheet"],
   ["Esc", "Close / leave"],
@@ -186,7 +192,25 @@ const ChannelWatch = ({
   const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
   // The viewer's quality, remembered across channels: a rung a channel doesn't offer plays Auto.
   const [quality, setQuality] = useQualityPreference();
-  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest, quality);
+  // The viewer's subtitles, remembered across channels: a track a programme doesn't carry shows none.
+  const [subtitles, setSubtitles] = useSubtitlesPreference();
+  // The cues reach the player a render after the sidecar answers for its playhead: the playhead is
+  // the player's own, so the two cannot be read in one pass.
+  const [subtitleCues, setSubtitleCues] = useState<LiveSubtitleCues>();
+  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest, quality, subtitleCues);
+  const atPlayhead = useLiveSubtitles(
+    channel.id,
+    player.liveTransport.state.viewerTimeMs,
+    subtitles,
+    player.status === "playing",
+  );
+  useEffect(() => setSubtitleCues(atPlayhead.cues), [atPlayhead.cues]);
+  const { active: subtitleActive, tracks: subtitleTracks } = atPlayhead;
+  // C and the CC tool step on from the track shown (or off) through the programme's tracks.
+  const cycleSubtitles =
+    subtitleTracks.length > 0
+      ? () => setSubtitles(nextSubtitles(subtitleTracks, subtitleTracks[subtitleActive] ?? "off"))
+      : undefined;
   // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
   // player's volume and mute, and Go live can act on it, without VideoPlayer knowing about either.
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -432,6 +456,10 @@ const ChannelWatch = ({
       toggleSheet("shortcuts");
       return true;
     }
+    if ((key === "c" || key === "C") && cycleSubtitles) {
+      cycleSubtitles();
+      return true;
+    }
     if ((key === "i" || key === "I") && info) {
       toggleSheet("info");
       return true;
@@ -493,6 +521,22 @@ const ChannelWatch = ({
               options: qualityOptions,
             }
           }
+          subtitles={
+            subtitleTracks.length > 0
+              ? {
+                  onSelect: (value) =>
+                    setSubtitles(value === "off" ? "off" : (subtitleTracks[Number(value)] ?? "off")),
+                  options: [
+                    { label: "Off", selected: subtitleActive < 0, value: "off" },
+                    ...subtitleTracks.map((track, i) => ({
+                      label: atPlayhead.labelOf(track),
+                      selected: i === subtitleActive,
+                      value: String(i),
+                    })),
+                  ],
+                }
+              : undefined
+          }
           switchSound={switchSoundOn}
         />
       </PlayerSheet>
@@ -541,6 +585,7 @@ const ChannelWatch = ({
           rows={shortcutRows({
             info: info !== undefined,
             pictureInPicture: document.pictureInPictureEnabled === true,
+            subtitles: cycleSubtitles !== undefined,
             tuner: tuner !== undefined && drawer !== undefined,
           })}
         />
@@ -594,6 +639,8 @@ const ChannelWatch = ({
     onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
     onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
     onSettings: () => toggleSheet("settings"),
+    onSubtitles: cycleSubtitles,
+    subtitlesOn: subtitleActive >= 0,
     onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
     onTogglePlay: chrome.toggle,
     onToggleMute: () => chrome.setMuted(!chrome.muted),

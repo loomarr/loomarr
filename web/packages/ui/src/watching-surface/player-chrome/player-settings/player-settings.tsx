@@ -5,8 +5,9 @@ import { Pressable, View } from "react-native";
 // The Settings sheet's body (§9, mock "settings"). Quality first: Auto (`Auto · 1080p`, naming the
 // rung on air) and the channel's own rungs, the viewer's to choose (#2088 decision 7). Then the
 // channel's audio language, shown — it is the channel's default, set by an admin on Channel info,
-// until a second rendition lets each viewer choose (#2088 step 9) — and the channel-change sound.
-// Last, the way on to Playback info.
+// until a second rendition lets each viewer choose (#2088 step 9). Subtitles, when the programme
+// carries any: Off and each track, the viewer's to choose (#2088 decision 5). Then the channel-change
+// sound, and last, the way on to Playback info.
 
 interface SettingsOption {
   label: string;
@@ -23,6 +24,8 @@ interface PlayerSettingsProps {
   onSwitchSound: (on: boolean) => void;
   /** Auto and the rungs; omitted while the player has no ladder to offer (native HLS picks itself). */
   quality?: { onSelect: (value: string) => void; options: readonly SettingsOption[] };
+  /** Off and the programme's subtitle tracks; omitted where it carries none. */
+  subtitles?: { onSelect: (value: string) => void; options: readonly SettingsOption[] };
   switchSound: boolean;
 }
 
@@ -120,6 +123,7 @@ const PlayerSettings = ({
   onPlaybackInfo,
   onSwitchSound,
   quality,
+  subtitles,
   switchSound,
 }: PlayerSettingsProps) => (
   <View style={{ gap: 20 }}>
@@ -144,6 +148,16 @@ const PlayerSettings = ({
         The channel’s language. An admin sets it on the channel’s page.
       </Text>
     </View>
+    {subtitles ? (
+      <View style={{ gap: 6 }}>
+        <SectionLabel density={density} label="Subtitles" />
+        <View aria-label="Subtitles" role="radiogroup">
+          {subtitles.options.map((option) => (
+            <OptionRow density={density} key={option.value} onSelect={subtitles.onSelect} option={option} />
+          ))}
+        </View>
+      </View>
+    ) : null}
     <View style={{ gap: 6 }}>
       <SectionLabel density={density} label="Sound" />
       <Toggle

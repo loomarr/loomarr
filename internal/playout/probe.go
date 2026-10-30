@@ -322,6 +322,7 @@ func tracksOf(streams []probedStream) MediaTracks {
 		t := Track{
 			Language: strings.ToLower(strings.TrimSpace(s.Tags.Language)),
 			Title:    strings.TrimSpace(s.Tags.Title),
+			Codec:    s.CodecName,
 		}
 		switch s.CodecType {
 		case "audio":

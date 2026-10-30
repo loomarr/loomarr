@@ -1,6 +1,7 @@
-import type { ChannelTracksOutputBody } from "@loomarr/api";
+import type { ChannelSubtitlesOutputBody, ChannelTracksOutputBody } from "@loomarr/api";
 import {
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
@@ -22,6 +23,7 @@ const hls = vi.hoisted(() => ({
   onManifest: undefined as (() => void) | undefined,
   ladder: { rungs: [] } as { rungs: { height: number; index: number }[]; height?: number },
   quality: undefined as unknown,
+  subtitleCues: undefined as { cues: { text: string }[]; label: string; language: string } | undefined,
   attach: vi.fn(() => () => undefined),
   playbackFacts: () => ({ bufferMs: 8_000, height: 1080, url: "/v1/stream/ch-1.m3u8", width: 1920 }),
   liveTransport: {
@@ -40,9 +42,16 @@ const hls = vi.hoisted(() => ({
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void, quality?: unknown) => {
+  useHlsPlayer: (
+    _channelId: string,
+    _attempt?: unknown,
+    onManifest?: () => void,
+    quality?: unknown,
+    subtitleCues?: typeof hls.subtitleCues,
+  ) => {
     hls.onManifest = onManifest;
     hls.quality = quality;
+    hls.subtitleCues = subtitleCues;
     return {
       status: hls.status,
       playbackSessionId: "playback_1",
@@ -113,6 +122,8 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
       probed = true;
       return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
     }),
+    // The subtitles sidecar: no programme subtitled unless a test says so.
+    getChannelSubtitlesMockHandler({ airings: [] }),
   );
   return { wasProbed: () => probed };
 };
@@ -384,6 +395,104 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(within(settings).getByRole("list", { name: "Audio language" })).toBeInTheDocument();
     expect(within(settings).queryByRole("radio")).not.toBeInTheDocument();
     expect(within(settings).getByText(/An admin sets it on the channel’s page/)).toBeInTheDocument();
+  });
+
+  // Subtitles (#2088 step 7): the sidecar lists the tracks of the programme at the playhead (the
+  // mock's viewer time is 1,000,000), offered in Settings, on the CC tool and on C; the viewer's
+  // choice is remembered, asked of the sidecar, and its cues go to the player.
+  describe("subtitles", () => {
+    const english = { language: "eng", title: "" };
+    const spanish = { language: "spa", title: "" };
+    const asked: URLSearchParams[] = [];
+    // One programme around the playhead carrying English and Spanish; with a pick, that track's cue.
+    const stubSubtitles = (body?: ChannelSubtitlesOutputBody) => {
+      stubTracks();
+      server.use(
+        getChannelSubtitlesMockHandler(({ request }) => {
+          const params = new URL(request.url).searchParams;
+          asked.push(params);
+          const language = params.get("language");
+          return (
+            body ?? {
+              airings: [
+                {
+                  startMs: 900_000,
+                  stopMs: 2_000_000,
+                  tracks: [english, spanish],
+                  cues: language ? [{ startMs: 1_000_500, endMs: 1_002_000, text: `${language} cue` }] : [],
+                },
+              ],
+            }
+          );
+        }),
+      );
+    };
+    beforeEach(() => {
+      localStorage.clear();
+      asked.length = 0;
+    });
+
+    it("offers Off and each track in Settings; a pick's cues are played and the pick remembered", async () => {
+      stubSubtitles();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      const group = within(await openSettings()).getByRole("radiogroup", { name: "Subtitles" });
+      expect(
+        within(group)
+          .getAllByRole("radio")
+          .map((o) => o.getAttribute("aria-label")),
+      ).toEqual(["Off", "English", "Spanish"]);
+      expect(within(group).getByRole("radio", { name: "Off" })).toBeChecked();
+      expect(hls.subtitleCues).toBeUndefined();
+      // Off asks for the tracks alone: no extraction for a viewer not reading them.
+      expect(asked.at(-1)?.has("language")).toBe(false);
+
+      await userEvent.click(within(group).getByRole("radio", { name: "Spanish" }));
+      await waitFor(() => expect(hls.subtitleCues?.cues.map((c) => c.text)).toEqual(["spa cue"]));
+      expect(hls.subtitleCues?.language).toBe("spa");
+      expect(asked.at(-1)?.get("language")).toBe("spa");
+      expect(JSON.parse(localStorage.getItem("loomarr.player.subtitles") ?? "")).toEqual(spanish);
+    });
+
+    it("steps from the track shown to the next with the CC tool", async () => {
+      localStorage.setItem("loomarr.player.subtitles", JSON.stringify(english));
+      stubSubtitles();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Next subtitles" }));
+      await waitFor(() => expect(hls.subtitleCues?.cues.map((c) => c.text)).toEqual(["spa cue"]));
+    });
+
+    it("steps from the last track to off with C", async () => {
+      localStorage.setItem("loomarr.player.subtitles", JSON.stringify(spanish));
+      stubSubtitles();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      await waitFor(() => expect(hls.subtitleCues?.language).toBe("spa"));
+
+      act(() => (screen.getByRole("button", { name: "Settings" }) as HTMLElement).focus());
+      await userEvent.keyboard("c");
+      await waitFor(() => expect(hls.subtitleCues).toBeUndefined());
+      expect(localStorage.getItem("loomarr.player.subtitles")).toBe('"off"');
+    });
+
+    it("has no Subtitles, CC or C row where the programme at the playhead carries no track", async () => {
+      // The subtitled programme has ended before the playhead; the one airing carries none.
+      localStorage.setItem("loomarr.player.subtitles", JSON.stringify(english));
+      stubSubtitles({
+        airings: [
+          { startMs: 0, stopMs: 999_000, tracks: [english], cues: [] },
+          { startMs: 999_000, stopMs: 2_000_000, tracks: [], cues: [] },
+        ],
+      });
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+      expect(
+        within(await openSettings()).queryByRole("radiogroup", { name: "Subtitles" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /subtitles/i })).not.toBeInTheDocument();
+      expect(hls.subtitleCues).toBeUndefined();
+    });
   });
 
   // Quality (#2088 decision 7): Auto naming the rung on air, then the channel's own rungs; the

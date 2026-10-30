@@ -230,6 +230,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		inventory:          inventory.New(st),
 		probeSource:        playout.FFprobeSourceNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		probeTracks:        playout.FFprobeTracksNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		extractSubtitles:   playout.FFmpegSubtitlesWith(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,
 		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit

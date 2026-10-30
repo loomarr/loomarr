@@ -165,7 +165,12 @@ type playoutResolver struct {
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
-	probeTracks        playout.TrackProber
+	probeTracks playout.TrackProber
+	// extractSubtitles turns a source's text track into cues for the subtitles sidecar (#2088 step
+	// 7; playoutsubtitles.go), and subtitles caches its probes and extractions. Nil ⇒ the sidecar
+	// lists tracks without cues.
+	extractSubtitles   playout.SubtitleExtractor
+	subtitles          subtitleCache
 	processDiagnostics *diagnostics.ProcessManager
 	log                *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that

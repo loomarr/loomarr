@@ -39,13 +39,15 @@ type Format struct {
 	TenBit   bool
 	HDR10    bool
 	Duration int // seconds
+	// Subtitles are the text subtitle tracks muxed in, by ISO 639-2 language (#2088 step 7).
+	Subtitles []string
 }
 
 // Formats are the generated clip shapes: several codecs and resolutions so playout, 4K/HDR and
 // watermarks can be shown for real. Long runtimes are cheap: each file is a short encoded
 // segment stream-copied end to end (assets.go).
 var Formats = []Format{
-	{ID: "cartoon-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 11 * 60},
+	{ID: "cartoon-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 11 * 60, Subtitles: []string{"eng", "spa"}},
 	{ID: "episode-1080p-h264", Label: "1080p · H.264", Width: 1920, Height: 1080, Codec: "h264", Duration: 22 * 60},
 	{ID: "episode-1080p-hevc10", Label: "1080p · HEVC 10-bit", Width: 1920, Height: 1080, Codec: "hevc", TenBit: true, Duration: 22 * 60},
 	{ID: "episode-480p-4x3", Label: "480p · 4:3 SD", Width: 640, Height: 480, Codec: "h264", Duration: 22 * 60},

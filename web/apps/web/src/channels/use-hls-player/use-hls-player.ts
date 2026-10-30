@@ -2,6 +2,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import {
   type BrowserHlsPlayerOptions,
   type LiveQuality,
+  type LiveSubtitleCues,
   type UseBrowserHlsPlayer,
   useBrowserHlsPlayer,
 } from "@loomarr/player/browser";
@@ -17,6 +18,7 @@ const useHlsPlayer = (
   attempt?: TuneAttempt,
   onManifest?: () => void,
   quality?: LiveQuality,
+  subtitleCues?: LiveSubtitleCues,
 ): UseHlsPlayer => {
   const mintSource = useCallback(
     (signal: AbortSignal) => mintChannelPlaySource(channelId, signal),
@@ -50,6 +52,7 @@ const useHlsPlayer = (
     onManifest,
     quality,
     recordDiagnostic,
+    subtitleCues,
   });
 };
 

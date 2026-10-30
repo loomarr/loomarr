@@ -353,6 +353,10 @@ func (s Server) addMedia(item map[string]any, id string, f Format) {
 		{"Index": 1, "Type": "Audio", "Codec": "aac", "Channels": 2, "ChannelLayout": "stereo", "SampleRate": 48000,
 			"Language": "eng", "IsDefault": true},
 	}
+	for i, lang := range f.Subtitles {
+		streams = append(streams, map[string]any{"Index": 2 + i, "Type": "Subtitle", "Codec": "mov_text",
+			"Language": lang, "IsTextSubtitleStream": true})
+	}
 	item["MediaStreams"] = streams
 	source := map[string]any{
 		"Id": id, "Protocol": "File", "Container": "mp4", "Path": item["Path"],

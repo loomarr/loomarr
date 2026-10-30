@@ -17,7 +17,7 @@ import (
 
 // AssetVersion stamps the generated tree. Bump it when a generator changes what it draws, so an
 // existing demo directory is regenerated instead of mixing old and new files.
-const AssetVersion = 4
+const AssetVersion = 5
 
 // Test Card palette (web/packages/design-system/src/tokens/brand-contract.json). Duplicated
 // rather than read at runtime because the backend binary does not ship the web tree; the guard
@@ -263,8 +263,40 @@ func (g generator) video(ctx context.Context, f Format, out string) error {
 	}
 	defer func() { _ = os.Remove(seg) }()
 	loops := (f.Duration+segmentSeconds-1)/segmentSeconds - 1
-	return g.run(ctx, "-stream_loop", strconv.Itoa(loops), "-i", seg, "-c", "copy", "-t", strconv.Itoa(f.Duration), "-movflags", "+faststart", out)
+	args = []string{"-stream_loop", strconv.Itoa(loops), "-i", seg}
+	maps := []string{"-map", "0:v", "-map", "0:a"}
+	var tags []string
+	for i, lang := range f.Subtitles {
+		srt := filepath.Join(g.l.work(), f.ID+"-"+lang+".srt")
+		if err := os.WriteFile(srt, []byte(demoSubtitles(lang, f.Duration)), 0o644); err != nil {
+			return err
+		}
+		defer func() { _ = os.Remove(srt) }()
+		args = append(args, "-i", srt)
+		maps = append(maps, "-map", strconv.Itoa(i+1))
+		tags = append(tags, fmt.Sprintf("-metadata:s:s:%d", i), "language="+lang)
+	}
+	args = append(append(append(args, maps...), tags...), "-c", "copy", "-c:s", "mov_text",
+		"-t", strconv.Itoa(f.Duration), "-movflags", "+faststart", out)
+	return g.run(ctx, args...)
 }
+
+// demoSubtitles is a text track to show the player's subtitles with (#2088 step 7): a cue every
+// five seconds naming its language and the programme time it belongs at, so a cue shown at the
+// wrong moment reads as wrong.
+func demoSubtitles(lang string, duration int) string {
+	name := map[string]string{"eng": "English subtitles", "spa": "Subtítulos en español"}[lang]
+	if name == "" {
+		name = lang + " subtitles"
+	}
+	var b strings.Builder
+	for n, at := 1, 1; at+3 <= duration; n, at = n+1, at+5 {
+		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n%d:%02d\n\n", n, srtTime(at), srtTime(at+3), name, at/60, at%60)
+	}
+	return b.String()
+}
+
+func srtTime(s int) string { return fmt.Sprintf("%02d:%02d:%02d,000", s/3600, s/60%60, s%60) }
 
 // filler is a full-colour card with the interstitial's name.
 func (g generator) filler(ctx context.Context, f Filler, bg, out string) error {

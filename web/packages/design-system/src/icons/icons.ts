@@ -1,5 +1,6 @@
 import Bell from "lucide-react-native/icons/bell";
 import BookOpen from "lucide-react-native/icons/book-open";
+import Captions from "lucide-react-native/icons/captions";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -91,6 +92,8 @@ const icons = {
   skipForward: SkipForward,
   // The player's Start over (§9.4): back to the programme's start.
   startOver: StepBack,
+  // The player's Subtitles (§9.4, `C`): cycle the programme's subtitle tracks.
+  subtitles: Captions,
   success: Check,
   time: Clock3,
   volume: Volume2,
