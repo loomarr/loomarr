@@ -4,7 +4,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { audioChoice } from "@loomarr/core/audio-choice";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
-import { type LiveSubtitleCues, nextSubtitles } from "@loomarr/player/browser";
+import { type LiveSubtitleCues, nextSubtitles, rungLabel } from "@loomarr/player/browser";
 import {
   PlayerChrome,
   PlayerCover,
@@ -96,7 +96,6 @@ const IDENT_MS = 5_000;
 const INFO_PLAYING_MS = 8_000;
 
 // A rung as Settings names it: the premium by its class, the rest by lines.
-const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
 
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
 type WatchSheet = "channels" | "info" | "playback-info" | "settings" | "shortcuts";
@@ -571,7 +570,6 @@ const ChannelWatch = ({
           isAdmin={isAdmin}
           lagSeconds={player.liveTransport.state.lagSeconds}
           playbackFacts={player.playbackFacts}
-          rungLabel={rungLabel}
           sessionId={player.playbackSessionId}
         />
       </PlayerSheet>

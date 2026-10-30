@@ -5,18 +5,23 @@ import type { PairingCredential } from "@loomarr/core/pairing";
 import { useHaptic } from "@loomarr/design-system/haptics";
 import {
   cueLinesAt,
+  type NativePlayerTransport,
   NativePlayerView,
   type PairedClient,
   pairedNativeImageSource,
+  rungLabel,
+  streamRows,
   subtitleLabel,
   useNativeVideoHeight,
   usePairedSubtitles,
+  useSampledPlaybackFacts,
 } from "@loomarr/player/native";
 import {
   PlaybarStillSourceProvider,
   PlayerCaption,
   PlayerCover,
   PlayerInfo,
+  PlayerPlaybackInfo,
   PlayerPortrait,
   PlayerSettings,
   PlayerSheet,
@@ -31,7 +36,7 @@ import { useAudioPreference, useSubtitlesPreference } from "./player-preferences
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
 // the web phone draws — the way out and the live state, the lower third and the transport, the
-// filmstrip, surfing and the favourite, and the Info or Settings sheet in the panel's place. It
+// filmstrip, surfing and the favourite, and the Info, Settings or Playback info sheet in the panel's place. It
 // reads the tuned channel's timeline and subtitles the way every client does, and seeks through the
 // player controller.
 
@@ -39,6 +44,19 @@ import { useAudioPreference, useSubtitlesPreference } from "./player-preferences
 const SEEK_STEP_MS = 10_000;
 /** The station-ID card shows for five seconds on every settled tune (§9.1). */
 const IDENT_MS = 5_000;
+
+// PLAYBACK INFO (#2088 decision 13): the Stream rows, read from the player each second while open.
+// The platform picks the rung itself, so the quality is always Auto.
+const PlaybackInfo = ({
+  lagSeconds,
+  transport,
+}: {
+  lagSeconds: number;
+  transport: NativePlayerTransport;
+}) => {
+  const facts = useSampledPlaybackFacts(transport.playbackFacts);
+  return <PlayerPlaybackInfo density="touch" stream={streamRows({ auto: true, facts, lagSeconds })} />;
+};
 
 interface WatchingScreenProps {
   client: PairedClient;
@@ -59,7 +77,7 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
     transport,
   } = client;
   const haptic = useHaptic();
-  const [sheet, setSheet] = useState<"info" | "settings">();
+  const [sheet, setSheet] = useState<"info" | "playback-info" | "settings">();
   const toggleSheet = (next: "info" | "settings") => setSheet((open) => (open === next ? undefined : next));
 
   // Settings' audio: the programme's languages at the playhead, the viewer's remembered choice
@@ -206,6 +224,7 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
                         : { options: audio.options }
                     }
                     density="touch"
+                    onPlaybackInfo={() => setSheet("playback-info")}
                     subtitles={
                       subtitles.tracks.length > 0
                         ? {
@@ -227,13 +246,24 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
                     quality={{
                       options: [
                         {
-                          label: videoHeight ? `Auto · ${videoHeight}p` : "Auto",
+                          label: videoHeight ? `Auto · ${rungLabel(videoHeight)}` : "Auto",
                           selected: true,
                           value: "auto",
                         },
                       ],
                     }}
                   />
+                </PlayerSheet>
+              ) : sheet === "playback-info" ? (
+                <PlayerSheet
+                  channelLabel={channelLabel}
+                  density="touch"
+                  icon="info"
+                  inline
+                  onClose={() => setSheet(undefined)}
+                  title="Playback info"
+                >
+                  <PlaybackInfo lagSeconds={live.lagSeconds} transport={transport} />
                 </PlayerSheet>
               ) : undefined
             }
@@ -264,7 +294,7 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
               onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
               onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
               playing,
-              settingsOpen: sheet === "settings",
+              settingsOpen: sheet === "settings" || sheet === "playback-info",
             }}
           />
         </PlaybarStillSourceProvider>

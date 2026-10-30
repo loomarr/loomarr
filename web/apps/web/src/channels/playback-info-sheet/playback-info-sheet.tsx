@@ -1,13 +1,11 @@
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import { unwrap } from "@loomarr/api/unwrap";
 import type { Density } from "@loomarr/design-system";
-import type { LivePlaybackFacts } from "@loomarr/player/browser";
+import { type LivePlaybackFacts, streamRows, useSampledPlaybackFacts } from "@loomarr/player/browser";
 import { PlayerPlaybackInfo } from "@loomarr/ui";
 import { useEffect, useState } from "react";
-import { adminRows, streamRows } from "@/channels/playback-info-rows";
+import { adminRows } from "@/channels/playback-info-rows";
 
-// How often the Stream rows read the player again while the sheet is open: the buffer moves.
-const SAMPLE_MS = 1_000;
 // The server's encode changes slowly; its status is read again at this pace while open.
 const STATUS_MS = 5_000;
 // How long Copy stream URL reads "Copied".
@@ -20,7 +18,6 @@ interface PlaybackInfoSheetProps {
   isAdmin: boolean;
   lagSeconds: number;
   playbackFacts: () => LivePlaybackFacts | undefined;
-  rungLabel: (height: number) => string;
   sessionId: string;
 }
 
@@ -34,15 +31,9 @@ const PlaybackInfoSheet = ({
   isAdmin,
   lagSeconds,
   playbackFacts,
-  rungLabel,
   sessionId,
 }: PlaybackInfoSheetProps) => {
-  const [facts, setFacts] = useState(playbackFacts);
-  useEffect(() => {
-    setFacts(playbackFacts());
-    const timer = window.setInterval(() => setFacts(playbackFacts()), SAMPLE_MS);
-    return () => window.clearInterval(timer);
-  }, [playbackFacts]);
+  const facts = useSampledPlaybackFacts(playbackFacts);
 
   const status = dashboardApi.useGetPlayoutStatus({
     query: { enabled: isAdmin, refetchInterval: STATUS_MS, retry: false },
@@ -77,7 +68,7 @@ const PlaybackInfoSheet = ({
         isAdmin ? { copied, onCopyStreamUrl: copyStreamUrl, rows: adminRows(health, sessionId) } : undefined
       }
       density={density}
-      stream={streamRows({ auto, facts, lagSeconds, rungLabel })}
+      stream={streamRows({ auto, facts, lagSeconds })}
     />
   );
 };

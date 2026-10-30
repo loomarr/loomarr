@@ -34,7 +34,6 @@ const renderSheet = (isAdmin: boolean, playbackFacts: () => LivePlaybackFacts | 
       isAdmin={isAdmin}
       lagSeconds={0}
       playbackFacts={playbackFacts}
-      rungLabel={(h) => `${h}p`}
       sessionId="playback_1"
     />,
     { wrapper },

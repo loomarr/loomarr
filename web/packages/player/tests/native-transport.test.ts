@@ -615,6 +615,65 @@ describe("the viewer's audio rendition", () => {
   });
 });
 
+describe("the native player's playback facts (#2127)", () => {
+  it("knows nothing before a source is bound", () => {
+    expect(createNativePlayerTransport(nativePlayer().player).playbackFacts()).toBeUndefined();
+  });
+
+  it("reads the decoded picture, the buffer ahead and the signed URL", async () => {
+    const { player, raw } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    await transport.replace(
+      { uri: "/v1/stream/signed.m3u8" },
+      { attemptId: 1, signal: new AbortController().signal },
+    );
+    Object.assign(raw, {
+      bufferedPosition: 112.5,
+      currentTime: 100,
+      videoTrack: {
+        bitrate: 3_100_000,
+        frameRate: 29.97,
+        mimeType: "video/avc",
+        size: { height: 1080, width: 1920 },
+      },
+    });
+    expect(transport.playbackFacts()).toEqual({
+      bitrate: 3_100_000,
+      bufferMs: 12_500,
+      codecs: "avc1",
+      frameRate: 29.97,
+      height: 1080,
+      url: "/v1/stream/signed.m3u8",
+      width: 1920,
+    });
+  });
+
+  it("leaves out what the platform doesn't say, and never reads a buffer behind the playhead", async () => {
+    const { player, raw } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    await transport.replace({ uri: "/s.m3u8" }, { attemptId: 1, signal: new AbortController().signal });
+    Object.assign(raw, {
+      bufferedPosition: 0,
+      currentTime: 5,
+      videoTrack: {
+        bitrate: null,
+        frameRate: null,
+        mimeType: "video/x-unknown",
+        size: { height: 720, width: 1280 },
+      },
+    });
+    expect(transport.playbackFacts()).toEqual({
+      bitrate: undefined,
+      bufferMs: 0,
+      codecs: undefined,
+      frameRate: undefined,
+      height: 720,
+      url: "/s.m3u8",
+      width: 1280,
+    });
+  });
+});
+
 describe("paired native image source", () => {
   const credential = { serverUrl: "http://loomarr.test:8080", token: "device-secret" };
 

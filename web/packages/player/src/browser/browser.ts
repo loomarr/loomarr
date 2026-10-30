@@ -16,6 +16,7 @@ import {
   subtitlesPreferenceOf,
   subtitleWindow,
 } from "../live-subtitles";
+import type { LivePlaybackFacts } from "../playback-info";
 import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
 import { liveHlsConfig } from "./live-hls-config";
@@ -128,21 +129,6 @@ interface UseBrowserHlsPlayer {
    * and the signed stream URL. Undefined before a source is bound.
    */
   playbackFacts: () => LivePlaybackFacts | undefined;
-}
-
-interface LivePlaybackFacts {
-  /** The playing rung's declared bandwidth, bit/s; undefined on native HLS. */
-  bitrate?: number;
-  bufferMs: number;
-  /** The playing rung's CODECS, e.g. `avc1.640028,mp4a.40.2`; undefined on native HLS. */
-  codecs?: string;
-  frameRate?: number;
-  height: number;
-  /** The playing rung's place in the master, from 1; undefined on native HLS. */
-  rung?: { number: number; of: number };
-  /** The signed stream URL this player was given, as minted (often relative). */
-  url: string;
-  width: number;
 }
 
 // What MediaSource can decode: the gate on the premium rung.
@@ -1319,7 +1305,6 @@ export type {
   BrowserTunePhase,
   LiveAudioRendition,
   LiveLevel,
-  LivePlaybackFacts,
   LiveQuality,
   LiveRung,
   LiveSubtitleCue,

@@ -6,6 +6,7 @@ export * from "../paired-account";
 export * from "../paired-client";
 export * from "../paired-requests";
 export * from "../paired-subtitles";
+export * from "../playback-info";
 export * from "../playback-marks";
 export * from "../shell-pause";
 export * from "./native";

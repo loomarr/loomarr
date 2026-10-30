@@ -5,6 +5,7 @@ import { Image, type ImageProps } from "react-native";
 import { selectAudioRendition } from "../live-audio";
 import { LIVE_DVR_HORIZON_MS, liveSeek } from "../live-seek";
 import { nativeErrorCause } from "../native-playback-diagnostics";
+import type { LivePlaybackFacts } from "../playback-info";
 import { createPlaybackMarks, type PlaybackMarks } from "../playback-marks";
 import type {
   LivePlaybackMode,
@@ -19,6 +20,12 @@ interface NativePlayerTransport extends PlayerTransport {
   /** Signals the first frame rendered by the native VideoView for the active attempt. */
   firstFrame: () => void;
   getPlayer: () => VideoPlayer | undefined;
+  /**
+   * What the player is playing now, read on demand (Playback info samples it while open): the
+   * decoded picture and what the platform says of its rung, the buffer ahead and the signed stream
+   * URL. Undefined before a source is bound.
+   */
+  playbackFacts: () => LivePlaybackFacts | undefined;
   resume: () => void;
   /**
    * Plays the master's Alternate audio rendition, or its Default (#2088 decision 6). The choice
@@ -78,6 +85,9 @@ const NATIVE_5XX_STATUS = /\b5\d{2}\b/;
  */
 const isNativeStartFailure = (message: string): boolean => NATIVE_5XX_STATUS.test(message);
 
+/** The codec family a platform's video MIME type names, as Playback info's Codec row reads it. */
+const VIDEO_MIME_CODECS: Record<string, string> = { "video/avc": "avc1", "video/hevc": "hvc1" };
+
 const createNativePlayerTransport = (
   initialPlayer: VideoPlayer,
   recreatePlayer?: () => VideoPlayer,
@@ -96,6 +106,7 @@ const createNativePlayerTransport = (
   let trackSubscription: { remove: () => void } | undefined;
   let audioSubscription: { remove: () => void } | undefined;
   let alternateAudio = false;
+  let streamUrl: string | undefined;
   // A stall is buffering after the attempt's first frame while the viewer has not paused.
   let framedAttemptId: number | undefined;
   let stalledSinceMs: number | undefined;
@@ -302,6 +313,19 @@ const createNativePlayerTransport = (
       emit({ attemptId: activeAttemptId, type: "first-frame" });
     },
     getPlayer: () => player,
+    playbackFacts: () => {
+      if (!player || streamUrl === undefined) return undefined;
+      const track = player.videoTrack;
+      return {
+        bitrate: track?.bitrate ?? undefined,
+        bufferMs: Math.max(0, player.bufferedPosition - player.currentTime) * 1_000,
+        codecs: track?.mimeType ? VIDEO_MIME_CODECS[track.mimeType] : undefined,
+        frameRate: track?.frameRate ?? undefined,
+        height: track?.size.height ?? 0,
+        url: streamUrl,
+        width: track?.size.width ?? 0,
+      };
+    },
     goLive: () => {
       if (!player) return;
       seekToLiveEdge(player);
@@ -350,6 +374,7 @@ const createNativePlayerTransport = (
             ? source.serverTimeMs - Date.now()
             : undefined;
         viewerTimeMs = liveNow();
+        streamUrl = source.uri;
         await current.replaceAsync({
           contentType: "hls",
           headers: source.headers ? { ...source.headers } : undefined,
