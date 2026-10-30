@@ -1,21 +1,21 @@
-package store
+package catalogstore
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // The broadcast station directory (#2060). It is shipped data: boot applies the newest unapplied
 // seed revision by replacing every row, and nothing else writes it.
 
 // ListBroadcastStations returns every station with its call signs, ordered by id and call-sign start.
-func (s *sqlStore) ListBroadcastStations(ctx context.Context) ([]broadcaststation.Station, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT s.id, s.country, s.city, s.region, s.latitude, s.longitude, c.call_sign, c.from_date, c.to_date
+func (s *Store) ListBroadcastStations(ctx context.Context) ([]broadcaststation.Station, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT s.id, s.country, s.city, s.region, s.latitude, s.longitude, c.call_sign, c.from_date, c.to_date
 		FROM broadcast_stations s JOIN broadcast_station_call_signs c ON c.station_id = s.id
 		ORDER BY s.id, c.from_date, c.call_sign`)
 	if err != nil {
@@ -38,15 +38,15 @@ func (s *sqlStore) ListBroadcastStations(ctx context.Context) ([]broadcaststatio
 	return out, rows.Err()
 }
 
-// convergeBroadcastStationSeed applies the newest shipped revision the store has not recorded. Older
+// ConvergeBroadcastStationSeed applies the newest shipped revision the store has not recorded. Older
 // unapplied revisions are skipped: each one is a complete directory, not a delta.
-func (s *sqlStore) convergeBroadcastStationSeed(ctx context.Context, revisions []broadcaststation.SeedRevision, at time.Time) error {
+func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []broadcaststation.SeedRevision, at time.Time) error {
 	if len(revisions) == 0 {
 		return nil
 	}
 	latest := revisions[len(revisions)-1]
 	var applied int
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM broadcast_station_seed_revisions WHERE version >= ?`), latest.Version).Scan(&applied); err != nil {
+	if err := s.h.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM broadcast_station_seed_revisions WHERE version >= ?`), latest.Version).Scan(&applied); err != nil {
 		return fmt.Errorf("converge broadcast station seed: read marker: %w", err)
 	}
 	if applied > 0 {
@@ -56,19 +56,19 @@ func (s *sqlStore) convergeBroadcastStationSeed(ctx context.Context, revisions [
 	if err != nil {
 		return fmt.Errorf("converge broadcast station seed v%d: %w", latest.Version, err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("converge broadcast station seed: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	// Two Postgres replicas can boot together. The lock serialises them and the second re-reads the
 	// marker, finding the first's revision applied; SQLite already admits one writer at a time.
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-broadcast-stations'))`); err != nil {
 			return fmt.Errorf("converge broadcast station seed: lock: %w", err)
 		}
 	}
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM broadcast_station_seed_revisions WHERE version >= ?`), latest.Version).Scan(&applied); err != nil {
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM broadcast_station_seed_revisions WHERE version >= ?`), latest.Version).Scan(&applied); err != nil {
 		return fmt.Errorf("converge broadcast station seed: re-read marker: %w", err)
 	}
 	if applied > 0 {
@@ -82,7 +82,7 @@ func (s *sqlStore) convergeBroadcastStationSeed(ctx context.Context, revisions [
 	if err := s.insertBroadcastStations(ctx, tx, stations); err != nil {
 		return fmt.Errorf("converge broadcast station seed v%d: %w", latest.Version, err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO broadcast_station_seed_revisions (version, applied_at) VALUES (?, ?)`), latest.Version, epoch(at)); err != nil {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO broadcast_station_seed_revisions (version, applied_at) VALUES (?, ?)`), latest.Version, epoch(at)); err != nil {
 		return fmt.Errorf("converge broadcast station seed: record v%d: %w", latest.Version, err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -95,7 +95,7 @@ func (s *sqlStore) convergeBroadcastStationSeed(ctx context.Context, revisions [
 // included, so one statement per row would dominate Postgres store setup.
 const broadcastStationBatch = 400
 
-func (s *sqlStore) insertBroadcastStations(ctx context.Context, tx *sql.Tx, stations []broadcaststation.Station) error {
+func (s *Store) insertBroadcastStations(ctx context.Context, tx storedb.Tx, stations []broadcaststation.Station) error {
 	var stationRows, callSignRows [][]any
 	for _, st := range stations {
 		stationRows = append(stationRows, []any{st.ID, st.Country, st.City, st.Region, st.Latitude, st.Longitude})
@@ -112,7 +112,7 @@ func (s *sqlStore) insertBroadcastStations(ctx context.Context, tx *sql.Tx, stat
 	return nil
 }
 
-func (s *sqlStore) insertBatched(ctx context.Context, tx *sql.Tx, prefix string, rows [][]any) error {
+func (s *Store) insertBatched(ctx context.Context, tx storedb.Tx, prefix string, rows [][]any) error {
 	for start := 0; start < len(rows); start += broadcastStationBatch {
 		batch := rows[start:min(start+broadcastStationBatch, len(rows))]
 		var query strings.Builder
@@ -125,7 +125,7 @@ func (s *sqlStore) insertBatched(ctx context.Context, tx *sql.Tx, prefix string,
 			query.WriteString("(" + strings.TrimSuffix(strings.Repeat("?, ", len(row)), ", ") + ")")
 			args = append(args, row...)
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(query.String()), args...); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(query.String()), args...); err != nil {
 			return err
 		}
 	}

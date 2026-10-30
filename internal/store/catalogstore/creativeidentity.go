@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -28,18 +28,18 @@ var ErrInferiorCopyMismatch = errors.New("store: inferior copy must name two dif
 // any copies that had lost to it, a name a person curated on it, and its channel pins and
 // exclusions. The loser's catalog row and derived rows are deleted and it is remembered as an
 // inferior copy. Its files are the caller's to delete; Sync then never catalogues them again.
-func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error {
+func (s *Store) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error {
 	if c.ClipHash == "" || c.SurvivorHash == "" || c.SourceHash == "" || c.ClipHash == c.SurvivorHash {
 		return ErrInferiorCopyMismatch
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("merge inferior copy %s: %w", c.ClipHash, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var live int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips WHERE hash IN (?, ?)`),
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM clips WHERE hash IN (?, ?)`),
 		c.ClipHash, c.SurvivorHash).Scan(&live); err != nil {
 		return fmt.Errorf("merge inferior copy %s: %w", c.ClipHash, err)
 	}
@@ -76,7 +76,7 @@ func (s *sqlStore) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error 
 		{`DELETE FROM clips WHERE hash = ?`, []any{loser}},
 	}...)
 	for _, step := range steps {
-		if _, err := tx.ExecContext(ctx, s.ph(step.query), step.args...); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {
 			return fmt.Errorf("merge inferior copy %s: %w", loser, err)
 		}
 	}
@@ -124,14 +124,14 @@ func identityHistoryMoves(from, to string) []identityStep {
 }
 
 // LinkClipVariants records that two clips are separate ads built from the same footage.
-func (s *sqlStore) LinkClipVariants(ctx context.Context, a, b string) error {
+func (s *Store) LinkClipVariants(ctx context.Context, a, b string) error {
 	if a == "" || b == "" || a == b {
 		return fmt.Errorf("link clip variants: two different clips are required")
 	}
 	if b < a {
 		a, b = b, a
 	}
-	if _, err := s.db.ExecContext(ctx, s.ph(
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO filler_clip_variants (a_hash, b_hash) VALUES (?, ?) ON CONFLICT DO NOTHING`), a, b); err != nil {
 		return fmt.Errorf("link clip variants %s/%s: %w", a, b, err)
 	}
@@ -139,8 +139,8 @@ func (s *sqlStore) LinkClipVariants(ctx context.Context, a, b string) error {
 }
 
 // ListClipVariants maps every linked clip to the clips it is linked with.
-func (s *sqlStore) ListClipVariants(ctx context.Context) (map[string][]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT a_hash, b_hash FROM filler_clip_variants`)
+func (s *Store) ListClipVariants(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT a_hash, b_hash FROM filler_clip_variants`)
 	if err != nil {
 		return nil, fmt.Errorf("list clip variants: %w", err)
 	}
@@ -163,8 +163,8 @@ func (s *sqlStore) ListClipVariants(ctx context.Context) (map[string][]string, e
 // InferiorCopyHashes is every catalog and source identity of a known inferior copy. Intake skips
 // a file whose identity is in it, and Sync never catalogues one, so a copy that lost stays gone
 // even when its files outlive the merge.
-func (s *sqlStore) InferiorCopyHashes(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT clip_hash, source_hash FROM filler_inferior_copies`)
+func (s *Store) InferiorCopyHashes(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT clip_hash, source_hash FROM filler_inferior_copies`)
 	if err != nil {
 		return nil, fmt.Errorf("list inferior copies: %w", err)
 	}

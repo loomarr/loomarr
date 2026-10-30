@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 // catalog, so one lookup per clip would replace an ffmpeg bottleneck with an N+1 database
 // bottleneck. A corrupt row is omitted while valid siblings remain reusable; the joined error lets
 // the caller log the degradation without throwing away the partial result.
-func (s *sqlStore) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT clip_hash, fingerprint_json FROM filler_clip_fingerprints WHERE algorithm = ?`), algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("list clip fingerprints %s: %w", algorithm, err)
@@ -48,7 +48,7 @@ func (s *sqlStore) ListClipFingerprints(ctx context.Context, algorithm string) (
 // UpsertClipFingerprint is the cache's only writer. Empty evidence is refused structurally: an
 // undecodable clip is not evidence that it copies anything, and a later tooling repair must get
 // another chance to decode it.
-func (s *sqlStore) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
+func (s *Store) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
 	if clipHash == "" || algorithm == "" || len(fp.Video) == 0 {
 		return fmt.Errorf("upsert clip fingerprint: clip hash, algorithm and video frames are required")
 	}
@@ -56,7 +56,7 @@ func (s *sqlStore) UpsertClipFingerprint(ctx context.Context, clipHash, algorith
 	if err != nil {
 		return fmt.Errorf("marshal clip fingerprint %s/%s: %w", clipHash, algorithm, err)
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	_, err = s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO filler_clip_fingerprints (clip_hash, algorithm, fingerprint_json)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(clip_hash, algorithm) DO UPDATE SET fingerprint_json=excluded.fingerprint_json`),
@@ -67,8 +67,8 @@ func (s *sqlStore) UpsertClipFingerprint(ctx context.Context, clipHash, algorith
 	return nil
 }
 
-func (s *sqlStore) pruneOrphanClipFingerprints(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM filler_clip_fingerprints WHERE NOT EXISTS (
+func (s *Store) pruneOrphanClipFingerprints(ctx context.Context) error {
+	_, err := s.h.ExecContext(ctx, `DELETE FROM filler_clip_fingerprints WHERE NOT EXISTS (
 		SELECT 1 FROM clips c WHERE c.hash = filler_clip_fingerprints.clip_hash)`)
 	if err != nil {
 		return fmt.Errorf("prune orphan clip fingerprints: %w", err)

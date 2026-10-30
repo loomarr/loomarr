@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -28,7 +28,7 @@ type ClipDefectRecord struct {
 }
 
 // UpsertClipDefects records a clip's measurement and verdict, replacing any earlier one.
-func (s *sqlStore) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error {
+func (s *Store) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error {
 	if r.ClipHash == "" || r.Readings.Version == "" || r.Assessment.Version == "" || r.Verdict == "" {
 		return fmt.Errorf("upsert clip defects: clip hash, measurement and floor versions, and a verdict are required")
 	}
@@ -48,7 +48,7 @@ func (s *sqlStore) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) er
 		}
 		judgement = string(raw)
 	}
-	_, err = s.db.ExecContext(ctx, s.ph(
+	_, err = s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO filler_clip_defects (clip_hash, measurement_version, floor_version, era, outcome,
 		   readings_json, assessment_json, judgement_json, judge_failures, verdict, verdict_reason, measured_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -72,8 +72,8 @@ var ErrCorruptClipDefects = errors.New("corrupt clip defect records")
 
 // ListClipDefects reads every record in one query. A corrupt row is omitted and reported under
 // ErrCorruptClipDefects, so it is measured again rather than read as a verdict.
-func (s *sqlStore) ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+clipDefectColumns+` FROM filler_clip_defects`)
+func (s *Store) ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT `+clipDefectColumns+` FROM filler_clip_defects`)
 	if err != nil {
 		return nil, fmt.Errorf("list clip defects: %w", err)
 	}
@@ -114,7 +114,7 @@ type ClipDefectLabel struct {
 // the same statement, so a concurrent era correction cannot pair a label with the wrong era. An
 // empty label clears it. ErrNotFound when the clip has no record: only a measured clip can be
 // scored against.
-func (s *sqlStore) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
+func (s *Store) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
 	if label != "" && label != defects.LabelPass && label != defects.LabelFail {
 		return fmt.Errorf("label clip defects %s: unknown label %q", clipHash, label)
 	}
@@ -124,7 +124,7 @@ func (s *sqlStore) SetClipDefectLabel(ctx context.Context, clipHash string, labe
 		query = `UPDATE filler_clip_defects SET label = '', label_era = 0, labelled_at = 0 WHERE clip_hash = ?`
 		args = []any{clipHash}
 	}
-	res, err := s.db.ExecContext(ctx, s.ph(query), args...)
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(query), args...)
 	if err != nil {
 		return fmt.Errorf("label clip defects %s: %w", clipHash, err)
 	}
@@ -137,8 +137,8 @@ func (s *sqlStore) SetClipDefectLabel(ctx context.Context, clipHash string, labe
 }
 
 // ListClipDefectLabels reads every labelled record's label, keyed by clip hash.
-func (s *sqlStore) ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error) {
-	rows, err := s.db.QueryContext(ctx,
+func (s *Store) ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error) {
+	rows, err := s.h.QueryContext(ctx,
 		`SELECT clip_hash, label, label_era, labelled_at FROM filler_clip_defects WHERE label <> ''`)
 	if err != nil {
 		return nil, fmt.Errorf("list clip defect labels: %w", err)
@@ -163,8 +163,8 @@ func (s *sqlStore) ListClipDefectLabels(ctx context.Context) (map[string]ClipDef
 
 // GetClipDefects reads one clip's record. A corrupt row reads as no record, so the clip is
 // measured again rather than admitted on a verdict nobody can read.
-func (s *sqlStore) GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error) {
-	r, err := scanClipDefects(s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error) {
+	r, err := scanClipDefects(s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT `+clipDefectColumns+` FROM filler_clip_defects WHERE clip_hash = ?`), clipHash))
 	var corrupt *corruptClipDefects
 	switch {
@@ -211,8 +211,8 @@ func scanClipDefects(row interface{ Scan(...any) error }) (ClipDefectRecord, err
 	return r, nil
 }
 
-func (s *sqlStore) pruneOrphanClipDefects(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM filler_clip_defects WHERE NOT EXISTS (
+func (s *Store) pruneOrphanClipDefects(ctx context.Context) error {
+	_, err := s.h.ExecContext(ctx, `DELETE FROM filler_clip_defects WHERE NOT EXISTS (
 		SELECT 1 FROM clips c WHERE c.hash = filler_clip_defects.clip_hash)`)
 	if err != nil {
 		return fmt.Errorf("prune orphan clip defects: %w", err)

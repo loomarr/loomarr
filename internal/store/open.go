@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -19,18 +20,18 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err := s.SeedTaxonomy(ctx, taxonomy.SeedForest(), now); err != nil {
 		return err
 	}
-	if err := s.convergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), now); err != nil {
+	if err := catalogstore.ConvergeTaxonomySeed(ctx, s.catalogCluster, taxonomy.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// Holidays follow their taxa (a holiday row references its seasonal taxon), and the heal runs
 	// last so a shipped holiday is stored dated before an orphan taxon could claim its slug undated.
-	if err := s.convergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), now); err != nil {
+	if err := catalogstore.ConvergeHolidaySeed(ctx, s.catalogCluster, holidayvocab.SeedRevisions(), now); err != nil {
 		return err
 	}
-	if err := s.healUndatedHolidays(ctx, now); err != nil {
+	if err := catalogstore.HealUndatedHolidays(ctx, s.catalogCluster, now); err != nil {
 		return err
 	}
-	if err := s.convergeBroadcastStationSeed(ctx, broadcaststation.SeedRevisions(), now); err != nil {
+	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, broadcaststation.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the
@@ -42,7 +43,7 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 		return err
 	}
 	// The filler enrichment backfill runs after these, in fillerstore.Open.
-	return s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
+	return catalogstore.RebuildTaxonomyDerived(ctx, s.catalogCluster, taxonomy.New(taxa))
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when

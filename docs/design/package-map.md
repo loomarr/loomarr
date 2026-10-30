@@ -20,15 +20,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
 | `bgexec` | 5 | — |
+| `broadcaststation` | 5 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 6 | — |
-| `creative` | 5 | — |
-| `defects` | 6 | — |
+| `creative` | 6 | — |
+| `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
 | `filler` | 10 | `bgexec`, `creative`, `defects`, `diagnostics`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
-| `holidayvocab` | 7 | — |
+| `holidayvocab` | 8 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 7 | `contact` |
@@ -42,11 +43,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 21 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 22 | `holidayvocab`, `inventory`, `provision` |
 | `storagegovernor` | 6 | — |
-| `store` | 16 | `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
-| `taxonomy` | 5 | — |
+| `taxonomy` | 6 | — |
 
 ## Every package, by layer
 
@@ -56,15 +57,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`buildinfo`** · 3 importers
   Carries the version stamped into the binary at build time.
-- **`clipcatalog`** · 3 importers
+- **`clipcatalog`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`config`** · 2 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
-- **`creative`** · 5 importers
+- **`creative`** · 6 importers
   Decides whether two filler clips are the same advert (#2033).
-- **`defects`** · 6 importers
+- **`defects`** · 7 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
@@ -120,9 +121,9 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store/storedb`** · 2 importers
+- **`store/storedb`** · 3 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
-- **`taxonomy`** · 5 importers
+- **`taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
@@ -149,13 +150,13 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`bgexec`** · 5 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
-- **`broadcaststation`** · 4 importers · → `installationlocation`
+- **`broadcaststation`** · 5 importers · → `installationlocation`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
-- **`holidayvocab`** · 7 importers · → `textmatch`
+- **`holidayvocab`** · 8 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`invitation`** · 7 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
@@ -174,7 +175,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 21 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 22 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
@@ -189,6 +190,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
+- **`store/catalogstore`** · 1 importer · → `broadcaststation`, `clipcatalog`, `creative`, `defects`, `holidayvocab`, `schedule`, `store/storedb`, `taxonomy`
+  Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 
 ### Layer 4
 
@@ -211,7 +214,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
-- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/identitystore`, `store/storedb`, `taxonomy`
+- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 6

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
@@ -19,7 +20,7 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 	revisions := append(broadcaststation.SeedRevisions(),
 		broadcaststation.SeedRevision{Version: 99, Load: func() ([]broadcaststation.Station, error) { return corrected, nil }})
 
-	if err := s.convergeBroadcastStationSeed(ctx, revisions, at); err != nil {
+	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, revisions, at); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ListBroadcastStations(ctx)
@@ -36,10 +37,10 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 		loads++
 		return nil, nil
 	}}}
-	if err := s.convergeBroadcastStationSeed(ctx, again, at); err != nil {
+	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, again, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.convergeBroadcastStationSeed(ctx, revisions, at); err != nil {
+	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, revisions, at); err != nil {
 		t.Fatal(err)
 	}
 	if loads != 0 {

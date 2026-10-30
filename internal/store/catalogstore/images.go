@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -148,8 +148,8 @@ const imageColumns = `hash, origin, source_url, visibility, role, mime, width, h
 	animated, frame_count, duration_ms, loop_count, placeholder, dominant_hex, meta,
 	origin_fetched_at, created_at, updated_at, last_used_at`
 
-func (s *sqlStore) PutImage(ctx context.Context, img Image) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) PutImage(ctx context.Context, img Image) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO images (`+imageColumns+`)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (hash) DO UPDATE SET
@@ -187,8 +187,8 @@ func (s *sqlStore) PutImage(ctx context.Context, img Image) error {
 // make the row lie about its own age. The GC's expiry sweep reads exactly these columns.
 // Single-writer columns omitted from an upsert is the same rule V44's clip metadata follows.
 
-func (s *sqlStore) GetImage(ctx context.Context, hash string) (Image, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
+func (s *Store) GetImage(ctx context.Context, hash string) (Image, error) {
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT `+imageColumns+` FROM images WHERE hash = ?`), hash)
 	img, err := scanImage(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -210,11 +210,11 @@ func (s *sqlStore) GetImage(ctx context.Context, hash string) (Image, error) {
 //
 // ORDER BY makes the result deterministic rather than incidentally-single, which is the property a
 // later change to the re-key ordering would otherwise break silently.
-func (s *sqlStore) GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error) {
+func (s *Store) GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error) {
 	if src == "" {
 		return Image{}, ErrNotFound // every non-remote row has source_url '' — never a match
 	}
-	row := s.db.QueryRowContext(ctx, s.ph(
+	row := s.h.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT `+imageColumns+` FROM images
 		 WHERE source_url = ? AND origin_fetched_at > 0
 		 ORDER BY origin_fetched_at DESC, hash LIMIT 1`), src)
@@ -228,31 +228,31 @@ func (s *sqlStore) GetFetchedImageBySourceURL(ctx context.Context, src string) (
 	return img, nil
 }
 
-func (s *sqlStore) DeleteImage(ctx context.Context, hash string) error {
+func (s *Store) DeleteImage(ctx context.Context, hash string) error {
 	// Refs and derivatives cascade (ON DELETE CASCADE), so this is one statement rather than a
 	// transaction the caller could get half-right.
-	if _, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM images WHERE hash = ?`), hash); err != nil {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM images WHERE hash = ?`), hash); err != nil {
 		return fmt.Errorf("delete image %s: %w", hash, err)
 	}
 	return nil
 }
 
-func (s *sqlStore) TouchImage(ctx context.Context, hash string, at time.Time) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) TouchImage(ctx context.Context, hash string, at time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE images SET last_used_at = ? WHERE hash = ?`), epoch(at), hash); err != nil {
 		return fmt.Errorf("touch image %s: %w", hash, err)
 	}
 	return nil
 }
 
-func (s *sqlStore) ListImagesAwaitingFetch(ctx context.Context, limit int) ([]Image, error) {
+func (s *Store) ListImagesAwaitingFetch(ctx context.Context, limit int) ([]Image, error) {
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images
 		 WHERE origin = 'remote' AND origin_fetched_at = 0
 		 ORDER BY created_at LIMIT ?`, limit)
 }
 
-func (s *sqlStore) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]Image, error) {
+func (s *Store) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time, limit int) ([]Image, error) {
 	// origin_fetched_at > 0 excludes the never-fetched rows, which are the fetch job's business
 	// rather than the expiry sweep's — otherwise every pending image would look infinitely stale.
 	return s.queryImages(ctx,
@@ -261,21 +261,21 @@ func (s *sqlStore) ListImagesExpiredBefore(ctx context.Context, cutoff time.Time
 		 ORDER BY origin_fetched_at LIMIT ?`, epoch(cutoff), limit)
 }
 
-func (s *sqlStore) ListOrphanImages(ctx context.Context, limit int) ([]Image, error) {
+func (s *Store) ListOrphanImages(ctx context.Context, limit int) ([]Image, error) {
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images i
 		 WHERE NOT EXISTS (SELECT 1 FROM image_refs r WHERE r.image_hash = i.hash)
 		 ORDER BY i.created_at LIMIT ?`, limit)
 }
 
-func (s *sqlStore) ListUnrecoverableImages(ctx context.Context, limit int) ([]Image, error) {
+func (s *Store) ListUnrecoverableImages(ctx context.Context, limit int) ([]Image, error) {
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images
 		 WHERE origin IN ('upload', 'generated')
 		 ORDER BY created_at LIMIT ?`, limit)
 }
 
-func (s *sqlStore) ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error) {
+func (s *Store) ListImagesMissingFormat(ctx context.Context, recipe, format string, limit int) ([]Image, error) {
 	// "Has some derivative but not this one." The first EXISTS is what keeps the AVIF job from
 	// picking up images whose bytes have not been processed at all yet — those belong to the fetch
 	// job, and encoding AVIF for an image with no WebP would invert the priority the split exists
@@ -288,8 +288,8 @@ func (s *sqlStore) ListImagesMissingFormat(ctx context.Context, recipe, format s
 		 ORDER BY i.created_at LIMIT ?`, recipe, format, limit)
 }
 
-func (s *sqlStore) PutImageRef(ctx context.Context, ref ImageRef) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) PutImageRef(ctx context.Context, ref ImageRef) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role)
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT (image_hash, owner_kind, owner_id, role) DO NOTHING`),
@@ -300,8 +300,8 @@ func (s *sqlStore) PutImageRef(ctx context.Context, ref ImageRef) error {
 	return nil
 }
 
-func (s *sqlStore) DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`), ownerKind, ownerID)
 	if err != nil {
 		return fmt.Errorf("delete image refs %s/%s: %w", ownerKind, ownerID, err)
@@ -309,7 +309,7 @@ func (s *sqlStore) DeleteImageRefs(ctx context.Context, ownerKind, ownerID strin
 	return nil
 }
 
-func (s *sqlStore) ImagesForOwner(ctx context.Context, ownerKind, ownerID string) ([]Image, error) {
+func (s *Store) ImagesForOwner(ctx context.Context, ownerKind, ownerID string) ([]Image, error) {
 	return s.queryImages(ctx,
 		`SELECT `+prefixed(imageColumns, "i.")+` FROM images i
 		 JOIN image_refs r ON r.image_hash = i.hash
@@ -317,8 +317,8 @@ func (s *sqlStore) ImagesForOwner(ctx context.Context, ownerKind, ownerID string
 		 ORDER BY i.created_at`, ownerKind, ownerID)
 }
 
-func (s *sqlStore) PutImageDerivative(ctx context.Context, d ImageDerivative) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) PutImageDerivative(ctx context.Context, d ImageDerivative) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO image_derivatives (image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (image_hash, recipe, format, width) DO UPDATE SET
@@ -334,16 +334,16 @@ func (s *sqlStore) PutImageDerivative(ctx context.Context, d ImageDerivative) er
 
 // PutImageDerivatives publishes one complete Rendition ladder transactionally. The worker manifest
 // is all-or-nothing, so persistence must not turn a valid manifest into a partially visible ladder.
-func (s *sqlStore) PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error {
+func (s *Store) PutImageDerivatives(ctx context.Context, derivatives []ImageDerivative) error {
 	if len(derivatives) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin derivative batch: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	query := s.ph(
+	query := s.h.Rebind(
 		`INSERT INTO image_derivatives (image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (image_hash, recipe, format, width) DO UPDATE SET
@@ -362,8 +362,8 @@ func (s *sqlStore) PutImageDerivatives(ctx context.Context, derivatives []ImageD
 	return nil
 }
 
-func (s *sqlStore) ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListImageDerivatives(ctx context.Context, hash string) ([]ImageDerivative, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT image_hash, recipe, format, width, bytes, output_hash, path, animated, created_at
 		 FROM image_derivatives WHERE image_hash = ? ORDER BY recipe, format, width`), hash)
 	if err != nil {
@@ -385,8 +385,8 @@ func (s *sqlStore) ListImageDerivatives(ctx context.Context, hash string) ([]Ima
 	return out, rows.Err()
 }
 
-func (s *sqlStore) DeleteImageDerivatives(ctx context.Context, hash string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteImageDerivatives(ctx context.Context, hash string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM image_derivatives WHERE image_hash = ?`), hash)
 	if err != nil {
 		return fmt.Errorf("delete derivatives %s: %w", hash, err)
@@ -394,8 +394,8 @@ func (s *sqlStore) DeleteImageDerivatives(ctx context.Context, hash string) erro
 	return nil
 }
 
-func (s *sqlStore) DeleteImageDerivative(ctx context.Context, hash, recipe, format string, width int) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteImageDerivative(ctx context.Context, hash, recipe, format string, width int) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM image_derivatives WHERE image_hash = ? AND recipe = ? AND format = ? AND width = ?`),
 		hash, recipe, format, width)
 	if err != nil {
@@ -404,11 +404,11 @@ func (s *sqlStore) DeleteImageDerivative(ctx context.Context, hash, recipe, form
 	return nil
 }
 
-func (s *sqlStore) TotalImageDerivativeBytes(ctx context.Context) (int64, error) {
+func (s *Store) TotalImageDerivativeBytes(ctx context.Context) (int64, error) {
 	// COALESCE because SUM over no rows is NULL in both dialects, and a fresh install has no
 	// derivatives — scanning NULL into int64 is an error, not a zero.
 	var total int64
-	err := s.db.QueryRowContext(ctx,
+	err := s.h.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(bytes), 0) FROM image_derivatives`).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("total derivative bytes: %w", err)
@@ -416,11 +416,11 @@ func (s *sqlStore) TotalImageDerivativeBytes(ctx context.Context) (int64, error)
 	return total, nil
 }
 
-func (s *sqlStore) ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error) {
+func (s *Store) ListColdestDerivatives(ctx context.Context, limit int) ([]ImageDerivative, error) {
 	// The join is what makes this image-level LRU: the order comes from the parent row's
 	// last_used_at, which every serve already updates, rather than from a column on the
 	// derivative that would need a write per rendition served.
-	rows, err := s.db.QueryContext(ctx, s.ph(
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT d.image_hash, d.recipe, d.format, d.width, d.bytes, d.output_hash, d.path, d.animated, d.created_at
 		 FROM image_derivatives d
 		 JOIN images i ON i.hash = d.image_hash
@@ -445,26 +445,26 @@ func (s *sqlStore) ListColdestDerivatives(ctx context.Context, limit int) ([]Ima
 	return out, rows.Err()
 }
 
-func (s *sqlStore) ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]Image, error) {
+func (s *Store) ListImagesByOrigin(ctx context.Context, origin string, limit int) ([]Image, error) {
 	return s.queryImages(ctx,
 		`SELECT `+imageColumns+` FROM images
 		 WHERE origin = ?
 		 ORDER BY created_at LIMIT ?`, origin, limit)
 }
 
-func (s *sqlStore) RepointImageRefs(ctx context.Context, from, to string) error {
+func (s *Store) RepointImageRefs(ctx context.Context, from, to string) error {
 	// ⚠ INSERT-then-DELETE rather than `UPDATE image_refs SET image_hash = ?`. The update looks
 	// obviously right and breaks the day two source URLs resolve to the same bytes: both rows
 	// re-key onto one content hash, and the second update violates the primary key
 	// (image_hash, owner_kind, owner_id, role). DO NOTHING makes the collision the no-op it
 	// should be — the ref already says what the update was trying to say.
-	if _, err := s.db.ExecContext(ctx, s.ph(
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role)
 		 SELECT ?, owner_kind, owner_id, role FROM image_refs WHERE image_hash = ?
 		 ON CONFLICT (image_hash, owner_kind, owner_id, role) DO NOTHING`), to, from); err != nil {
 		return fmt.Errorf("repoint image refs %s->%s: %w", from, to, err)
 	}
-	if _, err := s.db.ExecContext(ctx, s.ph(
+	if _, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM image_refs WHERE image_hash = ?`), from); err != nil {
 		return fmt.Errorf("clear image refs %s: %w", from, err)
 	}
@@ -474,8 +474,8 @@ func (s *sqlStore) RepointImageRefs(ctx context.Context, from, to string) error 
 // queryImages runs a SELECT of imageColumns with args and scans the lot. Every list method shares
 // it so a column added to the table is added in exactly one scan path — the alternative is five
 // hand-written Scan calls that drift, which is a shape this repo has been bitten by.
-func (s *sqlStore) queryImages(ctx context.Context, query string, args ...any) ([]Image, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
+func (s *Store) queryImages(ctx context.Context, query string, args ...any) ([]Image, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list images: %w", err)
 	}
