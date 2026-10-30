@@ -1,4 +1,4 @@
-// Package reconcile is the provisioning backstop (design §4, §7, §18). A ticker
+// Package provisionbackstop is the provisioning backstop (design §4, §7, §18). A ticker
 // claims due in-flight titles and, per title: retries `wanted` submissions,
 // re-checks the library for arrivals, and enforces deadlines (past deadline →
 // unavailable + downstream Cancel). This is why writes never client-retry (§6) —
@@ -11,7 +11,7 @@
 // rides this ticker — the janitor was removed and became internal/retention, a
 // recurring job (§18.1). There is no janitor.go here; there has not been for some
 // time, and a reader who went looking for one found nothing.
-package reconcile
+package provisionbackstop
 
 import (
 	"context"

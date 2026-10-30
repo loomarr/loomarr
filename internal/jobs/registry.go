@@ -14,7 +14,7 @@ var ErrUnknownJob = errors.New("unknown job")
 var ErrJobDisabled = errors.New("job is not available on this backend")
 
 // Registry collects the code-defined jobs before the scheduler is built. The composition
-// root (internal/app) collects them: reg.AddAll(reconcile.Jobs(...)).AddAll(…). Order is
+// root (internal/app) collects them: reg.AddAll(provisionbackstop.Jobs(...)).AddAll(…). Order is
 // preserved so the Tasks page lists jobs in a stable, intentional order.
 //
 // ⚠ **A job that owns work should declare its own Job.** The cron default, the settings key

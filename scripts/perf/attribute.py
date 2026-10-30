@@ -37,7 +37,7 @@ for sub, pkgs in {
               "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
     "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
                 "moviecollections tmdb catalog reference quality",
-    "library sync": "library inventory requester provision reconcile",
+    "library sync": "library inventory requester provision provisionbackstop",
     "images": "images",
     "database": "store fillerstore",
     "playout": "playout watermark viewing playoutbench",

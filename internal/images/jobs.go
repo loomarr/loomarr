@@ -12,7 +12,7 @@ import (
 // ⚠ These live here rather than in internal/app, unlike the filler jobs. The exception there is
 // structural: `store` imports `filler` for the Clip type, so `filler` importing `jobs` (which
 // imports `store`) is an import cycle. Nothing imports this package, so the normal convention —
-// a subsystem declares its own jobs, as channels, auth, reconcile and recurate all do — applies.
+// a subsystem declares its own jobs, as channels, auth, provisionbackstop and recurate all do — applies.
 //
 // Every ScheduleKey below is declared in internal/settings. ⚠ That coupling is not optional: the
 // settings service PANICS at startup on Resolve of an undeclared key, so a job registered without

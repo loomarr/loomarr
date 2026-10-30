@@ -24,7 +24,7 @@ internal/playout	33
 internal/channels	31
 internal/notifications	31
 cmd/demo-library	24
-internal/reconcile	23
+internal/provisionbackstop	23
 internal/invitation	20
 internal/binder	19
 internal/devbootstrap	17

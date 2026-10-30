@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -390,7 +390,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 // re-listing every collection's members for every entry, which is the N+1 the whole stamping
 // design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
 //
-// Membership is indexed under EVERY key form via reconcile.ScanItemKeys, because a member
+// Membership is indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member
 // carrying both provider ids must be findable under whichever key the lineup entry was born
 // with — the same parity problem the availability scan solves, and the same solution.
 //
@@ -440,7 +440,7 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			continue
 		}
 		for _, m := range members {
-			for _, k := range reconcile.ScanItemKeys(m) {
+			for _, k := range provisionbackstop.ScanItemKeys(m) {
 				idx[k] = append(idx[k], c.ID)
 			}
 		}

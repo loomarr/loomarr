@@ -9,8 +9,8 @@ import (
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/retention"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -27,13 +27,13 @@ func buildProvisioning(
 	processDiagnostics *diagnostics.ProcessManager,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) *reconcile.EpisodeRefresh {
+) *provisionbackstop.EpisodeRefresh {
 	if st == nil {
 		return nil
 	}
-	reconciler := reconcile.NewDynamic(st, set.requesterFor(metricRecorder), func() reconcile.LibraryLookup {
+	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
 		return libraryClient.Snapshot()
-	}, emitter, reconcile.Config{
+	}, emitter, provisionbackstop.Config{
 		RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.Add(reconciler.Job())
@@ -47,23 +47,23 @@ func buildProvisioning(
 		},
 	}, time.Now, log).WithDiagnostics(processDiagnostics).Job())
 
-	libraryScan := reconcile.NewLibraryScan(
+	libraryScan := provisionbackstop.NewLibraryScan(
 		st, libraryClient, emitter, set.dur("job.library_scan.lookback"), time.Now, log,
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 
-	episodeRefresh := reconcile.NewDynamicEpisodeRefresh(st, func() reconcile.EpisodeResolver {
+	episodeRefresh := provisionbackstop.NewDynamicEpisodeRefresh(st, func() provisionbackstop.EpisodeResolver {
 		return episodeResolver(libraryClient.Snapshot())
 	}, func() time.Duration {
 		return set.dur("episodes.max_age")
 	}, time.Now, log)
 
 	if arr := set.arrRequester(metricRecorder); arr != nil {
-		queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
 		registry.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
 			"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
 	} else if seerr := set.seerrRequester(metricRecorder); seerr != nil {
-		queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
 		registry.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
 			"Updates requested titles from the coarse acquisition states reported by Seerr."))
 	}

@@ -162,7 +162,7 @@ func (g JobGroup) valid() bool {
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
 // store.ScheduledJob directly — the scheduler is app-level infrastructure, not a pure domain
 // package, so importing store avoids a duplicate type + per-call adapter (same precedent as
-// internal/reconcile importing store).
+// internal/provisionbackstop importing store).
 type ScheduleStore interface {
 	UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
