@@ -195,6 +195,28 @@ type Measurement struct {
 	Observation Observation[SourceFacts] `json:"observation"`
 }
 
+// NewFactsMeasurement is the measurement of one source revision's stream facts, observed at `at`.
+// It is the one place that says what such a measurement covers: the streams were observed, and the
+// audio streams are present or, when the file has none, explicitly empty, so a source with no audio
+// is a known answer rather than an unmeasured one.
+func NewFactsMeasurement(id SourceID, revision string, at time.Time, facts SourceFacts) Measurement {
+	audio := CoverageEmpty
+	for _, stream := range facts.Streams {
+		if stream.Kind == StreamAudio {
+			audio = CoveragePresent
+			break
+		}
+	}
+	return Measurement{
+		SourceID: id, Revision: revision,
+		Observation: Observation[SourceFacts]{
+			SchemaVersion: 1, ObservedAt: at,
+			Coverage: map[string]Coverage{"streams": CoveragePresent, "audioStreams": audio},
+			Facts:    facts,
+		},
+	}
+}
+
 type Source struct {
 	ID          SourceID       `json:"id"`
 	ItemID      ItemID         `json:"itemId"`
