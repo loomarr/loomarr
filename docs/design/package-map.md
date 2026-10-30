@@ -114,6 +114,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
+- **`store/storedb`** · 1 importer
+  Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
@@ -194,7 +196,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/storedb`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 5

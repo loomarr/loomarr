@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 func TestDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -27,9 +29,9 @@ func testDiscoveryFeedbackOrphanCleanupMigration(t *testing.T, db *sql.DB, diale
 	if _, err := provider.UpTo(ctx, 71); err != nil {
 		t.Fatalf("migrate through 71: %v", err)
 	}
-	ph := placeholder(passthrough)
+	ph := placeholder(storedb.Passthrough)
 	if dialect == DialectPostgres {
-		ph = pgPlaceholders
+		ph = storedb.PgPlaceholders
 	}
 	for _, channel := range []struct {
 		id     string

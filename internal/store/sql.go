@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,18 +10,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
-// Dialect names a backend. It exists so capability checks read as what they mean:
-// backend identity used to be inferred by comparing `claimSQL` against the SQLite
-// constant, which works but states "this store's claim statement is the SQLite one"
-// when it means "this is SQLite" — and would break silently if the two backends ever
-// shared a statement.
-type Dialect string
+// Dialect names a backend (storedb.Dialect, re-exported so importers keep one import).
+type Dialect = storedb.Dialect
 
 const (
-	DialectSQLite   Dialect = "sqlite"
-	DialectPostgres Dialect = "postgres"
+	DialectSQLite   = storedb.DialectSQLite
+	DialectPostgres = storedb.DialectPostgres
 )
 
 // sqlStore is the shared implementation over database/sql (§5, §14). Both the
@@ -64,10 +60,8 @@ type sqlStore struct {
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's
-// style. SQLite uses ?; Postgres uses $1, $2, ….
-type placeholder func(query string) string
-
-func passthrough(q string) string { return q }
+// style (storedb.Placeholder).
+type placeholder = storedb.Placeholder
 
 func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key))
@@ -227,60 +221,14 @@ func (s *sqlStore) WithSettingLock(ctx context.Context, key string, fn func(cont
 	return s.withPostgresAdvisoryLock(ctx, "setting lock", settingLockNamespace, key, fn)
 }
 
-// withPostgresAdvisoryLock holds one session-scoped advisory lock while fn uses
-// ordinary pooled Store calls. It is the settings transition lock; proposal
-// approvals use their own transaction-bound ordering in approval.go.
+// withPostgresAdvisoryLock binds storedb.WithPostgresAdvisoryLock to this store's pool and
+// dialect, so the callers (settings, invitations, password recovery) keep their one-line form.
 func (s *sqlStore) withPostgresAdvisoryLock(
 	ctx context.Context,
 	label, namespace, key string,
 	fn func(context.Context) error,
-) (retErr error) {
-	if s.dialect != DialectPostgres {
-		return fmt.Errorf("%s: unsupported store dialect %q", label, s.dialect)
-	}
-
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("%s %q: reserve postgres connection: %w", label, key, err)
-	}
-	defer func() {
-		if err := conn.Close(); err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("%s %q: close postgres connection: %w", label, key, err))
-		}
-	}()
-
-	lockName := namespace + key
-	const lockSQL = `SELECT pg_advisory_lock(hashtextextended(current_database() || ':' || $1, 0))`
-	if _, err := conn.ExecContext(ctx, lockSQL, lockName); err != nil {
-		// Cancellation can race with the server granting the lock. Discarding the
-		// session is the only safe answer when acquisition was not acknowledged.
-		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		return fmt.Errorf("%s %q: acquire postgres advisory lock: %w", label, key, err)
-	}
-
-	// Unlock with an independent bounded context. The operation's context may have
-	// been cancelled while fn was running; returning the session to the pool with a
-	// held advisory lock would silently strand the lock. If explicit unlock cannot
-	// be proved, poison the driver connection so database/sql discards the session.
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		const unlockSQL = `SELECT pg_advisory_unlock(hashtextextended(current_database() || ':' || $1, 0))`
-		var unlocked bool
-		unlockErr := conn.QueryRowContext(cleanupCtx, unlockSQL, lockName).Scan(&unlocked)
-		if unlockErr == nil && unlocked {
-			return
-		}
-		if unlockErr == nil {
-			unlockErr = errors.New("postgres session did not own advisory lock")
-		}
-		// Returning driver.ErrBadConn from Raw tells database/sql not to reuse the
-		// underlying session; Postgres releases session locks when it disconnects.
-		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		retErr = errors.Join(retErr, fmt.Errorf("%s %q: release postgres advisory lock: %w", label, key, unlockErr))
-	}()
-
-	return fn(ctx)
+) error {
+	return storedb.WithPostgresAdvisoryLock(ctx, s.db, s.dialect, label, namespace, key, fn)
 }
 
 // SettingRow is a persisted override plus its audit metadata (config-design §3).
@@ -496,17 +444,9 @@ func (s *sqlStore) Close() error {
 // --- scanning helpers ---
 
 // scannable is satisfied by both *sql.Row and *sql.Rows, so the single-row and list reads
-// decode identically — a second decoder is how one path grows a field the other forgets.
-//
-// ⚠ THE ONE NAME FOR THIS SHAPE. The package had four — `scannable`, `rowScanner`
-// (fillerpulls.go), `scanner` (images.go) and an anonymous `interface{ Scan(...any) error }`
-// inline in clippipeline.go — all structurally identical, so every one of them was already
-// satisfied by every other's arguments. Four names for one idea is a tax on reading, not a
-// distinction: a reader meeting the third has to prove to themselves it is not subtly
-// different. Consolidated 2026-08-10; put new scan helpers on this one.
-type scannable interface {
-	Scan(dest ...any) error
-}
+// decode identically — a second decoder is how one path grows a field the other forgets. It is
+// storedb.Scannable (which keeps the history of why there is exactly one name for this shape).
+type scannable = storedb.Scannable
 
 // titleColumns is the column list scanTitle reads, in its order. Every titles read uses it; the
 // Postgres claim spells it with its `t.` alias (postgres.go) and must stay in step.
@@ -550,18 +490,9 @@ func scanTitles(rows *sql.Rows) ([]provision.Record, error) {
 	return out, rows.Err()
 }
 
-// epoch encodes a time as Unix seconds; the zero time encodes to 0 (§3 note).
-func epoch(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.Unix()
-}
+// epoch encodes a time as Unix seconds; the zero time encodes to 0 (§3 note). The codec lives
+// in storedb; these two keep the ~270 call sites in this package unchanged.
+func epoch(t time.Time) int64 { return storedb.Epoch(t) }
 
 // fromEpoch decodes Unix seconds; 0 decodes to the zero time.
-func fromEpoch(n int64) time.Time {
-	if n == 0 {
-		return time.Time{}
-	}
-	return time.Unix(n, 0).UTC()
-}
+func fromEpoch(n int64) time.Time { return storedb.FromEpoch(n) }

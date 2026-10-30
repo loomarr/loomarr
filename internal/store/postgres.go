@@ -4,10 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
-	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql shim (§14)
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // Postgres claim: FOR UPDATE SKIP LOCKED so concurrent replicas never both
@@ -88,21 +87,5 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}, nil
-}
-
-// pgPlaceholders rewrites `?` markers into Postgres `$1, $2, …` in order.
-func pgPlaceholders(query string) string {
-	var b strings.Builder
-	n := 0
-	for i := 0; i < len(query); i++ {
-		if query[i] == '?' {
-			n++
-			b.WriteByte('$')
-			b.WriteString(strconv.Itoa(n))
-			continue
-		}
-		b.WriteByte(query[i])
-	}
-	return b.String()
+	return &sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}, nil
 }
