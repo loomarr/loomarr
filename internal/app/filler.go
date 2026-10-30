@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -1799,7 +1800,7 @@ type fillerDefectStoreAdapter struct{ st fillerstore.Store }
 func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
 	err := a.st.RetireDefectiveCopy(ctx, hash, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return filler.ErrCopyGone
+		return fillerdefectfloor.ErrCopyGone
 	}
 	return err
 }
@@ -1828,7 +1829,7 @@ func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, cli
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 
-func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler.DefectClip, error) {
+func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]fillerdefectfloor.DefectClip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		return nil, err
@@ -1841,45 +1842,45 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 	for _, r := range rows {
 		stage[r.ClipHash] = r.Stage
 	}
-	out := make([]filler.DefectClip, len(clips))
+	out := make([]fillerdefectfloor.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
+		out[i] = fillerdefectfloor.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
 			Stage: stage[c.Hash]}
 	}
 	return out, nil
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]filler.DefectRecord, error) {
+func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]fillerdefectfloor.DefectRecord, error) {
 	rows, err := a.st.ListClipDefects(ctx)
 	if errors.Is(err, store.ErrCorruptClipDefects) {
-		err = fmt.Errorf("%w: %w", filler.ErrDefectRecordsCorrupt, err)
+		err = fmt.Errorf("%w: %w", fillerdefectfloor.ErrDefectRecordsCorrupt, err)
 	} else if err != nil {
 		return nil, err
 	}
-	out := make(map[string]filler.DefectRecord, len(rows))
+	out := make(map[string]fillerdefectfloor.DefectRecord, len(rows))
 	for hash, r := range rows {
-		out[hash] = filler.DefectRecord(r)
+		out[hash] = fillerdefectfloor.DefectRecord(r)
 	}
 	return out, err
 }
 
-func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (filler.DefectRecord, bool, error) {
+func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (fillerdefectfloor.DefectRecord, bool, error) {
 	r, ok, err := a.st.GetClipDefects(ctx, clipHash)
-	return filler.DefectRecord(r), ok, err
+	return fillerdefectfloor.DefectRecord(r), ok, err
 }
 
-func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {
+func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r fillerdefectfloor.DefectRecord) error {
 	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]filler.DefectLabel, error) {
+func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]fillerdefectfloor.DefectLabel, error) {
 	rows, err := a.st.ListClipDefectLabels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]filler.DefectLabel, len(rows))
+	out := make(map[string]fillerdefectfloor.DefectLabel, len(rows))
 	for hash, l := range rows {
-		out[hash] = filler.DefectLabel(l)
+		out[hash] = fillerdefectfloor.DefectLabel(l)
 	}
 	return out, nil
 }
@@ -1887,7 +1888,7 @@ func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map
 func (a fillerDefectStoreAdapter) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
 	err := a.st.SetClipDefectLabel(ctx, clipHash, label, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return filler.ErrDefectNotMeasured
+		return fillerdefectfloor.ErrDefectNotMeasured
 	}
 	return err
 }

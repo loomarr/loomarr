@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/invitation"
@@ -100,10 +101,10 @@ type Server struct {
 	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerResearch  FillerResearchService
-	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
-	fillerDefects   *filler.DefectReports   // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy        TaxonomyEditor          // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	fillerDecisions *fillerdecision.Service          // durable V63 admission audit and projections
+	fillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods            PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy        TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
@@ -1065,14 +1066,14 @@ type Options struct {
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
 	Images          ImageService
-	Events          EventSource             // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Shutdown        <-chan struct{}         // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	FillerResearch  FillerResearchService   // optional structured-first web-search status and validation
-	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
-	FillerDefects   *filler.DefectReports   // /v1/filler/defects* (#2034); nil ⇒ 501
-	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        TaxonomyEditor          // taxonomy impact + committed channel convergence
+	Events          EventSource                      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown        <-chan struct{}                  // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
+	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
+	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout
