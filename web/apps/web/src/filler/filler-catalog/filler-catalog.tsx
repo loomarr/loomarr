@@ -1,5 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { ClipEnrichmentFactDTOAxis } from "@loomarr/api/models/clipEnrichmentFactDTOAxis";
+import type { ClipEnrichmentFactDTOEvidence } from "@loomarr/api/models/clipEnrichmentFactDTOEvidence";
+import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, formatClipDuration, pluralize } from "@loomarr/core/format";
@@ -57,7 +60,7 @@ const CATALOG_PAGE_SIZE = 60;
 
 const BULK_TAG_FIELDS = [
   { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
-  { key: "audience", label: "Set audience", options: ["kids", "family", "general", "late_night"] },
+  { key: "audience", label: "Set audience", options: Object.values(ListFillerAudience) },
 ] as const;
 
 // The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because
@@ -70,7 +73,7 @@ const VIEWS = [
   { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
 ] as const;
 
-const ENRICHMENT_AXIS_LABEL: Record<string, string> = {
+const ENRICHMENT_AXIS_LABEL: Record<ClipEnrichmentFactDTOAxis, string> = {
   kind: "Type",
   era: "Year",
   audience: "Audience",
@@ -112,7 +115,7 @@ const displayAudioRate = (rate: number | undefined) =>
     ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(rate / 1000)} kHz`
     : undefined;
 
-const ENRICHMENT_EVIDENCE_LABEL: Record<string, string> = {
+const ENRICHMENT_EVIDENCE_LABEL: Record<ClipEnrichmentFactDTOEvidence, string> = {
   operator: "You set this",
   item_metadata: "Item details",
   content_observation: "Clip audio or frames",
