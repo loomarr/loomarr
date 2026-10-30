@@ -34,6 +34,72 @@ func VideoArgs(host HostProfile, v Video) []string {
 	return args
 }
 
+// File is one offline derivative's video encode (#2121): constant quality, the source's own
+// geometry and cadence, and a keyframe at frame 0 and every KeyframeSeconds.
+type File struct {
+	// Quality is the family's constant-quality level (FileLevel): NVENC -cq, VAAPI -qp, VideoToolbox
+	// -q:v, x264 -crf. The scales differ per family, so a level is only meaningful with its family.
+	Quality int
+	// KeyframeSeconds forces a keyframe at frame 0 and every N seconds, so a cut or a seek lands
+	// instantly rather than decoding from the previous GOP.
+	KeyframeSeconds int
+}
+
+// FileLevel is the measured constant-quality level for an offline derivative on the family: the
+// highest level whose per-clip VMAF against the source stays at or above 95 for 90% of a real filler
+// corpus (cmd/filler-encode-bench, docs/design/filler-pipeline.md). ok is false for a family not
+// yet measured on its hardware.
+func FileLevel(f Family) (level int, ok bool) {
+	switch f {
+	case FamilyNVENC:
+		return 25, true // measured on a GeForce RTX 3080 Ti, 2026-10-30
+	case FamilySoftware:
+		return 16, true // libx264 veryfast, 2026-10-30
+	}
+	return 0, false
+}
+
+// FileFamily is the family an offline encode runs on: the host's own when it has a constant-quality
+// file mode and a measured level (FileLevel), else software. The generic encoders (QSV, AMF, Vulkan,
+// RKMPP, V4L2M2M) each spell constant quality differently and none has been measured, so a
+// derivative is never their first test; a family with a mode but no measurement is not guessed.
+func FileFamily(host HostProfile) Family {
+	switch host.Family {
+	case FamilyNVENC, FamilyVAAPI, FamilyVideoToolbox:
+		if _, ok := FileLevel(host.Family); ok {
+			return host.Family
+		}
+	}
+	return FamilySoftware
+}
+
+// FileVideoArgs is the encoder, constant-quality rate control and keyframe cadence for an offline
+// derivative on family (a caller passes FileFamily(host); the bench passes the family it measures).
+// Unlike the live VideoArgs there is no bitrate cap and no low-latency tuning: nobody is waiting on
+// the bytes, and B-frames and lookahead buy size. A family without a file mode encodes in software.
+func FileVideoArgs(family Family, f File) []string {
+	q := strconv.Itoa(f.Quality)
+	var args []string
+	switch family {
+	case FamilyNVENC:
+		args = []string{"-c:v", string(EncoderNVENC), "-preset", "p5", "-tune", "hq", "-profile:v", "high",
+			"-rc", "vbr", "-cq", q, "-b:v", "0", "-forced-idr", "1"}
+	case FamilyVAAPI:
+		// CQP, not ICQ: ICQ is Intel-only, and VAAPI is also AMD's family.
+		args = []string{"-c:v", string(EncoderVAAPI), "-profile:v", "high", "-rc_mode", "CQP", "-qp", q}
+	case FamilyVideoToolbox:
+		args = []string{"-c:v", string(EncoderVideoToolbox), "-profile:v", "high", "-allow_sw", "0", "-q:v", q}
+	default:
+		args = []string{"-c:v", string(EncoderSoftware), "-preset", "veryfast", "-profile:v", "high", "-crf", q}
+	}
+	if f.KeyframeSeconds > 0 {
+		// `expr:gte(t,n_forced*N)` is the form that also guarantees the FIRST frame is an IDR — a
+		// clip whose first keyframe arrives late is the black-screen-on-start class §9.1 records.
+		args = append(args, "-force_key_frames", "expr:gte(t,n_forced*"+strconv.Itoa(f.KeyframeSeconds)+")")
+	}
+	return args
+}
+
 // videoArgs is one family's encoder and rate control (VideoArgs).
 func videoArgs(host HostProfile, v Video) []string {
 	g := strconv.Itoa(v.GOPFrames)
