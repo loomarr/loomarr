@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -1494,7 +1492,26 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 // Paused and detached channels are excluded: their breaks are not airing, so counting them as
 // "uncovered" would report a problem the operator deliberately created.
 func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) {
-	report, err := a.pods.PoolCounts(ctx)
+	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+	// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused,
+	// not detached" (every managed state qualifies, drifted included — a transient "the guide is
+	// catching up", not a channel that stopped airing).
+	poolChannels := make([]filler.PoolChannel, 0, len(chans))
+	for _, ch := range chans {
+		if !ch.Status.Reconcilable() {
+			continue
+		}
+		poolChannels = append(poolChannels, filler.PoolChannel{
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Selection: channels.SelectionForChannel(ch),
+		})
+	}
+	// ⚠ ONE catalog load answers the counts and every channel's coverage (PoolFor), and each channel's
+	// number is the SAME `Coverage` derivation the channel page shows — the invariant this function
+	// is built on.
+	report, err := a.pods.PoolFor(ctx, poolChannels)
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
@@ -1518,50 +1535,6 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
-
-	chans, err := a.store.ListChannels(ctx)
-	if err != nil {
-		return filler.PoolReport{}, err
-	}
-	// ⚠ ONE catalog load for every channel's coverage, not one each. `CoverageFor` loads the
-	// catalog per call, so asking it per channel made this request O(channels) full-table reads —
-	// 20 channels meant 20 `AllClips` on top of the two counts above. `CoverageFrom` runs the
-	// identical derivation over a catalog passed in, so the numbers are still the SAME `Coverage`
-	// the channel page shows (the invariant this function is built on); only the redundant reads
-	// are gone.
-	clips, err := a.pods.Catalog(ctx)
-	if err != nil {
-		return filler.PoolReport{}, err
-	}
-	for _, c := range clips {
-		if c.IsBumper() {
-			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
-		}
-	}
-	for _, ch := range chans {
-		// The same two-state DENY-LIST `recurate.eligible` uses, for the same reason: every
-		// managed state qualifies (live, building, and drifted), because drifted is a transient
-		// "the guide is catching up" state, not a channel that stopped airing. Only paused
-		// (deliberately off the sweep) and detached (soft-deleted) are excluded.
-		if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
-			continue
-		}
-		cov := a.pods.CoverageFrom(clips, ch.ID, channels.SelectionForChannel(ch))
-		report.Channels = append(report.Channels, filler.ChannelCoverage{
-			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Report: cov,
-		})
-	}
-
-	// Worst first, so a caller naming "the channel to fix" needs no sort of its own. Ties
-	// break on channel number for a stable order — an unstable list would make the strip's
-	// diagnosis line flicker between equally-bad channels on every poll.
-	sort.SliceStable(report.Channels, func(i, j int) bool {
-		li, lj := report.Channels[i].Report.Level, report.Channels[j].Report.Level
-		if li != lj {
-			return filler.LevelWorseThan(li, lj)
-		}
-		return report.Channels[i].Number < report.Channels[j].Number
-	})
 	return report, nil
 }
 
