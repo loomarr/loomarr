@@ -13,7 +13,8 @@ import (
 // two surfaces cannot disagree about what grounding a tag or recording an edit means (§10 V45a).
 
 // groundOperatorTags grounds an operator's tag set against the LIVE taxonomy. An unknown slug 422s
-// the whole edit before any clip is touched — never silently persisted, never silently dropped.
+// before any tag is written — never silently persisted, never silently dropped. (The bulk bar
+// grounds before touching any clip; the PATCH has already applied a rename by this point.)
 func (s *Server) groundOperatorTags(ctx context.Context, raw []string) ([]string, *taxonomy.Forest, error) {
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {

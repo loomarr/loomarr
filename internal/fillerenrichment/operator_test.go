@@ -21,8 +21,10 @@ func TestOperator_IsAValidCompletedObservationOnEveryAxis(t *testing.T) {
 		if err := state.Validate(); err != nil {
 			t.Errorf("Operator(%s) is invalid: %v", axis, err)
 		}
-		if state.Evidence.Kind != fillerenrichment.EvidenceOperator || state.Evidence.Confidence != 100 ||
-			state.Status != fillerenrichment.StatusComplete || state.Evidence.ObservedAt.Location() != time.UTC {
+		ev := state.Evidence
+		if ev.Kind != fillerenrichment.EvidenceOperator || ev.Confidence != 100 || state.Status != fillerenrichment.StatusComplete ||
+			ev.Reference != "operator.clip_edit" || ev.Producer != "operator" || ev.ProducerVersion != "1" ||
+			ev.TaxonomyVersion != fillerenrichment.OperatorTaxonomyVersion || !ev.ObservedAt.Equal(at) || ev.ObservedAt.Location() != time.UTC {
 			t.Errorf("Operator(%s) = %+v, want complete full-confidence operator evidence observed in UTC", axis, state)
 		}
 	}
