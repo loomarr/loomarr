@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // Encoder capability detection (§9.1) — "which encoder should this box use, and how many
@@ -52,16 +53,16 @@ import (
 //
 // Anything ahead of software here must EARN its place by working; ordering only decides
 // who gets asked first.
-var encoderPreference = []Encoder{
-	EncoderVulkan,       // cross-vendor; high measured throughput, but young drivers → not native-first
-	EncoderNVENC,        // NVIDIA — mature, good quality per bit
-	EncoderQSV,          // Intel Quick Sync — mature
-	EncoderVAAPI,        // Intel AND AMD on Linux; the broadest Linux path
-	EncoderAMF,          // AMD on Windows
-	EncoderVideoToolbox, // Apple Silicon / Intel Macs
-	EncoderRKMPP,        // Rockchip SBCs
-	EncoderV4L2M2M,      // Raspberry Pi and other V4L2 stateful encoders
-	EncoderSoftware,     // always viable — the floor, not a candidate
+var encoderPreference = []encode.Encoder{
+	encode.EncoderVulkan,
+	encode.EncoderNVENC,
+	encode.EncoderQSV,
+	encode.EncoderVAAPI,
+	encode.EncoderAMF,
+	encode.EncoderVideoToolbox,
+	encode.EncoderRKMPP,
+	encode.EncoderV4L2M2M,
+	encode.EncoderSoftware,
 }
 
 // nativeEncoders maps a GPU vendor to its MATURE native H.264 encoders, most-preferred first. The
@@ -69,19 +70,19 @@ var encoderPreference = []Encoder{
 // "nvidia"), so no device-file inspection is needed — the same nvidia-smi/GPU-name signal the rest of
 // the app already probes is the only input. A vendor not listed here (or an empty name) keeps the
 // cross-vendor encoderPreference order, so unknown hardware still trials everything.
-var nativeEncoders = map[string][]Encoder{
-	"nvidia": {EncoderNVENC},
-	"intel":  {EncoderQSV, EncoderVAAPI}, // QSV is Intel's native; VAAPI is the broader Linux path
-	"amd":    {EncoderVAAPI, EncoderAMF}, // VAAPI on Linux, AMF on Windows
-	"apple":  {EncoderVideoToolbox},
+var nativeEncoders = map[string][]encode.Encoder{
+	"nvidia": {encode.EncoderNVENC},
+	"intel":  {encode.EncoderQSV, encode.EncoderVAAPI},
+	"amd":    {encode.EncoderVAAPI, encode.EncoderAMF},
+	"apple":  {encode.EncoderVideoToolbox},
 }
 
 // preferenceFor returns the trial order for a known GPU vendor: that vendor's native encoders first
 // (so a mature vendor path is chosen over young cross-vendor Vulkan), then the cross-vendor default
 // for everything else, de-duplicated. An unknown/empty vendor returns the default order unchanged.
-func preferenceFor(gpuVendor string) []Encoder {
+func preferenceFor(gpuVendor string) []encode.Encoder {
 	v := strings.ToLower(strings.TrimSpace(gpuVendor))
-	var native []Encoder
+	var native []encode.Encoder
 	for key, encs := range nativeEncoders {
 		if strings.Contains(v, key) {
 			native = encs
@@ -91,8 +92,8 @@ func preferenceFor(gpuVendor string) []Encoder {
 	if len(native) == 0 {
 		return encoderPreference
 	}
-	seen := make(map[Encoder]bool, len(encoderPreference))
-	ordered := make([]Encoder, 0, len(encoderPreference))
+	seen := make(map[encode.Encoder]bool, len(encoderPreference))
+	ordered := make([]encode.Encoder, 0, len(encoderPreference))
 	for _, e := range native {
 		if !seen[e] {
 			seen[e] = true
@@ -110,7 +111,7 @@ func preferenceFor(gpuVendor string) []Encoder {
 
 // Capability is what one encoder can actually do here.
 type Capability struct {
-	Encoder Encoder
+	Encoder encode.Encoder
 	// Works is earned by a real encode. Never inferred.
 	Works bool
 	// Speed is the realtime multiple at the probed profile — ffmpeg's `speed=N x`. 14
@@ -132,7 +133,7 @@ type Capability struct {
 // Capacity is the whole answer: which encoder to use, and how many channels it sustains.
 type Capacity struct {
 	// Chosen never ends up zero — worst case EncoderSoftware, which needs no hardware.
-	Chosen Encoder
+	Chosen encode.Encoder
 	// MaxChannels is the automatic admission budget (§15), derived from the measured speed with
 	// headroom (channelsFromSpeed). `playout.max_channels` can only cap this result downward.
 	MaxChannels int
@@ -157,7 +158,7 @@ func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor
 	manager *diagnostics.ProcessManager,
 ) Capacity {
 	listed := listEncodersObserved(ctx, ffmpegPath, manager)
-	out := Capacity{Chosen: EncoderSoftware, MaxChannels: 1}
+	out := Capacity{Chosen: encode.EncoderSoftware, MaxChannels: 1}
 
 	for _, enc := range preferenceFor(gpuVendor) {
 		if !listed[enc] {
@@ -172,7 +173,7 @@ func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor
 
 		// First working encoder in preference order wins. Software is last in that
 		// order, so hardware is preferred whenever it genuinely works.
-		if got.Works && out.Chosen == EncoderSoftware && out.MaxChannels == 1 {
+		if got.Works && out.Chosen == encode.EncoderSoftware && out.MaxChannels == 1 {
 			out.Chosen = got.Encoder
 			out.MaxChannels = channelsFromSpeed(got.Speed)
 		}
@@ -183,7 +184,7 @@ func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor
 	// single longer trial on just the winner clears the ramp and reads the sustained peak — paid once,
 	// at boot, not per candidate. Software is left on its short-probe figure: it has no cold ramp to
 	// clear (the CPU is already warm) and channelsFromSpeed governs it honestly.
-	if out.Chosen != EncoderSoftware {
+	if out.Chosen != encode.EncoderSoftware {
 		if warm := trialEncodeObserved(ctx, ffmpegPath, out.Chosen, p, trialSecondsWarm, manager); warm.Works && warm.Speed > 0 {
 			out.MaxChannels = channelsFromSpeed(warm.Speed)
 			out.EncodeHostBytes = warm.PeakRSSBytes
@@ -206,11 +207,11 @@ func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor
 // This is the ONLY honest "could it possibly work here" signal, and it is why the detector
 // needs no per-vendor device knowledge: a Pi's build lists h264_v4l2m2m, a Mac's lists
 // h264_videotoolbox, and an unknown future encoder is probed the day its build ships.
-func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagnostics.ProcessManager) map[Encoder]bool {
+func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagnostics.ProcessManager) map[encode.Encoder]bool {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	out := map[Encoder]bool{}
+	out := map[encode.Encoder]bool{}
 	args := []string{"-hide_banner", "-encoders"}
 	run := manager.Begin(diagnostics.ProcessSpec{Purpose: "encoder_list_probe", Target: "encoders", Executable: ffmpegPath, Args: args})
 	raw, err := exec.CommandContext(ctx, ffmpegPath, args...).Output()
@@ -222,7 +223,7 @@ func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagn
 		// No ffmpeg, or it refused to run. Software is still claimed as available so
 		// Detect returns a usable answer; the trial encode will fail honestly and the
 		// wizard shows why.
-		out[EncoderSoftware] = true
+		out[encode.EncoderSoftware] = true
 		return out
 	}
 	text := string(raw)
@@ -251,7 +252,7 @@ func listEncodersObserved(ctx context.Context, ffmpegPath string, manager *diagn
 // and asserting a keyframe is present makes the probe fail that encoder here instead — which is what
 // lets ordering prefer a vendor-native encoder while an immature cross-vendor driver is demoted
 // automatically rather than by a hard-coded exclusion.
-func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc Encoder, p Profile, seconds int,
+func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Encoder, p Profile, seconds int,
 	manager *diagnostics.ProcessManager,
 ) Capability {
 	// Bounded: a wedged GPU driver can hang an encode indefinitely, and boot waits on this. The
@@ -302,7 +303,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc Encoder, p 
 	// exactly what testsrc's CPU frames are: the upload, then the family's GPU scale/pad and encoder.
 	// A filter-graph mismatch (CPU frames into a GPU encoder, a GPU filter missing from the build) is
 	// one of the real cold-path failures, so the trial must exercise it. No tone-map: testsrc is SDR.
-	pipe, err := Build(HostFor(enc, false, GPUFilters{}), MediaFormat{}, ChannelOutput(probe))
+	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), MediaFormat{}, ChannelOutput(probe))
 	if err != nil {
 		return Capability{Encoder: enc, Available: true, Err: err.Error()}
 	}
@@ -444,129 +445,6 @@ const (
 	capacityFloor   = 2
 	capacityCeiling = 12
 )
-
-// deviceInitArgs returns args that must appear BEFORE the input — hardware device setup is
-// a global option, and placing it after `-i` silently applies to nothing.
-func deviceInitArgs(enc Encoder) []string {
-	switch engineOf(enc) {
-	case EncoderVAAPI:
-		return []string{"-vaapi_device", renderNode()}
-	case EncoderQSV:
-		// QSV needs an EXPLICIT device when a filter uploads frames to it. Found by the
-		// probe on this box: without it the failure is not a QSV error at all but
-		// "[hwupload] A hardware device reference is required to upload frames to" —
-		// which reads like a filter bug and sends you looking in the wrong place.
-		return []string{"-init_hw_device", "qsv=hw:" + renderNode(), "-filter_hw_device", "hw"}
-	case EncoderVulkan:
-		return []string{"-init_hw_device", "vulkan=vk:0", "-filter_hw_device", "vk"}
-	default:
-		// nvenc, amf, videotoolbox, rkmpp and v4l2m2m initialise their own context.
-		return nil
-	}
-}
-
-// hardwareUploadFilter returns the filter that moves frames into GPU memory, which some
-// hardware encoders require and which is the most common reason a "supported" encoder
-// fails at init.
-//
-// Kept minimal deliberately: playout encodes a NORMALIZED profile, so there is no scaling
-// to do here. That sidesteps the per-encoder scaler differences that dominate viewra's and
-// ErsatzTV's filter code — no `pad_qsv` exists, `scale_qsv` ignores
-// force_original_aspect_ratio, and `scale_cuda` needs a conditional hwupload when the
-// source was software-decoded.
-func hardwareUploadFilter(enc Encoder) string {
-	switch engineOf(enc) {
-	case EncoderVAAPI:
-		// nv12 first: hwupload will not accept the yuv420p a lavfi source produces.
-		return "format=nv12,hwupload"
-	case EncoderQSV:
-		// extra_hw_frames gives the encoder a pool deep enough for its lookahead; the
-		// default is too small and shows up as intermittent frame-allocation failures.
-		return "format=nv12,hwupload=extra_hw_frames=64"
-	case EncoderVulkan:
-		return "format=nv12,hwupload"
-	default:
-		// nvenc, amf, videotoolbox, rkmpp and v4l2m2m accept CPU frames directly;
-		// software needs nothing.
-		return ""
-	}
-}
-
-// hardwareDecodeArgs returns the `-hwaccel` args that move DECODING onto the GPU.
-//
-// Decoding, not encoding, is where the CPU actually goes on high-resolution sources. Measured
-// on a 4K 10-bit HEVC film with an RTX 3080 Ti:
-//
-//	CPU decode + CPU scale + CPU encode (libx264)   260% CPU
-//	CPU decode + CPU scale + GPU encode (nvenc)     341% CPU   ← encode moved, cost went UP
-//	GPU decode + CPU scale + GPU encode (nvenc)     ~0% CPU    ← this
-//
-// The middle row is the instructive one: moving only the encode made CPU *rise*, because the
-// decode was always the real cost and it had simply been throttled by waiting on a slow
-// software encoder. "GPU encoding" without GPU decoding buys very little on 4K.
-//
-// ⚠ NO `-hwaccel_output_format`, deliberately. Setting it keeps decoded frames in GPU memory,
-// which is faster still — and turns any unsupported input into a HARD FAILURE instead of a
-// silent, correct fallback to software decode. ffmpeg cannot hardware-decode every codec
-// (VC-1, some VP9 profiles, anything the GPU generation predates), and a channel must not die
-// because one film in its lineup is an odd codec. Without the flag ffmpeg downloads frames to
-// CPU memory after decoding, which costs a copy and keeps the CPU filters below working.
-//
-// That copy is also what makes the SCALE stay on the CPU, and that is a correctness
-// requirement rather than an oversight: `scale_cuda` has NO pad option (verified —
-// `ffmpeg -h filter=scale_cuda` lists w/h/format/interp_algo/force_original_aspect_ratio and
-// nothing else), so 4:3 content through it emits 1440x1080 rather than a letterboxed
-// 1920x1080. Measured, not assumed. A channel mixing 4:3 and 16:9 would then break the concat
-// parent's `-c copy` mid-stream — the exact failure §5d predicted for a bare
-// aspect-preserving scale.
-func hardwareDecodeArgs(enc Encoder) []string {
-	switch engineOf(enc) {
-	case EncoderNVENC:
-		return []string{"-hwaccel", "cuda"}
-	case EncoderVAAPI, EncoderQSV:
-		// Both decode through VAAPI on Linux. The device comes from deviceInitArgs, which
-		// already ran — `-hwaccel vaapi` reuses it rather than opening a second one.
-		return []string{"-hwaccel", "vaapi"}
-	case EncoderVideoToolbox:
-		return []string{"-hwaccel", "videotoolbox"}
-	case EncoderVulkan:
-		return []string{"-hwaccel", "vulkan"}
-	default:
-		// Software, AMF, RKMPP and V4L2M2M: no hardware decode offered here.
-		//
-		// AMF is an ENCODE-only interface — its decode path is a separate AMD stack that this
-		// ffmpeg build does not wire up. RKMPP and V4L2M2M are SBC encoders whose decoders are
-		// unreliable enough across kernels that asking for them costs more failures than it
-		// saves cycles. And for libx264 a GPU decode would mean decoding on the GPU only to
-		// download every frame for a CPU encode — strictly slower than decoding on the CPU.
-		return nil
-	}
-}
-
-// IsHardwareDecodeFault reports whether an ffmpeg stderr line says the GPU DECODER failed on its
-// input, e.g. "[AVHWFramesContext @ 0x…] Failed to sync surface 0xc: 23 (internal decoding error)"
-// from iHD/VAAPI. That is a fault of decoding this source, distinct from encoder capacity or VRAM
-// contention: retrying the same `-hwaccel` path fails identically, so recovery must decode in
-// software (the packager's itemFaults retry) while the encode stays on hardware.
-func IsHardwareDecodeFault(line string) bool {
-	return strings.Contains(line, "Failed to sync surface") || strings.Contains(line, "internal decoding error")
-}
-
-// Env overrides for machine-specific paths. Deliberately NOT registry settings (§15): they
-// describe this machine's filesystem, like the ffmpeg path, not app configuration that
-// should round-trip through a database.
-const (
-	// RenderNodeEnv picks the DRM render node for VAAPI. A multi-GPU box has renderD129
-	// and up, and the right one is not guessable.
-	RenderNodeEnv = "PLAYOUT_RENDER_NODE"
-)
-
-func renderNode() string {
-	if d := os.Getenv(RenderNodeEnv); d != "" {
-		return d
-	}
-	return "/dev/dri/renderD128"
-}
 
 // lastSpeed reads ffmpeg's `-progress` key=value stream and returns the final speed.
 //

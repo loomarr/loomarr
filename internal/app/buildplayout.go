@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -129,10 +130,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
 	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
 		hardware := playoutRes != nil && playoutRes.detectReady.Load() &&
-			!playout.IsSoftwareEncoder(playoutRes.publishedEncoder())
+			!encode.IsSoftware(playoutRes.publishedEncoder())
 		var costs *playout.MeasuredCosts
 		if playoutRes != nil {
-			enc := playout.Encoder(set.str("playout.encoder"))
+			enc := encode.Encoder(set.str("playout.encoder"))
 			if enc == "" {
 				enc = playoutRes.publishedEncoder()
 			}

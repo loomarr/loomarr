@@ -3,9 +3,10 @@ package api
 import (
 	"context"
 	"errors"
-	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
 func TestFirstTransportChunkIgnoresEmptyDeliveryChunks(t *testing.T) {

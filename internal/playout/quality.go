@@ -1,6 +1,10 @@
 package playout
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/loomarr/loomarr/internal/encode"
+)
 
 // Quality selection (§9.1). The policy is "best picture the hardware sustains, then adapt
 // as channels are added" — so quality is a RUNTIME property derived from
@@ -97,7 +101,7 @@ func LadderHeights(tier Tier) []int {
 // Resolve is the profile at a ladder rung. The rung is the one the ResourceBudget admitted the
 // session at (the best that fits; it drops a rung before refusing) and stays pinned for the
 // session's lifetime. A rung past the bottom clamps to the bottom.
-func Resolve(tier Tier, enc Encoder, rungIndex int) Profile {
+func Resolve(tier Tier, enc encode.Encoder, rungIndex int) Profile {
 	l := ladderFor(tier)
 	r := l[min(max(rungIndex, 0), len(l)-1)]
 	return Profile{
@@ -110,7 +114,7 @@ func Resolve(tier Tier, enc Encoder, rungIndex int) Profile {
 // ProbeOutputs are the outputs the class probe measures: every rung height any tier uses, tallest
 // first, each at the highest frame rate a tier gives it, so a tier change never meets an
 // unmeasured height and no rung is costed below what it runs at.
-func ProbeOutputs(enc Encoder) []Profile {
+func ProbeOutputs(enc encode.Encoder) []Profile {
 	best := map[int]rung{}
 	for _, l := range ladders {
 		for _, r := range l {

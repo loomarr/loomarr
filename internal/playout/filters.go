@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // What filters THIS ffmpeg build carries (§9.1).
@@ -102,14 +104,14 @@ func TonemapperFor(ffmpegPath string) func() bool {
 
 // GPUFiltersFor reports which optional GPU filters this ffmpeg build carries, memoised like
 // TonemapperFor. The pipeline builder picks between them per family (pipeline.go).
-func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
+func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 	var (
 		once sync.Once
-		f    GPUFilters
+		f    encode.GPUFilters
 	)
-	return func() GPUFilters {
+	return func() encode.GPUFilters {
 		once.Do(func() {
-			f = GPUFilters{
+			f = encode.GPUFilters{
 				TonemapOpenCL:           hasFilter(ffmpegPath, "tonemap_opencl"),
 				Libplacebo:              hasFilter(ffmpegPath, "libplacebo"),
 				VideoToolboxDeinterlace: hasFilter(ffmpegPath, "yadif_videotoolbox"),

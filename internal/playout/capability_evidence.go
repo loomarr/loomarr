@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 const (
@@ -28,18 +29,18 @@ const (
 )
 
 type capabilityEvidence struct {
-	Version     int       `json:"version"`
-	Fingerprint string    `json:"fingerprint"`
-	Encoder     Encoder   `json:"encoder"`
-	MaxChannels int       `json:"maxChannels"`
-	ObservedAt  time.Time `json:"observedAt"`
+	Version     int            `json:"version"`
+	Fingerprint string         `json:"fingerprint"`
+	Encoder     encode.Encoder `json:"encoder"`
+	MaxChannels int            `json:"maxChannels"`
+	ObservedAt  time.Time      `json:"observedAt"`
 }
 
 type capabilityEvidenceDependencies struct {
 	now         func() time.Time
 	fingerprint func(context.Context, string, string, Profile) (string, error)
 	detect      func(context.Context, string, Profile, string) Capacity
-	validate    func(context.Context, string, Encoder, Profile) Capability
+	validate    func(context.Context, string, encode.Encoder, Profile) Capability
 }
 
 // DetectObservedWithEvidence reuses a persisted hardware measurement only after a short real
@@ -55,7 +56,7 @@ func DetectObservedWithEvidence(
 		detect: func(ctx context.Context, ffmpeg string, profile Profile, gpu string) Capacity {
 			return DetectObserved(ctx, ffmpeg, profile, gpu, manager)
 		},
-		validate: func(ctx context.Context, ffmpeg string, encoder Encoder, profile Profile) Capability {
+		validate: func(ctx context.Context, ffmpeg string, encoder encode.Encoder, profile Profile) Capability {
 			return trialEncodeObserved(ctx, ffmpeg, encoder, profile, capabilityValidationSecs, manager)
 		},
 	})
@@ -88,7 +89,7 @@ func detectObservedWithEvidence(
 	}
 
 	capacity := deps.detect(ctx, ffmpegPath, profile, gpu)
-	if fingerprint != "" && !IsSoftwareEncoder(capacity.Chosen) && capacity.MaxChannels > 0 {
+	if fingerprint != "" && !encode.IsSoftware(capacity.Chosen) && capacity.MaxChannels > 0 {
 		_ = storeCapabilityEvidence(root, capabilityEvidence{
 			Version: capabilityEvidenceVersion, Fingerprint: fingerprint,
 			Encoder: capacity.Chosen, MaxChannels: capacity.MaxChannels, ObservedAt: deps.now().UTC(),
@@ -145,7 +146,7 @@ func loadCapabilityEvidence(root, fingerprint string, now time.Time) (capability
 	if err := json.Unmarshal(body, &evidence); err != nil || evidence.Version != capabilityEvidenceVersion ||
 		evidence.Fingerprint != fingerprint || evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
 		now.Sub(evidence.ObservedAt) > capabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
-		IsSoftwareEncoder(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {
+		encode.IsSoftware(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {
 		return capabilityEvidence{}, false
 	}
 	return evidence, true
@@ -207,9 +208,9 @@ func writeEvidence(root, name string, v any) error {
 	return nil
 }
 
-func supportedHardwareEncoder(encoder Encoder) bool {
-	for _, candidate := range h264Engines {
-		if candidate != EncoderSoftware && candidate == encoder {
+func supportedHardwareEncoder(encoder encode.Encoder) bool {
+	for _, candidate := range encode.H264Engines {
+		if candidate != encode.EncoderSoftware && candidate == encoder {
 			return true
 		}
 	}

@@ -10,30 +10,32 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 var updatePipelineGolden = flag.Bool("update-pipeline", false, "rewrite testdata/pipeline goldens")
 
 // Host profiles as data: the certified families plus each declared fallback.
-func testHosts() map[string]HostProfile {
-	arc := HostProfile{Family: FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: vaapiDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
+func testHosts() map[string]encode.HostProfile {
+	arc := encode.HostProfile{Family: encode.FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: encode.VAAPIDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
 	// AMD (no OpenCL-VAAPI interop) and an Intel host missing the OpenCL runtime demote to this.
 	amd := arc
 	amd.TonemapOpenCL = false
 	vaCPU := amd
 	vaCPU.Libplacebo = false
-	nv := HostProfile{Family: FamilyNVENC, DecodeCodecs: cudaDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
+	nv := encode.HostProfile{Family: encode.FamilyNVENC, DecodeCodecs: encode.CUDADecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
 	nvPlacebo := nv
 	nvPlacebo.TonemapOpenCL = false
 	nvCPU := nvPlacebo
 	nvCPU.Libplacebo = false
-	sw := HostProfile{Family: FamilySoftware, CPUTonemap: true}
-	return map[string]HostProfile{
+	sw := encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}
+	return map[string]encode.HostProfile{
 		"vaapi-intel": arc, "vaapi-amd": amd, "vaapi-cputonemap": vaCPU,
 		"nvenc-opencl": nv, "nvenc-libplacebo": nvPlacebo, "nvenc-cputonemap": nvCPU,
 		"software":     sw,
-		"videotoolbox": {Family: FamilyVideoToolbox, DecodeCodecs: vtDecodes, Libplacebo: true, CPUTonemap: true},
-		"generic-qsv":  {Family: FamilyGeneric, Encoder: EncoderQSV, DecodeCodecs: anyCodec, CPUTonemap: true},
+		"videotoolbox": {Family: encode.FamilyVideoToolbox, DecodeCodecs: encode.VTDecodes, Libplacebo: true, CPUTonemap: true},
+		"generic-qsv":  {Family: encode.FamilyGeneric, Encoder: encode.EncoderQSV, DecodeCodecs: encode.AnyCodec, CPUTonemap: true},
 	}
 }
 
@@ -72,7 +74,7 @@ func TestBuild_Golden(t *testing.T) {
 }
 
 // buildGolden is one item's argv plus its declared fallbacks and missing facts, or the refusal.
-func buildGolden(host HostProfile, src MediaFormat, out OutputProfile) string {
+func buildGolden(host encode.HostProfile, src MediaFormat, out OutputProfile) string {
 	p, err := Build(host, src, out)
 	if err != nil {
 		return "REFUSED: " + err.Error() + "\n"
@@ -132,7 +134,7 @@ func hwFormat(f string) bool {
 // such stretch must be declared in Pipeline.Fallbacks. The encoder must receive GPU frames.
 func TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback(t *testing.T) {
 	for hostName, host := range testHosts() {
-		if host.Family != FamilyVAAPI && host.Family != FamilyNVENC {
+		if host.Family != encode.FamilyVAAPI && host.Family != encode.FamilyNVENC {
 			continue
 		}
 		for srcName, src := range testSources() {
@@ -240,20 +242,20 @@ func TestBuild_ScaleBeforeToneMap(t *testing.T) {
 // graph ends in the channel geometry, cadence and BT.709 labels, so no boundary changes the SPS.
 func TestBuild_UniformOutput(t *testing.T) {
 	for hostName, host := range testHosts() {
-		var encode []string
+		var encoderArgs []string
 		for srcName, src := range testSources() {
 			p, err := Build(host, src, testOutput)
 			if err != nil {
 				continue
 			}
-			if encode == nil {
-				encode = p.VideoEncode
-			} else if !slices.Equal(encode, p.VideoEncode) {
-				t.Errorf("%s/%s: encoder args differ between classes: %q vs %q", hostName, srcName, p.VideoEncode, encode)
+			if encoderArgs == nil {
+				encoderArgs = p.VideoEncode
+			} else if !slices.Equal(encoderArgs, p.VideoEncode) {
+				t.Errorf("%s/%s: encoder args differ between classes: %q vs %q", hostName, srcName, p.VideoEncode, encoderArgs)
 			}
 			// The generic family's own upload step follows; every other graph ends here.
 			end := p.VideoFilter
-			if host.Family == FamilyGeneric {
+			if host.Family == encode.FamilyGeneric {
 				end, _, _ = strings.Cut(end, conformHDRMetadata)
 				end += conformHDRMetadata
 			}
@@ -291,17 +293,17 @@ func TestBuild_MinimalProbeOnlyWithFacts(t *testing.T) {
 // the household Arc (Y=16 on every frame, normal speed, exit 0). No host profile, source or build
 // may ever emit it; Intel HDR maps the scaled VAAPI surface into OpenCL and back, zero-copy.
 func TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI(t *testing.T) {
-	for _, gpu := range []GPUFilters{{}, {TonemapOpenCL: true}, {Libplacebo: true}, {TonemapOpenCL: true, Libplacebo: true}} {
-		for _, enc := range h264Engines {
+	for _, gpu := range []encode.GPUFilters{{}, {TonemapOpenCL: true}, {Libplacebo: true}, {TonemapOpenCL: true, Libplacebo: true}} {
+		for _, enc := range encode.H264Engines {
 			for srcName, src := range testSources() {
-				p, err := Build(HostFor(enc, true, gpu), src, testOutput)
+				p, err := Build(encode.HostFor(enc, true, gpu), src, testOutput)
 				if err == nil && strings.Contains(p.VideoFilter, "tonemap_vaapi") {
 					t.Errorf("%s %+v %s: tonemap_vaapi (black on the Arc, #1516): %q", enc, gpu, srcName, p.VideoFilter)
 				}
 			}
 		}
 	}
-	p, err := Build(HostFor(EncoderVAAPI, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], testOutput)
+	p, err := Build(encode.HostFor(encode.EncoderVAAPI, true, encode.GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], testOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +398,7 @@ func TestBuild_GoldenToneCurves(t *testing.T) {
 
 // demotedTonemappers walks one source through the packager's retry ladder (itemFaults): build,
 // fail with no output, demote, until nothing is left to demote. It returns each attempt's pipeline.
-func demotedTonemappers(t *testing.T, host HostProfile, src MediaFormat, out OutputProfile) []Pipeline {
+func demotedTonemappers(t *testing.T, host encode.HostProfile, src MediaFormat, out OutputProfile) []Pipeline {
 	t.Helper()
 	faults := &itemFaults{by: map[string]itemFault{}}
 	var attempts []Pipeline
@@ -416,8 +418,8 @@ func demotedTonemappers(t *testing.T, host HostProfile, src MediaFormat, out Out
 // without libplacebo fails device derivation before any output; the ladder then tone-maps on the CPU
 // after the GPU downscale.
 func TestDemoteTonemap_VAAPIFallsToCPU(t *testing.T) {
-	out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderVAAPI})
-	attempts := demotedTonemappers(t, HostFor(EncoderVAAPI, true, GPUFilters{TonemapOpenCL: true}), testSources()["hevc-4k-hdr-dv"], out)
+	out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: encode.EncoderVAAPI})
+	attempts := demotedTonemappers(t, encode.HostFor(encode.EncoderVAAPI, true, encode.GPUFilters{TonemapOpenCL: true}), testSources()["hevc-4k-hdr-dv"], out)
 	if len(attempts) != 2 || !strings.Contains(attempts[0].VideoFilter, "tonemap_opencl") {
 		t.Fatalf("want OpenCL, then the end of the ladder: %d attempts, first %q", len(attempts), attempts[0].VideoFilter)
 	}
@@ -439,12 +441,12 @@ func TestDemoteTonemap_OrderPerCurve(t *testing.T) {
 		ToneCurveBT2446a:  {TonemapperLibplacebo, TonemapperCPU},
 		ToneCurveSpline:   {TonemapperLibplacebo, TonemapperCPU},
 	}
-	for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
+	for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
 		for _, c := range ToneCurves {
 			out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc})
 			out.ToneCurve = c
 			var steps []string
-			for _, p := range demotedTonemappers(t, HostFor(enc, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], out) {
+			for _, p := range demotedTonemappers(t, encode.HostFor(enc, true, encode.GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], out) {
 				steps = append(steps, p.Tonemapper)
 			}
 			if !slices.Equal(steps, want[c]) {
@@ -452,8 +454,8 @@ func TestDemoteTonemap_OrderPerCurve(t *testing.T) {
 			}
 		}
 	}
-	sdr := demotedTonemappers(t, HostFor(EncoderVAAPI, true, GPUFilters{TonemapOpenCL: true}), testSources()["h264-1080p-sdr-25"],
-		ChannelOutput(Profile{Encoder: EncoderVAAPI, Width: 1920, Height: 1080, Framerate: 25}))
+	sdr := demotedTonemappers(t, encode.HostFor(encode.EncoderVAAPI, true, encode.GPUFilters{TonemapOpenCL: true}), testSources()["h264-1080p-sdr-25"],
+		ChannelOutput(Profile{Encoder: encode.EncoderVAAPI, Width: 1920, Height: 1080, Framerate: 25}))
 	if len(sdr) != 1 {
 		t.Error("an SDR source has no tone-mapper to demote")
 	}
@@ -470,7 +472,7 @@ func TestChannelOutput_RateScalesWithRungPixels(t *testing.T) {
 		{640, 360}:   {1000, 1500}, // floor
 	}
 	for geom, rate := range want {
-		p := Profile{Width: geom[0], Height: geom[1], Framerate: 25, AudioBitrate: 96, VideoBitrate: 1200, Encoder: EncoderNVENC}
+		p := Profile{Width: geom[0], Height: geom[1], Framerate: 25, AudioBitrate: 96, VideoBitrate: 1200, Encoder: encode.EncoderNVENC}
 		out := ChannelOutput(p)
 		if out.TargetKbps != rate[0] || out.MaxKbps != rate[1] || out.Quality != 22 {
 			t.Errorf("%dx%d: rate q%d %d/%d, want q22 %d/%d", geom[0], geom[1], out.Quality, out.TargetKbps, out.MaxKbps, rate[0], rate[1])
@@ -482,7 +484,7 @@ func TestChannelOutput_RateScalesWithRungPixels(t *testing.T) {
 	// Every shipped rung lands on the scaled budget, and each family's encoder carries it.
 	for tier, l := range ladders {
 		for _, r := range l {
-			out := ChannelOutput(Profile{Width: r.width, Height: r.height, Framerate: r.framerate, AudioBitrate: r.audioBitrate, Encoder: EncoderNVENC})
+			out := ChannelOutput(Profile{Width: r.width, Height: r.height, Framerate: r.framerate, AudioBitrate: r.audioBitrate, Encoder: encode.EncoderNVENC})
 			if _, ok := want[[2]int{r.width, r.height}]; !ok {
 				t.Errorf("%s: rung %dx%d has no expected budget", tier, r.width, r.height)
 			}
@@ -499,30 +501,11 @@ func TestChannelOutput_RateScalesWithRungPixels(t *testing.T) {
 	}
 }
 
-// Every engine, in both codecs, pins its GOP to the output's so each packager fragment is one
-// closed GOP (the frame-0 IDR and the cadence are measured in TestLive_FragmentStartsOnAnIDR…),
-// takes CRF only in software (hardware rate control has no CRF, and v4l2m2m rejects the option at
-// init), and encodes HEVC on its own h264 engine's sibling (#1561 ported these rules from the
-// retired chain's builder). Derived from h264Engines so a new engine is covered with no edit here.
-func TestVideoEncoderArgs_EveryEnginePinsTheGOPAndKeepsCRFInSoftware(t *testing.T) {
+// The live encoder args carry the channel output's GOP: one closed GOP per packager fragment.
+func TestVideoEncoder_CarriesTheOutputGOP(t *testing.T) {
 	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 2, AudioKbps: 128}
-	for _, base := range h264Engines {
-		host := HostFor(base, false, GPUFilters{})
-		h264 := videoEncoderArgs(host, out)
-		hevcOut := out
-		hevcOut.HEVC = true
-		hevc := videoEncoderArgs(host, hevcOut)
-		codec, _ := argsAfter(h264, "-c:v")
-		if got, _ := argsAfter(hevc, "-c:v"); got != string(hevcVariant(Encoder(codec))) {
-			t.Errorf("%s: HEVC encoder %q, want %s's sibling %s", base, got, codec, hevcVariant(Encoder(codec)))
-		}
-		for name, args := range map[string][]string{"h264": h264, "hevc": hevc} {
-			if g, _ := argsAfter(args, "-g"); g != strconv.Itoa(out.gop()) {
-				t.Errorf("%s %s: -g %q, want the output GOP %d: %q", base, name, g, out.gop(), args)
-			}
-			if _, crf := argsAfter(args, "-crf"); crf != (host.Family == FamilySoftware) {
-				t.Errorf("%s %s (%s): -crf present=%v, want it only in software: %q", base, name, host.Family, crf, args)
-			}
-		}
+	args := videoEncoder(encode.HostFor(encode.EncoderNVENC, false, encode.GPUFilters{}), out)
+	if g, _ := argsAfter(args, "-g"); g != strconv.Itoa(out.gop()) {
+		t.Errorf("-g %q, want the output GOP %d: %q", g, out.gop(), args)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/mediameasure"
@@ -88,7 +89,7 @@ func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *tes
 		tier: func() string { return "balanced" }, encoder: func() string { return "" },
 		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
 			loadCalls++
-			return playout.Capacity{Chosen: playout.EncoderNVENC, MaxChannels: 4}, true
+			return playout.Capacity{Chosen: encode.EncoderNVENC, MaxChannels: 4}, true
 		},
 		ffmpegPath: func() string {
 			close(validationStarted)
@@ -102,7 +103,7 @@ func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *tes
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Fatalf("Profile waited %s for asynchronous capability validation", elapsed)
 	}
-	if profile.Encoder != playout.EncoderNVENC || loadCalls != 1 ||
+	if profile.Encoder != encode.EncoderNVENC || loadCalls != 1 ||
 		r.maxChannels.Load() != 4 || !r.detectReady.Load() {
 		t.Fatalf("first Profile = %+v, load calls=%d max=%d ready=%v; want matching NVENC evidence",
 			profile, loadCalls, r.maxChannels.Load(), r.detectReady.Load())
@@ -465,7 +466,7 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
 
 	_, format := r.PlanFor(t.Context(), path, playout.PlanFull)
-	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("first-play pipeline = %+v, err %v; want measured facts to activate the minimal probe", pipe, err)
 	}
@@ -534,7 +535,7 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 	}
 	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
 	_, format := r.PlanFor(t.Context(), path, playout.PlanFull)
-	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("pipeline without facts = %+v, err %v; want no minimal probe", pipe, err)
 	}
@@ -563,7 +564,7 @@ func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresA
 	go m.Run(ctx)
 
 	_, format := r.PlanFor(ctx, path, playout.PlanFull)
-	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("real-ffprobe facts %+v left MissingFacts %v (err %v)", format, pipe.MissingFacts, err)
 	}
@@ -589,7 +590,7 @@ func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T
 		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
 			loadCalls.Add(1)
 			time.Sleep(200 * time.Millisecond)
-			return playout.Capacity{Chosen: playout.EncoderNVENC, MaxChannels: 4}, true
+			return playout.Capacity{Chosen: encode.EncoderNVENC, MaxChannels: 4}, true
 		},
 		ffmpegPath: func() string { return "/nonexistent/ffmpeg" },
 	}
@@ -601,7 +602,7 @@ func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T
 		t.Fatalf("first Profile after WarmProfile took %s with %d evidence loads; want no load on the tune",
 			elapsed, loadCalls.Load())
 	}
-	if profile.Encoder != playout.EncoderNVENC {
+	if profile.Encoder != encode.EncoderNVENC {
 		t.Fatalf("first Profile encoder %q, want the warmed NVENC evidence", profile.Encoder)
 	}
 	_ = r.detectedEncoder(t.Context())

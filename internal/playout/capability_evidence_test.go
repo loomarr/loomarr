@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing.T) {
@@ -18,19 +20,19 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 		fingerprint: func(context.Context, string, string, Profile) (string, error) { return "host-a", nil },
 		detect: func(context.Context, string, Profile, string) Capacity {
 			detectCalls++
-			return Capacity{Chosen: EncoderNVENC, MaxChannels: 7}
+			return Capacity{Chosen: encode.EncoderNVENC, MaxChannels: 7}
 		},
-		validate: func(context.Context, string, Encoder, Profile) Capability {
+		validate: func(context.Context, string, encode.Encoder, Profile) Capability {
 			validationCalls++
-			return Capability{Encoder: EncoderNVENC, Works: true, PeakRSSBytes: 900 << 20}
+			return Capability{Encoder: encode.EncoderNVENC, Works: true, PeakRSSBytes: 900 << 20}
 		},
 	}
 	first, reused := detectObservedWithEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps)
-	if reused || first.Chosen != EncoderNVENC || first.MaxChannels != 7 || detectCalls != 1 || validationCalls != 0 {
+	if reused || first.Chosen != encode.EncoderNVENC || first.MaxChannels != 7 || detectCalls != 1 || validationCalls != 0 {
 		t.Fatalf("first detection = %+v reused=%v detect=%d validate=%d", first, reused, detectCalls, validationCalls)
 	}
 	second, reused := detectObservedWithEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps)
-	if !reused || second.Chosen != EncoderNVENC || second.MaxChannels != 7 || detectCalls != 1 || validationCalls != 1 {
+	if !reused || second.Chosen != encode.EncoderNVENC || second.MaxChannels != 7 || detectCalls != 1 || validationCalls != 1 {
 		t.Fatalf("reused detection = %+v reused=%v detect=%d validate=%d", second, reused, detectCalls, validationCalls)
 	} // The validation trial is a real encode: its peak RSS is the host's current per-encode cost.
 	if second.EncodeHostBytes != 900<<20 {
@@ -43,7 +45,7 @@ func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	if err := storeCapabilityEvidence(root, capabilityEvidence{
 		Version: capabilityEvidenceVersion, Fingerprint: "host-a",
-		Encoder: EncoderNVENC, MaxChannels: 7, ObservedAt: now,
+		Encoder: encode.EncoderNVENC, MaxChannels: 7, ObservedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -53,13 +55,13 @@ func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
 		capabilityEvidenceDependencies{
 			now:         func() time.Time { return now },
 			fingerprint: func(context.Context, string, string, Profile) (string, error) { return "host-a", nil },
-			validate: func(context.Context, string, Encoder, Profile) Capability {
+			validate: func(context.Context, string, encode.Encoder, Profile) Capability {
 				validationCalls++
-				return Capability{Encoder: EncoderNVENC, Works: true}
+				return Capability{Encoder: encode.EncoderNVENC, Works: true}
 			},
 		},
 	)
-	if !ok || capacity.Chosen != EncoderNVENC || capacity.MaxChannels != 7 || validationCalls != 0 {
+	if !ok || capacity.Chosen != encode.EncoderNVENC || capacity.MaxChannels != 7 || validationCalls != 0 {
 		t.Fatalf("matching evidence = %+v ok=%v validation calls=%d", capacity, ok, validationCalls)
 	}
 }
@@ -102,11 +104,11 @@ func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *t
 				fingerprint: func(context.Context, string, string, Profile) (string, error) { return host, nil },
 				detect: func(context.Context, string, Profile, string) Capacity {
 					detectCalls++
-					return Capacity{Chosen: EncoderNVENC, MaxChannels: 5}
+					return Capacity{Chosen: encode.EncoderNVENC, MaxChannels: 5}
 				},
-				validate: func(context.Context, string, Encoder, Profile) Capability {
+				validate: func(context.Context, string, encode.Encoder, Profile) Capability {
 					validationCalls++
-					return Capability{Encoder: EncoderNVENC, Works: test.works}
+					return Capability{Encoder: encode.EncoderNVENC, Works: test.works}
 				},
 			}
 			_, _ = detectObservedWithEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps)

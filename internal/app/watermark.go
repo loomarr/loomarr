@@ -22,6 +22,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -39,7 +40,7 @@ import (
 type channelWatermarks struct {
 	ffmpeg  func() string
 	tonemap func() bool
-	gpu     func() playout.GPUFilters
+	gpu     func() encode.GPUFilters
 	dir     string
 	// install is the live install-wide opacity and look (watermarkInstall), read on every For.
 	install func() schedule.WatermarkInstall
@@ -60,7 +61,7 @@ type channelWatermarks struct {
 	lifetime context.Context
 
 	mu     sync.Mutex
-	gates  map[playout.Encoder]*watermarkGate
+	gates  map[encode.Encoder]*watermarkGate
 	render sync.Mutex // one render at a time; each is cached on disk
 
 	kernelOnce sync.Once
@@ -137,7 +138,7 @@ const renderVersion = "1"
 // For is the channel packager's resolver: the channel's rendered bug for this output, or nil. at is
 // the airing's start (playout.Airing.StartedAt), which picks the holiday version: stable across a
 // retried open and a mid-programme tune-in, so the version changes only at a programme boundary.
-func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playout.Encoder, width, height int, at time.Time) *playout.Watermark {
+func (c *channelWatermarks) For(ctx context.Context, channelID string, enc encode.Encoder, width, height int, at time.Time) *playout.Watermark {
 	gate := c.gate(enc)
 	if !gate.works.Load() {
 		return nil
@@ -487,7 +488,7 @@ func writePNGAtomic(path string, img image.Image) error {
 }
 
 // gate returns the encoder's self-check state, starting the check on first use.
-func (c *channelWatermarks) gate(enc playout.Encoder) *watermarkGate {
+func (c *channelWatermarks) gate(enc encode.Encoder) *watermarkGate {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if g, ok := c.gates[enc]; ok {
@@ -495,15 +496,15 @@ func (c *channelWatermarks) gate(enc playout.Encoder) *watermarkGate {
 	}
 	g := &watermarkGate{}
 	if c.gates == nil {
-		c.gates = map[playout.Encoder]*watermarkGate{}
+		c.gates = map[encode.Encoder]*watermarkGate{}
 	}
 	c.gates[enc] = g
 	go c.check(enc, g)
 	return g
 }
 
-func (c *channelWatermarks) check(enc playout.Encoder, g *watermarkGate) {
-	host := playout.HostFor(enc, c.tonemap(), c.gpu())
+func (c *channelWatermarks) check(enc encode.Encoder, g *watermarkGate) {
+	host := encode.HostFor(enc, c.tonemap(), c.gpu())
 	dir := filepath.Join(c.dir, "check-"+string(enc))
 	r := playout.WatermarkCheck(c.lifetime, c.ffmpeg(), host, dir)
 	_ = os.RemoveAll(dir)

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -44,14 +45,14 @@ type PackagerItem struct {
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
 // channel turned it off or this host's GPU overlay failed its self-check (WatermarkCheck); the item
 // then airs bug-free.
-type WatermarkFor func(ctx context.Context, enc Encoder, width, height int) *Watermark
+type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *Watermark
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
 // lease's).
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, class FormatClass, rung int) (HostProfile, OutputProfile)
+	Output(ctx context.Context, channelID string, class FormatClass, rung int) (encode.HostProfile, OutputProfile)
 	// Premium is the premium format the channel airs on this host (its lineup's, after
 	// ChannelFormats.OnHost); empty when none.
 	Premium(ctx context.Context, channelID string) FormatClass
@@ -103,7 +104,7 @@ type PackagerHLS struct {
 
 type packagedChannel struct {
 	p       *packager.Packager
-	host    HostProfile
+	host    encode.HostProfile
 	out     OutputProfile
 	started time.Time
 	dir     string
@@ -567,7 +568,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
 // made while no viewer has fetched the channel recently is marked unwatched (WithUnwatched).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, seen *viewership, log *slog.Logger,
+	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, seen *viewership, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
@@ -624,7 +625,7 @@ func (m *PackagerHLS) schedule(
 		}
 		var monitor *RungMonitor
 		switch {
-		case host.Family != FamilySoftware:
+		case host.Family != encode.FamilySoftware:
 			ladder.begin("", nil)
 		case resumed:
 			monitor = ladder.current()
@@ -813,7 +814,7 @@ type itemFault struct {
 	noOpenCL, noLibplacebo bool
 }
 
-func (f itemFault) apply(h HostProfile) HostProfile {
+func (f itemFault) apply(h encode.HostProfile) encode.HostProfile {
 	if f.cpuDecode {
 		h.DecodeCodecs = nil
 	}
@@ -825,7 +826,7 @@ func (f itemFault) apply(h HostProfile) HostProfile {
 // leftTheGPU reports a demotion that moved a stage onto the CPU, the live hardware→software fallback
 // the metrics count: the decode, or the tone-map once no GPU tone-mapper is left on this host.
 // OpenCL → libplacebo stays on the GPU and is not one.
-func leftTheGPU(before, after itemFault, host HostProfile) bool {
+func leftTheGPU(before, after itemFault, host encode.HostProfile) bool {
 	if after.cpuDecode && !before.cpuDecode {
 		return true
 	}
@@ -869,7 +870,7 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
 // the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
 // a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
 	h := fault.apply(host)
 	h.Overlay = wm != nil
 	pl, err := BuildItem(h, it.Format, out, wm)
@@ -966,7 +967,7 @@ const slateEncodeTimeout = time.Minute
 // slate returns the house slate for an encode as a SlateSource: the packager waits on it only when a
 // slot needs slate (#1512 G2: never on the tune path; the first manifest waits for a real item
 // anyway). The encode starts on that first need or, when prewarmed, once the channel is on air.
-func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateSource {
+func (m *PackagerHLS) slate(host encode.HostProfile, out OutputProfile) packager.SlateSource {
 	return func(ctx context.Context) (*packager.Slate, error) {
 		e := m.slateEncodeFor(host, out)
 		select {
@@ -981,7 +982,7 @@ func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateS
 // slateEncodeFor returns the (host, output) slate encode, starting it in the background if none is
 // running or done. Encodes are shared across channels and sessions; a failed one is forgotten, so
 // the next need encodes it again.
-func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slateEncode {
+func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile) *slateEncode {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
 	e := m.slates[key]
@@ -1012,7 +1013,7 @@ func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slate
 
 // encodeSlate encodes a house slate: a black, silent source run through the same builder and
 // encoder as the items, so its sample descriptions match theirs.
-func (m *PackagerHLS) encodeSlate(ctx context.Context, host HostProfile, out OutputProfile) (*packager.Slate, error) {
+func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, out OutputProfile) (*packager.Slate, error) {
 	src := filepath.Join(m.root, fmt.Sprintf("slate-%dx%d-%d.mkv", out.Width, out.Height, out.FPS))
 	if _, err := os.Stat(src); err != nil {
 		// Two hosts with one output size may make the source at once: each writes its own temp.
@@ -1282,7 +1283,7 @@ type limitedWriter struct {
 }
 
 func (l *limitedWriter) Write(b []byte) (int, error) {
-	if !l.decodeFault && IsHardwareDecodeFault(string(b)) {
+	if !l.decodeFault && encode.IsHardwareDecodeFault(string(b)) {
 		l.decodeFault = true
 	}
 	if l.n > 0 {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -15,7 +16,7 @@ import (
 // encoder is reused, but the HDR class is measured at every start: the self-check is a startup
 // check, and a driver update can break a tone-mapper without changing the fingerprint.
 func (r *playoutResolver) probeCapacity(ctx context.Context, foreground playout.Foreground) {
-	enc := playout.Encoder(r.encoder())
+	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		enc = r.detectedEncoder(ctx)
 	}
@@ -101,7 +102,7 @@ func (r *playoutResolver) probeCapacity(ctx context.Context, foreground playout.
 }
 
 // CostsFor is the measured cost table for enc, nil until the probe has published one for it.
-func (r *playoutResolver) CostsFor(enc playout.Encoder) *playout.MeasuredCosts {
+func (r *playoutResolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
 	m := r.measuredCosts.Load()
 	if m == nil || m.Encoder != enc {
 		return nil

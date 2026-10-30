@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -19,7 +20,7 @@ func (idlePlayoutObserver) Capacity() int                         { return 0 }
 func (idlePlayoutObserver) ObserveProgramCost(string, playout.EncodePlan, playout.StreamClass, time.Duration, time.Duration) {
 }
 
-func (idlePlayoutObserver) ReportProgram(string, playout.EncodePlan, playout.Encoder, playout.StreamClass, playout.Progress) {
+func (idlePlayoutObserver) ReportProgram(string, playout.EncodePlan, encode.Encoder, playout.StreamClass, playout.Progress) {
 }
 func (idlePlayoutObserver) AdmitProgram(context.Context, string, playout.EncodePlan, playout.StreamClass) bool {
 	return true
@@ -31,12 +32,12 @@ func (idlePlayoutObserver) Budget() playout.BudgetSnapshot                     {
 // still operational truth: VAAPI/QSV is hardware even when NVIDIA-only VRAM telemetry is unknown.
 func TestPlayoutStatusProjectsIdleHardwareCapabilityWithoutVRAM(t *testing.T) {
 	capability := fixedPlayoutCapability{capability: playout.Capacity{
-		Chosen: playout.EncoderVAAPI, MaxChannels: 3,
+		Chosen: encode.EncoderVAAPI, MaxChannels: 3,
 	}}
 	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
 
 	got := s.playoutStatus(t.Context(), time.Now())
-	if !got.Capability.Hardware || got.Capability.Encoder != string(playout.EncoderVAAPI) || got.Capability.MaxChannels != 3 {
+	if !got.Capability.Hardware || got.Capability.Encoder != string(encode.EncoderVAAPI) || got.Capability.MaxChannels != 3 {
 		t.Fatalf("idle capability = %+v, want retained VAAPI hardware capacity", got.Capability)
 	}
 	if got.GPU.VRAMGiB != 0 {
@@ -46,12 +47,12 @@ func TestPlayoutStatusProjectsIdleHardwareCapabilityWithoutVRAM(t *testing.T) {
 
 func TestPlayoutStatusProjectsIdleSoftwareCapability(t *testing.T) {
 	capability := fixedPlayoutCapability{capability: playout.Capacity{
-		Chosen: playout.EncoderSoftware, MaxChannels: 1,
+		Chosen: encode.EncoderSoftware, MaxChannels: 1,
 	}}
 	s := &Server{playoutObserver: idlePlayoutObserver{capability}, playoutCapability: capability.Capability}
 
 	got := s.playoutStatus(t.Context(), time.Now())
-	if got.Capability.Hardware || got.Capability.Encoder != string(playout.EncoderSoftware) || got.Capability.MaxChannels != 1 {
+	if got.Capability.Hardware || got.Capability.Encoder != string(encode.EncoderSoftware) || got.Capability.MaxChannels != 1 {
 		t.Fatalf("idle capability = %+v, want retained software capacity", got.Capability)
 	}
 }

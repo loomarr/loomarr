@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -273,7 +274,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	// the production pipeline (Build, FragmentArgs) and the packager joins them into one fMP4
 	// timeline. After them the schedule has a card, whose slate this fixture cannot load, so the
 	// packager stops there with everything aired on disk.
-	host := playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{})
 	out := playout.OutputProfile{Width: 320, Height: 180, FPS: 30, Quality: 23, TargetKbps: 600, MaxKbps: 900, GOPSeconds: 1, AudioKbps: 128}
 	formatOf := playout.FFprobeFormatNextTo(ffmpeg)
 	airDir := t.TempDir()

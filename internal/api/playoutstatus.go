@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -164,7 +165,7 @@ func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus
 		measured := s.playoutCapability()
 		capability = PlayoutCapability{
 			Encoder:     string(measured.Chosen),
-			Hardware:    measured.Chosen != "" && !playout.IsSoftwareEncoder(measured.Chosen),
+			Hardware:    measured.Chosen != "" && !encode.IsSoftware(measured.Chosen),
 			MaxChannels: measured.MaxChannels,
 		}
 	}

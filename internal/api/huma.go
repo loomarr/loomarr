@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
@@ -250,7 +251,7 @@ type Server struct {
 	// source transcodes untone-mapped rather than emitting a filter the build would reject at
 	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
 	playoutTonemap    func() bool
-	playoutGPUTonemap func() playout.GPUFilters
+	playoutGPUTonemap func() encode.GPUFilters
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -1159,7 +1160,7 @@ type Options struct {
 	PlayoutTonemap func() bool
 	// PlayoutGPUTonemap reports which GPU tone-mappers the build carries (playout.GPUFiltersFor).
 	// Nil ⇒ none: HDR then tone-maps on the CPU after the GPU downscale.
-	PlayoutGPUTonemap func() playout.GPUFilters
+	PlayoutGPUTonemap func() encode.GPUFilters
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

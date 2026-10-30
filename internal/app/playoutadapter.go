@@ -15,6 +15,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
@@ -194,7 +195,7 @@ type playoutResolver struct {
 	detectReady    atomic.Bool
 	detectedMu     sync.RWMutex
 	detectContext  context.Context
-	detected       playout.Encoder
+	detected       encode.Encoder
 	maxChannels    atomic.Int64
 	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
 	encodeHostBytes atomic.Int64
@@ -1588,7 +1589,7 @@ func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offs
 }
 
 func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {
-	enc := playout.Encoder(r.encoder())
+	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		// A matching persisted result is available to this first tune after only its host fingerprint
 		// matches. Its real encoder validation runs asynchronously; a miss likewise starts the full
@@ -1602,7 +1603,7 @@ func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
 		r.reuseEncoderEvidence(ctx)
-		enc = playout.EncoderSoftware
+		enc = encode.EncoderSoftware
 		if r.detectReady.Load() {
 			enc = r.publishedEncoder()
 		}
@@ -1655,7 +1656,7 @@ func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
 // everything after completion reads the result. A matching persisted hardware result substitutes
 // one short real TS encode, while an FFmpeg/GPU/profile mismatch or failed validation performs the
 // complete measurement and atomically replaces that evidence.
-func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
+func (r *playoutResolver) detectedEncoder(ctx context.Context) encode.Encoder {
 	r.detectOnce.Do(func() {
 		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
@@ -1707,7 +1708,7 @@ func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused b
 	r.detectReady.Store(true)
 }
 
-func (r *playoutResolver) publishedEncoder() playout.Encoder {
+func (r *playoutResolver) publishedEncoder() encode.Encoder {
 	r.detectedMu.RLock()
 	defer r.detectedMu.RUnlock()
 	return r.detected
