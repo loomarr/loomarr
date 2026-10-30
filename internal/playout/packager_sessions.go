@@ -41,7 +41,7 @@ type SessionObserver interface {
 // and cannot accidentally mutate an encoder's state while it runs.
 type SessionStat struct {
 	ChannelID string `json:"channelId"`
-	// Target names the codec audience this encoder serves — "browser" or "mediaserver" (§9.1 V47).
+	// Target names the format this encoder airs: a FormatClass (1080p-h264-sdr, 4k-hevc-sdr, …).
 	Target   string  `json:"target"`
 	Viewers  int     `json:"viewers"`
 	Encoder  string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`

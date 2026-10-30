@@ -5,6 +5,7 @@ import {
   PlayerChrome,
   PlayerCover,
   PlayerInfo,
+  PlayerPlaybackInfo,
   PlayerSettings,
   PlayerSheet,
   PlayerShortcuts,
@@ -250,6 +251,7 @@ const Settings: Story = {
             { label: "Spanish", selected: false, value: "spa" },
           ]}
           density="pointer"
+          onPlaybackInfo={fn()}
           onSwitchSound={fn()}
           quality={{
             onSelect: fn(),
@@ -279,6 +281,44 @@ const Info: Story = {
       </PlayerSheet>
     ) : undefined,
     transport: { ...transport, infoOpen: true },
+  },
+};
+
+// Playback info as an admin reads it: the stream, then the server's side and Copy stream URL.
+const PlaybackInfo: Story = {
+  args: {
+    sheet: (
+      <PlayerSheet
+        channelLabel="CH 7 · Coast 90s"
+        density="pointer"
+        icon="info"
+        onClose={fn()}
+        title="Playback info"
+      >
+        <PlayerPlaybackInfo
+          admin={{
+            copied: false,
+            onCopyStreamUrl: fn(),
+            rows: [
+              ["Encoder", "nvidia · hardware"],
+              ["Transcode", "Transcoding at 1.40× realtime — comfortable margin."],
+              ["Health", "ok"],
+              ["Session", "playback_3f9c2a"],
+            ],
+          }}
+          density="pointer"
+          stream={[
+            ["Quality", "Auto · 1080p (rung 1 of 2)"],
+            ["Resolution", "1920×1080 @ 29.97"],
+            ["Codec", "H.264 High · AAC-LC"],
+            ["Bitrate", "6.2 Mbps"],
+            ["Buffer", "12.4 s"],
+            ["Behind live", "0 s"],
+          ]}
+        />
+      </PlayerSheet>
+    ),
+    transport: { ...transport, settingsOpen: true },
   },
 };
 
@@ -354,6 +394,7 @@ export {
   Info,
   NoSchedule,
   OffAir,
+  PlaybackInfo,
   Playing,
   Settings,
   Shortcuts,

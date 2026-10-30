@@ -9,6 +9,7 @@ import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleUserRound from "lucide-react-native/icons/circle-user-round";
 import Clapperboard from "lucide-react-native/icons/clapperboard";
 import Clock3 from "lucide-react-native/icons/clock-3";
+import Copy from "lucide-react-native/icons/copy";
 import Ellipsis from "lucide-react-native/icons/ellipsis";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
@@ -47,6 +48,8 @@ const icons = {
   channelUp: ChevronUp,
   channels: Tv,
   close: X,
+  // The player's Playback info: Copy stream URL (§9, admins).
+  copy: Copy,
   // The trailing mark of a phone list row that opens or connects to something.
   disclosure: ChevronRight,
   // Web's phone-width bottom bar (#1785, #1659 Shell nav) — the admin/member destinations

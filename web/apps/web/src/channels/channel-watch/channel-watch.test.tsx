@@ -23,6 +23,7 @@ const hls = vi.hoisted(() => ({
   ladder: { rungs: [] } as { rungs: { height: number; index: number }[]; height?: number },
   quality: undefined as unknown,
   attach: vi.fn(() => () => undefined),
+  playbackFacts: () => ({ bufferMs: 8_000, height: 1080, url: "/v1/stream/ch-1.m3u8", width: 1920 }),
   liveTransport: {
     state: {
       mode: "live",
@@ -48,6 +49,7 @@ vi.mock("../use-hls-player", () => ({
       attach: hls.attach,
       liveTransport: hls.liveTransport,
       ladder: hls.ladder,
+      playbackFacts: hls.playbackFacts,
     };
   },
 }));
@@ -448,6 +450,23 @@ describe("ChannelWatch — full-bleed route", () => {
     await openSettings();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
+  });
+
+  // Playback info (#2088 decision 13): from Settings, Settings' ⚙ stays lit, and closing goes back to ⚙.
+  it("opens Playback info from Settings, and closing it hands focus back to ⚙", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    await userEvent.click(within(await openSettings()).getByRole("button", { name: "Playback info" }));
+    const sheet = screen.getByRole("dialog", { name: "Playback info" });
+    expect(within(sheet).getByText("1920×1080")).toBeInTheDocument();
+    expect(within(sheet).getByText("8.0 s")).toBeInTheDocument();
+    // A member reads no server side.
+    expect(within(sheet).queryByText("Session")).not.toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Playback info" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
   });
 

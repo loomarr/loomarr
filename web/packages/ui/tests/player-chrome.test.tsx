@@ -11,6 +11,8 @@ import {
   type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
+  PlayerPlaybackInfo,
+  PlayerSettings,
   PlayerShortcuts,
   type PlayerTransportProps,
 } from "../index";
@@ -244,6 +246,58 @@ describe("PlayerInfo", () => {
       "S1 E1 “Pilot”",
     ])
       expect(host.textContent).toContain(text);
+  });
+});
+
+describe("PlayerPlaybackInfo", () => {
+  const stream = [
+    ["Quality", "Auto · 1080p (rung 1 of 2)"],
+    ["Buffer", "12.4 s"],
+  ] as const;
+
+  it("reads a member the stream alone", () => {
+    const host = mount(<PlayerPlaybackInfo density="pointer" stream={stream} />);
+    expect(host.textContent).toContain("Auto · 1080p (rung 1 of 2)");
+    expect(host.textContent).not.toContain("Admin");
+    expect(button(host, "Copy stream URL")).toBeUndefined();
+  });
+
+  it("adds the server's side for an admin, with Copy stream URL", () => {
+    const onCopyStreamUrl = vi.fn();
+    const host = mount(
+      <PlayerPlaybackInfo
+        admin={{ copied: false, onCopyStreamUrl, rows: [["Session", "playback_1"]] }}
+        density="pointer"
+        stream={stream}
+      />,
+    );
+    expect(host.textContent).toContain("Admin only");
+    expect(host.textContent).toContain("playback_1");
+    act(() => button(host, "Copy stream URL")?.click());
+    expect(onCopyStreamUrl).toHaveBeenCalledOnce();
+  });
+});
+
+describe("PlayerSettings", () => {
+  it("ends with the way on to Playback info", () => {
+    const onPlaybackInfo = vi.fn();
+    const host = mount(
+      <PlayerSettings
+        audio={[]}
+        density="pointer"
+        onPlaybackInfo={onPlaybackInfo}
+        onSwitchSound={vi.fn()}
+        switchSound
+      />,
+    );
+    act(() => button(host, "Playback info")?.click());
+    expect(onPlaybackInfo).toHaveBeenCalledOnce();
+    expect(
+      button(
+        mount(<PlayerSettings audio={[]} density="pointer" onSwitchSound={vi.fn()} switchSound />),
+        "Playback info",
+      ),
+    ).toBeUndefined();
   });
 });
 

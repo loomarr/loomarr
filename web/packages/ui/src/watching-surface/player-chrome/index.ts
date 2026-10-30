@@ -17,6 +17,8 @@ export type { PlayerCoverProps } from "./player-cover";
 export { PlayerCover } from "./player-cover";
 export type { PlayerInfoProps } from "./player-info";
 export { PlayerInfo } from "./player-info";
+export type { PlayerPlaybackInfoProps } from "./player-playback-info";
+export { PlayerPlaybackInfo } from "./player-playback-info";
 export type { PlayerSettingsProps } from "./player-settings";
 export { PlayerSettings } from "./player-settings";
 export { PlayerSheet } from "./player-sheet";

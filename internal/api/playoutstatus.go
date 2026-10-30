@@ -60,7 +60,7 @@ type ChannelHealth struct {
 	// (a just-deleted channel still finishing its stream), so the row degrades to the id alone.
 	Number int    `json:"number" doc:"Channel number for display (0 = unknown)"`
 	Name   string `json:"name" doc:"Channel name for display (empty = unknown)"`
-	Target string `json:"target" doc:"Codec audience: browser|mediaserver (§9.1 V47)"`
+	Target string `json:"target" doc:"The format this encode airs: 1080p-h264-sdr, 4k-hevc-sdr or 4k-hevc-hdr"`
 	// Viewers/BufferedMS are the live throughput, folded in from the session so the merged panel needs
 	// only this endpoint (previously split across GET /v1/playout/sessions).
 	Viewers    int           `json:"viewers" doc:"How many clients are attached"`

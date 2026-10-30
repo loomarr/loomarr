@@ -1266,7 +1266,7 @@ components:
           format: double
           type: number
         target:
-          description: "Codec audience: browser|mediaserver (§9.1 V47)"
+          description: "The format this encode airs: 1080p-h264-sdr, 4k-hevc-sdr or 4k-hevc-hdr"
           type: string
         viewers:
           description: How many clients are attached

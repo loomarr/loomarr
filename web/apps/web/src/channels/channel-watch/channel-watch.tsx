@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
+import { PlaybackInfoSheet } from "@/channels/playback-info-sheet";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { useNumberEntry } from "@/channels/use-number-entry";
 import { useQualityPreference } from "@/channels/use-quality-preference";
@@ -99,7 +100,7 @@ const INFO_PLAYING_MS = 8_000;
 const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
 
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
-type WatchSheet = "channels" | "info" | "settings" | "shortcuts";
+type WatchSheet = "channels" | "info" | "playback-info" | "settings" | "shortcuts";
 
 // HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
 // hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
@@ -489,6 +490,12 @@ const ChannelWatch = ({
         <PlayerSettings
           audio={audio}
           density={density}
+          // Settings hands its place to Playback info, and focus goes back to ⚙, Settings' opener: the
+          // row pressed leaves with Settings, and focus on <body> would answer no key, not even Esc.
+          onPlaybackInfo={() => {
+            sheetOpenerRef.current?.focus({ preventScroll: true });
+            setSheet("playback-info");
+          }}
           onSwitchSound={setSwitchSoundOn}
           quality={
             qualityOptions && {
@@ -497,6 +504,25 @@ const ChannelWatch = ({
             }
           }
           switchSound={switchSoundOn}
+        />
+      </PlayerSheet>
+    ) : sheet === "playback-info" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density={density}
+        icon="info"
+        onClose={closeSheet}
+        title="Playback info"
+      >
+        <PlaybackInfoSheet
+          auto={!pinned}
+          channelId={channel.id}
+          density={density}
+          isAdmin={isAdmin}
+          lagSeconds={player.liveTransport.state.lagSeconds}
+          playbackFacts={player.playbackFacts}
+          rungLabel={rungLabel}
+          sessionId={player.playbackSessionId}
         />
       </PlayerSheet>
     ) : sheet === "info" && info ? (
@@ -604,7 +630,7 @@ const ChannelWatch = ({
             onVolume: chrome.setVolume,
             playing: chrome.playing,
             pointer: !touch,
-            settingsOpen: sheet === "settings",
+            settingsOpen: sheet === "settings" || sheet === "playback-info",
             volume: chrome.volume,
           }}
           visible={chrome.controlsShown && !tuning}

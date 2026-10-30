@@ -6,6 +6,7 @@ import { Pressable, View } from "react-native";
 // rung on air) and the channel's own rungs, the viewer's to choose (#2088 decision 7). Then the
 // channel's audio language, shown — it is the channel's default, set by an admin on Channel info,
 // until a second rendition lets each viewer choose (#2088 step 9) — and the channel-change sound.
+// Last, the way on to Playback info.
 
 interface SettingsOption {
   label: string;
@@ -17,6 +18,8 @@ interface PlayerSettingsProps {
   /** The channel's audio languages, the one airing marked; read-only here. */
   audio: readonly SettingsOption[];
   density: Density;
+  /** Opens Playback info (#2088 decision 13), the sheet's last row. */
+  onPlaybackInfo?: () => void;
   onSwitchSound: (on: boolean) => void;
   /** Auto and the rungs; omitted while the player has no ladder to offer (native HLS picks itself). */
   quality?: { onSelect: (value: string) => void; options: readonly SettingsOption[] };
@@ -80,7 +83,45 @@ const SectionLabel = ({ density, label }: { density: Density; label: string }) =
   </Text>
 );
 
-const PlayerSettings = ({ audio, density, onSwitchSound, quality, switchSound }: PlayerSettingsProps) => (
+// The way on to another sheet: icon, label, and a chevron, behind a rule.
+const NavRow = ({ density, label, onPress }: { density: Density; label: string; onPress: () => void }) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <View style={{ borderTopColor: playerChrome.glassRing, borderTopWidth: 1, paddingTop: 8 }}>
+      <Pressable
+        aria-label={label}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        onPress={onPress}
+        role="button"
+        style={{
+          alignItems: "center",
+          backgroundColor: hovered ? playerChrome.glassTop : "transparent",
+          borderRadius: 6,
+          flexDirection: "row",
+          gap: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+        }}
+      >
+        <Icon color={playerChrome.textSecondary} decorative glyph={icons.info} size="compact" />
+        <Text density={density} style={{ flex: 1, textAlign: "left" }} textRole="compact" tone="primary">
+          {label}
+        </Text>
+        <Icon color={playerChrome.textMuted} decorative glyph={icons.disclosure} size="compact" />
+      </Pressable>
+    </View>
+  );
+};
+
+const PlayerSettings = ({
+  audio,
+  density,
+  onPlaybackInfo,
+  onSwitchSound,
+  quality,
+  switchSound,
+}: PlayerSettingsProps) => (
   <View style={{ gap: 20 }}>
     {quality ? (
       <View style={{ gap: 6 }}>
@@ -113,6 +154,7 @@ const PlayerSettings = ({ audio, density, onSwitchSound, quality, switchSound }:
         onCheckedChange={onSwitchSound}
       />
     </View>
+    {onPlaybackInfo ? <NavRow density={density} label="Playback info" onPress={onPlaybackInfo} /> : null}
   </View>
 );
 

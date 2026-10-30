@@ -95,6 +95,27 @@ interface UseBrowserHlsPlayer {
    * the manifest is read, and on native HLS, which picks for itself.
    */
   ladder: { rungs: readonly LiveRung[]; height?: number };
+  /**
+   * What the player is playing now, read on demand (Playback info samples it while open): the
+   * rung and its declared bitrate and codecs from the master, the decoded picture, the buffer ahead
+   * and the signed stream URL. Undefined before a source is bound.
+   */
+  playbackFacts: () => LivePlaybackFacts | undefined;
+}
+
+interface LivePlaybackFacts {
+  /** The playing rung's declared bandwidth, bit/s; undefined on native HLS. */
+  bitrate?: number;
+  bufferMs: number;
+  /** The playing rung's CODECS, e.g. `avc1.640028,mp4a.40.2`; undefined on native HLS. */
+  codecs?: string;
+  frameRate?: number;
+  height: number;
+  /** The playing rung's place in the master, from 1; undefined on native HLS. */
+  rung?: { number: number; of: number };
+  /** The signed stream URL this player was given, as minted (often relative). */
+  url: string;
+  width: number;
 }
 
 // What MediaSource can decode: the gate on the premium rung.
@@ -336,6 +357,8 @@ function useBrowserHlsPlayer({
     rungs: [],
   });
   const playbackSessionIDRef = useRef(createPlaybackSessionID());
+  // The element and URL last bound, for playbackFacts.
+  const boundRef = useRef<{ channelId: string; url: string; video: HTMLVideoElement } | undefined>(undefined);
   const channelIdentityRef = useRef(channelId);
   const replacedChannelRef = useRef<string | undefined>(undefined);
   if (channelIdentityRef.current !== channelId) {
@@ -1107,6 +1130,7 @@ function useBrowserHlsPlayer({
             setState({ channelId, status: "error", error: "Couldn't get a stream for this channel." });
             return;
           }
+          boundRef.current = { channelId, url: src, video };
           return bind(video, src, current).then((nextTeardown) => {
             if (!current()) {
               nextTeardown();
@@ -1166,6 +1190,29 @@ function useBrowserHlsPlayer({
     if (level !== hls.currentLevel) hls.currentLevel = level;
   }, [quality]);
 
+  const playbackFacts = useCallback((): LivePlaybackFacts | undefined => {
+    const bound = boundRef.current;
+    if (!bound || bound.channelId !== channelIdentityRef.current) return undefined;
+    const { url, video } = bound;
+    const buffered = video.buffered;
+    const bufferMs =
+      buffered.length === 0
+        ? 0
+        : Math.max(0, Math.round((buffered.end(buffered.length - 1) - video.currentTime) * 1_000));
+    const hls = hlsRef.current.instance;
+    const playing = hls?.levels[hls.currentLevel];
+    return {
+      bitrate: playing?.bitrate,
+      bufferMs,
+      codecs: playing?.attrs.CODECS,
+      frameRate: playing?.frameRate || undefined,
+      height: video.videoHeight || playing?.height || 0,
+      rung: playing && hls ? { number: hls.currentLevel + 1, of: hls.levels.length } : undefined,
+      url,
+      width: video.videoWidth || playing?.width || 0,
+    };
+  }, []);
+
   return {
     status,
     error,
@@ -1174,6 +1221,7 @@ function useBrowserHlsPlayer({
     liveTransport,
     stillURL: still?.channelId === channelId ? still.url : undefined,
     ladder: ladder.channelId === channelId ? { height: ladder.height, rungs: ladder.rungs } : { rungs: [] },
+    playbackFacts,
   };
 }
 
@@ -1186,6 +1234,7 @@ export type {
   BrowserTuneAttempt,
   BrowserTunePhase,
   LiveLevel,
+  LivePlaybackFacts,
   LiveQuality,
   LiveRung,
   UseBrowserHlsPlayer,
