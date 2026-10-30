@@ -48,13 +48,13 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	tool.ExecutableSHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	lineage, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
 		ClipDir: root, Source: master, Input: Probed{DurationMs: 30_000, Height: 480},
-		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Recipe: mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine()), Tool: tool,
 		Probe: func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil },
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 		},
 		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-			if request.In != filepath.Join(root, filepath.FromSlash(master.Path)) || request.TargetLUFS != 0 || request.Profile.CRF != 14 {
+			if request.In != filepath.Join(root, filepath.FromSlash(master.Path)) || request.TargetLUFS != 0 || request.Profile.KeyframeSeconds != 1 {
 				t.Fatalf("evidence request = %+v", request)
 			}
 			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("high quality evidence bytes"), 0o600)
@@ -63,7 +63,7 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lineage.Asset.Role != MediaAssetEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v1" {
+	if lineage.Asset.Role != MediaAssetEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v2" {
 		t.Fatalf("evidence lineage = %+v", lineage)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(lineage.Asset.Path))); err != nil {
@@ -103,7 +103,7 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 	}
 	_, err = buildMediaDerivative(context.Background(), mediaDerivativeRequest{
 		ClipDir: root, Source: master, Input: Probed{DurationMs: 30_000, Height: 480},
-		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Recipe: mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine()), Tool: tool,
 		Probe: func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil },
 		Verify: func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
 			return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil

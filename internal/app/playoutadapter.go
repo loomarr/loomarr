@@ -1714,6 +1714,20 @@ func (r *playoutResolver) publishedEncoder() encode.Encoder {
 	return r.detected
 }
 
+// fileEncodeHost is the hardware filler derivatives encode on (#2121), the channels' own: the
+// operator's pinned encoder, else the one detection published, and software until detection
+// settles. encode.FileFamily then keeps a family without a measured level in software.
+func (r *playoutResolver) fileEncodeHost(pinned encode.Encoder) encode.HostProfile {
+	enc := pinned
+	if enc == "" && r != nil && r.detectReady.Load() {
+		enc = r.publishedEncoder()
+	}
+	if enc == "" {
+		enc = encode.EncoderSoftware
+	}
+	return encode.HostFor(enc, false, encode.GPUFilters{})
+}
+
 // PublishedCapability returns only the encoder result already published by the asynchronous
 // capability probe. Dashboard polling must never start or wait for a benchmark.
 func (r *playoutResolver) PublishedCapability() playout.Capacity {

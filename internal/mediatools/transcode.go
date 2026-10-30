@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/bgexec"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -40,11 +41,15 @@ import (
 type MezzanineProfile struct {
 	// VideoCodec is the universal floor — everything decodes h264.
 	VideoCodec string
-	// CRF is QUALITY-targeted rather than bitrate-targeted, so a 240p advert and a 1080p one do
-	// not get the same bitrate budget: the small one stays small instead of being padded, and the
-	// large one is not starved.
+	// Family is the hardware family the video encodes on (encode.FileFamily, #2121); empty is
+	// software.
+	Family encode.Family
+	// CRF is the family's constant-quality level (encode.FileLevel): x264's CRF in software, NVENC's
+	// -cq, VAAPI's -qp. QUALITY-targeted rather than bitrate-targeted, so a 240p advert and a 1080p
+	// one do not get the same bitrate budget: the small one stays small instead of being padded, and
+	// the large one is not starved. Named for its software origin; the recipe's JSON key is `crf`.
 	CRF int
-	// Preset trades encode time for size. `medium` — this is a batch job with nobody waiting.
+	// Preset is x264's speed preset; the hardware families carry none.
 	Preset string
 	// PixelFormat is yuv420p, the format every hardware decoder handles.
 	PixelFormat string
@@ -57,23 +62,51 @@ type MezzanineProfile struct {
 	KeyframeSeconds int
 }
 
-// DefaultMezzanine is the profile V51b ships.
+// FileMezzanine is the playback profile for this host (#2121): the family encode.FileFamily picks,
+// at the level encode.FileLevel measured for it.
 //
 // ⚠ **Resolution, framerate, aspect and SAR are deliberately ABSENT.** They are PRESERVED, never
 // set — see the note at the top of this file. A profile field for any of them would be an
 // invitation to fill it in.
-func DefaultMezzanine() MezzanineProfile {
-	return MezzanineProfile{
-		VideoCodec: "h264", CRF: 20, Preset: "medium", PixelFormat: "yuv420p",
+func FileMezzanine(host encode.HostProfile) MezzanineProfile {
+	family := encode.FileFamily(host)
+	level, _ := encode.FileLevel(family)
+	p := MezzanineProfile{
+		VideoCodec: "h264", Family: family, CRF: level, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioKbps: 192, AudioRateHz: 48000, AudioCh: 2,
 		KeyframeSeconds: 2,
 	}
+	if family == encode.FamilySoftware {
+		p.Family, p.Preset = "", "veryfast"
+	}
+	return p
+}
+
+// DefaultMezzanine is the software playback profile: FileMezzanine on a host with no usable GPU.
+func DefaultMezzanine() MezzanineProfile {
+	return FileMezzanine(encode.HostProfile{Family: encode.FamilySoftware})
 }
 
 // ID is the profile's stable identity, recorded in the sidecar so a clip encoded under an older
-// profile can be told apart from one that has never been transcoded.
+// profile can be told apart from one that has never been transcoded. A hardware family is part of
+// it: the same level on another encoder is a different picture.
 func (p MezzanineProfile) ID() string {
+	if p.Family != "" {
+		return fmt.Sprintf("%s-%s-q%d-%s%dk", p.VideoCodec, p.Family, p.CRF, p.AudioCodec, p.AudioKbps)
+	}
 	return fmt.Sprintf("%s-crf%d-%s%dk", p.VideoCodec, p.CRF, p.AudioCodec, p.AudioKbps)
+}
+
+// encoderName is the ffmpeg encoder the profile's family runs (the recipe's VideoEncoder).
+func (p MezzanineProfile) encoderName() string {
+	return encode.FileVideoArgs(p.fileFamily(), encode.File{})[1]
+}
+
+func (p MezzanineProfile) fileFamily() encode.Family {
+	if p.Family == "" {
+		return encode.FamilySoftware
+	}
+	return p.Family
 }
 
 // TranscodeRequest is one derivative encode from an immutable input.
@@ -95,6 +128,8 @@ type TranscodeRequest struct {
 	// TargetLUFS folds loudness normalisation into the same pass. Zero ⇒ no loudness filter.
 	TargetLUFS float64
 	Profile    MezzanineProfile
+	// Host is this machine's hardware profile: the VAAPI render node a hardware Profile.Family opens.
+	Host       encode.HostProfile
 	FFmpegPath string
 	// Probe re-measures the OUTPUT. Required: an unverified transcode is how a header-only file
 	// replaces a good original.
@@ -117,7 +152,37 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	tmp := req.Out + ".mezz.tmp" + filepath.Ext(req.Out)
 	defer func() { _ = os.Remove(tmp) }()
 
-	args := transcodeArguments(req, tmp)
+	// A hardware family decodes on its GPU first. A source the GPU cannot decode fails the attempt,
+	// and the one retry decodes on the CPU into the same encoder: the playout ladder's rule, applied
+	// per clip. Any failure retries, not only encode.IsHardwareDecodeFault: the probe records no
+	// codec, and a codec the decoder lacks fails in the graph's format negotiation, not with a
+	// decode-fault line. Both attempts are recorded by the process diagnostics.
+	if gpuDecodes(req) {
+		quality, gpuErr := transcodeOnce(ctx, req, tmp, true, onProgress)
+		if gpuErr == nil || ctx.Err() != nil {
+			return quality, gpuErr
+		}
+		quality, err := transcodeOnce(ctx, req, tmp, false, onProgress)
+		if err != nil {
+			return quality, fmt.Errorf("%w (after GPU decode failed: %v)", err, gpuErr)
+		}
+		return quality, nil
+	}
+	return transcodeOnce(ctx, req, tmp, false, onProgress)
+}
+
+// gpuDecodes reports whether the encode first tries decoding on the profile's GPU: the families
+// whose graph keeps frames on the GPU from decode to encode.
+func gpuDecodes(req TranscodeRequest) bool {
+	switch req.Profile.fileFamily() {
+	case encode.FamilyNVENC, encode.FamilyVAAPI:
+		return true
+	}
+	return false
+}
+
+func transcodeOnce(ctx context.Context, req TranscodeRequest, tmp string, gpuDecode bool, onProgress func(percent int)) (MediaQuality, error) {
+	args := transcodeArguments(req, tmp, gpuDecode)
 
 	cmd := bgexec.FFmpeg(ctx, FFmpegOr(req.FFmpegPath), args...)
 	var stderr boundedBytes
@@ -208,31 +273,59 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 	return qualityFromDetectorOutput(stderr.String(), req.DurationMs), nil
 }
 
-func transcodeArguments(req TranscodeRequest, output string) []string {
+// transcodeArguments is one encode on the profile's family. The picture splits once: the encode
+// branch keeps the source geometry (on the GPU from decode to encode when gpuDecode), and a
+// detector branch brings full-size frames to the CPU, runs the quality detectors and ends.
+//
+// ⚠ The detectors watch the FULL picture, not a thumbnail. A 160-pixel copy matched blackdetect
+// but averaged away the motion freezedetect measures: on 74 real masters it invented freezes in 4
+// and doubled one clip's frozen time, enough to send good adverts to review (#2121). Downloading
+// full frames cost ~13% more detector CPU and no wall time.
+func transcodeArguments(req TranscodeRequest, output string, gpuDecode bool) []string {
 	// Detector facts share this encode. `-v info` is required because the three filters report on
 	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
 	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
 	// Background work: bound the DECODER (before -i) as well as the encoder below. See
 	// BackgroundThreads.
 	args = append(args, "-threads", strconv.Itoa(BackgroundThreads))
-	// stdout carries progress; stderr remains exclusively diagnostics and detector evidence.
-	args = append(args, "-progress", "pipe:1", "-i", req.In)
-	// One explicit A/V pair is part of the recipe identity. Metadata, chapters, subtitles and data
-	// are not semantic media and cannot silently cross into a derivative.
-	args = append(args, "-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn")
 
 	p := req.Profile
-	args = append(args,
-		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
-		"-pix_fmt", p.PixelFormat,
-		"-threads", strconv.Itoa(BackgroundThreads), "-filter_threads", strconv.Itoa(BackgroundThreads),
-		"-x264-params", x264BackgroundParams(),
-		"-vf", qualityVideoFilters)
-	if p.KeyframeSeconds > 0 {
-		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
-		// also guarantees the FIRST frame is an IDR — a clip whose first keyframe arrives late is
-		// the black-screen-on-start class §9.1 records.
-		args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", p.KeyframeSeconds))
+	family := p.fileFamily()
+	detect := qualityVideoFilters + ",nullsink"
+	encodeTail := "format=" + p.PixelFormat
+	switch family {
+	case encode.FamilyNVENC:
+		args = append(args, "-init_hw_device", "cuda=cu:0", "-filter_hw_device", "cu")
+		if gpuDecode {
+			args = append(args, "-hwaccel", "cuda", "-hwaccel_device", "cu", "-hwaccel_output_format", "cuda")
+			detect = "scale_cuda=format=nv12,hwdownload,format=nv12," + detect
+			// 8-bit: NVENC has no 10-bit H.264.
+			encodeTail = "scale_cuda=format=nv12"
+		}
+	case encode.FamilyVAAPI:
+		node := req.Host.RenderNode
+		if node == "" {
+			node = encode.RenderNode()
+		}
+		args = append(args, "-init_hw_device", "vaapi=va:"+node, "-filter_hw_device", "va")
+		encodeTail = "format=nv12,hwupload"
+		if gpuDecode {
+			args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
+			detect = "scale_vaapi=format=nv12,hwdownload,format=nv12," + detect
+			encodeTail = "scale_vaapi=format=nv12"
+		}
+	}
+	// stdout carries progress; stderr remains exclusively diagnostics and detector evidence.
+	args = append(args, "-progress", "pipe:1", "-i", req.In)
+	args = append(args, "-filter_complex", "[0:v]split=2[enc][det];[det]"+detect+";[enc]"+encodeTail+"[v]",
+		"-filter_threads", strconv.Itoa(BackgroundThreads), "-filter_complex_threads", strconv.Itoa(BackgroundThreads))
+	// One explicit A/V pair is part of the recipe identity. Metadata, chapters, subtitles and data
+	// are not semantic media and cannot silently cross into a derivative.
+	args = append(args, "-map", "[v]", "-map", "0:a:0?", "-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn")
+
+	args = append(args, encode.FileVideoArgs(family, encode.File{Quality: p.CRF, KeyframeSeconds: p.KeyframeSeconds, Preset: p.Preset})...)
+	if family == encode.FamilySoftware {
+		args = append(args, "-threads", strconv.Itoa(BackgroundThreads), "-x264-params", x264BackgroundParams())
 	}
 	if req.HadAudio {
 		args = append(args, "-c:a", p.AudioCodec,

@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerscreening"
@@ -264,7 +265,8 @@ func intakeLanguages(st interface {
 func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
-	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
+	playoutRes *playoutResolver) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
 	// pays nothing and the Tasks row still exists to be seen and paused.
@@ -361,7 +363,10 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 				}
 				return lufs
 			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
-			WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor),
+			WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
+			WithEncodeHost(func() encode.HostProfile {
+				return playoutRes.fileEncodeHost(encode.Encoder(set.str("playout.encoder")))
+			}),
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety

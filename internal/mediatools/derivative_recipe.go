@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 const DerivativeRecipeVersion = 1
@@ -53,10 +55,14 @@ type DerivativeRecipe struct {
 	PreserveCadence   bool           `json:"preserveCadence"`
 }
 
-func EvidenceDerivativeRecipe() DerivativeRecipe {
+// EvidenceDerivativeRecipe is the evidence copy on the playback profile's family and measured level
+// (#2121): one quality floor for both roles, so the evidence picture is the one that airs. It keeps
+// its own audio rate and a keyframe every second for frame-exact cuts.
+func EvidenceDerivativeRecipe(profile MezzanineProfile) DerivativeRecipe {
 	return DerivativeRecipe{
-		Version: DerivativeRecipeVersion, ID: "filler-evidence-v1", Role: DerivativeEvidence,
-		Container: "mp4", VideoCodec: "h264", VideoEncoder: "libx264", CRF: 14, Preset: "slow", PixelFormat: "yuv420p",
+		Version: DerivativeRecipeVersion, ID: "filler-evidence-v2", Role: DerivativeEvidence,
+		Container: "mp4", VideoCodec: "h264", VideoEncoder: profile.encoderName(), CRF: profile.CRF,
+		Preset: profile.Preset, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioEncoder: "aac", AudioKbps: 256, AudioRateHz: 48_000, AudioChannels: 2,
 		KeyframeSeconds: 1, SelectFirstAV: true, NormalizeTimebase: true, StripMetadata: true,
 		FastStart: true, PreserveGeometry: true, PreserveCadence: true,
@@ -65,8 +71,8 @@ func EvidenceDerivativeRecipe() DerivativeRecipe {
 
 func PlaybackDerivativeRecipe(profile MezzanineProfile, targetLUFS float64) DerivativeRecipe {
 	return DerivativeRecipe{
-		Version: DerivativeRecipeVersion, ID: "filler-playback-v1", Role: DerivativePlayback,
-		Container: "mp4", VideoCodec: profile.VideoCodec, VideoEncoder: "libx264", CRF: profile.CRF,
+		Version: DerivativeRecipeVersion, ID: "filler-playback-v2", Role: DerivativePlayback,
+		Container: "mp4", VideoCodec: profile.VideoCodec, VideoEncoder: profile.encoderName(), CRF: profile.CRF,
 		Preset: profile.Preset, PixelFormat: profile.PixelFormat,
 		AudioCodec: profile.AudioCodec, AudioEncoder: profile.AudioCodec, AudioKbps: profile.AudioKbps,
 		AudioRateHz: profile.AudioRateHz, AudioChannels: profile.AudioCh,
@@ -83,7 +89,8 @@ func (r DerivativeRecipe) Validate() error {
 	if r.Role != DerivativeEvidence && r.Role != DerivativePlayback {
 		return fmt.Errorf("derivative recipe role %q is unsupported", r.Role)
 	}
-	if r.VideoCodec != "h264" || r.VideoEncoder != "libx264" || r.CRF < 0 || r.CRF > 51 || r.Preset == "" || r.PixelFormat != "yuv420p" {
+	family, known := recipeFamilies[r.VideoEncoder]
+	if r.VideoCodec != "h264" || !known || r.CRF < 0 || r.CRF > 51 || (r.Preset == "") != (family != encode.FamilySoftware) || r.PixelFormat != "yuv420p" {
 		return errors.New("derivative video recipe is invalid")
 	}
 	if r.AudioCodec != "aac" || r.AudioEncoder != "aac" || r.AudioKbps <= 0 || r.AudioRateHz != 48_000 || r.AudioChannels != 2 {
@@ -113,9 +120,22 @@ func (r DerivativeRecipe) Digest() (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+// recipeFamilies are the encoders a recipe may name, with the family each runs on. libx264 records
+// from before #2121 (CRF 14 `slow` evidence) stay valid under it.
+var recipeFamilies = map[string]encode.Family{
+	string(encode.EncoderSoftware):     encode.FamilySoftware,
+	string(encode.EncoderNVENC):        encode.FamilyNVENC,
+	string(encode.EncoderVAAPI):        encode.FamilyVAAPI,
+	string(encode.EncoderVideoToolbox): encode.FamilyVideoToolbox,
+}
+
 func (r DerivativeRecipe) Profile() MezzanineProfile {
+	family := recipeFamilies[r.VideoEncoder]
+	if family == encode.FamilySoftware {
+		family = ""
+	}
 	return MezzanineProfile{
-		VideoCodec: r.VideoCodec, CRF: r.CRF, Preset: r.Preset, PixelFormat: r.PixelFormat,
+		VideoCodec: r.VideoCodec, Family: family, CRF: r.CRF, Preset: r.Preset, PixelFormat: r.PixelFormat,
 		AudioCodec: r.AudioCodec, AudioKbps: r.AudioKbps, AudioRateHz: r.AudioRateHz,
 		AudioCh: r.AudioChannels, KeyframeSeconds: r.KeyframeSeconds,
 	}

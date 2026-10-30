@@ -28,7 +28,7 @@ type conditioningJob struct {
 // prepareConditioning validates a conditioned child's lineage and parent, snapshots both, and
 // measures the source before the rewrite. A nil job with a nil error ends the run with the
 // returned result: a review, or the re-emitted outcome of a child that is already conditioned.
-func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, oldFull, sourceFull string, sourceMaster MediaAssetIdentity, storageWrites *storagegovernor.WriteTracker) (job *conditioningJob, done StageResult, err error) {
+func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, oldFull, sourceFull string, sourceMaster MediaAssetIdentity, mezzanine string, storageWrites *storagegovernor.WriteTracker) (job *conditioningJob, done StageResult, err error) {
 	review := func(note string) (*conditioningJob, StageResult, error) {
 		return nil, conditioningReview(c, note), nil
 	}
@@ -37,7 +37,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 		return nil, StageResult{}, err
 	}
 	if !hasTags || !validConditioningLineage(tags.ConditioningLineage, c.ParentHash) ||
-		(tags.Mezzanine != s.profile.ID() && tags.ConditioningLineage.ChildHash != c.Hash) {
+		(tags.Mezzanine != mezzanine && tags.ConditioningLineage.ChildHash != c.Hash) {
 		return review("conditioning lineage is missing or does not match the child")
 	}
 	parent, found, err := s.store.GetClip(ctx, c.ParentHash)
@@ -123,7 +123,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 			EndMs:   tags.ConditioningLineage.IntendedEndMs,
 		}},
 	}
-	if tags.Mezzanine == s.profile.ID() {
+	if tags.Mezzanine == mezzanine {
 		if tags.MediaQuality == nil || tags.Conditioning == nil ||
 			mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
 			validateConditioningPair(*tags.Conditioning, tags.Conditioning.BeforeRewriteHash, tags.Conditioning.AfterRewriteHash) != nil ||

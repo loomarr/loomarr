@@ -91,7 +91,7 @@ func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	tool := mediatools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
 	}
-	evidenceRecipe := mediatools.EvidenceDerivativeRecipe()
+	evidenceRecipe := mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine())
 	evidenceRecipeSHA, err := evidenceRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
