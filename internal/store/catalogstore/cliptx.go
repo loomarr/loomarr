@@ -22,9 +22,10 @@ type ClipTx struct {
 	tx storedb.Querier
 }
 
-// Clips is ClipTx over tx, which a caller began (storedb.Handle.Begin). internal/store's
-// Handle.Clips is the extension stores' way in; it forwards here.
-func (s *Store) Clips(tx storedb.Querier) ClipTx { return ClipTx{s: s, tx: tx} }
+// ClipsOn is ClipTx over tx, which a caller began (storedb.Handle.Begin). internal/store's
+// Handle.Clips is the extension stores' way in; it forwards here. A package function rather than a
+// method so the aggregate does not promote it onto sqlStore, where the Extend wrapper would hide it.
+func ClipsOn(s *Store, tx storedb.Querier) ClipTx { return ClipTx{s: s, tx: tx} }
 
 // ClipGeography is the broadcast provenance a clip's geography columns hold.
 type ClipGeography struct {

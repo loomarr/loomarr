@@ -3,6 +3,7 @@ package store
 import (
 	"time"
 
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -62,7 +63,7 @@ type sqlHandle struct {
 	s *sqlStore
 }
 
-func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.Clips(tx) }
+func (h sqlHandle) Clips(tx Tx) ClipTx { return catalogstore.ClipsOn(h.s.catalogCluster, tx) }
 
 // kernel is this store's pool, dialect and placeholder style as a storedb.Handle, for the store
 // packages that run on the kernel and for this package's own keyed locks.

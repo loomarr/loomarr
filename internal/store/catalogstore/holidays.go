@@ -96,7 +96,7 @@ func nonNilKept(k []holidayvocab.Keeping) []holidayvocab.Keeping {
 // taxonomy seed has made the holidays' seasonal taxa. A holiday whose id is already stored keeps the
 // operator's version; one whose taxon the operator deleted, or moved to another axis, is skipped.
 // The revision is recorded even then, so an operator's choice is never undone by boot.
-func (s *Store) ConvergeHolidaySeed(ctx context.Context, revisions []holidayvocab.SeedRevision, at time.Time) error {
+func ConvergeHolidaySeed(ctx context.Context, s *Store, revisions []holidayvocab.SeedRevision, at time.Time) error {
 	for _, revision := range revisions {
 		if err := s.applyHolidaySeedRevision(ctx, revision, at); err != nil {
 			return fmt.Errorf("converge holiday seed v%d: %w", revision.Version, err)
@@ -161,7 +161,7 @@ func (s *Store) applyHolidaySeedRevision(ctx context.Context, revision holidayvo
 // HealUndatedHolidays gives every seasonal taxon without a holiday an undated one (#2030 decision
 // 30): a seasonal tag an operator made before holidays were data. Its clips air year-round until
 // the operator dates it.
-func (s *Store) HealUndatedHolidays(ctx context.Context, at time.Time) error {
+func HealUndatedHolidays(ctx context.Context, s *Store, at time.Time) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("heal holidays: begin: %w", err)

@@ -40,7 +40,7 @@ func (s *Store) ListBroadcastStations(ctx context.Context) ([]broadcaststation.S
 
 // ConvergeBroadcastStationSeed applies the newest shipped revision the store has not recorded. Older
 // unapplied revisions are skipped: each one is a complete directory, not a delta.
-func (s *Store) ConvergeBroadcastStationSeed(ctx context.Context, revisions []broadcaststation.SeedRevision, at time.Time) error {
+func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []broadcaststation.SeedRevision, at time.Time) error {
 	if len(revisions) == 0 {
 		return nil
 	}

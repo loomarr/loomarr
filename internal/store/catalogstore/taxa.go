@@ -91,11 +91,15 @@ func listTaxaFrom(ctx context.Context, q taxonomyQueryer) ([]taxonomy.Taxon, err
 	return out, rows.Err()
 }
 
-// UpsertTaxon is the boot-seed primitive. Operator edits go through ApplyTaxonomyEdit so validation,
-// graph mutation, closure and rollups share one transaction. It is exported for the aggregate's
-// tests, which need a seasonal taxon that has no holiday (what a pre-holiday install holds); it is
-// not on the Store interface.
-func (s *Store) UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
+// UpsertTaxon is upsertTaxon for the aggregate's tests, which need a seasonal taxon that has no
+// holiday (what a pre-holiday install holds). A package function, so it is not promoted.
+func UpsertTaxon(ctx context.Context, s *Store, t taxonomy.Taxon, at time.Time) error {
+	return s.upsertTaxon(ctx, t, at)
+}
+
+// upsertTaxon is the boot-seed primitive. Operator edits go through ApplyTaxonomyEdit so validation,
+// graph mutation, closure and rollups share one transaction.
+func (s *Store) upsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
 	return s.upsertTaxonExec(ctx, s.h, t, at)
 }
 
@@ -406,7 +410,7 @@ func (s *Store) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time
 		return nil // already seeded or operator-edited — never clobber
 	}
 	for _, t := range seed {
-		if err := s.UpsertTaxon(ctx, t, at); err != nil {
+		if err := s.upsertTaxon(ctx, t, at); err != nil {
 			return err
 		}
 	}
@@ -417,7 +421,7 @@ func (s *Store) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time
 // edits always win; a new taxon that conflicts with an operator's graph or resolver namespace is
 // skipped rather than making startup fail. Recording the revision even when a term is skipped is
 // intentional: a later operator deletion must not make boot recreate product defaults forever.
-func (s *Store) ConvergeTaxonomySeed(ctx context.Context, revisions []taxonomy.SeedRevision, at time.Time) error {
+func ConvergeTaxonomySeed(ctx context.Context, s *Store, revisions []taxonomy.SeedRevision, at time.Time) error {
 	for _, revision := range revisions {
 		tx, err := s.h.Begin(ctx)
 		if err != nil {
@@ -572,7 +576,7 @@ func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder f
 // ⚠ A full replace inside one transaction. The closure is a pure function of the graph, so a partial
 // rebuild would leave a clip's rollups deriving from a half-updated closure — worse than the old one.
 // Delete-all + re-insert is safe because it is a few hundred rows (~55 taxa) and it is atomic.
-func (s *Store) RebuildTaxonomyDerived(ctx context.Context, forest *taxonomy.Forest) error {
+func RebuildTaxonomyDerived(ctx context.Context, s *Store, forest *taxonomy.Forest) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("rebuild taxonomy: begin: %w", err)

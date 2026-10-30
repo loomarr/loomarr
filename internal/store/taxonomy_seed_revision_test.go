@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -17,7 +18,7 @@ func TestTaxonomySeedRevisionConvergesOnceWithoutOverwritingOperatorChoice(t *te
 		t.Fatal(err)
 	}
 	at := time.Unix(1_700_000_000, 0).UTC()
-	if err := store.ConvergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), at); err != nil {
+	if err := catalogstore.ConvergeTaxonomySeed(ctx, store.catalogCluster, taxonomy.SeedRevisions(), at); err != nil {
 		t.Fatal(err)
 	}
 	taxa, err := store.ListTaxa(ctx)
@@ -33,7 +34,7 @@ func TestTaxonomySeedRevisionConvergesOnceWithoutOverwritingOperatorChoice(t *te
 	if _, err := store.db.ExecContext(ctx, `DELETE FROM taxa WHERE slug = 'animated'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ConvergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), at.Add(time.Hour)); err != nil {
+	if err := catalogstore.ConvergeTaxonomySeed(ctx, store.catalogCluster, taxonomy.SeedRevisions(), at.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	taxa, err = store.ListTaxa(ctx)
