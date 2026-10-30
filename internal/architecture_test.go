@@ -3,6 +3,7 @@ package internal_test
 import (
 	"go/build"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -207,6 +208,61 @@ func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
 			t.Errorf("%s imports %s — storedb is the dependency-free kernel of the store split; "+
 				"code that needs a Loomarr type belongs in a store package, not in the kernel", kernel, imported)
 		}
+	}
+}
+
+// internal/store/identitystore is the identity cluster extracted from internal/store (users,
+// sessions, devices, invitations, contact addresses, password recovery, notifications). It builds
+// on the storedb kernel and must never import internal/store: store embeds it and re-exports its
+// types, so an edge back would be an import cycle, and the cluster would stop being a package that
+// can be read, tested and owned without the aggregate. Test files are exempt, as above; only the
+// production import set counts.
+func TestIdentityStoreImportsKernelNotAggregate(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	const identity = modulePath + "/internal/store/identitystore"
+	pkg, ok := pkgs[identity]
+	if !ok {
+		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", identity)
+	}
+	if len(pkg.GoFiles) == 0 {
+		t.Fatalf("%s has no production files", identity)
+	}
+	if !slices.Contains(pkg.Imports, modulePath+"/internal/store/storedb") {
+		t.Errorf("%s does not import internal/store/storedb — the cluster must run on the kernel handle", identity)
+	}
+	for _, imported := range aggregateStoreImports(pkg) {
+		t.Errorf("%s imports %s — the identity cluster builds on storedb and is imported BY the aggregate; "+
+			"a type it needs from internal/store belongs in the cluster or the kernel", identity, imported)
+	}
+}
+
+// aggregateStoreImports names the imports of pkg that are the aggregate store, internal/store
+// itself or the filler store that embeds it. Exact paths: a prefix match would also catch the
+// storedb kernel and the cluster packages, which are the allowed direction.
+func aggregateStoreImports(pkg *build.Package) []string {
+	var found []string
+	for _, imported := range pkg.Imports {
+		if aggregateStorePackages[imported] {
+			found = append(found, imported)
+		}
+	}
+	return found
+}
+
+// The gate above only means something if aggregateStoreImports sees an edge when there is one, and
+// does not mistake the kernel or a sibling cluster for the aggregate.
+func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
+	store := modulePath + "/internal/store"
+	filler := modulePath + "/internal/fillerstore"
+	kernel := modulePath + "/internal/store/storedb"
+	sibling := modulePath + "/internal/store/identitystore"
+	pkg := &build.Package{Imports: []string{kernel, sibling, "database/sql", filler, store}}
+	if got, want := aggregateStoreImports(pkg), []string{filler, store}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("aggregate imports = %v, want %v", got, want)
+	}
+	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/invitation"}}
+	if got := aggregateStoreImports(clean); len(got) != 0 {
+		t.Fatalf("kernel and cluster imports flagged as the aggregate: %v", got)
 	}
 }
 

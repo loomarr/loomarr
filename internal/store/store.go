@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -99,11 +100,17 @@ var ErrChannelStale = errors.New("store: stale channel revision")
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.
-var ErrContactAddressConflict = errors.New("store: contact address conflict")
+//
+// It is identitystore.ErrContactAddressConflict, the same value under a second name, so errors.Is
+// matches an error created in either package.
+var ErrContactAddressConflict = identitystore.ErrContactAddressConflict
 
 // ErrInvitationIdentityConflict means an allowlist row or active Invitation already owns the
 // reserved local username or exact Library account id.
-var ErrInvitationIdentityConflict = errors.New("store: invitation identity conflict")
+//
+// It is identitystore.ErrInvitationIdentityConflict, the same value under a second name, so
+// errors.Is matches an error created in either package.
+var ErrInvitationIdentityConflict = identitystore.ErrInvitationIdentityConflict
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {

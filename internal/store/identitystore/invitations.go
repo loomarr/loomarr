@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const invitationSelect = `SELECT id, kind, username, library_user_id, display_name,
@@ -17,7 +18,7 @@ const invitationSelect = `SELECT id, kind, username, library_user_id, display_na
 const invitationGrantSelect = `SELECT token_hash, invitation_id, grant_kind, conveyance,
  created_at, expires_at, consumed_at, revoked_at FROM invitation_grants`
 
-func (s *sqlStore) CreateInvitation(
+func (s *Store) CreateInvitation(
 	ctx context.Context,
 	value invitation.Invitation,
 	address *contact.Address,
@@ -40,17 +41,17 @@ func (s *sqlStore) CreateInvitation(
 	})
 }
 
-func (s *sqlStore) createInvitation(
+func (s *Store) createInvitation(
 	ctx context.Context,
 	value invitation.Invitation,
 	address *contact.Address,
 ) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("create invitation: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
 		SET status = 'expired', terminal_at = expires_at
 		WHERE kind = ? AND identity_key = ? AND status = 'pending' AND expires_at <= ?`),
 		string(value.Kind), value.IdentityKey, epoch(value.CreatedAt)); err != nil {
@@ -59,10 +60,10 @@ func (s *sqlStore) createInvitation(
 
 	var exists int
 	if value.Kind == invitation.KindLocal {
-		err = tx.QueryRowContext(ctx, s.ph(
+		err = tx.QueryRowContext(ctx, s.h.Rebind(
 			`SELECT 1 FROM users WHERE lower(trim(name)) = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	} else {
-		err = tx.QueryRowContext(ctx, s.ph(
+		err = tx.QueryRowContext(ctx, s.h.Rebind(
 			`SELECT 1 FROM users WHERE id = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	}
 	if err == nil {
@@ -72,7 +73,7 @@ func (s *sqlStore) createInvitation(
 		return fmt.Errorf("create invitation: check allowlist: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO invitations
+	_, err = tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO invitations
 		(id, kind, username, library_user_id, display_name, identity_key, role, status,
 		 created_at, expires_at, terminal_at, redeemed_by)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
@@ -86,7 +87,7 @@ func (s *sqlStore) createInvitation(
 		return fmt.Errorf("create invitation: insert: %w", err)
 	}
 	if address != nil {
-		_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO contact_addresses
+		_, err = tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO contact_addresses
 			(owner_kind, owner_id, email, normalized, status, provenance, created_at, verified_at)
 			VALUES ('invitation', ?, ?, ?, 'pending', 'admin', ?, NULL)`),
 			address.OwnerID, address.Email, address.Normalized, epoch(address.CreatedAt))
@@ -103,25 +104,25 @@ func (s *sqlStore) createInvitation(
 	return nil
 }
 
-func (s *sqlStore) withInvitationIdentityLock(
+func (s *Store) withInvitationIdentityLock(
 	ctx context.Context,
 	kind invitation.Kind,
 	identityKey string,
 	fn func(context.Context) error,
 ) error {
 	key := string(kind) + ":" + identityKey
-	return s.invitationIdentityLocks.With(ctx, s.kernel(), "invitation identity lock", "invitation-identity:", key, fn)
+	return s.invitationLock.With(ctx, s.h, "invitation identity lock", "invitation-identity:", key, fn)
 }
 
-func (s *sqlStore) GetInvitationContactAddress(
+func (s *Store) GetInvitationContactAddress(
 	ctx context.Context,
 	invitationID string,
 ) (contact.Address, error) {
-	return scanContactAddress(s.db.QueryRowContext(ctx, s.ph(contactAddressSelect+
+	return scanContactAddress(s.h.QueryRowContext(ctx, s.h.Rebind(contactAddressSelect+
 		` WHERE owner_kind = 'invitation' AND owner_id = ? AND status = 'pending'`), invitationID))
 }
 
-func (s *sqlStore) ReplaceInvitationGrant(
+func (s *Store) ReplaceInvitationGrant(
 	ctx context.Context,
 	invitationID string,
 	grant invitation.Grant,
@@ -133,14 +134,14 @@ func (s *sqlStore) ReplaceInvitationGrant(
 	if grant.InvitationID != invitationID || !grant.CreatedAt.Equal(at) {
 		return fmt.Errorf("invitation grant ownership or creation time mismatch")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("replace invitation grant: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var expiresAt int64
-	err = tx.QueryRowContext(ctx, s.ph(
+	err = tx.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT expires_at FROM invitations WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		invitationID, epoch(at)).Scan(&expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -152,11 +153,11 @@ func (s *sqlStore) ReplaceInvitationGrant(
 	if grant.ExpiresAt.After(fromEpoch(expiresAt)) {
 		return fmt.Errorf("invitation grant cannot outlive its invitation")
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitation_grants SET revoked_at = ?
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET revoked_at = ?
 		WHERE invitation_id = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), invitationID); err != nil {
 		return fmt.Errorf("replace invitation grant: revoke superseded: %w", err)
 	}
-	if err := insertInvitationGrant(ctx, tx, s.ph, grant); err != nil {
+	if err := insertInvitationGrant(ctx, tx, s.h.Rebind, grant); err != nil {
 		return fmt.Errorf("replace invitation grant: insert: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -165,7 +166,7 @@ func (s *sqlStore) ReplaceInvitationGrant(
 	return nil
 }
 
-func (s *sqlStore) AddInvitationGrant(
+func (s *Store) AddInvitationGrant(
 	ctx context.Context,
 	invitationID string,
 	grant invitation.Grant,
@@ -177,13 +178,13 @@ func (s *sqlStore) AddInvitationGrant(
 	if grant.InvitationID != invitationID || !grant.CreatedAt.Equal(at) {
 		return fmt.Errorf("invitation grant ownership or creation time mismatch")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("add invitation grant: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var expiresAt int64
-	err = tx.QueryRowContext(ctx, s.ph(
+	err = tx.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT expires_at FROM invitations WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		invitationID, epoch(at)).Scan(&expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -195,7 +196,7 @@ func (s *sqlStore) AddInvitationGrant(
 	if grant.ExpiresAt.After(fromEpoch(expiresAt)) {
 		return fmt.Errorf("invitation grant cannot outlive its invitation")
 	}
-	if err := insertInvitationGrant(ctx, tx, s.ph, grant); err != nil {
+	if err := insertInvitationGrant(ctx, tx, s.h.Rebind, grant); err != nil {
 		return fmt.Errorf("add invitation grant: insert: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -204,8 +205,8 @@ func (s *sqlStore) AddInvitationGrant(
 	return nil
 }
 
-func (s *sqlStore) RevokeInvitationGrant(ctx context.Context, tokenHash string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE invitation_grants SET revoked_at = ?
+func (s *Store) RevokeInvitationGrant(ctx context.Context, tokenHash string, at time.Time) error {
+	result, err := s.h.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET revoked_at = ?
 		WHERE token_hash = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), tokenHash)
 	if err != nil {
 		return fmt.Errorf("revoke invitation grant: %w", err)
@@ -216,11 +217,11 @@ func (s *sqlStore) RevokeInvitationGrant(ctx context.Context, tokenHash string, 
 	return nil
 }
 
-func (s *sqlStore) ListInvitationGrants(
+func (s *Store) ListInvitationGrants(
 	ctx context.Context,
 	invitationID string,
 ) ([]invitation.Grant, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(invitationGrantSelect+
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(invitationGrantSelect+
 		` WHERE invitation_id = ? ORDER BY created_at, token_hash`), invitationID)
 	if err != nil {
 		return nil, fmt.Errorf("list invitation grants: %w", err)
@@ -237,13 +238,13 @@ func (s *sqlStore) ListInvitationGrants(
 	return grants, rows.Err()
 }
 
-func (s *sqlStore) RevokeInvitation(ctx context.Context, invitationID string, at time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) RevokeInvitation(ctx context.Context, invitationID string, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("revoke invitation: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
 		SET status = 'revoked', terminal_at = ?
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`), epoch(at), invitationID, epoch(at))
 	if err != nil {
@@ -252,7 +253,7 @@ func (s *sqlStore) RevokeInvitation(ctx context.Context, invitationID string, at
 	if count, _ := result.RowsAffected(); count != 1 {
 		return ErrNotFound
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitation_grants SET revoked_at = ?
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET revoked_at = ?
 		WHERE invitation_id = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), invitationID); err != nil {
 		return fmt.Errorf("revoke invitation: invalidate grants: %w", err)
 	}
@@ -262,20 +263,20 @@ func (s *sqlStore) RevokeInvitation(ctx context.Context, invitationID string, at
 	return nil
 }
 
-func (s *sqlStore) PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error) {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("purge terminal invitations: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	terminal := `(terminal_at > 0 AND terminal_at <= ?) OR (status = 'pending' AND expires_at <= ?)`
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM contact_addresses
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM contact_addresses
 		WHERE owner_kind = 'invitation' AND owner_id IN (
 			SELECT id FROM invitations WHERE `+terminal+`
 		)`), epoch(before), epoch(before)); err != nil {
 		return 0, fmt.Errorf("purge terminal invitations: contacts: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, s.ph(`DELETE FROM invitations WHERE `+terminal),
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM invitations WHERE `+terminal),
 		epoch(before), epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge terminal invitations: decisions: %w", err)
@@ -290,7 +291,7 @@ func (s *sqlStore) PurgeTerminalInvitations(ctx context.Context, before time.Tim
 	return int(count), nil
 }
 
-func (s *sqlStore) RedeemInvitation(
+func (s *Store) RedeemInvitation(
 	ctx context.Context,
 	grantHash string,
 	user User,
@@ -302,7 +303,7 @@ func (s *sqlStore) RedeemInvitation(
 		!session.ExpiresAt.After(session.CreatedAt) {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation requires prepared user and session credentials")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: begin: %w", err)
 	}
@@ -314,13 +315,13 @@ func (s *sqlStore) RedeemInvitation(
 		FROM invitations i JOIN invitation_grants g ON g.invitation_id = i.id
 		WHERE g.token_hash = ? AND g.consumed_at = 0 AND g.revoked_at = 0 AND g.expires_at > ?
 		  AND i.status = 'pending' AND i.expires_at > ?`
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		query += ` FOR UPDATE OF i, g`
 	}
 	var value invitation.Invitation
 	var kind, role, status, conveyance string
 	var createdAt, expiresAt, terminalAt int64
-	err = tx.QueryRowContext(ctx, s.ph(query), grantHash, epoch(at), epoch(at)).Scan(
+	err = tx.QueryRowContext(ctx, s.h.Rebind(query), grantHash, epoch(at), epoch(at)).Scan(
 		&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt,
 		&value.RedeemedBy, &conveyance)
@@ -338,7 +339,7 @@ func (s *sqlStore) RedeemInvitation(
 		return invitation.Invitation{}, ErrNotFound
 	}
 
-	result, err := tx.ExecContext(ctx, s.ph(`UPDATE invitations
+	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
 		SET status = 'redeemed', terminal_at = ?, redeemed_by = ?
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		epoch(at), user.ID, value.ID, epoch(at))
@@ -351,10 +352,10 @@ func (s *sqlStore) RedeemInvitation(
 
 	var exists int
 	if value.Kind == invitation.KindLocal {
-		err = tx.QueryRowContext(ctx, s.ph(
+		err = tx.QueryRowContext(ctx, s.h.Rebind(
 			`SELECT 1 FROM users WHERE lower(trim(name)) = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	} else {
-		err = tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM users WHERE id = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
+		err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT 1 FROM users WHERE id = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	}
 	if err == nil {
 		return invitation.Invitation{}, ErrInvitationIdentityConflict
@@ -364,7 +365,7 @@ func (s *sqlStore) RedeemInvitation(
 	}
 	user.Role = Role(value.Role)
 	user.Disabled = false
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO users
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO users
 		(id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), user.ID, user.Name, string(user.Role), user.Disabled,
 		user.Quota, user.AutoApprove, user.MediaServerLinked, user.PasswordHash,
@@ -375,7 +376,7 @@ func (s *sqlStore) RedeemInvitation(
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: create allowlist row: %w", err)
 	}
 
-	result, err = tx.ExecContext(ctx, s.ph(`UPDATE invitation_grants SET consumed_at = ?
+	result, err = tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET consumed_at = ?
 		WHERE token_hash = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), grantHash)
 	if err != nil {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: consume grant: %w", err)
@@ -383,7 +384,7 @@ func (s *sqlStore) RedeemInvitation(
 	if count, _ := result.RowsAffected(); count != 1 {
 		return invitation.Invitation{}, ErrNotFound
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE invitation_grants SET revoked_at = ?
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET revoked_at = ?
 		WHERE invitation_id = ? AND token_hash <> ? AND consumed_at = 0 AND revoked_at = 0`),
 		epoch(at), value.ID, grantHash); err != nil {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: revoke sibling grants: %w", err)
@@ -398,10 +399,10 @@ func (s *sqlStore) RedeemInvitation(
 			WHERE owner_kind = 'invitation' AND owner_id = ?`
 		args = []any{user.ID, epoch(at), value.ID}
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(contactUpdate), args...); err != nil {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(contactUpdate), args...); err != nil {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: transfer contact: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`),
 		session.TokenHash, session.UserID, epoch(session.CreatedAt), epoch(session.ExpiresAt)); err != nil {
 		return invitation.Invitation{}, fmt.Errorf("redeem invitation: create session: %w", err)
@@ -422,12 +423,12 @@ func redemptionIdentityMatches(value invitation.Invitation, user User) bool {
 	return user.MediaServerLinked && user.ID == value.LibraryUserID
 }
 
-func (s *sqlStore) GetInvitation(
+func (s *Store) GetInvitation(
 	ctx context.Context,
 	id string,
 	now time.Time,
 ) (invitation.Invitation, error) {
-	value, err := scanInvitation(s.db.QueryRowContext(ctx, s.ph(invitationSelect+` WHERE id = ?`), id))
+	value, err := scanInvitation(s.h.QueryRowContext(ctx, s.h.Rebind(invitationSelect+` WHERE id = ?`), id))
 	if err != nil {
 		return invitation.Invitation{}, err
 	}
@@ -437,7 +438,7 @@ func (s *sqlStore) GetInvitation(
 // GetInvitationByGrant resolves only a currently usable activation grant. It is
 // deliberately read-only: opening, previewing, or scanning an invitation must
 // never consume the bearer or admit the reserved identity (§11).
-func (s *sqlStore) GetInvitationByGrant(
+func (s *Store) GetInvitationByGrant(
 	ctx context.Context,
 	tokenHash string,
 	now time.Time,
@@ -446,7 +447,7 @@ func (s *sqlStore) GetInvitationByGrant(
 		invitations.library_user_id, invitations.display_name, invitations.identity_key,
 		invitations.role, invitations.status, invitations.created_at, invitations.expires_at,
 		invitations.terminal_at, invitations.redeemed_by FROM invitations`
-	return scanInvitation(s.db.QueryRowContext(ctx, s.ph(selectByGrant+`
+	return scanInvitation(s.h.QueryRowContext(ctx, s.h.Rebind(selectByGrant+`
 		JOIN invitation_grants g ON g.invitation_id = invitations.id
 		WHERE g.token_hash = ? AND g.grant_kind = 'activation'
 		  AND g.consumed_at = 0 AND g.revoked_at = 0 AND g.expires_at > ?
@@ -454,8 +455,8 @@ func (s *sqlStore) GetInvitationByGrant(
 		tokenHash, epoch(now), epoch(now)))
 }
 
-func (s *sqlStore) ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error) {
-	rows, err := s.db.QueryContext(ctx, invitationSelect+` ORDER BY created_at DESC, id`)
+func (s *Store) ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error) {
+	rows, err := s.h.QueryContext(ctx, invitationSelect+` ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
 	}
@@ -504,7 +505,7 @@ func effectiveInvitation(value invitation.Invitation, now time.Time) invitation.
 
 func insertInvitationGrant(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx storedb.Querier,
 	placeholder func(string) string,
 	grant invitation.Grant,
 ) error {

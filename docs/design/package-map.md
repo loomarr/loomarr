@@ -20,7 +20,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
 | `catalog` | 7 | `library`, `provision` |
-| `contact` | 5 | — |
+| `contact` | 6 | — |
 | `creative` | 5 | — |
 | `defects` | 6 | — |
 | `diagnostics` | 7 | `storagegovernor` |
@@ -29,16 +29,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
-| `invitation` | 6 | `contact` |
+| `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
-| `notifications` | 5 | `httpx` |
+| `notifications` | 6 | `httpx` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
-| `recovery` | 5 | — |
+| `recovery` | 6 | — |
 | `schedule` | 21 | `holidayvocab`, `inventory`, `provision` |
 | `storagegovernor` | 6 | — |
 | `store` | 16 | `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
@@ -57,7 +57,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`config`** · 2 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`contact`** · 5 importers
+- **`contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
 - **`creative`** · 5 importers
   Decides whether two filler clips are the same advert (#2033).
@@ -103,7 +103,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Supervises one child process and every descendant it starts.
 - **`provision`** · 24 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`recovery`** · 5 importers
+- **`recovery`** · 6 importers
   Owns local-password recovery records and their bearer grants (§11).
 - **`reference`** · 4 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
@@ -115,7 +115,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store/storedb`** · 1 importer
+- **`store/storedb`** · 2 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -152,7 +152,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 7 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
-- **`invitation`** · 6 importers · → `contact`
+- **`invitation`** · 7 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
@@ -176,7 +176,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`llm`** · 9 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
-- **`notifications`** · 5 importers · → `httpx`, `secretprotection`
+- **`notifications`** · 6 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
@@ -197,35 +197,37 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/storedb`, `taxonomy`
-  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+- **`store/identitystore`** · 1 importer · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
+  Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 
 ### Layer 5
+
+- **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
+  Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
+- **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
+  Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
+- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/identitystore`, `store/storedb`, `taxonomy`
+  Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
+
+### Layer 6
 
 - **`activity`** · 4 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
-  Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`jobs`** · 6 importers · → `store`
-  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
-  Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
-
-### Layer 6
-
 - **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`images`** · 2 importers · → `images/rustgen`, `jobs`, `logchange`
-  One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
+- **`jobs`** · 6 importers · → `store`
+  Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 
 ### Layer 7
 
 - **`filler`** · 8 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
+- **`images`** · 2 importers · → `images/rustgen`, `jobs`, `logchange`
+  One pipeline every image in Loomarr travels (§22).
+- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 
 ### Layer 8
 

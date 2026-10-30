@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -43,11 +44,10 @@ type sqlStore struct {
 	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
 	// Entries are bounded by the household user count (§1) and live with the store.
 	approvalLocks sync.Map
-	// invitationIdentityLocks serialize admission checks per identity (SQLite mutex, Postgres
-	// advisory lock). One KeyedLock per domain: the identity cluster takes these with it.
-	invitationIdentityLocks storedb.KeyedLock
-	// passwordRecoveryLocks serialize replacement of a person's pending recovery, the same way.
-	passwordRecoveryLocks storedb.KeyedLock
+	// Store is the identity cluster (users, sessions, devices, invitations, contact addresses,
+	// password recovery, notifications), embedded so its methods are this store's. It owns its
+	// own keyed locks; bindIdentity installs it on every construction.
+	*identitystore.Store
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string

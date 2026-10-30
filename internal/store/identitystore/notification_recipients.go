@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 )
 
-func (s *sqlStore) ListNotificationReferenceRecipients(
+func (s *Store) ListNotificationReferenceRecipients(
 	ctx context.Context,
 	kind notifications.ReferenceKind,
 	referenceID string,
 ) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT person_id
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT person_id
 		FROM notification_reference_recipients
 		WHERE reference_kind = ? AND reference_id = ?
 		ORDER BY person_id`), kind, referenceID)

@@ -1,4 +1,4 @@
-package store
+package identitystore
 
 import (
 	"context"
@@ -15,8 +15,8 @@ const contactAddressSelect = `SELECT owner_kind, owner_id, email, normalized, st
 
 // GetContactAddresses returns the verified recovery address and pending replacement for one person.
 // A contactless person returns an empty Set; callers establish user existence independently.
-func (s *sqlStore) GetContactAddresses(ctx context.Context, userID string) (contact.Set, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(contactAddressSelect+
+func (s *Store) GetContactAddresses(ctx context.Context, userID string) (contact.Set, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(contactAddressSelect+
 		` WHERE owner_kind = 'user' AND owner_id = ? ORDER BY status`), userID)
 	if err != nil {
 		return contact.Set{}, err
@@ -27,8 +27,8 @@ func (s *sqlStore) GetContactAddresses(ctx context.Context, userID string) (cont
 
 // ListContactAddresses returns all current contact state in stable person/status order. It lets the
 // People roster hydrate contact data with one bounded query instead of one query per person.
-func (s *sqlStore) ListContactAddresses(ctx context.Context) ([]contact.Address, error) {
-	rows, err := s.db.QueryContext(ctx, contactAddressSelect+
+func (s *Store) ListContactAddresses(ctx context.Context) ([]contact.Address, error) {
+	rows, err := s.h.QueryContext(ctx, contactAddressSelect+
 		` WHERE owner_kind = 'user' ORDER BY owner_id, status`)
 	if err != nil {
 		return nil, err
@@ -45,14 +45,14 @@ func (s *sqlStore) ListContactAddresses(ctx context.Context) ([]contact.Address,
 	return out, rows.Err()
 }
 
-func (s *sqlStore) GetVerifiedContactAddressByNormalized(ctx context.Context, normalized string) (contact.Address, error) {
-	return scanContactAddress(s.db.QueryRowContext(ctx, s.ph(contactAddressSelect+
+func (s *Store) GetVerifiedContactAddressByNormalized(ctx context.Context, normalized string) (contact.Address, error) {
+	return scanContactAddress(s.h.QueryRowContext(ctx, s.h.Rebind(contactAddressSelect+
 		` WHERE owner_kind = 'user' AND normalized = ? AND status = 'verified'`), normalized))
 }
 
 // PutPendingContactAddress creates or replaces the one unverified candidate. A case-only/display
 // correction of the verified mailbox preserves verification and cancels any pending replacement.
-func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact.Address) error {
+func (s *Store) PutPendingContactAddress(ctx context.Context, address contact.Address) error {
 	if address.OwnerKind != contact.OwnerUser || address.OwnerID == "" || address.Email == "" || address.Normalized == "" {
 		return fmt.Errorf("contact address requires user, email, and normalized key")
 	}
@@ -60,21 +60,21 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 		address.Provenance != contact.ProvenanceInvitation && address.Provenance != contact.ProvenanceSelf {
 		return fmt.Errorf("invalid contact provenance %q", address.Provenance)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM users WHERE id = ?`), address.OwnerID).Scan(&exists); err == sql.ErrNoRows {
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT 1 FROM users WHERE id = ?`), address.OwnerID).Scan(&exists); err == sql.ErrNoRows {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
 
 	var verifiedNormalized string
-	err = tx.QueryRowContext(ctx, s.ph(
+	err = tx.QueryRowContext(ctx, s.h.Rebind(
 		`SELECT normalized FROM contact_addresses
 		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`),
 		address.OwnerID).Scan(&verifiedNormalized)
@@ -82,13 +82,13 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 		return err
 	}
 	if err == nil && verifiedNormalized == address.Normalized {
-		if _, err = tx.ExecContext(ctx, s.ph(
+		if _, err = tx.ExecContext(ctx, s.h.Rebind(
 			`UPDATE contact_addresses SET email = ?
 			 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`),
 			address.Email, address.OwnerID); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, s.ph(
+		if _, err = tx.ExecContext(ctx, s.h.Rebind(
 			`DELETE FROM contact_addresses
 			 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending'`), address.OwnerID); err != nil {
 			return err
@@ -96,7 +96,7 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 		return tx.Commit()
 	}
 
-	_, err = tx.ExecContext(ctx, s.ph(
+	_, err = tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO contact_addresses
 		 (owner_kind, owner_id, email, normalized, status, provenance, created_at, verified_at)
 		 VALUES ('user', ?, ?, ?, 'pending', ?, ?, NULL)
@@ -115,26 +115,26 @@ func (s *sqlStore) PutPendingContactAddress(ctx context.Context, address contact
 
 // VerifyPendingContactAddress atomically promotes the matching pending candidate and retires the
 // previous verified address. A stale verification proof cannot promote a newer replacement.
-func (s *sqlStore) VerifyPendingContactAddress(
+func (s *Store) VerifyPendingContactAddress(
 	ctx context.Context, userID, normalized string, at time.Time,
 ) (contact.Address, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return contact.Address{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	pending, err := scanContactAddress(tx.QueryRowContext(ctx, s.ph(contactAddressSelect+
+	pending, err := scanContactAddress(tx.QueryRowContext(ctx, s.h.Rebind(contactAddressSelect+
 		` WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending' AND normalized = ?`), userID, normalized))
 	if err != nil {
 		return contact.Address{}, err
 	}
-	if _, err = tx.ExecContext(ctx, s.ph(
+	if _, err = tx.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM contact_addresses
 		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'verified'`), userID); err != nil {
 		return contact.Address{}, err
 	}
-	res, err := tx.ExecContext(ctx, s.ph(
+	res, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE contact_addresses SET status = 'verified', verified_at = ?
 		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending' AND normalized = ?`),
 		epoch(at), userID, normalized)
@@ -152,15 +152,15 @@ func (s *sqlStore) VerifyPendingContactAddress(
 	return pending, nil
 }
 
-func (s *sqlStore) DeletePendingContactAddress(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeletePendingContactAddress(ctx context.Context, userID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM contact_addresses
 		 WHERE owner_kind = 'user' AND owner_id = ? AND status = 'pending'`), userID)
 	return err
 }
 
-func (s *sqlStore) DeleteContactAddresses(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) DeleteContactAddresses(ctx context.Context, userID string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM contact_addresses WHERE owner_kind = 'user' AND owner_id = ?`), userID)
 	return err
 }
