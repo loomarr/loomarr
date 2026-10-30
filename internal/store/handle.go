@@ -4,23 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
-// Querier runs statements, on the pool or inside one transaction. *sql.DB and *sql.Tx both
-// satisfy it, so a helper written against it runs either way.
-type Querier interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-// Tx is one transaction begun through Handle.Begin. Rollback after Commit is a no-op, so callers
-// defer it straight after Begin.
-type Tx interface {
-	Querier
-	Commit() error
-	Rollback() error
-}
+// Querier, Tx and Scannable are the storedb kernel's types, re-exported so importers of this
+// package keep one import. They are aliases: the same types, not copies.
+type (
+	// Querier runs statements, on the pool or inside one transaction (storedb.Querier).
+	Querier = storedb.Querier
+	// Tx is one transaction begun through Handle.Begin (storedb.Tx).
+	Tx = storedb.Tx
+	// Scannable is the one method *sql.Row and *sql.Rows share (storedb.Scannable).
+	Scannable = storedb.Scannable
+)
 
 // Handle is the core store's database handle, lent to the stores that extend it
 // (internal/fillerstore). Those stores keep their own tables but run on this handle, and Begin
@@ -84,12 +81,9 @@ func (h sqlHandle) Rebind(query string) string { return h.s.ph(query) }
 
 func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.clipsIn(tx) }
 
-// Scannable is the one method *sql.Row and *sql.Rows share, so one scan function reads either.
-type Scannable = scannable
-
 // Epoch and FromEpoch are the store's Unix-seconds time-column codec, exported so extension stores
 // encode time exactly as the core does.
-func Epoch(t time.Time) int64 { return epoch(t) }
+func Epoch(t time.Time) int64 { return storedb.Epoch(t) }
 
 // FromEpoch decodes Epoch.
-func FromEpoch(n int64) time.Time { return fromEpoch(n) }
+func FromEpoch(n int64) time.Time { return storedb.FromEpoch(n) }

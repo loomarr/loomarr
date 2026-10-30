@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.
@@ -294,17 +295,9 @@ func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Ke
 	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
 }
 
-// isConstraintViolation recognizes the portable driver contracts without coupling the
-// store to either concrete error package. Postgres exposes SQLSTATE 23505; modernc SQLite
-// exposes extended result codes whose low byte is SQLITE_CONSTRAINT (19).
-func isConstraintViolation(err error) bool {
-	var state interface{ SQLState() string }
-	if errors.As(err, &state) && state.SQLState() == "23505" {
-		return true
-	}
-	var coded interface{ Code() int }
-	return errors.As(err, &coded) && coded.Code()&0xff == 19
-}
+// isConstraintViolation is storedb.IsConstraintViolation under the name this package's 14 call
+// sites already use.
+func isConstraintViolation(err error) bool { return storedb.IsConstraintViolation(err) }
 
 func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {

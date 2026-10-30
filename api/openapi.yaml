@@ -8517,6 +8517,8 @@ components:
           type: array
         scores:
           $ref: "#/components/schemas/Scores"
+        seasonNotKept:
+          $ref: "#/components/schemas/SeasonNotKept"
         trace:
           $ref: "#/components/schemas/DecisionTrace"
       required:
@@ -9883,6 +9885,21 @@ components:
           type: array
       required:
         - candidates
+      type: object
+    SeasonNotKept:
+      additionalProperties: false
+      properties:
+        country:
+          description: ISO 3166-1 alpha-2 code of the calendar the holidays were read against
+          type: string
+        holidays:
+          description: Labels of the holidays that country doesn't keep
+          items:
+            type: string
+          type: array
+      required:
+        - country
+        - holidays
       type: object
     SeasonalPolicy:
       additionalProperties: false

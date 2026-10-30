@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -91,8 +90,7 @@ type uploadIconOutput struct {
 // mean two implementations of one rule to keep in step — which is how backupHandler and
 // eventsHandler ended up disagreeing about nil authorizers.
 func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*uploadIconOutput, error) {
-	ch, err := s.store.GetChannel(ctx, in.ID)
-	if err != nil {
+	if _, err := s.store.GetChannel(ctx, in.ID); err != nil {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 
@@ -147,38 +145,14 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 	}
 
 	logo := s.channelLogoURL(img.Hash)
-	const maxIconLinkAttempts = 4
-	for attempt := 0; attempt < maxIconLinkAttempts; attempt++ {
+	// A logo is channel identity, so this goes through the same edit rules as a PATCH of `logo`
+	// (the `building` tuner-list signal, the due-now deadline, the auto-reconcile that pushes the
+	// icon to Tunarr). Revision 0: link the icon to whatever the channel is now.
+	if err := s.linkUploadToChannel(ctx, in.ID, "icon", func(ch *store.Channel) error {
 		ch.Logo = logo
-		saved, saveErr := s.store.SaveChannel(ctx, ch)
-		if saveErr == nil {
-			ch = saved
-			break
-		}
-		if errors.Is(saveErr, store.ErrNotFound) {
-			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
-		}
-		if !errors.Is(saveErr, store.ErrChannelStale) || attempt == maxIconLinkAttempts-1 {
-			return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
-				"The icon was saved but linking it to the channel failed. Try again.", saveErr)
-		}
-		ch, err = s.store.GetChannel(ctx, in.ID)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
-			}
-			return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
-				"The icon was saved but linking it to the channel failed. Try again.", err)
-		}
-	}
-
-	// Auto-reconcile so the new icon reaches Tunarr without a manual step (the seamless
-	// edit model, §9). Best-effort — a reconcile failure doesn't fail the upload; the next
-	// sweep pushes it. Only when a channel service is wired (nil in some unit setups).
-	if s.channels != nil {
-		if err := s.channels.Reconcile(ctx, in.ID); err != nil && s.log != nil {
-			s.log.Warn("icon upload reconcile (icon saved; next sweep pushes it)", "channel", in.ID, "err", err)
-		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	out := &uploadIconOutput{}

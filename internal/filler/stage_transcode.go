@@ -499,7 +499,7 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 
 // reserveStorage leases the run's complete peak working set before anything is written. Both are
 // nil without a governor; otherwise the caller releases the lease.
-func (s *TranscodeStage) reserveStorage(ctx context.Context, c StoreClip, oldFull string) (*storagegovernor.Lease, *storageWriteTracker, error) {
+func (s *TranscodeStage) reserveStorage(ctx context.Context, c StoreClip, oldFull string) (*storagegovernor.Lease, *storagegovernor.WriteTracker, error) {
 	if s.storage == nil {
 		return nil, nil, nil
 	}
@@ -529,12 +529,12 @@ func (s *TranscodeStage) reserveStorage(ctx context.Context, c StoreClip, oldFul
 		lease.Release()
 		return nil, nil, storagegovernor.Pause("revalidate transcode storage", decision)
 	}
-	return lease, &storageWriteTracker{lease: lease}, nil
+	return lease, storagegovernor.NewWriteTracker(lease), nil
 }
 
 // reemitPersistedQuality answers for a clip this profile already encoded, from its inspection
 // report, building only an evidence derivative the clip predates.
-func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c StoreClip, oldFull, inputFull string, sourceMaster MediaAssetIdentity, tags SidecarTags, storageWrites *storageWriteTracker) (StageResult, error) {
+func (s *TranscodeStage) reemitPersistedQuality(ctx context.Context, c StoreClip, oldFull, inputFull string, sourceMaster MediaAssetIdentity, tags SidecarTags, storageWrites *storagegovernor.WriteTracker) (StageResult, error) {
 	if s.evidenceTranscode == nil {
 		return mediaQualityResult(c, *tags.MediaQuality), nil
 	}

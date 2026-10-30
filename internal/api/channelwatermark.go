@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 
@@ -64,26 +63,18 @@ func (s *Server) uploadChannelWatermark(ctx context.Context, in *uploadWatermark
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the watermark",
 			"Something went wrong storing the image. Try again.", err)
 	}
-	// Optimistic save: re-read and retry on a concurrent edit, as the icon upload does.
-	for attempt := 0; ; attempt++ {
-		ch, err := s.store.GetChannel(ctx, in.ID)
-		if err != nil {
-			return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
-		}
+	// The same edit rules as a PATCH of the policy, so the new bug reaches playout on the
+	// auto-reconcile rather than waiting for the sweep.
+	if err := s.linkUploadToChannel(ctx, in.ID, "image", func(ch *store.Channel) error {
 		wm := schedule.WatermarkPolicy{}
 		if ch.Policy.Watermark != nil {
 			wm = *ch.Policy.Watermark
 		}
 		wm.Image = img.Hash
 		ch.Policy.Watermark = &wm
-		_, err = s.store.SaveChannel(ctx, ch)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, store.ErrChannelStale) || attempt == 3 {
-			return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
-				"The image was saved but linking it to the channel failed. Try again.", err)
-		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	out := &uploadWatermarkOutput{}
 	out.Body.Image = img.Hash

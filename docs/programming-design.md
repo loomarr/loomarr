@@ -112,8 +112,14 @@ Observed on the dev "1980s Action Heroes": `operatorSet: ["ordering", "scope"]` 
 A refine that says "add Christmas specials during the holiday window" changes those LLM-authored
 rules, not the channel's whole seasonal identity: the base policy remains year-round and the
 `holiday:christmas` rule activates its narrower slice on the calendar clock. "Turn this into a
-Christmas channel" is the distinct identity operation and grounds to seasonal `exclusive`. The same
-distinction applies to dayparts: morning/primetime/late-night curation is persisted policy evaluated
+Christmas channel" is the distinct identity operation and grounds to seasonal `exclusive`. Grounding
+holds `exclusive` to the holidays the household's country keeps (`filler.home_country`, #2030
+decision 38): a holiday kept elsewhere is dropped from the subset, and a channel left with none plays
+year-round, with `seasonNotKept` naming what was dropped for the approval card. The model's holiday
+ids are read loosely ("Christmas" is `christmas`) and an id no holiday has, or a group's, is dropped
+first, so the card only ever names a real holiday. Holiday episode
+selection still honours the named holiday. The planner prompt lists that country's holiday ids from
+the loaded definitions (decision 39). The same distinction applies to dayparts: morning/primetime/late-night curation is persisted policy evaluated
 by the scheduler for both newly proposed and existing channels, not a request to invoke the model at
 every clock boundary.
 

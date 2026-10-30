@@ -114,7 +114,7 @@ func buildSuggestions(
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
 	suggester.WithRatings(tmdbClient).
-		WithHolidays(holidays).
+		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
 		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved("reference", httpx.TimeoutReference, metricRecorder)))

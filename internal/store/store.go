@@ -25,13 +25,17 @@ import (
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound reports that a requested durable identity does not exist. Besides Get* reads,
 // commands whose integrity depends on an existing owner (such as channel-scoped feedback) return
 // it before committing any dependent row.
-var ErrNotFound = errors.New("store: not found")
+//
+// It is storedb.ErrNotFound, the same value under a second name, so errors.Is matches an error
+// created in either package.
+var ErrNotFound = storedb.ErrNotFound
 
 // ErrConditionedClipMismatch reports a conditioned clip adoption whose catalog rows are not one
 // of the exact source-only, source-plus-held-reconstruction, or target-only states the owner-bound
