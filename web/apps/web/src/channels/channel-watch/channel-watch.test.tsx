@@ -31,6 +31,7 @@ const hls = vi.hoisted(() => ({
     play: vi.fn(),
     pause: vi.fn(),
     goLive: vi.fn(),
+    seek: vi.fn(),
   },
 }));
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
@@ -211,6 +212,62 @@ describe("ChannelWatch pickers", () => {
     // The live player takes focus on mount, so the arrows reach it without a click.
     await userEvent.keyboard("{ArrowUp}{ArrowDown}");
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  // Seeking the window (#2088 decision 2). The timeline's clock is the server's: live is 1_060_000.
+  describe("seeking the window", () => {
+    const programmeFrom = (startMs: number) =>
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_060_000,
+        airings: [
+          { kind: "program", scheduleBlockId: "now", title: "Airing Programme", startMs, stopMs: 4_000_000 },
+        ],
+      });
+
+    beforeEach(() => hls.liveTransport.seek.mockClear());
+
+    it("steps 10 s back from ⟲ and forward from ⟳ once behind", async () => {
+      stubTracks();
+      hls.liveTransport.state = {
+        mode: "behind",
+        lagSeconds: 60,
+        viewerTimeMs: 1_000_000,
+        noticeRevision: 0,
+      };
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Back 10 seconds" }));
+      await userEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+      expect(hls.liveTransport.seek.mock.calls.map(([, at]) => at)).toEqual([990_000, 1_010_000]);
+    });
+
+    it("offers no forward from live", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      expect(await screen.findByRole("button", { name: "Forward 10 seconds" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+
+    it("starts over at the programme's start while the window still holds it", async () => {
+      stubTracks();
+      server.use(programmeFrom(500_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Start over" }));
+      expect(hls.liveTransport.seek).toHaveBeenCalledWith(expect.any(HTMLVideoElement), 500_000);
+    });
+
+    it("has no Start over for a programme that began before the window", async () => {
+      stubTracks();
+      // Live is 1_060_000; the window reaches back fifteen minutes, to 160_000.
+      server.use(programmeFrom(100_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(await screen.findByText("Airing Programme")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Start over" })).not.toBeInTheDocument();
+    });
   });
 
   it("goes live from the chrome when the viewer is behind", async () => {

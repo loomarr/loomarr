@@ -5,6 +5,7 @@ import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
 import { liveHlsConfig } from "./live-hls-config";
 import { type LiveLevel, selectLiveLevel } from "./live-level";
+import { LIVE_DVR_HORIZON_MS, liveSeek } from "./live-seek";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -25,7 +26,6 @@ import { type LiveLevel, selectLiveLevel } from "./live-level";
 // server only decides which renditions to OFFER, hinted by the device signals below.
 
 type BrowserPlayerStatus = "idle" | "loading" | "playing" | "error";
-const LIVE_DVR_HORIZON_MS = 15 * 60_000;
 
 type BrowserTunePhase = "first-frame" | "manifest" | "still";
 
@@ -48,6 +48,8 @@ interface BrowserLivePlaybackTransport {
   play: (video: HTMLVideoElement) => Promise<void> | void;
   pause: (video: HTMLVideoElement) => void;
   goLive: (video: HTMLVideoElement) => Promise<void> | void;
+  /** Move to a wall-clock instant inside the window (±10 s, Start over, the playbar's past). */
+  seek: (video: HTMLVideoElement, wallClockMs: number) => Promise<void> | void;
 }
 
 interface BrowserHlsPlayerOptions {
@@ -458,6 +460,53 @@ function useBrowserHlsPlayer({
       video.currentTime = pausedMediaTime;
       publishTransport();
       await video.play().catch(() => undefined);
+    },
+    [channelId, publishTransport, returnLive],
+  );
+
+  // A seek keeps the viewer's play state: paused stays paused at the new point, playing plays on
+  // from it. Reaching the live edge is Go live.
+  const seekLive = useCallback(
+    async (video: HTMLVideoElement, wallClockMs: number) => {
+      const at = Date.now();
+      const clock = clockRef.current;
+      if (clock.channelId !== channelId) return;
+      const active = activeRef.current;
+      const hls = active.video === video ? active.hls : undefined;
+      let displayedWallMs = clock.viewerTimeMs;
+      if (clock.mode !== "paused") {
+        const sample = displayedWallClockMs(
+          active.video,
+          active.hls,
+          clock.mode === "live" ? at : at - clock.lagMs,
+          active.clockAnchor,
+        );
+        active.clockAnchor = sample.anchor;
+        displayedWallMs = sample.wallClockMs;
+      }
+      const last = video.seekable.length - 1;
+      const seek = liveSeek({
+        currentTime: video.currentTime,
+        displayedWallMs,
+        liveEdge: hls?.liveSyncPosition ?? (last >= 0 ? video.seekable.end(last) : undefined),
+        nowMs: at,
+        seekable: last >= 0 ? { start: video.seekable.start(0), end: video.seekable.end(last) } : undefined,
+        targetWallMs: wallClockMs,
+      });
+      if (seek.kind === "live") {
+        await returnLive(video, false);
+        return;
+      }
+      hls?.startLoad(seek.mediaTime);
+      video.currentTime = seek.mediaTime;
+      clock.viewerTimeMs = seek.wallMs;
+      if (clock.mode === "paused") {
+        clock.pausedMediaTime = seek.mediaTime;
+      } else {
+        clock.mode = "behind";
+        clock.lagMs = Math.max(0, at - seek.wallMs);
+      }
+      publishTransport(false);
     },
     [channelId, publishTransport, returnLive],
   );
@@ -1068,8 +1117,9 @@ function useBrowserHlsPlayer({
       play: playLive,
       pause: pauseLive,
       goLive: (video) => returnLive(video, false),
+      seek: seekLive,
     }),
-    [channelId, pauseLive, playLive, returnLive, transportState],
+    [channelId, pauseLive, playLive, returnLive, seekLive, transportState],
   );
 
   return {
@@ -1093,4 +1143,4 @@ export type {
   LiveLevel,
   UseBrowserHlsPlayer,
 };
-export { liveHlsConfig, selectLiveLevel, useBrowserHlsPlayer };
+export { liveHlsConfig, liveSeek, selectLiveLevel, useBrowserHlsPlayer };
