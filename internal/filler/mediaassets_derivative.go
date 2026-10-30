@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 type mediaDerivativeRequest struct {
@@ -22,10 +23,10 @@ type mediaDerivativeRequest struct {
 	Transcode   func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	Verify      func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
 	OnProgress  func(int)
-	Storage     *storageWriteTracker
+	Storage     *storagegovernor.WriteTracker
 }
 
-func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, storage *storageWriteTracker) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, storage *storagegovernor.WriteTracker) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
 	if s.evidenceTranscode == nil {
 		return nil, mediatools.MediaToolIdentity{}, nil
 	}

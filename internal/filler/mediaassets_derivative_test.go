@@ -111,7 +111,7 @@ func TestBuildEvidenceDerivativeStopsOutputThatExceedsItsLease(t *testing.T) {
 		Transcode: func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, make([]byte, 11), 0o600)
 		},
-		Storage: &storageWriteTracker{lease: lease},
+		Storage: storagegovernor.NewWriteTracker(lease),
 	})
 	if err == nil || !strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
 		t.Fatalf("buildMediaDerivative error = %v, want estimate ceiling", err)
