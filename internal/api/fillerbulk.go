@@ -3,9 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -93,24 +91,10 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 	var leaves []string
 	var forest *taxonomy.Forest
 	if in.Body.Tags != nil {
-		taxa, err := s.store.ListTaxa(ctx)
-		if err != nil {
+		var err error
+		if leaves, forest, err = s.groundOperatorTags(ctx, *in.Body.Tags); err != nil {
 			return nil, err
 		}
-		forest = taxonomy.New(taxa)
-		seen := map[string]bool{}
-		for _, raw := range *in.Body.Tags {
-			slug, ok := forest.Resolve(raw)
-			if !ok {
-				return nil, errUnprocessable("Unknown tag",
-					fmt.Sprintf("The tag %q is not in the classification vocabulary. Add it under Filler → Advanced → Classification vocabulary first, or choose an existing tag.", raw))
-			}
-			if !seen[slug] {
-				seen[slug] = true
-				leaves = append(leaves, slug)
-			}
-		}
-		sort.Strings(leaves)
 	}
 
 	for _, hash := range in.Body.Hashes {
@@ -152,39 +136,20 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, false, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
-		record := func(axis fillerenrichment.Axis, value fillerenrichment.Value, taxonomyVersion string) error {
-			_, _, err := s.store.ApplyFillerEnrichment(ctx, fillerenrichment.State{
-				ClipHash: clip.Hash, Axis: axis, Status: fillerenrichment.StatusComplete, Value: value,
-				Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
-					Reference: "operator.bulk_clip_edit", Confidence: 100, Producer: "operator",
-					ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: now},
-			}, now)
-			return err
-		}
+		evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.bulk_clip_edit", at: now}
 		if in.Body.Era != nil {
-			if err := record(fillerenrichment.AxisEra, fillerenrichment.Value{Year: era}, ""); err != nil {
+			if err := evidence.record(ctx, fillerenrichment.AxisEra, fillerenrichment.Value{Year: era}); err != nil {
 				return nil, huma.Error500InternalServerError("record era evidence", err)
 			}
 		}
 		if in.Body.Audience != nil {
-			if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: string(audience)}, ""); err != nil {
+			if err := evidence.record(ctx, fillerenrichment.AxisAudience, fillerenrichment.Value{Text: string(audience)}); err != nil {
 				return nil, huma.Error500InternalServerError("record audience evidence", err)
 			}
 		}
 		if in.Body.Tags != nil {
-			byAxis := make(map[fillerenrichment.Axis][]string)
-			for _, leaf := range leaves {
-				if taxon, ok := forest.Get(leaf); ok {
-					byAxis[fillerenrichment.Axis(taxon.Axis)] = append(byAxis[fillerenrichment.Axis(taxon.Axis)], leaf)
-				}
-			}
-			for _, axis := range []fillerenrichment.Axis{
-				fillerenrichment.AxisProduct, fillerenrichment.AxisFormat, fillerenrichment.AxisSeasonal,
-				fillerenrichment.AxisAudienceCue, fillerenrichment.AxisPresentation,
-			} {
-				if err := record(axis, fillerenrichment.Value{Tags: byAxis[axis]}, "operator-live"); err != nil {
-					return nil, huma.Error500InternalServerError("record taxonomy evidence", err)
-				}
+			if err := evidence.recordTags(ctx, forest, leaves); err != nil {
+				return nil, huma.Error500InternalServerError("record taxonomy evidence", err)
 			}
 		}
 		if changed, err := s.store.GetClip(ctx, clip.Hash); err == nil {
@@ -281,19 +246,13 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 // ⚠ It clears an operator DISMISSAL too (§10 V54), not only a machine rejection. Both are terminal
 // refusals with the same undo, and restore is one endpoint by the argument above — a restore that
 // un-removed a dismissed clip from the catalog while leaving Incoming calling it dismissed would be
-// the exact disagreement that argument exists to prevent.
+// the exact disagreement that argument exists to prevent. The transition is ClipPipeline.RestoreRefusal.
 func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
-		if err != nil || !found {
+		if err != nil || !found || !row.RestoreRefusal(time.Now().UTC()) {
 			continue
 		}
-		if row.Disposition != filler.DispositionRejected && row.Disposition != filler.DispositionDismissed {
-			continue
-		}
-		row.Disposition = filler.DispositionReview
-		row.RejectReason, row.RejectDetail = "", ""
-		row.UpdatedAt = time.Now().UTC()
 		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
 			s.log.Warn("could not clear a restored clip's rejection", "clip", hash, "err", err)
 		}
@@ -308,10 +267,8 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 // The row kept saying `review`, so the clip kept saying it needed a decision. Three of the four
 // decision buttons therefore did not stick.
 //
-// ⚠ **Guarded on the row's CURRENT disposition, with the allowed origins passed explicitly.** A
-// clip the pipeline is still working (`running`) is not settled by an operator verb: it finishes
-// its ladder and settles itself, which is what keeps an early operator action from abandoning
-// the transcribe and tag rungs. An unlisted origin is skipped, never coerced.
+// ⚠ **Guarded on the row's CURRENT disposition, with the allowed origins passed explicitly**
+// (ClipPipeline.SettleByOperator): a clip the pipeline is still working finishes its own ladder.
 //
 // Best-effort, matching `clearPipelineRejects`: the catalog half has already landed by the time
 // this runs and `removed_at`/`held` are what decide airability, so failing the request over the
@@ -319,26 +276,9 @@ func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
 func (s *Server) settlePipeline(ctx context.Context, hashes []string, to filler.Disposition, from ...filler.Disposition) {
 	for _, hash := range hashes {
 		row, found, err := s.store.GetClipPipeline(ctx, hash)
-		if err != nil || !found {
+		if err != nil || !found || !row.SettleByOperator(to, time.Now().UTC(), from...) {
 			continue
 		}
-		allowed := false
-		for _, d := range from {
-			if row.Disposition == d {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			continue
-		}
-		row.Disposition = to
-		if to.Terminal() {
-			// Zero the schedule so the work list cannot re-pick a settled row on a clock skew —
-			// the same rule `Pipeline.save` applies to the rows it settles itself.
-			row.NextRun = time.Time{}
-		}
-		row.UpdatedAt = time.Now().UTC()
 		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
 			s.log.Warn("could not record the operator's decision", "clip", hash, "to", string(to), "err", err)
 		}

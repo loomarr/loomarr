@@ -262,3 +262,21 @@ func TestCanonicalize_MatchesResolverWhitespaceRules(t *testing.T) {
 		t.Fatalf("Resolve spaced synonym = %q, %v, want cereal, true", got, ok)
 	}
 }
+
+func TestForest_GroundResolvesDedupesAndSortsAnOperatorTagSet(t *testing.T) {
+	f := seed()
+	leaves, unknown, ok := f.Ground([]string{"live action", "cartoon", " Animated "})
+	if !ok || unknown != "" || !reflect.DeepEqual(leaves, []string{"animated", "live-action"}) {
+		t.Fatalf("Ground = (%v, %q, %v), want ([animated live-action], \"\", true)", leaves, unknown, ok)
+	}
+	if leaves, _, ok := f.Ground(nil); !ok || leaves == nil || len(leaves) != 0 {
+		t.Fatalf("Ground(nil) = (%#v, %v), want an empty set: clearing tags is a valid edit", leaves, ok)
+	}
+}
+
+func TestForest_GroundRefusesTheWholeSetOnAnUnknownTag(t *testing.T) {
+	leaves, unknown, ok := seed().Ground([]string{"cartoon", "not-a-real-tag", "also-bogus"})
+	if ok || leaves != nil || unknown != "not-a-real-tag" {
+		t.Fatalf("Ground = (%v, %q, %v), want (nil, \"not-a-real-tag\", false)", leaves, unknown, ok)
+	}
+}

@@ -3,10 +3,8 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -778,7 +776,7 @@ type clipOutput struct{ Body ClipDTO }
 func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
 	now := time.Now()
 	var operatorLeaves []string
-	var operatorTaxa []taxonomy.Taxon
+	var operatorForest *taxonomy.Forest
 	var operatorGeography *fillerenrichment.Value
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
@@ -828,25 +826,10 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// never silently persisted. The store derives `category` from the accepted set in the same
 	// transaction, against its current graph; the client never supplies that compatibility shadow.
 	if in.Body.Tags != nil {
-		taxa, err := s.store.ListTaxa(ctx)
+		leaves, forest, err := s.groundOperatorTags(ctx, *in.Body.Tags)
 		if err != nil {
 			return nil, err
 		}
-		forest := taxonomy.New(taxa)
-		leaves := make([]string, 0, len(*in.Body.Tags))
-		seen := map[string]bool{}
-		for _, raw := range *in.Body.Tags {
-			slug, ok := forest.Resolve(raw)
-			if !ok {
-				return nil, errUnprocessable("Unknown tag",
-					fmt.Sprintf("The tag %q is not in the classification vocabulary. Add it under Filler → Advanced → Classification vocabulary first, or choose an existing tag.", raw))
-			}
-			if !seen[slug] {
-				seen[slug] = true
-				leaves = append(leaves, slug)
-			}
-		}
-		sort.Strings(leaves)
 		if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
@@ -856,8 +839,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			}
 			return nil, err
 		}
-		operatorTaxa = taxa
-		operatorLeaves = append([]string(nil), leaves...)
+		operatorForest, operatorLeaves = forest, leaves
 	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
@@ -939,51 +921,31 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	record := func(axis fillerenrichment.Axis, value fillerenrichment.Value, taxonomyVersion string) error {
-		_, _, err := s.store.ApplyFillerEnrichment(ctx, fillerenrichment.State{
-			ClipHash: clip.Hash, Axis: axis, Status: fillerenrichment.StatusComplete, Value: value,
-			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
-				Reference: "operator.clip_edit", Confidence: 100, Producer: "operator",
-				ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: now.UTC()},
-		}, now)
-		return err
-	}
-	if err := record(fillerenrichment.AxisEra, fillerenrichment.Value{Year: in.Body.Era}, ""); err != nil {
+	evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.clip_edit", at: now}
+	if err := evidence.record(ctx, fillerenrichment.AxisEra, fillerenrichment.Value{Year: in.Body.Era}); err != nil {
 		return nil, err
 	}
-	if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}, ""); err != nil {
+	if err := evidence.record(ctx, fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}); err != nil {
 		return nil, err
 	}
 	if in.Body.Kind != "" {
-		if err := record(fillerenrichment.AxisKind, fillerenrichment.Value{Text: in.Body.Kind}, ""); err != nil {
+		if err := evidence.record(ctx, fillerenrichment.AxisKind, fillerenrichment.Value{Text: in.Body.Kind}); err != nil {
 			return nil, err
 		}
 	}
 	if in.Body.Brand != nil {
-		if err := record(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}, ""); err != nil {
+		if err := evidence.record(ctx, fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}); err != nil {
 			return nil, err
 		}
 	}
 	if operatorGeography != nil {
-		if err := record(fillerenrichment.AxisGeography, *operatorGeography, ""); err != nil {
+		if err := evidence.record(ctx, fillerenrichment.AxisGeography, *operatorGeography); err != nil {
 			return nil, err
 		}
 	}
 	if in.Body.Tags != nil {
-		byAxis := make(map[fillerenrichment.Axis][]string)
-		forest := taxonomy.New(operatorTaxa)
-		for _, leaf := range operatorLeaves {
-			if taxon, ok := forest.Get(leaf); ok {
-				byAxis[fillerenrichment.Axis(taxon.Axis)] = append(byAxis[fillerenrichment.Axis(taxon.Axis)], leaf)
-			}
-		}
-		for _, axis := range []fillerenrichment.Axis{
-			fillerenrichment.AxisProduct, fillerenrichment.AxisFormat, fillerenrichment.AxisSeasonal,
-			fillerenrichment.AxisAudienceCue, fillerenrichment.AxisPresentation,
-		} {
-			if err := record(axis, fillerenrichment.Value{Tags: byAxis[axis]}, "operator-live"); err != nil {
-				return nil, err
-			}
+		if err := evidence.recordTags(ctx, operatorForest, operatorLeaves); err != nil {
+			return nil, err
 		}
 	}
 	c, err := s.store.GetClip(ctx, clip.Hash)

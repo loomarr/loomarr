@@ -1040,11 +1040,7 @@ func (p *Pipeline) Enrol(ctx context.Context, hash string) error {
 func (p *Pipeline) save(ctx context.Context, row ClipPipeline, clip StoreClip) error {
 	row.UpdatedAt = p.now().UTC()
 	applyPreparationProgress(&row)
-	if row.Disposition.Terminal() {
-		// A terminal row is not due again; zero the schedule so the work list cannot re-pick it
-		// on a clock skew.
-		row.NextRun = time.Time{}
-	}
+	row.unscheduleIfTerminal()
 	if row.Disposition == DispositionReview && clip.Path != "" {
 		if _, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC()); err != nil {
 			return fmt.Errorf("hold clip for review: %w", err)
