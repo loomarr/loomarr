@@ -43,12 +43,11 @@ type sqlStore struct {
 	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
 	// Entries are bounded by the household user count (§1) and live with the store.
 	approvalLocks sync.Map
-	// invitationIdentityLocks serialize SQLite admission checks per identity.
-	// Postgres uses a database-wide advisory lock for the same seam.
-	invitationIdentityLocks sync.Map
-	// passwordRecoveryLocks serialize replacement of a person's pending recovery on SQLite.
-	// Postgres uses a database-wide advisory lock for the same seam.
-	passwordRecoveryLocks sync.Map
+	// invitationIdentityLocks serialize admission checks per identity (SQLite mutex, Postgres
+	// advisory lock). One KeyedLock per domain: the identity cluster takes these with it.
+	invitationIdentityLocks storedb.KeyedLock
+	// passwordRecoveryLocks serialize replacement of a person's pending recovery, the same way.
+	passwordRecoveryLocks storedb.KeyedLock
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -228,7 +227,7 @@ func (s *sqlStore) withPostgresAdvisoryLock(
 	label, namespace, key string,
 	fn func(context.Context) error,
 ) error {
-	return storedb.WithPostgresAdvisoryLock(ctx, s.db, s.dialect, label, namespace, key, fn)
+	return s.kernel().WithAdvisoryLock(ctx, label, namespace, key, fn)
 }
 
 // SettingRow is a persisted override plus its audit metadata (config-design §3).

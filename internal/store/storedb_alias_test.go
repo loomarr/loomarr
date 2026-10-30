@@ -46,3 +46,21 @@ var (
 	_ Scannable = storedb.Scannable(nil)
 	_ Dialect   = storedb.DialectSQLite
 )
+
+// store.Handle is a storedb.Handle plus Clips: a cluster store written against the kernel handle
+// runs on the one HandleOf lends, and store.Handle carries the same advisory lock and dialect.
+func TestStoreHandleIsAKernelHandle(t *testing.T) {
+	var kernel storedb.Handle = HandleOf(newSQLiteStore(t))
+	if kernel.Dialect() != DialectSQLite {
+		t.Fatalf("Dialect = %q", kernel.Dialect())
+	}
+	tx, err := kernel.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var n int
+	if err := tx.QueryRowContext(context.Background(), kernel.Rebind(`SELECT COUNT(*) FROM users WHERE id <> ?`), "x").Scan(&n); err != nil {
+		t.Fatalf("query through the kernel handle: %v", err)
+	}
+}

@@ -25,11 +25,11 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -62,7 +62,7 @@ func buildFillerSubsystem(
 	libraryClient *library.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	jobs *scheduler.Registry,
+	registry *jobs.Registry,
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
@@ -163,7 +163,7 @@ func buildFillerSubsystem(
 		log.Info("filler pod assembler wired into the scheduler")
 	}
 
-	jobs.Add(fillerSyncJob(syncer))
+	registry.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
@@ -262,7 +262,7 @@ func buildFillerSubsystem(
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
-	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
+	registry.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)
@@ -276,11 +276,11 @@ func buildFillerSubsystem(
 		_, err := pipeline.EnrolMissing(ctx)
 		return err
 	}
-	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
+	registry.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	jobs.Add(fillerIdentityJob(filler.NewCreativeIdentity(
+	registry.Add(fillerIdentityJob(filler.NewCreativeIdentity(
 		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no
@@ -297,7 +297,7 @@ func buildFillerSubsystem(
 	defectTools := buildFillerMediaTools(set, metricRecorder)
 	defectJudge := filler.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
-	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
+	registry.Add(fillerDefectsJob(filler.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
@@ -370,7 +370,7 @@ func buildFillerSubsystem(
 		policy: placePolicy, stations: stations, languages: result.intakeLanguages})
 	adapter.autoFetch = autoFetch
 	result.service = adapter
-	jobs.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
+	registry.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
 	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
 		"max_per_run", set.intv("filler.fetch.max_per_run"))
 	return result

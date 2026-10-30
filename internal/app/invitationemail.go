@@ -15,8 +15,8 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -311,9 +311,9 @@ func (m invitationEmailMaterializer) Materialize(
 	}, nil
 }
 
-func notificationDeliveryJob(service *notifications.Service) scheduler.Job {
-	return scheduler.Job{
-		Name: "notification-delivery", Group: scheduler.GroupSystem, Title: "Deliver account messages",
+func notificationDeliveryJob(service *notifications.Service) jobs.Job {
+	return jobs.Job{
+		Name: "notification-delivery", Group: jobs.GroupSystem, Title: "Deliver account messages",
 		Description: "Sends queued invitation and recovery messages through their configured delivery means.",
 		DefaultCron: "*/15 * * * * *", ScheduleKey: "job.notification_delivery.schedule",
 		Run: func(ctx context.Context) error {
@@ -371,7 +371,7 @@ func buildAccountDelivery(
 	set resolved,
 	invitationService *invitation.Service,
 	recoveryService *auth.PasswordRecoveryService,
-	registry *scheduler.Registry,
+	registry *jobs.Registry,
 	log *slog.Logger,
 ) accountDeliveryBuild {
 	if st == nil || set.svc == nil || invitationService == nil || recoveryService == nil {

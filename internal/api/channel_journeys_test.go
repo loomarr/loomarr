@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -209,7 +209,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			}
 			requester := &testkit.Requester{}
 			lookup := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{"90091001": {ItemID: "signal", Present: arrives}})
-			rc := reconcile.New(st, requester, lookup, nil, reconcile.Config{RequestTTL: time.Hour}, func() time.Time { return now }, log)
+			rc := provisionbackstop.New(st, requester, lookup, nil, provisionbackstop.Config{RequestTTL: time.Hour}, func() time.Time { return now }, log)
 			if count, err := rc.Tick(ctx); err != nil || count != 1 {
 				t.Fatalf("request tick: %d, %v", count, err)
 			}

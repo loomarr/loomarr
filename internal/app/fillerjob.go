@@ -7,25 +7,25 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 )
 
 // fillerSyncJob declares the filler catalog sync (§10, §18.1).
 //
 // ⚠ **This one job cannot live with its subsystem, and the reason is structural rather than
-// stylistic.** `internal/filler` may never import `internal/scheduler`: the scheduler
+// stylistic.** `internal/filler` may never import `internal/jobs`: the jobs package
 // imports `store`, and `store` imports `filler` for the Clip type — so a `Job()` method on
 // Syncer is an import cycle, not a preference. Verified by trying it.
 //
 // So the declaration sits here, in the one package that may import both, and stays as close
 // to the shape its siblings use as the cycle allows. If `store` ever stops depending on
 // `filler`, this belongs in `internal/filler/jobs.go` beside the rest.
-func fillerSyncJob(s *filler.Syncer) scheduler.Job {
-	return scheduler.Job{
+func fillerSyncJob(s *filler.Syncer) jobs.Job {
+	return jobs.Job{
 		// A folder walk that hashes every file it finds, so it scales with the catalog rather
 		// than with what changed — minutes on a large drop folder, well past River's 1m default.
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-sync", Group: scheduler.GroupFiller, Title: "Sync the filler catalogue",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-sync", Group: jobs.GroupFiller, Title: "Sync the filler catalogue",
 		Description: "Scans configured folders and libraries so new filler becomes available for channel breaks.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
@@ -119,12 +119,12 @@ func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 // Each pass first switches the curated sources for the places' nearby stations (#2059 decision
 // 10), so a place set or moved since the last pass is fetched for in this one. A failure there costs
 // only the switch: the pass still runs with the sources as they are.
-func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) scheduler.Job {
-	return scheduler.Job{
+func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) jobs.Job {
+	return jobs.Job{
 		// yt-dlp downloading real files off the network. A single clip can exceed a minute on
 		// its own, and this walks every registered source.
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-fetch", Group: scheduler.GroupFiller, Title: "Fetch new filler",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-fetch", Group: jobs.GroupFiller, Title: "Fetch new filler",
 		Description: "Checks sources whose automatic-download schedule is due and adds new clips to Incoming.",
 		// Fixed, cheap due-source wake. The user cadence lives only in filler.fetch.every and the
 		// per-source policy; an idle pass makes no provider request.
@@ -156,16 +156,16 @@ func fillerFetchJob(f *filler.Fetcher, local localCuratedSources) scheduler.Job 
 // so an idle install does one cheap work-list query; a busy one advances the next clip promptly
 // instead of leaving a fresh download sitting for up to an hour. The sweeps had to be rare because
 // each one re-read the entire catalog.
-func fillerPipelineJob(runner fillerPipelineRunner) scheduler.Job {
-	return scheduler.Job{
+func fillerPipelineJob(runner fillerPipelineRunner) jobs.Job {
+	return jobs.Job{
 		// ⚠ **`Timeout` is not optional on this job.** It runs ffmpeg and whisper, and River's
 		// default ceiling is ONE MINUTE — under which a single `blackdetect`/`silencedetect`
 		// pass over a 20-minute recording (measured at 40s alone) is SIGKILLed part-way, and
 		// the operator sees `signal: killed` rather than anything about time. Matched to
-		// `scheduler.LongJobTimeout`, which is the lease horizon: a job may run right up to the
+		// `jobs.LongJobTimeout`, which is the lease horizon: a job may run right up to the
 		// point its claim would expire, and no further.
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-pipeline", Group: scheduler.GroupFiller, Title: "Prepare new filler",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-pipeline", Group: jobs.GroupFiller, Title: "Prepare new filler",
 		Description: "Prepares incoming clips for playback, then fills in useful details for clips that are ready.",
 		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
 		Run: func(ctx context.Context) error {
@@ -181,17 +181,17 @@ func fillerPipelineJob(runner fillerPipelineRunner) scheduler.Job {
 //
 // ⚠ **`Timeout` is not optional here** — the sweep retires proposals and reclaims their source
 // recordings, real file I/O that over a large backlog exceeds River's one-minute default. The
-// ceiling also routes the job to the `long` queue (derived from `Timeout > 0`, `scheduler.queueFor`).
+// ceiling also routes the job to the `long` queue (derived from `Timeout > 0`, `jobs.queueFor`).
 // #304 gave every other job in this file its ceiling but left this one under the default; a stale
 // note here claimed the fix "cannot declare them yet, both land in #304" long after #304 had merged.
 //
 // ⚠ Daily, deliberately off-peak, and NOT more often. The window is measured in weeks, so a faster
 // cadence buys nothing and only widens the chance of a pass landing while an operator is mid-review
 // on a reel that is one hour past its expiry.
-func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
-	return scheduler.Job{
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-split-sweep", Group: scheduler.GroupFiller, Title: "Expire split suggestions",
+func fillerSplitSweepJob(sw *filler.SplitSweeper) jobs.Job {
+	return jobs.Job{
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-split-sweep", Group: jobs.GroupFiller, Title: "Expire split suggestions",
 		Description: "Removes expired split proposals and their source recordings while retaining produced clips.",
 		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
 		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
@@ -202,10 +202,10 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) scheduler.Job {
 // clips, folds every copy of an ad into its best copy, and links variants. Hourly, so a better
 // copy that becomes ready replaces the old one within the hour; a pass only decodes clips it has
 // never measured, bounded to well inside the long-queue ceiling.
-func fillerIdentityJob(ci *filler.CreativeIdentity) scheduler.Job {
-	return scheduler.Job{
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-identity", Group: scheduler.GroupFiller, Title: "Keep one copy of each ad",
+func fillerIdentityJob(ci *filler.CreativeIdentity) jobs.Job {
+	return jobs.Job{
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-identity", Group: jobs.GroupFiller, Title: "Keep one copy of each ad",
 		Description: "Matches copies of the same ad by picture and sound, keeps the best copy, and links cut-downs and other versions.",
 		DefaultCron: "0 20 * * * *", ScheduleKey: "job.filler_identity.schedule",
 		Run: func(ctx context.Context) error { _, err := ci.Run(ctx); return err },
@@ -216,10 +216,10 @@ func fillerIdentityJob(ci *filler.CreativeIdentity) scheduler.Job {
 // measures clips with no current measurement, held ones first since admission waits on them,
 // re-judges records after a floor recalibration or an era correction, and retires every copy
 // that fails. Every five minutes; a pass decodes within a bounded budget and leaves the rest.
-func fillerDefectsJob(d *filler.DefectFloor) scheduler.Job {
-	return scheduler.Job{
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "filler-defects", Group: scheduler.GroupFiller, Title: "Check ad picture and sound",
+func fillerDefectsJob(d *filler.DefectFloor) jobs.Job {
+	return jobs.Job{
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-defects", Group: jobs.GroupFiller, Title: "Check ad picture and sound",
 		Description: "Measures each ad's picture and sound defects against the standard for its era, removes copies that fail, and asks for a better copy.",
 		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.filler_defects.schedule",
 		Run: func(ctx context.Context) error { _, err := d.Run(ctx); return err },

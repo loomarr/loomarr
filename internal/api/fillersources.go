@@ -953,19 +953,18 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	out := &setFillerSourceEnabledOutput{}
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
 	out.Body.Geography = in.Body.Geography
+	// ⚠ Every refusal is decided before the first write, so a refused PATCH saves nothing. The
+	// coverage is validated here and written by the branch below that owns the first refusable
+	// write: the folder's switch is a setting the environment can pin, which only the write
+	// itself can tell us, so there the coverage goes after it.
+	var geography filler.Geography
 	if in.Body.Geography != nil {
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
 		}
-		geography := filler.Geography{Country: in.Body.Geography.Country}.Normalize()
+		geography = filler.Geography{Country: in.Body.Geography.Country}.Normalize()
 		if err := geography.Validate(); err != nil {
 			return nil, errUnprocessable("Invalid source geography", err.Error())
-		}
-		if err := s.store.SetFillerSourceGeography(ctx, in.ID, geography); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
-			}
-			return nil, huma.Error500InternalServerError("set filler source geography", err)
 		}
 	}
 
@@ -989,6 +988,11 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 				return nil, huma.Error500InternalServerError("save the drop-folder switch: "+r.Status, nil)
 			}
 		}
+		if in.Body.Geography != nil {
+			if err := s.setSourceGeography(ctx, in.ID, geography); err != nil {
+				return nil, err
+			}
+		}
 		return out, nil
 	// ⚠ `case "remote"` was here and is gone (§10 V51c). It guarded the V37-retired container —
 	// an id nothing could produce for two phases, so it read as protection while protecting
@@ -1003,6 +1007,12 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	default:
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
+		}
+		// First write: an unknown id is refused here, before anything is saved.
+		if in.Body.Geography != nil {
+			if err := s.setSourceGeography(ctx, in.ID, geography); err != nil {
+				return nil, err
+			}
 		}
 		if err := s.store.SetFillerSourceEnabled(ctx, in.ID, in.Body.Enabled); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -1034,6 +1044,18 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		}
 		return out, nil
 	}
+}
+
+// setSourceGeography writes a validated coverage and names an unknown source the way every
+// source route does.
+func (s *Server) setSourceGeography(ctx context.Context, id string, geography filler.Geography) error {
+	if err := s.store.SetFillerSourceGeography(ctx, id, geography); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+		}
+		return huma.Error500InternalServerError("set filler source geography", err)
+	}
+	return nil
 }
 
 type deleteFillerSourceInput struct {

@@ -16,13 +16,13 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/reference"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -51,7 +51,7 @@ func buildSuggestions(
 	overrides Overrides,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	jobs *scheduler.Registry,
+	registry *jobs.Registry,
 	fillerLayout filler.Layout,
 	activityRecorder *activity.Recorder,
 	log *slog.Logger,
@@ -85,7 +85,7 @@ func buildSuggestions(
 	overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupPassed,
 		"required worker certified", "", "")
 	result.imageFetcher = registerImageJobs(
-		rootCtx, jobs, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
+		rootCtx, registry, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
 	)
 	result.timelineThumbs = newTimelineThumbs(rootCtx, timelineThumbResolver{
 		tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher,
@@ -129,7 +129,7 @@ func buildSuggestions(
 		st, approver, func(context.Context) int { return set.intv("suggest.max_acquisitions") }, log,
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))
-	jobs.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
+	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
 
 	result.suggest = service
 	result.progress = service

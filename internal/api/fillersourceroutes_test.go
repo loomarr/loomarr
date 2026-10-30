@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
@@ -704,5 +706,53 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 	got = byID["archive:canada"]
 	if got.ready || got.readiness != "out_of_area" || got.source != "source" {
 		t.Fatalf("overridden source projection = %+v", got)
+	}
+}
+
+// pinnedFolderSettings refuses every write the way an environment-pinned key does.
+type pinnedFolderSettings struct{ *fakeSettings }
+
+func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []api.SettingResult {
+	out := make([]api.SettingResult, 0, len(edits))
+	for key := range edits {
+		out = append(out, api.SettingResult{Key: key, Status: "pinned"})
+	}
+	return out
+}
+
+// A refused edit saves nothing. The drop-folder's switch is a setting, and the environment can pin
+// it; the PATCH then answers 409. It used to write the coverage first, so the operator was told
+// "that switch is set by the environment" about an edit that had in fact changed the source's
+// country, and nothing on the page said so.
+func TestSetFillerSourceEnabled_RefusedFolderSwitchLeavesTheCoverageAlone(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/pinned.db")
+	t.Cleanup(func() { _ = st.Close() })
+	clearSeededSources(t, st)
+	ctx := context.Background()
+	if err := st.UpsertFillerSource(ctx, fillerstore.NewFillerSource("folder", "folder", "/data/filler", "Drop folder", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetFillerSourceGeography(ctx, "folder", filler.Geography{Country: "US"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:    st,
+		Auth:     testAuthorizer{},
+		Log:      slog.New(slog.DiscardHandler),
+		Settings: pinnedFolderSettings{&fakeSettings{}},
+	}))
+	t.Cleanup(srv.Close)
+
+	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/folder",
+		`{"enabled":false,"geography":{"country":"CA"}}`, adminToken)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for an environment-pinned switch", res.StatusCode)
+	}
+	got, err := st.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Geography.Country != "US" {
+		t.Fatalf("sources after a refused edit = %+v, want the country still US", got)
 	}
 }

@@ -1,11 +1,11 @@
-// Package scheduler runs Loomarr's recurring background work as named, tunable,
+// Package jobs runs Loomarr's recurring background work as named, tunable,
 // on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as
 // System → Tasks. One heartbeat loop replaces the previous scattering of bespoke
 // time.Ticker goroutines: a code-defined registry of jobs, each with a default
 // interval overridable via a settings key, all claimable through the same
 // lease as titles/channels so a job never double-runs across replicas, and all
 // triggerable on demand ("Run now").
-package scheduler
+package jobs
 
 import (
 	"context"
@@ -162,7 +162,7 @@ func (g JobGroup) valid() bool {
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
 // store.ScheduledJob directly — the scheduler is app-level infrastructure, not a pure domain
 // package, so importing store avoids a duplicate type + per-call adapter (same precedent as
-// internal/reconcile importing store).
+// internal/provisionbackstop importing store).
 type ScheduleStore interface {
 	UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error

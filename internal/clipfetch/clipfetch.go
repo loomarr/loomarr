@@ -10,7 +10,7 @@
 // ⚠ Named clipfetch, NOT ingest — but the reason has itself been retired-ok. This doc said
 // "because internal/ingest is the Sonarr/Radarr WEBHOOK handler"; there is no internal/ingest
 // package and there is no inbound arr hook (acquisition state comes from polling — see
-// internal/reconcile). The name still earns its keep, for a smaller reason: `ingest` is what
+// internal/provisionbackstop). The name still earns its keep, for a smaller reason: `ingest` is what
 // §10 calls the CLIP pipeline in internal/filler, so a package named ingest here would collide
 // with that one autocomplete apart.
 //

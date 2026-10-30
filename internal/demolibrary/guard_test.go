@@ -268,8 +268,8 @@ var migratedGo = []string{
 	"internal/playout/", "internal/recurate/", "internal/schedule/",
 	// The filler, fillerenrichment and fillerstore tests (slice 12).
 	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
-	// The channels, store and reconcile tests (slice 13).
-	"internal/channels/", "internal/reconcile/", "internal/store/",
+	// The channels, store and provisionbackstop tests (slice 13).
+	"internal/channels/", "internal/provisionbackstop/", "internal/store/",
 	// The app, requester, provision and proposalworkflow tests (slice 15).
 	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
 	// The filler-research tests and the eval tests with hand-written fixtures (slice 16). The rest

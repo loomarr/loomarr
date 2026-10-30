@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/contact"
@@ -111,14 +110,7 @@ func (s *sqlStore) withInvitationIdentityLock(
 	fn func(context.Context) error,
 ) error {
 	key := string(kind) + ":" + identityKey
-	if s.dialect == DialectPostgres {
-		return s.withPostgresAdvisoryLock(ctx, "invitation identity lock", "invitation-identity:", key, fn)
-	}
-	value, _ := s.invitationIdentityLocks.LoadOrStore(key, &sync.Mutex{})
-	lock := value.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
-	return fn(ctx)
+	return s.invitationIdentityLocks.With(ctx, s.kernel(), "invitation identity lock", "invitation-identity:", key, fn)
 }
 
 func (s *sqlStore) GetInvitationContactAddress(
