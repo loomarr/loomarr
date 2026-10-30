@@ -393,6 +393,21 @@ describe("PlayerSettings", () => {
     );
     expect(none.querySelector('[aria-label="Subtitles"]')).toBeNull();
   });
+
+  it("shows Auto read-only where the platform picks the rung, and no sound row where there is none", () => {
+    // The phone app (#2127): expo-video plays the ladder itself and lets no client pick a rung.
+    const host = mount(
+      <PlayerSettings
+        audio={{ options: [] }}
+        density="touch"
+        quality={{ options: [{ label: "Auto · 720p", selected: true, value: "auto" }] }}
+      />,
+    );
+    expect(host.querySelector('[role="radiogroup"][aria-label="Quality"]')).toBeNull();
+    expect(host.querySelector('[role="list"][aria-label="Quality"]')?.textContent).toContain("Auto · 720p");
+    expect(host.textContent).toContain("This device picks the quality itself");
+    expect(host.textContent).not.toContain("Channel-change sound");
+  });
 });
 
 describe("PlayerShortcuts", () => {

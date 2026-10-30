@@ -1,4 +1,4 @@
-import type { ChannelHealth } from "@loomarr/api";
+import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { LivePlaybackFacts } from "@loomarr/player/browser";
 
 // Playback info's rows (#2088 decision 13), as `[label, value]`. The Stream rows are this browser's

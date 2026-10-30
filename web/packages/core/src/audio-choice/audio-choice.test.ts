@@ -39,6 +39,12 @@ describe("audioChoice", () => {
     });
   });
 
+  it("names an undetermined language as no language at all", () => {
+    expect(
+      audioChoice({ audio: [{ index: 0, language: "und" }], defaultAudio: 0 }, "default").options,
+    ).toEqual([{ label: "Stereo", selected: true, value: "default" }]);
+  });
+
   it("offers nothing until the tracks are known", () => {
     expect(audioChoice(undefined, "spa")).toEqual({ alternate: false, options: [] });
     expect(audioChoice({ audio: [], defaultAudio: 0 }, "default")).toEqual({ alternate: false, options: [] });

@@ -1,4 +1,5 @@
 import { createChannelTimelineSource } from "@loomarr/core/channel-timeline";
+import { createChannelTracksSource } from "@loomarr/core/channel-tracks";
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
 import { createGuideController, createGuideSourcePort, guideWindow } from "@loomarr/core/guide";
@@ -15,6 +16,7 @@ import { createNativeEventStreamFactory } from "../native-event-stream";
 import { createNativePlaybackDiagnostics, nativeTransportOf } from "../native-playback-diagnostics";
 import { createNativePlayerLifecycle } from "../native-player-lifecycle";
 import { usePairedTimeline } from "../paired-timeline";
+import { usePairedTracks } from "../paired-tracks";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "../play-url-source";
 import { createPlayerController } from "../player-controller";
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
@@ -173,6 +175,15 @@ const usePairedClient = ({
   const channelId = snapshot.channel?.id;
   const timelineSource = useMemo(() => createChannelTimelineSource(request), [request]);
   const timeline = usePairedTimeline(timelineSource, wantsTimeline ? channelId : undefined);
+  // Settings' audio reads the programme at the playhead, once it plays: live or seeked back.
+  const tracksSource = useMemo(() => createChannelTracksSource(request), [request]);
+  const playheadMs = snapshot.status === "playing" ? snapshot.livePlayback?.viewerTimeMs : undefined;
+  const programmeStartMs =
+    playheadMs === undefined
+      ? undefined
+      : timeline?.airings.find((airing) => airing.startMs <= playheadMs && playheadMs < airing.stopMs)
+          ?.startMs;
+  const tracks = usePairedTracks(tracksSource, channelId, programmeStartMs);
   useEffect(() => {
     reporting?.playback.channelChanged(channelId);
     if (channelId) void guide.refresh(channelId);
@@ -234,6 +245,7 @@ const usePairedClient = ({
     serverVersion,
     snapshot,
     timeline,
+    tracks,
     transport,
   };
 };

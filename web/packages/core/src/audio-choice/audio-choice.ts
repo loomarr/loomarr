@@ -1,12 +1,22 @@
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
-import { ownLanguageLabel } from "../channel-default-audio/language-label";
-import type { AudioPreference } from "../use-audio-preference";
+import { ownLanguageLabel } from "../language-label";
 
 // The Settings sheet's audio (#2088 decision 6) for the programme at the playhead: the tracks API
 // says which audio tracks the stream's Default and Alternate renditions carry, and the viewer's
 // remembered language says which of them to play. The Alternate plays only while it carries that
 // language; any other programme falls back to the Default, so a remembered Spanish never becomes
 // whichever dub airs next.
+
+/**
+ * The viewer's remembered audio: "default", or the ISO 639-2 language they chose. A language, not
+ * "the alternate": the next programme's alternate may be another language, and a viewer who chose
+ * Spanish wants Spanish, not whatever dub comes next.
+ */
+type AudioPreference = "default" | (string & {});
+
+/** A stored preference as the client reads it back: anything but a language code is the default. */
+const audioPreferenceOf = (stored: unknown): AudioPreference =>
+  typeof stored === "string" && /^[a-z]{2,3}$/.test(stored) ? stored : "default";
 
 interface AudioChoiceOption {
   label: string;
@@ -28,8 +38,10 @@ interface AiringAudio {
 }
 
 // As the §9 mock reads: the language in itself, then its channels (the encode is always stereo).
+// "und" is ISO 639's "undetermined", a language no one speaks: it reads as none, not as "root"
+// (CLDR's name for it) or "UND" (where the platform has no language names).
 const label = (track: TrackDTO) =>
-  track.language ? `${ownLanguageLabel(track.language)} · stereo` : "Stereo";
+  track.language && track.language !== "und" ? `${ownLanguageLabel(track.language)} · stereo` : "Stereo";
 
 const audioChoice = (airing: AiringAudio | undefined, preference: AudioPreference): AudioChoice => {
   const def = airing?.audio.find((track) => track.index === airing.defaultAudio);
@@ -44,5 +56,5 @@ const audioChoice = (airing: AiringAudio | undefined, preference: AudioPreferenc
   return { alternate, options };
 };
 
-export type { AudioChoice, AudioChoiceOption };
-export { audioChoice };
+export type { AiringAudio, AudioChoice, AudioChoiceOption, AudioPreference };
+export { audioChoice, audioPreferenceOf };

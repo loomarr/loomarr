@@ -1,7 +1,8 @@
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Image, type ImageProps } from "react-native";
+import { selectAudioRendition } from "../live-audio";
 import { LIVE_DVR_HORIZON_MS, liveSeek } from "../live-seek";
 import { nativeErrorCause } from "../native-playback-diagnostics";
 import { createPlaybackMarks, type PlaybackMarks } from "../playback-marks";
@@ -19,6 +20,11 @@ interface NativePlayerTransport extends PlayerTransport {
   firstFrame: () => void;
   getPlayer: () => VideoPlayer | undefined;
   resume: () => void;
+  /**
+   * Plays the master's Alternate audio rendition, or its Default (#2088 decision 6). The choice
+   * outlives tunes: each new stream plays it as soon as the player lists its renditions.
+   */
+  setAlternateAudio: (alternate: boolean) => void;
   subscribePlayer: (listener: () => void) => () => void;
   suspend: () => void;
 }
@@ -88,6 +94,8 @@ const createNativePlayerTransport = (
   let statusSubscription: { remove: () => void } | undefined;
   let timeSubscription: { remove: () => void } | undefined;
   let trackSubscription: { remove: () => void } | undefined;
+  let audioSubscription: { remove: () => void } | undefined;
+  let alternateAudio = false;
   // A stall is buffering after the attempt's first frame while the viewer has not paused.
   let framedAttemptId: number | undefined;
   let stalledSinceMs: number | undefined;
@@ -183,6 +191,17 @@ const createNativePlayerTransport = (
     if (lag > STALL_REJOIN_LAG_SECONDS) seekToLiveEdge(player);
   };
 
+  // The rendition the viewer's choice names, by the master's NAME; a stream that names neither (a
+  // direct play) keeps whatever the player picked.
+  const playChosenAudio = (current: VideoPlayer) => {
+    const renditions = current.availableAudioTracks;
+    const chosen = renditions[selectAudioRendition(renditions, alternateAudio)];
+    const playing = current.audioTrack;
+    if (chosen && (playing?.name ?? playing?.label) !== (chosen.name ?? chosen.label)) {
+      current.audioTrack = chosen;
+    }
+  };
+
   const attachPlayer = (next: VideoPlayer) => {
     player = next;
     next.loop = false;
@@ -232,6 +251,7 @@ const createNativePlayerTransport = (
         );
       });
     }
+    audioSubscription = next.addListener("availableAudioTracksChange", () => playChosenAudio(next));
     playingSubscription = next.addListener("playingChange", ({ isPlaying }) => {
       if (!isPlaying || activeAttemptId === undefined) return;
       rejoinLiveAfterStall(next.currentLiveTimestamp, next.currentOffsetFromLive);
@@ -253,10 +273,12 @@ const createNativePlayerTransport = (
     playingSubscription?.remove();
     timeSubscription?.remove();
     trackSubscription?.remove();
+    audioSubscription?.remove();
     statusSubscription = undefined;
     playingSubscription = undefined;
     timeSubscription = undefined;
     trackSubscription = undefined;
+    audioSubscription = undefined;
     activeAttemptId = undefined;
     player = undefined;
     current.release();
@@ -380,6 +402,10 @@ const createNativePlayerTransport = (
       viewerTimeMs = Date.now();
       for (const listener of playerListeners) listener();
     },
+    setAlternateAudio: (alternate) => {
+      alternateAudio = alternate;
+      if (player) playChosenAudio(player);
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -412,6 +438,23 @@ const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   ) : null;
 };
 
+/**
+ * The height of the rendition on the picture, for Settings' `Auto · 720p` (#2127): the platform
+ * player picks the rung itself and lets no client choose one. Undefined until a track is known.
+ */
+const useNativeVideoHeight = (transport: NativePlayerTransport): number | undefined => {
+  const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
+  const [height, setHeight] = useState<number>();
+  useEffect(() => {
+    setHeight(player?.videoTrack?.size.height);
+    const subscription = player?.addListener("videoTrackChange", ({ videoTrack }) =>
+      setHeight(videoTrack?.size.height),
+    );
+    return () => subscription?.remove();
+  }, [player]);
+  return height;
+};
+
 const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
   const source = pairedNativeImageSource(credential, uri);
   return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
@@ -424,4 +467,5 @@ export {
   NativePlayerView,
   PairedNativeImage,
   pairedNativeImageSource,
+  useNativeVideoHeight,
 };

@@ -1,3 +1,4 @@
+import type { ChannelTracksOutputBody } from "@loomarr/api/models/channelTracksOutputBody";
 import type { ChannelTimeline } from "@loomarr/core/channel-timeline";
 import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics";
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
@@ -53,6 +54,8 @@ interface PairedClient {
   snapshot: PlayerSnapshot;
   /** The tuned channel's timeline, when the client asked for it and it has loaded. */
   timeline?: ChannelTimeline;
+  /** The tracks of the programme at the playhead, once the timeline places one and it plays. */
+  tracks?: ChannelTracksOutputBody;
   transport: NativePlayerTransport;
 }
 

@@ -1,5 +1,6 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
+import { languageLabel } from "@loomarr/core/language-label";
 import {
   type LiveSubtitleCues,
   type LiveSubtitles,
@@ -8,7 +9,6 @@ import {
 } from "@loomarr/player/browser";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { languageLabel } from "@/channels/channel-default-audio/language-label";
 
 // The subtitles at the playhead (#2088 step 7), from the sidecar beside the stream: the text tracks
 // of the programme the viewer is watching (live or seeked back), which of them the viewer's choice

@@ -1,6 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { audioChoice } from "@loomarr/core/audio-choice";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
 import { type LiveSubtitleCues, nextSubtitles } from "@loomarr/player/browser";
@@ -19,7 +20,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { audioChoice } from "@/channels/audio-choice";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { PlaybackInfoSheet } from "@/channels/playback-info-sheet";

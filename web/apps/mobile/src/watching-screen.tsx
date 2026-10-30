@@ -1,13 +1,20 @@
+import { audioChoice } from "@loomarr/core/audio-choice";
 import { serverNowOf } from "@loomarr/core/channel-timeline";
 import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { useHaptic } from "@loomarr/design-system/haptics";
-import { NativePlayerView, type PairedClient, pairedNativeImageSource } from "@loomarr/player/native";
+import {
+  NativePlayerView,
+  type PairedClient,
+  pairedNativeImageSource,
+  useNativeVideoHeight,
+} from "@loomarr/player/native";
 import {
   PlaybarStillSourceProvider,
   PlayerCover,
   PlayerInfo,
   PlayerPortrait,
+  PlayerSettings,
   PlayerSheet,
   PlayerStationId,
   playbarFromTimeline,
@@ -16,11 +23,13 @@ import {
 } from "@loomarr/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
+import { useAudioPreference } from "./audio-preference";
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
 // the web phone draws — the way out and the live state, the lower third and the transport, the
-// filmstrip, surfing and the favourite, and the Info sheet in the panel's place. It reads the tuned
-// channel's timeline the way every client does, and seeks through the player controller.
+// filmstrip, surfing and the favourite, and the Info or Settings sheet in the panel's place. It
+// reads the tuned channel's timeline the way every client does, and seeks through the player
+// controller.
 
 /** ±10 s, as on every player (#2088 decision 2). */
 const SEEK_STEP_MS = 10_000;
@@ -34,10 +43,27 @@ interface WatchingScreenProps {
 }
 
 const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) => {
-  const { catalogState, controller, myChannels, myChannelsSnapshot, refresh, snapshot, timeline, transport } =
-    client;
+  const {
+    catalogState,
+    controller,
+    myChannels,
+    myChannelsSnapshot,
+    refresh,
+    snapshot,
+    timeline,
+    tracks,
+    transport,
+  } = client;
   const haptic = useHaptic();
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [sheet, setSheet] = useState<"info" | "settings">();
+  const toggleSheet = (next: "info" | "settings") => setSheet((open) => (open === next ? undefined : next));
+
+  // Settings' audio: the programme's languages at the playhead, the viewer's remembered choice
+  // between them, and the player playing it.
+  const [audioPreference, setAudioPreference] = useAudioPreference();
+  const audio = audioChoice(tracks, audioPreference);
+  useEffect(() => transport.setAlternateAudio(audio.alternate), [audio.alternate, transport]);
+  const videoHeight = useNativeVideoHeight(transport);
   const channel = snapshot.channel;
   const channelId = channel?.id;
   const playing = snapshot.status === "playing";
@@ -60,9 +86,9 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
   }, [identFor]);
   const ident = identFor !== undefined && identFor === snapshot.attemptId && snapshot.status !== "tuning";
 
-  // A new channel closes the Info sheet: it described the one left behind.
+  // A new channel closes the sheet: it described the one left behind.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the channel is the trigger, not an input.
-  useEffect(() => setInfoOpen(false), [channelId]);
+  useEffect(() => setSheet(undefined), [channelId]);
 
   const stillSource = useMemo(() => (uri: string) => pairedNativeImageSource(credential, uri), [credential]);
 
@@ -136,16 +162,43 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
             }
             formatTime={formatTime}
             sheet={
-              infoOpen && info ? (
+              sheet === "info" && info ? (
                 <PlayerSheet
                   channelLabel={channelLabel}
                   density="touch"
                   icon="info"
                   inline
-                  onClose={() => setInfoOpen(false)}
+                  onClose={() => setSheet(undefined)}
                   title="Info"
                 >
                   <PlayerInfo density="touch" formatTime={formatTime} info={info} />
+                </PlayerSheet>
+              ) : sheet === "settings" ? (
+                <PlayerSheet
+                  channelLabel={channelLabel}
+                  density="touch"
+                  icon="settings"
+                  inline
+                  onClose={() => setSheet(undefined)}
+                  title="Settings"
+                >
+                  <PlayerSettings
+                    audio={
+                      audio.options.length > 1
+                        ? { onSelect: setAudioPreference, options: audio.options }
+                        : { options: audio.options }
+                    }
+                    density="touch"
+                    quality={{
+                      options: [
+                        {
+                          label: videoHeight ? `Auto · ${videoHeight}p` : "Auto",
+                          selected: true,
+                          value: "auto",
+                        },
+                      ],
+                    }}
+                  />
                 </PlayerSheet>
               ) : undefined
             }
@@ -165,16 +218,18 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
               onPrevious: () => previousId && void controller.tuneChannel(previousId),
             }}
             transport={{
-              infoOpen,
+              infoOpen: sheet === "info",
               live,
               onGoLive: () => void controller.goLive(),
-              onInfo: info ? () => setInfoOpen((open) => !open) : undefined,
+              onInfo: info ? () => toggleSheet("info") : undefined,
               onLeave,
+              onSettings: () => toggleSheet("settings"),
               onSeekBack: () => seekBy(-SEEK_STEP_MS),
               onSeekForward: () => seekBy(SEEK_STEP_MS),
               onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
               onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
               playing,
+              settingsOpen: sheet === "settings",
             }}
           />
         </PlaybarStillSourceProvider>

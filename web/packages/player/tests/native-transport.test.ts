@@ -32,6 +32,8 @@ const nativePlayer = () => {
       removals.push(remove);
       return { remove };
     }),
+    audioTrack: null as { label: string; name?: string } | null,
+    availableAudioTracks: [] as { label: string; name?: string }[],
     currentLiveTimestamp: null as number | null,
     currentOffsetFromLive: null as number | null,
     currentTime: 0,
@@ -222,7 +224,7 @@ describe("Expo video transport", () => {
     expect(transport.getPlayer()).toBeUndefined();
     expect(raw.pause).toHaveBeenCalledOnce();
     expect(raw.release).toHaveBeenCalledOnce();
-    expect(removals).toHaveLength(3);
+    expect(removals).toHaveLength(4);
     expect(removals.every((remove) => remove.mock.calls.length === 1)).toBe(true);
     expect(playerChanges).toHaveBeenCalledOnce();
     expect(events).not.toHaveBeenCalled();
@@ -568,6 +570,48 @@ describe("native start-failure reason (#1455)", () => {
     emit("statusChange", { error: { message: "Response code: 502" }, status: "error" });
 
     expect(events).toContainEqual({ attemptId: 1, error: "Response code: 502", type: "error" });
+  });
+});
+
+// The master names two audio renditions; the viewer's choice says which plays (#2088 decision 6).
+describe("the viewer's audio rendition", () => {
+  const renditions = [
+    { label: "English", name: "Default" },
+    { label: "English", name: "Alternate" },
+  ];
+
+  it("plays the Default as each stream lists its renditions, and the Alternate once chosen", () => {
+    const { emit, raw, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+
+    raw.availableAudioTracks = renditions;
+    emit("availableAudioTracksChange", { availableAudioTracks: renditions });
+    expect(raw.audioTrack).toBe(renditions[0]);
+
+    transport.setAlternateAudio(true);
+    expect(raw.audioTrack).toBe(renditions[1]);
+  });
+
+  it("keeps the choice for the next player and the next stream", () => {
+    const first = nativePlayer();
+    const next = nativePlayer();
+    const transport = createNativePlayerTransport(first.player, () => next.player);
+    transport.setAlternateAudio(true);
+
+    transport.suspend();
+    transport.resume();
+    next.raw.availableAudioTracks = renditions;
+    next.emit("availableAudioTracksChange", { availableAudioTracks: renditions });
+    expect(next.raw.audioTrack).toBe(renditions[1]);
+  });
+
+  it("leaves a stream that names neither rendition to the player", () => {
+    const { emit, raw, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    raw.availableAudioTracks = [{ label: "und" }];
+    transport.setAlternateAudio(true);
+    emit("availableAudioTracksChange", {});
+    expect(raw.audioTrack).toBeNull();
   });
 });
 

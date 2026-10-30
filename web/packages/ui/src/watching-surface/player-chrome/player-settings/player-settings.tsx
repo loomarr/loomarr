@@ -24,12 +24,16 @@ interface PlayerSettingsProps {
   density: Density;
   /** Opens Playback info (#2088 decision 13), the sheet's last row. */
   onPlaybackInfo?: () => void;
-  onSwitchSound: (on: boolean) => void;
-  /** Auto and the rungs; omitted while the player has no ladder to offer (native HLS picks itself). */
-  quality?: { onSelect: (value: string) => void; options: readonly SettingsOption[] };
+  /** The channel-change sound; omitted where the player has none (the phone app). */
+  onSwitchSound?: (on: boolean) => void;
+  /**
+   * Auto and the rungs, a choice with `onSelect`; omitted while the player has no ladder to offer.
+   * Without `onSelect`, Auto alone, read-only: the platform player picks the rung itself (#2127).
+   */
+  quality?: { onSelect?: (value: string) => void; options: readonly SettingsOption[] };
   /** Off and the programme's subtitle tracks; omitted where it carries none. */
   subtitles?: { onSelect: (value: string) => void; options: readonly SettingsOption[] };
-  switchSound: boolean;
+  switchSound?: boolean;
 }
 
 // One row: a check beside the selected option. A choice is a radio; a read-only list item otherwise.
@@ -130,7 +134,7 @@ const PlayerSettings = ({
   switchSound,
 }: PlayerSettingsProps) => (
   <View style={{ gap: 20 }}>
-    {quality ? (
+    {quality?.onSelect ? (
       <View style={{ gap: 6 }}>
         <SectionLabel density={density} label="Quality" />
         <View aria-label="Quality" role="radiogroup">
@@ -138,6 +142,18 @@ const PlayerSettings = ({
             <OptionRow density={density} key={option.value} onSelect={quality.onSelect} option={option} />
           ))}
         </View>
+      </View>
+    ) : quality ? (
+      <View style={{ gap: 6 }}>
+        <SectionLabel density={density} label="Quality" />
+        <View aria-label="Quality" role="list">
+          {quality.options.map((option) => (
+            <OptionRow density={density} key={option.value} option={option} />
+          ))}
+        </View>
+        <Text density={density} textRole="hint" tone="muted">
+          This device picks the quality itself, as the connection allows.
+        </Text>
       </View>
     ) : null}
     {audio.onSelect && audio.options.length > 1 ? (
@@ -172,16 +188,18 @@ const PlayerSettings = ({
         </View>
       </View>
     ) : null}
-    <View style={{ gap: 6 }}>
-      <SectionLabel density={density} label="Sound" />
-      <Toggle
-        checked={switchSound}
-        density={density}
-        kind="switch"
-        label="Channel-change sound"
-        onCheckedChange={onSwitchSound}
-      />
-    </View>
+    {onSwitchSound ? (
+      <View style={{ gap: 6 }}>
+        <SectionLabel density={density} label="Sound" />
+        <Toggle
+          checked={switchSound ?? false}
+          density={density}
+          kind="switch"
+          label="Channel-change sound"
+          onCheckedChange={onSwitchSound}
+        />
+      </View>
+    ) : null}
     {onPlaybackInfo ? <NavRow density={density} label="Playback info" onPress={onPlaybackInfo} /> : null}
   </View>
 );
