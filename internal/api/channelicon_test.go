@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/fillerstore"
@@ -40,7 +41,7 @@ func newIconUploadServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fa
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +86,12 @@ func altPNGBytes(t *testing.T) []byte {
 // postIcon uploads `data` as the `file` field, declaring `declaredType` on the part.
 func postIcon(t *testing.T, srv *httptest.Server, token, filename, declaredType string, data []byte) *http.Response {
 	t.Helper()
+	return postChannelUpload(t, srv, "/v1/channels/ch-1/icon", token, filename, declaredType, data)
+}
+
+// postChannelUpload posts `data` as the multipart `file` field to a channel upload route.
+func postChannelUpload(t *testing.T, srv *httptest.Server, path, token, filename, declaredType string, data []byte) *http.Response {
+	t.Helper()
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	h := make(map[string][]string)
@@ -100,7 +107,7 @@ func postIcon(t *testing.T, srv *httptest.Server, token, filename, declaredType 
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/channels/ch-1/icon", &body)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+path, &body)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -186,7 +193,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 	base := openTestStore(t, t.TempDir()+"/icon-concurrent.db")
 	t.Cleanup(func() { _ = base.Close() })
 	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +252,7 @@ func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) 
 	base := openTestStore(t, t.TempDir()+"/icon-delete.db")
 	t.Cleanup(func() { _ = base.Close() })
 	if _, err := base.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -516,5 +523,84 @@ func TestUploadChannelIcon_RoleBoundary(t *testing.T) {
 				t.Errorf("upload = %d, want %d", resp.StatusCode, tc.want)
 			}
 		})
+	}
+}
+
+// A logo is channel identity whichever route sets it. The PATCH of `logo` already marks a settled
+// channel `building` (the tuner-list freshness signal) and makes it due now; the upload used to
+// save the logo bare, so an uploaded icon reached Tunarr only if the immediate reconcile
+// happened to succeed, and the tuner list never learned of it.
+func TestUploadChannelIcon_RefreshesTheTunerListLikeALogoEdit(t *testing.T) {
+	srv, st, _ := newIconUploadServer(t)
+	ctx := context.Background()
+	ch, err := st.GetChannel(ctx, "ch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.ReconcileDeadline = time.Now().Add(24 * time.Hour).UTC()
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("upload = %d, want 200: %s", resp.StatusCode, body)
+	}
+	got, err := st.GetChannel(ctx, "ch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != schedule.StatusBuilding {
+		t.Errorf("status after icon upload = %s, want building", got.Status)
+	}
+	if !got.ReconcileDeadline.IsZero() {
+		t.Errorf("reconcile deadline = %v, want due-now zero", got.ReconcileDeadline)
+	}
+	if got.UpdatedAt == 0 {
+		t.Error("updatedAt not stamped by the icon upload")
+	}
+}
+
+// A watermark is a policy edit, so it auto-reconciles like a PATCH of the policy does, and as a
+// guide-data change it leaves a settled channel's status alone. It used to save without
+// reconciling, so the new bug waited for the next sweep.
+func TestUploadChannelWatermark_ReconcilesWithoutATunerRescan(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/watermark-upload.db")
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chSvc := &fakeChannelSvc{}
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:    st,
+		Auth:     testAuthorizer{},
+		Images:   newFakeImageService(),
+		Channels: chSvc,
+		Log:      slog.New(slog.DiscardHandler),
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := postChannelUpload(t, srv, "/v1/channels/ch-1/watermark", adminToken, "bug.png", "image/png", pngBytes(t))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("upload = %d, want 200: %s", resp.StatusCode, body)
+	}
+	got, err := st.GetChannel(context.Background(), "ch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Policy.Watermark == nil || got.Policy.Watermark.Image == "" {
+		t.Fatalf("watermark = %+v, want the uploaded image linked", got.Policy.Watermark)
+	}
+	if got.Status != schedule.StatusLive {
+		t.Errorf("status after watermark upload = %s, want live (guide data, not the tuner list)", got.Status)
+	}
+	if chSvc.reconciles != 1 || len(chSvc.reconciledIDs) != 1 || chSvc.reconciledIDs[0] != "ch-1" {
+		t.Errorf("reconciles = %v, want exactly ch-1 once", chSvc.reconciledIDs)
 	}
 }

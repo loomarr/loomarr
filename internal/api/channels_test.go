@@ -180,8 +180,8 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 			Channels: chSvc,
 			LiveTV:   ltv,
 			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
-			// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
-			// approved proposals in these tests, same as production wiring.
+			// intent lineup/policy (channeledit asks the binder) resolve real approved proposals
+			// in these tests, same as production wiring.
 			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
