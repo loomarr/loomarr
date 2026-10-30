@@ -62,8 +62,10 @@ type MezzanineProfile struct {
 	KeyframeSeconds int
 }
 
-// FileMezzanine is the playback profile for this host (#2121): the family encode.FileFamily picks,
-// at the level encode.FileLevel measured for it.
+// FileMezzanine is the derivative profile for this host (#2121): the family encode.FileFamily
+// picks, at the level encode.FileLevel measured for it. Evidence and playback share it, so one
+// encode serves both roles: a keyframe every second for frame-exact cuts, and audio rich enough
+// for evidence.
 //
 // ⚠ **Resolution, framerate, aspect and SAR are deliberately ABSENT.** They are PRESERVED, never
 // set — see the note at the top of this file. A profile field for any of them would be an
@@ -73,8 +75,8 @@ func FileMezzanine(host encode.HostProfile) MezzanineProfile {
 	level, _ := encode.FileLevel(family)
 	p := MezzanineProfile{
 		VideoCodec: "h264", Family: family, CRF: level, PixelFormat: "yuv420p",
-		AudioCodec: "aac", AudioKbps: 192, AudioRateHz: 48000, AudioCh: 2,
-		KeyframeSeconds: 2,
+		AudioCodec: "aac", AudioKbps: 256, AudioRateHz: 48000, AudioCh: 2,
+		KeyframeSeconds: 1,
 	}
 	if family == encode.FamilySoftware {
 		p.Family, p.Preset = "", "veryfast"

@@ -289,13 +289,24 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		Diagnostics: s.diagnostics,
 	}
 	transcodeCtx, finishStorage := storageWrites.Monitor(ctx, stageFull)
-	quality, err := s.transcode(transcodeCtx, req, func(pct int) {
-		if evidence != nil {
-			reportProgress(ctx, StageTranscode, 40+pct*50/100)
-			return
-		}
-		reportProgress(ctx, StageTranscode, pct*90/100)
-	})
+	var quality MediaQuality
+	if evidence != nil && job == nil {
+		// One encode, two roles (#2121). Evidence and playback share the recipe, so a top-level
+		// clip's playback rendition is the evidence bytes: copied, never encoded twice. Its
+		// detector findings are the evidence encode's, from the same picture. A conditioned child
+		// still encodes, because its input is the conditioned cut, not the master.
+		quality = evidence.Quality
+		err = copyFileWithStorage(transcodeCtx, filepath.Join(s.clipDir, filepath.FromSlash(evidence.Asset.Path)), stageFull, nil)
+		reportProgress(ctx, StageTranscode, 90)
+	} else {
+		quality, err = s.transcode(transcodeCtx, req, func(pct int) {
+			if evidence != nil {
+				reportProgress(ctx, StageTranscode, 40+pct*50/100)
+				return
+			}
+			reportProgress(ctx, StageTranscode, pct*90/100)
+		})
+	}
 	if err != nil {
 		if storageErr := finishStorage(); storageErr != nil {
 			return StageResult{}, storageErr

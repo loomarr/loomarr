@@ -599,7 +599,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		stageCtx := WithProgress(ctx, p.stageProgress(ctx, &row, clip))
-		out, runErr := p.runStage(stageCtx, stage, clip)
+		out, runErr := p.runYielding(stageCtx, s, stage, clip)
 		s.charge(stage.Cost())
 
 		if runErr != nil {

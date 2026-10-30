@@ -55,18 +55,14 @@ type DerivativeRecipe struct {
 	PreserveCadence   bool           `json:"preserveCadence"`
 }
 
-// EvidenceDerivativeRecipe is the evidence copy on the playback profile's family and measured level
-// (#2121): one quality floor for both roles, so the evidence picture is the one that airs. It keeps
-// its own audio rate and a keyframe every second for frame-exact cuts.
+// EvidenceDerivativeRecipe is the evidence role of the one derivative encode (#2121): the playback
+// recipe exactly, apart from its identity, so the evidence picture is the one that airs. A top-level
+// clip's playback rendition is the evidence bytes themselves, which is honest only while the two
+// recipes describe the same encode: derive, never restate.
 func EvidenceDerivativeRecipe(profile MezzanineProfile) DerivativeRecipe {
-	return DerivativeRecipe{
-		Version: DerivativeRecipeVersion, ID: "filler-evidence-v2", Role: DerivativeEvidence,
-		Container: "mp4", VideoCodec: "h264", VideoEncoder: profile.encoderName(), CRF: profile.CRF,
-		Preset: profile.Preset, PixelFormat: "yuv420p",
-		AudioCodec: "aac", AudioEncoder: "aac", AudioKbps: 256, AudioRateHz: 48_000, AudioChannels: 2,
-		KeyframeSeconds: 1, SelectFirstAV: true, NormalizeTimebase: true, StripMetadata: true,
-		FastStart: true, PreserveGeometry: true, PreserveCadence: true,
-	}
+	r := PlaybackDerivativeRecipe(profile, 0)
+	r.ID, r.Role = "filler-evidence-v2", DerivativeEvidence
+	return r
 }
 
 func PlaybackDerivativeRecipe(profile MezzanineProfile, targetLUFS float64) DerivativeRecipe {
