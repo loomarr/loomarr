@@ -129,6 +129,18 @@ export {
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
+  PlaybarBreak,
+  PlaybarProgramme,
+  PlaybarSegment,
+  PlaybarSpot,
+  PlaybarWindow,
+  PlayerBandData,
+  PlayerChromeProps,
+  PlayerCoverProps,
+  PlayerLiveState,
+  PlayerSettingsProps,
+  PlayerSheetProps,
+  PlayerTransportProps,
   WatchFrameProps,
   WatchingPanelData,
   WatchingPanelDataArgs,
@@ -138,6 +150,11 @@ export type {
   WatchingSurfaceProps,
 } from "./src/watching-surface";
 export {
+  PlayerChrome,
+  PlayerCover,
+  PlayerSettings,
+  PlayerSheet,
+  playbarFromTimeline,
   WatchFrame,
   WatchingPanel,
   WatchingSurface,

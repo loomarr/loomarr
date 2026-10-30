@@ -1,4 +1,4 @@
-import { TamaguiProvider } from "@tamagui/core";
+import { TamaguiProvider, Theme } from "@tamagui/core";
 import type { PropsWithChildren } from "react";
 import { type ColorSchemeName, useColorScheme } from "react-native";
 
@@ -27,5 +27,11 @@ const LoomarrProvider = ({ children, insets, theme }: LoomarrProviderProps) => {
   );
 };
 
+// One subtree in a fixed theme, whatever the app's: player chrome is drawn over a picture, so it is
+// dark in a light app too (frontend-design §9.1).
+const ThemeScope = ({ children, theme }: PropsWithChildren<{ theme: LoomarrTheme }>) => (
+  <Theme name={theme}>{children}</Theme>
+);
+
 export type { LoomarrProviderProps, LoomarrTheme };
-export { LoomarrProvider, resolveLoomarrTheme };
+export { LoomarrProvider, resolveLoomarrTheme, ThemeScope };

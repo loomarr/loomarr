@@ -248,6 +248,19 @@ const roleTracking = (textRole: TextRole, size: number) =>
             ? size * 0.04
             : 0;
 
+// Tamagui's web Text hands `accessibilityLiveRegion` to the DOM verbatim, where React rejects it and
+// no screen reader hears it; the web spelling is `aria-live` (RN's "none" is the web's "off").
+const webLiveRegion = (
+  props: Omit<TextProps, "as" | "density" | "halo" | "shout" | "strong" | "textRole" | "tone" | "tracking">,
+) => {
+  if (!isWeb || props.accessibilityLiveRegion === undefined) return props;
+  const { accessibilityLiveRegion, ...rest } = props;
+  return {
+    ...rest,
+    "aria-live": accessibilityLiveRegion === "none" ? "off" : accessibilityLiveRegion,
+  } as typeof rest;
+};
+
 const Text = ({
   as,
   density = "pointer",
@@ -257,8 +270,9 @@ const Text = ({
   textRole,
   tone,
   tracking,
-  ...props
+  ...given
 }: TextProps) => {
+  const props = webLiveRegion(given);
   const theme = useTheme();
   const role = typography[density][textRole];
   const value = strong ? { ...role, weight: "600" as const } : role;

@@ -19,6 +19,8 @@ type AccessibleIcon = { accessibilityLabel: string; decorative?: false };
 type DecorativeIcon = { accessibilityLabel?: never; decorative: true };
 
 type IconProps = (AccessibleIcon | DecorativeIcon) & {
+  /** A theme-invariant colour in place of `tone`: player chrome over a picture (§9, `playerChrome`). */
+  color?: string;
   glyph: LucideIcon;
   size?: IconSize;
   tone?: IconTone;
@@ -26,6 +28,7 @@ type IconProps = (AccessibleIcon | DecorativeIcon) & {
 
 const Icon = ({
   accessibilityLabel,
+  color,
   decorative,
   glyph: Glyph,
   size = "default",
@@ -49,9 +52,9 @@ const Icon = ({
   const glyph = (
     <Glyph
       aria-hidden
-      color={tones[tone]}
+      color={color ?? tones[tone]}
       size={iconography.size[size]}
-      strokeWidth={iconography.strokeWidth}
+      strokeWidth={size === "player" ? iconography.playerStrokeWidth : iconography.strokeWidth}
     />
   );
 

@@ -1,3 +1,4 @@
+export * from "./player-chrome";
 export type { WatchFrameProps } from "./watch-frame";
 export { WatchFrame } from "./watch-frame";
 export type { WatchingPanelData, WatchingPanelDataArgs, WatchingPanelProps } from "./watching-panel";
