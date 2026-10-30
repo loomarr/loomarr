@@ -135,7 +135,7 @@ func SegmentScreeningSubjectSHA256(subject SegmentScreeningSubject) string {
 	if err != nil {
 		return ""
 	}
-	return screeningBytesSHA256(raw)
+	return ScreeningBytesSHA256(raw)
 }
 
 // MediaAssetManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
@@ -169,7 +169,7 @@ func ConditioningEvidenceSHA256(evidence ConditioningEvidence) string {
 	if err != nil {
 		return ""
 	}
-	return screeningBytesSHA256(raw)
+	return ScreeningBytesSHA256(raw)
 }
 
 func validScreeningSubjectID(value string) bool {

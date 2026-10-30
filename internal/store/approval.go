@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -210,13 +211,13 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	if p.CreatedBy != "" {
 		for _, item := range encoded {
-			if err := insertNotificationReferenceRecipient(
+			if err := identitystore.InsertNotificationReferenceRecipient(
 				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
 			); err != nil {
 				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
 			}
 		}
-		if err := insertNotificationReferenceRecipient(
+		if err := identitystore.InsertNotificationReferenceRecipient(
 			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
 		); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
@@ -226,21 +227,6 @@ func (s *sqlStore) commitProposalApproval(
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
-}
-
-func insertNotificationReferenceRecipient(
-	ctx context.Context,
-	tx *sql.Tx,
-	placeholder func(string) string,
-	referenceKind, referenceID, personID string,
-	createdAt int64,
-) error {
-	_, err := tx.ExecContext(ctx, placeholder(`INSERT INTO notification_reference_recipients
-		(reference_kind, reference_id, person_id, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (reference_kind, reference_id, person_id) DO NOTHING`),
-		referenceKind, referenceID, personID, createdAt)
-	return err
 }
 
 func approvalOrderKey(p Proposal) string {
@@ -277,9 +263,7 @@ type proposalApprovalTxReader struct {
 }
 
 func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
-	return scanUser(r.tx.QueryRowContext(ctx, r.s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
-		 FROM users WHERE id = ?`), id))
+	return identitystore.GetUserIn(ctx, r.tx, r.s.ph, id)
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
