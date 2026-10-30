@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
 import { liveHlsConfig } from "./live-hls-config";
-import { type LiveLevel, selectLiveLevel } from "./live-level";
+import {
+  type LiveLevel,
+  type LiveQuality,
+  type LiveRung,
+  playableRungs,
+  selectLiveLevel,
+  selectQualityLevel,
+} from "./live-level";
 import { LIVE_DVR_HORIZON_MS, liveSeek } from "./live-seek";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
@@ -63,6 +70,11 @@ interface BrowserHlsPlayerOptions {
    * re-binds the source.
    */
   onManifest?: () => void;
+  /**
+   * The viewer's quality (#2088 decision 7): Auto, or a rung by height, played when the master
+   * offers it here. Changing it switches the playing level at once; it never re-binds the source.
+   */
+  quality?: LiveQuality;
   recordDiagnostic: (observation: BrowserClientObservation) => void;
 }
 
@@ -78,7 +90,18 @@ interface UseBrowserHlsPlayer {
   attach: (video: HTMLVideoElement) => () => void;
   /** The tuned channel's still while its stream starts: layer it over the frame until playback. */
   stillURL?: string;
+  /**
+   * The rungs this channel offers that this browser plays, and the height on air now; empty until
+   * the manifest is read, and on native HLS, which picks for itself.
+   */
+  ladder: { rungs: readonly LiveRung[]; height?: number };
 }
+
+// What MediaSource can decode: the gate on the premium rung.
+const canPlayMime = (mime: string) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime);
+
+const levelsOf = (hls: Hls): LiveLevel[] =>
+  hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange }));
 
 let cachedHlsController: typeof Hls | undefined;
 
@@ -301,10 +324,17 @@ function useBrowserHlsPlayer({
   errorMessage,
   mintSource,
   onManifest,
+  quality = "auto",
   recordDiagnostic,
 }: BrowserHlsPlayerOptions): UseBrowserHlsPlayer {
   const onManifestRef = useRef(onManifest);
   onManifestRef.current = onManifest;
+  const qualityRef = useRef(quality);
+  qualityRef.current = quality;
+  const [ladder, setLadder] = useState<{ channelId: string; rungs: LiveRung[]; height?: number }>({
+    channelId,
+    rungs: [],
+  });
   const playbackSessionIDRef = useRef(createPlaybackSessionID());
   const channelIdentityRef = useRef(channelId);
   const replacedChannelRef = useRef<string | undefined>(undefined);
@@ -769,21 +799,23 @@ function useBrowserHlsPlayer({
         };
         const onManifestParsed = () => {
           manifestParsed = true;
-          // One level for the whole tune (#1512 G10): the premium only when this browser decodes
-          // its exact CODECS, else the baseline. Manual, so ABR and player-size capping never move
-          // it onto a codec it cannot play or a 4K encode it did not choose.
-          const level = selectLiveLevel(
-            hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange })),
-            (mime) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime),
-          );
+          // One level for the whole tune (#1512 G10): the viewer's rung when they chose one and it is
+          // offered here; otherwise the premium only when this browser decodes its exact CODECS, else
+          // the baseline. Manual, so ABR and player-size capping never move it onto a codec it cannot
+          // play or a 4K encode it did not choose.
+          const levels = levelsOf(hls);
+          const level = selectQualityLevel(levels, canPlayMime, qualityRef.current);
           hls.startLevel = level;
           hls.loadLevel = level;
+          setLadder({ channelId, height: levels[level]?.height, rungs: playableRungs(levels, canPlayMime) });
           playbackAttempt?.markPhase("manifest");
           onManifestRef.current?.();
           joinTransferredLiveSync();
           playReplacement();
         };
         const onLevelUpdated = () => joinTransferredLiveSync();
+        const onLevelSwitched = (_: unknown, data: { level: number }) =>
+          setLadder((now) => ({ ...now, height: hls.levels[data.level]?.height }));
         const onFragmentBuffered = () => {
           armFirstFrameWatch();
           // attachMedia can queue a target loadstart after it returns. WebKit then resets the
@@ -852,6 +884,7 @@ function useBrowserHlsPlayer({
         } else armFirstFrameWatch();
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
+        hls.on(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.on(Hls.Events.ERROR, onError);
 
@@ -888,6 +921,7 @@ function useBrowserHlsPlayer({
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
           hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
+          hls.off(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           hls.stopLoad();
@@ -944,6 +978,7 @@ function useBrowserHlsPlayer({
           stopFirstFrameWatch();
           hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
           hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
+          hls.off(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
           hls.off(Hls.Events.ERROR, onError);
           if (hlsRef.current.instance !== hls) return;
@@ -1122,6 +1157,15 @@ function useBrowserHlsPlayer({
     [channelId, pauseLive, playLive, returnLive, seekLive, transportState],
   );
 
+  // The viewer changed quality: move the playing controller to that rung now (a deliberate change,
+  // so a brief rebuffer is fair), or back to Auto's choice. A tune reads the ref on its manifest.
+  useEffect(() => {
+    const hls = hlsRef.current.instance;
+    if (!hls || hls.levels.length === 0) return;
+    const level = selectQualityLevel(levelsOf(hls), canPlayMime, quality);
+    if (level !== hls.currentLevel) hls.currentLevel = level;
+  }, [quality]);
+
   return {
     status,
     error,
@@ -1129,6 +1173,7 @@ function useBrowserHlsPlayer({
     attach,
     liveTransport,
     stillURL: still?.channelId === channelId ? still.url : undefined,
+    ladder: ladder.channelId === channelId ? { height: ladder.height, rungs: ladder.rungs } : { rungs: [] },
   };
 }
 
@@ -1141,6 +1186,8 @@ export type {
   BrowserTuneAttempt,
   BrowserTunePhase,
   LiveLevel,
+  LiveQuality,
+  LiveRung,
   UseBrowserHlsPlayer,
 };
-export { liveHlsConfig, liveSeek, selectLiveLevel, useBrowserHlsPlayer };
+export { liveHlsConfig, liveSeek, playableRungs, selectLiveLevel, selectQualityLevel, useBrowserHlsPlayer };

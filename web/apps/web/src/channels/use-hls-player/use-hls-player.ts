@@ -1,6 +1,7 @@
 import { toProblem } from "@loomarr/api/mutator";
 import {
   type BrowserHlsPlayerOptions,
+  type LiveQuality,
   type UseBrowserHlsPlayer,
   useBrowserHlsPlayer,
 } from "@loomarr/player/browser";
@@ -11,7 +12,12 @@ import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 
 type UseHlsPlayer = UseBrowserHlsPlayer;
 
-const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () => void): UseHlsPlayer => {
+const useHlsPlayer = (
+  channelId: string,
+  attempt?: TuneAttempt,
+  onManifest?: () => void,
+  quality?: LiveQuality,
+): UseHlsPlayer => {
   const mintSource = useCallback(
     (signal: AbortSignal) => mintChannelPlaySource(channelId, signal),
     [channelId],
@@ -42,6 +48,7 @@ const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () 
     errorMessage,
     mintSource,
     onManifest,
+    quality,
     recordDiagnostic,
   });
 };

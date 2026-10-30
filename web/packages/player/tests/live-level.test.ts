@@ -1,4 +1,4 @@
-import { selectLiveLevel } from "@loomarr/player/browser";
+import { playableRungs, selectLiveLevel, selectQualityLevel } from "@loomarr/player/browser";
 import { describe, expect, it } from "vitest";
 
 // A 4K channel's master lists the baseline and one premium variant (#1512 G10). The premium runs its
@@ -34,5 +34,27 @@ describe("selectLiveLevel", () => {
   it("plays the only level of a baseline-only channel", () => {
     expect(selectLiveLevel([baseline], () => false)).toBe(0);
     expect(selectLiveLevel([premiumHDR, baseline], decodes(baseline.codecs))).toBe(1);
+  });
+});
+
+// The viewer's quality (#2088 decision 7): the channel's own rungs, never a new encode.
+describe("playableRungs and selectQualityLevel", () => {
+  it("offers the baseline always and the premium only where it decodes", () => {
+    expect(playableRungs([baseline, premiumHDR], decodes(premiumHDR.codecs))).toEqual([
+      { height: 1080, index: 0 },
+      { height: 2160, index: 1 },
+    ]);
+    expect(playableRungs([baseline, premiumHDR], decodes(baseline.codecs))).toEqual([
+      { height: 1080, index: 0 },
+    ]);
+  });
+
+  it("plays the viewer's rung when it is offered here, and Auto's choice otherwise", () => {
+    const canPlay = decodes(premiumHDR.codecs);
+    expect(selectQualityLevel([baseline, premiumHDR], canPlay, 1080)).toBe(0);
+    expect(selectQualityLevel([baseline, premiumHDR], canPlay, "auto")).toBe(1);
+    // A remembered 4K on a channel (or browser) without it: Auto decides.
+    expect(selectQualityLevel([baseline], canPlay, 2160)).toBe(0);
+    expect(selectQualityLevel([baseline, premiumHDR], decodes(baseline.codecs), 2160)).toBe(0);
   });
 });

@@ -248,6 +248,14 @@ const Settings: Story = {
           ]}
           density="pointer"
           onSwitchSound={fn()}
+          quality={{
+            onSelect: fn(),
+            options: [
+              { label: "Auto · 4K", selected: true, value: "auto" },
+              { label: "1080p", selected: false, value: "1080" },
+              { label: "4K", selected: false, value: "2160" },
+            ],
+          }}
           switchSound
         />
       </PlayerSheet>
