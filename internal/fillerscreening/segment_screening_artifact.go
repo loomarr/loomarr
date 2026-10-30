@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -27,8 +28,8 @@ func inspectSegmentScreeningArtifact(ctx context.Context, path, expectedSHA256 s
 	if err := ctx.Err(); err != nil {
 		return segmentScreeningArtifactObservation{}, false, err
 	}
-	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || !isContentHash(expectedSHA256) || expectedBytes <= 0 ||
-		expectedBytes > mediatools.ConditioningMaxSnapshotBytes || !isContentHash(expectedClipHash) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || !filler.IsContentHash(expectedSHA256) || expectedBytes <= 0 ||
+		expectedBytes > mediatools.ConditioningMaxSnapshotBytes || !filler.IsContentHash(expectedClipHash) {
 		return segmentScreeningArtifactObservation{}, false, fmt.Errorf("segment screening artifact request is invalid")
 	}
 	listed, err := os.Lstat(path)
@@ -62,7 +63,7 @@ func inspectSegmentScreeningArtifact(ctx context.Context, path, expectedSHA256 s
 		}
 		return segmentScreeningArtifactObservation{}, false, fmt.Errorf("hash segment screening artifact: %w", err)
 	}
-	clipHash, err := ClipIDFromReaderAt(file, opened.Size())
+	clipHash, err := filler.ClipIDFromReaderAt(file, opened.Size())
 	if err != nil {
 		return segmentScreeningArtifactObservation{}, false, fmt.Errorf("identify segment screening artifact: %w", err)
 	}

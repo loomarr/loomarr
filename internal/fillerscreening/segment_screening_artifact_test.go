@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestInspectSegmentScreeningArtifactVerifiesFullAndSparseIdentity(t *testing.T) {
@@ -15,11 +17,11 @@ func TestInspectSegmentScreeningArtifactVerifiesFullAndSparseIdentity(t *testing
 	if err := os.WriteFile(path, left, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sha256, bytes, err := FileSHA256(path)
+	sha256, bytes, err := filler.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(path)
+	clipHash, err := filler.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}

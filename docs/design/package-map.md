@@ -24,7 +24,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `creative` | 5 | — |
 | `defects` | 6 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `filler` | 8 | `creative`, `defects`, `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
+| `filler` | 9 | `creative`, `defects`, `diagnostics`, `fillerstructure`, `llm`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
@@ -33,6 +33,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
+| `mediatools` | 5 | `creative`, `defects`, `diagnostics`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
@@ -71,7 +72,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 3 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerairworthiness`** · 1 importer
+- **`fillerairworthiness`** · 2 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
@@ -191,7 +192,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 4 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `playout`
+- **`mediatools`** · 5 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`playoutbench`** · → `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
@@ -224,7 +225,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 8 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
+- **`filler`** · 9 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8
@@ -233,6 +234,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
+- **`fillerscreening`** · 1 importer · → `filler`, `fillerairworthiness`, `mediatools`
+  Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
@@ -313,7 +316,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

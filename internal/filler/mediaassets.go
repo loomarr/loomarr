@@ -61,6 +61,9 @@ type MediaDerivativeLineage struct {
 	OutputProbe  Probed                       `json:"outputProbe"`
 }
 
+// Validate reports whether the manifest is internally consistent and uses the supported version.
+func (m MediaAssetManifest) Validate() error { return m.validate() }
+
 func (m MediaAssetManifest) validate() error {
 	if m.Version != mediaAssetManifestVersion {
 		return fmt.Errorf("media asset manifest version %d is unsupported", m.Version)

@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -365,7 +366,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
-		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		fillerscreening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
 		fillerdefectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,

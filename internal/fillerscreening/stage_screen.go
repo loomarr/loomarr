@@ -1,9 +1,11 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // SegmentScreeningStage is the rendered-child safety boundary between structure materialization
@@ -20,34 +22,34 @@ func NewSegmentScreeningStage(runtime *SegmentScreeningRuntime, certification *S
 	return &SegmentScreeningStage{runtime: runtime, certification: certification, clipDir: clipDir}
 }
 
-func (s *SegmentScreeningStage) ID() StageID     { return StageScreen }
-func (s *SegmentScreeningStage) Cost() StageCost { return CostVision }
+func (s *SegmentScreeningStage) ID() filler.StageID     { return filler.StageScreen }
+func (s *SegmentScreeningStage) Cost() filler.StageCost { return filler.CostVision }
 
-func (s *SegmentScreeningStage) Applies(_ context.Context, clip StoreClip) (bool, string) {
+func (s *SegmentScreeningStage) Applies(_ context.Context, clip filler.StoreClip) (bool, string) {
 	if !clip.IsSegment() {
 		return false, "not a materialized compilation child"
 	}
 	return true, ""
 }
 
-func (s *SegmentScreeningStage) Run(ctx context.Context, clip StoreClip) (StageResult, error) {
+func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) (filler.StageResult, error) {
 	if err := ctx.Err(); err != nil {
-		return StageResult{}, err
+		return filler.StageResult{}, err
 	}
 	if s == nil || s.runtime == nil {
 		return segmentScreeningReview(clip, "complete rendered-child screening is not configured"), nil
 	}
-	if !clip.IsSegment() || !isContentHash(clip.Hash) || clip.Path == "" ||
+	if !clip.IsSegment() || !filler.IsContentHash(clip.Hash) || clip.Path == "" ||
 		s.clipDir == "" || !filepath.IsAbs(s.clipDir) || filepath.Clean(s.clipDir) != s.clipDir {
 		return segmentScreeningReview(clip, "rendered-child identity is incomplete"), nil
 	}
 
 	playbackPath := filepath.Join(s.clipDir, filepath.FromSlash(clip.Path))
-	tags, state := ReadSidecarTagsState(playbackPath)
-	if state != SidecarValid {
+	tags, state := filler.ReadSidecarTagsState(playbackPath)
+	if state != filler.SidecarValid {
 		return segmentScreeningReview(clip, "rendered-child sidecar is missing or invalid"), nil
 	}
-	subject, err := NewSegmentScreeningSubject(clip.Hash, tags)
+	subject, err := filler.NewSegmentScreeningSubject(clip.Hash, tags)
 	if err != nil || subject.Lineage == nil || subject.Lineage.ParentHash != clip.ParentHash {
 		return segmentScreeningReview(clip, "rendered-child media lineage is incomplete or drifted"), nil
 	}
@@ -61,27 +63,27 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip StoreClip) (StageR
 	aggregate, err := s.runtime.Screen(ctx, media)
 	if err != nil {
 		if ctx.Err() != nil {
-			return StageResult{}, ctx.Err()
+			return filler.StageResult{}, ctx.Err()
 		}
 		return segmentScreeningReview(clip, "a rendered-child screening authority is unavailable"), nil
 	}
-	reference, err := NewSegmentScreeningReference(subject, aggregate)
+	reference, err := filler.NewSegmentScreeningReference(subject, aggregate)
 	if err != nil {
 		return segmentScreeningReview(clip, "rendered-child screening evidence is invalid"), nil
 	}
 	tags.SegmentScreening = &reference
-	if err := WriteSidecarTags(playbackPath, tags, false); err != nil {
+	if err := filler.WriteSidecarTags(playbackPath, tags, false); err != nil {
 		return segmentScreeningReview(clip, "rendered-child screening evidence could not be attached"), nil
 	}
-	reportProgress(ctx, StageScreen, 100)
+	filler.ReportProgress(ctx, filler.StageScreen, 100)
 
-	if axes := segmentScreeningAxesWithOutcome(aggregate, ScreenReject); len(axes) != 0 {
-		return StageResult{
-			Clip: clip, Verdict: VerdictReject, Reason: ReasonScreening,
+	if axes := segmentScreeningAxesWithOutcome(aggregate, filler.ScreenReject); len(axes) != 0 {
+		return filler.StageResult{
+			Clip: clip, Verdict: filler.VerdictReject, Reason: filler.ReasonScreening,
 			Detail: "rendered child rejected by " + strings.Join(axes, ", "),
 		}, nil
 	}
-	if axes := segmentScreeningAxesWithOutcome(aggregate, ScreenHold); len(axes) != 0 {
+	if axes := segmentScreeningAxesWithOutcome(aggregate, filler.ScreenHold); len(axes) != 0 {
 		return segmentScreeningReview(clip, "rendered-child screening requires review: "+strings.Join(axes, ", ")), nil
 	}
 	if !aggregate.Passes() {
@@ -92,18 +94,18 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip StoreClip) (StageR
 	}
 	if err := s.certification.Verify(ctx, aggregate); err != nil {
 		if ctx.Err() != nil {
-			return StageResult{}, ctx.Err()
+			return filler.StageResult{}, ctx.Err()
 		}
 		return segmentScreeningReview(clip, "rendered-child screening passed but terminal release replay failed"), nil
 	}
-	return StageResult{Clip: clip, Verdict: VerdictContinue}, nil
+	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, nil
 }
 
-func segmentScreeningReview(clip StoreClip, note string) StageResult {
-	return StageResult{Clip: clip, Verdict: VerdictReview, Note: note}
+func segmentScreeningReview(clip filler.StoreClip, note string) filler.StageResult {
+	return filler.StageResult{Clip: clip, Verdict: filler.VerdictReview, Note: note}
 }
 
-func segmentScreeningAxesWithOutcome(evidence SegmentScreeningEvidence, outcome SegmentScreeningOutcome) []string {
+func segmentScreeningAxesWithOutcome(evidence filler.SegmentScreeningEvidence, outcome filler.SegmentScreeningOutcome) []string {
 	axes := make([]string, 0, len(evidence.Results))
 	for _, result := range evidence.Results {
 		if result.Outcome == outcome {
@@ -113,4 +115,4 @@ func segmentScreeningAxesWithOutcome(evidence SegmentScreeningEvidence, outcome 
 	return axes
 }
 
-var _ Stage = (*SegmentScreeningStage)(nil)
+var _ filler.Stage = (*SegmentScreeningStage)(nil)

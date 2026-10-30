@@ -1,9 +1,10 @@
-package filler
+package fillerscreening
 
 import (
 	"fmt"
 	"reflect"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -24,8 +25,8 @@ func NewSegmentAirworthinessEvaluator(profile fillerairworthiness.Profile, profi
 	return fillerairworthiness.New(profile, axisProfiles)
 }
 
-func evaluateSegmentAirworthiness(subject SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *fillerairworthiness.Evaluator) (fillerairworthiness.Decision, error) {
-	if ValidateSegmentScreeningSubject(subject) != nil || evaluator == nil {
+func evaluateSegmentAirworthiness(subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *fillerairworthiness.Evaluator) (fillerairworthiness.Decision, error) {
+	if filler.ValidateSegmentScreeningSubject(subject) != nil || evaluator == nil {
 		return fillerairworthiness.Decision{}, fmt.Errorf("segment Airworthiness evaluator or subject is invalid")
 	}
 	document := fillerairworthiness.Document{
@@ -33,7 +34,7 @@ func evaluateSegmentAirworthiness(subject SegmentScreeningSubject, records []Rec
 		ContractVersion: fillerairworthiness.EvidenceContractVersion,
 		SubjectSHA256:   subject.SHA256, DurationMS: subject.EvidenceDurationMs,
 	}
-	seen := make(map[SegmentScreeningAxis]struct{}, 3)
+	seen := make(map[filler.SegmentScreeningAxis]struct{}, 3)
 	for _, recorded := range records {
 		axis := recorded.Evidence.Profile.Axis
 		if _, safety := airworthinessAxis(axis); !safety {
@@ -56,7 +57,7 @@ func evaluateSegmentAirworthiness(subject SegmentScreeningSubject, records []Rec
 	return decision, nil
 }
 
-func segmentAirworthinessMatches(subject SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *fillerairworthiness.Evaluator, want fillerairworthiness.Decision) bool {
+func segmentAirworthinessMatches(subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence, evaluator *fillerairworthiness.Evaluator, want fillerairworthiness.Decision) bool {
 	decision, err := evaluateSegmentAirworthiness(subject, records, evaluator)
 	return err == nil && reflect.DeepEqual(decision, want)
 }

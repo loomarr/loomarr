@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"bytes"
@@ -8,14 +8,16 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path/filepath"
 	"reflect"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 const (
 	segmentScreeningOperationSchemaVersion   = 1
 	segmentScreeningOperationContractVersion = "filler-rendered-child-screening-operation-v1"
 	segmentScreeningOperationMaxBytes        = 64 << 10
+	segmentScreeningOperationKind            = "screening-axis-operations"
 )
 
 // SegmentScreeningAxisEvidenceReplay lets an evaluator replay the one already settled result for
@@ -47,7 +49,7 @@ func newSegmentScreeningOperationRecord(evidence SegmentScreeningAxisEvidence) (
 
 func validateSegmentScreeningOperationRecord(record segmentScreeningOperationRecord) error {
 	if record.SchemaVersion != segmentScreeningOperationSchemaVersion || record.ContractVersion != segmentScreeningOperationContractVersion ||
-		!isContentHash(record.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(record.Profile) != nil || !isContentHash(record.EvidenceSHA256) ||
+		!filler.IsContentHash(record.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(record.Profile) != nil || !filler.IsContentHash(record.EvidenceSHA256) ||
 		record.OperationSHA256 != segmentScreeningOperationSHA256(record.SubjectSHA256, record.Profile) {
 		return fmt.Errorf("segment screening operation record is invalid")
 	}
@@ -68,7 +70,7 @@ func segmentScreeningOperationSHA256(subjectSHA256 string, profile SegmentScreen
 	if err != nil {
 		return ""
 	}
-	return screeningBytesSHA256(raw)
+	return filler.ScreeningBytesSHA256(raw)
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) putSegmentScreeningOperation(ctx context.Context, evidence SegmentScreeningAxisEvidence) error {
@@ -80,18 +82,18 @@ func (r *FileSegmentScreeningEvidenceRepository) putSegmentScreeningOperation(ct
 	if err != nil || len(raw) > segmentScreeningOperationMaxBytes {
 		return fmt.Errorf("marshal segment screening operation")
 	}
-	if err := r.files.putImmutable(ctx, r.operationPath(record.OperationSHA256), raw, segmentScreeningOperationMaxBytes); err != nil {
+	if err := r.files.PutBlob(ctx, segmentScreeningOperationKind, record.OperationSHA256, raw, segmentScreeningOperationMaxBytes); err != nil {
 		return fmt.Errorf("persist segment screening operation: %w", err)
 	}
 	return nil
 }
 
 func (r *FileSegmentScreeningEvidenceRepository) FindSegmentScreeningAxisEvidence(ctx context.Context, subjectSHA256 string, profile SegmentScreeningAxisProfile) (RecordedSegmentScreeningAxisEvidence, bool, error) {
-	if r == nil || r.files == nil || !isContentHash(subjectSHA256) || ValidateSegmentScreeningAxisProfile(profile) != nil {
+	if r == nil || r.files == nil || !filler.IsContentHash(subjectSHA256) || ValidateSegmentScreeningAxisProfile(profile) != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, false, fmt.Errorf("segment screening operation identity is invalid")
 	}
 	operationSHA256 := segmentScreeningOperationSHA256(subjectSHA256, profile)
-	raw, err := r.files.readImmutable(ctx, r.operationPath(operationSHA256), segmentScreeningOperationMaxBytes)
+	raw, err := r.files.ReadBlob(ctx, segmentScreeningOperationKind, operationSHA256, segmentScreeningOperationMaxBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return RecordedSegmentScreeningAxisEvidence{}, false, nil
 	}
@@ -120,10 +122,6 @@ func (r *FileSegmentScreeningEvidenceRepository) FindSegmentScreeningAxisEvidenc
 		return RecordedSegmentScreeningAxisEvidence{}, false, fmt.Errorf("segment screening operation evidence drifted")
 	}
 	return recorded, true, nil
-}
-
-func (r *FileSegmentScreeningEvidenceRepository) operationPath(digest string) string {
-	return filepath.Join(r.files.root, "screening-axis-operations", digest[:2], digest+".json")
 }
 
 var _ SegmentScreeningAxisEvidenceReplay = (*FileSegmentScreeningEvidenceRepository)(nil)

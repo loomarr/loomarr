@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -21,10 +22,10 @@ type qualificationSafetyRawEvidence struct {
 	SchemaVersion           int                                 `json:"schemaVersion"`
 	ContractVersion         string                              `json:"contractVersion"`
 	SubjectSHA256           string                              `json:"subjectSha256"`
-	Axis                    SegmentScreeningAxis                `json:"axis"`
+	Axis                    filler.SegmentScreeningAxis         `json:"axis"`
 	Evidence                segmentScreeningArtifactObservation `json:"evidence"`
 	EvidenceIdentityMatched bool                                `json:"evidenceIdentityMatched"`
-	Outcome                 SegmentScreeningOutcome             `json:"outcome"`
+	Outcome                 filler.SegmentScreeningOutcome      `json:"outcome"`
 	ReasonCode              string                              `json:"reasonCode"`
 }
 
@@ -37,8 +38,8 @@ type qualificationSafetyEvaluator struct {
 	now     func() time.Time
 }
 
-func newQualificationSafetyEvaluator(axis SegmentScreeningAxis, replay SegmentScreeningAxisEvidenceReplay, now func() time.Time) (*qualificationSafetyEvaluator, error) {
-	if axis != ScreenVisualSafety && axis != ScreenSpokenSafety && axis != ScreenWrittenSafety {
+func newQualificationSafetyEvaluator(axis filler.SegmentScreeningAxis, replay SegmentScreeningAxisEvidenceReplay, now func() time.Time) (*qualificationSafetyEvaluator, error) {
+	if axis != filler.ScreenVisualSafety && axis != filler.ScreenSpokenSafety && axis != filler.ScreenWrittenSafety {
 		return nil, fmt.Errorf("qualification safety axis is invalid")
 	}
 	if replay == nil || now == nil {
@@ -51,7 +52,7 @@ func newQualificationSafetyEvaluator(axis SegmentScreeningAxis, replay SegmentSc
 	return &qualificationSafetyEvaluator{profile: profile, replay: replay, now: now}, nil
 }
 
-func (e *qualificationSafetyEvaluator) Axis() SegmentScreeningAxis {
+func (e *qualificationSafetyEvaluator) Axis() filler.SegmentScreeningAxis {
 	if e == nil {
 		return ""
 	}
@@ -60,7 +61,7 @@ func (e *qualificationSafetyEvaluator) Axis() SegmentScreeningAxis {
 
 func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error) {
 	if e == nil || e.replay == nil || e.now == nil || ValidateSegmentScreeningAxisProfile(e.profile) != nil ||
-		(e.profile.Axis != ScreenVisualSafety && e.profile.Axis != ScreenSpokenSafety && e.profile.Axis != ScreenWrittenSafety) ||
+		(e.profile.Axis != filler.ScreenVisualSafety && e.profile.Axis != filler.ScreenSpokenSafety && e.profile.Axis != filler.ScreenWrittenSafety) ||
 		e.profile.EvidenceContract != qualificationSafetyEvidenceContractVersion {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("qualification safety evaluator is unavailable")
 	}
@@ -77,7 +78,7 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 	raw, err := json.Marshal(qualificationSafetyRawEvidence{
 		SchemaVersion: qualificationSafetyEvidenceSchemaVersion, ContractVersion: qualificationSafetyEvidenceContractVersion,
 		SubjectSHA256: media.Subject.SHA256, Axis: e.profile.Axis, Evidence: observation,
-		EvidenceIdentityMatched: matches, Outcome: ScreenHold, ReasonCode: reasonCode,
+		EvidenceIdentityMatched: matches, Outcome: filler.ScreenHold, ReasonCode: reasonCode,
 	})
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("marshal qualification safety evidence: %w", err)
@@ -87,7 +88,7 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("replay qualification safety evidence: %w", err)
 	}
 	if found {
-		if replayed.Evidence.Outcome != ScreenHold || replayed.Evidence.ReasonCode != reasonCode || !bytes.Equal(replayed.RawEvidence, raw) {
+		if replayed.Evidence.Outcome != filler.ScreenHold || replayed.Evidence.ReasonCode != reasonCode || !bytes.Equal(replayed.RawEvidence, raw) {
 			return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("qualification safety operation conflicts with its settled result")
 		}
 		return replayed, nil
@@ -98,10 +99,10 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 	}
 	suitability := &fillerairworthiness.AxisEvidence{
 		SubjectSHA256: media.Subject.SHA256, Profile: profile,
-		Coverage: fillerairworthiness.CoverageIncomplete, EvidenceSHA256: screeningBytesSHA256(raw),
+		Coverage: fillerairworthiness.CoverageIncomplete, EvidenceSHA256: filler.ScreeningBytesSHA256(raw),
 		Observations: []fillerairworthiness.Observation{},
 	}
-	return NewSegmentScreeningAxisEvidence(media.Subject, e.profile, ScreenHold, reasonCode, suitability, raw, e.now())
+	return NewSegmentScreeningAxisEvidence(media.Subject, e.profile, filler.ScreenHold, reasonCode, suitability, raw, e.now())
 }
 
 // NewQualificationSegmentScreeningRuntime activates the complete four-axis production boundary
@@ -117,7 +118,7 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, now func() tim
 	}
 	evaluators := make([]SegmentScreeningEvaluator, 0, len(segmentScreeningAxisOrder))
 	safetyProfiles := make([]SegmentScreeningAxisProfile, 0, 3)
-	for _, axis := range []SegmentScreeningAxis{ScreenVisualSafety, ScreenSpokenSafety, ScreenWrittenSafety} {
+	for _, axis := range []filler.SegmentScreeningAxis{filler.ScreenVisualSafety, filler.ScreenSpokenSafety, filler.ScreenWrittenSafety} {
 		evaluator, evaluatorErr := newQualificationSafetyEvaluator(axis, evidence, now)
 		if evaluatorErr != nil {
 			return nil, evaluatorErr
@@ -126,7 +127,7 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, now func() tim
 		safetyProfiles = append(safetyProfiles, evaluator.profile)
 	}
 	playbackEvaluator, err := NewPlaybackIntegrityEvaluator(
-		qualificationSegmentScreeningProfile(ScreenPlayback, playbackIntegrityEvidenceContractVersion, qualificationPlaybackImplementationVersion),
+		qualificationSegmentScreeningProfile(filler.ScreenPlayback, playbackIntegrityEvidenceContractVersion, qualificationPlaybackImplementationVersion),
 		evidence, now,
 	)
 	if err != nil {
@@ -143,13 +144,13 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, now func() tim
 // qualificationSegmentScreeningProfile hashes explicit built-in, non-authorizing identity
 // documents. In particular the certification hash means "unavailable"; it cannot be confused
 // with or accepted by a later production release authority.
-func qualificationSegmentScreeningProfile(axis SegmentScreeningAxis, evidenceContract, implementationVersion string) SegmentScreeningAxisProfile {
+func qualificationSegmentScreeningProfile(axis filler.SegmentScreeningAxis, evidenceContract, implementationVersion string) SegmentScreeningAxisProfile {
 	profile := SegmentScreeningAxisProfile{
 		Axis:                 axis,
 		EvidenceContract:     evidenceContract,
-		PolicySHA256:         screeningBytesSHA256([]byte("filler-segment-screening-qualification-policy-v1\x00" + string(axis))),
-		CertificationSHA256:  screeningBytesSHA256([]byte("filler-segment-screening-certification-unavailable-v1\x00" + string(axis))),
-		ImplementationSHA256: screeningBytesSHA256([]byte(implementationVersion + "\x00" + string(axis))),
+		PolicySHA256:         filler.ScreeningBytesSHA256([]byte("filler-segment-screening-qualification-policy-v1\x00" + string(axis))),
+		CertificationSHA256:  filler.ScreeningBytesSHA256([]byte("filler-segment-screening-certification-unavailable-v1\x00" + string(axis))),
+		ImplementationSHA256: filler.ScreeningBytesSHA256([]byte(implementationVersion + "\x00" + string(axis))),
 	}
 	if _, safety := airworthinessAxis(axis); safety {
 		profile.CertifiedSuitabilityFlags = []fillerairworthiness.Flag{}

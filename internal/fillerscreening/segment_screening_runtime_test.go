@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
@@ -6,12 +6,14 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 type capturedSegmentScreeningEvaluator struct {
-	axis       SegmentScreeningAxis
+	axis       filler.SegmentScreeningAxis
 	profile    SegmentScreeningAxisProfile
-	outcome    SegmentScreeningOutcome
+	outcome    filler.SegmentScreeningOutcome
 	assessedAt time.Time
 	err        error
 	mutate     func(*RecordedSegmentScreeningAxisEvidence)
@@ -19,7 +21,7 @@ type capturedSegmentScreeningEvaluator struct {
 	seen       []SegmentScreeningMedia
 }
 
-func (e *capturedSegmentScreeningEvaluator) Axis() SegmentScreeningAxis { return e.axis }
+func (e *capturedSegmentScreeningEvaluator) Axis() filler.SegmentScreeningAxis { return e.axis }
 
 func (e *capturedSegmentScreeningEvaluator) Evaluate(_ context.Context, media SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error) {
 	e.seen = append(e.seen, media)
@@ -41,16 +43,16 @@ func (e *capturedSegmentScreeningEvaluator) Evaluate(_ context.Context, media Se
 
 type capturedSegmentScreeningRepository struct {
 	order        *[]string
-	subjects     []SegmentScreeningSubject
+	subjects     []filler.SegmentScreeningSubject
 	axis         []RecordedSegmentScreeningAxisEvidence
-	aggregates   []SegmentScreeningEvidence
+	aggregates   []filler.SegmentScreeningEvidence
 	subjectErr   error
 	axisErrAt    int
 	axisErr      error
 	aggregateErr error
 }
 
-func (r *capturedSegmentScreeningRepository) PutSegmentScreeningSubject(_ context.Context, subject SegmentScreeningSubject) error {
+func (r *capturedSegmentScreeningRepository) PutSegmentScreeningSubject(_ context.Context, subject filler.SegmentScreeningSubject) error {
 	*r.order = append(*r.order, "persist:subject")
 	if r.subjectErr != nil {
 		return r.subjectErr
@@ -68,7 +70,7 @@ func (r *capturedSegmentScreeningRepository) PutSegmentScreeningAxisEvidence(_ c
 	return nil
 }
 
-func (r *capturedSegmentScreeningRepository) PutSegmentScreeningEvidence(_ context.Context, aggregate SegmentScreeningEvidence) error {
+func (r *capturedSegmentScreeningRepository) PutSegmentScreeningEvidence(_ context.Context, aggregate filler.SegmentScreeningEvidence) error {
 	if r.aggregateErr != nil {
 		return r.aggregateErr
 	}
@@ -82,7 +84,7 @@ func TestSegmentScreeningRuntimePersistsSubjectThenCallsFourAxesSerially(t *test
 	evaluators := segmentScreeningEvaluatorFixtures(&order)
 	repository := &capturedSegmentScreeningRepository{order: &order}
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
-		evaluators[ScreenPlayback], evaluators[ScreenWrittenSafety], evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety],
+		evaluators[filler.ScreenPlayback], evaluators[filler.ScreenWrittenSafety], evaluators[filler.ScreenVisualSafety], evaluators[filler.ScreenSpokenSafety],
 	}, repository, screeningAirworthinessEvaluator(t, screeningProfilesFromEvaluators(evaluators)))
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +148,7 @@ func TestSegmentScreeningRuntimeDoesNotEvaluateBeforeSubjectOrAxisEvidenceIsDura
 func TestSegmentScreeningRuntimePersistsDurableHold(t *testing.T) {
 	order := []string{}
 	evaluators := segmentScreeningEvaluatorFixtures(&order)
-	evaluators[ScreenPlayback].outcome = ScreenHold
+	evaluators[filler.ScreenPlayback].outcome = filler.ScreenHold
 	repository := &capturedSegmentScreeningRepository{order: &order}
 	runtime := mustSegmentScreeningRuntime(t, evaluators, repository)
 	aggregate, err := runtime.Screen(t.Context(), segmentScreeningRuntimeMedia(t))
@@ -166,8 +168,8 @@ func TestSegmentScreeningRuntimeRejectsIncompleteOrDuplicateAxesBeforeCalls(t *t
 		name  string
 		items []SegmentScreeningEvaluator
 	}{
-		{name: "missing", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenWrittenSafety]}},
-		{name: "duplicate", items: []SegmentScreeningEvaluator{evaluators[ScreenVisualSafety], evaluators[ScreenSpokenSafety], evaluators[ScreenWrittenSafety], evaluators[ScreenSpokenSafety]}},
+		{name: "missing", items: []SegmentScreeningEvaluator{evaluators[filler.ScreenVisualSafety], evaluators[filler.ScreenSpokenSafety], evaluators[filler.ScreenWrittenSafety]}},
+		{name: "duplicate", items: []SegmentScreeningEvaluator{evaluators[filler.ScreenVisualSafety], evaluators[filler.ScreenSpokenSafety], evaluators[filler.ScreenWrittenSafety], evaluators[filler.ScreenSpokenSafety]}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -206,25 +208,25 @@ func TestSegmentScreeningRuntimeRetryReproducesAggregateIdentity(t *testing.T) {
 func TestSegmentScreeningRuntimeFailsClosedOnEvaluatorDrift(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator)
+		mutate func(map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator)
 	}{
-		{name: "operational error", mutate: func(items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
-			items[ScreenSpokenSafety].err = errors.New("settlement missing")
+		{name: "operational error", mutate: func(items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
+			items[filler.ScreenSpokenSafety].err = errors.New("settlement missing")
 		}},
-		{name: "axis drift", mutate: func(items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
-			items[ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) {
-				recorded.Evidence.Profile.Axis = ScreenVisualSafety
+		{name: "axis drift", mutate: func(items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
+			items[filler.ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) {
+				recorded.Evidence.Profile.Axis = filler.ScreenVisualSafety
 				recorded.Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(recorded.Evidence)
 			}
 		}},
-		{name: "subject drift", mutate: func(items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
-			items[ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) {
+		{name: "subject drift", mutate: func(items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
+			items[filler.ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) {
 				recorded.Evidence.SubjectSHA256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 				recorded.Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(recorded.Evidence)
 			}
 		}},
-		{name: "raw authority drift", mutate: func(items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
-			items[ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) { recorded.RawEvidence = nil }
+		{name: "raw authority drift", mutate: func(items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) {
+			items[filler.ScreenSpokenSafety].mutate = func(recorded *RecordedSegmentScreeningAxisEvidence) { recorded.RawEvidence = nil }
 		}},
 	}
 	for _, test := range tests {
@@ -271,10 +273,10 @@ func TestSegmentScreeningRuntimeRequiresThreeDistinctAbsoluteArtifactPaths(t *te
 	}
 }
 
-func mustSegmentScreeningRuntime(t *testing.T, items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, repository SegmentScreeningEvidenceRepository) *SegmentScreeningRuntime {
+func mustSegmentScreeningRuntime(t *testing.T, items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, repository SegmentScreeningEvidenceRepository) *SegmentScreeningRuntime {
 	t.Helper()
 	runtime, err := NewSegmentScreeningRuntime([]SegmentScreeningEvaluator{
-		items[ScreenVisualSafety], items[ScreenSpokenSafety], items[ScreenWrittenSafety], items[ScreenPlayback],
+		items[filler.ScreenVisualSafety], items[filler.ScreenSpokenSafety], items[filler.ScreenWrittenSafety], items[filler.ScreenPlayback],
 	}, repository, screeningAirworthinessEvaluator(t, screeningProfilesFromEvaluators(items)))
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +284,7 @@ func mustSegmentScreeningRuntime(t *testing.T, items map[SegmentScreeningAxis]*c
 	return runtime
 }
 
-func screeningProfilesFromEvaluators(items map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) []SegmentScreeningAxisProfile {
+func screeningProfilesFromEvaluators(items map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator) []SegmentScreeningAxisProfile {
 	profiles := make([]SegmentScreeningAxisProfile, 0, len(items))
 	for _, axis := range segmentScreeningAxisOrder {
 		profiles = append(profiles, items[axis].profile)
@@ -290,11 +292,11 @@ func screeningProfilesFromEvaluators(items map[SegmentScreeningAxis]*capturedSeg
 	return profiles
 }
 
-func segmentScreeningEvaluatorFixtures(order *[]string) map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator {
-	items := make(map[SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, len(segmentScreeningAxisOrder))
+func segmentScreeningEvaluatorFixtures(order *[]string) map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator {
+	items := make(map[filler.SegmentScreeningAxis]*capturedSegmentScreeningEvaluator, len(segmentScreeningAxisOrder))
 	for index, axis := range segmentScreeningAxisOrder {
 		items[axis] = &capturedSegmentScreeningEvaluator{
-			axis: axis, profile: screeningProfileFixture(axis, string(rune('1'+index))), outcome: ScreenPass,
+			axis: axis, profile: screeningProfileFixture(axis, string(rune('1'+index))), outcome: filler.ScreenPass,
 			assessedAt: time.Date(2026, time.September, 12, 2, index, 0, 0, time.UTC), order: order,
 		}
 	}

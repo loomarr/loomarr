@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
@@ -6,14 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestSegmentScreeningStageAppliesOnlyToMaterializedChildren(t *testing.T) {
 	stage := NewSegmentScreeningStage(nil, nil, t.TempDir())
-	if applies, _ := stage.Applies(t.Context(), StoreClip{}); applies {
+	if applies, _ := stage.Applies(t.Context(), filler.StoreClip{}); applies {
 		t.Fatal("screening stage applied to a top-level clip")
 	}
-	if applies, note := stage.Applies(t.Context(), StoreClip{Clip: Clip{ParentHash: "parent"}}); !applies || note != "" {
+	if applies, note := stage.Applies(t.Context(), filler.StoreClip{Clip: filler.Clip{ParentHash: "parent"}}); !applies || note != "" {
 		t.Fatalf("screening stage did not apply to child: applies=%v note=%q", applies, note)
 	}
 }
@@ -22,28 +24,28 @@ func TestSegmentScreeningStageHoldsChildWhenRuntimeOrReleaseIsUnavailable(t *tes
 	clip, _, root := renderedChildStageFixture(t)
 	stage := NewSegmentScreeningStage(nil, nil, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != VerdictReview || out.Note == "" {
+	if err != nil || out.Verdict != filler.VerdictReview || out.Note == "" {
 		t.Fatalf("missing runtime did not hold child: out=%+v err=%v", out, err)
 	}
 
-	runtime, _, _ := screeningStageRuntime(t, ScreenPass)
+	runtime, _, _ := screeningStageRuntime(t, filler.ScreenPass)
 	stage = NewSegmentScreeningStage(runtime, nil, root)
 	out, err = stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
+	if err != nil || out.Verdict != filler.VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
 		t.Fatalf("missing release did not hold passing child: out=%+v err=%v", out, err)
 	}
-	tags, state := ReadSidecarTagsState(filepath.Join(root, filepath.FromSlash(clip.Path)))
-	if state != SidecarValid || tags.SegmentScreening == nil {
+	tags, state := filler.ReadSidecarTagsState(filepath.Join(root, filepath.FromSlash(clip.Path)))
+	if state != filler.SidecarValid || tags.SegmentScreening == nil {
 		t.Fatalf("durable screening reference missing before release hold: state=%v tags=%+v", state, tags)
 	}
 }
 
 func TestSegmentScreeningStageMapsClosedRejectWithoutPublishingRestrictedDetail(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, _, _ := screeningStageRuntime(t, ScreenReject)
+	runtime, _, _ := screeningStageRuntime(t, filler.ScreenReject)
 	stage := NewSegmentScreeningStage(runtime, nil, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != VerdictReject || out.Reason != ReasonScreening ||
+	if err != nil || out.Verdict != filler.VerdictReject || out.Reason != filler.ReasonScreening ||
 		out.Detail != "rendered child rejected by spoken_safety" {
 		t.Fatalf("closed reject was not preserved: out=%+v err=%v", out, err)
 	}
@@ -51,7 +53,7 @@ func TestSegmentScreeningStageMapsClosedRejectWithoutPublishingRestrictedDetail(
 
 func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, repository, profiles := screeningStageRuntime(t, ScreenPass)
+	runtime, repository, profiles := screeningStageRuntime(t, filler.ScreenPass)
 	certification, err := NewSegmentScreeningCertification(
 		screeningReleaseFixture(profiles, true), repository,
 	)
@@ -60,24 +62,24 @@ func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *t
 	}
 	stage := NewSegmentScreeningStage(runtime, certification, root)
 	out, err := stage.Run(t.Context(), clip)
-	if err != nil || out.Verdict != VerdictContinue {
+	if err != nil || out.Verdict != filler.VerdictContinue {
 		t.Fatalf("certified four-axis child did not continue: out=%+v err=%v", out, err)
 	}
 }
 
 func TestSegmentScreeningStageTurnsOperationalFailureIntoReview(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, _, _ := screeningStageRuntime(t, ScreenPass)
+	runtime, _, _ := screeningStageRuntime(t, filler.ScreenPass)
 	evaluator := runtime.evaluators[1].(*capturedSegmentScreeningEvaluator)
 	evaluator.err = errors.New("private provider response")
 	stage := NewSegmentScreeningStage(runtime, nil, root)
 	out, err := stage.Run(context.Background(), clip)
-	if err != nil || out.Verdict != VerdictReview || out.Note != "a rendered-child screening authority is unavailable" {
+	if err != nil || out.Verdict != filler.VerdictReview || out.Note != "a rendered-child screening authority is unavailable" {
 		t.Fatalf("operational failure escaped fail-closed translation: out=%+v err=%v", out, err)
 	}
 }
 
-func renderedChildStageFixture(t *testing.T) (StoreClip, SidecarTags, string) {
+func renderedChildStageFixture(t *testing.T) (filler.StoreClip, filler.SidecarTags, string) {
 	t.Helper()
 	root := t.TempDir()
 	tags := screeningChildTagsFixture(t)
@@ -88,21 +90,21 @@ func renderedChildStageFixture(t *testing.T) (StoreClip, SidecarTags, string) {
 	if err := os.WriteFile(path, []byte("rendered child"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSidecarTags(path, tags, false); err != nil {
+	if err := filler.WriteSidecarTags(path, tags, false); err != nil {
 		t.Fatal(err)
 	}
-	clip := StoreClip{Clip: Clip{
+	clip := filler.StoreClip{Clip: filler.Clip{
 		Hash: tags.MediaAssets.Playback.Asset.ClipHash, Path: tags.MediaAssets.Playback.Asset.Path,
 		ParentHash: tags.ConditioningLineage.ParentHash,
 	}}
 	return clip, tags, root
 }
 
-func screeningStageRuntime(t *testing.T, spokenOutcome SegmentScreeningOutcome) (*SegmentScreeningRuntime, *FileSegmentScreeningEvidenceRepository, []SegmentScreeningAxisProfile) {
+func screeningStageRuntime(t *testing.T, spokenOutcome filler.SegmentScreeningOutcome) (*SegmentScreeningRuntime, *FileSegmentScreeningEvidenceRepository, []SegmentScreeningAxisProfile) {
 	t.Helper()
 	order := []string{}
 	evaluators := segmentScreeningEvaluatorFixtures(&order)
-	evaluators[ScreenSpokenSafety].outcome = spokenOutcome
+	evaluators[filler.ScreenSpokenSafety].outcome = spokenOutcome
 	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
 	if err != nil {
 		t.Fatal(err)
