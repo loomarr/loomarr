@@ -163,11 +163,11 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 		total++
 		if src.EffectiveEnabled() {
 			on++
-			if home.Country != "" && src.GeographicallyEligible(home) {
+			if src.ServesHome(home) {
 				ready++
-			}
-			if home.Country != "" && src.GeographicallyEligible(home) && src.LastCheckedAt.After(newest) {
-				newest = src.LastCheckedAt
+				if src.LastCheckedAt.After(newest) {
+					newest = src.LastCheckedAt
+				}
 			}
 		}
 	}
