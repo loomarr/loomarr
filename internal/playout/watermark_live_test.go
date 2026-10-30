@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,8 @@ func TestLive_WatermarkCheck(t *testing.T) {
 			}
 			continue
 		}
-		dir := t.TempDir()
+		// Not made yet, as the app hands it over: the check makes its own scratch dir.
+		dir := filepath.Join(t.TempDir(), "check-"+string(enc))
 		if d := os.Getenv("PLAYOUT_TEST_FRAME_DIR"); d != "" {
 			dir = d + "/" + string(host.Family)
 		}

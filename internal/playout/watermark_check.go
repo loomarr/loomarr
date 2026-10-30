@@ -98,6 +98,11 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host HostProfile, dir st
 	fail := func(format string, a ...any) WatermarkCheckResult {
 		return WatermarkCheckResult{Detail: fmt.Sprintf(format, a...)}
 	}
+	// The test sources are written here before the test bug is, so the scratch dir is made first:
+	// the caller passes a fresh path and removes it afterwards.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fail("scratch dir: %v", err)
+	}
 	host.Overlay = true
 	var details, colourDetails []string
 	colour := true
