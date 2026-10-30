@@ -27,7 +27,7 @@ type PhoneDestination = {
   icon: IconName;
   key: PhoneDestinationKey;
   label: string;
-} & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/channels/$id/watch" });
+} & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/watch/$id" });
 
 const PRIMARY_ORDER: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "requests"];
 const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["filler", "people", "settings", "help"];
@@ -44,7 +44,7 @@ const destinationFor = (
       // Decision X2: hidden (not greyed, not a held gap) until a channel exists.
       return watchChannelId === undefined
         ? undefined
-        : { icon: "play", key, label: "Watch", params: { id: watchChannelId }, to: "/channels/$id/watch" };
+        : { icon: "play", key, label: "Watch", params: { id: watchChannelId }, to: "/watch/$id" };
     case "guide":
       return { icon: "guide", key, label: "Guide", to: "/guide" };
     case "requests":
@@ -66,7 +66,7 @@ const withBadge = (
   destination: PhoneDestination,
   badges: Partial<Record<NavTo, number>> | undefined,
 ): PhoneDestination => {
-  const count = destination.to === "/channels/$id/watch" ? 0 : (badges?.[destination.to] ?? 0);
+  const count = destination.to === "/watch/$id" ? 0 : (badges?.[destination.to] ?? 0);
   return count > 0 ? { ...destination, badgeCount: count } : destination;
 };
 
@@ -87,9 +87,9 @@ const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, numbe
     return destination ? [withBadge(destination, badges)] : [];
   });
 
-/** A `/channels/:id/watch` URL is "on Watch" regardless of which channel; otherwise exact-or-nested. */
+/** A `/watch/:id` URL is "on Watch" regardless of which channel; otherwise exact-or-nested. */
 const phoneDestinationMatches = (pathname: string, destination: Pick<PhoneDestination, "to">): boolean =>
-  destination.to === "/channels/$id/watch"
+  destination.to === "/watch/$id"
     ? isWatchRoute(pathname)
     : pathname === destination.to || pathname.startsWith(`${destination.to}/`);
 

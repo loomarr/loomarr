@@ -303,10 +303,17 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     if (isWeb && render && isValidElement(render)) {
       // `onPress` is Action's own (Pressable/RN) handler name; a cloned host element only
       // understands `onClick`, so it is bridged here rather than spread through `...props`
-      // unchanged, which would silently never fire.
-      const { onPress, ...restProps } = props as typeof props & {
+      // unchanged, which would silently never fire. `accessibilityRole` is RN's too: it reaches the
+      // host as `role`, and spread raw it is an unknown DOM attribute.
+      const {
+        accessibilityRole: _role,
+        onPress,
+        ...restProps
+      } = props as typeof props & {
         onPress?: (event: unknown) => void;
       };
+      // The host's `style` is CSS, which has no paddingHorizontal/paddingVertical: spell them out.
+      const { paddingHorizontal, paddingVertical, ...hostStyle } = boxStyle;
       return cloneElement(
         render,
         mergeRenderProps(
@@ -318,7 +325,14 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             onFocus: () => setFocused(true),
             ref,
             role,
-            style: { display: "inline-flex", ...boxStyle },
+            style: {
+              display: "inline-flex",
+              ...hostStyle,
+              paddingBottom: paddingVertical,
+              paddingLeft: paddingHorizontal,
+              paddingRight: paddingHorizontal,
+              paddingTop: paddingVertical,
+            },
             tabIndex: isDisabled ? -1 : tabIndex,
           },
           render.props,

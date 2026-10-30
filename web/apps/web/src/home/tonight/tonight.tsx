@@ -39,7 +39,7 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
             title={h.airing.series ?? h.airing.title}
             detail={h.airing.series ? ` · ${h.airing.title}` : undefined}
             reason={highlightReason(h, timeZone)}
-            render={<Link to="/channels/$id/watch" params={{ id: h.channelId }} />}
+            render={<Link to="/watch/$id" params={{ id: h.channelId }} />}
           />
         ))}
       </ListGroup>

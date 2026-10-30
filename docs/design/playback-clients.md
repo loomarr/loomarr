@@ -128,9 +128,11 @@ Pause is shared time-shift, not a private playback stack (decision
 
 ## Watch (web)
 
-**Decided, not yet built (#2088).** A dedicated full-bleed route, `/watch/$id`, replaces the
-channel page's Watch tab with a **Watch** button; the tab's default-audio picker moves to the
-Channel's settings. The chrome is the cross-device player design ([`frontend-design.md`
+**Being built (#2088): the route is in, the rest below is decided but not yet built.** A dedicated
+full-bleed route, `/watch/$id`, has no app nav around it and a ✕ to leave; it replaced the channel
+page's Watch tab with a **Watch** button in the channel header, and the default audio language moved
+to an admin card on Channel info (#2093). A bare `/channels/$id` opens on Channel info. The chrome
+is the cross-device player design ([`frontend-design.md`
 §9](../frontend-design.md#9-player-chrome--one-design-for-every-player), mock of record
 [`design/watch-player/`](../../design/watch-player/README.md)). Live Channels only: there is no
 on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause) already keeps.

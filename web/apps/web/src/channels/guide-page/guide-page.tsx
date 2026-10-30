@@ -305,8 +305,9 @@ const GuidePage = ({
     },
     [layout, selected],
   );
+  // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
   const onOpenChannel = useCallback(
-    (id: string) => void navigate({ to: "/channels/$id", params: { id } }),
+    (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
     [navigate],
   );
   const renderRowMenu = useCallback(
@@ -656,7 +657,7 @@ const GuidePage = ({
                 onFilterChange={setFilter}
                 selection={selected}
                 onSelect={setSelection}
-                onWatch={(id) => void navigate({ to: "/channels/$id/watch", params: { id } })}
+                onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
                 renderArtwork={renderArtwork}
               />
             ) : layout ? (

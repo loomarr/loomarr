@@ -11,7 +11,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -501,36 +501,29 @@ describe("admin-only routes", () => {
   });
 });
 
-// #1987: a member's channel tab bar is Watch and Channel info, and marks the section being shown.
-// On an admin-only section it marks nothing: it used to light Channel info through a fallback,
-// claiming a page they weren't on. The admin half is in reachability.test.tsx.
-describe("a member's channel tab bar", () => {
-  const channelTabs = async () => within(await screen.findByRole("navigation", { name: "Channel sections" }));
-
-  it.each(["programming", "filler", "danger"])("at /channels/ch-1/%s has no current tab", async (section) => {
+// #1987, #2088: a member's only channel section is Channel info, so they get no tab bar (a lone tab
+// is chrome, not navigation), and Watch is the header's button to the full-bleed player. On an
+// admin-only section they see "Admins only" and still no bar: no tab claims a page they aren't on.
+// The admin half is in reachability.test.tsx.
+describe("a member's channel page", () => {
+  it.each(["programming", "filler", "danger"])("at /channels/ch-1/%s has no tab bar", async (section) => {
     stubAuth(true, MEMBER);
     renderApp(`/channels/ch-1/${section}`);
 
     expect(await screen.findByText("Admins only")).toBeInTheDocument();
-    const tabs = await channelTabs();
-    expect(tabs.getAllByRole("link").map((link) => link.textContent)).toEqual(["Watch", "Channel info"]);
-    expect(tabs.queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    expect(screen.queryByRole("navigation", { name: "Channel sections" })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ["watch", "Watch"],
-    ["info", "Channel info"],
-  ])("at /channels/ch-1/%s has %s current", async (section, label) => {
+  it("at /channels/ch-1/info has no tab bar, and Watch opens the player", async () => {
     stubAuth(true, MEMBER);
     // Channel info's own reads, which the shared baseline doesn't answer.
     server.use(
       getChannelUpcomingMockHandler({ upcoming: [] }),
       getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
     );
-    renderApp(`/channels/ch-1/${section}`);
+    renderApp("/channels/ch-1/info");
 
-    const tabs = await channelTabs();
-    expect(tabs.getAllByRole("link", { current: "page" })).toHaveLength(1);
-    expect(tabs.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("link", { name: "Watch" })).toHaveAttribute("href", "/watch/ch-1");
+    expect(screen.queryByRole("navigation", { name: "Channel sections" })).not.toBeInTheDocument();
   });
 });

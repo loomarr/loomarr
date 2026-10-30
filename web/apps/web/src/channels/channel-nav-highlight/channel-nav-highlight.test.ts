@@ -3,8 +3,8 @@ import { channelNavHighlight } from "./channel-nav-highlight";
 
 describe("channelNavHighlight", () => {
   it("highlights Watch on a channel's watch route, whichever channel it is", () => {
-    expect(channelNavHighlight("/channels/ch-1/watch")).toBe("watch");
-    expect(channelNavHighlight("/channels/ch-42/watch")).toBe("watch");
+    expect(channelNavHighlight("/watch/ch-1")).toBe("watch");
+    expect(channelNavHighlight("/watch/ch-42")).toBe("watch");
   });
 
   it("highlights Guide on every channel-management route", () => {
@@ -17,5 +17,6 @@ describe("channelNavHighlight", () => {
     expect(channelNavHighlight("/guide")).toBeUndefined();
     expect(channelNavHighlight("/dashboard")).toBeUndefined();
     expect(channelNavHighlight("/channels/ch-1")).toBeUndefined();
+    expect(channelNavHighlight("/channels/ch-1/watch")).toBeUndefined();
   });
 });

@@ -14,7 +14,7 @@ describe("phoneBarPrimary", () => {
 
   it("points Watch at the given channel id", () => {
     const [, watch] = phoneBarPrimary("chan-42");
-    expect(watch).toMatchObject({ params: { id: "chan-42" }, to: "/channels/$id/watch" });
+    expect(watch).toMatchObject({ params: { id: "chan-42" }, to: "/watch/$id" });
   });
 
   it("carries Requests' pending count when positive, and nothing at zero", () => {
@@ -36,9 +36,9 @@ describe("phoneBarOverflow", () => {
 });
 
 describe("phoneDestinationMatches", () => {
-  it("matches any /channels/:id/watch URL as the Watch destination", () => {
-    expect(phoneDestinationMatches("/channels/chan-9/watch", { to: "/channels/$id/watch" })).toBe(true);
-    expect(phoneDestinationMatches("/channels/chan-9", { to: "/channels/$id/watch" })).toBe(false);
+  it("matches any /watch/:id URL as the Watch destination", () => {
+    expect(phoneDestinationMatches("/watch/chan-9", { to: "/watch/$id" })).toBe(true);
+    expect(phoneDestinationMatches("/channels/chan-9", { to: "/watch/$id" })).toBe(false);
   });
 
   it("matches a plain destination exactly or as a nested route", () => {

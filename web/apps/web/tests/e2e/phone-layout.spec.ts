@@ -71,7 +71,7 @@ for (const viewport of PHONES) {
     // A channel's pages as an admin, whose header holds the editable name: 25 characters, which a
     // one-line field cut at both sizes. Its tab bar is one line that scrolls, so the active tab
     // must be wholly in view, not merely reachable.
-    for (const section of ["watch", "info", "programming", "filler", "danger"]) {
+    for (const section of ["info", "programming", "filler", "danger"]) {
       test(`/channels/ch-1/${section} shows the whole name and its tab`, async ({ page }) => {
         await installMockBackend(page, { authed: true, role: "admin", channelDetail: true });
         await page.goto(`/channels/ch-1/${section}`);
@@ -117,6 +117,6 @@ test.describe("phone Guide", () => {
     await expect(page.getByRole("button", { name: /^2 Guide channel 2,/ }).first()).toBeVisible();
 
     await dock.getByRole("button", { name: "Watch 5 Guide channel 5" }).tap();
-    await expect(page).toHaveURL(/\/channels\/ch-5\/watch$/);
+    await expect(page).toHaveURL(/\/watch\/ch-5$/);
   });
 });

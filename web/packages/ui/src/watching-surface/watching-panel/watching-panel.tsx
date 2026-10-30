@@ -34,6 +34,7 @@ const WatchingPanel = ({
   onChannelDown,
   onChannelUp,
   onGoLive,
+  onLeave,
   onPause,
   onPlay,
   onPrevious,
@@ -131,6 +132,20 @@ const WatchingPanel = ({
           rowGap: 4,
         }}
       >
+        {onLeave ? (
+          // The way out of a full-bleed player that has no app nav around it (web `/watch`, #2088).
+          <Pressable
+            accessibilityLabel="Leave Watch"
+            accessibilityRole="button"
+            hitSlop={{ bottom: 8, left: 8, right: 4, top: 8 }}
+            onPress={onLeave}
+            style={{ alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 32 }}
+          >
+            <Text density={density} textRole="cardLabel" tone="secondary">
+              ✕
+            </Text>
+          </Pressable>
+        ) : null}
         <Text density={density} textRole="cardTime" tone="primary">
           {channel.number}
         </Text>

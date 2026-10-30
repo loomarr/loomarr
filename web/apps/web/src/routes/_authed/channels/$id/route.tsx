@@ -1,9 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
+import { Action, Surface } from "@loomarr/design-system";
 import { ChannelIdent } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -34,17 +36,16 @@ import { ChannelDetailProvider } from "./-channel-detail-context";
 // through `useChannelDetail()` (`-channel-detail-context.tsx`).
 
 // `viewer: true` marks a section a member can reach too — the tab bar shows exactly those for a
-// non-admin (Overview + Watch, both viewer surfaces per §12), and the full set for an admin.
+// non-admin, and the full set for an admin. Watch is not a section: it is its own full-bleed route
+// (`/watch/$id`, #2088), opened from the header's Watch button.
 const SECTIONS = [
-  // ⚠ WATCH IS FIRST (§9.1 V54). Opening a channel to a settings panel answered the question
-  // nobody asked first — the overwhelmingly common reason to open a channel is to see what is on
-  // it. Info keeps everything it had, one tab over.
-  { id: "watch", label: "Watch", to: "/channels/$id/watch", viewer: true },
   { id: "info", label: "Channel info", to: "/channels/$id/info", viewer: true },
   { id: "programming", label: "Programming", to: "/channels/$id/programming", viewer: false },
   { id: "filler", label: "Filler", to: "/channels/$id/filler", viewer: false },
   { id: "danger", label: "Danger zone", to: "/channels/$id/danger", viewer: false },
 ] as const;
+
+const FLAVOR_NAMES: Record<string, string> = { emby: "Emby", jellyfin: "Jellyfin" };
 
 type AirState = { dot: OnAirState; label: string; detail: string };
 
@@ -114,13 +115,16 @@ const ChannelDetailLayout = () => {
   // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
   const { pathname } = useLocation();
 
-  // A surf request changes `$id` before the replacement GET completes. On Watch, retaining the
-  // previous DTO keeps the one player/decoder mounted while ChannelWatch immediately renders the
-  // target from the already-loaded list. Other sections do not opt into this: an editor must never
-  // temporarily show one channel's data under another channel's URL.
-  const channel = channelsApi.useGetChannel(id, {
-    query: { placeholderData: pathname.endsWith("/watch") ? (previous) => previous : undefined },
-  });
+  const channel = channelsApi.useGetChannel(id);
+  // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
+  // name (Emby/Jellyfin) and `library.url` its front door, both non-secret settings. An unset URL
+  // hides the link rather than leaving it doing nothing. The settings list is admin-only, so a
+  // member doesn't ask for it and gets no link.
+  const settingsList = settingsApi.useSettingsList({ query: { enabled: isAdmin, retry: false } });
+  const settings = unwrap(settingsList.data, (b) => b.settings) ?? [];
+  const mediaServerUrl = settings.find((e) => e.key === "library.url")?.value || undefined;
+  const mediaServerName =
+    FLAVOR_NAMES[settings.find((e) => e.key === "library.flavor")?.value ?? ""] ?? "your media server";
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
   // The header's "On now: … · Nm left" reads the shared now/next list; the minutes move on a tick.
   const nowNextBody = unwrap(channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } }).data);
@@ -265,20 +269,42 @@ const ChannelDetailLayout = () => {
             )}
           </div>
         </div>
+        {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
+            hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
+            TV link, so the viewer goes on from there. */}
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderWidth={0}
+          flexDirection="row"
+          flexWrap="wrap"
+          gap={8}
+        >
+          {/* Action names its host a button unless told otherwise; these are links. */}
+          <Action accessibilityRole="link" icon="play" render={<Link to="/watch/$id" params={{ id }} />}>
+            Watch
+          </Action>
+          {mediaServerUrl && (
+            <Action
+              accessibilityRole="link"
+              variant="outline"
+              render={<a href={mediaServerUrl} target="_blank" rel="noopener noreferrer" />}
+            >
+              {`Open in ${mediaServerName}`}
+            </Action>
+          )}
+        </Surface>
       </header>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin
-          sees every section; a viewer sees only the viewer surfaces (Overview + Watch, §12) —
-          previously a viewer saw NO bar, but Watch gave them a second reachable surface, so the
-          bar now appears for them with just those two. */}
+          sees every section; a viewer's only section is Channel info, so they get no bar (Watch is
+          the header's button, #2088). */}
       {(() => {
         const visible = SECTIONS.filter((s) => isAdmin || s.viewer);
-        // One reachable section ⇒ no bar (a lone tab is chrome, not navigation). True only if an
-        // install ever hides Watch; today a viewer always has Overview + Watch.
+        // One reachable section ⇒ no bar (a lone tab is chrome, not navigation).
         if (visible.length < 2) return null;
-        // ⚠ No fallback tab. A member who opens Programming, Filler or Danger zone by URL sees
-        // "Admins only", and their bar has only Watch and Channel info: lighting Channel info
-        // there (the old `?? "info"`) said they were on a page they weren't (#1987).
+        // ⚠ No fallback tab. An admin's bar lights only the section the path names; lighting Channel
+        // info for any other path (the old `?? "info"`) said they were on a page they weren't (#1987).
         return (
           <div className="px-4 pt-2 sm:px-6">
             <NavTabs

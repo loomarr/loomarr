@@ -110,7 +110,7 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
         {onNow.map(({ channel, data, airing }) => (
           <Link
             key={channel.source.channelId}
-            to="/channels/$id/watch"
+            to="/watch/$id"
             params={{ id: channel.source.channelId }}
             // No aria-label: the whole card is the link, and WCAG 2.5.3 needs its name to contain
             // everything it shows, so the name is the card's own text, ending in "Watch live".
