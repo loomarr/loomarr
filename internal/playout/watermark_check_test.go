@@ -2,6 +2,9 @@ package playout
 
 import (
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -160,6 +163,29 @@ func TestSameParameterSets(t *testing.T) {
 	}
 	if err := sameParameterSets(stream(sps), []byte{0, 0, 1, 0x65, 0x88}); err == nil {
 		t.Error("a stream without parameter sets passes")
+	}
+}
+
+// The check is handed a scratch path that does not exist yet (the app passes `check-<encoder>`
+// under its watermarks dir and removes it after), and its first ffmpeg writes a source clip into
+// it. A check that left making the dir to a later step failed on every host: the stub ffmpeg here
+// refuses an output whose directory is missing, as the real one does.
+func TestWatermarkCheck_MakesItsScratchDir(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	script := "#!/bin/sh\nfor a; do out=$a; done\n" +
+		"[ -d \"$(dirname \"$out\")\" ] || { echo 'Error opening output: No such file or directory' >&2; exit 254; }\n" +
+		"echo 'stub encoder' >&2; exit 1\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "check-h264_nvenc")
+
+	r := WatermarkCheck(t.Context(), ffmpeg, HostProfile{Family: FamilyNVENC}, dir)
+	if strings.Contains(r.Detail, "No such file or directory") {
+		t.Fatalf("the check wrote into a dir it never made: %s", r.Detail)
+	}
+	if !strings.Contains(r.Detail, "stub encoder") {
+		t.Fatalf("the source clip never reached ffmpeg: %s", r.Detail)
 	}
 }
 
