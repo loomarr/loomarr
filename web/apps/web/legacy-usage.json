@@ -562,7 +562,7 @@
       "legacyUi": 2
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "tailwindClasses": 153,
+      "tailwindClasses": 150,
       "legacyUi": 5
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {

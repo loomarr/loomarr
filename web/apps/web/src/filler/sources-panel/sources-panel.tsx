@@ -1,8 +1,10 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { AddFillerSourceInputBodyKind } from "@loomarr/api/models/addFillerSourceInputBodyKind";
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
+import type { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
@@ -39,10 +41,12 @@ import type { SourcesPanelProps } from "./sources-panel.type";
 const SOURCE_KIND_COPY = {
   folder: { label: "Folder path", placeholder: "/data/filler — a full path Loomarr can read" },
   library: { label: "Library name", placeholder: "Commercials — as it appears on your media server" },
-} as const;
+} as const satisfies Partial<Record<AddFillerSourceInputBodyKind, { label: string; placeholder: string }>>;
+
+// The kinds this form adds: a key above that the API does not accept fails the build.
+type LocalSourceKind = keyof typeof SOURCE_KIND_COPY;
 
 type QueuedClipJob = { sourceID: string; clipID: string; jobID: string };
-type AutomaticDownloadMode = "defaults" | "custom" | "never";
 type DownloadIntervalUnit = "minutes" | "hours" | "days";
 type DownloadSchedulePreset = "6h" | "12h" | "daily" | "weekly" | "custom";
 const QUEUED_CLIP_JOBS_KEY = "loomarr:source-item-jobs";
@@ -207,7 +211,7 @@ const SourcesPanel = ({
   const [checkResult, setCheckResult] = useState<FetchFillerSourceOutputBody>();
   const [browseOpen, setBrowseOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [downloadMode, setDownloadMode] = useState<AutomaticDownloadMode>("defaults");
+  const [downloadMode, setDownloadMode] = useState<SourceAutomaticDownloadsInputMode>("defaults");
   const [downloadEverySeconds, setDownloadEverySeconds] = useState(6 * 3600);
   const [downloadMaxPerCheck, setDownloadMaxPerCheck] = useState(10);
   const [editingCustomDownloadSchedule, setEditingCustomDownloadSchedule] = useState(false);
@@ -250,11 +254,11 @@ const SourcesPanel = ({
   // deleting a source forgets the registration, never the files, which are real and may already
   // be tagged and pinned into a channel. Nothing here invalidates the catalog, deliberately.
   // "Add a source" (V37). The kind is explicit rather than sniffed from the URI — see the form.
-  // ⚠ All FOUR kinds, and the union must list them — it still said `"archive" | "youtube"` after
-  // V38c made folders and libraries addable, so the dropdown offered two options the state could
-  // not hold. It defaults to `library` because that is the mock's first option, and the first
-  // option is what an operator sees before touching anything.
-  const [newSourceKind, setNewSourceKind] = useState<"folder" | "library">("library");
+  // Only the LOCAL kinds are added here; remote sources arrive through the source finder (#1255).
+  // ⚠ The state type is SOURCE_KIND_COPY's keys, which is what the dropdown renders, so an option
+  // the state cannot hold is a compile error. It defaults to `library` because that is the mock's
+  // first option, and the first option is what an operator sees before touching anything.
+  const [newSourceKind, setNewSourceKind] = useState<LocalSourceKind>("library");
   const [newSourceURI, setNewSourceURI] = useState("");
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
@@ -800,7 +804,7 @@ const SourcesPanel = ({
                           <Select
                             value={downloadMode}
                             onValueChange={(value) => {
-                              setDownloadMode(value as AutomaticDownloadMode);
+                              setDownloadMode(value as SourceAutomaticDownloadsInputMode);
                               if (value === "custom") {
                                 setEditingCustomDownloadSchedule(
                                   downloadSchedulePreset(downloadEverySeconds) === "custom",

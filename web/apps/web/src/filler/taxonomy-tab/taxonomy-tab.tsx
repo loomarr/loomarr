@@ -17,9 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-
-const AXES = ["product", "format", "presentation", "seasonal", "audience-cue"] as const;
-type Axis = (typeof AXES)[number];
+import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
 const AXIS_COPY: Record<Axis, { label: string; help: string; example: string }> = {
   product: {
