@@ -88,6 +88,34 @@ func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string
 	return out, nil
 }
 
+// fillerClip is the filler package's view of a stored clip.
+func fillerClip(c store.Clip) filler.StoreClip {
+	return filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+}
+
+func fillerClips(clips []store.Clip) []filler.StoreClip {
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = fillerClip(c)
+	}
+	return out
+}
+
+// listWorkClips lists the clips a per-clip work pass (language, transcribe, vision) considers.
+//
+// ⚠ `IncludeHeld` is honoured but `IncludeRemoved` is deliberately NOT set. A held clip is a fine
+// candidate — knowing what it says before a human files it is strictly more useful — but a clip
+// the gate already tombstoned must not come back round as work: it would be re-detected forever,
+// and on the local backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer
+// already recorded.
+func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	if err != nil {
+		return nil, err
+	}
+	return fillerClips(clips), nil
+}
+
 // fillerStoreAdapter bridges the store's clip methods → filler.Store (the sync).
 type fillerStoreAdapter struct{ st fillerstore.Store }
 
@@ -102,7 +130,7 @@ func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.Stor
 	if err != nil {
 		return filler.StoreClip{}, false, err
 	}
-	return filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, true, nil
+	return fillerClip(c), true, nil
 }
 func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string) (int, error) {
 	return a.st.DeleteClipsNotIn(ctx, keep)
@@ -217,7 +245,7 @@ func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]fi
 	}
 	out := make([]filler.IdentityClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.IdentityClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt}
+		out[i] = filler.IdentityClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt}
 		if r, ok := records[c.Hash]; ok {
 			out[i].Defects = &r.Assessment
 		}
@@ -353,11 +381,7 @@ func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]f
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
+	return fillerClips(clips), nil
 }
 func (a fillerTagStoreAdapter) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
 	return a.st.UpdateClipClassification(ctx, id, era, audience, suggestedEra, aiTagged, updatedAt)
@@ -386,21 +410,9 @@ func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string,
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
 type fillerLanguageStoreAdapter struct{ st store.Store }
 
-// ListClips is the job's work list.
-//
-// ⚠ `IncludeHeld` is honoured but `IncludeRemoved` is deliberately NOT set. A clip the gate already
-// tombstoned must not come back round as work — it would be re-detected forever, and on the local
-// backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer already recorded.
+// ListClips is the job's work list: held candidates in, removed clips out (listWorkClips).
 func (a fillerLanguageStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
+	return listWorkClips(ctx, a.st, f)
 }
 
 func (a fillerLanguageStoreAdapter) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
@@ -411,23 +423,12 @@ func (a fillerLanguageStoreAdapter) SetClipsRemoved(ctx context.Context, paths [
 	return a.st.SetClipsRemoved(ctx, paths, at)
 }
 
-// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeStore (§10 V44).
-//
-// ⚠ Like the language adapter above, it lists WITH held (a held clip is a fine candidate — knowing
-// what it says before a human files it is strictly more useful) but does NOT include removed clips:
-// a tombstoned clip must never come back round as work to be re-transcribed at ~341s a time.
+// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeStore (§10 V44). Its work list
+// has the language gate's polarity (listWorkClips).
 type fillerTranscribeStoreAdapter struct{ st store.Store }
 
 func (a fillerTranscribeStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
+	return listWorkClips(ctx, a.st, f)
 }
 
 func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
@@ -439,15 +440,7 @@ func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, pat
 type fillerVisionStoreAdapter struct{ st store.Store }
 
 func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
+	return listWorkClips(ctx, a.st, f)
 }
 
 func (a fillerVisionStoreAdapter) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
@@ -684,11 +677,7 @@ func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreC
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
+	return fillerClips(clips), nil
 }
 func (a fillerSplitStoreAdapter) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
 	return a.st.ListClipFingerprints(ctx, algorithm)
@@ -1854,7 +1843,7 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 	}
 	out := make([]filler.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.DefectClip{StoreClip: filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, CreatedAt: c.CreatedAt,
+		out[i] = filler.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
 			Stage: stage[c.Hash]}
 	}
 	return out, nil

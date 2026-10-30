@@ -115,7 +115,7 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate fillerenrichment
 	if err != nil {
 		return fillerenrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
 	}
-	storeClip := filler.StoreClip{Clip: clip.Clip, UpdatedAt: clip.UpdatedAt}
+	storeClip := fillerClip(clip)
 	if e.kind == fillerenrichment.CapabilityTranscript {
 		if e.transcript == nil {
 			return fillerenrichment.CapabilityResult{}, nil
