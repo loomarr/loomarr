@@ -393,10 +393,22 @@ const PlayerTransport = (props: PlayerTransportProps) => {
         ) : null}
       </Capsule>
       <Capsule>
+        {props.onPictureInPicture ? (
+          <ToolButton
+            active={props.pictureInPicture}
+            density={density}
+            icon="pictureInPicture"
+            keyHint="P"
+            label={props.pictureInPicture ? "Exit picture-in-picture" : "Picture-in-picture"}
+            onPress={props.onPictureInPicture}
+            pointer={pointer}
+          />
+        ) : null}
         {props.onFullscreen ? (
           <ToolButton
             density={density}
             icon={props.fullscreen ? "fullscreenExit" : "fullscreen"}
+            keyHint="F"
             label={props.fullscreen ? "Exit fullscreen" : "Fullscreen"}
             onPress={props.onFullscreen}
             pointer={pointer}

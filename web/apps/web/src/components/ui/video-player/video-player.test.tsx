@@ -151,6 +151,55 @@ describe("VideoPlayer", () => {
     expect(behind.goLive).toHaveBeenCalledExactlyOnceWith(video);
   });
 
+  // The rest of the key map (#2088 decision 11): M mutes, −/= step the volume, F fullscreens, and P
+  // opens picture-in-picture only where the browser has it.
+  it("answers the volume, fullscreen and picture-in-picture keys on the frame", () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    HTMLElement.prototype.requestFullscreen = requestFullscreen;
+    Object.defineProperty(document, "pictureInPictureEnabled", { value: true, configurable: true });
+    const requestPictureInPicture = vi.fn().mockResolvedValue({});
+    HTMLVideoElement.prototype.requestPictureInPicture = requestPictureInPicture;
+    const { container } = render(<VideoPlayer src={SRC} title="Crunchlings" />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const frame = video.parentElement as HTMLElement;
+
+    fireEvent.keyDown(frame, { key: "-" });
+    fireEvent.keyDown(frame, { key: "-" });
+    expect(video.volume).toBeCloseTo(0.8);
+    fireEvent.keyDown(frame, { key: "=" });
+    expect(video.volume).toBeCloseTo(0.9);
+    // The volume never steps past full.
+    fireEvent.keyDown(frame, { key: "+" });
+    fireEvent.keyDown(frame, { key: "+" });
+    expect(video.volume).toBe(1);
+    fireEvent.keyDown(frame, { key: "m" });
+    expect(video.muted).toBe(true);
+    fireEvent.keyDown(frame, { key: "f" });
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+    fireEvent.keyDown(frame, { key: "p" });
+    expect(requestPictureInPicture).toHaveBeenCalledOnce();
+
+    Object.defineProperty(document, "pictureInPictureEnabled", { value: false, configurable: true });
+    delete (HTMLElement.prototype as Partial<HTMLElement>).requestFullscreen;
+    delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestPictureInPicture;
+  });
+
+  it("hands the chrome no picture-in-picture toggle where the browser has none", () => {
+    Object.defineProperty(document, "pictureInPictureEnabled", { value: false, configurable: true });
+    const seen = vi.fn();
+    render(
+      <VideoPlayer
+        src={SRC}
+        live
+        renderChrome={(chrome) => {
+          seen(chrome.togglePictureInPicture);
+          return null;
+        }}
+      />,
+    );
+    expect(seen).toHaveBeenLastCalledWith(undefined);
+  });
+
   // The live chrome's controls are RN-web Pressables, which render `div[role=button]`.
   it("leaves Space and the arrows to a role=button child, as to a <button>", () => {
     const onChannelStep = vi.fn();

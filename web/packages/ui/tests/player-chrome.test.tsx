@@ -11,6 +11,7 @@ import {
   type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
+  PlayerShortcuts,
   type PlayerTransportProps,
 } from "../index";
 
@@ -173,6 +174,17 @@ describe("PlayerChrome", () => {
     expect(button(shown, "Pause")).toBeDefined();
   });
 
+  it("offers picture-in-picture where the browser has it, renamed while it is open", () => {
+    const onPictureInPicture = vi.fn();
+    expect(button(mount(chrome()), "Picture-in-picture")).toBeUndefined();
+    const host = mount(chrome({ transport: transport({ onPictureInPicture, pictureInPicture: false }) }));
+    act(() => button(host, "Picture-in-picture")?.click());
+    expect(onPictureInPicture).toHaveBeenCalledOnce();
+
+    const open = mount(chrome({ transport: transport({ onPictureInPicture, pictureInPicture: true }) }));
+    expect(button(open, "Exit picture-in-picture")).toBeDefined();
+  });
+
   it("offers Info when there is a programme to describe", () => {
     const onInfo = vi.fn();
     expect(button(mount(chrome()), "Info")).toBeUndefined();
@@ -232,6 +244,23 @@ describe("PlayerInfo", () => {
       "S1 E1 “Pilot”",
     ])
       expect(host.textContent).toContain(text);
+  });
+});
+
+describe("PlayerShortcuts", () => {
+  it("lists each key beside what it does", () => {
+    const host = mount(
+      <PlayerShortcuts
+        density="pointer"
+        rows={[
+          ["M", "Mute"],
+          ["?", "This sheet"],
+        ]}
+      />,
+    );
+
+    const rows = Array.from(host.querySelectorAll('[role="listitem"]')).map((row) => row.textContent);
+    expect(rows).toEqual(["MMute", "?This sheet"]);
   });
 });
 

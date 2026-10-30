@@ -451,6 +451,39 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
   });
 
+  // The key map (#2088 decision 11): Esc closes a sheet first and leaves only from the bare picture;
+  // `?` lists the keys this Watch answers.
+  it("leaves from Escape when no sheet is open", async () => {
+    stubTracks();
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={onLeave} />, { wrapper: makeWrapper() });
+
+    await openSettings();
+    await userEvent.keyboard("{Escape}");
+    expect(onLeave).not.toHaveBeenCalled();
+    await userEvent.keyboard("{Escape}");
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("lists the keys from ?, naming only what this Watch answers", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    // Without a tuner the player takes no focus on mount, so put it on the frame's own control.
+    act(() => screen.getByRole("button", { name: "Settings" }).focus());
+    await userEvent.keyboard("?");
+    const sheet = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(within(sheet).getByText("Mute")).toBeInTheDocument();
+    expect(within(sheet).getByText("Fullscreen")).toBeInTheDocument();
+    // No tuner, no programme, no picture-in-picture in jsdom: none of their rows.
+    expect(within(sheet).queryByText(/Channel up/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText("Info")).not.toBeInTheDocument();
+    expect(within(sheet).queryByText("Picture-in-picture")).not.toBeInTheDocument();
+
+    await userEvent.keyboard("?");
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+  });
+
   // Info (#2088 decision 9): the programme on air and the next one, from ⓘ or I.
   describe("Info and the station-ID card", () => {
     const withProgramme = () =>

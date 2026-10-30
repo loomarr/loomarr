@@ -90,6 +90,9 @@ interface VideoPlayerChrome {
   setVolume: (volume: number) => void;
   toggle: () => void;
   toggleFullscreen: () => void;
+  // The browser's picture-in-picture (#2088 decision 4); the toggle is absent where it has none.
+  pictureInPicture: boolean;
+  togglePictureInPicture?: () => void;
   volume: number;
 }
 

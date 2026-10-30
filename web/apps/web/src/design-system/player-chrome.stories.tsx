@@ -7,6 +7,7 @@ import {
   PlayerInfo,
   PlayerSettings,
   PlayerSheet,
+  PlayerShortcuts,
   playbarFromTimeline,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -164,12 +165,14 @@ const transport = {
   onGoLive: fn(),
   onInfo: fn(),
   onLeave: fn(),
+  onPictureInPicture: fn(),
   onSeekBack: fn(),
   onSeekForward: fn(),
   onSettings: fn(),
   onToggleMute: fn(),
   onTogglePlay: fn(),
   onVolume: fn(),
+  pictureInPicture: false,
   playing: true,
   pointer: true,
   settingsOpen: false,
@@ -279,6 +282,40 @@ const Info: Story = {
   },
 };
 
+// The `?` sheet: the keys a tuned Watch answers, in a browser with picture-in-picture.
+const Shortcuts: Story = {
+  args: {
+    sheet: (
+      <PlayerSheet
+        channelLabel="CH 7 · Coast 90s"
+        density="pointer"
+        icon="keyboard"
+        onClose={fn()}
+        title="Keyboard shortcuts"
+      >
+        <PlayerShortcuts
+          density="pointer"
+          rows={[
+            ["Space / K", "Pause / play"],
+            ["← / →", "Back / forward 10 s"],
+            ["L", "Go live"],
+            ["↑ / ↓  PgUp / PgDn", "Channel up / down"],
+            ["0–9  Enter", "Tune a channel number"],
+            ["G", "Channels"],
+            ["M", "Mute"],
+            ["− / =", "Volume down / up"],
+            ["F", "Fullscreen"],
+            ["P", "Picture-in-picture"],
+            ["I", "Info"],
+            ["?", "This sheet"],
+            ["Esc", "Close / leave"],
+          ]}
+        />
+      </PlayerSheet>
+    ),
+  },
+};
+
 // The full-picture states take the chrome's place.
 const StreamStopped: Story = {
   render: () => (
@@ -311,4 +348,16 @@ const OffAir: Story = {
 };
 
 export default meta;
-export { Behind, Commercials, Info, NoSchedule, OffAir, Playing, Settings, StationId, StreamStopped, Touch };
+export {
+  Behind,
+  Commercials,
+  Info,
+  NoSchedule,
+  OffAir,
+  Playing,
+  Settings,
+  Shortcuts,
+  StationId,
+  StreamStopped,
+  Touch,
+};

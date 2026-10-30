@@ -13,6 +13,7 @@ import Ellipsis from "lucide-react-native/icons/ellipsis";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
+import Keyboard from "lucide-react-native/icons/keyboard";
 import List from "lucide-react-native/icons/list";
 import ListChecks from "lucide-react-native/icons/list-checks";
 import LoaderCircle from "lucide-react-native/icons/loader-circle";
@@ -20,6 +21,7 @@ import Maximize from "lucide-react-native/icons/maximize";
 import Menu from "lucide-react-native/icons/menu";
 import Minimize from "lucide-react-native/icons/minimize";
 import Pause from "lucide-react-native/icons/pause";
+import PictureInPicture2 from "lucide-react-native/icons/picture-in-picture-2";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
@@ -57,6 +59,8 @@ const icons = {
   help: ListChecks,
   home: House,
   info: Info,
+  // The player's Keyboard shortcuts sheet (§9.1, the `?` key).
+  keyboard: Keyboard,
   // The player's Channels sheet (§9.4): a list of channels, where `channels` is the TV destination.
   list: List,
   loading: LoaderCircle,
@@ -65,6 +69,8 @@ const icons = {
   notifications: Bell,
   pause: Pause,
   people: Users,
+  // The player's window tool (§9.4): the browser's picture-in-picture.
+  pictureInPicture: PictureInPicture2,
   play: Play,
   // A phone tab header's plain "add" button (#1840's Requests app bar).
   plus: Plus,

@@ -142,6 +142,9 @@ interface PlayerTransportProps {
   /** Channels: open or close the channels sheet; omitted where there is no channel list. */
   channelsOpen?: boolean;
   onChannels?: () => void;
+  /** Picture-in-picture; omitted where the browser has none. */
+  pictureInPicture?: boolean;
+  onPictureInPicture?: () => void;
   /** Fullscreen; omitted where the platform has none (a phone's app is already full screen). */
   fullscreen?: boolean;
   onFullscreen?: () => void;
@@ -153,7 +156,7 @@ interface PlayerSheetProps {
   channelLabel: string;
   children: ReactNode;
   density: Density;
-  icon: "info" | "list" | "settings";
+  icon: "info" | "keyboard" | "list" | "settings";
   onClose: () => void;
   title: string;
 }

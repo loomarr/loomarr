@@ -4,6 +4,7 @@ import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";
 import { useFullscreen } from "./internal/use-fullscreen";
+import { usePictureInPicture } from "./internal/use-picture-in-picture";
 import { usePlaybackState } from "./internal/use-playback-state";
 import { PlayToggle } from "./play-toggle";
 import type { VideoPlayerProps } from "./video-player.type";
@@ -31,6 +32,8 @@ const mmss = (seconds: number): string => {
 const SCRUB_STEP = 5;
 // A live channel's ⟲/⟳ and ←/→ step (#2088 decision 2).
 const LIVE_SEEK_STEP_MS = 10_000;
+// −/= step the volume a tenth at a time, as the slider's arrow keys do.
+const VOLUME_STEP = 0.1;
 
 // Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
 // This is a poster, not a hidden player or decoder: transport teardown can release immediately,
@@ -99,6 +102,8 @@ const VideoPlayer = ({
     // clamp and a stray `endAt` would pause the stream at a number that means nothing.
   } = usePlaybackState(videoRef, live ? {} : { startAt, endAt }, liveTransport);
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
+  const { pictureInPicture, pictureInPictureSupported, togglePictureInPicture } =
+    usePictureInPicture(videoRef);
   const { controlsShown, hideControls, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
 
@@ -151,8 +156,9 @@ const VideoPlayer = ({
     if (el && liveTransport) void liveTransport.goLive(el);
   };
 
-  // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows
-  // seek (a live channel within its window), L goes live. Bound on the player's surface so they
+  // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, −/=
+  // step the volume, F fullscreen, P picture-in-picture, arrows seek (a live channel within its
+  // window), L goes live. Bound on the player's surface so they
   // cannot fire while it is off-screen, and skipped when focus is in a control that uses the same
   // keys (Space on a <button> must click).
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -194,8 +200,27 @@ const VideoPlayer = ({
         goLive();
         break;
       case "m":
+      case "M":
         e.preventDefault();
         setMuted((m) => !m);
+        break;
+      case "-":
+      case "=":
+      case "+":
+        if (isSlider) return;
+        e.preventDefault();
+        setVolume(Math.min(1, Math.max(0, volume + (e.key === "-" ? -VOLUME_STEP : VOLUME_STEP))));
+        break;
+      case "f":
+      case "F":
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case "p":
+      case "P":
+        if (!pictureInPictureSupported) return;
+        e.preventDefault();
+        togglePictureInPicture();
         break;
       case "ArrowUp":
       case "PageUp":
@@ -267,6 +292,7 @@ const VideoPlayer = ({
             hide: hideControls,
             hold: holdControls.hold,
             muted,
+            pictureInPicture,
             playing,
             seekBy: seekLiveBy,
             seekTo: seekLiveTo,
@@ -274,6 +300,7 @@ const VideoPlayer = ({
             setVolume,
             toggle,
             toggleFullscreen,
+            togglePictureInPicture: pictureInPictureSupported ? togglePictureInPicture : undefined,
             volume,
           })}
 

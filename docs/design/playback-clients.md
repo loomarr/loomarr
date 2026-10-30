@@ -158,7 +158,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   restarts the encoder.
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
-  The route hides the app nav and has a ✕/back control.
+  The route hides the app nav and has a ✕/back control. The authed layout, not the route, draws
+  Watch, so its `<video>` (and the floating picture) survives the navigation; the browser ends
+  picture-in-picture as soon as that element leaves the DOM. Closing the floating picture off
+  `/watch` unmounts Watch and stops the channel.
 - **Keys** (when focus is not in a control that owns them): `Space`/`K` play-pause · `←`/`→` ±10 s ·
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`

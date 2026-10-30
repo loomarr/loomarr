@@ -9,6 +9,7 @@ import {
   PlayerInfo,
   PlayerSettings,
   PlayerSheet,
+  PlayerShortcuts,
   playbarFromTimeline,
   type SurfChannelData,
   WatchingPanel,
@@ -71,6 +72,9 @@ interface ChannelWatchProps {
   };
   // A tune has settled on this channel (its first frame played): the viewer's recents record it.
   onTuneSettled?: (channelId: string) => void;
+  // The player went into or out of the browser's picture-in-picture: the route keeps Watch mounted
+  // while it is, so leaving /watch doesn't stop the floating picture (#2088 decision 4).
+  onPictureInPicture?: (active: boolean) => void;
   // What a portrait phone shows under the picture (#1785, native mock 5e), read from the guide: the
   // tuned channel's now and next, the viewer's favourites, the channel Previous returns to, and the
   // wall clock.
@@ -95,7 +99,7 @@ const INFO_PLAYING_MS = 8_000;
 const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
 
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
-type WatchSheet = "channels" | "info" | "settings";
+type WatchSheet = "channels" | "info" | "settings" | "shortcuts";
 
 // HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
 // hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
@@ -107,6 +111,51 @@ const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean 
   }, [hold, on]);
   return null;
 };
+
+// ReportPictureInPicture tells the screen when the player enters or leaves picture-in-picture, so the
+// authed layout keeps Watch mounted while the floating picture plays off /watch.
+const ReportPictureInPicture = ({
+  active,
+  report,
+}: {
+  active: boolean;
+  report?: (active: boolean) => void;
+}) => {
+  useEffect(() => {
+    report?.(active);
+  }, [active, report]);
+  return null;
+};
+
+// The `?` sheet's rows (#2088 decision 11), only for what this Watch answers: the tuner's keys with a
+// tuner, Info with a programme, picture-in-picture where the browser has it. Subtitles join with C.
+const shortcutRows = ({
+  info,
+  pictureInPicture,
+  tuner,
+}: {
+  info: boolean;
+  pictureInPicture: boolean;
+  tuner: boolean;
+}): (readonly [string, string])[] => [
+  ["Space / K", "Pause / play"],
+  ["← / →", "Back / forward 10 s"],
+  ["L", "Go live"],
+  ...(tuner
+    ? ([
+        ["↑ / ↓  PgUp / PgDn", "Channel up / down"],
+        ["0–9  Enter", "Tune a channel number"],
+        ["G", "Channels"],
+      ] as const)
+    : []),
+  ["M", "Mute"],
+  ["− / =", "Volume down / up"],
+  ["F", "Fullscreen"],
+  ...(pictureInPicture ? ([["P", "Picture-in-picture"]] as const) : []),
+  ...(info ? ([["I", "Info"]] as const) : []),
+  ["?", "This sheet"],
+  ["Esc", "Close / leave"],
+];
 
 // HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
 // mock draws it; moving the pointer brings the controls back in its place.
@@ -124,6 +173,7 @@ const ChannelWatch = ({
   tuner,
   drawer,
   onTuneSettled,
+  onPictureInPicture,
   phone,
 }: ChannelWatchProps) => {
   // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
@@ -346,9 +396,10 @@ const ChannelWatch = ({
   }, [tuning, endSwitchSound]);
   useEffect(() => endSwitchSound, [endSwitchSound]);
 
-  // The one right-hand sheet (Settings, Info or Channels) and 0-9 direct tune (#1659 W1). I opens and
-  // closes Info, G Channels; digits open a number entry; Enter tunes it at once; Escape closes the
-  // sheet. Closing a sheet hands focus back to what opened it (its button, or the frame for a key).
+  // The one right-hand sheet (Settings, Info, Shortcuts or Channels) and 0-9 direct tune (#1659 W1).
+  // I opens and closes Info, ? Shortcuts, G Channels; digits open a number entry; Enter tunes it at
+  // once; Escape closes the sheet, or with none open leaves. Closing a sheet hands focus back to what
+  // opened it (its button, or the frame for a key).
   const [sheet, setSheet] = useState<WatchSheet | undefined>(undefined);
   const sheetOpenerRef = useRef<HTMLElement | null>(null);
   const toggleSheet = (next: WatchSheet) => {
@@ -375,8 +426,14 @@ const ChannelWatch = ({
   const directTune = useCallback((channelId: string) => tunerTune?.(channelId), [tunerTune]);
   const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: directTune });
   const onShortcut = (key: string): boolean => {
-    if (key === "Escape" && sheet) {
-      closeSheet();
+    // Esc closes the top layer, then leaves Watch (#2088 decision 11).
+    if (key === "Escape") {
+      if (sheet) closeSheet();
+      else onLeave();
+      return true;
+    }
+    if (key === "?") {
+      toggleSheet("shortcuts");
       return true;
     }
     if ((key === "i" || key === "I") && info) {
@@ -452,6 +509,23 @@ const ChannelWatch = ({
       >
         <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />
       </PlayerSheet>
+    ) : sheet === "shortcuts" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density={density}
+        icon="keyboard"
+        onClose={closeSheet}
+        title="Keyboard shortcuts"
+      >
+        <PlayerShortcuts
+          density={density}
+          rows={shortcutRows({
+            info: info !== undefined,
+            pictureInPicture: document.pictureInPictureEnabled === true,
+            tuner: tuner !== undefined && drawer !== undefined,
+          })}
+        />
+      </PlayerSheet>
     ) : sheet === "channels" && tuner && drawer ? (
       <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
         <ChannelDrawer
@@ -488,6 +562,7 @@ const ChannelWatch = ({
     <>
       <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
       <HideForIdent hide={chrome.hide} ident={ident} />
+      <ReportPictureInPicture active={chrome.pictureInPicture} report={onPictureInPicture} />
       {errorCover ?? (
         <PlayerChrome
           band={chromeData.band}
@@ -511,6 +586,7 @@ const ChannelWatch = ({
             density,
             fullscreen: chrome.fullscreen,
             infoOpen: sheet === "info",
+            pictureInPicture: chrome.pictureInPicture,
             live: player.liveTransport.state,
             muted: chrome.muted,
             onChannels: tuner && drawer ? () => toggleSheet("channels") : undefined,
@@ -518,6 +594,7 @@ const ChannelWatch = ({
             onGoLive: chrome.goLive,
             onInfo: info ? () => toggleSheet("info") : undefined,
             onLeave,
+            onPictureInPicture: chrome.togglePictureInPicture,
             onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
             onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
             onSettings: () => toggleSheet("settings"),

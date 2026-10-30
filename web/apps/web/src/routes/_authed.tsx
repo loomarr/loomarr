@@ -6,11 +6,12 @@ import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useMatch, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
+import { WatchScreen } from "@/channels/watch-screen";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
 import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
 import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
@@ -44,7 +45,17 @@ const AuthedFrame = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const restartWatch = useRestartWatchContext();
-  const fullBleed = useMatch({ from: "/_authed/watch/$id", shouldThrow: false }) !== undefined;
+  const watchMatch = useMatch({ from: "/_authed/watch/$id", shouldThrow: false });
+  const fullBleed = watchMatch !== undefined;
+  // Watch is drawn here, not by its route (#2088 decision 4): the channel in the browser's
+  // picture-in-picture keeps playing after the viewer leaves /watch, and stops once the floating
+  // picture closes.
+  const [pictureInPictureId, setPictureInPictureId] = useState<string | undefined>(undefined);
+  const watchedId = watchMatch?.params.id ?? pictureInPictureId;
+  const onPictureInPicture = useCallback(
+    (active: boolean, channelId: string) => setPictureInPictureId(active ? channelId : undefined),
+    [],
+  );
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
   const needsYouCount = useNeedsYouCount();
@@ -83,6 +94,14 @@ const AuthedFrame = () => {
   return (
     <LoomarrEventsProvider>
       <HealthNotice enabled={isAdmin} />
+      {/* Watch, in a place of its own ahead of the shell, so it stays mounted (and its picture
+          playing) when the route around it changes. Off /watch it is hidden: only the floating
+          picture-in-picture shows. */}
+      {watchedId ? (
+        <div hidden={!fullBleed}>
+          <WatchScreen id={watchedId} onPictureInPicture={onPictureInPicture} onRoute={fullBleed} />
+        </div>
+      ) : null}
       {/* Watch is full-bleed (#2088): no rail, no bottom bar, the picture owns the window and the
           player's ✕ leaves. Everything else in this frame (events, palette, restart) still applies. */}
       {fullBleed ? (
