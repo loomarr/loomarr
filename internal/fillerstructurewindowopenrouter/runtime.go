@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
@@ -44,8 +45,8 @@ type CertifiedRuntimeConfig struct {
 // profiles, then delegates one source to the provider-neutral family-major window runtime.
 type CertifiedRuntime struct {
 	config   CertifiedRuntimeConfig
-	preparer filler.StructureAssessmentWindowMediaPreparer
-	evidence *filler.FileStructureAssessmentEvidenceRepository
+	preparer fillerstructureassessment.StructureAssessmentWindowMediaPreparer
+	evidence *fillerstructureassessment.FileStructureAssessmentEvidenceRepository
 	client   *http.Client
 
 	mu       sync.Mutex
@@ -76,11 +77,11 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	if client == nil {
 		client = httpx.NewNamed("filler-structure-window-openrouter", httpx.TimeoutLLM)
 	}
-	preparer, err := filler.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath)
+	preparer, err := fillerstructureassessment.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath)
 	if err != nil {
 		return nil, err
 	}
-	evidence, err := filler.NewFileStructureAssessmentEvidenceRepository(config.EvidenceRoot)
+	evidence, err := fillerstructureassessment.NewFileStructureAssessmentEvidenceRepository(config.EvidenceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +105,7 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 	if err != nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("preflight structure window media: %w", err)
 	}
-	if err := filler.ValidatePreparedStructureAssessmentWindows(input, prepared); err != nil {
+	if err := fillerstructureassessment.ValidatePreparedStructureAssessmentWindows(input, prepared); err != nil {
 		return fillerstructure.Artifact{}, err
 	}
 	if err := validatePreparedMediaAuthority(prepared, r.config.Authority); err != nil {
@@ -118,7 +119,7 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 	if err != nil {
 		return fillerstructure.Artifact{}, err
 	}
-	runtime, err := filler.NewStructureWindowAssessmentRuntime(
+	runtime, err := fillerstructureassessment.NewStructureWindowAssessmentRuntime(
 		assessors, r.preparer, r.evidence, r.config.Authority.BoundaryToleranceMS, r.config.Now,
 	)
 	if err != nil {
@@ -131,7 +132,7 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 	return artifact, nil
 }
 
-func validatePreparedMediaAuthority(prepared filler.StructureAssessmentWindowMediaSet, authority fillerstructurewindow.MaterializationAuthority) error {
+func validatePreparedMediaAuthority(prepared fillerstructureassessment.StructureAssessmentWindowMediaSet, authority fillerstructurewindow.MaterializationAuthority) error {
 	if err := fillerstructurewindow.ValidateMediaSet(prepared.Authority); err != nil ||
 		prepared.Authority.Plan.Profile.SHA256 != authority.WindowProfileSHA256 ||
 		prepared.Authority.Plan.Profile.AssessmentMediaProfileSHA256 != authority.AssessmentMediaProfileSHA256 ||
@@ -174,9 +175,9 @@ func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (openroutercatalog
 	return snapshot, nil
 }
 
-func (r *CertifiedRuntime) assessors(snapshot openroutercatalog.OpenRouterSnapshot, at time.Time) ([]filler.CompleteWindowStructureAssessor, error) {
+func (r *CertifiedRuntime) assessors(snapshot openroutercatalog.OpenRouterSnapshot, at time.Time) ([]fillerstructureassessment.CompleteWindowStructureAssessor, error) {
 	snapshotSHA := openroutercatalog.OpenRouterSnapshotSHA256(snapshot)
-	result := make([]filler.CompleteWindowStructureAssessor, 0, len(r.config.Deployment.Families))
+	result := make([]fillerstructureassessment.CompleteWindowStructureAssessor, 0, len(r.config.Deployment.Families))
 	profiles := make([]fillerstructure.AssessorProfile, 0, len(r.config.Deployment.Families))
 	for _, family := range r.config.Deployment.Families {
 		model, endpoint, err := openroutercatalog.ValidateOpenRouterVideoRoute(

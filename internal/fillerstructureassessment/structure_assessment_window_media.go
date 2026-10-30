@@ -1,8 +1,9 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -16,14 +17,14 @@ type StructureAssessmentWindowMedia struct {
 
 // StructureAssessmentWindowMediaSet is the complete prepared input for one long-reel plan.
 type StructureAssessmentWindowMediaSet struct {
-	Source    SplitSourceAsset
+	Source    filler.SplitSourceAsset
 	Authority fillerstructurewindow.MediaSet
 	Windows   []StructureAssessmentWindowMedia
 }
 
 // StructureAssessmentWindowMediaPreparer returns either every verified window or no usable set.
 type StructureAssessmentWindowMediaPreparer interface {
-	PrepareWindows(context.Context, StructureAssessmentSource, fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error)
+	PrepareWindows(context.Context, filler.StructureAssessmentSource, fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error)
 }
 
 var _ StructureAssessmentWindowMediaPreparer = (*FFmpegStructureAssessmentMediaPreparer)(nil)

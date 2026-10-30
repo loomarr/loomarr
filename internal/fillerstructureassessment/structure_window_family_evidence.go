@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"crypto/sha256"

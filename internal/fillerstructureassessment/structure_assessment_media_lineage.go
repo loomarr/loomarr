@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -28,11 +29,11 @@ const (
 // StructureAssessmentMediaSourceIdentity deliberately excludes a pathname. A retained path is a
 // location at which bytes may be found; it is not part of the decision authority.
 type StructureAssessmentMediaSourceIdentity struct {
-	Role       SplitSourceRole `json:"role"`
-	SHA256     string          `json:"sha256"`
-	Bytes      int64           `json:"bytes"`
-	ClipHash   string          `json:"clipHash"`
-	DurationMS int64           `json:"durationMs"`
+	Role       filler.SplitSourceRole `json:"role"`
+	SHA256     string                 `json:"sha256"`
+	Bytes      int64                  `json:"bytes"`
+	ClipHash   string                 `json:"clipHash"`
+	DurationMS int64                  `json:"durationMs"`
 }
 
 // StructureAssessmentMediaDerivative identifies the complete normalized output without naming
@@ -71,7 +72,7 @@ type structureAssessmentMediaIndex struct {
 	LineageSHA256   string `json:"lineageSha256"`
 }
 
-func structureAssessmentSourceIdentity(source SplitSourceAsset) StructureAssessmentMediaSourceIdentity {
+func structureAssessmentSourceIdentity(source filler.SplitSourceAsset) StructureAssessmentMediaSourceIdentity {
 	return StructureAssessmentMediaSourceIdentity{
 		Role: source.Role, SHA256: source.SHA256, Bytes: source.Bytes,
 		ClipHash: source.ClipHash, DurationMS: source.DurationMs,
@@ -104,16 +105,16 @@ func structureAssessmentLineageSHA256(lineage StructureAssessmentMediaLineage) s
 func validateStructureAssessmentLineage(lineage StructureAssessmentMediaLineage) error {
 	if lineage.SchemaVersion != structureAssessmentMediaSchemaVersion ||
 		lineage.ContractVersion != structureAssessmentMediaContractVersion ||
-		!isContentHash(lineage.OperationSHA256) || !isContentHash(lineage.SHA256) ||
+		!filler.IsContentHash(lineage.OperationSHA256) || !filler.IsContentHash(lineage.SHA256) ||
 		lineage.SHA256 != structureAssessmentLineageSHA256(lineage) ||
 		lineage.Profile != fillerstructuremedia.CanonicalProfile() ||
 		lineage.Profile.SHA256 != fillerstructuremedia.ProfileSHA256(lineage.Profile) ||
-		(lineage.Source.Role != SplitSourceEvidence && lineage.Source.Role != SplitSourceLegacyPlayback) {
+		(lineage.Source.Role != filler.SplitSourceEvidence && lineage.Source.Role != filler.SplitSourceLegacyPlayback) {
 		return errors.New("structure assessment media lineage authority is invalid")
 	}
-	if !isContentHash(lineage.Source.SHA256) || !isContentHash(lineage.Source.ClipHash) ||
+	if !filler.IsContentHash(lineage.Source.SHA256) || !filler.IsContentHash(lineage.Source.ClipHash) ||
 		lineage.Source.Bytes <= 0 || lineage.Source.DurationMS <= 0 ||
-		!isContentHash(lineage.Media.SHA256) || lineage.Media.Bytes <= 0 ||
+		!filler.IsContentHash(lineage.Media.SHA256) || lineage.Media.Bytes <= 0 ||
 		lineage.Media.Bytes > fillerstructuremedia.MaximumVideoBytes || lineage.Media.DurationMS <= 0 ||
 		absoluteDurationDifference(lineage.Media.DurationMS, lineage.Source.DurationMS) > lineage.Profile.MaximumTimelineDriftMS {
 		return errors.New("structure assessment media lineage identities are invalid")
@@ -129,15 +130,15 @@ func validateStructureAssessmentLineage(lineage StructureAssessmentMediaLineage)
 }
 
 func structureAssessmentMediaPath(clipDir, digest string) string {
-	return filepath.Join(clipDir, MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
+	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "media", digest[:2], digest+".mp4")
 }
 
 func structureAssessmentLineagePath(clipDir, digest string) string {
-	return filepath.Join(clipDir, MediaAssetRootName, structureAssessmentMediaDirName, "lineage", digest[:2], digest+".json")
+	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "lineage", digest[:2], digest+".json")
 }
 
 func structureAssessmentIndexPath(clipDir, operation string) string {
-	return filepath.Join(clipDir, MediaAssetRootName, structureAssessmentMediaDirName, "operations", operation[:2], operation+".json")
+	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "operations", operation[:2], operation+".json")
 }
 
 func loadStructureAssessmentIndex(path, operation string) (structureAssessmentMediaIndex, bool, error) {
@@ -152,7 +153,7 @@ func loadStructureAssessmentIndex(path, operation string) (structureAssessmentMe
 	if err := strictStructureAssessmentJSON(raw, &index); err != nil ||
 		index.SchemaVersion != structureAssessmentIndexSchemaVersion ||
 		index.ContractVersion != structureAssessmentIndexContractVersion ||
-		index.OperationSHA256 != operation || !isContentHash(index.LineageSHA256) {
+		index.OperationSHA256 != operation || !filler.IsContentHash(index.LineageSHA256) {
 		return structureAssessmentMediaIndex{}, false, errors.New("structure assessment media index is invalid")
 	}
 	return index, true, nil
@@ -242,11 +243,11 @@ func publishStructureAssessmentMedia(ctx context.Context, staged, target, digest
 	} else if !errors.Is(err, os.ErrExist) {
 		return err
 	}
-	existingDigest, existingSize, err := FileSHA256(target)
+	existingDigest, existingSize, err := filler.FileSHA256(target)
 	if err != nil || existingDigest != digest || existingSize != size {
 		return errors.New("existing structure assessment media does not match its content address")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, target, fillerstructuremedia.MaximumVideoBytes)
+	equal, err := filler.ExactFileBytesEqual(ctx, staged, target, fillerstructuremedia.MaximumVideoBytes)
 	if err != nil || !equal {
 		return errors.New("existing structure assessment media does not match exact bytes")
 	}

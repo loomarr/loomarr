@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -30,7 +31,7 @@ func TestStructureAssessmentMediaPreparerRendersOnceAndReusesVerifiedDerivative(
 	}
 	if runs != 1 || first.Source != input.Source || first.FullPath == input.FullPath ||
 		first.Assessment.ProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 ||
-		!isContentHash(first.Assessment.LineageSHA256) {
+		!filler.IsContentHash(first.Assessment.LineageSHA256) {
 		t.Fatalf("first preparation = %+v, runs=%d", first, runs)
 	}
 	if _, err := os.Stat(first.FullPath); err != nil {
@@ -68,15 +69,15 @@ func TestStructureAssessmentMediaPreparerRendersOnceAndReusesVerifiedDerivative(
 func TestStructureAssessmentMediaPreparerFailsClosedBeforeRenderOnSourceDrift(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*testing.T, StructureAssessmentSource)
+		mutate func(*testing.T, filler.StructureAssessmentSource)
 	}{
-		{name: "bytes", mutate: func(t *testing.T, input StructureAssessmentSource) {
+		{name: "bytes", mutate: func(t *testing.T, input filler.StructureAssessmentSource) {
 			t.Helper()
 			if err := os.WriteFile(input.FullPath, []byte("changed source"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "symlink", mutate: func(t *testing.T, input StructureAssessmentSource) {
+		{name: "symlink", mutate: func(t *testing.T, input filler.StructureAssessmentSource) {
 			t.Helper()
 			target := filepath.Join(filepath.Dir(input.FullPath), "target.mp4")
 			if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
@@ -89,7 +90,7 @@ func TestStructureAssessmentMediaPreparerFailsClosedBeforeRenderOnSourceDrift(t 
 				t.Fatal(err)
 			}
 		}},
-		{name: "path", mutate: func(_ *testing.T, input StructureAssessmentSource) { input.FullPath += ".other" }},
+		{name: "path", mutate: func(_ *testing.T, input filler.StructureAssessmentSource) { input.FullPath += ".other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -114,14 +115,14 @@ func TestStructureAssessmentMediaPreparerFailsClosedBeforeRenderOnSourceDrift(t 
 func TestStructureAssessmentMediaPreparerRejectsInvalidOutputProfile(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*Probed)
+		mutate func(*filler.Probed)
 	}{
-		{name: "wrong dimensions", mutate: func(probe *Probed) { probe.Width-- }},
-		{name: "wrong cadence", mutate: func(probe *Probed) { probe.Cadence = "30000/1001" }},
-		{name: "wrong aspect", mutate: func(probe *Probed) { probe.SampleAspect = "4:3" }},
-		{name: "missing audio", mutate: func(probe *Probed) { probe.Silent = true }},
-		{name: "missing video", mutate: func(probe *Probed) { probe.NoVideo = true }},
-		{name: "duration drift", mutate: func(probe *Probed) { probe.DurationMs += 1_001 }},
+		{name: "wrong dimensions", mutate: func(probe *filler.Probed) { probe.Width-- }},
+		{name: "wrong cadence", mutate: func(probe *filler.Probed) { probe.Cadence = "30000/1001" }},
+		{name: "wrong aspect", mutate: func(probe *filler.Probed) { probe.SampleAspect = "4:3" }},
+		{name: "missing audio", mutate: func(probe *filler.Probed) { probe.Silent = true }},
+		{name: "missing video", mutate: func(probe *filler.Probed) { probe.NoVideo = true }},
+		{name: "duration drift", mutate: func(probe *filler.Probed) { probe.DurationMs += 1_001 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -130,7 +131,7 @@ func TestStructureAssessmentMediaPreparerRejectsInvalidOutputProfile(t *testing.
 				return os.WriteFile(arguments[len(arguments)-1], []byte("normalized"), 0o600)
 			})
 			baseProbe := preparer.probe
-			preparer.probe = func(ctx context.Context, path string) (Probed, error) {
+			preparer.probe = func(ctx context.Context, path string) (filler.Probed, error) {
 				probe, err := baseProbe(ctx, path)
 				if strings.Contains(filepath.Base(path), "structure-media-") {
 					test.mutate(&probe)
@@ -162,16 +163,16 @@ func TestStructureAssessmentMediaPreparerRejectsOversizedOutput(t *testing.T) {
 func TestStructureAssessmentMediaPreparerRejectsTamperedReuseAuthority(t *testing.T) {
 	tests := []struct {
 		name   string
-		tamper func(*testing.T, string, StructureAssessmentMedia)
+		tamper func(*testing.T, string, filler.StructureAssessmentMedia)
 	}{
-		{name: "lineage", tamper: func(t *testing.T, root string, media StructureAssessmentMedia) {
+		{name: "lineage", tamper: func(t *testing.T, root string, media filler.StructureAssessmentMedia) {
 			t.Helper()
 			path := structureAssessmentLineagePath(root, media.Assessment.LineageSHA256)
 			if err := os.WriteFile(path, []byte(`{"tampered":true}`), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "media", tamper: func(t *testing.T, _ string, media StructureAssessmentMedia) {
+		{name: "media", tamper: func(t *testing.T, _ string, media filler.StructureAssessmentMedia) {
 			t.Helper()
 			if err := os.WriteFile(media.FullPath, []byte("tampered"), 0o600); err != nil {
 				t.Fatal(err)
@@ -217,17 +218,17 @@ func TestFFmpegStructureAssessmentMediaPreparerEndToEnd(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Skipf("local ffmpeg cannot build the fixture: %v: %s", err, output)
 	}
-	digest, size, err := FileSHA256(path)
+	digest, size, err := filler.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(path)
+	clipHash, err := filler.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := StructureAssessmentSource{
-		Source: SplitSourceAsset{
-			Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
+	input := filler.StructureAssessmentSource{
+		Source: filler.SplitSourceAsset{
+			Role: filler.SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
 			Path: "compilation.mp4", DurationMs: 1_000,
 		},
 		FullPath: path,
@@ -256,11 +257,11 @@ func TestStructureAssessmentMediaPreparerSeparatesSourceAndPrivateMediaRoots(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	preparer.probe = func(_ context.Context, path string) (Probed, error) {
+	preparer.probe = func(_ context.Context, path string) (filler.Probed, error) {
 		if strings.Contains(filepath.Base(path), "structure-source-") {
-			return Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+			return filler.Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
 		}
-		return Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+		return filler.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 	}
 	preparer.identify = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
 		return structureAssessmentToolFixture(), nil
@@ -269,7 +270,7 @@ func TestStructureAssessmentMediaPreparerSeparatesSourceAndPrivateMediaRoots(t *
 		return os.WriteFile(arguments[len(arguments)-1], []byte(strings.Repeat("normalized-media", 128)), 0o600)
 	}
 	preparer.decode = func(context.Context, string, string) error { return nil }
-	preparer.snapshot = snapshotOwnedFile
+	preparer.snapshot = filler.SnapshotOwnedFile
 
 	prepared, err := preparer.Prepare(t.Context(), input)
 	if err != nil {
@@ -283,7 +284,7 @@ func TestStructureAssessmentMediaPreparerSeparatesSourceAndPrivateMediaRoots(t *
 	}
 }
 
-func structureAssessmentPreparerSource(t *testing.T) (string, StructureAssessmentSource) {
+func structureAssessmentPreparerSource(t *testing.T) (string, filler.StructureAssessmentSource) {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "incoming", "compilation.mp4")
@@ -293,17 +294,17 @@ func structureAssessmentPreparerSource(t *testing.T) (string, StructureAssessmen
 	if err := os.WriteFile(path, []byte(strings.Repeat("source-media", 128)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	digest, size, err := FileSHA256(path)
+	digest, size, err := filler.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := ClipID(path)
+	clipHash, err := filler.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, StructureAssessmentSource{
-		Source: SplitSourceAsset{
-			Role: SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
+	return root, filler.StructureAssessmentSource{
+		Source: filler.SplitSourceAsset{
+			Role: filler.SplitSourceLegacyPlayback, SHA256: digest, Bytes: size, ClipHash: clipHash,
 			Path: "incoming/compilation.mp4", DurationMs: 10_000,
 		},
 		FullPath: path,
@@ -313,15 +314,15 @@ func structureAssessmentPreparerSource(t *testing.T) (string, StructureAssessmen
 func structureAssessmentPreparerFixture(root string, tool mediatools.MediaToolIdentity, run func(context.Context, string, []string) error) *FFmpegStructureAssessmentMediaPreparer {
 	return &FFmpegStructureAssessmentMediaPreparer{
 		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg",
-		probe: func(_ context.Context, path string) (Probed, error) {
+		probe: func(_ context.Context, path string) (filler.Probed, error) {
 			if strings.Contains(filepath.Base(path), "structure-source-") {
-				return Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
+				return filler.Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil
 			}
-			return Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
+			return filler.Probed{DurationMs: 10_000, Width: 960, Height: 720, Cadence: "30/1", SampleAspect: "1:1"}, nil
 		},
 		identify: func(context.Context, string) (mediatools.MediaToolIdentity, error) { return tool, nil },
 		run:      run, decode: func(context.Context, string, string) error { return nil },
-		snapshot: snapshotOwnedFile,
+		snapshot: filler.SnapshotOwnedFile,
 	}
 }
 

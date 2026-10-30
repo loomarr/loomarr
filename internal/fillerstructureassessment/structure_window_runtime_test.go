@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
@@ -21,7 +22,7 @@ type capturedWindowPreparer struct {
 	err      error
 }
 
-func (p *capturedWindowPreparer) PrepareWindows(_ context.Context, _ StructureAssessmentSource, _ fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error) {
+func (p *capturedWindowPreparer) PrepareWindows(_ context.Context, _ filler.StructureAssessmentSource, _ fillerstructurewindow.Plan) (StructureAssessmentWindowMediaSet, error) {
 	return p.prepared, p.err
 }
 
@@ -383,14 +384,14 @@ func TestStructureWindowRuntimeResumesPublishedWindowsWithoutDuplicateCalls(t *t
 	}
 }
 
-func structureWindowRuntimeFixture(t *testing.T) (StructureAssessmentSource, StructureAssessmentWindowMediaSet) {
+func structureWindowRuntimeFixture(t *testing.T) (filler.StructureAssessmentSource, StructureAssessmentWindowMediaSet) {
 	t.Helper()
 	root := t.TempDir()
-	source := SplitSourceAsset{
-		Role: SplitSourceLegacyPlayback, SHA256: strings.Repeat("1", 64), Bytes: 2_048,
+	source := filler.SplitSourceAsset{
+		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("1", 64), Bytes: 2_048,
 		ClipHash: strings.Repeat("2", 64), Path: "source.mp4", DurationMs: 300_000,
 	}
-	input := StructureAssessmentSource{Source: source, FullPath: filepath.Join(root, source.Path)}
+	input := filler.StructureAssessmentSource{Source: source, FullPath: filepath.Join(root, source.Path)}
 	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	plan, err := fillerstructurewindow.NewPlan(core)
 	if err != nil {

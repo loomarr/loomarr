@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"crypto/sha256"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -88,7 +89,7 @@ func validateStructureAssessmentWindowLineage(plan fillerstructurewindow.Plan, l
 		lineage.Window != plan.Windows[lineage.Window.Ordinal] ||
 		lineage.Profile != fillerstructuremedia.CanonicalProfile() ||
 		lineage.Profile.SHA256 != plan.Profile.AssessmentMediaProfileSHA256 ||
-		!isContentHash(lineage.OperationSHA256) || !isContentHash(lineage.SHA256) ||
+		!filler.IsContentHash(lineage.OperationSHA256) || !filler.IsContentHash(lineage.SHA256) ||
 		lineage.SHA256 != structureAssessmentWindowLineageSHA256(lineage) {
 		return errors.New("structure assessment window lineage authority is invalid")
 	}
@@ -96,7 +97,7 @@ func validateStructureAssessmentWindowLineage(plan fillerstructurewindow.Plan, l
 		return fmt.Errorf("structure assessment window lineage tool: %w", err)
 	}
 	windowDuration := lineage.Window.MediaEndMS - lineage.Window.MediaStartMS
-	if !isContentHash(lineage.Media.SHA256) || lineage.Media.Bytes <= 0 ||
+	if !filler.IsContentHash(lineage.Media.SHA256) || lineage.Media.Bytes <= 0 ||
 		lineage.Media.Bytes > plan.Profile.MaximumWindowBytes || lineage.Media.DurationMS <= 0 ||
 		absoluteDurationDifference(lineage.Media.DurationMS, windowDuration) > plan.Profile.MaximumTimelineDriftMS {
 		return errors.New("structure assessment window lineage media is invalid")
@@ -109,17 +110,17 @@ func validateStructureAssessmentWindowLineage(plan fillerstructurewindow.Plan, l
 }
 
 func structureAssessmentWindowSourceMatchesPlan(source StructureAssessmentMediaSourceIdentity, plan fillerstructurewindow.Plan) bool {
-	return (source.Role == SplitSourceEvidence || source.Role == SplitSourceLegacyPlayback) &&
-		isContentHash(source.ClipHash) && source.SHA256 == plan.Source.SHA256 &&
+	return (source.Role == filler.SplitSourceEvidence || source.Role == filler.SplitSourceLegacyPlayback) &&
+		filler.IsContentHash(source.ClipHash) && source.SHA256 == plan.Source.SHA256 &&
 		source.Bytes == plan.Source.Bytes && source.DurationMS == plan.Source.DurationMS
 }
 
 func structureAssessmentWindowLineagePath(clipDir, digest string) string {
-	return filepath.Join(clipDir, MediaAssetRootName, structureAssessmentMediaDirName, "window-lineage", digest[:2], digest+".json")
+	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "window-lineage", digest[:2], digest+".json")
 }
 
 func structureAssessmentWindowIndexPath(clipDir, operation string) string {
-	return filepath.Join(clipDir, MediaAssetRootName, structureAssessmentMediaDirName, "window-operations", operation[:2], operation+".json")
+	return filepath.Join(clipDir, filler.MediaAssetRootName, structureAssessmentMediaDirName, "window-operations", operation[:2], operation+".json")
 }
 
 func loadStructureAssessmentWindowIndex(path, operation string) (structureAssessmentWindowIndex, bool, error) {
@@ -134,7 +135,7 @@ func loadStructureAssessmentWindowIndex(path, operation string) (structureAssess
 	if err := strictStructureAssessmentJSON(raw, &index); err != nil ||
 		index.SchemaVersion != structureAssessmentWindowIndexSchemaVersion ||
 		index.ContractVersion != structureAssessmentWindowIndexContractVersion ||
-		index.OperationSHA256 != operation || !isContentHash(index.LineageSHA256) {
+		index.OperationSHA256 != operation || !filler.IsContentHash(index.LineageSHA256) {
 		return structureAssessmentWindowIndex{}, false, errors.New("structure assessment window index is invalid")
 	}
 	return index, true, nil

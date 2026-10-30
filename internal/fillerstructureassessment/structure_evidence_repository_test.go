@@ -1,4 +1,4 @@
-package filler
+package fillerstructureassessment
 
 import (
 	"bytes"
@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
 // recordedAssessmentFixture is one accepted complete-timeline assessment of source, as an assessor
 // records it before the repository persists it.
-func recordedAssessmentFixture(source SplitSourceAsset) fillerstructure.RecordedAssessment {
+func recordedAssessmentFixture(source filler.SplitSourceAsset) fillerstructure.RecordedAssessment {
 	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
 	profile := fillerstructure.AssessorProfile{
 		ID: "assessor-a", ModelFamily: "family-a", Provider: "captured", Model: "video-model",
