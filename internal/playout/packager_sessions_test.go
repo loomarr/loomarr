@@ -8,15 +8,17 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // hostPerChannelSource airs slowItemSource's item on every channel, encoded on the channel's host.
 type hostPerChannelSource struct {
 	slowItemSource
-	hosts map[string]HostProfile
+	hosts map[string]encode.HostProfile
 }
 
-func (s hostPerChannelSource) Output(_ context.Context, channelID string, _ FormatClass, rung int) (HostProfile, OutputProfile) {
+func (s hostPerChannelSource) Output(_ context.Context, channelID string, _ FormatClass, rung int) (encode.HostProfile, OutputProfile) {
 	_, out := s.slowItemSource.Output(context.Background(), channelID, FormatBaseline, rung)
 	return s.hosts[channelID], out
 }
@@ -79,9 +81,9 @@ func tune(t *testing.T, m *PackagerHLS, channelID string) func() {
 // The dashboard's rows (§12, V16): one per running packager, sorted by channel so they do not
 // reshuffle between polls, each counting its viewers and naming the encoder it resolved.
 func TestPackagerStatsSnapshotsEachRunningPackager(t *testing.T) {
-	m := newTestPackagerHLS(t, hostPerChannelSource{hosts: map[string]HostProfile{
-		"a": HostFor(EncoderSoftware, false, GPUFilters{}),
-		"b": HostFor(EncoderNVENC, true, GPUFilters{}),
+	m := newTestPackagerHLS(t, hostPerChannelSource{hosts: map[string]encode.HostProfile{
+		"a": encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}),
+		"b": encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}),
 	}}, time.Minute)
 	defer tune(t, m, "b")()
 	defer tune(t, m, "a")()
@@ -99,7 +101,7 @@ func TestPackagerStatsSnapshotsEachRunningPackager(t *testing.T) {
 	if a.Viewers != 2 || b.Viewers != 1 {
 		t.Errorf("viewers = %d, %d, want 2 (two tunes share one packager) and 1", a.Viewers, b.Viewers)
 	}
-	if a.Encoder != string(EncoderSoftware) || a.Hardware || b.Encoder != string(EncoderNVENC) || !b.Hardware {
+	if a.Encoder != string(encode.EncoderSoftware) || a.Hardware || b.Encoder != string(encode.EncoderNVENC) || !b.Hardware {
 		t.Errorf("encoders = %+v / %+v, want software then hardware nvenc", a, b)
 	}
 	for _, s := range stats {

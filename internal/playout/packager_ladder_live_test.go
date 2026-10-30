@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // ladderSource airs one long 4K HDR title from a fixed wall-clock start.
@@ -21,7 +23,7 @@ type ladderSource struct {
 	epoch time.Time
 	path  string
 	facts MediaFormat
-	host  HostProfile
+	host  encode.HostProfile
 	out   OutputProfile
 }
 
@@ -32,7 +34,7 @@ func (s ladderSource) ItemAt(_ context.Context, _ string, at time.Time) (Package
 
 func (ladderSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (s ladderSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
+func (s ladderSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
 	return s.host, s.out
 }
 
@@ -84,8 +86,8 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 	dir := t.TempDir()
 	steps := &stepLog{start: time.Now()}
 	src := ladderSource{epoch: time.Now(), path: path, facts: facts,
-		host: HostFor(EncoderSoftware, TonemapperFor(bin)(), GPUFilters{}),
-		out:  ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderSoftware, AudioBitrate: 160})}
+		host: encode.HostFor(encode.EncoderSoftware, TonemapperFor(bin)(), encode.GPUFilters{}),
+		out:  ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: encode.EncoderSoftware, AudioBitrate: 160})}
 	m, err := NewPackagerHLS(src, bin, filepath.Join(dir, "hls"), time.Second, slog.New(steps))
 	if err != nil {
 		t.Fatal(err)

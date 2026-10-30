@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // EVERY SOFTWARE RUNG IS A PICTURE IN ONE FORMAT (#1517). A rung change restarts the item encoder
@@ -41,7 +43,7 @@ func TestLive_SoftwareRungsProduceAPictureInOneFormat(t *testing.T) {
 	}
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000,
 		GOPSeconds: 1, AudioKbps: 160}
-	host := HostProfile{Family: FamilySoftware, CPUTonemap: true}
+	host := encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}
 	for _, src := range sources {
 		var want outputFacts
 		for _, rung := range SoftwareRungs {
@@ -166,8 +168,8 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 		cpus, _ = strconv.ParseFloat(s, 64)
 	}
 	probe := FFprobeFormatNextTo(bin)
-	out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderSoftware, AudioBitrate: 160})
-	host := HostProfile{Family: FamilySoftware, CPUTonemap: TonemapperFor(bin)()}
+	out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: encode.EncoderSoftware, AudioBitrate: 160})
+	host := encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: TonemapperFor(bin)()}
 	for _, path := range strings.Split(list, ",") {
 		facts, err := probe(context.Background(), path)
 		if err != nil {
@@ -204,7 +206,7 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 // driveLadder airs the source paced at 1x from 5 s in, starting on start, for dur of wall time. The
 // monitor's step stops the encoder (SIGINT, so the segment is finalized) and a new one resumes at
 // the next frame the previous segment did not produce, on the new rung.
-func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host HostProfile, out OutputProfile,
+func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host encode.HostProfile, out OutputProfile,
 	start SoftwareRung, cpus float64, dur time.Duration) {
 	t.Helper()
 	m := NewRungMonitor(start, RungMonitorConfig{CPUAllowance: cpus})
@@ -329,15 +331,15 @@ func TestLive_SPSIdenticalAcrossAspectRatios(t *testing.T) {
 	}
 	wide, scope := make(1920, 1080), make(3840, 1606)
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000, GOPSeconds: 1, AudioKbps: 128}
-	for _, enc := range []Encoder{EncoderSoftware, EncoderNVENC, EncoderVAAPI} {
-		if enc != EncoderSoftware {
+	for _, enc := range []encode.Encoder{encode.EncoderSoftware, encode.EncoderNVENC, encode.EncoderVAAPI} {
+		if enc != encode.EncoderSoftware {
 			if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
 				t.Logf("%s: not usable on this host, skipped", enc)
 				continue
 			}
 		}
 		t.Run(string(enc), func(t *testing.T) {
-			host := HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
+			host := encode.HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
 			sps := func(path string, facts MediaFormat) string {
 				pipe, err := Build(host, facts, out)
 				if err != nil {

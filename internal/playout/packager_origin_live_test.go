@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // rotatingSource airs short items rotating through generated sources, so a channel crosses an item
@@ -33,8 +35,8 @@ func (s rotatingSource) ItemAt(_ context.Context, _ string, at time.Time) (Packa
 
 func (rotatingSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (s rotatingSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostFor(EncoderSoftware, true, GPUFilters{}), s.out
+func (s rotatingSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), s.out
 }
 
 // TestPackagerOriginServesHLSAndTSAcrossItemBoundaries runs a channel packager behind the real

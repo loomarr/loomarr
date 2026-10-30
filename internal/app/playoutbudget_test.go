@@ -5,13 +5,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
 func TestPlayoutBudgetFacts_FailedProbeDoesNotRestoreWholeStreamAllowance(t *testing.T) {
 	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
 	for _, table := range []map[playout.CostKey]playout.ClassCost{nil, {}} {
-		costs := &playout.MeasuredCosts{Encoder: playout.EncoderVideoToolbox, Costs: table}
+		costs := &playout.MeasuredCosts{Encoder: encode.EncoderVideoToolbox, Costs: table}
 		facts := playoutBudgetFacts(host, true, 12, costs, nil, playout.TierBalanced, 1000, 1000)
 		budget := playout.NewResourceBudget(func() playout.BudgetFacts { return facts })
 		if _, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassSDR}); !errors.Is(err, playout.ErrAtCapacity) {
@@ -42,7 +43,7 @@ func TestPlayoutBudgetFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := playout.Resolve(playout.TierBalanced, playout.EncoderSoftware, lease.Rung()); got.Height != 720 || got.VideoBitrate != 1800 {
+	if got := playout.Resolve(playout.TierBalanced, encode.EncoderSoftware, lease.Rung()); got.Height != 720 || got.VideoBitrate != 1800 {
 		t.Fatalf("unmeasured host profile = %dp @%dk, want the bottom rung 720p @1800k", got.Height, got.VideoBitrate)
 	}
 }
@@ -51,7 +52,7 @@ func TestPlayoutBudgetFacts(t *testing.T) {
 // rung is the top one, and the operator cap and VRAM shading apply to the measured ceiling.
 func TestPlayoutBudgetFacts_MeasuredCostsDriveAdmission(t *testing.T) {
 	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
-	costs := &playout.MeasuredCosts{Encoder: playout.EncoderNVENC, SessionLimit: 12, Costs: map[playout.CostKey]playout.ClassCost{
+	costs := &playout.MeasuredCosts{Encoder: encode.EncoderNVENC, SessionLimit: 12, Costs: map[playout.CostKey]playout.ClassCost{
 		{Class: playout.ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026},
 	}}
 	capAt := func(n int) int { return min(n, 5) } // playout.max_channels = 5

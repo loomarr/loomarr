@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -25,7 +26,7 @@ import (
 func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 	dir := t.TempDir()
 	out := OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 28, TargetKbps: 800, MaxKbps: 1200, GOPSeconds: 1, AudioKbps: 128}
-	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	type src struct {
 		name, lavfi string
 		w, h, fps   int

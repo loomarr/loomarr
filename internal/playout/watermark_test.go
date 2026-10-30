@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // testBug is the approved default look at 1080p: 6% of the frame height (65 px, rounded to even),
@@ -17,7 +19,7 @@ func testBug() *Watermark {
 		Width: 144, Height: 64, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
 }
 
-func overlayHost(h HostProfile) HostProfile {
+func overlayHost(h encode.HostProfile) encode.HostProfile {
 	h.Overlay = true
 	return h
 }
@@ -76,7 +78,7 @@ func TestWatermarkPlacement_StaysInsideTheFrame(t *testing.T) {
 // passthrough=0 scale_cuda restores the output geometry (and with it an SPS identical to bug-off).
 func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 	for hostName, host := range testHosts() {
-		if host.Family != FamilyVAAPI && host.Family != FamilyNVENC {
+		if host.Family != encode.FamilyVAAPI && host.Family != encode.FamilyNVENC {
 			continue
 		}
 		for srcName, src := range testSources() {
@@ -90,7 +92,7 @@ func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 			}
 			g := p.VideoFilter
 			switch host.Family {
-			case FamilyNVENC:
+			case encode.FamilyNVENC:
 				wantAll(t, hostName+"/"+srcName, g,
 					// The explicit BT.709 conversion (#1659): a coloured bug's hue survives.
 					"movie=filename=/data/watermarks/ch1-abc.png,format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda[wm]",
@@ -99,7 +101,7 @@ func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 				if !strings.Contains(main, "format=yuv420p") || strings.HasSuffix(strings.Split(main, "pad_cuda")[0], "format=nv12,") {
 					t.Errorf("%s/%s: overlay_cuda needs a yuv420p main: %q", hostName, srcName, main)
 				}
-			case FamilyVAAPI:
+			case encode.FamilyVAAPI:
 				x, y := testBug().position(src, testOutput)
 				wantAll(t, hostName+"/"+srcName, g,
 					// The bug, placed on a transparent full frame: program_opencl passes the kernel no

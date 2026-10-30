@@ -1,6 +1,10 @@
 package playout
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
+)
 
 // TestDeriveChannelFormats: top resolution and dynamic range are derived INDEPENDENTLY from the
 // lineup's inventory facts (maintainer rule, #1512 G10). The baseline always exists.
@@ -51,7 +55,7 @@ func TestChannelFormats_OnHost(t *testing.T) {
 	nvNoPlacebo := hosts["nvenc-cputonemap"]
 	cases := []struct {
 		name    string
-		host    HostProfile
+		host    encode.HostProfile
 		formats ChannelFormats
 		premium FormatClass
 	}{
@@ -116,7 +120,7 @@ func TestBuild_CostClass(t *testing.T) {
 // TestPremiumOutput: the premium is HEVC at 3840x2160 on the channel's cadence, Main10 PQ for HDR,
 // with the spike's q22 16M/24M rate control and the baseline's closed 1 s GOP and audio.
 func TestPremiumOutput(t *testing.T) {
-	base := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, AudioBitrate: 192, Encoder: EncoderNVENC})
+	base := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, AudioBitrate: 192, Encoder: encode.EncoderNVENC})
 	for _, tc := range []struct {
 		class FormatClass
 		hdr   bool

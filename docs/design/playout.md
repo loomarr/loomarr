@@ -144,6 +144,14 @@ Rate control is quality-based VBR at quality 22 on every rung. The 1080p budget 
 with a 12 Mbit/s cap, and lower rungs scale both by pixel count (720p 3.6/5.3 Mbit/s, 480p 1.6/2.4,
 floor 1.0/1.5). Host capability profiles are data, so every family is golden-tested on any machine.
 
+**The encode vocabulary is shared (#2121).** The encoders, their engines and HEVC siblings, the
+host profile (`HostFor`), the GPU decode rule (`HostProfile.DecodeRefusal`), the device and decode
+arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/encode`,
+so the filler pipeline encodes on the same hardware path without importing playout. The per-family
+graphs above stay here: every one fits the item to the channel's uniform output, which a filler
+derivative (source geometry and cadence preserved) does not want. Which encoder a host runs is still
+playout's trial encode (`DetectObserved`); `internal/encode` never probes.
+
 **Tone mapping is a given, never black and never silent.** Every HDR source is tone-mapped on every
 SDR output. `playout.tone_curve` picks the one curve (`hable` by default; `mobius`, `reinhard`,
 `bt2390`, `bt2446a`, `spline`), and each tone-mapper spells it its own way. `tonemap_opencl` has no BT.2390, so the three

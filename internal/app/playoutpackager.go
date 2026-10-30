@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -15,12 +16,12 @@ import (
 type packagerSource struct {
 	res     *playoutResolver
 	tonemap func() bool
-	gpu     func() playout.GPUFilters
+	gpu     func() encode.GPUFilters
 	// targetLUFS reads filler.target_lufs live, so a changed target applies at the next clip.
 	targetLUFS func() string
 	// watermark is the channel's bug for an output at an airing's start (channelWatermarks.For);
 	// nil draws none.
-	watermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int, at time.Time) *playout.Watermark
+	watermark func(ctx context.Context, channelID string, enc encode.Encoder, width, height int, at time.Time) *playout.Watermark
 	log       *slog.Logger
 }
 
@@ -30,7 +31,7 @@ func (s packagerSource) watermarkFor(channelID string, airing playout.Airing) pl
 	if s.watermark == nil || airing.Kind != schedule.SlotProgram || airing.Source != "" {
 		return nil
 	}
-	return func(ctx context.Context, enc playout.Encoder, width, height int) *playout.Watermark {
+	return func(ctx context.Context, enc encode.Encoder, width, height int) *playout.Watermark {
 		return s.watermark(ctx, channelID, enc, width, height, airing.StartedAt)
 	}
 }
@@ -88,9 +89,9 @@ func (s packagerSource) Premium(ctx context.Context, channelID string) playout.F
 // Output is the host and the output profile a channel's format encodes with at the lease's output
 // ladder rung (#1520). The packager asks only for formats it serves; an unknown class gets the
 // baseline, logged.
-func (s packagerSource) Output(ctx context.Context, channelID string, class playout.FormatClass, rung int) (playout.HostProfile, playout.OutputProfile) {
+func (s packagerSource) Output(ctx context.Context, channelID string, class playout.FormatClass, rung int) (encode.HostProfile, playout.OutputProfile) {
 	profile := s.res.Profile(ctx, rung)
-	var gpu playout.GPUFilters
+	var gpu encode.GPUFilters
 	if s.gpu != nil {
 		gpu = s.gpu()
 	}
@@ -103,5 +104,5 @@ func (s packagerSource) Output(ctx context.Context, channelID string, class play
 	}
 	// The live playout.tone_curve, the curve the capacity probe measured HDR with.
 	out.ToneCurve = s.res.ToneCurve()
-	return playout.HostFor(profile.Encoder, s.tonemap != nil && s.tonemap(), gpu), out
+	return encode.HostFor(profile.Encoder, s.tonemap != nil && s.tonemap(), gpu), out
 }

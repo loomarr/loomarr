@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // MeasuredCosts is the class probe's persisted answer for one encoder on one host.
 type MeasuredCosts struct {
-	Encoder Encoder
+	Encoder encode.Encoder
 	Costs   map[CostKey]ClassCost
 	// SessionLimit is how many encoder sessions opened at once (ProbeSessionLimit); 0 = none known.
 	SessionLimit int
@@ -32,7 +34,7 @@ const (
 type classCostEvidence struct {
 	Version      int             `json:"version"`
 	Fingerprint  string          `json:"fingerprint"`
-	Encoder      Encoder         `json:"encoder"`
+	Encoder      encode.Encoder  `json:"encoder"`
 	SessionLimit int             `json:"sessionLimit"`
 	Costs        []classCostCell `json:"costs"`
 	ObservedAt   time.Time       `json:"observedAt"`
@@ -55,7 +57,7 @@ func HostFingerprint(ctx context.Context, ffmpegPath, gpu string) (string, error
 
 // LoadClassCosts returns the stored costs when they were measured for this fingerprint and encoder
 // within capabilityEvidenceMaxAge.
-func LoadClassCosts(root, fingerprint string, enc Encoder, now time.Time) (MeasuredCosts, bool) {
+func LoadClassCosts(root, fingerprint string, enc encode.Encoder, now time.Time) (MeasuredCosts, bool) {
 	if strings.TrimSpace(root) == "" || fingerprint == "" {
 		return MeasuredCosts{}, false
 	}

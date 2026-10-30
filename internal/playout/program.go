@@ -3,6 +3,8 @@ package playout
 import (
 	"strconv"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // demoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one
@@ -10,7 +12,7 @@ import (
 // #1512); false when it used none. The capacity probe's tone-map self-check walks this order, and
 // the packager's item retry (itemFaults) demotes the same stages, so the startup check and the live
 // ladder cannot disagree.
-func demoteTonemapper(g *GPUFilters, used string) bool {
+func demoteTonemapper(g *encode.GPUFilters, used string) bool {
 	switch used {
 	case TonemapperOpenCL:
 		g.TonemapOpenCL = false

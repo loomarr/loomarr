@@ -64,6 +64,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
+- **`encode`** · 4 importers
+  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
@@ -177,7 +179,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`playout`** · 6 importers · → `diagnostics`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
@@ -190,7 +192,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns bounded external context lookup for publicly sourced filler.
 - **`mediatools`** · 4 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
-- **`playoutbench`** · → `playout`, `playout/packager`
+- **`playoutbench`** · → `encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -298,12 +300,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 14
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `broadcaststation`, `buildinfo`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `broadcaststation`, `buildinfo`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 15
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -399,7 +400,7 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 
 	_ = r.detectedEncoder(context.Background())
 	p := r.Profile(context.Background(), 0)
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
 	}
 }
@@ -426,7 +427,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Errorf("Profile waited %s for capability detection", elapsed)
 	}
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want immediate software while capability detection warms", p.Encoder)
 	}
 	select {

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -109,7 +110,7 @@ func TestNewScratchRootSweepsOnlyUnownedRoots(t *testing.T) {
 // Filler on the packager path gets the static gain the old chain applied (#1512 G6), in the
 // builder's audio stage; a library title (GainDB 0) gets no audio filter at all.
 func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
-	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 1, AudioKbps: 128}
 	format := MediaFormat{VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
@@ -135,7 +136,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 // packager's item starts on the unmeasured start rung, as the retired program handler's did, and
 // SDR 1080p stays full.
 func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
-	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for name, want := range map[string]bool{"hevc-4k-hdr-dv": true, "h264-1080p-sdr-25": false} {
@@ -183,7 +184,7 @@ func failingEncoder(t *testing.T, stderr string) (ffmpeg string, runs func() []s
 // openItem runs the channel's schedule for one item n times, as the packager does when an
 // item fails: the first encoder fails, the schedule is asked again, the next attempt opens.
 // It returns the fallbacks the packager reported to its metrics observer.
-func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) []string {
+func openItem(t *testing.T, ffmpeg string, host encode.HostProfile, it PackagerItem, n int) []string {
 	t.Helper()
 	m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
 	if err != nil {
@@ -242,7 +243,7 @@ func TestPackagerMarksLookupsNobodyWatches(t *testing.T) {
 	t.Cleanup(m.Stop)
 
 	seen := &viewership{}
-	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, HostProfile{}, OutputProfile{FPS: 25},
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, encode.HostProfile{}, OutputProfile{FPS: 25},
 		nil, nil, seen, slog.New(slog.DiscardHandler))
 	look := func() bool {
 		t.Helper()
@@ -322,7 +323,7 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 	bug := &Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
 	var asked []string
 	resolver := func(declines bool) WatermarkFor {
-		return func(_ context.Context, enc Encoder, width, height int) *Watermark {
+		return func(_ context.Context, enc encode.Encoder, width, height int) *Watermark {
 			asked = append(asked, fmt.Sprintf("%s %dx%d", enc, width, height))
 			if declines {
 				return nil
@@ -330,10 +331,10 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 			return bug
 		}
 	}
-	nvenc, software := HostFor(EncoderNVENC, true, GPUFilters{}), HostFor(EncoderSoftware, true, GPUFilters{})
+	nvenc, software := encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	for _, tc := range []struct {
 		name string
-		host HostProfile
+		host encode.HostProfile
 		wm   WatermarkFor
 		want bool
 	}{
@@ -355,7 +356,7 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 		if tc.wm != nil && !slices.Equal(asked, []string{fmt.Sprintf("%s 1920x1080", tc.host.Encoder)}) {
 			t.Errorf("%s: the resolver was asked %q, want once for the packager's encoder and output", tc.name, asked)
 		}
-		if tc.host.Family == FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
+		if tc.host.Family == encode.FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
 			t.Errorf("%s: a bug-free item keeps the nv12 main: %s", tc.name, args)
 		}
 	}
@@ -386,7 +387,7 @@ func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 		ffmpeg, runs := failingEncoder(t, "stopped")
 		it := progItem(testSources()["h264-1080p-sdr-25"])
 		it.Seek, it.Keyframe, it.KeyframeIndexed = 100*time.Second, tc.keyframe, tc.indexed
-		openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), it, 2)
+		openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), it, 2)
 		got := runs()
 		if len(got) != 2 {
 			t.Fatalf("%s: %d encoder runs, want 2", tc.name, len(got))
@@ -404,7 +405,7 @@ func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 // (§9.1 V47, the retired chain's ladder): retrying the same -hwaccel path fails identically.
 func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[AVHWFramesContext @ 0x1] Failed to sync surface 0xc: 23 (internal decoding error)")
-	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
+	fallbacks := openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "-hwaccel") {
 		t.Fatalf("want a GPU-decoded first attempt and a retry, got %q", r)
@@ -424,7 +425,7 @@ func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 // and the retry takes the next tone-mapper for the curve (DemoteTonemap's order).
 func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[Parsed_tonemap_opencl_3 @ 0x1] Failed to enqueue kernel: -5.")
-	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
+	fallbacks := openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "tonemap_opencl") {
 		t.Fatalf("want an OpenCL tone-mapped first attempt and a retry, got %q", r)
@@ -473,8 +474,8 @@ func (stuckSlateSource) ItemAt(context.Context, string, time.Time) (PackagerItem
 }
 func (stuckSlateSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The slate is not on the tune path (#1512 G2): live, a cold process spent 0.8 s encoding it before
@@ -555,8 +556,8 @@ func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, e
 
 func (hdrItemSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (hdrItemSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostFor(EncoderSoftware, true, GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (hdrItemSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The channel packager is admitted by the ResourceBudget (#1520): one lease per running (channel,
@@ -703,7 +704,7 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	base := cost()
 	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
-		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, &viewership{}, slog.New(slog.DiscardHandler))
+		encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), out, lease, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
 	// stopped mid-item (airItem reports nothing).
 	encodeItem := func(delivered int64) {
@@ -794,13 +795,13 @@ func (s *premiumSource) Premium(context.Context, string) FormatClass {
 	return s.premium
 }
 
-func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (HostProfile, OutputProfile) {
+func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (encode.HostProfile, OutputProfile) {
 	base := OutputProfile{Width: 1920, Height: 1080, FPS: 25, GOPSeconds: 2, TargetKbps: 8000, MaxKbps: 12000, AudioKbps: 160}
 	out := base
 	if class != FormatBaseline {
 		out, _ = PremiumOutput(class, base)
 	}
-	return HostFor(EncoderNVENC, false, GPUFilters{Libplacebo: true}), out
+	return encode.HostFor(encode.EncoderNVENC, false, encode.GPUFilters{Libplacebo: true}), out
 }
 
 // premiumFacts is a measured NVENC host: SDR 1080p at 6x, 4K HDR tone-map at 2.4x, and the premium
@@ -1177,7 +1178,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Error("a resume without a new step still held")
 	}
 
-	gpu := m.schedule(packagedKey{channel: "gpu"}, HostFor(EncoderNVENC, true, GPUFilters{}), out, nil, nil, &viewership{}, slog.New(slog.DiscardHandler))
+	gpu := m.schedule(packagedKey{channel: "gpu"}, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), out, nil, nil, &viewership{}, slog.New(slog.DiscardHandler))
 	if item, err := gpu(t.Context(), at); err == nil {
 		if rc, err := item.Open(t.Context(), slot); err == nil {
 			for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 3 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {

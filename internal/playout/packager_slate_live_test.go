@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -70,9 +71,9 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 	}
 
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 160}
-	hosts := map[string]HostProfile{"software": HostFor(EncoderSoftware, true, GPUFilters{})}
+	hosts := map[string]encode.HostProfile{"software": encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})}
 	if os.Getenv("LOOMARR_TEST_NVENC") == "1" {
-		hosts["nvenc"] = HostFor(EncoderNVENC, true, GPUFiltersFor("ffmpeg")())
+		hosts["nvenc"] = encode.HostFor(encode.EncoderNVENC, true, GPUFiltersFor("ffmpeg")())
 	}
 	for name, host := range hosts {
 		t.Run(name, func(t *testing.T) {
