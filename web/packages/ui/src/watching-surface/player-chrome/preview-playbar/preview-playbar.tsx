@@ -137,6 +137,8 @@ const PreviewPlaybar = ({
                     }
                     focusable={false}
                     key={segment.id}
+                    // A labelled preview tile, not a control: a group names it without claiming an action.
+                    role="group"
                     onHoverIn={pointer ? () => hover(segment.id) : undefined}
                     onHoverOut={pointer ? () => hover(undefined) : undefined}
                     style={{

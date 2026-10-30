@@ -146,7 +146,11 @@ const VolumeSlider = ({
     <Pressable
       accessibilityLabel="Volume"
       accessibilityRole="adjustable"
-      accessibilityValue={{ max: 100, min: 0, now: Math.round(level * 100) }}
+      // The aria-value props, not accessibilityValue: React Native for Web drops the latter, which left
+      // the web's slider with no value at all (axe: aria-required-attr).
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={Math.round(level * 100)}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(e) => step(e.nativeEvent.actionName === "increment" ? 0.1 : -0.1)}
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
