@@ -33,8 +33,10 @@ type PackagerItem struct {
 	Keyframe        time.Duration
 	KeyframeIndexed bool
 	Remaining       time.Duration
-	AudioTrack      int
-	Format          MediaFormat
+	// AudioTrack is the channel's default audio; AltAudioTrack the alternate rendition's (#2088
+	// decision 6), AudioTrack again when the source has no second language. Both index `0:a:N`.
+	AudioTrack, AltAudioTrack int
+	Format                    MediaFormat
 	// GainDB is a filler clip's static loudness gain (FillerGain); 0 for a library title.
 	GainDB float64
 	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
@@ -217,8 +219,13 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculativ
 			defer wait.Stop()
 			select {
 			case <-found:
-				if *premium != nil {
-					vs = append(vs, **premium)
+				if pv := *premium; pv != nil {
+					// A premium not yet started has no init to say; its encoder runs the baseline's
+					// pipeline, so it carries the alternate exactly when the baseline does.
+					if vs[0].group != "" {
+						*pv = pv.withAlt()
+					}
+					vs = append(vs, *pv)
 				}
 			case <-wait.C:
 				m.log.Warn("packager hls: premium lookup overran; offering the baseline only",
@@ -332,7 +339,11 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 }
 
 func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
-	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
+	// <class>-alt.m3u8 is that format's alternate audio rendition (#2088 decision 6): the same
+	// packager, so the same admission, viewers and lifetime as its variant.
+	name := strings.TrimSuffix(rel, ".m3u8")
+	alt := strings.HasSuffix(name, altSuffix)
+	class := FormatClass(strings.TrimSuffix(name, altSuffix))
 	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
 		return hlsPlaylistLease{}, false, nil
 	}
@@ -342,7 +353,7 @@ func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string
 		return hlsPlaylistLease{}, false, nil
 	}
 	if speculative {
-		return m.acquireWarmMediaPlaylist(ctx, channelID, class)
+		return m.acquireWarmMediaPlaylist(ctx, channelID, class, alt)
 	}
 	if class != FormatBaseline {
 		m.mu.Lock()
@@ -357,13 +368,13 @@ func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string
 	if err != nil {
 		return hlsPlaylistLease{}, false, err
 	}
-	return mediaPlaylistLease(c, release), true, nil
+	return mediaPlaylistLease(c, release, alt), true, nil
 }
 
 // acquireWarmMediaPlaylist retains only work the warm master already admitted. In particular, an
 // advertised premium is not permission to start it, choose it for the viewer, or evict another
 // channel. Hold the reference across readiness so expiry cannot retire it during this fetch.
-func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID string, class FormatClass) (hlsPlaylistLease, bool, error) {
+func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID string, class FormatClass, alt bool) (hlsPlaylistLease, bool, error) {
 	if class != FormatBaseline && !m.takesPremium(ViewerFrom(ctx)) {
 		return hlsPlaylistLease{}, false, nil
 	}
@@ -388,14 +399,29 @@ func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID st
 		c.idle = nil
 	}
 	m.mu.Unlock()
-	return mediaPlaylistLease(c, onceRelease(func() { m.release(key, c) })), true, nil
+	return mediaPlaylistLease(c, onceRelease(func() { m.release(key, c) }), alt), true, nil
 }
 
-func mediaPlaylistLease(c *packagedChannel, release func()) hlsPlaylistLease {
+// altSuffix marks a format's alternate audio rendition: its playlist <class>-alt.m3u8 and its
+// files <class>-alt-init.mp4 and <class>-alt-segN.m4s.
+const altSuffix = "-alt"
+
+// errNoAlternateAudio answers the alternate's playlist on a packager whose encoder wrote none.
+var errNoAlternateAudio = errors.New("packager hls: this format carries no alternate audio")
+
+func mediaPlaylistLease(c *packagedChannel, release func(), alt bool) hlsPlaylistLease {
 	return hlsPlaylistLease{
-		release:  release,
-		await:    c.p.AwaitPlaylist,
-		snapshot: func(context.Context) ([]byte, error) { return c.p.Playlist(), nil },
+		release: release,
+		await:   c.p.AwaitPlaylist,
+		snapshot: func(context.Context) ([]byte, error) {
+			if !alt {
+				return c.p.Playlist(), nil
+			}
+			if !c.p.HasAlt() {
+				return nil, errNoAlternateAudio
+			}
+			return c.p.AltPlaylist(), nil
+		},
 	}
 }
 
@@ -891,7 +917,8 @@ func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerIte
 		return Pipeline{}, nil, err
 	}
 	pl = pl.WithGain(it.GainDB)
-	return pl, pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, it.AudioTrack), nil
+	return pl, pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS,
+		AudioPick{Default: it.AudioTrack, Alternate: it.AltAudioTrack}), nil
 }
 
 func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
@@ -936,6 +963,9 @@ func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (str
 		class, file = rel[:i], rel[i+1:]
 	} else {
 		return "", false
+	}
+	if c, ok := strings.CutSuffix(class, altSuffix); ok { // the alternate audio: alt-init.mp4, alt-segN.m4s
+		class, file = c, "alt-"+file
 	}
 	if filepath.Base(file) != file {
 		return "", false
@@ -1058,7 +1088,8 @@ func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, 
 		return nil, fmt.Errorf("packager hls: slate pipeline: %w", err)
 	}
 	gop := int64(out.gop())
-	args := pl.FragmentArgs(src, 0, 0, gop, gop*audioRateHz/int64(out.FPS)/1024+1, out.FPS, 0)
+	// Its one silent track is mapped as both audio tracks, so the slate matches every item's init.
+	args := pl.FragmentArgs(src, 0, 0, gop, gop*audioRateHz/int64(out.FPS)/1024+1, out.FPS, AudioPick{})
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, m.ffmpeg, args...)
 	cmd.Stderr = &stderr
@@ -1323,11 +1354,33 @@ type hlsVariant struct {
 	codecs              string
 	width, height, rate int
 	videoRange          string // SDR or PQ
+	class               FormatClass
+	audioKbps           int
+	// group names the variant's audio group when its encoder writes the alternate audio (#2088
+	// decision 6); empty on a format without one.
+	group string
 }
 
 // variant describes a running format's media playlist from its output and its channel init.
 func (c *packagedChannel) variant(class FormatClass) hlsVariant {
-	return variantOf(class, c.out, c.p.Init())
+	v := variantOf(class, c.out, c.p.Init())
+	if c.p.HasAlt() {
+		v = v.withAlt()
+	}
+	return v
+}
+
+// withAlt gives a variant its audio group: the default audio muxed in its own segments, and the
+// alternate as <class>-alt.m3u8. A player on the alternate fetches it beside the variant, so the
+// peak and the target bandwidth both count it.
+func (v hlsVariant) withAlt() hlsVariant {
+	if v.group != "" {
+		return v
+	}
+	v.group = string(v.class)
+	v.bandwidth += v.audioKbps * 1000
+	v.average += v.audioKbps * 1000
+	return v
 }
 
 // variantOf describes a format's media playlist from its output and, once it has one, its channel
@@ -1335,7 +1388,7 @@ func (c *packagedChannel) variant(class FormatClass) hlsVariant {
 // offers it only when it can decode that exact string.
 func variantOf(class FormatClass, o OutputProfile, init []byte) hlsVariant {
 	v := hlsVariant{
-		uri:       string(class) + ".m3u8",
+		uri: string(class) + ".m3u8", class: class, audioKbps: o.AudioKbps,
 		bandwidth: (o.MaxKbps + o.AudioKbps) * 1000, average: (o.TargetKbps + o.AudioKbps) * 1000,
 		codecs: packager.CodecsAttr(init),
 		width:  o.Width, height: o.Height, rate: o.FPS, videoRange: "SDR",
@@ -1351,9 +1404,22 @@ func variantOf(class FormatClass, o OutputProfile, init []byte) hlsVariant {
 
 // masterPlaylist names each variant's media playlist. CODECS is omitted when the init could not
 // name every track, so a player probes instead of trusting a wrong string.
+//
+// A variant with the alternate audio names its audio group: DEFAULT is the audio muxed in the
+// variant's own segments (no URI), Alternate the <class>-alt.m3u8 rendition. Neither carries a
+// LANGUAGE: the master is read once per tune and the languages change programme by programme, so
+// a player labels them from GET …/tracks at its playhead instead.
 func masterPlaylist(vs []hlsVariant) []byte {
 	var b bytes.Buffer
 	b.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n")
+	for _, v := range vs {
+		if v.group == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=%q,NAME=\"Default\",DEFAULT=YES,AUTOSELECT=YES,CHANNELS=\"2\"\n", v.group)
+		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=%q,NAME=\"Alternate\",DEFAULT=NO,AUTOSELECT=NO,CHANNELS=\"2\",URI=%q\n",
+			v.group, v.group+altSuffix+".m3u8")
+	}
 	for _, v := range vs {
 		fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d,AVERAGE-BANDWIDTH=%d", v.bandwidth, v.average)
 		if v.codecs != "" {
@@ -1362,6 +1428,9 @@ func masterPlaylist(vs []hlsVariant) []byte {
 		fmt.Fprintf(&b, ",RESOLUTION=%dx%d,FRAME-RATE=%.3f", v.width, v.height, float64(v.rate))
 		if v.videoRange != "" {
 			fmt.Fprintf(&b, ",VIDEO-RANGE=%s", v.videoRange)
+		}
+		if v.group != "" {
+			fmt.Fprintf(&b, ",AUDIO=%q", v.group)
 		}
 		fmt.Fprintf(&b, "\n%s\n", v.uri)
 	}

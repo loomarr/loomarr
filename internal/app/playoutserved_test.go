@@ -31,7 +31,7 @@ func TestResolvingTheAiringRecordsNothing(t *testing.T) {
 		if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := r.Tracks(context.Background(), "ch1"); err != nil {
+		if _, _, err := r.Tracks(context.Background(), "ch1", time.Time{}); err != nil {
 			t.Fatal(err)
 		}
 		if len(plays.calls) != 0 || history.n != 0 {
@@ -50,7 +50,7 @@ func TestResolvingTheAiringRecordsNothing(t *testing.T) {
 		if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := r.Tracks(context.Background(), "ch1"); err != nil {
+		if _, _, err := r.Tracks(context.Background(), "ch1", time.Time{}); err != nil {
 			t.Fatal(err)
 		}
 		if history.n != 0 {

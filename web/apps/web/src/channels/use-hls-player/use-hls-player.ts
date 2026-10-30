@@ -19,6 +19,7 @@ const useHlsPlayer = (
   onManifest?: () => void,
   quality?: LiveQuality,
   subtitleCues?: LiveSubtitleCues,
+  alternateAudio?: boolean,
 ): UseHlsPlayer => {
   const mintSource = useCallback(
     (signal: AbortSignal) => mintChannelPlaySource(channelId, signal),
@@ -45,6 +46,7 @@ const useHlsPlayer = (
   );
 
   return useBrowserHlsPlayer({
+    alternateAudio,
     attempt: browserAttempt,
     channelId,
     errorMessage,

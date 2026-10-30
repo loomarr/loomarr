@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { languageLabel } from "./language-label";
+import { languageLabel, ownLanguageLabel } from "./language-label";
+
+describe("ownLanguageLabel", () => {
+  it("names a language in itself, capitalised as the mock shows it", () => {
+    expect(ownLanguageLabel("spa")).toBe("Español");
+    expect(ownLanguageLabel("eng")).toBe("English");
+    expect(ownLanguageLabel("fra")).toBe("Français");
+  });
+
+  it("falls back like languageLabel", () => {
+    expect(ownLanguageLabel("zzx")).toBe("ZZX");
+    expect(ownLanguageLabel("")).toBe("Unknown");
+  });
+});
 
 describe("languageLabel", () => {
   it("resolves a language code to a human name via Intl (not a hardcoded table)", () => {

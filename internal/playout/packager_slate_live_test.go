@@ -97,7 +97,7 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 					t.Fatalf("%s: %v", s.name, err)
 				}
 				tested++
-				args := pl.FragmentArgs(filepath.Join(dir, s.name+".mkv"), 0, 0, int64(out.FPS), 48, out.FPS, 0)
+				args := pl.FragmentArgs(filepath.Join(dir, s.name+".mkv"), 0, 0, int64(out.FPS), 48, out.FPS, AudioPick{})
 				var stderr bytes.Buffer
 				cmd := exec.Command("ffmpeg", args...)
 				cmd.Stderr = &stderr

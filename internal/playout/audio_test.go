@@ -60,12 +60,34 @@ func TestPickAudioTrack_EmptyTrackListIsZero(t *testing.T) {
 	}
 }
 
-// itemArgsWithTrack is one packaged item's encoder args with an explicit audio track.
-func itemArgsWithTrack(t *testing.T, track int) []string {
+// The alternate (#2088 decision 6): the first track in another known language, never a
+// commentary in the default's own language or an untagged track; the default again when there is none.
+func TestPickAudioTracks_TheAlternateIsAnotherLanguage(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		tracks []AudioTrack
+		prefer string
+		want   AudioPick
+	}{
+		{"a dub beside the original", []AudioTrack{{Language: "rus"}, {Language: "eng"}}, "eng", AudioPick{1, 0}},
+		{"commentary is not a language", []AudioTrack{{Language: "eng"}, {Language: "eng"}, {Language: "spa"}}, "eng", AudioPick{0, 2}},
+		{"untagged is not choosable", []AudioTrack{{Language: "eng"}, {}, {Language: "und"}}, "eng", AudioPick{0, 0}},
+		{"one language only", []AudioTrack{{Language: "eng"}}, "eng", AudioPick{0, 0}},
+		{"no audio", nil, "eng", AudioPick{0, 0}},
+		{"tags compare like the default's", []AudioTrack{{Language: "ENG "}, {Language: "eng"}, {Language: "Fra"}}, "eng", AudioPick{0, 2}},
+	} {
+		if got := PickAudioTracks(c.tracks, c.prefer); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+}
+
+// itemArgsWithTracks is one packaged item's encoder args with an explicit default and alternate.
+func itemArgsWithTracks(t *testing.T, track, alt int) []string {
 	t.Helper()
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	_, args, err := packagerItemArgs(encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), out,
-		PackagerItem{Input: "http://library.invalid/stream", Format: testSources()["h264-1080p-sdr-25"], AudioTrack: track},
+		PackagerItem{Input: "http://library.invalid/stream", Format: testSources()["h264-1080p-sdr-25"], AudioTrack: track, AltAudioTrack: alt},
 		nil, nil, packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
 	if err != nil {
 		t.Fatal(err)
@@ -73,11 +95,14 @@ func itemArgsWithTrack(t *testing.T, track int) []string {
 	return args
 }
 
-// The invariant the channel's single audio track depends on, and the reason the selection could
-// not be expressed as two ffmpeg maps: EXACTLY ONE audio track, whatever was chosen.
-func TestItemArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
-	for _, track := range []int{0, 1, 3} {
-		args := itemArgsWithTrack(t, track)
+func itemArgsWithTrack(t *testing.T, track int) []string { return itemArgsWithTracks(t, track, track) }
+
+// The invariant the channel's init depends on, and the reason the selection could not be expressed
+// as optional ffmpeg maps: EXACTLY TWO audio tracks, the default and then the alternate, whatever
+// was chosen. A varying track count would change the init and break -c copy.
+func TestItemArgsWithAudio_MapsTheDefaultThenTheAlternate(t *testing.T) {
+	for _, c := range []struct{ track, alt int }{{0, 0}, {1, 0}, {3, 1}} {
+		args := itemArgsWithTracks(t, c.track, c.alt)
 
 		var audioMaps []string
 		for i, a := range args {
@@ -85,13 +110,9 @@ func TestItemArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
 				audioMaps = append(audioMaps, args[i+1])
 			}
 		}
-		if len(audioMaps) != 1 {
-			t.Fatalf("track %d: %d audio maps %v, want exactly 1 — a varying track count breaks -c copy",
-				track, len(audioMaps), audioMaps)
-		}
-		want := "0:a:" + strconv.Itoa(track)
-		if audioMaps[0] != want {
-			t.Errorf("track %d: mapped %q, want %q", track, audioMaps[0], want)
+		want := []string{"0:a:" + strconv.Itoa(c.track), "0:a:" + strconv.Itoa(c.alt)}
+		if strings.Join(audioMaps, " ") != strings.Join(want, " ") {
+			t.Errorf("tracks %+v: mapped %v, want %v", c, audioMaps, want)
 		}
 	}
 }

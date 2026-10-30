@@ -19,9 +19,11 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { audioChoice } from "@/channels/audio-choice";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { PlaybackInfoSheet } from "@/channels/playback-info-sheet";
+import { useAudioPreference } from "@/channels/use-audio-preference";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { useLiveSubtitles } from "@/channels/use-live-subtitles";
 import { useNumberEntry } from "@/channels/use-number-entry";
@@ -47,8 +49,8 @@ import { useSwitchSoundPreference } from "../use-switch-sound-preference";
 // `renderChrome` so they share its auto-hide and go fullscreen with it. This component owns what the
 // chrome is fed: the channel's timeline, the tuner, the one right-hand sheet, and the ✕ that leaves.
 //
-// ⚠ Settings only SHOWS the channel's default audio language. An admin sets it on the channel's info
-// page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
+// ⚠ Settings' audio is a VIEWER's choice between the stream's two renditions (#2088 decision 6). The
+// channel's default language itself is an admin's, on the channel's info page.
 
 interface ChannelWatchProps {
   channel: ChannelDTO;
@@ -197,7 +199,11 @@ const ChannelWatch = ({
   // The cues reach the player a render after the sidecar answers for its playhead: the playhead is
   // the player's own, so the two cannot be read in one pass.
   const [subtitleCues, setSubtitleCues] = useState<LiveSubtitleCues>();
-  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest, quality, subtitleCues);
+  // The viewer's audio, remembered across channels as a language; whether that is the programme's
+  // alternate reaches the player a render later, from the tracks at its playhead, like the cues.
+  const [audioPreference, setAudioPreference] = useAudioPreference();
+  const [alternateAudio, setAlternateAudio] = useState(false);
+  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest, quality, subtitleCues, alternateAudio);
   const atPlayhead = useLiveSubtitles(
     channel.id,
     player.liveTransport.state.viewerTimeMs,
@@ -253,13 +259,6 @@ const ChannelWatch = ({
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
-  // Settings' audio list is the tracks the airing programme actually carries — fetched, never
-  // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
-  const tracks = channelsApi.useChannelTracks(channel.id, {
-    query: { enabled: !paused && player.status === "playing", retry: false },
-  });
-  const tracksBody = unwrap(tracks.data);
-
   // The chrome's data — the channel's schedule strip (programmes and the breaks between them, each
   // with its stills and every spot in a break). Refetched on an interval so the live edge and what's
   // coming stay current as programmes roll.
@@ -278,6 +277,18 @@ const ChannelWatch = ({
     (airing) => !airing.nominal && viewerTimeMs >= airing.startMs && viewerTimeMs < airing.stopMs,
   );
   const scheduleBlockId = diagnosticAiring?.scheduleBlockId;
+
+  // Settings' audio is the tracks the programme AT THE PLAYHEAD actually carries — fetched, never
+  // hardcoded — asked once per programme by its start, so a viewer behind live hears the choices
+  // of what they are watching. `enabled` gates the probe on a playing channel.
+  const tracks = channelsApi.useChannelTracks(
+    channel.id,
+    diagnosticAiring ? { at: diagnosticAiring.startMs } : undefined,
+    { query: { enabled: !paused && player.status === "playing", retry: false } },
+  );
+  const tracksBody = unwrap(tracks.data);
+  const audioAtPlayhead = audioChoice(tracksBody, audioPreference);
+  useEffect(() => setAlternateAudio(audioAtPlayhead.alternate), [audioAtPlayhead.alternate]);
   const previousBlockRef = useRef<{ channelId: string; scheduleBlockId?: string }>({ channelId: channel.id });
   const driftedBlockRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -316,17 +327,21 @@ const ChannelWatch = ({
     });
     driftedBlockRef.current = scheduleBlockId;
   }, [channel.id, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
-  const audioValue = channel.policy?.playout?.audioLanguage ?? "";
-
-  // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
-  // but this film is English-only). Keep that selection VISIBLE in Settings rather than dropping it:
-  // the preference still applies when a programme with that track airs (withSaved).
-  const selectedAudio = audioValue || AUTO_SENTINEL;
-  const audio = withSaved(audioOptions(tracksBody?.audio ?? []), selectedAudio).map((option) => ({
-    label: option.label,
-    selected: option.value === selectedAudio,
-    value: option.value,
-  }));
+  // Audio (#2088 decision 6): the programme's default and its alternate, the viewer's to choose.
+  // Until its tracks are known, the channel's language, shown: the channel may be set to a track
+  // the programme doesn't carry (set to French, but this film is English-only), and that selection
+  // stays VISIBLE rather than dropped, since it still applies when a programme with that track airs.
+  const audioValue = channel.policy?.playout?.audioLanguage || AUTO_SENTINEL;
+  const audio =
+    audioAtPlayhead.options.length > 1
+      ? { onSelect: setAudioPreference, options: audioAtPlayhead.options }
+      : {
+          options: withSaved(audioOptions(tracksBody?.audio ?? []), audioValue).map((option) => ({
+            label: option.label,
+            selected: option.value === audioValue,
+            value: option.value,
+          })),
+        };
 
   // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
   // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.

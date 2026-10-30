@@ -74,3 +74,28 @@ func PickAudioTrack(tracks []AudioTrack, prefer string) int {
 	}
 	return 0
 }
+
+// AudioPick is an item's two audio tracks (#2088 decision 6), each the `N` of a `-map 0:a:N`: the
+// channel's default, and the alternate rendition's. The alternate's slot is in every watched
+// channel's master playlist, so it always carries something: Alternate is Default when the source
+// has no second language.
+type AudioPick struct{ Default, Alternate int }
+
+// PickAudioTracks picks the default as PickAudioTrack does, and for the alternate the first track
+// in another known language: a dub or the original beside it, never a commentary in the default's
+// own language, and never an untagged ("und") track no viewer could choose by name.
+func PickAudioTracks(tracks []AudioTrack, prefer string) AudioPick {
+	d := PickAudioTrack(tracks, prefer)
+	pick := AudioPick{Default: d, Alternate: d}
+	if d >= len(tracks) {
+		return pick
+	}
+	lang := strings.ToLower(strings.TrimSpace(tracks[d].Language))
+	for i, t := range tracks {
+		if l := strings.ToLower(strings.TrimSpace(t.Language)); l != "" && l != "und" && l != lang {
+			pick.Alternate = i
+			return pick
+		}
+	}
+	return pick
+}

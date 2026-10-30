@@ -975,6 +975,53 @@ func TestMasterPlaylistNamesEachVariant(t *testing.T) {
 	}
 }
 
+// The alternate audio (#2088 decision 6): each variant names its own group, whose default is the
+// audio muxed in the variant and whose alternate is <class>-alt.m3u8. No LANGUAGE (the master is
+// read once per tune; languages change by programme), and the bandwidth counts the second stream.
+func TestMasterPlaylistGivesEachVariantItsAlternateAudio(t *testing.T) {
+	base := variantOf(FormatBaseline, OutputProfile{Width: 1920, Height: 1080, FPS: 25, MaxKbps: 12000, TargetKbps: 8000, AudioKbps: 160}, nil)
+	premium := variantOf(Format4KHDR, OutputProfile{Width: 3840, Height: 2160, FPS: 25, MaxKbps: 40000, TargetKbps: 30000, AudioKbps: 160, HDR: true}, nil)
+	got := string(masterPlaylist([]hlsVariant{base.withAlt(), premium.withAlt().withAlt()}))
+	b, p := string(FormatBaseline), string(Format4KHDR)
+	want := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="` + b + `",NAME="Default",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="` + b + `",NAME="Alternate",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="` + b + `-alt.m3u8"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="` + p + `",NAME="Default",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"` + "\n" +
+		`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="` + p + `",NAME="Alternate",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="` + p + `-alt.m3u8"` + "\n" +
+		`#EXT-X-STREAM-INF:BANDWIDTH=12320000,AVERAGE-BANDWIDTH=8320000,RESOLUTION=1920x1080,FRAME-RATE=25.000,VIDEO-RANGE=SDR,AUDIO="` + b + `"` + "\n" + b + ".m3u8\n"
+	if !strings.HasPrefix(got, want) {
+		t.Fatalf("master:\n%s\nwant it to start:\n%s", got, want)
+	}
+	// withAlt is idempotent: the premium's bandwidth counts the alternate once.
+	if !strings.Contains(got, "BANDWIDTH=40320000,AVERAGE-BANDWIDTH=30320000") {
+		t.Fatalf("premium bandwidth counted the alternate other than once:\n%s", got)
+	}
+}
+
+// The alternate's playlist and files live in their variant's packager: <class>-alt.m3u8,
+// <class>-alt-init.mp4 and <class>-alt-segN.m4s map to alt-init.mp4 and alt-segN.m4s in its dir.
+func TestAssetPathFindsTheAlternateAudio(t *testing.T) {
+	p, err := packager.New(packager.Config{FPS: 25, Dir: t.TempDir()}, func(ctx context.Context, _ time.Time) (packager.Item, error) {
+		return packager.Item{}, ctx.Err()
+	}, func(context.Context) (*packager.Slate, error) { return nil, errors.New("no slate") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{
+		{channel: "ch", format: FormatBaseline}: {dir: "/run/ch", p: p},
+	}}
+	for rel, want := range map[string]string{
+		string(FormatBaseline) + "-alt-init.mp4":        "/run/ch/alt-init.mp4",
+		string(FormatBaseline) + "-alt-seg00000007.m4s": "/run/ch/alt-seg00000007.m4s",
+		string(FormatBaseline) + "-init.mp4":            "/run/ch/init.mp4",
+		string(FormatBaseline) + "-seg00000007.m4s":     "/run/ch/seg00000007.m4s",
+	} {
+		if got, ok := m.AssetPath("ch", PlanBaseline, rel); !ok || got != want {
+			t.Errorf("AssetPath(%q) = %q, %v; want %q", rel, got, ok, want)
+		}
+	}
+}
+
 // An encoder's source ran out only when its own output ended and it then exited 0: a failed
 // encoder, or one a ladder step cut at a box boundary while it still runs, did not read its input
 // to the end, and its airing must rejoin through the schedule.

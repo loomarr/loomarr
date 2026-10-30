@@ -299,7 +299,7 @@ describe("PlayerSettings", () => {
     const onPlaybackInfo = vi.fn();
     const host = mount(
       <PlayerSettings
-        audio={[]}
+        audio={{ options: [] }}
         density="pointer"
         onPlaybackInfo={onPlaybackInfo}
         onSwitchSound={vi.fn()}
@@ -310,17 +310,61 @@ describe("PlayerSettings", () => {
     expect(onPlaybackInfo).toHaveBeenCalledOnce();
     expect(
       button(
-        mount(<PlayerSettings audio={[]} density="pointer" onSwitchSound={vi.fn()} switchSound />),
+        mount(
+          <PlayerSettings audio={{ options: [] }} density="pointer" onSwitchSound={vi.fn()} switchSound />,
+        ),
         "Playback info",
       ),
     ).toBeUndefined();
+  });
+
+  it("offers the default and the alternate audio as a choice, and shows the channel's language otherwise", () => {
+    const onSelect = vi.fn();
+    const host = mount(
+      <PlayerSettings
+        audio={{
+          onSelect,
+          options: [
+            { label: "English · stereo", selected: true, value: "default" },
+            { label: "Español · stereo", selected: false, value: "spa" },
+          ],
+        }}
+        density="pointer"
+        onSwitchSound={vi.fn()}
+        switchSound
+      />,
+    );
+    const radios = Array.from(
+      host.querySelectorAll('[role="radiogroup"][aria-label="Audio"] [role="radio"]'),
+    );
+    expect(radios.map((r) => [r.getAttribute("aria-label"), r.getAttribute("aria-checked")])).toEqual([
+      ["English · stereo", "true"],
+      ["Español · stereo", "false"],
+    ]);
+    act(() => radios[1]?.click());
+    expect(onSelect).toHaveBeenCalledWith("spa");
+    expect(host.textContent).not.toContain("An admin sets it");
+
+    // One language: nothing to choose, so the channel's language is shown, not offered.
+    const single = mount(
+      <PlayerSettings
+        audio={{ onSelect, options: [{ label: "English · stereo", selected: true, value: "default" }] }}
+        density="pointer"
+        onSwitchSound={vi.fn()}
+        switchSound
+      />,
+    );
+    expect(single.querySelector('[role="radiogroup"][aria-label="Audio"]')).toBeNull();
+    expect(single.querySelector('[role="list"][aria-label="Audio language"]')?.textContent).toContain(
+      "English",
+    );
   });
 
   it("lists Off and each subtitle track as a choice, only when the programme carries any", () => {
     const onSelect = vi.fn();
     const host = mount(
       <PlayerSettings
-        audio={[]}
+        audio={{ options: [] }}
         density="pointer"
         onSwitchSound={vi.fn()}
         subtitles={{
@@ -343,7 +387,9 @@ describe("PlayerSettings", () => {
     act(() => radios[0]?.click());
     expect(onSelect).toHaveBeenCalledWith("off");
 
-    const none = mount(<PlayerSettings audio={[]} density="pointer" onSwitchSound={vi.fn()} switchSound />);
+    const none = mount(
+      <PlayerSettings audio={{ options: [] }} density="pointer" onSwitchSound={vi.fn()} switchSound />,
+    );
     expect(none.querySelector('[aria-label="Subtitles"]')).toBeNull();
   });
 });

@@ -3,11 +3,11 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 // The Settings sheet's body (§9, mock "settings"). Quality first: Auto (`Auto · 1080p`, naming the
-// rung on air) and the channel's own rungs, the viewer's to choose (#2088 decision 7). Then the
-// channel's audio language, shown — it is the channel's default, set by an admin on Channel info,
-// until a second rendition lets each viewer choose (#2088 step 9). Subtitles, when the programme
-// carries any: Off and each track, the viewer's to choose (#2088 decision 5). Then the channel-change
-// sound, and last, the way on to Playback info.
+// rung on air) and the channel's own rungs, the viewer's to choose (#2088 decision 7). Then audio:
+// the channel's default language and, when the programme carries a second one, that alternate, the
+// viewer's to choose (#2088 decision 6); with nothing to choose, the channel's language, shown.
+// Subtitles, when the programme carries any: Off and each track, the viewer's to choose (#2088
+// decision 5). Then the channel-change sound, and last, the way on to Playback info.
 
 interface SettingsOption {
   label: string;
@@ -16,8 +16,11 @@ interface SettingsOption {
 }
 
 interface PlayerSettingsProps {
-  /** The channel's audio languages, the one airing marked; read-only here. */
-  audio: readonly SettingsOption[];
+  /**
+   * The programme's audio: the channel's default and, when it carries one, the alternate. A choice
+   * with `onSelect` and more than one option; the channel's language, read-only, otherwise.
+   */
+  audio: { onSelect?: (value: string) => void; options: readonly SettingsOption[] };
   density: Density;
   /** Opens Playback info (#2088 decision 13), the sheet's last row. */
   onPlaybackInfo?: () => void;
@@ -137,17 +140,28 @@ const PlayerSettings = ({
         </View>
       </View>
     ) : null}
-    <View style={{ gap: 6 }}>
-      <SectionLabel density={density} label="Audio" />
-      <View aria-label="Audio language" role="list">
-        {audio.map((option) => (
-          <OptionRow density={density} key={option.value} option={option} />
-        ))}
+    {audio.onSelect && audio.options.length > 1 ? (
+      <View style={{ gap: 6 }}>
+        <SectionLabel density={density} label="Audio" />
+        <View aria-label="Audio" role="radiogroup">
+          {audio.options.map((option) => (
+            <OptionRow density={density} key={option.value} onSelect={audio.onSelect} option={option} />
+          ))}
+        </View>
       </View>
-      <Text density={density} textRole="hint" tone="muted">
-        The channel’s language. An admin sets it on the channel’s page.
-      </Text>
-    </View>
+    ) : (
+      <View style={{ gap: 6 }}>
+        <SectionLabel density={density} label="Audio" />
+        <View aria-label="Audio language" role="list">
+          {audio.options.map((option) => (
+            <OptionRow density={density} key={option.value} option={option} />
+          ))}
+        </View>
+        <Text density={density} textRole="hint" tone="muted">
+          The channel’s language. An admin sets it on the channel’s page.
+        </Text>
+      </View>
+    )}
     {subtitles ? (
       <View style={{ gap: 6 }}>
         <SectionLabel density={density} label="Subtitles" />

@@ -250,8 +250,12 @@ func (p Pipeline) ItemArgs(input string, seek time.Duration, frames, fps, audioT
 // fragment per closed GOP (one segment), video on a 90 kHz timescale, the slot's channel offset
 // applied. Frames and audio frames are over-asked (ffmpeg's -frames is not exact, spike #1513);
 // the packager trims each track to the slot.
-func (p Pipeline) FragmentArgs(input string, seek, offset time.Duration, frames, audioFrames int64, fps, audioTrack int) []string {
-	args := p.itemInput(input, seek, audioTrack)
+//
+// It maps two audio tracks, always: the channel's default as track 2 and the alternate rendition's
+// as track 3 (#2088 decision 6), which is the default again when the source has no second language.
+// -af and the audio encode apply to both.
+func (p Pipeline) FragmentArgs(input string, seek, offset time.Duration, frames, audioFrames int64, fps int, audio AudioPick) []string {
+	args := p.itemInput(input, seek, audio.Default, audio.Alternate)
 	args = append(args,
 		"-frames:v", strconv.FormatInt(frames+int64((fps+9)/10), 10),
 		"-frames:a", strconv.FormatInt(audioFrames+4, 10))
@@ -260,7 +264,7 @@ func (p Pipeline) FragmentArgs(input string, seek, offset time.Duration, frames,
 		"-f", "mp4", "-movflags", "empty_moov+default_base_moof+frag_keyframe", "pipe:1")
 }
 
-func (p Pipeline) itemInput(input string, seek time.Duration, audioTrack int) []string {
+func (p Pipeline) itemInput(input string, seek time.Duration, audioTracks ...int) []string {
 	args := []string{"-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"}
 	args = append(args, p.PreInput...)
 	if seek > 0 {
@@ -269,7 +273,11 @@ func (p Pipeline) itemInput(input string, seek time.Duration, audioTrack int) []
 	// No chapters: the mp4 muxer writes a film's chapters as a text track, a third track no other
 	// item (or the slate) has. No metadata: the first item's would stay in the channel init for good, and a
 	// stream title is a udta box the init parsers (the TS writer, CODECS) reject.
-	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack), "-map_chapters", "-1", "-map_metadata", "-1")
+	args = append(args, "-i", input, "-map", "0:v:0")
+	for _, a := range audioTracks {
+		args = append(args, "-map", "0:a:"+strconv.Itoa(a))
+	}
+	return append(args, "-map_chapters", "-1", "-map_metadata", "-1")
 }
 
 func (p Pipeline) itemEncode(args []string) []string {

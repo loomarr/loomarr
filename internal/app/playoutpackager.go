@@ -51,7 +51,8 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	item.RecordAiringServed = func(ctx context.Context) { s.res.RecordAiringServed(ctx, channelID, airing, at) }
 	item.Subtitles = s.res.burnSubtitlesFor(ctx, channelID, airing, at)
 	t1 := time.Now()
-	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
+	audio := s.res.AudioTracksFor(ctx, channelID, airing.LibraryItemID, streamURL)
+	item.AudioTrack, item.AltAudioTrack = audio.Default, audio.Alternate
 	t2 := time.Now()
 	_, item.Format = s.res.PlanFor(ctx, streamURL, playout.PlanBaseline)
 	t3 := time.Now()

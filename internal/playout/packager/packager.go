@@ -152,7 +152,8 @@ type Packager struct {
 	mu       sync.Mutex
 	epoch    time.Time // wall instant of media time 0
 	init     []byte    // the channel init segment: the first producing encoder's ftyp+moov
-	served   []byte    // init as served: with the HDR10 boxes for an HDR10 format, else init
+	served   []byte    // init as served: with the HDR10 boxes for an HDR10 format, else init; never track 3
+	altInit  []byte    // the alternate audio's init (track 3 alone); nil on a channel without one
 	window   window
 	changed  chan struct{} // closed and replaced on every change; the condition-wait primitive
 	done     bool
@@ -395,7 +396,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	first := true
 	drained := false // the stream closed on its own: its reader is done, so its end can be asked
 	for ; frag != nil; first = false {
-		keep := map[uint32]int64{videoTrack: slot.Frames - nv, audioTrack: slot.AudioFrames - na}
+		keep := map[uint32]int64{videoTrack: slot.Frames - nv, audioTrack: slot.AudioFrames - na, altTrack: slot.AudioFrames - na}
 		c, err := p.forward(ctx, frag, first, keep)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -468,21 +469,29 @@ func (p *Packager) acceptInit(init []byte) bool {
 		return false
 	}
 	// An HDR10 format serves the static boxes; decoder comparisons keep reading the encoder's own
-	// init, which every later item's matches.
-	served := init
+	// init, which every later item's matches. The alternate audio leaves as its own init.
+	served, altInit, hasAlt := splitInit(init)
+	if !hasAlt {
+		served = init
+	}
 	if p.cfg.HDR10 != nil {
 		var err error
-		if served, err = p.cfg.HDR10.init(init); err != nil {
+		if served, err = p.cfg.HDR10.init(served); err != nil {
 			p.mu.Unlock()
 			p.cfg.Log.Error("packager: HDR10 init", "err", err)
 			return false
 		}
 	}
-	p.init, p.served = init, served
+	p.init, p.served, p.altInit = init, served, altInit
 	slated := p.stats.Slates > 0
 	p.mu.Unlock()
 	if err := os.WriteFile(filepath.Join(p.cfg.Dir, InitName), served, 0o600); err != nil {
 		p.cfg.Log.Error("packager: write init", "err", err)
+	}
+	if altInit != nil {
+		if err := os.WriteFile(filepath.Join(p.cfg.Dir, AltInitName), altInit, 0o600); err != nil {
+			p.cfg.Log.Error("packager: write alternate audio init", "err", err)
+		}
 	}
 	if slated && !SameDecoderConfig(init, p.slate.init) {
 		p.slateMismatch()
@@ -508,7 +517,8 @@ func (p *Packager) encoderInit() []byte {
 
 // forward stamps one encoder fragment onto the timeline, trimming to keep, and appends it.
 func (p *Packager) forward(ctx context.Context, frag []byte, first bool, keep map[uint32]int64) (map[uint32]int64, error) {
-	base := map[uint32]uint64{videoTrack: uint64(p.v), audioTrack: uint64(p.a)}
+	// The alternate audio shares the default's timeline: the same base, the same allowance.
+	base := map[uint32]uint64{videoTrack: uint64(p.v), audioTrack: uint64(p.a), altTrack: uint64(p.a)}
 	c, err := patchFragment(frag, p.seq, base)
 	if err != nil {
 		return nil, err
@@ -518,7 +528,8 @@ func (p *Packager) forward(ctx context.Context, frag []byte, first bool, keep ma
 		primed = 1
 	}
 	out := frag
-	if first || c[videoTrack] > keep[videoTrack] || c[audioTrack]-primed > keep[audioTrack] {
+	if first || c[videoTrack] > keep[videoTrack] || c[audioTrack]-primed > keep[audioTrack] ||
+		c[altTrack]-primed > keep[altTrack] {
 		if !first {
 			p.count(func(s *Stats) { s.Trimmed++ })
 		}
@@ -535,8 +546,11 @@ func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int
 	if c[videoTrack] <= 0 {
 		return nil // an all-trimmed fragment carries nothing to list
 	}
+	b, alt, err := splitFragment(b)
+	if err != nil {
+		return fmt.Errorf("packager: split alternate audio: %w", err)
+	}
 	if p.cfg.HDR10 != nil { // item and slate segments alike
-		var err error
 		if b, err = p.cfg.HDR10.fragment(b); err != nil {
 			return fmt.Errorf("packager: HDR10 segment: %w", err)
 		}
@@ -546,6 +560,12 @@ func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int
 		return fmt.Errorf("packager: write segment: %w", err)
 	}
 	seg := segment{seq: p.seq, name: name, start: p.v, dur: c[videoTrack] * p.frameDur, served: p.airing}
+	if alt != nil {
+		seg.alt = altSegmentName(p.seq)
+		if err := os.WriteFile(filepath.Join(p.cfg.Dir, seg.alt), alt, 0o600); err != nil {
+			return fmt.Errorf("packager: write alternate audio segment: %w", err)
+		}
+	}
 	p.seq++
 	p.v += seg.dur
 	p.a += c[audioTrack] * aacFrame
@@ -553,6 +573,9 @@ func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int
 	p.mu.Lock()
 	for _, gone := range p.window.push(seg, p.v-int64(p.cfg.DVR.Seconds()*videoRate)) {
 		_ = os.Remove(filepath.Join(p.cfg.Dir, gone.name))
+		if gone.alt != "" {
+			_ = os.Remove(filepath.Join(p.cfg.Dir, gone.alt))
+		}
 	}
 	p.broadcastLocked()
 	p.mu.Unlock()
@@ -634,6 +657,23 @@ func (p *Packager) Playlist() []byte {
 	return p.window.render(playlistView{
 		edge: p.listEdgeLocked(p.cfg.Now()), epoch: p.epoch, holdBack: p.cfg.ListAhead, prefix: p.cfg.URIPrefix,
 	})
+}
+
+// AltPlaylist renders the alternate audio's live media playlist: the same segments as Playlist,
+// under their alt- names, behind AltInitName.
+func (p *Packager) AltPlaylist() []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.window.render(playlistView{
+		edge: p.listEdgeLocked(p.cfg.Now()), epoch: p.epoch, holdBack: p.cfg.ListAhead, prefix: p.cfg.URIPrefix, alt: true,
+	})
+}
+
+// HasAlt reports whether the channel's init carries the alternate audio, once an item defined it.
+func (p *Packager) HasAlt() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.altInit != nil
 }
 
 // ErrSegmentGone means a reader fell behind the DVR window.

@@ -19,7 +19,7 @@ interface ChannelDefaultAudioProps {
 const ChannelDefaultAudio = ({ channel, savePolicy }: ChannelDefaultAudioProps) => {
   // The choices are the tracks the airing programme actually carries, so only a channel on air has
   // any to offer beyond Auto/Off and the saved values.
-  const tracks = channelsApi.useChannelTracks(channel.id, {
+  const tracks = channelsApi.useChannelTracks(channel.id, undefined, {
     query: { enabled: channel.status === "live", retry: false },
   });
   const airing = unwrap(tracks.data);

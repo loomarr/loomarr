@@ -35,7 +35,7 @@ func (r *run) startSegment(ctx context.Context, path string, seek time.Duration,
 		}
 		opened = true
 		return packager.Item{Label: "bench-start", Duration: time.Second, Open: func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			started, err := openStartEncoder(ctx, r.FFmpeg, pipe.FragmentArgs(path, seek, slot.Offset, slot.Frames, slot.AudioFrames, fps, 0))
+			started, err := openStartEncoder(ctx, r.FFmpeg, pipe.FragmentArgs(path, seek, slot.Offset, slot.Frames, slot.AudioFrames, fps, playout.AudioPick{}))
 			if err != nil {
 				return nil, err
 			}

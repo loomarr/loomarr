@@ -138,7 +138,7 @@ const appHandlers = (): RequestHandler[] => [
   //
   // Deliberately empty/inert payloads: these exist so the player MOUNTS without an unhandled
   // request, not to make it play. A test that cares about tracks or the timeline stubs its own.
-  getChannelTracksMockHandler({ audio: [], subtitles: [] }),
+  getChannelTracksMockHandler({ audio: [], subtitles: [], defaultAudio: 0 }),
   // The subtitles sidecar (#2088 step 7): nothing subtitled.
   getChannelSubtitlesMockHandler({ airings: [] }),
   getChannelTimelineMockHandler({ serverNowMs: Date.UTC(2026, 0, 1), airings: [] }),

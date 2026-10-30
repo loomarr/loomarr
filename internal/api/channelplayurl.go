@@ -239,16 +239,26 @@ type TrackDTO struct {
 	Burnable bool   `json:"burnable,omitempty" doc:"Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."`
 }
 
+type channelTracksInput struct {
+	ID string `path:"id" example:"ch_abc123"`
+	At int64  `query:"at" doc:"The instant whose programme to describe, Unix milliseconds: a player's playhead. Omitted is now."`
+}
+
 type channelTracksOutput struct {
 	Body struct {
 		// Audio and Subtitles are what the AIRING programme actually carries — the real menu the
 		// pickers offer, from an ffprobe of the media, not a hardcoded list.
 		Audio     []TrackDTO `json:"audio"`
 		Subtitles []TrackDTO `json:"subtitles"`
+		// DefaultAudio and AlternateAudio say which audio tracks the stream's two audio renditions
+		// carry (#2088 decision 6): the master names them only Default and Alternate, because it
+		// is read once per tune while languages change by programme.
+		DefaultAudio   int  `json:"defaultAudio" doc:"The index of the audio track the stream's default audio carries."`
+		AlternateAudio *int `json:"alternateAudio,omitempty" doc:"The index of the audio track the stream's Alternate audio rendition carries; absent when it carries the default again, so there is nothing to choose."`
 	}
 }
 
-func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channelTracksOutput, error) {
+func (s *Server) channelTracks(ctx context.Context, in *channelTracksInput) (*channelTracksOutput, error) {
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
@@ -266,7 +276,11 @@ func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channe
 		return out, nil
 	}
 
-	tracks, err := s.playoutResolver.Tracks(ctx, in.ID)
+	var at time.Time
+	if in.At > 0 {
+		at = time.UnixMilli(in.At)
+	}
+	tracks, pick, err := s.playoutResolver.Tracks(ctx, in.ID, at)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
@@ -280,6 +294,10 @@ func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channe
 	for _, t := range tracks.Subtitles {
 		out.Body.Subtitles = append(out.Body.Subtitles, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title,
 			Burnable: playout.IsBurnableSubtitle(t.Codec)})
+	}
+	out.Body.DefaultAudio = pick.Default
+	if pick.Alternate != pick.Default {
+		out.Body.AlternateAudio = &pick.Alternate
 	}
 	return out, nil
 }

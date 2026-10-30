@@ -47,7 +47,7 @@ func TestLive_FragmentStartsOnAnIDRAndHoldsTheGOP(t *testing.T) {
 				t.Fatalf("build: %v", err)
 			}
 			fragment := filepath.Join(t.TempDir(), "slot.mp4")
-			args := pipe.FragmentArgs(src, 3300*time.Millisecond, 0, frames, 4*48000/1024, out.FPS, 0)
+			args := pipe.FragmentArgs(src, 3300*time.Millisecond, 0, frames, 4*48000/1024, out.FPS, AudioPick{})
 			cmd := exec.CommandContext(ctx, bin, args...)
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -891,10 +891,11 @@ type PlayoutResolver interface {
 	// Profile is the encode profile at a quality-ladder rung (§9.1; 0 is the top), the rung the
 	// ResourceBudget's lease admitted.
 	Profile(ctx context.Context, rung int) playout.Profile
-	// Tracks probes the audio and subtitle tracks of the channel's currently airing programme, for
-	// the Watch surface's pickers (§9.1, V46). Best-effort: empty when nothing airs or the probe
-	// fails, so a UI request never blocks on a bad probe.
-	Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error)
+	// Tracks probes the audio and subtitle tracks of the programme airing at an instant (zero is
+	// now), for the Watch surface's pickers (§9.1, V46), with the two audio tracks its encode maps
+	// (#2088 decision 6): the channel's default and the alternate rendition's. Best-effort: empty
+	// when nothing airs or the probe fails, so a UI request never blocks on a bad probe.
+	Tracks(ctx context.Context, channelID string, at time.Time) (playout.MediaTracks, playout.AudioPick, error)
 	// Subtitles is the subtitles sidecar (#2088 step 7): each airing in [from, to) of the channel's
 	// wall clock with its text subtitle tracks, and with a pick, that track's cues on the wall clock.
 	Subtitles(ctx context.Context, channelID string, from, to time.Time, pick *playout.SubtitlePick) ([]playout.SubtitleAiring, error)

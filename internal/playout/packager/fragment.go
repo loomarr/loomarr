@@ -13,10 +13,13 @@ import (
 )
 
 // The encoder contract (Pipeline.FragmentArgs): track 1 is video on a 90 kHz timescale, track 2 is
-// AAC-LC at 48 kHz, one fragment per closed GOP.
+// AAC-LC at 48 kHz, one fragment per closed GOP. Track 3, when present, is the alternate audio
+// (#2088 decision 6): AAC-LC like track 2, frame for frame beside it, and leaves as its own
+// rendition (altaudio.go).
 const (
 	videoTrack   = 1
 	audioTrack   = 2
+	altTrack     = 3
 	videoRate    = 90000
 	audioRate    = 48000
 	aacFrame     = 1024
@@ -25,6 +28,9 @@ const (
 )
 
 var errBadBox = errors.New("packager: malformed fMP4 box")
+
+// isAudio reports whether a track is one of the channel's AAC tracks, which share one timeline.
+func isAudio(id uint32) bool { return id == audioTrack || id == altTrack }
 
 // readBox reads one top-level box, header included.
 func readBox(r *bufio.Reader) (typ string, b []byte, err error) {
@@ -94,7 +100,7 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 						return
 					}
 					id = binary.BigEndian.Uint32(b[cs+12:])
-					if base != nil && id == audioTrack && !frameDurations(b, cs, csz, true) {
+					if base != nil && isAudio(id) && !frameDurations(b, cs, csz, true) {
 						bad = true
 					}
 				case "tfdt":
@@ -115,7 +121,7 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 						return
 					}
 					counts[id] += int64(binary.BigEndian.Uint32(b[cs+12:]))
-					if base != nil && id == audioTrack && !frameDurations(b, cs, csz, false) {
+					if base != nil && isAudio(id) && !frameDurations(b, cs, csz, false) {
 						bad = true
 					}
 				}
@@ -190,16 +196,16 @@ func rewriteFragment(b []byte, seq uint32, base map[uint32]uint64, first bool, f
 	if err != nil {
 		return nil, nil, err
 	}
-	step := map[uint32]uint64{videoTrack: uint64(frameDur), audioTrack: aacFrame}
+	step := map[uint32]uint64{videoTrack: uint64(frameDur), audioTrack: aacFrame, altTrack: aacFrame}
 	counts := map[uint32]int64{}
 	for _, part := range parts {
 		part.SequenceNumber = seq
 		for _, tr := range part.Tracks {
 			id := uint32(tr.ID)
-			if first && id == audioTrack && len(tr.Samples) > 0 {
+			if first && isAudio(id) && len(tr.Samples) > 0 {
 				tr.Samples = tr.Samples[1:]
 			}
-			if id == audioTrack {
+			if isAudio(id) {
 				for _, s := range tr.Samples {
 					s.Duration = aacFrame // see frameDurations
 				}

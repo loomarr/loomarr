@@ -16,7 +16,8 @@ func segmentName(seq uint32) string { return fmt.Sprintf("seg%08d.m4s", seq) }
 type segment struct {
 	seq        uint32
 	name       string
-	start, dur int64 // channel media ticks, 90 kHz
+	alt        string // the alternate audio's file (altaudio.go); empty on a channel without one
+	start, dur int64  // channel media ticks, 90 kHz
 	// served is the item that produced the segment, nil for a slate segment. Every segment of one
 	// item shares it, so the item is served once however many of its segments are fetched.
 	served *servedOnce
@@ -72,6 +73,7 @@ type playlistView struct {
 	epoch    time.Time
 	holdBack time.Duration
 	prefix   string // Config.URIPrefix
+	alt      bool   // the alternate audio's playlist: its init and files
 }
 
 // render writes the live media playlist. It is the one place a delta update (EXT-X-SKIP with
@@ -91,13 +93,21 @@ func (w *window) render(v playlistView) []byte {
 		first = segs[0].seq
 	}
 	fmt.Fprintf(&b, "#EXT-X-MEDIA-SEQUENCE:%d\n", first)
-	fmt.Fprintf(&b, "#EXT-X-MAP:URI=%q\n", v.prefix+InitName)
+	init := InitName
+	if v.alt {
+		init = AltInitName
+	}
+	fmt.Fprintf(&b, "#EXT-X-MAP:URI=%q\n", v.prefix+init)
 	for i, s := range segs {
 		if i == 0 {
 			at := v.epoch.Add(ticks(s.start)).UTC().Format("2006-01-02T15:04:05.000Z07:00")
 			fmt.Fprintf(&b, "#EXT-X-PROGRAM-DATE-TIME:%s\n", at)
 		}
-		fmt.Fprintf(&b, "#EXTINF:%.5f,\n%s%s\n", float64(s.dur)/videoRate, v.prefix, s.name)
+		name := s.name
+		if v.alt {
+			name = s.alt
+		}
+		fmt.Fprintf(&b, "#EXTINF:%.5f,\n%s%s\n", float64(s.dur)/videoRate, v.prefix, name)
 	}
 	return b.Bytes()
 }

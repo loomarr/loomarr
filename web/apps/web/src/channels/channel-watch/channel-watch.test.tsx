@@ -24,6 +24,7 @@ const hls = vi.hoisted(() => ({
   ladder: { rungs: [] } as { rungs: { height: number; index: number }[]; height?: number },
   quality: undefined as unknown,
   subtitleCues: undefined as { cues: { text: string }[]; label: string; language: string } | undefined,
+  alternateAudio: false as boolean | undefined,
   attach: vi.fn(() => () => undefined),
   playbackFacts: () => ({ bufferMs: 8_000, height: 1080, url: "/v1/stream/ch-1.m3u8", width: 1920 }),
   liveTransport: {
@@ -48,10 +49,12 @@ vi.mock("../use-hls-player", () => ({
     onManifest?: () => void,
     quality?: unknown,
     subtitleCues?: typeof hls.subtitleCues,
+    alternateAudio?: boolean,
   ) => {
     hls.onManifest = onManifest;
     hls.quality = quality;
     hls.subtitleCues = subtitleCues;
+    hls.alternateAudio = alternateAudio;
     return {
       status: hls.status,
       playbackSessionId: "playback_1",
@@ -120,7 +123,12 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
     }),
     getChannelTracksMockHandler(() => {
       probed = true;
-      return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
+      return {
+        audio: tracks.audio ?? [],
+        subtitles: tracks.subtitles ?? [],
+        defaultAudio: tracks.defaultAudio ?? 0,
+        alternateAudio: tracks.alternateAudio,
+      };
     }),
     // The subtitles sidecar: no programme subtitled unless a test says so.
     getChannelSubtitlesMockHandler({ airings: [] }),
@@ -190,6 +198,36 @@ describe("ChannelWatch pickers", () => {
     ]);
     // The channel's own choice (Auto, unset) is the one marked.
     expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
+  });
+
+  it("offers the programme's second language as a choice, and plays the Alternate rendition once chosen", async () => {
+    // The stream's Default carries English and its Alternate Spanish (#2088 decision 6): the viewer
+    // picks between the two, and the choice switches the player to the master's Alternate.
+    localStorage.removeItem("loomarr.player.audio");
+    stubTracks({
+      audio: [
+        { index: 0, language: "eng" },
+        { index: 1, language: "spa" },
+      ],
+      defaultAudio: 0,
+      alternateAudio: 1,
+    });
+
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    const settings = await openSettings();
+    const audio = await within(settings).findByRole("radiogroup", { name: "Audio" });
+    expect(within(audio).getByRole("radio", { name: "English · stereo" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(hls.alternateAudio).toBe(false);
+
+    await userEvent.click(within(audio).getByRole("radio", { name: "Español · stereo" }));
+    await waitFor(() => expect(hls.alternateAudio).toBe(true));
+    expect(localStorage.getItem("loomarr.player.audio")).toBe(JSON.stringify("spa"));
+    localStorage.removeItem("loomarr.player.audio");
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {

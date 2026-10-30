@@ -30,14 +30,23 @@ var (
 	testPPS = []byte{0x68, 0xcb, 0x83, 0xcb, 0x20}
 )
 
-func encodeInit(t testing.TB, sps []byte) []byte {
+func encodeInit(t testing.TB, sps []byte) []byte { return encodeInitAlt(t, sps, false) }
+
+// encodeInitAlt is encodeInit with, when alt is set, the alternate audio as track 3.
+func encodeInitAlt(t testing.TB, sps []byte, alt bool) []byte {
 	t.Helper()
+	aac := func(id int) *fmp4.InitTrack {
+		return &fmp4.InitTrack{ID: id, TimeScale: audioRate, Codec: &codecs.MPEG4Audio{Config: mpeg4audio.AudioSpecificConfig{
+			Type: mpeg4audio.ObjectTypeAACLC, SampleRate: audioRate, ChannelConfig: 2,
+		}}}
+	}
 	init := fmp4.Init{Tracks: []*fmp4.InitTrack{
 		{ID: videoTrack, TimeScale: videoRate, Codec: &codecs.H264{SPS: sps, PPS: testPPS}},
-		{ID: audioTrack, TimeScale: audioRate, Codec: &codecs.MPEG4Audio{Config: mpeg4audio.AudioSpecificConfig{
-			Type: mpeg4audio.ObjectTypeAACLC, SampleRate: audioRate, ChannelConfig: 2,
-		}}},
+		aac(audioTrack),
 	}}
+	if alt {
+		init.Tracks = append(init.Tracks, aac(altTrack))
+	}
 	var w seekablebuffer.Buffer
 	if err := init.Marshal(&w); err != nil {
 		t.Fatal(err)
@@ -61,6 +70,8 @@ type synth struct {
 	audioJitter bool
 	// sourceEnded, if set, makes the stream a SourceEnd reporting it.
 	sourceEnded *bool
+	// alt adds the alternate audio as track 3: the same frames as track 2, payloads "label/bN".
+	alt bool
 }
 
 type sourceEndStream struct {
@@ -82,7 +93,7 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 	}
 	go func() {
 		defer func() { _ = pw.Close() }()
-		if _, err := pw.Write(encodeInit(t, sps)); err != nil || s.zeroFrames {
+		if _, err := pw.Write(encodeInitAlt(t, sps, s.alt)); err != nil || s.zeroFrames {
 			return
 		}
 		if s.blockBefore != nil {
@@ -103,7 +114,7 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 					return
 				}
 			}
-			var vs, as []*fmp4.Sample
+			var vs, as, bs []*fmp4.Sample
 			for i := f; i < min(f+testFPS, frames); i++ {
 				dur := uint32(d)
 				switch i {
@@ -125,11 +136,15 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 					dur = uint32(aacFrame - 16 + 32*(a%2))
 				}
 				as = append(as, &fmp4.Sample{Duration: dur, Payload: []byte(fmt.Sprintf("%s/a%d", s.label, a))})
+				bs = append(bs, &fmp4.Sample{Duration: dur, Payload: []byte(fmt.Sprintf("%s/b%d", s.label, a))})
 			}
 			part := fmp4.Part{SequenceNumber: uint32(f), Tracks: []*fmp4.PartTrack{
 				{ID: videoTrack, BaseTime: vBase + uint64(f*d), Samples: vs},
 				{ID: audioTrack, BaseTime: aBase, Samples: as},
 			}}
+			if s.alt {
+				part.Tracks = append(part.Tracks, &fmp4.PartTrack{ID: altTrack, BaseTime: aBase, Samples: bs})
+			}
 			for _, smp := range as {
 				aBase += uint64(smp.Duration)
 			}
@@ -194,9 +209,11 @@ func readySlate(s *Slate) SlateSource {
 	return func(context.Context) (*Slate, error) { return s, nil }
 }
 
-func testSlate(t testing.TB) *Slate {
+func testSlate(t testing.TB) *Slate { return testSlateAlt(t, false) }
+
+func testSlateAlt(t testing.TB, alt bool) *Slate {
 	t.Helper()
-	pr := synth{label: "slate", frames: testFPS}.encode(t, context.Background(), Slot{Frames: testFPS})
+	pr := synth{label: "slate", frames: testFPS, alt: alt}.encode(t, context.Background(), Slot{Frames: testFPS})
 	b, err := io.ReadAll(pr)
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +267,8 @@ func runPlans(t *testing.T, cfg Config, plans []plan) *harness {
 			return pl.enc.encode(t, ictx, slot), nil
 		}}, nil
 	}
-	p, err := New(cfg, sched, readySlate(testSlate(t)))
+	// The slate is encoded by the channel's own pipeline, so it carries the alternate when items do.
+	p, err := New(cfg, sched, readySlate(testSlateAlt(t, len(plans) > 0 && plans[0].enc.alt)))
 	if err != nil {
 		t.Fatal(err)
 	}

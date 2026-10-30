@@ -20,6 +20,7 @@ type Slate struct {
 	init  []byte
 	video []*fmp4.Sample
 	audio []*fmp4.Sample
+	alt   []*fmp4.Sample // the alternate audio's silence (track 3); nil on a channel without one
 }
 
 // NewSlate parses an encoder's fMP4 output (ftyp+moov and at least one fragment). The first
@@ -53,11 +54,16 @@ func NewSlate(stream []byte) (*Slate, error) {
 						s.video = append(s.video, tr.Samples...)
 					case audioTrack:
 						s.audio = append(s.audio, tr.Samples...)
+					case altTrack:
+						s.alt = append(s.alt, tr.Samples...)
 					}
 				}
 			}
 			if len(s.audio) > 0 {
 				s.audio = s.audio[1:]
+			}
+			if len(s.alt) > 0 {
+				s.alt = s.alt[1:]
 			}
 		}
 	}
@@ -128,16 +134,22 @@ func (p *Packager) slateFragment(frames, audio int64) ([]byte, error) {
 		s.Duration, s.PTSOffset = uint32(p.frameDur), 0
 		video[i] = &s
 	}
-	sound := make([]*fmp4.Sample, audio)
-	for i := range sound {
-		s := *p.slate.audio[i%len(p.slate.audio)]
-		s.Duration = aacFrame
-		sound[i] = &s
+	silence := func(pool []*fmp4.Sample) []*fmp4.Sample {
+		out := make([]*fmp4.Sample, audio)
+		for i := range out {
+			s := *pool[i%len(pool)]
+			s.Duration = aacFrame
+			out[i] = &s
+		}
+		return out
 	}
 	part := &fmp4.Part{SequenceNumber: p.seq, Tracks: []*fmp4.PartTrack{
 		{ID: videoTrack, BaseTime: uint64(p.v), Samples: video},
-		{ID: audioTrack, BaseTime: uint64(p.a), Samples: sound},
+		{ID: audioTrack, BaseTime: uint64(p.a), Samples: silence(p.slate.audio)},
 	}}
+	if len(p.slate.alt) > 0 {
+		part.Tracks = append(part.Tracks, &fmp4.PartTrack{ID: altTrack, BaseTime: uint64(p.a), Samples: silence(p.slate.alt)})
+	}
 	var w seekablebuffer.Buffer
 	if err := part.Marshal(&w); err != nil {
 		return nil, fmt.Errorf("packager: marshal slate: %w", err)

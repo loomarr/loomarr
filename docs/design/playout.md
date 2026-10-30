@@ -508,10 +508,15 @@ it plays. So:
 - `policy.playout.audio_language` (with precedence over the global, like every other channel policy,
   §15) is the channel's **default audio language**, set by an admin in the channel's settings. It
   is the track the video rendition group's default audio carries.
-- When the airing item also carries another language, playout emits **at most one alternate** audio
-  rendition, so the master playlist carries two audio renditions at most. That is one extra audio-only
-  encode per channel while such an item airs, and nothing per viewer. The viewer chooses between the
-  two in the player.
+- Every watched channel declares **one alternate** audio rendition in its master playlist (`#EXT-X-MEDIA` `NAME="Alternate"`, one `alt-` init and segment beside each
+  main one). While the airing item carries another language the slot carries it; otherwise it
+  duplicates the default. The master never changes mid-session, so a player never re-parses it, at
+  the cost of one audio-only encode per watched channel and nothing per viewer. Tuner (MPEG-TS)
+  streams carry the default only.
+- The master names no language. The player labels the two renditions from `GET
+  /v1/channels/{id}/tracks?at=` for the programme at its playhead (`defaultAudio`,
+  `alternateAudio`), offers the choice only when the alternate differs, and remembers the viewer's
+  language; the alternate plays only while it carries that language.
 - Before #2088 the Watch tab's Audio control re-picked the single shared track for everyone. That is
   superseded; the admin control is the default language only.
 - The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a

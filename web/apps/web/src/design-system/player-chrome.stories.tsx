@@ -246,11 +246,13 @@ const Settings: Story = {
         title="Settings"
       >
         <PlayerSettings
-          audio={[
-            { label: "Auto", selected: false, value: "auto" },
-            { label: "English", selected: true, value: "eng" },
-            { label: "Spanish", selected: false, value: "spa" },
-          ]}
+          audio={{
+            onSelect: fn(),
+            options: [
+              { label: "English · stereo", selected: true, value: "default" },
+              { label: "Español · stereo", selected: false, value: "spa" },
+            ],
+          }}
           density="pointer"
           onPlaybackInfo={fn()}
           onSwitchSound={fn()}

@@ -1488,10 +1488,18 @@ components:
           format: uri
           readOnly: true
           type: string
+        alternateAudio:
+          description: The index of the audio track the stream's Alternate audio rendition carries; absent when it carries the default again, so there is nothing to choose.
+          format: int64
+          type: integer
         audio:
           items:
             $ref: "#/components/schemas/TrackDTO"
           type: array
+        defaultAudio:
+          description: The index of the audio track the stream's default audio carries.
+          format: int64
+          type: integer
         subtitles:
           items:
             $ref: "#/components/schemas/TrackDTO"
@@ -1499,6 +1507,7 @@ components:
       required:
         - audio
         - subtitles
+        - defaultAudio
       type: object
     ChannelViewersDTO:
       additionalProperties: false
@@ -13487,6 +13496,14 @@ paths:
             examples:
               - ch_abc123
             type: string
+        - description: "The instant whose programme to describe, Unix milliseconds: a player's playhead. Omitted is now."
+          explode: false
+          in: query
+          name: at
+          schema:
+            description: "The instant whose programme to describe, Unix milliseconds: a player's playhead. Omitted is now."
+            format: int64
+            type: integer
       responses:
         "200":
           content:

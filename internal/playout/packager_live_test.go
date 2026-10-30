@@ -53,7 +53,7 @@ func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return p.FragmentArgs(paths[name], seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, 0)
+		return p.FragmentArgs(paths[name], seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, AudioPick{})
 	}
 	slateOut, err := exec.Command("ffmpeg", args("slate", 0, packager.Slot{Frames: int64(out.FPS), AudioFrames: 47})...).Output()
 	if err != nil {

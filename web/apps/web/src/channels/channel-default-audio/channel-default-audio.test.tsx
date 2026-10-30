@@ -30,6 +30,7 @@ describe("ChannelDefaultAudio", () => {
           { index: 1, language: "fra" },
         ],
         subtitles: [],
+        defaultAudio: 0,
       }),
     );
     const savePolicy = vi.fn();
@@ -43,7 +44,9 @@ describe("ChannelDefaultAudio", () => {
   });
 
   it("keeps a saved language the airing programme doesn't carry, and Auto saves as empty", async () => {
-    server.use(getChannelTracksMockHandler({ audio: [{ index: 0, language: "eng" }], subtitles: [] }));
+    server.use(
+      getChannelTracksMockHandler({ audio: [{ index: 0, language: "eng" }], subtitles: [], defaultAudio: 0 }),
+    );
     const savePolicy = vi.fn();
     renderCard({
       channel: channel({ status: "live", policy: { playout: { audioLanguage: "jpn" } } }),
@@ -66,6 +69,7 @@ describe("ChannelDefaultAudio", () => {
           { index: 0, language: "eng" },
           { index: 1, language: "eng", burnable: true },
         ],
+        defaultAudio: 0,
       }),
     );
     const savePolicy = vi.fn();
@@ -80,7 +84,7 @@ describe("ChannelDefaultAudio", () => {
   });
 
   it("Off saves as empty", async () => {
-    server.use(getChannelTracksMockHandler({ audio: [], subtitles: [] }));
+    server.use(getChannelTracksMockHandler({ audio: [], subtitles: [], defaultAudio: 0 }));
     const savePolicy = vi.fn();
     renderCard({
       channel: channel({ status: "live", policy: { playout: { burnSubtitles: "eng" } } }),

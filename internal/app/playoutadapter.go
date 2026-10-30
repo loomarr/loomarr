@@ -1189,20 +1189,27 @@ func (r *playoutResolver) airingFiller(
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
 func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
+	return r.AudioTracksFor(ctx, channelID, libraryItemID, streamURL).Default
+}
+
+// AudioTracksFor resolves both audio tracks a source plays: the channel's default (§9.1) and the
+// alternate rendition's (#2088 decision 6), from the same one probe per programme.
+func (r *playoutResolver) AudioTracksFor(ctx context.Context, channelID, libraryItemID, streamURL string) playout.AudioPick {
 	if r.audioLanguage == nil || streamURL == "" {
-		return 0
+		return playout.AudioPick{}
 	}
 	prefer := r.preferredAudioLanguage(ctx, channelID)
 	if strings.TrimSpace(prefer) == "" {
 		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
-		// entirely rather than paying for an answer that cannot change the outcome.
-		return 0
+		// entirely rather than paying for an answer that cannot change the outcome; the
+		// alternate's slot then carries the first track too, so it offers no second choice.
+		return playout.AudioPick{}
 	}
 	if tracks, ok := r.inventoryAudioTracks(ctx, libraryItemID, streamURL); ok {
-		return playout.PickAudioTrack(tracks, prefer)
+		return playout.PickAudioTracks(tracks, prefer)
 	}
 	if r.probeSource == nil {
-		return 0
+		return playout.AudioPick{}
 	}
 	observed, err := r.probeSource(ctx, streamURL)
 	if err != nil {
@@ -1210,11 +1217,11 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 			r.log.Debug("playout: audio tracks not probed, using the first",
 				"err", err)
 		}
-		return 0
+		return playout.AudioPick{}
 	}
 	tracks := observed.AudioTracks()
 	r.recordSourceMeasurement(ctx, libraryItemID, streamURL, observed)
-	return playout.PickAudioTrack(tracks, prefer)
+	return playout.PickAudioTracks(tracks, prefer)
 }
 
 // AudioTrackFromInventory applies the channel's audio policy using only Loomarr-owned durable
@@ -1498,22 +1505,37 @@ func playoutAudioTracks(streams []inventory.Stream) []playout.AudioTrack {
 // empty tracks rather than an error, so the Watch pickers degrade to "just the channel default"
 // instead of erroring. The one thing it does NOT swallow is a genuine store/resolve error (a
 // missing channel), which the handler needs to render a 404 rather than an empty list.
-func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error) {
+func (r *playoutResolver) Tracks(ctx context.Context, channelID string, at time.Time) (playout.MediaTracks, playout.AudioPick, error) {
 	airing, streamURL, err := r.AiringNow(ctx, channelID)
+	if !at.IsZero() {
+		airing, streamURL, err = r.AiringAt(ctx, channelID, at)
+	}
 	if err != nil {
-		return playout.MediaTracks{}, err
+		return playout.MediaTracks{}, playout.AudioPick{}, err
 	}
 	if r.probeTracks == nil || !airing.Playable() || streamURL == "" {
-		return playout.MediaTracks{}, nil
+		return playout.MediaTracks{}, playout.AudioPick{}, nil
 	}
 	tracks, err := r.probeTracks(ctx, streamURL)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: tracks not probed for Watch pickers", "channel", channelID, "err", err)
 		}
-		return playout.MediaTracks{}, nil // degrade, don't fail the UI request
+		return playout.MediaTracks{}, playout.AudioPick{}, nil // degrade, don't fail the UI request
 	}
-	return tracks, nil
+	// The pick the encoder makes (AudioTracksFor), over the same per-type order: so a player labels
+	// the default and the alternate with the languages they actually carry.
+	var pick playout.AudioPick
+	if r.audioLanguage != nil {
+		if prefer := r.preferredAudioLanguage(ctx, channelID); strings.TrimSpace(prefer) != "" {
+			audio := make([]playout.AudioTrack, len(tracks.Audio))
+			for i, t := range tracks.Audio {
+				audio[i] = playout.AudioTrack{Language: t.Language}
+			}
+			pick = playout.PickAudioTracks(audio, prefer)
+		}
+	}
+	return tracks, pick, nil
 }
 
 // PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play, V47) —

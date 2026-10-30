@@ -3,6 +3,7 @@ import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
+import { type LiveAudioRendition, selectAudioRendition } from "./live-audio";
 import { liveHlsConfig } from "./live-hls-config";
 import {
   type LiveLevel,
@@ -78,6 +79,12 @@ interface BrowserHlsPlayerOptions {
    */
   onManifest?: () => void;
   /**
+   * The viewer's audio (#2088 decision 6): the master's Alternate rendition rather than its Default,
+   * when it offers one. Changing it switches the playing rendition at once; it never re-binds the
+   * source.
+   */
+  alternateAudio?: boolean;
+  /**
    * The viewer's quality (#2088 decision 7): Auto, or a rung by height, played when the master
    * offers it here. Changing it switches the playing level at once; it never re-binds the source.
    */
@@ -136,6 +143,32 @@ const canPlayMime = (mime: string) => typeof MediaSource !== "undefined" && Medi
 
 const levelsOf = (hls: Hls): LiveLevel[] =>
   hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange }));
+
+// Native HLS (Safari) lists the master's audio renditions on the element, labelled by their NAME;
+// TypeScript's DOM library does not declare it.
+interface NativeAudioTracks {
+  length: number;
+  [index: number]: LiveAudioRendition & { enabled: boolean };
+}
+
+// Plays the viewer's audio rendition: hls.js's audio track, or the native element's enabled one.
+const syncAudioRendition = (active: { video?: HTMLVideoElement; hls?: Hls }, alternate: boolean) => {
+  if (active.hls) {
+    const index = selectAudioRendition(active.hls.audioTracks, alternate);
+    if (index >= 0 && index !== active.hls.audioTrack) active.hls.audioTrack = index;
+    return;
+  }
+  const tracks = (active.video as { audioTracks?: NativeAudioTracks } | undefined)?.audioTracks;
+  if (!tracks) return;
+  const list = Array.from({ length: tracks.length }, (_, i) => tracks[i]).filter(
+    (track) => track !== undefined,
+  );
+  const index = selectAudioRendition(list, alternate);
+  if (index < 0) return;
+  list.forEach((track, i) => {
+    track.enabled = i === index;
+  });
+};
 
 // Wall clock − media time from the player's anchor: what places a sidecar cue on the element.
 const mediaOffsetMs = (anchor: DisplayedClockAnchor | undefined) =>
@@ -362,12 +395,15 @@ function useBrowserHlsPlayer({
   errorMessage,
   mintSource,
   onManifest,
+  alternateAudio = false,
   quality = "auto",
   recordDiagnostic,
   subtitleCues,
 }: BrowserHlsPlayerOptions): UseBrowserHlsPlayer {
   const onManifestRef = useRef(onManifest);
   onManifestRef.current = onManifest;
+  const alternateAudioRef = useRef(alternateAudio);
+  alternateAudioRef.current = alternateAudio;
   const qualityRef = useRef(quality);
   qualityRef.current = quality;
   const subtitleCuesRef = useRef(subtitleCues);
@@ -928,10 +964,14 @@ function useBrowserHlsPlayer({
           video.addEventListener("loadeddata", onLoadedData, { once: true });
           video.addEventListener("canplay", onCanPlay, { once: true });
         } else armFirstFrameWatch();
+        // hls.js lists a level's audio renditions once it has loaded them (and again on a level
+        // switch, each variant naming its own group): play the viewer's then.
+        const onAudioTracks = () => syncAudioRendition({ hls }, alternateAudioRef.current);
         hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.on(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
         hls.on(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
         hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, onAudioTracks);
         hls.on(Hls.Events.ERROR, onError);
 
         // Preserve an OPEN MediaSource and compatible SourceBuffers, but never outgoing
@@ -969,6 +1009,7 @@ function useBrowserHlsPlayer({
           hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
           hls.off(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
+          hls.off(Hls.Events.AUDIO_TRACKS_UPDATED, onAudioTracks);
           hls.off(Hls.Events.ERROR, onError);
           hls.stopLoad();
           // A newer bind has already swapped this controller into standby; keep the bounded pool.
@@ -1026,6 +1067,7 @@ function useBrowserHlsPlayer({
           hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
           hls.off(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
           hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
+          hls.off(Hls.Events.AUDIO_TRACKS_UPDATED, onAudioTracks);
           hls.off(Hls.Events.ERROR, onError);
           if (hlsRef.current.instance !== hls) return;
           if (activeRef.current.hls === hls) activeRef.current = { lastKeepaliveMs: 0 };
@@ -1052,6 +1094,7 @@ function useBrowserHlsPlayer({
         const onManifest = () => {
           playbackAttempt?.markPhase("manifest");
           onManifestRef.current?.();
+          syncAudioRendition({ video }, alternateAudioRef.current);
         };
         // Native HLS has no transport controller to detach the previous URL for us.
         video.removeAttribute("src");
@@ -1213,6 +1256,11 @@ function useBrowserHlsPlayer({
     if (level !== hls.currentLevel) hls.currentLevel = level;
   }, [quality]);
 
+  // The viewer chose the other audio, or the programme's alternate came or went: switch now.
+  useEffect(() => {
+    syncAudioRendition(activeRef.current, alternateAudio);
+  }, [alternateAudio]);
+
   // New cues, or subtitles turned off: place them now rather than at the next tick.
   useEffect(() => {
     const active = activeRef.current;
@@ -1262,6 +1310,7 @@ export type {
   BrowserPlaySource,
   BrowserTuneAttempt,
   BrowserTunePhase,
+  LiveAudioRendition,
   LiveLevel,
   LivePlaybackFacts,
   LiveQuality,
@@ -1277,6 +1326,7 @@ export {
   liveSeek,
   nextSubtitles,
   playableRungs,
+  selectAudioRendition,
   selectLiveLevel,
   selectQualityLevel,
   selectSubtitleTrack,
