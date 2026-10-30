@@ -21,6 +21,8 @@ interface WatchingPanelProps {
   onChannelDown: () => void;
   onChannelUp: () => void;
   onGoLive: () => void;
+  /** Leave the player. Omit where the app's own navigation surrounds it: no ✕ is drawn. */
+  onLeave?: () => void;
   onPause: () => void;
   onPlay: () => void;
   onPrevious: () => void;

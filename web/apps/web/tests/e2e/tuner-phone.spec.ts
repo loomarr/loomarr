@@ -10,7 +10,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 test("Watch at phone width puts the picture edge to edge and the controls under it", async ({ page }) => {
   await installTunerBackend(page);
-  await page.goto(`/channels/${channelId(1)}/watch`);
+  await page.goto(`/watch/${channelId(1)}`);
   const video = page.locator("video");
   await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState)).toBeGreaterThanOrEqual(2);
 
@@ -39,5 +39,5 @@ test("Watch at phone width puts the picture edge to edge and the controls under 
   ).toEqual([]);
 
   await page.getByRole("button", { name: "Channel +", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/channels/${channelId(2)}/watch$`));
+  await expect(page).toHaveURL(new RegExp(`/watch/${channelId(2)}$`));
 });

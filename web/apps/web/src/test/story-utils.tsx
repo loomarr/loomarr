@@ -44,7 +44,7 @@ const NAV_PATHS = [
   "/help",
   "/wizard",
   // Web's phone bottom bar (#1785) navigates here for Watch; `$id` is a literal param segment.
-  "/channels/$id/watch",
+  "/watch/$id",
   // Channel management (#1817 item 3, decision X2): these highlight the rail's Guide entry, not
   // Watch, so the highlight-transfer tests need them routable too.
   "/channels/$id/info",

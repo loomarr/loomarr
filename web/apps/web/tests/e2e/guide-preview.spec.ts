@@ -216,5 +216,5 @@ test("keyboard and short filler previews preserve navigation, supplied identity,
   const box = await preview.boundingBox();
   expect(box!.y + box!.height).toBeLessThanOrEqual(900);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/channels\/ch-100\/watch$/);
+  await expect(page).toHaveURL(/\/watch\/ch-100$/);
 });

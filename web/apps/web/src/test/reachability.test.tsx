@@ -560,9 +560,9 @@ describe("feature-gated panels mount when their flag is on", () => {
   });
 
   // An admin's bar has every section and marks the one on screen (#1987 changed only what a
-  // member's bar marks on a section it doesn't list; that half is in app-router.test.tsx).
+  // member's bar marks on a section it doesn't list; that half is in app-router.test.tsx). Watch is
+  // not a section since #2088: it is the header's button to its own route.
   it.each([
-    ["watch", "Watch"],
     ["info", "Channel info"],
     ["programming", "Programming"],
     ["filler", "Filler"],
@@ -571,7 +571,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     stubReachable();
     renderAt(`/channels/ch-1/${section}`);
     const sectionBar = await screen.findByRole("navigation", { name: /channel sections/i });
-    await waitFor(() => expect(within(sectionBar).getAllByRole("link")).toHaveLength(5));
+    await waitFor(() => expect(within(sectionBar).getAllByRole("link")).toHaveLength(4));
     expect(within(sectionBar).getAllByRole("link", { current: "page" })).toHaveLength(1);
     expect(within(sectionBar).getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
   });
@@ -612,22 +612,45 @@ describe("feature-gated panels mount when their flag is on", () => {
   // exactly the blind spot this suite exists for.
   it("/channels/ch-1 reaches the channel icon field on the info panel", async () => {
     stubReachable();
-    // ⚠ The INFO path explicitly. The bare `/channels/ch-1` used to land here; since §9.1 V54 it
-    // redirects to Watch, so pointing this at the bare route would silently stop testing the icon
-    // field — it would assert against a player instead, which is how a reachability test quietly
-    // stops covering the thing it is named for. The bare route's own landing is asserted below.
+    // ⚠ The INFO path explicitly, though the bare `/channels/ch-1` lands here too: a reachability
+    // test pinned to a redirect quietly stops covering its field the day the landing moves (it did
+    // once, to Watch, in §9.1 V54). The bare route's own landing is asserted below.
     renderAt("/channels/ch-1/info");
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
   });
 
-  // ⚠ Opening a channel lands on WATCH (§9.1 V54) — the redirect the bare route performs. Asserted
-  // because the default landing section is a routing DECISION: without this, flipping it back (or
-  // to any other section) breaks nothing, and the guide's channel rows all go through this hop.
-  it("/channels/ch-1 lands on Watch", async () => {
+  // ⚠ Opening a channel lands on CHANNEL INFO (#2088): Watch is its own full-bleed route now.
+  // Asserted because the default landing section is a routing DECISION: without this, flipping it
+  // (or to any other section) breaks nothing, and the guide's channel rows all go through this hop.
+  it("/channels/ch-1 lands on Channel info", async () => {
     stubReachable();
     const router = renderAt("/channels/ch-1");
-    await screen.findByRole("heading", { name: /Watch/i });
-    await waitFor(() => expect(at(router)).toContain("/channels/ch-1/watch"));
+    expect(await screen.findByText("Channel icon")).toBeInTheDocument();
+    await waitFor(() => expect(at(router)).toContain("/channels/ch-1/info"));
+  });
+
+  // The channel header carries Watch and the media-server hand-off (#2088), which replaced the Watch
+  // tab and its footer. The hand-off opens the configured front door in a new tab.
+  it("/channels/ch-1 offers Watch and the media-server hand-off in its header", async () => {
+    stubReachable();
+    renderAt("/channels/ch-1/info");
+    // By text, not role: a role query walks this page's whole accessibility tree on every retry.
+    const handOff = (await screen.findByText("Open in your media server")).closest("a");
+    expect(handOff).toHaveAttribute("href", "http://emby:8096");
+    expect(handOff).toHaveAttribute("target", "_blank");
+    // Beside it in the header (the rail has a Watch link of its own).
+    const header = handOff?.parentElement as HTMLElement;
+    expect(within(header).getByText("Watch").closest("a")).toHaveAttribute("href", "/watch/ch-1");
+  });
+
+  // The full-bleed player (#2088): reached from the channel header's Watch button, and from an old
+  // `/channels/:id/watch` bookmark, which redirects. The app shell steps aside: no Primary nav.
+  it("/channels/ch-1/watch reaches the full-bleed player at /watch/ch-1", async () => {
+    stubReachable();
+    const router = renderAt("/channels/ch-1/watch");
+    expect(await screen.findByRole("heading", { name: /Watch/i, level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(at(router)).toContain("/watch/ch-1"));
+    expect(screen.queryByRole("navigation", { name: "Primary" })).not.toBeInTheDocument();
   });
 
   // The ninth instance, and the one this suite failed to prevent: V7 shipped

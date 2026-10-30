@@ -30,7 +30,7 @@ interface NavItem {
  * list owns statically (inserted into both ADMIN_NAV and MEMBER_NAV only once a channel exists).
  */
 interface WatchNavItem {
-  to: "/channels/$id/watch";
+  to: "/watch/$id";
   channelId: string;
   label: "Watch";
   icon: ComponentType<{ className?: string }>;

@@ -129,14 +129,14 @@ describe("ChannelWatch pickers", () => {
     const { wasProbed } = stubTracks();
     hls.status = "loading";
 
-    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
     expect(await screen.findByText("Tuning in…")).toBeInTheDocument();
     expect(wasProbed()).toBe(false);
     hls.status = "playing";
-    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+    rerender(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />);
     await waitFor(() => expect(wasProbed()).toBe(true));
   });
 
@@ -150,7 +150,7 @@ describe("ChannelWatch pickers", () => {
       ],
     });
 
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
 
     // Open the Audio menu (an icon button in the player bar). Its items are menuitemcheckboxes.
@@ -167,7 +167,7 @@ describe("ChannelWatch pickers", () => {
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
     const { wasProbed } = stubTracks();
 
-    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin onSavePolicy={vi.fn()} />, {
+    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -187,7 +187,7 @@ describe("ChannelWatch pickers", () => {
       <ChannelWatch
         channel={live}
         isAdmin
-        onSavePolicy={vi.fn()}
+        onLeave={vi.fn()}
         tuner={{ canSurf: true, ready, step, tune: vi.fn(), retry: vi.fn() }}
       />,
       { wrapper: makeWrapper() },
@@ -226,7 +226,7 @@ describe("ChannelWatch pickers", () => {
       }),
     );
 
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText("0:30")).toBeInTheDocument();
     expect(screen.getByText("1m left")).toBeInTheDocument();
@@ -249,12 +249,12 @@ describe("ChannelWatch pickers", () => {
   it("explains when an expired paused point returns the viewer live", async () => {
     stubTracks();
     const notice = vi.spyOn(toast, "info");
-    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
     hls.liveTransport.state = { ...hls.liveTransport.state, noticeRevision: 1 };
 
-    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+    rerender(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />);
 
     await waitFor(() =>
       expect(notice).toHaveBeenCalledWith("That paused point is no longer available, so you're back live."),
@@ -262,37 +262,43 @@ describe("ChannelWatch pickers", () => {
   });
 });
 
-describe("ChannelWatch — Open in media server hand-off", () => {
+// Full-bleed (#2088): the route has no app nav, so the player's ✕ is the only way out, and the
+// channel's audio is set on its info page, not here.
+describe("ChannelWatch — full-bleed route", () => {
   beforeEach(() => {
     hls.status = "playing";
   });
 
-  it("opens the media server's URL in a new tab (a real hand-off, not a toast)", async () => {
+  it("leaves from the player's ✕", async () => {
     stubTracks();
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
-    render(
-      <ChannelWatch
-        channel={live}
-        isAdmin
-        onSavePolicy={vi.fn()}
-        mediaServerName="Emby"
-        mediaServerUrl="http://emby.home:8096"
-      />,
-      { wrapper: makeWrapper() },
-    );
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={live} isAdmin onLeave={onLeave} />, { wrapper: makeWrapper() });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open in Emby" }));
-
-    expect(open).toHaveBeenCalledWith("http://emby.home:8096", "_blank", "noopener,noreferrer");
-    open.mockRestore();
+    await userEvent.click(await screen.findByRole("button", { name: "Leave Watch" }));
+    expect(onLeave).toHaveBeenCalledOnce();
   });
 
-  it("hides the button when no media-server URL is configured (no dead affordance)", async () => {
+  it("still offers the way out on an off-air channel, where no player is drawn", async () => {
     stubTracks();
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin={false} onLeave={onLeave} />, {
+      wrapper: makeWrapper(),
+    });
 
-    await screen.findByRole("button", { name: "Audio" });
-    expect(screen.queryByRole("button", { name: /Open in/ })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Leave Watch" }));
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("shows the channel's audio read-only, even to an admin", async () => {
+    stubTracks({ audio: [{ index: 0, language: "eng" }] });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: /English/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByText(/an admin changes it for everyone/)).toBeInTheDocument();
   });
 });
 
@@ -317,7 +323,7 @@ describe("ChannelWatch switch readout", () => {
   const switchTo = async (target: typeof next) => {
     hls.status = "playing";
     const view = render(
-      <ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      <ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />,
       {
         wrapper: makeWrapper(),
       },
@@ -325,7 +331,7 @@ describe("ChannelWatch switch readout", () => {
     await screen.findByRole("button", { name: "Audio" });
     hls.status = "loading";
     view.rerender(
-      <ChannelWatch channel={target} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor(target)} />,
+      <ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor(target)} />,
     );
     await waitFor(() => expect(wash()).not.toBeNull());
     return view;
@@ -343,7 +349,7 @@ describe("ChannelWatch switch readout", () => {
     expect(visibleNames("Saturday Cartoons")).toEqual([]);
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />);
     await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
   });
 
@@ -360,7 +366,7 @@ describe("ChannelWatch switch readout", () => {
     expect(staticLock).not.toHaveBeenCalled();
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />);
     await waitFor(() => expect(staticLock).toHaveBeenCalledTimes(1));
     expect(video.muted).toBe(false);
   });
@@ -374,7 +380,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("stays silent on a cold start", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
       wrapper: makeWrapper(),
     });
     await screen.findByText("Tuning in…");
@@ -383,7 +389,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("lets any viewer turn the sound off from the Audio menu, and remembers it", async () => {
     hls.status = "playing";
-    render(<ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />, {
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />, {
       wrapper: makeWrapper(),
     });
     await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
@@ -403,20 +409,20 @@ describe("ChannelWatch switch readout", () => {
   it("drains the held frame when switching from a channel that played", async () => {
     hls.status = "playing";
     const { rerender } = render(
-      <ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      <ChannelWatch channel={live} isAdmin onLeave={vi.fn()} tuner={tunerFor()} />,
       { wrapper: makeWrapper() },
     );
     await screen.findByRole("button", { name: "Audio" });
 
     hls.status = "loading";
-    rerender(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />);
+    rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />);
 
     await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
   });
 
   it("does not drain on a cold start, where no frame is held", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
       wrapper: makeWrapper(),
     });
 
@@ -426,7 +432,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("names the channel in the readout and keeps the OSD for screen readers only", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
       wrapper: makeWrapper(),
     });
 
@@ -449,7 +455,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
       <ChannelWatch
         channel={live}
         isAdmin={false}
-        onSavePolicy={vi.fn()}
+        onLeave={vi.fn()}
         tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune, retry: vi.fn() }}
         drawer={{ channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite }}
         onTuneSettled={onTuneSettled}
@@ -536,7 +542,7 @@ describe("ChannelWatch at phone width", () => {
         <ChannelWatch
           channel={live}
           isAdmin={false}
-          onSavePolicy={vi.fn()}
+          onLeave={vi.fn()}
           tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
           drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
           phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}

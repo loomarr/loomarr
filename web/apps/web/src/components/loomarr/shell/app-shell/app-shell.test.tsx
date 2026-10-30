@@ -206,7 +206,7 @@ describe("AppShell", () => {
         .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
       expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
-      expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/channels/ch-7/watch");
+      expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/watch/ch-7");
     });
 
     it("inserts Watch second for a member once a channel exists", async () => {
@@ -236,7 +236,7 @@ describe("AppShell", () => {
     it("highlights Watch on any channel's watch route, not only the rail's own target", async () => {
       // A different channel ("$id") than the rail's own target ("ch-7") — any channel's Watch
       // route must light the rail's Watch entry, not just the one it links to.
-      renderShellAt("/channels/$id/watch", { isAdmin: true, watchChannelId: "ch-7" });
+      renderShellAt("/watch/$id", { isAdmin: true, watchChannelId: "ch-7" });
       const watch = await screen.findByRole("link", { name: "Watch" });
       // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at 500, never amber.
       expect(watch).toHaveClass("bg-static-800", "font-medium", "text-foreground");

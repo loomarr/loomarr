@@ -47,7 +47,7 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
           </h3>
           <p className="text-static-400 m-0 text-sm">Join what’s on now.</p>
         </div>
-        <Button render={<Link to="/channels/$id/watch" params={{ id: channel.source.channelId }} />}>
+        <Button render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}>
           Watch live
         </Button>
       </div>

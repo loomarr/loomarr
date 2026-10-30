@@ -1,5 +1,6 @@
 import { channelNumber, pluralize } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
+import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
 import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
@@ -9,9 +10,10 @@ import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-se
 import { ChannelAdvanced } from "./-channel-advanced";
 import { useChannelDetail } from "./-channel-detail-context";
 
-// CHANNEL INFO — the read-only "is it working" at a glance. The default section, and the
-// viewer's ONLY one (a member never sees the tab bar at all, so this is the whole page for
-// them — see route.tsx, which redirects bare /channels/$id here).
+// CHANNEL INFO — the "is it working" at a glance. The default section, and the viewer's ONLY one
+// (a member never sees the tab bar at all, so this is the whole page for them — see index.tsx,
+// which redirects bare /channels/$id here). An admin also sets the channel's on-air presentation
+// here: the On-screen logo and the default audio language.
 const InfoScreen = () => {
   const { id, channel: ch, isAdmin, air, ready, total, savePolicy, saveLogo } = useChannelDetail();
   const navigate = Route.useNavigate();
@@ -81,6 +83,10 @@ const InfoScreen = () => {
           savePolicy={savePolicy}
         />
       )}
+
+      {/* The default audio language (#2088), admin-only: it moved here from the player when Watch
+          became its own route. */}
+      {isAdmin && <ChannelDefaultAudio channel={ch} savePolicy={savePolicy} />}
 
       {/* Admin-only diagnostics disclosure (P7): the relaxation ladder the last reconcile
           applied + the Tunarr channel id are STATUS, not settings — so they live here as a

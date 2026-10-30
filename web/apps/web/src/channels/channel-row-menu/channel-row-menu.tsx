@@ -124,9 +124,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               from the guide is to watch it. Routes straight to the Watch surface (§9.1); a paused
               channel still opens it (the surface shows the "off air" poster and explains, rather
               than the menu guessing). */}
-          <DropdownMenuItem
-            onClick={() => void navigate({ to: "/channels/$id/watch", params: { id: channel.id } })}
-          >
+          <DropdownMenuItem onClick={() => void navigate({ to: "/watch/$id", params: { id: channel.id } })}>
             <Tv className="text-signal size-4" aria-hidden />
             Watch
           </DropdownMenuItem>

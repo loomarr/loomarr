@@ -656,7 +656,7 @@ const GuidePage = ({
                 onFilterChange={setFilter}
                 selection={selected}
                 onSelect={setSelection}
-                onWatch={(id) => void navigate({ to: "/channels/$id/watch", params: { id } })}
+                onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
                 renderArtwork={renderArtwork}
               />
             ) : layout ? (

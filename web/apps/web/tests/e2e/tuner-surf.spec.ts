@@ -264,12 +264,12 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
       },
       { once: true },
     );
-  }, `/channels/${id}/watch`);
+  }, `/watch/${id}`);
   await page.keyboard.press("x");
   const started = await page.evaluate(
     () => (window as Window & { __loomarrTuneInputAt?: number }).__loomarrTuneInputAt ?? performance.now(),
   );
-  await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
+  await expect(page).toHaveURL(new RegExp(`/watch/${id}$`));
   try {
     await page.waitForFunction(
       ({ channel, count }) =>
@@ -438,7 +438,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Prove the engine can cold-start and decode the representative H.264 stream, but keep decoder
   // bootstrap out of the surf percentile. The real-runtime gate owns cold boot timing; this gate
   // owns an already-running tuner and never retries a black start.
-  await page.goto(`/channels/${channelId(1)}/watch`);
+  await page.goto(`/watch/${channelId(1)}`);
   await waitForDecodedFrame(page, "cold ended-source bootstrap");
   await expect(page.locator("video")).toHaveCount(1);
   await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
@@ -474,7 +474,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Start the adjacent run from the middle of the catalog and prove speculative work is a bounded
   // warm (mode=warm), never a foreground tune.
   const probeStart = backend.state.warmProbes.length;
-  await page.goto(`/channels/${channelId(50)}/watch`);
+  await page.goto(`/watch/${channelId(50)}`);
   await waitForDecodedFrame(page, "adjacent-run bootstrap");
   await expect
     .poll(() => backend.state.warmProbes.slice(probeStart))
@@ -499,7 +499,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
 
   // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
   const resetWarmCounts = await adjacentWarmCounts(page, 50);
-  await page.goto(`/channels/${channelId(50)}/watch`);
+  await page.goto(`/watch/${channelId(50)}`);
   await waitForDecodedFrame(page, "post-held-frame reset");
   // Warm proof uses an absolute timestamp, so this full-document reset cannot make a new mark look
   // older merely because performance.startTime restarted from zero.
@@ -525,7 +525,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     );
     const started = await page.evaluate(() => performance.now());
     await channelUp(page);
-    await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
+    await expect(page).toHaveURL(new RegExp(`/watch/${id}$`));
     try {
       await page.waitForFunction(
         (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
@@ -665,7 +665,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   }, directions.slice(1));
 
   const finalId = channelId(expected);
-  await expect(page).toHaveURL(new RegExp(`/channels/${finalId}/watch$`));
+  await expect(page).toHaveURL(new RegExp(`/watch/${finalId}$`));
   try {
     await page.waitForFunction(
       (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,

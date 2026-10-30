@@ -1,13 +1,12 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
-import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type SurfChannelData, WatchingPanel, type WatchingScheduleData } from "@loomarr/ui";
-import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Play, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { useNumberEntry } from "@/channels/use-number-entry";
@@ -24,36 +23,24 @@ import { TunerOSD } from "../tuner-osd";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
 import { useSwitchSoundPreference } from "../use-switch-sound-preference";
-import { languageLabel } from "./language-label";
 
-// ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
+// ChannelWatch — the full-bleed `/watch/$id` player: play a channel live in the browser (§9.1,
+// #2088).
 //
-// The player itself is the shared VideoPlayer primitive in `live` mode (no video seek — a live
-// channel has nothing to seek to) with hls.js bound through its `attach` seam (useHlsPlayer). In
-// place of a seek bar it passes VideoPlayer a `scrubber`: the mini-guide timeline (ChannelTimeline,
-// §9.1 V47), so the control bar shows where you are in the schedule. This component owns the
-// surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater, the channel controls.
+// The player itself is the shared VideoPlayer primitive in `live` mode with hls.js bound through its
+// `attach` seam (useHlsPlayer). In place of a seek bar it passes VideoPlayer a `scrubber`: the
+// mini-guide timeline (ChannelTimeline, §9.1 V47), so the control bar shows where you are in the
+// schedule. This component owns the surrounding SURFACE: the picture filling the window, the channel
+// controls, and the ✕ that leaves.
 //
-// ⚠ Audio is CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
-// is one encoder per channel fanned to every viewer, so a per-viewer track would fork the encode —
-// the one thing that model forbids. So these pickers write `policy.playout.*` for the whole
-// channel; a member sees the current values read-only. Quality is the ONLY per-viewer control, and
-// it is handled inside the player (the client adapts live), not here.
+// ⚠ The audio menu here only SHOWS the channel's default language. An admin sets it on the channel's
+// info page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
 
 interface ChannelWatchProps {
   channel: ChannelDTO;
   isAdmin: boolean;
-  /** Save a whole policy (channel-level audio override). */
-  onSavePolicy: (policy: ChannelPolicy) => void;
-  /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
-  mediaServerName?: string;
-  /**
-   * Media-server base URL (`library.url`) for the "Open in …" hand-off. Loomarr can only reach the
-   * media server's front door, not a per-channel Live TV deep link — Emby/Jellyfin don't expose one
-   * — so the hand-off opens the media server and the viewer navigates to Live TV. Absent/empty ⇒ the
-   * button is hidden rather than doing nothing.
-   */
-  mediaServerUrl?: string;
+  /** Leave the player (its ✕): back where the viewer came from. */
+  onLeave: () => void;
   tuner?: {
     canSurf: boolean;
     requestedChannel?: ChannelDTO;
@@ -87,34 +74,7 @@ interface ChannelWatchProps {
   };
 }
 
-// withSaved keeps the currently-saved value present in an options list even when the airing does
-// not carry that track — so the menu always shows the channel's real selection (see the call site).
-const withSaved = (options: { value: string; label: string }[], value: string) =>
-  value && !options.some((o) => o.value === value)
-    ? [...options, { value, label: value.toUpperCase() }]
-    : options;
-
-// AUTO_SENTINEL is the "follow the channel/global default" choice. Radix Select forbids an
-// empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
-// the wire — the same shape channel-seasonal/ordering use for their "" defaults.
-const AUTO_SENTINEL = "auto";
 const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
-
-// audioOptions builds the Audio picker's choices from the REAL audio tracks of what's airing
-// (§9.1, V46) — never a hardcoded list. Always leads with "Auto", then one entry per distinct track
-// language the airing media carries. Labels come from Intl (languageLabel), not a hand-written
-// language table.
-const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
-  const seen = new Set<string>();
-  const opts: { value: string; label: string }[] = [{ value: AUTO_SENTINEL, label: "Auto (default)" }];
-  for (const t of tracks) {
-    const lang = t.language ?? "";
-    if (!lang || seen.has(lang)) continue;
-    seen.add(lang);
-    opts.push({ value: lang, label: t.title ? `${languageLabel(lang)} · ${t.title}` : languageLabel(lang) });
-  }
-  return opts;
-};
 
 // clock renders ms-into-a-programme as m:ss (the mock's {elapsed} / {total} format).
 const clock = (ms: number): string => {
@@ -146,9 +106,7 @@ const programmeTime = (airings: GuideAiring[], now: number): React.ReactNode => 
 const ChannelWatch = ({
   channel,
   isAdmin,
-  onSavePolicy,
-  mediaServerName = "your media server",
-  mediaServerUrl,
+  onLeave,
   tuner,
   drawer,
   onTuneSettled,
@@ -287,30 +245,9 @@ const ChannelWatch = ({
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
-  // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it —
-  // the preference still applies when a programme with that track airs. So the saved value is
-  // appended to the media-derived options when absent, labelled by its raw code. (Ported from the
-  // old footer PolicyPicker.)
+  // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it:
+  // the preference still applies when a programme with that track airs (withSaved).
   const audioOpts = withSaved(audioOptions(tracksBody?.audio ?? []), audioValue || AUTO_SENTINEL);
-
-  const savePlayout = (patch: { audioLanguage?: string }) => {
-    const next: ChannelPolicy = {
-      ...channel.policy,
-      playout: { ...channel.policy?.playout, ...patch },
-    };
-    onSavePolicy(next);
-    toast.success("Channel updated — applies on the next segment.");
-  };
-
-  // Real hand-off (§9.1): open the media server's front door in a new tab so the viewer can reach
-  // Live TV in their usual client. Loomarr has no per-channel deep link — Emby/Jellyfin don't expose
-  // one — so this is the media-server root, not this channel. `noopener,noreferrer` keeps the new tab
-  // from reaching back into this app. The button is only rendered when a URL exists (see below), so
-  // this is not called without one.
-  const openInMediaServer = () => {
-    if (!mediaServerUrl) return;
-    window.open(mediaServerUrl, "_blank", "noopener,noreferrer");
-  };
 
   // The mini-guide scrubber (§9.1 V47) fills the player's full-width `scrubber` slot. Shown once we
   // have a timeline and the stream is healthy; otherwise the player's control bar has no scrubber row.
@@ -409,14 +346,24 @@ const ChannelWatch = ({
   // fetched here; the channel identity is what a viewer needs.
   const topBar = (
     <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="text-static-200 hover:bg-static-700 hover:text-static-50 -ml-1 size-8"
+        aria-label="Leave Watch"
+        onClick={onLeave}
+      >
+        <X className="size-4" aria-hidden />
+      </Button>
       <span className="text-static-300 shrink-0 font-mono text-xs">CH {channel.number}</span>
       <span className="text-static-200 min-w-0 truncate text-xs">{channel.name}</span>
     </>
   );
 
-  // Audio control IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
-  // move off the old footer pickers. Same channel-wide, admin-scoped semantics: a member sees the
-  // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
+  // Audio IN the player bar (§9.1 V47), beside fullscreen: the channel's default track, read-only for
+  // everyone here (an admin changes it on the channel's info page), and the channel-change sound
+  // toggle. Options are the airing's real tracks (fetched).
   const barControls = (
     <>
       {tuner && (
@@ -468,8 +415,8 @@ const ChannelWatch = ({
         label="Audio"
         options={audioOpts}
         value={audioValue || AUTO_SENTINEL}
-        onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
-        readOnly={!isAdmin}
+        onChange={() => undefined}
+        readOnly
         toggles={[
           { label: "Channel-change sound", checked: switchSoundOn, onCheckedChange: setSwitchSoundOn },
         ]}
@@ -532,7 +479,9 @@ const ChannelWatch = ({
       attach={attach}
       onChannelStep={tuner?.step}
       chrome={!onPhone}
-      className={cn("bg-black", !onPhone && "border-border overflow-hidden rounded-xl border")}
+      // Wider than a portrait phone, the picture fills the window (letterboxed by the <video>); a
+      // portrait phone keeps its 16:9 picture over the panel.
+      className={cn("bg-black", !onPhone && "aspect-auto h-full")}
     />
   );
 
@@ -561,6 +510,7 @@ const ChannelWatch = ({
         onPause={() => withVideo((video) => player.liveTransport.pause(video))}
         onPlay={() => withVideo((video) => player.liveTransport.play(video))}
         onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
+        onLeave={onLeave}
         favourites={phone.favourites}
         isFavourite={isFavourite}
         onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
@@ -569,100 +519,82 @@ const ChannelWatch = ({
     ) : undefined;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* On a phone the section drops its card and cancels the page's gutter, so the picture runs
-          edge to edge under the tabs (the channel page pads its content by 24 px). */}
-      <section
-        className={onPhone ? "-mx-6 -mt-6" : "border-border bg-card overflow-hidden rounded-xl border"}
-      >
-        {paused ? (
-          <IdleFrame
-            title={`${channel.name} is off air`}
-            // The web mock's words; the way back is an admin's, so members get the first sentence.
-            sub={
-              isAdmin
-                ? "This channel is paused, so there's nothing to watch. Resume it under Danger zone."
-                : "This channel is paused, so there's nothing to watch."
-            }
-          />
-        ) : active ? (
-          <div className={cn("flex flex-col", !onPhone && "gap-3 p-3")}>
-            <div className="relative">
-              {playerEl}
-              {/* While the wash is up, its centred channel line is the visible readout, so the OSD
+    <section className="flex min-h-0 flex-1 flex-col">
+      {paused ? (
+        <IdleFrame
+          title={`${channel.name} is off air`}
+          // The web mock's words; the way back is an admin's, so members get the first sentence.
+          sub={
+            isAdmin
+              ? "This channel is paused, so there's nothing to watch. Resume it under Danger zone."
+              : "This channel is paused, so there's nothing to watch."
+          }
+          onLeave={onLeave}
+        />
+      ) : active ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className={cn("relative", !onPhone && "min-h-0 flex-1")}>
+            {playerEl}
+            {/* While the wash is up, its centred channel line is the visible readout, so the OSD
                   card would only repeat it; it stays as the screen-reader announcement. */}
-              {(tuning || tuner?.acknowledging) && tuner && (
-                <TunerOSD
-                  number={osdChannel.number}
-                  name={osdChannel.name}
-                  currentTitle={tuner.currentTitle}
-                  className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
-                />
-              )}
-            </div>
+            {(tuning || tuner?.acknowledging) && tuner && (
+              <TunerOSD
+                number={osdChannel.number}
+                name={osdChannel.name}
+                currentTitle={tuner.currentTitle}
+                className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
+              />
+            )}
+          </div>
 
-            {/* Loading/error needs prose outside the frame. Once media is ready, the compact live
+          {/* Loading/error needs prose outside the frame. Once media is ready, the compact live
                 control in the playback bar owns live/paused/behind state without duplicating it in
                 a second status line below the picture. */}
-            {player.status !== "playing" && (
-              <p className={cn("text-muted-foreground text-xs", onPhone ? "px-4 pt-3" : "px-1")}>
-                {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
-              </p>
-            )}
-            {player.status === "error" && tuner && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={tuner.retry}
-                className={cn("self-start", onPhone && "mx-4 mt-3")}
-              >
-                Retry channel
-              </Button>
-            )}
-            {phonePanel}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setActive(true)}
-            className="group from-static-800 relative flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-3 bg-radial to-black text-center"
-          >
-            <span className="bg-signal/90 flex size-14 items-center justify-center rounded-full text-black shadow-lg transition-transform group-hover:scale-105">
-              <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />
-            </span>
-            <span className="flex flex-col gap-1">
-              <span className="text-lg font-semibold">Watch live</span>
-              <span className="text-muted-foreground text-sm">Join {channel.name} mid-programme.</span>
-            </span>
-          </button>
-        )}
-
-        {/* Footer: the "open in your media server" hand-off. Audio lives in the player's
-            control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
-        <div className="border-border bg-static-900/40 flex items-center justify-between gap-4 border-t p-4">
-          {isAdmin ? (
-            <p className="text-muted-foreground text-xs">
-              The audio language you pick applies to everyone watching this channel.
+          {player.status !== "playing" && (
+            <p className="text-muted-foreground px-4 pt-3 text-xs">
+              {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
             </p>
-          ) : (
-            <span />
           )}
-          {mediaServerUrl ? (
-            <Button variant="outline" size="sm" onClick={openInMediaServer} className="shrink-0">
-              Open in {mediaServerName}
+          {player.status === "error" && tuner && (
+            <Button variant="outline" size="sm" onClick={tuner.retry} className="mx-4 my-3 self-start">
+              Retry channel
             </Button>
-          ) : (
-            <span />
           )}
+          {phonePanel}
         </div>
-      </section>
-    </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setActive(true)}
+          className="group from-static-800 relative flex w-full flex-1 cursor-pointer flex-col items-center justify-center gap-3 bg-radial to-black text-center"
+        >
+          <span className="bg-signal/90 flex size-14 items-center justify-center rounded-full text-black shadow-lg transition-transform group-hover:scale-105">
+            <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />
+          </span>
+          <span className="flex flex-col gap-1">
+            <span className="text-lg font-semibold">Watch live</span>
+            <span className="text-muted-foreground text-sm">Join {channel.name} mid-programme.</span>
+          </span>
+        </button>
+      )}
+    </section>
   );
 };
 
-// IdleFrame is the poster shown when there is nothing to play (paused/off air).
-const IdleFrame = ({ title, sub }: { title: string; sub: string }) => (
-  <div className="from-static-800 flex aspect-video w-full flex-col items-center justify-center gap-2 bg-radial to-black px-12 text-center">
+// IdleFrame is the poster shown when there is nothing to play (paused/off air). It fills the window
+// like the player does, so it carries the player's ✕ too: the full-bleed route has no other way out.
+const IdleFrame = ({ title, sub, onLeave }: { title: string; sub: string; onLeave: () => void }) => (
+  <div className="from-static-800 relative flex w-full flex-1 flex-col items-center justify-center gap-2 bg-radial to-black px-12 text-center">
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="text-static-200 hover:bg-static-700 hover:text-static-50 absolute top-3 left-3 size-8"
+      aria-label="Leave Watch"
+      onClick={onLeave}
+    >
+      <X className="size-4" aria-hidden />
+    </Button>
     <p className="text-lg font-semibold">{title}</p>
     <p className="text-muted-foreground text-sm">{sub}</p>
   </div>

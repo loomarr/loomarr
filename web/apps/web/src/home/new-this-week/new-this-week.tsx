@@ -58,7 +58,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           place. It wraps its own text and action instead. */}
       {lead && (
         <Link
-          to="/channels/$id/watch"
+          to="/watch/$id"
           params={{ id: lead.id }}
           className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
         >

@@ -5,7 +5,7 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useMatch, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
@@ -44,6 +44,7 @@ const AuthedFrame = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const restartWatch = useRestartWatchContext();
+  const fullBleed = useMatch({ from: "/_authed/watch/$id", shouldThrow: false }) !== undefined;
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
   const needsYouCount = useNeedsYouCount();
@@ -82,17 +83,23 @@ const AuthedFrame = () => {
   return (
     <LoomarrEventsProvider>
       <HealthNotice enabled={isAdmin} />
-      <AppShell
-        isAdmin={isAdmin}
-        userName={user?.name ?? "…"}
-        serverVersion={serverVersion}
-        badges={{ "/requests": needsYouCount }}
-        onOpenCommand={() => setCommandOpen(true)}
-        onLogout={() => logout.mutate()}
-        watchChannelId={watchId}
-      >
+      {/* Watch is full-bleed (#2088): no rail, no bottom bar, the picture owns the window and the
+          player's ✕ leaves. Everything else in this frame (events, palette, restart) still applies. */}
+      {fullBleed ? (
         <Outlet />
-      </AppShell>
+      ) : (
+        <AppShell
+          isAdmin={isAdmin}
+          userName={user?.name ?? "…"}
+          serverVersion={serverVersion}
+          badges={{ "/requests": needsYouCount }}
+          onOpenCommand={() => setCommandOpen(true)}
+          onLogout={() => logout.mutate()}
+          watchChannelId={watchId}
+        >
+          <Outlet />
+        </AppShell>
+      )}
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       {/* ⚠ App-wide, not per page. The restart control lives on the Dashboard, but the
           operator can navigate away the instant they click it — and every page is equally

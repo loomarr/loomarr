@@ -19,7 +19,7 @@ const ROUTES = {
   "settings-connections": "/settings/connections",
   "settings-playback": "/settings/system/playback",
   guide: "/guide",
-  "channel-watch": "/channels/…/watch",
+  "channel-watch": "/watch/…",
 };
 mkdirSync(out, { recursive: true });
 

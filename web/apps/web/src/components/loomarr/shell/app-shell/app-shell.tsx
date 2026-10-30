@@ -95,7 +95,7 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
   const base = isAdmin ? ADMIN_NAV : MEMBER_NAV;
   if (watchChannelId === undefined) return base;
   const watch: WatchNavItem = {
-    to: "/channels/$id/watch",
+    to: "/watch/$id",
     channelId: watchChannelId,
     label: "Watch",
     icon: PlayCircle,
@@ -121,7 +121,7 @@ const AppShell = ({
   // the bar as a normal last row, not `position: fixed`, so it reserves real layout space and the
   // Guide's own docked strip (#1795) naturally ends up above it rather than needing a manual inset.
   const phoneWidth = usePhoneWidth();
-  // Decision X2 (critique row 5): any channel's Watch tab highlights Watch; any of its management
+  // Decision X2 (critique row 5): any channel's `/watch/$id` player highlights Watch; any of its management
   // tabs (Info/Programming/Filler/Danger) highlight Guide instead, so one channel never lights two
   // rail items. `channelNavHighlight` is the one place that rule lives — shared with PhoneBottomBar.
   const { pathname } = useLocation();
@@ -164,12 +164,12 @@ const AppShell = ({
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
             const { label, icon: Icon } = item;
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
-            // Watch's href always points at ONE channel, but any channel's watch route must light
+            // Watch's href always points at ONE channel, but any channel's /watch/$id route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
             // Every other item keeps the plain automatic match, and so does Guide off a channel route:
             // forcing it to `false` there left /guide itself with no current item.
             const forcedActive =
-              item.to === "/channels/$id/watch"
+              item.to === "/watch/$id"
                 ? highlight === "watch"
                 : item.to === "/guide" && highlight !== undefined
                   ? highlight === "guide"
@@ -190,7 +190,7 @@ const AppShell = ({
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
-                {item.to !== "/channels/$id/watch" && (badges?.[item.to] ?? 0) > 0 && (
+                {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
                   <span
                     data-testid={`nav-badge-${item.to}`}
                     className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
@@ -200,10 +200,10 @@ const AppShell = ({
                 )}
               </>
             );
-            return item.to === "/channels/$id/watch" ? (
+            return item.to === "/watch/$id" ? (
               <Link
                 key={`watch-${item.channelId}`}
-                to="/channels/$id/watch"
+                to="/watch/$id"
                 params={{ id: item.channelId }}
                 className={linkClassName}
               >
