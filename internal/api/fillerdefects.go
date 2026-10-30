@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/defects"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 )
 
 // FillerDefectReportDTO is the defect floor's standing on this install (#2034 step 4c).
@@ -127,7 +127,7 @@ func (s *Server) fillerDefectReport(ctx context.Context, in *fillerDefectReportI
 	if s.fillerDefects == nil {
 		return nil, errFeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}
-	r, err := s.fillerDefects.Report(ctx, filler.DefectReportFilter{
+	r, err := s.fillerDefects.Report(ctx, fillerdefectfloor.DefectReportFilter{
 		Verdict: defects.Verdict(in.Verdict), Unlabelled: in.Unlabelled, Limit: in.Limit, Offset: in.Offset,
 	})
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *Server) setFillerDefectLabel(ctx context.Context, clipID string, label 
 		return errFeatureNotConfigured("Defect report unavailable", "The filler defect floor is not configured.")
 	}
 	err := s.fillerDefects.Label(ctx, clipID, label)
-	if errors.Is(err, filler.ErrDefectNotMeasured) {
+	if errors.Is(err, fillerdefectfloor.ErrDefectNotMeasured) {
 		return huma.Error404NotFound("The defect floor has not measured this clip yet")
 	}
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *Server) setFillerDefectLabel(ctx context.Context, clipID string, label 
 	return nil
 }
 
-func fillerDefectReportDTO(r filler.DefectReport) FillerDefectReportDTO {
+func fillerDefectReportDTO(r fillerdefectfloor.DefectReport) FillerDefectReportDTO {
 	out := FillerDefectReportDTO{
 		FloorVersion: r.FloorVersion, Clips: r.Clips, Unmeasured: r.Unmeasured, Labelled: r.Labelled, Total: r.Total,
 		Verdicts: FillerDefectVerdictCountsDTO{

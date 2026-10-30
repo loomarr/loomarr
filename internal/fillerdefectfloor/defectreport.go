@@ -1,4 +1,4 @@
-package filler
+package fillerdefectfloor
 
 import (
 	"cmp"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // The household defect report (#2034 step 4c): what the floor would retire on this install, and
@@ -59,7 +60,7 @@ type DefectReport struct {
 
 // DefectReportRow is one measured clip.
 type DefectReportRow struct {
-	Clip   StoreClip
+	Clip   filler.StoreClip
 	Record DefectRecord
 	Label  *DefectLabel
 	// LabelCurrent is false when the clip's era was corrected into another band after labelling:

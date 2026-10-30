@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1335,24 +1334,7 @@ func (r *playoutResolver) recordSourceMeasurement(
 	if err != nil || !ok {
 		return
 	}
-	facts := inventoryFactsOf(observed)
-	audioCoverage := inventory.CoverageEmpty
-	for _, stream := range facts.Streams {
-		if stream.Kind == inventory.StreamAudio {
-			audioCoverage = inventory.CoveragePresent
-			break
-		}
-	}
-	measurement := inventory.Measurement{
-		SourceID: source.ID, Revision: source.Revision,
-		Observation: inventory.Observation[inventory.SourceFacts]{
-			SchemaVersion: 1, ObservedAt: r.inventoryNow(),
-			Coverage: map[string]inventory.Coverage{
-				"streams": inventory.CoveragePresent, "audioStreams": audioCoverage,
-			},
-			Facts: facts,
-		},
-	}
+	measurement := inventory.NewFactsMeasurement(source.ID, source.Revision, r.inventoryNow(), inventoryFactsOf(observed))
 	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
 		r.log.Debug("playout: measured audio observation not persisted", "err", err)
 	}
@@ -1488,7 +1470,7 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 			format.VideoCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
 			format.Width = stream.Width
 			format.Height = stream.Height
-			format.FrameRate = parseInventoryRational(stream.FrameRate)
+			format.FrameRate = playout.ParseFrameRate(stream.FrameRate)
 			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
 			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
 			format.Interlaced = stream.Interlaced
@@ -1502,20 +1484,6 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 		}
 	}
 	return format
-}
-
-func parseInventoryRational(value string) float64 {
-	numerator, denominator, found := strings.Cut(strings.TrimSpace(value), "/")
-	if !found {
-		parsed, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		return parsed
-	}
-	n, numeratorErr := strconv.ParseFloat(strings.TrimSpace(numerator), 64)
-	d, denominatorErr := strconv.ParseFloat(strings.TrimSpace(denominator), 64)
-	if numeratorErr != nil || denominatorErr != nil || d == 0 {
-		return 0
-	}
-	return n / d
 }
 
 func (r *playoutResolver) inventoryNow() time.Time {

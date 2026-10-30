@@ -1,4 +1,4 @@
-package filler
+package fillerdefectfloor
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 type defectMemStore struct {
@@ -37,14 +38,14 @@ func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at 
 	return ErrCopyGone
 }
 
-func (m *defectMemStore) GetClip(_ context.Context, hash string) (StoreClip, bool, error) {
+func (m *defectMemStore) GetClip(_ context.Context, hash string) (filler.StoreClip, bool, error) {
 	for _, c := range m.clips {
 		if c.Hash == hash {
 			c.Held = c.Held || m.heldNow[hash]
 			return c.StoreClip, true, nil
 		}
 	}
-	return StoreClip{}, false, nil
+	return filler.StoreClip{}, false, nil
 }
 
 func (m *defectMemStore) ListClipPaths(context.Context) ([]string, error) {
@@ -101,7 +102,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	clip := func(body string, era int, edit func(*DefectClip)) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement = hash, ClipRelPath(hash, ".mp4"), era, Commercial, PlacementBreakBody
+		c.Hash, c.Path, c.Era, c.Kind, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), era, filler.Commercial, filler.PlacementBreakBody
 		if edit != nil {
 			edit(&c)
 		}
@@ -109,14 +110,18 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	}
 	fresh := clip("fresh", 1988, nil)
 	// A held clip reads as not playable until the score rung, last in the conveyor, places it.
-	held := clip("held", 2012, func(c *DefectClip) { c.Held, c.Stage, c.Placement = true, StageDefects, PlacementNotPlayable })
+	held := clip("held", 2012, func(c *DefectClip) {
+		c.Held, c.Stage, c.Placement = true, filler.StageDefects, filler.PlacementNotPlayable
+	})
 	// Held short of the rung: its bytes may not be the ones that air, or it may be a whole break.
-	early := clip("early", 2012, func(c *DefectClip) { c.Held, c.Stage, c.Placement = true, StageTranscode, PlacementNotPlayable })
+	early := clip("early", 2012, func(c *DefectClip) {
+		c.Held, c.Stage, c.Placement = true, filler.StageTranscode, filler.PlacementNotPlayable
+	})
 	current := clip("current", 1988, nil)
 	recorrected := clip("re-dated", 2015, nil) // judged as 1988 before an operator fixed its era
 	broken := clip("broken", 1999, nil)
 	composite := clip("reel", 1990, func(c *DefectClip) { c.IsComposite = true })
-	unplayable := clip("unplayable", 1990, func(c *DefectClip) { c.Placement = PlacementNotPlayable })
+	unplayable := clip("unplayable", 1990, func(c *DefectClip) { c.Placement = filler.PlacementNotPlayable })
 
 	st := &defectMemStore{
 		clips: []DefectClip{fresh, held, early, current, recorrected, broken, composite, unplayable},
@@ -137,7 +142,9 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 		}
 		return soft, nil
 	}
-	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	probe := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{Width: 640, Height: 480}, nil
+	}
 
 	res, err := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
@@ -203,44 +210,44 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	blocky := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlockMean: 90}
 
-	master := func(name string) MediaAssetIdentity {
+	master := func(name string) filler.MediaAssetIdentity {
 		src := filepath.Join(dir, name)
 		if err := os.WriteFile(src, []byte(name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		hash, err := ClipID(src)
+		hash, err := filler.ClipID(src)
 		if err != nil {
 			t.Fatal(err)
 		}
-		m, err := preserveSourceMaster(ctx, dir, src, hash, SidecarTags{})
+		m, err := preserveSourceMaster(dir, src, hash)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return m
 	}
-	clip := func(body string, m MediaAssetIdentity) DefectClip {
+	clip := func(body string, m filler.MediaAssetIdentity) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
-		if err := WriteSidecarTags(filepath.Join(dir, ClipRelPath(hash, ".mp4")), SidecarTags{MediaAssets: &MediaAssetManifest{
+		if err := filler.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), filler.SidecarTags{MediaAssets: &filler.MediaAssetManifest{
 			Version: mediaAssetManifestVersion, SourceMaster: m,
 		}}, false); err != nil {
 			t.Fatal(err)
 		}
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, ClipRelPath(hash, ".mp4"), 1988, Commercial, PlacementBreakBody, 30_000
+		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
 		return c
 	}
 	shared, own, twins, kept := master("shared-source.mkv"), master("own-source.mkv"), master("twins-source.mkv"), master("kept-source.mkv")
 	failing := clip("blocky copy", own)
 	sibling := clip("blocky cut", shared) // also fails, but shares its master with a clean clip
 	clean := clip("clean copy", shared)
-	unfingerprintable := clip("blocky, no picture to fingerprint", MediaAssetIdentity{})
+	unfingerprintable := clip("blocky, no picture to fingerprint", filler.MediaAssetIdentity{})
 	// Two failing cuts of one master, retired in one pass: the master goes with the second.
 	twinA, twinB := clip("blocky twin", twins), clip("blocky twin, other cut", twins)
 	// A failing cut whose master an operator-removed clip also names: that clip can be restored.
 	beside, removed := clip("blocky beside a removed cut", kept), clip("removed cut", kept)
 	removed.RemovedAt = t0
 	// Merged into a better copy by creative identity after the floor listed it.
-	merged := clip("blocky, merged away mid-pass", MediaAssetIdentity{})
+	merged := clip("blocky, merged away mid-pass", filler.MediaAssetIdentity{})
 	merged.CreatedAt = t0.Add(-time.Hour) // first in line, so the rest of the pass must still run
 
 	st := &defectMemStore{clips: []DefectClip{failing, sibling, clean, unfingerprintable, twinA, twinB, beside, removed, merged},
@@ -257,7 +264,9 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 		}
 		return someFingerprint(ctx, file, ms)
 	}
-	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	probe := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{Width: 640, Height: 480}, nil
+	}
 	res, err := NewDefectFloor(st, probe, measure, fingerprint, nil, dir, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -307,15 +316,15 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	clip := func(body string, held bool) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		m := manifest
-		if err := WriteSidecarTags(filepath.Join(dir, ClipRelPath(hash, ".mp4")), SidecarTags{MediaAssets: &m}, false); err != nil {
+		if err := filler.WriteSidecarTags(filepath.Join(dir, filler.ClipRelPath(hash, ".mp4")), filler.SidecarTags{MediaAssets: &m}, false); err != nil {
 			t.Fatal(err)
 		}
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.Held = hash, ClipRelPath(hash, ".mp4"), 1988, Commercial, PlacementBreakBody, held
+		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.Held = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, held
 		return c
 	}
 	admitted, waiting := clip("an admitted ad", false), clip("an ad still at the defects rung", true)
-	waiting.Stage = StageDefects
+	waiting.Stage = filler.StageDefects
 	// Listed as admitted, then held by an operator's rewind while the pass was judging.
 	rewound := clip("an ad rewound mid-pass", false)
 	st := &defectMemStore{clips: []DefectClip{admitted, waiting, rewound}, records: map[string]DefectRecord{},
@@ -323,7 +332,9 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	measure := func(context.Context, string, int, int, bool) (defects.Readings, error) {
 		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
 	}
-	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	probe := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{Width: 640, Height: 480}, nil
+	}
 	floor := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, nil)
 
 	res, err := floor.Run(ctx)
@@ -333,23 +344,21 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	if res.Released != 1 {
 		t.Fatalf("pass = %+v, want the admitted clip's evidence released", res)
 	}
-	if tags, ok := ReadSidecarTags(filepath.Join(dir, admitted.Path)); !ok || tags.MediaAssets == nil ||
+	if tags, ok := filler.ReadSidecarTags(filepath.Join(dir, admitted.Path)); !ok || tags.MediaAssets == nil ||
 		tags.MediaAssets.Evidence != nil || tags.MediaAssets.SourceMaster != manifest.SourceMaster || tags.MediaAssets.Playback == nil {
 		t.Fatalf("admitted sidecar = %+v (ok %v), want the master and playback kept and no evidence", tags.MediaAssets, ok)
 	}
-	if tags, _ := ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+	if tags, _ := filler.ReadSidecarTags(filepath.Join(dir, waiting.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 		t.Fatal("a held clip's evidence was released before admission")
 	}
-	if tags, _ := ReadSidecarTags(filepath.Join(dir, rewound.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+	if tags, _ := filler.ReadSidecarTags(filepath.Join(dir, rewound.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
 		t.Fatal("a clip held since the listing had its evidence released under its re-run")
 	}
 	if _, err := os.Stat(evidenceFile); err != nil {
 		t.Fatalf("evidence the held clip still names was deleted: %v", err)
 	}
-	if !(&Pipeline{clipDir: dir}).evidenceReleased(StoreClip{Clip: admitted.Clip}) ||
-		(&Pipeline{clipDir: dir}).evidenceReleased(StoreClip{Clip: waiting.Clip}) {
-		t.Fatal("a rewind would not know which clip must rebuild its evidence from the transcode")
-	}
+	// That a sidecar with no evidence copy reads as "released" to a rewind is asserted in
+	// internal/filler (TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves).
 
 	// Both admitted, now: the last clip naming the file releases it, and the file goes.
 	for i := range st.clips {
@@ -409,7 +418,7 @@ func TestDefectFloor_StopsDecodingWhenTheBudgetRunsOut(t *testing.T) {
 	for _, body := range []string{"a", "b", "c"} {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := DefectClip{CreatedAt: clock}
-		c.Hash, c.Path, c.Kind, c.Placement = hash, ClipRelPath(hash, ".mp4"), Commercial, PlacementBreakBody
+		c.Hash, c.Path, c.Kind, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), filler.Commercial, filler.PlacementBreakBody
 		clips = append(clips, c)
 	}
 	st := &defectMemStore{clips: clips, records: map[string]DefectRecord{}}
@@ -417,7 +426,9 @@ func TestDefectFloor_StopsDecodingWhenTheBudgetRunsOut(t *testing.T) {
 		clock = clock.Add(defectMeasureBudget) // each decode spends the whole budget
 		return defects.Readings{Version: defects.MeasurementVersion}, nil
 	}
-	probe := func(context.Context, string) (Probed, error) { return Probed{Width: 640, Height: 480}, nil }
+	probe := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{Width: 640, Height: 480}, nil
+	}
 	res, err := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return clock }, nil).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)

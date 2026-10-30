@@ -450,10 +450,28 @@ func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Sele
 	return a.CoverageFrom(clips, channelID, sel), nil
 }
 
-// Catalog loads the full clip catalog once, for a caller that will then ask several
-// catalog-shaped questions of it (the pool report asks one per live channel). Pairs with
-// CoverageFrom: load here, answer there.
-func (a *PodAdapter) Catalog(ctx context.Context) ([]Clip, error) { return a.catalog.AllClips(ctx) }
+// PoolFor is the pool strip's report (§10 V35) over ONE catalog read: the catalog-wide counts
+// (PoolCounts) plus one CoverageFrom per channel, worst first. `Untagged` is left for the caller,
+// which owns the store predicate (see the field).
+//
+// ⚠ One snapshot answers every number. The counts and each channel's coverage used to come from
+// separate catalog loads, so a clip admitted between them could make the strip disagree with
+// itself; it is also one table read instead of two.
+func (a *PodAdapter) PoolFor(ctx context.Context, channels []PoolChannel) (PoolReport, error) {
+	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return PoolReport{}, err
+	}
+	report := PoolCounts(clips, a.pol())
+	for _, ch := range channels {
+		report.Channels = append(report.Channels, ChannelCoverage{
+			ChannelID: ch.ChannelID, Name: ch.Name, Number: ch.Number,
+			Report: a.CoverageFrom(clips, ch.ChannelID, ch.Selection),
+		})
+	}
+	OrderWorstFirst(report.Channels)
+	return report, nil
+}
 
 // CoverageFrom is CoverageFor over a catalog the caller already holds — the same derivation,
 // the same window, the same answer, minus the load.
@@ -500,8 +518,8 @@ func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material
 // exists at all, before any channel's selection narrows it.
 //
-// The channel-shaped half is assembled by the caller from CoverageFor, one call per live
-// channel, so this adds no second opinion about matching. It only counts.
+// The channel-shaped half is PoolFor's, from CoverageFrom per live channel, so this adds no
+// second opinion about matching. It only counts.
 func (a *PodAdapter) PoolCounts(ctx context.Context) (PoolReport, error) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {

@@ -100,7 +100,7 @@ func eligible(ch store.Channel) bool {
 	if ch.IntentRef == "" || ch.Policy.AutoCurate == nil {
 		return false
 	}
-	return ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached
+	return ch.Status.Reconcilable()
 }
 
 // refreshIntent builds the intent for a re-curation refine: the channel's ORIGINAL intent

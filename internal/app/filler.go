@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -19,12 +18,12 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -1494,7 +1493,26 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 // Paused and detached channels are excluded: their breaks are not airing, so counting them as
 // "uncovered" would report a problem the operator deliberately created.
 func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) {
-	report, err := a.pods.PoolCounts(ctx)
+	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+	// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused,
+	// not detached" (every managed state qualifies, drifted included — a transient "the guide is
+	// catching up", not a channel that stopped airing).
+	poolChannels := make([]filler.PoolChannel, 0, len(chans))
+	for _, ch := range chans {
+		if !ch.Status.Reconcilable() {
+			continue
+		}
+		poolChannels = append(poolChannels, filler.PoolChannel{
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Selection: channels.SelectionForChannel(ch),
+		})
+	}
+	// ⚠ ONE catalog load answers the counts and every channel's coverage (PoolFor), and each channel's
+	// number is the SAME `Coverage` derivation the channel page shows — the invariant this function
+	// is built on.
+	report, err := a.pods.PoolFor(ctx, poolChannels)
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
@@ -1518,50 +1536,6 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
-
-	chans, err := a.store.ListChannels(ctx)
-	if err != nil {
-		return filler.PoolReport{}, err
-	}
-	// ⚠ ONE catalog load for every channel's coverage, not one each. `CoverageFor` loads the
-	// catalog per call, so asking it per channel made this request O(channels) full-table reads —
-	// 20 channels meant 20 `AllClips` on top of the two counts above. `CoverageFrom` runs the
-	// identical derivation over a catalog passed in, so the numbers are still the SAME `Coverage`
-	// the channel page shows (the invariant this function is built on); only the redundant reads
-	// are gone.
-	clips, err := a.pods.Catalog(ctx)
-	if err != nil {
-		return filler.PoolReport{}, err
-	}
-	for _, c := range clips {
-		if c.IsBumper() {
-			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
-		}
-	}
-	for _, ch := range chans {
-		// The same two-state DENY-LIST `recurate.eligible` uses, for the same reason: every
-		// managed state qualifies (live, building, and drifted), because drifted is a transient
-		// "the guide is catching up" state, not a channel that stopped airing. Only paused
-		// (deliberately off the sweep) and detached (soft-deleted) are excluded.
-		if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
-			continue
-		}
-		cov := a.pods.CoverageFrom(clips, ch.ID, channels.SelectionForChannel(ch))
-		report.Channels = append(report.Channels, filler.ChannelCoverage{
-			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Report: cov,
-		})
-	}
-
-	// Worst first, so a caller naming "the channel to fix" needs no sort of its own. Ties
-	// break on channel number for a stable order — an unstable list would make the strip's
-	// diagnosis line flicker between equally-bad channels on every poll.
-	sort.SliceStable(report.Channels, func(i, j int) bool {
-		li, lj := report.Channels[i].Report.Level, report.Channels[j].Report.Level
-		if li != lj {
-			return filler.LevelWorseThan(li, lj)
-		}
-		return report.Channels[i].Number < report.Channels[j].Number
-	})
 	return report, nil
 }
 
@@ -1799,7 +1773,7 @@ type fillerDefectStoreAdapter struct{ st fillerstore.Store }
 func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
 	err := a.st.RetireDefectiveCopy(ctx, hash, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return filler.ErrCopyGone
+		return fillerdefectfloor.ErrCopyGone
 	}
 	return err
 }
@@ -1828,7 +1802,7 @@ func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, cli
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 
-func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler.DefectClip, error) {
+func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]fillerdefectfloor.DefectClip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		return nil, err
@@ -1841,45 +1815,45 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 	for _, r := range rows {
 		stage[r.ClipHash] = r.Stage
 	}
-	out := make([]filler.DefectClip, len(clips))
+	out := make([]fillerdefectfloor.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = filler.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
+		out[i] = fillerdefectfloor.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
 			Stage: stage[c.Hash]}
 	}
 	return out, nil
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]filler.DefectRecord, error) {
+func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]fillerdefectfloor.DefectRecord, error) {
 	rows, err := a.st.ListClipDefects(ctx)
 	if errors.Is(err, store.ErrCorruptClipDefects) {
-		err = fmt.Errorf("%w: %w", filler.ErrDefectRecordsCorrupt, err)
+		err = fmt.Errorf("%w: %w", fillerdefectfloor.ErrDefectRecordsCorrupt, err)
 	} else if err != nil {
 		return nil, err
 	}
-	out := make(map[string]filler.DefectRecord, len(rows))
+	out := make(map[string]fillerdefectfloor.DefectRecord, len(rows))
 	for hash, r := range rows {
-		out[hash] = filler.DefectRecord(r)
+		out[hash] = fillerdefectfloor.DefectRecord(r)
 	}
 	return out, err
 }
 
-func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (filler.DefectRecord, bool, error) {
+func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (fillerdefectfloor.DefectRecord, bool, error) {
 	r, ok, err := a.st.GetClipDefects(ctx, clipHash)
-	return filler.DefectRecord(r), ok, err
+	return fillerdefectfloor.DefectRecord(r), ok, err
 }
 
-func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r filler.DefectRecord) error {
+func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r fillerdefectfloor.DefectRecord) error {
 	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]filler.DefectLabel, error) {
+func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]fillerdefectfloor.DefectLabel, error) {
 	rows, err := a.st.ListClipDefectLabels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]filler.DefectLabel, len(rows))
+	out := make(map[string]fillerdefectfloor.DefectLabel, len(rows))
 	for hash, l := range rows {
-		out[hash] = filler.DefectLabel(l)
+		out[hash] = fillerdefectfloor.DefectLabel(l)
 	}
 	return out, nil
 }
@@ -1887,7 +1861,7 @@ func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map
 func (a fillerDefectStoreAdapter) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
 	err := a.st.SetClipDefectLabel(ctx, clipHash, label, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return filler.ErrDefectNotMeasured
+		return fillerdefectfloor.ErrDefectNotMeasured
 	}
 	return err
 }
