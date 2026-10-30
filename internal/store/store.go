@@ -25,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -41,12 +42,17 @@ var ErrNotFound = storedb.ErrNotFound
 // ErrConditionedClipMismatch reports a conditioned clip adoption whose catalog rows are not one
 // of the exact source-only, source-plus-held-reconstruction, or target-only states the owner-bound
 // recovery protocol permits. Callers must hold it for review.
-var ErrConditionedClipMismatch = errors.New("store: conditioned clip does not match the catalog")
+//
+// It is catalogstore.ErrConditionedClipMismatch, the same value under a second name, so errors.Is
+// matches an error created in either package.
+var ErrConditionedClipMismatch = catalogstore.ErrConditionedClipMismatch
 
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
 // slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
 // never retry the same write blindly.
-var ErrTaxonConflict = errors.New("store: taxonomy conflict")
+//
+// It is catalogstore.ErrTaxonConflict, the same value under a second name.
+var ErrTaxonConflict = catalogstore.ErrTaxonConflict
 
 // ErrProposalNotSubmitted reports a terminal proposal decision that lost the
 // submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:

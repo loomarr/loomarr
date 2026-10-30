@@ -19,18 +19,18 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err := s.SeedTaxonomy(ctx, taxonomy.SeedForest(), now); err != nil {
 		return err
 	}
-	if err := s.convergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), now); err != nil {
+	if err := s.ConvergeTaxonomySeed(ctx, taxonomy.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// Holidays follow their taxa (a holiday row references its seasonal taxon), and the heal runs
 	// last so a shipped holiday is stored dated before an orphan taxon could claim its slug undated.
-	if err := s.convergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), now); err != nil {
+	if err := s.ConvergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), now); err != nil {
 		return err
 	}
-	if err := s.healUndatedHolidays(ctx, now); err != nil {
+	if err := s.HealUndatedHolidays(ctx, now); err != nil {
 		return err
 	}
-	if err := s.convergeBroadcastStationSeed(ctx, broadcaststation.SeedRevisions(), now); err != nil {
+	if err := s.ConvergeBroadcastStationSeed(ctx, broadcaststation.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the
@@ -42,7 +42,7 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 		return err
 	}
 	// The filler enrichment backfill runs after these, in fillerstore.Open.
-	return s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
+	return s.RebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when

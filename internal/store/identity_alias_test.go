@@ -73,10 +73,10 @@ var (
 // out the same *identitystore.Store methods, with no forwarding layer in between.
 func TestSQLStoreIdentityIsTheEmbeddedCluster(t *testing.T) {
 	s, ok := adapterOf(newSQLiteStore(t))
-	if !ok || s.Store == nil {
+	if !ok || s.identityCluster == nil {
 		t.Fatal("sqlStore has no identity cluster bound")
 	}
-	var _ UserStore = s.Store
-	var _ InvitationStore = s.Store
-	var _ PasswordRecoveryStore = s.Store
+	var _ UserStore = s.identityCluster
+	var _ InvitationStore = s.identityCluster
+	var _ PasswordRecoveryStore = s.identityCluster
 }

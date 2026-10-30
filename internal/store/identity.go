@@ -29,6 +29,13 @@ const (
 // a sqlStore calls it; the *identitystore.Store it installs is embedded, so the cluster's methods
 // are sqlStore's and the aggregate Store interface is satisfied without forwarders.
 func bindIdentity(s *sqlStore) *sqlStore {
-	s.Store = identitystore.New(s.kernel())
+	s.identityCluster = identitystore.New(s.kernel())
 	return s
 }
+
+// identityCluster and catalogCluster (catalog.go) name the two embedded clusters. Both packages call
+// their type Store, and an embedded field takes its type's name, so embedding them directly would
+// collide on the field and make every method they share ambiguous. An alias gives each embed its
+// own field name and keeps method promotion, so the aggregate Store interface is still satisfied
+// without a forwarder per method.
+type identityCluster = identitystore.Store

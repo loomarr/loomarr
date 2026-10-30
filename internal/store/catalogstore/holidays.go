@@ -1,14 +1,14 @@
-package store
+package catalogstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -16,8 +16,8 @@ import (
 // stored as written; holidayvocab.New validates them into the snapshot the engine reads.
 
 // ListHolidays returns every holiday definition in display order.
-func (s *sqlStore) ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error) {
-	return listHolidaysFrom(ctx, s.db)
+func (s *Store) ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error) {
+	return listHolidaysFrom(ctx, s.h)
 }
 
 func listHolidaysFrom(ctx context.Context, q taxonomyQueryer) ([]holidayvocab.Holiday, error) {
@@ -61,7 +61,7 @@ func listHolidaysFrom(ctx context.Context, q taxonomyQueryer) ([]holidayvocab.Ho
 }
 
 // insertHolidayTx adds h at the end of the display order. An id already stored is left as it is.
-func (s *sqlStore) insertHolidayTx(ctx context.Context, tx *sql.Tx, h holidayvocab.Holiday, at time.Time) error {
+func (s *Store) insertHolidayTx(ctx context.Context, tx storedb.Tx, h holidayvocab.Holiday, at time.Time) error {
 	words, _ := json.Marshal(h.Words)
 	kept, _ := json.Marshal(nonNilKept(h.Kept))
 	members, _ := json.Marshal(nonNil(h.Members))
@@ -74,7 +74,7 @@ func (s *sqlStore) insertHolidayTx(ctx context.Context, tx *sql.Tx, h holidayvoc
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position), -1) + 1 FROM holidays`).Scan(&position); err != nil {
 		return fmt.Errorf("insert holiday %s: position: %w", h.ID, err)
 	}
-	_, err := tx.ExecContext(ctx, s.ph(
+	_, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO holidays (id, label, position, words, kept, air_window, members, name_needs_corroboration, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO NOTHING`),
@@ -92,11 +92,11 @@ func nonNilKept(k []holidayvocab.Keeping) []holidayvocab.Keeping {
 	return k
 }
 
-// convergeHolidaySeed applies each shipped holiday revision once (#2030 decision 28), after the
+// ConvergeHolidaySeed applies each shipped holiday revision once (#2030 decision 28), after the
 // taxonomy seed has made the holidays' seasonal taxa. A holiday whose id is already stored keeps the
 // operator's version; one whose taxon the operator deleted, or moved to another axis, is skipped.
 // The revision is recorded even then, so an operator's choice is never undone by boot.
-func (s *sqlStore) convergeHolidaySeed(ctx context.Context, revisions []holidayvocab.SeedRevision, at time.Time) error {
+func (s *Store) ConvergeHolidaySeed(ctx context.Context, revisions []holidayvocab.SeedRevision, at time.Time) error {
 	for _, revision := range revisions {
 		if err := s.applyHolidaySeedRevision(ctx, revision, at); err != nil {
 			return fmt.Errorf("converge holiday seed v%d: %w", revision.Version, err)
@@ -105,8 +105,8 @@ func (s *sqlStore) convergeHolidaySeed(ctx context.Context, revisions []holidayv
 	return nil
 }
 
-func (s *sqlStore) applyHolidaySeedRevision(ctx context.Context, revision holidayvocab.SeedRevision, at time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) applyHolidaySeedRevision(ctx context.Context, revision holidayvocab.SeedRevision, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
@@ -115,7 +115,7 @@ func (s *sqlStore) applyHolidaySeedRevision(ctx context.Context, revision holida
 		return err
 	}
 	var applied int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM holiday_seed_revisions WHERE version = ?`), revision.Version).Scan(&applied); err != nil {
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM holiday_seed_revisions WHERE version = ?`), revision.Version).Scan(&applied); err != nil {
 		return fmt.Errorf("read marker: %w", err)
 	}
 	if applied > 0 {
@@ -152,17 +152,17 @@ func (s *sqlStore) applyHolidaySeedRevision(ctx context.Context, revision holida
 			dated[h.ID] = len(h.Members) == 0
 		}
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO holiday_seed_revisions (version, applied_at) VALUES (?, ?)`), revision.Version, epoch(at)); err != nil {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO holiday_seed_revisions (version, applied_at) VALUES (?, ?)`), revision.Version, epoch(at)); err != nil {
 		return fmt.Errorf("record marker: %w", err)
 	}
 	return tx.Commit()
 }
 
-// healUndatedHolidays gives every seasonal taxon without a holiday an undated one (#2030 decision
+// HealUndatedHolidays gives every seasonal taxon without a holiday an undated one (#2030 decision
 // 30): a seasonal tag an operator made before holidays were data. Its clips air year-round until
 // the operator dates it.
-func (s *sqlStore) healUndatedHolidays(ctx context.Context, at time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) HealUndatedHolidays(ctx context.Context, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("heal holidays: begin: %w", err)
 	}
@@ -170,7 +170,7 @@ func (s *sqlStore) healUndatedHolidays(ctx context.Context, at time.Time) error 
 	if err := s.lockTaxonomyTx(ctx, tx); err != nil {
 		return err
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(`SELECT t.slug, t.label FROM taxa t LEFT JOIN holidays h ON h.id = t.slug WHERE t.axis = ? AND h.id IS NULL ORDER BY t.slug`), string(taxonomy.AxisSeasonal))
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT t.slug, t.label FROM taxa t LEFT JOIN holidays h ON h.id = t.slug WHERE t.axis = ? AND h.id IS NULL ORDER BY t.slug`), string(taxonomy.AxisSeasonal))
 	if err != nil {
 		return fmt.Errorf("heal holidays: list: %w", err)
 	}
@@ -203,7 +203,7 @@ func (s *sqlStore) healUndatedHolidays(ctx context.Context, at time.Time) error 
 // being seasonal takes its holiday with it, but only an undated one. A dated or group holiday holds
 // clips' seasons and channels' calendars, so it is retired through the holidays, not the taxonomy.
 // before runs ahead of the taxon write (the holiday row references it); after runs once it exists.
-func (s *sqlStore) syncTaxonHolidayTx(ctx context.Context, tx *sql.Tx, current taxonomy.Taxon, edit TaxonomyEdit, at time.Time) (after func() error, err error) {
+func (s *Store) syncTaxonHolidayTx(ctx context.Context, tx storedb.Tx, current taxonomy.Taxon, edit TaxonomyEdit, at time.Time) (after func() error, err error) {
 	wasSeasonal := !edit.Create && current.Axis == taxonomy.AxisSeasonal
 	isSeasonal := !edit.Delete && edit.Taxon.Axis == taxonomy.AxisSeasonal
 	after = func() error { return nil }
@@ -216,7 +216,7 @@ func (s *sqlStore) syncTaxonHolidayTx(ctx context.Context, tx *sql.Tx, current t
 		if err := refuseHolidayRetirement(current.Slug, holidays); err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM holidays WHERE id = ?`), current.Slug); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM holidays WHERE id = ?`), current.Slug); err != nil {
 			return nil, fmt.Errorf("retire holiday %s: %w", current.Slug, err)
 		}
 		if err := s.dropGroupMembershipTx(ctx, tx, current.Slug, holidays, at); err != nil {
@@ -248,7 +248,7 @@ func refuseHolidayRetirement(id string, holidays []holidayvocab.Holiday) error {
 
 // dropGroupMembershipTx removes a retired holiday from every group that lists it: New rejects a
 // member that names no holiday, so a dangling one would make the whole stored set unloadable.
-func (s *sqlStore) dropGroupMembershipTx(ctx context.Context, tx *sql.Tx, id string, holidays []holidayvocab.Holiday, at time.Time) error {
+func (s *Store) dropGroupMembershipTx(ctx context.Context, tx storedb.Tx, id string, holidays []holidayvocab.Holiday, at time.Time) error {
 	for _, h := range holidays {
 		kept := make([]string, 0, len(h.Members))
 		for _, m := range h.Members {
@@ -260,7 +260,7 @@ func (s *sqlStore) dropGroupMembershipTx(ctx context.Context, tx *sql.Tx, id str
 			continue
 		}
 		members, _ := json.Marshal(kept)
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE holidays SET members = ?, updated_at = ? WHERE id = ?`), string(members), epoch(at), h.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE holidays SET members = ?, updated_at = ? WHERE id = ?`), string(members), epoch(at), h.ID); err != nil {
 			return fmt.Errorf("drop %s from group %s: %w", id, h.ID, err)
 		}
 	}

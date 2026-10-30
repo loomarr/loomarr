@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -44,10 +43,14 @@ type sqlStore struct {
 	// approval ordering. SQLite is single-instance; Postgres uses advisory locks.
 	// Entries are bounded by the household user count (§1) and live with the store.
 	approvalLocks sync.Map
-	// Store is the identity cluster (users, sessions, devices, invitations, contact addresses,
-	// password recovery, notifications), embedded so its methods are this store's. It owns its
-	// own keyed locks; bindIdentity installs it on every construction.
-	*identitystore.Store
+	// The identity cluster (users, sessions, devices, invitations, contact addresses, password
+	// recovery, notifications) and the catalog cluster (clips, taxonomy, holidays, images,
+	// broadcast stations), embedded so their methods are this store's. Each is embedded through a
+	// named alias (see identity.go, catalog.go) because the field name of an embedded type is its
+	// type name, and both are called Store. bindIdentity and bindCatalog install them on every
+	// construction.
+	*identityCluster
+	*catalogCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -56,6 +59,12 @@ type sqlStore struct {
 	channelClaimSQL      string      // dialect-specific ClaimDueChannels statement (already rebound)
 	jobClaimSQL          string      // dialect-specific ClaimDueJobs statement (already rebound)
 	scheduledJobClaimSQL string      // dialect-specific ClaimDueScheduledJobs statement (already rebound)
+}
+
+// bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a
+// store never exists with a nil cluster.
+func bindClusters(s *sqlStore) *sqlStore {
+	return bindCatalog(bindIdentity(s))
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's

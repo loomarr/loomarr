@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -210,8 +211,8 @@ func clipOrderBy(f ClipFilter) (string, error) {
 	return " ORDER BY " + col + " " + dir + ", hash " + dir, nil
 }
 
-func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		// ⚠ play_count / last_played_at are INSERTed (so a new row starts at 0) but deliberately
 		// NOT in the DO UPDATE list. A re-sync knows nothing about plays, so writing
 		// ⚠ `removed_at` is omitted from DO UPDATE for the same reason, and it is the thing that
@@ -316,7 +317,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 // the bytes that no longer exist. Every database reference therefore moves in one transaction;
 // the caller publishes the verified content-addressed file before entering this method and keeps
 // the original file until it commits.
-func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error {
+func (s *Store) ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error {
 	if oldHash == "" || c.Hash == "" || c.Path == "" {
 		return fmt.Errorf("replace clip identity: old hash, new hash and path are required")
 	}
@@ -326,7 +327,7 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 	// Update only the transformed media facts. Keep the Tunarr registration when even the path is
 	// unchanged; otherwise the next catalog sync must register the new location.
 	if oldHash == c.Hash {
-		res, err := s.db.ExecContext(ctx, s.ph(`UPDATE clips
+		res, err := s.h.ExecContext(ctx, s.h.Rebind(`UPDATE clips
 			SET path = ?,
 			    tunarr_program_id = CASE WHEN path = ? THEN tunarr_program_id ELSE NULL END,
 			    duration_ms = ?, quality = ?, updated_at = ?
@@ -343,7 +344,7 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 		}
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("replace clip identity %s: %w", oldHash, err)
 	}
@@ -358,8 +359,8 @@ func (s *sqlStore) ReplaceClipIdentity(ctx context.Context, oldHash string, c Cl
 	return nil
 }
 
-func (s *sqlStore) replaceClipIdentityTx(ctx context.Context, tx *sql.Tx, oldHash string, c Clip) error {
-	res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips
+func (s *Store) replaceClipIdentityTx(ctx context.Context, tx storedb.Tx, oldHash string, c Clip) error {
+	res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips
 		SET hash = ?, path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 		WHERE hash = ?`), c.Hash, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
 	if err != nil {
@@ -376,7 +377,7 @@ func (s *sqlStore) replaceClipIdentityTx(ctx context.Context, tx *sql.Tx, oldHas
 	return s.rekeyClipReferencesTx(ctx, tx, oldHash, c.Hash)
 }
 
-func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHash, newHash string) error {
+func (s *Store) rekeyClipReferencesTx(ctx context.Context, tx storedb.Tx, oldHash, newHash string) error {
 	refs := []struct {
 		query string
 		args  []any
@@ -397,12 +398,12 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 		{`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`, []any{newHash, "clip", oldHash}},
 	}
 	for _, ref := range refs {
-		if _, err := tx.ExecContext(ctx, s.ph(ref.query), ref.args...); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(ref.query), ref.args...); err != nil {
 			return fmt.Errorf("replace clip identity %s references: %w", oldHash, err)
 		}
 	}
 	for _, step := range identityHistoryMoves(oldHash, newHash) {
-		if _, err := tx.ExecContext(ctx, s.ph(step.query), step.args...); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {
 			return fmt.Errorf("replace clip identity %s history: %w", oldHash, err)
 		}
 	}
@@ -418,12 +419,12 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 // only the three catalog shapes that proof can own: an ordinary source-only re-key, a source plus
 // the held row Sync reconstructed from that sidecar, or the exact target-only state left by a
 // re-key that committed before process loss.
-func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, target Clip) error {
+func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, target Clip) error {
 	if sourceHash == "" || target.Hash == "" || sourceHash == target.Hash || target.Path == "" {
 		return ErrConditionedClipMismatch
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("commit conditioning publication %s: %w", target.Hash, err)
 	}
@@ -443,10 +444,10 @@ func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, 
 	}
 	query := `SELECT hash, path, parent_hash, held, removed_at, is_composite
 		FROM clips WHERE hash IN (?, ?)`
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		query += ` FOR UPDATE`
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(query), sourceHash, target.Hash)
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(query), sourceHash, target.Hash)
 	if err != nil {
 		return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
 	}
@@ -498,7 +499,7 @@ func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, 
 			!targetState.held || targetState.removedAt != 0 || targetState.isComposite {
 			return ErrConditionedClipMismatch
 		}
-		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
+		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
 			(name, name_source, kind, era, audience, category, rating, source, ai_tagged, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
@@ -525,7 +526,7 @@ func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, 
 		if err := s.rekeyClipReferencesTx(ctx, tx, sourceHash, target.Hash); err != nil {
 			return err
 		}
-		res, err = tx.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE hash = ?`), sourceHash)
+		res, err = tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM clips WHERE hash = ?`), sourceHash)
 		if err != nil {
 			return fmt.Errorf("commit conditioning publication %s retire source: %w", target.Hash, err)
 		}
@@ -543,15 +544,11 @@ func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, 
 	return nil
 }
 
-func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash, newHash string) error {
-	query := `SELECT id, policy_json FROM channels`
-	if s.dialect == DialectPostgres {
-		// Lock the policy snapshots before decoding them. Without this, a concurrent
-		// channel CAS could commit between SELECT and UPDATE and this maintenance
-		// transaction would overwrite its policy with the pre-edit JSON.
-		query += ` FOR UPDATE`
-	}
-	rows, err := tx.QueryContext(ctx, query)
+func (s *Store) rekeyChannelClipRefs(ctx context.Context, tx storedb.Tx, oldHash, newHash string) error {
+	// The locking read: it holds the policy snapshots before they are decoded. Without that, a
+	// concurrent channel CAS could commit between SELECT and UPDATE and this maintenance
+	// transaction would overwrite its policy with the pre-edit JSON.
+	rows, err := s.channels.LockChannelPolicies(ctx, tx)
 	if err != nil {
 		return err
 	}
@@ -593,9 +590,7 @@ func (s *sqlStore) rekeyChannelClipRefs(ctx context.Context, tx *sql.Tx, oldHash
 		return err
 	}
 	for _, item := range changed {
-		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE channels SET policy_json = ?, revision = revision + 1 WHERE id = ?`),
-			string(item.blob), item.id); err != nil {
+		if err := s.channels.SetChannelPolicy(ctx, tx, item.id, string(item.blob)); err != nil {
 			return err
 		}
 	}
@@ -662,8 +657,8 @@ const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kin
 	play_count, last_played_at, suggested_era,
 		removed_at, held, confidence, updated_at, created_at FROM clips`
 
-func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
-	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+func (s *Store) GetClip(ctx context.Context, id string) (Clip, error) {
+	c, err := scanClip(s.h.QueryRowContext(ctx, s.h.Rebind(clipSelect+` WHERE hash = ?`), id))
 	if err != nil {
 		return Clip{}, err
 	}
@@ -673,7 +668,7 @@ func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 // clipWithTags fills a single clip's taxonomy Tags (§10 V45a). Wraps attachTags for the two
 // single-row readers so they load tags the same way the listing does — one clip is a one-element
 // batch, so there is no separate query shape to keep in step.
-func (s *sqlStore) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
+func (s *Store) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
 	batch := []Clip{c}
 	if err := s.attachTags(ctx, batch); err != nil {
 		return Clip{}, err
@@ -693,8 +688,8 @@ func (s *sqlStore) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
 //
 // The media route needs this one rather than the hash lookup because its URL carries the path —
 // which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.
-func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error) {
-	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+func (s *Store) GetClipByPath(ctx context.Context, path string) (Clip, error) {
+	c, err := scanClip(s.h.QueryRowContext(ctx, s.h.Rebind(clipSelect+` WHERE path = ?`), path))
 	if err != nil {
 		return Clip{}, err
 	}
@@ -706,7 +701,7 @@ func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error)
 //
 // Ordering comes from clipOrderBy (always total — see its tie-break warning), and `Limit`/`Offset`
 // page the result. ⚠ An unknown `Sort` is an ERROR (ErrUnknownClipSort), never a fall-back.
-func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) {
+func (s *Store) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) {
 	where, args := clipWhere(f)
 	q := clipSelect
 	if len(where) > 0 {
@@ -728,7 +723,7 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		}
 	}
 
-	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -750,14 +745,14 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 // large catalog that is the dominant cost of rendering a settings page. A second hand-written
 // WHERE here would be free to drift from the one the listing (and the tagging job) actually use,
 // which is the failure this deliberately forecloses.
-func (s *sqlStore) CountClips(ctx context.Context, f ClipFilter) (int, error) {
+func (s *Store) CountClips(ctx context.Context, f ClipFilter) (int, error) {
 	where, args := clipWhere(f)
 	q := `SELECT COUNT(*) FROM clips`
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
 	var n int
-	if err := s.db.QueryRowContext(ctx, s.ph(q), args...).Scan(&n); err != nil {
+	if err := s.h.QueryRowContext(ctx, s.h.Rebind(q), args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count clips: %w", err)
 	}
 	return n, nil
@@ -769,7 +764,7 @@ func (s *sqlStore) CountClips(ctx context.Context, f ClipFilter) (int, error) {
 // the answer is one small map either way, so the load was pure waste. Honours the same default
 // exclusions as the listing (removed and held clips are out unless asked for) so the per-source
 // numbers add up to the catalog total a caller sees elsewhere.
-func (s *sqlStore) CountClipsBySource(ctx context.Context, f ClipFilter) (map[string]int, error) {
+func (s *Store) CountClipsBySource(ctx context.Context, f ClipFilter) (map[string]int, error) {
 	where, args := clipWhere(f)
 	q := `SELECT source, COUNT(*) FROM clips`
 	if len(where) > 0 {
@@ -777,7 +772,7 @@ func (s *sqlStore) CountClipsBySource(ctx context.Context, f ClipFilter) (map[st
 	}
 	q += " GROUP BY source"
 
-	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return nil, fmt.Errorf("count clips by source: %w", err)
 	}
@@ -941,12 +936,12 @@ const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR category = 
 // ⚠ **IncludeHeld is required, not optional** (§10 V38). Held clips are exactly the ones most in
 // need of tagging — a held clip is waiting for enrichment and terminal readiness — and the default
 // catalog filter excludes them. Without this the tagger would silently skip every new arrival.
-func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
+func (s *Store) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
 	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true, IncludeHeld: true})
 }
 
-func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		// ⚠ suggested_era is CONDITIONAL (§10 era grounding, V34): writing an era confirms
 		// the suggestion, so it clears in the same write; a NEW suggestion overwrites; and a
 		// write carrying NEITHER (an era-less tag edit) leaves the existing suggestion alone —
@@ -993,14 +988,14 @@ func (s *sqlStore) UpdateClipClassification(ctx context.Context, id string, era 
 //
 // updated_at is left alone: this is not a catalog edit, and touching it would make every clip
 // look freshly re-synced in the UI's "last updated" column.
-func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at, recordedAt time.Time) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) RecordClipPlay(ctx context.Context, channelID, id string, at, recordedAt time.Time) (bool, error) {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("record clip play %s: %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
+	res, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
 		VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, clip_hash, aired_at) DO NOTHING`),
 		channelID, id, at.UnixMilli(), recordedAt.UnixMilli())
 	if err != nil {
@@ -1019,13 +1014,13 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at,
 	// With fewer than fillerAiringsKept rows the subquery is NULL and nothing is deleted. Only airings
 	// past the history age go, and never the one just written: a break on air may count any recent airing, and
 	// a deleted row would let the same airing be counted again at its next resolve.
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at < ?
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at < ?
 		AND NOT (channel_id = ? AND aired_at = ?) AND aired_at <
 		(SELECT aired_at FROM filler_airings WHERE clip_hash = ? ORDER BY aired_at DESC LIMIT 1 OFFSET ?)`),
 		id, recordedAt.Add(-fillerAiringsTrimAge).UnixMilli(), channelID, at.UnixMilli(), id, fillerAiringsKept-1); err != nil {
 		return false, fmt.Errorf("trim clip airings %s: %w", id, err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET play_count = play_count + 1,
 		 last_played_at = CASE WHEN ? > last_played_at THEN ? ELSE last_played_at END
 		 WHERE hash = ?`), epoch(at), epoch(at), id); err != nil {
@@ -1046,8 +1041,8 @@ const (
 
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
-func (s *sqlStore) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at, recorded_at FROM filler_airings`)
+func (s *Store) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at, recorded_at FROM filler_airings`)
 	if err != nil {
 		return nil, fmt.Errorf("list filler airings: %w", err)
 	}
@@ -1080,8 +1075,8 @@ func exposureTime(ms int64) time.Time {
 // UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends
 // a pod while a commercial fills it — so a mis-detected kind produces structurally wrong
 // pods, not merely a mis-tagged clip.
-func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedAt time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) UpdateClipKind(ctx context.Context, id, kind string, updatedAt time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ?`),
 		kind, epoch(updatedAt), id)
 	if err != nil {
@@ -1096,8 +1091,8 @@ func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedA
 
 // RenameClip sets a clip's name and its provenance together (#1990): name_source travels with
 // name, as in UpsertClip.
-func (s *sqlStore) RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET name = ?, name_source = ?, updated_at = ? WHERE hash = ?`),
 		name, string(source), epoch(updatedAt), hash)
 	if err != nil {
@@ -1110,8 +1105,8 @@ func (s *sqlStore) RenameClip(ctx context.Context, hash, name string, source cli
 	return nil
 }
 
-func (s *sqlStore) UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE clips SET geographic_scope = ?, country = ?,
+func (s *Store) UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET geographic_scope = ?, country = ?,
 		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ? WHERE hash = ?`),
 		scope, country, network, station, airDate, evidence, epoch(updatedAt), hash)
 	if err != nil {
@@ -1127,8 +1122,8 @@ func (s *sqlStore) UpdateClipGeography(ctx context.Context, hash, scope, country
 // DeleteClip removes ONE clip by identity. Used by split confirm: the
 // compilation's identity is a path that after the cut means twenty clips, not
 // one (§10 V34). ErrNotFound for an unknown path.
-func (s *sqlStore) DeleteClip(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE path = ?`), id)
+func (s *Store) DeleteClip(ctx context.Context, id string) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM clips WHERE path = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete clip %s: %w", id, err)
 	}
@@ -1144,8 +1139,8 @@ func (s *sqlStore) DeleteClip(ctx context.Context, id string) error {
 
 // MarkClipReaped records that a composite's recording has been reclaimed (§10 V54). The row stays;
 // only the bytes are gone.
-func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET reaped_at = ?, updated_at = ? WHERE hash = ?`), epoch(at), epoch(at), hash)
 	if err != nil {
 		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
@@ -1165,8 +1160,8 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 // The row, its fingerprint, its defect record and its airings stay: together they are the "wanted:
 // better copy" entry that a cleaner copy of the same ad is matched against, and that copy inherits
 // its rotation. The caller deletes the file after this commits.
-func (s *sqlStore) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET removed_at = ?, reaped_at = ?, updated_at = ? WHERE hash = ? AND is_composite = ?`),
 		epoch(at), epoch(at), epoch(at), hash, false)
 	if err != nil {
@@ -1196,8 +1191,8 @@ type WantedCopy struct {
 
 // ListWantedCopies is every retired defective copy still waiting for a better one. A copy found
 // later folds the entry into itself (MergeInferiorCopy), which is what removes it from this list.
-func (s *sqlStore) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(
+func (s *Store) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT c.hash, c.path, c.name, c.duration_ms, d.verdict_reason, c.reaped_at
 		   FROM clips c JOIN filler_clip_defects d ON d.clip_hash = c.hash
 		  WHERE c.reaped_at IS NOT NULL AND c.is_composite = ? AND d.verdict = ?
@@ -1224,7 +1219,7 @@ func (s *sqlStore) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
 
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
-func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
+func (s *Store) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
 	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
 	// branches below and cannot disagree with whichever DELETE ran.
 	defer func() { _ = s.pruneOrphanClipFingerprints(ctx); _ = s.pruneOrphanClipDefects(ctx) }()
@@ -1236,7 +1231,7 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
 		// empty or unreadable, which is exactly when a swept reel looks most like a deleted one —
 		// and taking the tombstones here would dangle their children just as surely.
-		res, err := s.db.ExecContext(ctx, `DELETE FROM clips WHERE reaped_at IS NULL`)
+		res, err := s.h.ExecContext(ctx, `DELETE FROM clips WHERE reaped_at IS NULL`)
 		if err != nil {
 			return 0, err
 		}
@@ -1262,8 +1257,8 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 	// the very next sync would prune the row — and every clip cut out of that reel carries
 	// `parent_hash` pointing at it, so one sweep would dangle all 47 children and take V45's
 	// lineage with it. The row is a tombstone; only the bytes are gone.
-	q := s.ph(`DELETE FROM clips WHERE reaped_at IS NULL AND hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
-	res, err := s.db.ExecContext(ctx, q, args...)
+	q := s.h.Rebind(`DELETE FROM clips WHERE reaped_at IS NULL AND hash NOT IN (` + strings.Join(placeholders, ",") + `)`)
+	res, err := s.h.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("prune clips: %w", err)
 	}
@@ -1349,7 +1344,7 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 // derived from it separately at write time, not here.
 //
 // A clip with no tag rows keeps Tags == nil, which is the honest "tagger has not reached it" state.
-func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
+func (s *Store) attachTags(ctx context.Context, clips []Clip) error {
 	if len(clips) == 0 {
 		return nil
 	}
@@ -1362,7 +1357,7 @@ func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
 		args[i] = c.Hash
 	}
 	q := `SELECT clip_hash, taxon, leaf FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
-	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return fmt.Errorf("attach clip tags: %w", err)
 	}
@@ -1414,7 +1409,7 @@ func escapeLike(term string) string {
 // HoldClips sends clips to review. Ordinary callers deliberately receive no boolean that could
 // spell `held=false`; only the applied-admission transaction may release a playable clip. The
 // physical legacy auto_filed column is cleared defensively until a future table rebuild removes it.
-func (s *sqlStore) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
+func (s *Store) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if len(paths) == 0 {
 		return 0, nil
 	}
@@ -1427,7 +1422,7 @@ func (s *sqlStore) HoldClips(ctx context.Context, paths []string, at time.Time) 
 	}
 	q := `UPDATE clips SET held = TRUE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
 		strings.Join(placeholders, ",") + `)`
-	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return 0, fmt.Errorf("hold clips: %w", err)
 	}
@@ -1441,7 +1436,7 @@ func (s *sqlStore) HoldClips(ctx context.Context, paths []string, at time.Time) 
 // ReleaseCompositeHolds exposes confirmed compilation lineage without creating a publication
 // capability. The `is_composite = TRUE` predicate is load-bearing: composite rows are excluded
 // from pod selection independently of `held`, while a non-composite must use applied admission.
-func (s *sqlStore) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
+func (s *Store) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if len(paths) == 0 {
 		return 0, nil
 	}
@@ -1455,7 +1450,7 @@ func (s *sqlStore) ReleaseCompositeHolds(ctx context.Context, paths []string, at
 	args = append(args, true)
 	q := `UPDATE clips SET held = FALSE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
 		strings.Join(placeholders, ",") + `) AND is_composite = ?`
-	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return 0, fmt.Errorf("release composite holds: %w", err)
 	}
@@ -1481,7 +1476,7 @@ func (s *sqlStore) ReleaseCompositeHolds(ctx context.Context, paths []string, at
 // Returns the number of rows affected; unknown paths are silently skipped, because a bulk action
 // over a list the operator selected minutes ago races a re-scan and failing the whole batch for
 // one stale row would be worse than removing the rest.
-func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
+func (s *Store) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if len(paths) == 0 {
 		return 0, nil
 	}
@@ -1498,7 +1493,7 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 	if at.IsZero() {
 		q += ` AND reaped_at IS NULL`
 	}
-	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return 0, fmt.Errorf("set clips removed: %w", err)
 	}
@@ -1519,11 +1514,11 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 // retirement. Current-generation hashes are restored too: a cut retired by an earlier generation
 // may become byte-identical to a newly accepted cut, and UpsertClip intentionally preserves its
 // tombstone on an ordinary scan.
-func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+func (s *Store) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	if parentHash == "" {
 		return 0, errors.New("replace split children: parent hash is required")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
 	}
@@ -1538,12 +1533,8 @@ func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, 
 	return n, nil
 }
 
-func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, parentHash string, keepHashes []string, at time.Time) (int, error) {
-	query := `SELECT policy_json FROM channels`
-	if s.dialect == DialectPostgres {
-		query += ` FOR UPDATE`
-	}
-	rows, err := tx.QueryContext(ctx, query)
+func (s *Store) replaceSplitChildrenTx(ctx context.Context, tx storedb.Querier, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	rows, err := s.channels.LockChannelPolicies(ctx, tx)
 	if err != nil {
 		return 0, fmt.Errorf("replace split children %s read channel pins: %w", parentHash, err)
 	}
@@ -1554,8 +1545,8 @@ func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, paren
 		}
 	}
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
 			_ = rows.Close()
 			return 0, fmt.Errorf("replace split children %s scan channel policy: %w", parentHash, err)
 		}
@@ -1597,7 +1588,7 @@ func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, paren
 			args = append(args, hash)
 		}
 		q := `UPDATE clips SET removed_at = 0, updated_at = ? WHERE parent_hash = ? AND hash IN (` + strings.Join(placeholders, ",") + `)`
-		if _, err := tx.ExecContext(ctx, s.ph(q), args...); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(q), args...); err != nil {
 			return 0, fmt.Errorf("replace split children %s restore generation: %w", parentHash, err)
 		}
 	}
@@ -1610,7 +1601,7 @@ func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, paren
 			args = append(args, hash)
 		}
 	}
-	res, err := tx.ExecContext(ctx, s.ph(q), args...)
+	res, err := tx.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
 		return 0, fmt.Errorf("replace split children %s retire old generation: %w", parentHash, err)
 	}
@@ -1631,9 +1622,9 @@ func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, paren
 //
 // Keyed by PATH rather than hash, because that is what the job carries and what every other
 // clip-writing method here takes.
-func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET language = ?, updated_at = ? WHERE path = ?`),
+func (s *Store) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
+	_, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET language = ?, updated_at = ? WHERE path = ?`),
 		language, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip language %s: %w", path, err)
@@ -1658,9 +1649,9 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 //
 // Keyed by PATH, like SetClipLanguage and SetClipTranscript beside it — that is what the job
 // carries.
-func (s *sqlStore) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET confidence = ?, updated_at = ? WHERE path = ?`),
+func (s *Store) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
+	_, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET confidence = ?, updated_at = ? WHERE path = ?`),
 		confidence, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip confidence %s: %w", path, err)
@@ -1679,9 +1670,9 @@ func (s *sqlStore) SetClipConfidence(ctx context.Context, path string, confidenc
 // Keyed by PATH rather than hash, because that is what the job carries and what SetClipLanguage
 // beside it takes. An empty transcript is a legitimate write: it records "checked, wordless", which
 // is what stops the selective job from re-visiting a silent clip forever.
-func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET
+func (s *Store) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	_, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET
 			enrichment_revision = CASE WHEN transcript <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
 			transcript = ?, updated_at = ? WHERE path = ?`),
 		transcript, transcript, epoch(at), path)
@@ -1706,9 +1697,9 @@ func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript strin
 // and vision writers it sits beside and unlike the hash-keyed classification update — the job carries the
 // path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
 // other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.
-func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE path = ?`),
+func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
+	_, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET brand = ?, updated_at = ? WHERE path = ?`),
 		brand, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip brand %s: %w", path, err)
@@ -1729,18 +1720,18 @@ func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time
 //
 // A blank vision brand preserves a brand grounded by the text tier. Era behaves the same way. Tags
 // are additive: vision can contribute evidence without erasing an operator or the text classifier.
-func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("apply clip vision: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
 			return fmt.Errorf("apply clip vision: lock: %w", err)
 		}
 	}
-	result, err := tx.ExecContext(ctx, s.ph(
+	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET
 		   enrichment_revision = CASE WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
 		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
@@ -1761,7 +1752,7 @@ func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visib
 		return ErrNotFound
 	}
 
-	rows, err := tx.QueryContext(ctx, s.ph(
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(
 		`SELECT taxon FROM clip_tags WHERE clip_hash = ? AND leaf = ? ORDER BY taxon`), hash, true)
 	if err != nil {
 		return fmt.Errorf("apply clip vision: list asserted tags: %w", err)
@@ -1800,8 +1791,8 @@ func (s *sqlStore) ApplyClipVision(ctx context.Context, hash, path, brand, visib
 // ⚠ A separate narrow method rather than calling `ApplyClipVision` with empty strings: that one
 // is pinned as the ONLY writer of visible_text/vision_tagged and writes what it is GIVEN, so the
 // empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
-func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+func (s *Store) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET enrichment_revision = enrichment_revision + 1,
 		 visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
 		false, epoch(at), path)
@@ -1838,11 +1829,11 @@ type ClipArtworkPending struct {
 //
 // ⚠ Tombstoned clips are excluded. Adopting artwork for a clip the operator removed would copy
 // bytes into the image store purely so the GC could collect them again later.
-func (s *sqlStore) ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error) {
+func (s *Store) ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(
 		`SELECT hash, thumbnail, preview FROM clips
 		  WHERE removed_at = 0
 		    AND (   (thumbnail <> '' AND thumb_image_hash = '')
@@ -1872,9 +1863,9 @@ func (s *sqlStore) ListClipsPendingArtworkAdoption(ctx context.Context, limit in
 // ⚠ Both are written together because they come from ONE ffmpeg pass and one ingest step, but
 // either may legitimately be "" — the still can succeed while the animation fails, and a caller
 // that had only one would otherwise have to read-modify-write to avoid blanking the other.
-func (s *sqlStore) SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET thumb_image_hash = ?, hover_image_hash = ?, updated_at = ? WHERE hash = ?`),
+func (s *Store) SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error {
+	res, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET thumb_image_hash = ?, hover_image_hash = ?, updated_at = ? WHERE hash = ?`),
 		thumbHash, hoverHash, epoch(at), hash)
 	if err != nil {
 		return fmt.Errorf("set clip artwork images %s: %w", hash, err)
@@ -1885,9 +1876,9 @@ func (s *sqlStore) SetClipArtworkImages(ctx context.Context, hash, thumbHash, ho
 	return nil
 }
 
-func (s *sqlStore) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
-	res, err := s.db.ExecContext(ctx,
-		s.ph(`UPDATE clips SET is_composite = ?, updated_at = ? WHERE hash = ?`),
+func (s *Store) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	res, err := s.h.ExecContext(ctx,
+		s.h.Rebind(`UPDATE clips SET is_composite = ?, updated_at = ? WHERE hash = ?`),
 		composite, epoch(at), hash)
 	if err != nil {
 		return fmt.Errorf("set clip composite %s: %w", hash, err)

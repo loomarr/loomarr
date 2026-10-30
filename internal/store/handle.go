@@ -62,7 +62,7 @@ type sqlHandle struct {
 	s *sqlStore
 }
 
-func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.clipsIn(tx) }
+func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.Clips(tx) }
 
 // kernel is this store's pool, dialect and placeholder style as a storedb.Handle, for the store
 // packages that run on the kernel and for this package's own keyed locks.

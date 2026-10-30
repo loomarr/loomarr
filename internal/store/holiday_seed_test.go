@@ -27,7 +27,7 @@ func TestHolidaySeedAppliesOnceAndKeepsOperatorChoices(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.convergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), at); err != nil {
+	if err := s.ConvergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), at); err != nil {
 		t.Fatal(err)
 	}
 	ids := holidayIDs(t, s)
@@ -52,7 +52,7 @@ func TestHolidaySeedAppliesOnceAndKeepsOperatorChoices(t *testing.T) {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM holidays WHERE id = 'valentines'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.convergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), at.Add(time.Hour)); err != nil {
+	if err := s.ConvergeHolidaySeed(ctx, holidayvocab.SeedRevisions(), at.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(holidayIDs(t, s), "valentines") {
@@ -65,10 +65,10 @@ func TestHealGivesEveryOrphanSeasonalTaxonAnUndatedHoliday(t *testing.T) {
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
 	// An operator's seasonal tag from before holidays were data.
-	if err := s.upsertTaxon(ctx, taxonomy.Taxon{Slug: "harvest_fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}, at); err != nil {
+	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "harvest_fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.healUndatedHolidays(ctx, at); err != nil {
+	if err := s.HealUndatedHolidays(ctx, at); err != nil {
 		t.Fatal(err)
 	}
 	holidays, err := s.ListHolidays(ctx)
@@ -82,7 +82,7 @@ func TestHealGivesEveryOrphanSeasonalTaxonAnUndatedHoliday(t *testing.T) {
 	if _, err := holidayvocab.New(holidays); err != nil {
 		t.Fatalf("the healed holidays do not load: %v", err)
 	}
-	if err := s.healUndatedHolidays(ctx, at); err != nil {
+	if err := s.HealUndatedHolidays(ctx, at); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(holidayIDs(t, s)); got != len(holidays) {

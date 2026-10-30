@@ -1,4 +1,4 @@
-package store
+package catalogstore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -62,8 +63,8 @@ type TaxonomyUsage struct {
 
 // ListTaxa returns the whole taxonomy graph, ordered by axis then slug (the stable order the served
 // vocabulary and any diff rely on).
-func (s *sqlStore) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
-	return listTaxaFrom(ctx, s.db)
+func (s *Store) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return listTaxaFrom(ctx, s.h)
 }
 
 type taxonomyQueryer interface {
@@ -90,24 +91,26 @@ func listTaxaFrom(ctx context.Context, q taxonomyQueryer) ([]taxonomy.Taxon, err
 	return out, rows.Err()
 }
 
-// upsertTaxon is the boot-seed primitive. Operator edits go through ApplyTaxonomyEdit so validation,
-// graph mutation, closure and rollups share one transaction.
-func (s *sqlStore) upsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
-	return s.upsertTaxonExec(ctx, s.db, t, at)
+// UpsertTaxon is the boot-seed primitive. Operator edits go through ApplyTaxonomyEdit so validation,
+// graph mutation, closure and rollups share one transaction. It is exported for the aggregate's
+// tests, which need a seasonal taxon that has no holiday (what a pre-holiday install holds); it is
+// not on the Store interface.
+func (s *Store) UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error {
+	return s.upsertTaxonExec(ctx, s.h, t, at)
 }
 
 type taxonomyExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func (s *sqlStore) upsertTaxonTx(ctx context.Context, tx *sql.Tx, t taxonomy.Taxon, at time.Time) error {
+func (s *Store) upsertTaxonTx(ctx context.Context, tx storedb.Tx, t taxonomy.Taxon, at time.Time) error {
 	return s.upsertTaxonExec(ctx, tx, t, at)
 }
 
-func (s *sqlStore) upsertTaxonExec(ctx context.Context, exec taxonomyExecer, t taxonomy.Taxon, at time.Time) error {
+func (s *Store) upsertTaxonExec(ctx context.Context, exec taxonomyExecer, t taxonomy.Taxon, at time.Time) error {
 	syn, _ := json.Marshal(nonNil(t.Synonyms))
 	ali, _ := json.Marshal(nonNil(t.RetiredAliases))
-	_, err := exec.ExecContext(ctx, s.ph(
+	_, err := exec.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO taxa (slug, label, parent, axis, synonyms, aliases, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(slug) DO UPDATE SET
@@ -124,10 +127,10 @@ func (s *sqlStore) upsertTaxonExec(ctx context.Context, exec taxonomyExecer, t t
 // the graph plus both derived caches commit together or nothing changes. Postgres takes a
 // transaction-scoped advisory lock because its default READ COMMITTED transaction would otherwise
 // let two graph editors validate different snapshots and interleave their closure replacements.
-func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error {
+func (s *Store) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error {
 	edit.Slug = strings.TrimSpace(edit.Slug)
 	edit.Taxon = taxonomy.Canonicalize(edit.Taxon)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("edit taxonomy: begin: %w", err)
 	}
@@ -150,7 +153,7 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 	}
 	if edit.Delete {
 		var direct int
-		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clip_tags WHERE taxon = ? AND leaf = ?`), slug, true).Scan(&direct); err != nil {
+		if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM clip_tags WHERE taxon = ? AND leaf = ?`), slug, true).Scan(&direct); err != nil {
 			return fmt.Errorf("delete taxon %s: count assertions: %w", slug, err)
 		}
 		if direct > 0 {
@@ -165,13 +168,13 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 
 	if edit.Delete {
 		parent := current.Parent
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE taxa SET parent = ?, updated_at = ? WHERE parent = ?`), parent, epoch(at), slug); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE taxa SET parent = ?, updated_at = ? WHERE parent = ?`), parent, epoch(at), slug); err != nil {
 			return fmt.Errorf("delete taxon %s: reparent children: %w", slug, err)
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE taxon = ?`), slug); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM clip_tags WHERE taxon = ?`), slug); err != nil {
 			return fmt.Errorf("delete taxon %s: clear derived rows: %w", slug, err)
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM taxa WHERE slug = ?`), slug); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM taxa WHERE slug = ?`), slug); err != nil {
 			return fmt.Errorf("delete taxon %s: %w", slug, err)
 		}
 	} else if err := s.upsertTaxonTx(ctx, tx, edit.Taxon, at); err != nil {
@@ -197,8 +200,8 @@ func (s *sqlStore) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at 
 // lockTaxonomyTx serialises a graph writer — an operator edit or a boot seed — against every other
 // on Postgres, whose READ COMMITTED transactions would otherwise validate different snapshots.
 // SQLite already admits one writer at a time.
-func (s *sqlStore) lockTaxonomyTx(ctx context.Context, tx *sql.Tx) error {
-	if s.dialect != DialectPostgres {
+func (s *Store) lockTaxonomyTx(ctx context.Context, tx storedb.Tx) error {
+	if s.h.Dialect() != storedb.DialectPostgres {
 		return nil
 	}
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
@@ -210,7 +213,7 @@ func (s *sqlStore) lockTaxonomyTx(ctx context.Context, tx *sql.Tx) error {
 // PreviewTaxonomyEdit validates the same prospective graph ApplyTaxonomyEdit will use and returns
 // the stored knowledge and playable clips whose derived lineage could change. It performs no write;
 // callers must still treat ApplyTaxonomyEdit as authoritative if another editor wins the race.
-func (s *sqlStore) PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error) {
+func (s *Store) PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error) {
 	edit.Slug = strings.TrimSpace(edit.Slug)
 	edit.Taxon = taxonomy.Canonicalize(edit.Taxon)
 	existing, err := s.ListTaxa(ctx)
@@ -313,7 +316,7 @@ func planTaxonomyEdit(existing []taxonomy.Taxon, edit TaxonomyEdit) ([]taxonomy.
 	return prospective, current, nil
 }
 
-func (s *sqlStore) countStoredAssertions(ctx context.Context, slugs []string) (int, error) {
+func (s *Store) countStoredAssertions(ctx context.Context, slugs []string) (int, error) {
 	if len(slugs) == 0 {
 		return 0, nil
 	}
@@ -324,13 +327,13 @@ func (s *sqlStore) countStoredAssertions(ctx context.Context, slugs []string) (i
 		args = append(args, slug)
 	}
 	var n int
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(DISTINCT clip_hash) FROM clip_tags WHERE leaf = ? AND taxon IN (`+marks+`)`), args...).Scan(&n); err != nil {
+	if err := s.h.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(DISTINCT clip_hash) FROM clip_tags WHERE leaf = ? AND taxon IN (`+marks+`)`), args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("preview taxonomy stored assertions: %w", err)
 	}
 	return n, nil
 }
 
-func (s *sqlStore) playableHashesWithAssertions(ctx context.Context, slugs []string) ([]string, error) {
+func (s *Store) playableHashesWithAssertions(ctx context.Context, slugs []string) ([]string, error) {
 	if len(slugs) == 0 {
 		return nil, nil
 	}
@@ -340,7 +343,7 @@ func (s *sqlStore) playableHashesWithAssertions(ctx context.Context, slugs []str
 		args = append(args, slug)
 	}
 	args = append(args, false, false, 0)
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT DISTINCT c.hash FROM clips c JOIN clip_tags ct ON ct.clip_hash = c.hash WHERE ct.leaf = ? AND ct.taxon IN (`+marks+`) AND c.held = ? AND c.is_composite = ? AND c.removed_at = ? ORDER BY c.hash`), args...)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(`SELECT DISTINCT c.hash FROM clips c JOIN clip_tags ct ON ct.clip_hash = c.hash WHERE ct.leaf = ? AND ct.taxon IN (`+marks+`) AND c.held = ? AND c.is_composite = ? AND c.removed_at = ? ORDER BY c.hash`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("preview taxonomy playable clips: %w", err)
 	}
@@ -394,34 +397,34 @@ func termDiff(before, after []string) (added, removed []string) {
 // SeedTaxonomy writes the default forest IF AND ONLY IF `taxa` is empty (§10 V45a). Idempotent and
 // cheap — run at boot after migrations. The empty-guard is what makes it safe on every open: a fresh
 // install gets the seed, an operator-edited install keeps its graph untouched, a re-open no-ops.
-func (s *sqlStore) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error {
+func (s *Store) SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error {
 	var n int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM taxa`).Scan(&n); err != nil {
+	if err := s.h.QueryRowContext(ctx, `SELECT COUNT(*) FROM taxa`).Scan(&n); err != nil {
 		return fmt.Errorf("seed taxonomy count: %w", err)
 	}
 	if n > 0 {
 		return nil // already seeded or operator-edited — never clobber
 	}
 	for _, t := range seed {
-		if err := s.upsertTaxon(ctx, t, at); err != nil {
+		if err := s.UpsertTaxon(ctx, t, at); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// convergeTaxonomySeed applies each shipped additive vocabulary revision once. Existing slugs and
+// ConvergeTaxonomySeed applies each shipped additive vocabulary revision once. Existing slugs and
 // edits always win; a new taxon that conflicts with an operator's graph or resolver namespace is
 // skipped rather than making startup fail. Recording the revision even when a term is skipped is
 // intentional: a later operator deletion must not make boot recreate product defaults forever.
-func (s *sqlStore) convergeTaxonomySeed(ctx context.Context, revisions []taxonomy.SeedRevision, at time.Time) error {
+func (s *Store) ConvergeTaxonomySeed(ctx context.Context, revisions []taxonomy.SeedRevision, at time.Time) error {
 	for _, revision := range revisions {
-		tx, err := s.db.BeginTx(ctx, nil)
+		tx, err := s.h.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("converge taxonomy seed v%d: begin: %w", revision.Version, err)
 		}
 		var applied int
-		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM taxonomy_seed_revisions WHERE version = ?`), revision.Version).Scan(&applied); err != nil {
+		if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM taxonomy_seed_revisions WHERE version = ?`), revision.Version).Scan(&applied); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("converge taxonomy seed v%d: read marker: %w", revision.Version, err)
 		}
@@ -453,7 +456,7 @@ func (s *sqlStore) convergeTaxonomySeed(ctx context.Context, revisions []taxonom
 			current = prospective
 			bySlug[addition.Slug] = true
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO taxonomy_seed_revisions (version, applied_at) VALUES (?, ?)`), revision.Version, epoch(at)); err != nil {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO taxonomy_seed_revisions (version, applied_at) VALUES (?, ?)`), revision.Version, epoch(at)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("converge taxonomy seed v%d: record marker: %w", revision.Version, err)
 		}
@@ -468,14 +471,14 @@ func (s *sqlStore) convergeTaxonomySeed(ctx context.Context, revisions []taxonom
 // through the CURRENT closure, and refreshes the compatibility category shadow before commit.
 // Postgres takes a shared taxonomy lock so an operator graph edit cannot commit between those
 // writes; importantly, the caller supplies no forest snapshot that can become stale while waiting.
-func (s *sqlStore) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("set clip tags: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
 			return fmt.Errorf("set clip tags: lock: %w", err)
 		}
@@ -488,9 +491,9 @@ func (s *sqlStore) SetClipTags(ctx context.Context, clipHash string, leaves []st
 
 // setClipTagsTx is the transactional taxonomy projection primitive shared by direct clip edits and
 // semantic classifier writes. The caller owns the transaction and the shared taxonomy lock.
-func (s *sqlStore) setClipTagsTx(ctx context.Context, tx Querier, clipHash string, leaves []string) error {
+func (s *Store) setClipTagsTx(ctx context.Context, tx storedb.Querier, clipHash string, leaves []string) error {
 	var clipExists int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips WHERE hash = ?`), clipHash).Scan(&clipExists); err != nil {
+	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM clips WHERE hash = ?`), clipHash).Scan(&clipExists); err != nil {
 		return fmt.Errorf("set clip tags: find clip: %w", err)
 	}
 	if clipExists == 0 {
@@ -504,7 +507,7 @@ func (s *sqlStore) setClipTagsTx(ctx context.Context, tx Querier, clipHash strin
 		}
 		seenLeaves[leaf] = true
 		var exists int
-		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM taxa WHERE slug = ?`), leaf).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM taxa WHERE slug = ?`), leaf).Scan(&exists); err != nil {
 			return fmt.Errorf("set clip tags: validate %s: %w", leaf, err)
 		}
 		if exists == 0 {
@@ -512,11 +515,11 @@ func (s *sqlStore) setClipTagsTx(ctx context.Context, tx Querier, clipHash strin
 		}
 		uniqueLeaves = append(uniqueLeaves, leaf)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE clip_hash = ?`), clipHash); err != nil {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM clip_tags WHERE clip_hash = ?`), clipHash); err != nil {
 		return fmt.Errorf("set clip tags: clear: %w", err)
 	}
 	for _, leaf := range uniqueLeaves {
-		if _, err := tx.ExecContext(ctx, s.ph(
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(
 			`INSERT INTO clip_tags (clip_hash, taxon, leaf) VALUES (?, ?, ?)`),
 			clipHash, leaf, true); err != nil {
 			return fmt.Errorf("set clip tags: insert %s: %w", leaf, err)
@@ -533,8 +536,8 @@ func (s *sqlStore) setClipTagsTx(ctx context.Context, tx Querier, clipHash strin
 
 // GetClipTags returns a clip's tags. `leavesOnly` restricts to the asserted leaves (what to re-derive
 // rollups from); false returns the full leaf+rollup set (what curation matches against).
-func (s *sqlStore) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
-	return getClipTagsFrom(ctx, s.db, s.ph, clipHash, leavesOnly)
+func (s *Store) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
+	return getClipTagsFrom(ctx, s.h, s.h.Rebind, clipHash, leavesOnly)
 }
 
 func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder func(string) string, clipHash string, leavesOnly bool) ([]string, error) {
@@ -561,7 +564,7 @@ func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder f
 	return out, rows.Err()
 }
 
-// rebuildTaxonomyDerived is the boot/upgrade backstop for all projections owned by the taxonomy.
+// RebuildTaxonomyDerived is the boot/upgrade backstop for all projections owned by the taxonomy.
 // Live graph changes use ApplyTaxonomyEdit; boot uses the same exclusive Postgres lock so replicas
 // cannot interleave full replacements. A single transaction keeps closure, rollups, and category on
 // one generation while healing data written before graph edits became atomic.
@@ -569,14 +572,14 @@ func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder f
 // ⚠ A full replace inside one transaction. The closure is a pure function of the graph, so a partial
 // rebuild would leave a clip's rollups deriving from a half-updated closure — worse than the old one.
 // Delete-all + re-insert is safe because it is a few hundred rows (~55 taxa) and it is atomic.
-func (s *sqlStore) rebuildTaxonomyDerived(ctx context.Context, forest *taxonomy.Forest) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) RebuildTaxonomyDerived(ctx context.Context, forest *taxonomy.Forest) error {
+	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("rebuild taxonomy: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if s.dialect == DialectPostgres {
+	if s.h.Dialect() == storedb.DialectPostgres {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
 			return fmt.Errorf("rebuild taxonomy: lock: %w", err)
 		}
@@ -593,7 +596,7 @@ func (s *sqlStore) rebuildTaxonomyDerived(ctx context.Context, forest *taxonomy.
 	return tx.Commit()
 }
 
-func (s *sqlStore) rebuildClosureTx(ctx context.Context, tx *sql.Tx, forest *taxonomy.Forest) error {
+func (s *Store) rebuildClosureTx(ctx context.Context, tx storedb.Tx, forest *taxonomy.Forest) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM taxa_closure`); err != nil {
 		return fmt.Errorf("rebuild closure: clear: %w", err)
 	}
@@ -613,8 +616,8 @@ func (s *sqlStore) rebuildClosureTx(ctx context.Context, tx *sql.Tx, forest *tax
 }
 
 // insertClosure writes one (ancestor, descendant) pair.
-func (s *sqlStore) insertClosure(ctx context.Context, tx *sql.Tx, ancestor, descendant string) error {
-	if _, err := tx.ExecContext(ctx, s.ph(
+func (s *Store) insertClosure(ctx context.Context, tx storedb.Tx, ancestor, descendant string) error {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO taxa_closure (ancestor, descendant) VALUES (?, ?)`),
 		ancestor, descendant); err != nil {
 		return fmt.Errorf("insert closure %s<-%s: %w", ancestor, descendant, err)
@@ -624,9 +627,9 @@ func (s *sqlStore) insertClosure(ctx context.Context, tx *sql.Tx, ancestor, desc
 
 // rebuildRollupsTx recomputes every derived row in the graph-edit transaction. It is deliberately
 // private: callers must not rebuild closure and rollups as two independently visible generations.
-func (s *sqlStore) rebuildRollupsTx(ctx context.Context, tx *sql.Tx) error {
+func (s *Store) rebuildRollupsTx(ctx context.Context, tx storedb.Tx) error {
 	// Drop every derived rollup; the asserted leaves stay.
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM clip_tags WHERE leaf = ?`), false); err != nil {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM clip_tags WHERE leaf = ?`), false); err != nil {
 		return fmt.Errorf("rebuild rollups: clear: %w", err)
 	}
 
@@ -635,7 +638,7 @@ func (s *sqlStore) rebuildRollupsTx(ctx context.Context, tx *sql.Tx) error {
 	// both roll up to alcohol — the ancestor is stored once). The ancestor may coincide with ANOTHER
 	// leaf the clip asserts (a clip tagged both `drinks` and `beer`); the ON CONFLICT keeps the leaf
 	// row rather than overwriting it with a rollup — a leaf is never demoted to a rollup.
-	if _, err := tx.ExecContext(ctx, s.ph(
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO clip_tags (clip_hash, taxon, leaf)
 		 SELECT DISTINCT l.clip_hash, c.ancestor, FALSE
 		 FROM clip_tags l
@@ -647,8 +650,8 @@ func (s *sqlStore) rebuildRollupsTx(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx Querier, clipHash string) error {
-	if _, err := tx.ExecContext(ctx, s.ph(
+func (s *Store) rebuildClipRollupsTx(ctx context.Context, tx storedb.Querier, clipHash string) error {
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO clip_tags (clip_hash, taxon, leaf)
 		 SELECT DISTINCT l.clip_hash, c.ancestor, FALSE
 		 FROM clip_tags l
@@ -668,7 +671,7 @@ func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx Querier, clipHas
 // One correlated UPDATE is deliberately used on both dialects. taxa_closure includes each node's
 // self-pair, so its row count is the node's stable depth measure; ties use slug order exactly like
 // taxonomy.Forest.PrimaryProductLeaf.
-func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx Querier, clipHash string) error {
+func (s *Store) rebuildCategoryShadowsTx(ctx context.Context, tx storedb.Querier, clipHash string) error {
 	query := `UPDATE clips SET category = COALESCE((
 		SELECT ct.taxon
 		FROM clip_tags ct
@@ -683,7 +686,7 @@ func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx Querier, cli
 		query += ` WHERE hash = ?`
 		args = append(args, clipHash)
 	}
-	_, err := tx.ExecContext(ctx, s.ph(query), args...)
+	_, err := tx.ExecContext(ctx, s.h.Rebind(query), args...)
 	if err != nil {
 		return fmt.Errorf("rebuild taxonomy category shadows: %w", err)
 	}
@@ -693,18 +696,18 @@ func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx Querier, cli
 // TaxonomyUsage accounts for the PLAYABLE catalog (the zero ClipFilter population): held,
 // tombstoned and composite containers are excluded. Per-taxon Matched counts include descendants
 // through denormalised rollups; Asserted counts only rows authored by a classifier/operator.
-func (s *sqlStore) TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error) {
+func (s *Store) TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error) {
 	out := TaxonomyUsage{ByTaxon: map[string]TaxonUsage{}, ByAxis: map[taxonomy.Axis]int{}}
 	active := `c.removed_at = 0 AND c.held = FALSE AND c.is_composite = FALSE`
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM clips c WHERE `+active).Scan(&out.TotalClips); err != nil {
+	if err := s.h.QueryRowContext(ctx, `SELECT COUNT(*) FROM clips c WHERE `+active).Scan(&out.TotalClips); err != nil {
 		return out, fmt.Errorf("taxonomy usage total: %w", err)
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT ct.clip_hash)
+	if err := s.h.QueryRowContext(ctx, `SELECT COUNT(DISTINCT ct.clip_hash)
 		FROM clip_tags ct JOIN clips c ON c.hash = ct.clip_hash
 		WHERE ct.leaf = TRUE AND `+active).Scan(&out.TaggedClips); err != nil {
 		return out, fmt.Errorf("taxonomy usage tagged: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT ct.taxon,
+	rows, err := s.h.QueryContext(ctx, `SELECT ct.taxon,
 		COUNT(DISTINCT CASE WHEN ct.leaf = TRUE THEN ct.clip_hash END),
 		COUNT(DISTINCT ct.clip_hash)
 		FROM clip_tags ct JOIN clips c ON c.hash = ct.clip_hash
@@ -727,7 +730,7 @@ func (s *sqlStore) TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error) {
 	if err := rows.Close(); err != nil {
 		return out, err
 	}
-	axisRows, err := s.db.QueryContext(ctx, `SELECT t.axis, COUNT(DISTINCT ct.clip_hash)
+	axisRows, err := s.h.QueryContext(ctx, `SELECT t.axis, COUNT(DISTINCT ct.clip_hash)
 		FROM clip_tags ct
 		JOIN taxa t ON t.slug = ct.taxon
 		JOIN clips c ON c.hash = ct.clip_hash
@@ -751,7 +754,7 @@ func (s *sqlStore) TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error) {
 	if err := axisRows.Close(); err != nil {
 		return out, err
 	}
-	stored, err := s.db.QueryContext(ctx, `SELECT taxon, COUNT(DISTINCT clip_hash)
+	stored, err := s.h.QueryContext(ctx, `SELECT taxon, COUNT(DISTINCT clip_hash)
 		FROM clip_tags WHERE leaf = TRUE GROUP BY taxon ORDER BY taxon`)
 	if err != nil {
 		return out, fmt.Errorf("taxonomy stored assertions: %w", err)

@@ -19,7 +19,7 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 	revisions := append(broadcaststation.SeedRevisions(),
 		broadcaststation.SeedRevision{Version: 99, Load: func() ([]broadcaststation.Station, error) { return corrected, nil }})
 
-	if err := s.convergeBroadcastStationSeed(ctx, revisions, at); err != nil {
+	if err := s.ConvergeBroadcastStationSeed(ctx, revisions, at); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ListBroadcastStations(ctx)
@@ -36,10 +36,10 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 		loads++
 		return nil, nil
 	}}}
-	if err := s.convergeBroadcastStationSeed(ctx, again, at); err != nil {
+	if err := s.ConvergeBroadcastStationSeed(ctx, again, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.convergeBroadcastStationSeed(ctx, revisions, at); err != nil {
+	if err := s.ConvergeBroadcastStationSeed(ctx, revisions, at); err != nil {
 		t.Fatal(err)
 	}
 	if loads != 0 {
