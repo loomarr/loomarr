@@ -136,6 +136,7 @@ export type {
   PlaybarStillSource,
   PlaybarWindow,
   PlayerBandData,
+  PlayerCaptionProps,
   PlayerChromeProps,
   PlayerCoverProps,
   PlayerInfoData,
@@ -155,6 +156,7 @@ export type {
 } from "./src/watching-surface";
 export {
   PlaybarStillSourceProvider,
+  PlayerCaption,
   PlayerChrome,
   PlayerCover,
   PlayerInfo,

@@ -4,13 +4,17 @@ import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { useHaptic } from "@loomarr/design-system/haptics";
 import {
+  cueLinesAt,
   NativePlayerView,
   type PairedClient,
   pairedNativeImageSource,
+  subtitleLabel,
   useNativeVideoHeight,
+  usePairedSubtitles,
 } from "@loomarr/player/native";
 import {
   PlaybarStillSourceProvider,
+  PlayerCaption,
   PlayerCover,
   PlayerInfo,
   PlayerPortrait,
@@ -23,13 +27,13 @@ import {
 } from "@loomarr/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { useAudioPreference } from "./audio-preference";
+import { useAudioPreference, useSubtitlesPreference } from "./player-preferences";
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
 // the web phone draws — the way out and the live state, the lower third and the transport, the
 // filmstrip, surfing and the favourite, and the Info or Settings sheet in the panel's place. It
-// reads the tuned channel's timeline the way every client does, and seeks through the player
-// controller.
+// reads the tuned channel's timeline and subtitles the way every client does, and seeks through the
+// player controller.
 
 /** ±10 s, as on every player (#2088 decision 2). */
 const SEEK_STEP_MS = 10_000;
@@ -99,6 +103,17 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
     noticeRevision: 0,
     viewerTimeMs: Date.now(),
   };
+  // The subtitles at the playhead (#2088 decision 5): the sidecar's tracks for Settings, and the
+  // chosen track's lines drawn over the picture (expo-video takes no sidecar text track).
+  const [subtitlesChoice, setSubtitles] = useSubtitlesPreference();
+  const subtitles = usePairedSubtitles(
+    client.subtitlesSource,
+    playing ? channelId : undefined,
+    live.viewerTimeMs,
+    subtitlesChoice,
+  );
+  const captionLines = cueLinesAt(subtitles.cues, live.viewerTimeMs);
+
   const nowMs = timeline ? serverNowOf(timeline) : Date.now();
   const chrome = channel
     ? playbarFromTimeline({
@@ -143,7 +158,9 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
           <View pointerEvents="none" style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
             <PlayerStationId band={chrome.band} density="touch" />
           </View>
-        ) : null}
+        ) : (
+          <PlayerCaption density="touch" lines={captionLines} />
+        )}
       </View>
       {chrome ? (
         <PlaybarStillSourceProvider value={stillSource}>
@@ -189,6 +206,24 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
                         : { options: audio.options }
                     }
                     density="touch"
+                    subtitles={
+                      subtitles.tracks.length > 0
+                        ? {
+                            onSelect: (value) =>
+                              setSubtitles(
+                                value === "off" ? "off" : (subtitles.tracks[Number(value)] ?? "off"),
+                              ),
+                            options: [
+                              { label: "Off", selected: subtitles.active < 0, value: "off" },
+                              ...subtitles.tracks.map((track, i) => ({
+                                label: subtitleLabel(track),
+                                selected: i === subtitles.active,
+                                value: String(i),
+                              })),
+                            ],
+                          }
+                        : undefined
+                    }
                     quality={{
                       options: [
                         {

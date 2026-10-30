@@ -1,3 +1,4 @@
+import { createChannelSubtitlesSource } from "@loomarr/core/channel-subtitles";
 import { createChannelTimelineSource } from "@loomarr/core/channel-timeline";
 import { createChannelTracksSource } from "@loomarr/core/channel-tracks";
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
@@ -177,6 +178,7 @@ const usePairedClient = ({
   const timeline = usePairedTimeline(timelineSource, wantsTimeline ? channelId : undefined);
   // Settings' audio reads the programme at the playhead, once it plays: live or seeked back.
   const tracksSource = useMemo(() => createChannelTracksSource(request), [request]);
+  const subtitlesSource = useMemo(() => createChannelSubtitlesSource(request), [request]);
   const playheadMs = snapshot.status === "playing" ? snapshot.livePlayback?.viewerTimeMs : undefined;
   const programmeStartMs =
     playheadMs === undefined
@@ -244,6 +246,7 @@ const usePairedClient = ({
     refresh,
     serverVersion,
     snapshot,
+    subtitlesSource,
     timeline,
     tracks,
     transport,

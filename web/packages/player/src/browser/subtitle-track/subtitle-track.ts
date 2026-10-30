@@ -4,19 +4,7 @@
 // track rather than an overlay because the platform renders it everywhere the picture goes,
 // including a phone's native fullscreen, which no overlay reaches.
 
-interface LiveSubtitleCue {
-  startMs: number;
-  endMs: number;
-  /** WebVTT cue text: lines joined by "\n", inline <i>/<b> kept. */
-  text: string;
-}
-
-interface LiveSubtitleCues {
-  cues: readonly LiveSubtitleCue[];
-  /** The track's ISO 639-2 language and its label, given to the element's track. */
-  language: string;
-  label: string;
-}
+import type { LiveSubtitleCues } from "../../live-subtitles";
 
 // A re-place within this drift would only churn cues: the anchor wobbles by a frame or two.
 const OFFSET_TOLERANCE_MS = 250;
@@ -68,5 +56,4 @@ const syncSubtitleTrack = (
   entry.offsetMs = offsetMs;
 };
 
-export type { LiveSubtitleCue, LiveSubtitleCues };
 export { syncSubtitleTrack };

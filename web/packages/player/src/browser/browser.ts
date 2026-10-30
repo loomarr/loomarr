@@ -3,6 +3,19 @@ import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type LiveAudioRendition, selectAudioRendition } from "../live-audio";
 import { LIVE_DVR_HORIZON_MS, liveSeek } from "../live-seek";
+import {
+  type LiveSubtitleCue,
+  type LiveSubtitleCues,
+  type LiveSubtitles,
+  type LiveSubtitleTrack,
+  nextSubtitles,
+  SUBTITLE_STEP_MS,
+  selectSubtitleTrack,
+  subtitleLabel,
+  subtitlesAtPlayhead,
+  subtitlesPreferenceOf,
+  subtitleWindow,
+} from "../live-subtitles";
 import type { LivePlaybackState } from "../player-controller";
 import { parseStartFailureReason } from "../start-failure";
 import { liveHlsConfig } from "./live-hls-config";
@@ -14,13 +27,7 @@ import {
   selectLiveLevel,
   selectQualityLevel,
 } from "./live-level";
-import {
-  type LiveSubtitles,
-  type LiveSubtitleTrack,
-  nextSubtitles,
-  selectSubtitleTrack,
-} from "./live-subtitles";
-import { type LiveSubtitleCue, type LiveSubtitleCues, syncSubtitleTrack } from "./subtitle-track";
+import { syncSubtitleTrack } from "./subtitle-track";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -1326,10 +1333,15 @@ export {
   liveSeek,
   nextSubtitles,
   playableRungs,
+  SUBTITLE_STEP_MS,
   selectAudioRendition,
   selectLiveLevel,
   selectQualityLevel,
   selectSubtitleTrack,
+  subtitleLabel,
+  subtitlesAtPlayhead,
+  subtitlesPreferenceOf,
+  subtitleWindow,
   syncSubtitleTrack,
   useBrowserHlsPlayer,
 };

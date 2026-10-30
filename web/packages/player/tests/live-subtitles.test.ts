@@ -1,5 +1,12 @@
-import { nextSubtitles, selectSubtitleTrack } from "@loomarr/player/browser";
 import { describe, expect, it } from "vitest";
+
+import {
+  cueLinesAt,
+  nextSubtitles,
+  selectSubtitleTrack,
+  subtitlesAtPlayhead,
+  subtitleWindow,
+} from "../src/live-subtitles";
 
 // An airing's text tracks, as the subtitles sidecar lists them (#2088 step 7).
 const english = { language: "eng", title: "" };
@@ -43,5 +50,50 @@ describe("nextSubtitles", () => {
 
   it("starts from the first track when the remembered one is not offered here", () => {
     expect(nextSubtitles([spanish], english)).toEqual(spanish);
+  });
+});
+
+describe("subtitleWindow", () => {
+  it("steps the window with the playhead, a little behind it, and asks for the chosen track", () => {
+    expect(subtitleWindow(65_000, "off")).toEqual({ from: 45_000, to: 135_000 });
+    expect(subtitleWindow(89_999, englishSDH)).toEqual({
+      from: 45_000,
+      language: "eng",
+      title: "SDH",
+      to: 135_000,
+    });
+  });
+});
+
+describe("subtitlesAtPlayhead", () => {
+  const airings = [
+    { cues: [], startMs: 0, stopMs: 100, tracks: [english, spanish] },
+    { cues: [], startMs: 100, stopMs: 200, tracks: [] },
+  ];
+
+  it("offers the tracks of the programme at the playhead, and the one the choice plays", () => {
+    expect(subtitlesAtPlayhead(airings, 50, spanish)).toEqual({
+      active: 1,
+      playing: spanish,
+      tracks: [english, spanish],
+    });
+    expect(subtitlesAtPlayhead(airings, 150, spanish)).toEqual({
+      active: -1,
+      playing: undefined,
+      tracks: [],
+    });
+    expect(subtitlesAtPlayhead(undefined, 50, spanish).tracks).toEqual([]);
+  });
+});
+
+describe("cueLinesAt", () => {
+  it("reads the lines on screen at an instant, inline tags dropped", () => {
+    const cues = [
+      { endMs: 2_000, startMs: 1_000, text: "<i>Hello</i>\nthere" },
+      { endMs: 3_000, startMs: 2_000, text: "Next" },
+    ];
+    expect(cueLinesAt(cues, 1_500)).toEqual(["Hello", "there"]);
+    expect(cueLinesAt(cues, 2_000)).toEqual(["Next"]);
+    expect(cueLinesAt(cues, 3_000)).toEqual([]);
   });
 });

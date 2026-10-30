@@ -1,4 +1,5 @@
 import type { ChannelTracksOutputBody } from "@loomarr/api/models/channelTracksOutputBody";
+import type { ChannelSubtitlesSource } from "@loomarr/core/channel-subtitles";
 import type { ChannelTimeline } from "@loomarr/core/channel-timeline";
 import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics";
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
@@ -52,6 +53,8 @@ interface PairedClient {
   refresh: () => void;
   serverVersion?: string;
   snapshot: PlayerSnapshot;
+  /** The server's subtitles sidecar, for `usePairedSubtitles` at the viewer's playhead. */
+  subtitlesSource: ChannelSubtitlesSource;
   /** The tuned channel's timeline, when the client asked for it and it has loaded. */
   timeline?: ChannelTimeline;
   /** The tracks of the programme at the playhead, once the timeline places one and it plays. */

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type PlaybarSegment,
   PlaybarStillSourceProvider,
+  PlayerCaption,
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
@@ -569,6 +570,14 @@ describe("PlayerPortrait", () => {
 
     expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Settings");
     expect(button(host, "Leave Watch")).toBeUndefined();
+  });
+});
+
+describe("PlayerCaption", () => {
+  it("draws the cue's lines, announced politely, and nothing between cues", () => {
+    const host = mount(<PlayerCaption density="touch" lines={["Hello", "there"]} />);
+    expect(host.querySelector('[aria-live="polite"]')?.textContent).toBe("Hellothere");
+    expect(mount(<PlayerCaption density="touch" lines={[]} />).textContent).toBe("");
   });
 });
 

@@ -1,6 +1,8 @@
 export { playbarFromTimeline } from "./playbar-data";
 export type { PlaybarStillSource } from "./playbar-still";
 export { PlaybarStillSourceProvider } from "./playbar-still";
+export type { PlayerCaptionProps } from "./player-caption";
+export { PlayerCaption } from "./player-caption";
 export { PlayerChrome } from "./player-chrome";
 export type {
   PlaybarBreak,
