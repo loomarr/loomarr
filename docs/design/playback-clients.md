@@ -126,6 +126,48 @@ Pause is shared time-shift, not a private playback stack (decision
   same fifteen minutes behind live plus its three-hour future. `DVRHorizon` is one exported server
   constant, not a setting.
 
+## Watch (web)
+
+**Decided, not yet built (#2088).** A dedicated full-bleed route, `/watch/$id`, replaces the
+channel page's Watch tab with a **Watch** button; the tab's default-audio picker moves to the
+Channel's settings. The chrome is the cross-device player design ([`frontend-design.md`
+§9](../frontend-design.md#9-player-chrome--one-design-for-every-player), mock of record
+[`design/watch-player/`](../../design/watch-player/README.md)). Live Channels only: there is no
+on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause) already keeps.
+
+- **Seek inside `DVRHorizon`.** ⟲10 / ⟳10 and `←`/`→` move ten seconds; ⟳10 does nothing at the
+  live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
+  the live indicator) goes live; **Start over** seeks to the current programme's start, offered
+  only when that start is inside the window.
+- **Preview playbar.** Time-true from fifteen minutes behind to about two hours ahead, from the
+  Guide airings (stills, S/E, rating, synopsis) and each break's pod entries (one tick per spot,
+  with its thumbnail). A pointer hovers it for the preview card; touch opens the right-hand sheet.
+- **Station ID.** Every settled tune shows the station-ID card for five seconds, and a break reads
+  `Commercials · <clip title>`, the same rules as [Android TV](#android-tv).
+- **Panels.** Info (`I`: still, synopsis, year, rating, genres, time bar and `Up next`; closes on
+  `Esc` and by itself after eight seconds during playback), Settings (`⚙`: quality Auto plus the
+  ladder's manual rungs, shown as `Auto · 720p`, with audio and subtitles), Playback info (from ⚙,
+  open to everyone: members see rung, resolution, codec, bitrate, buffer and lag; admins also see
+  the encoder, transcode reason and session, and get **Copy stream URL**), Channels (`G`) and
+  Shortcuts (`?`, replacing the always-visible hint line). One sheet is open at a time.
+- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
+  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
+  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
+  restarts the encoder.
+- **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
+  (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
+  The route hides the app nav and has a ✕/back control.
+- **Keys** (when focus is not in a control that owns them): `Space`/`K` play-pause · `←`/`→` ±10 s ·
+  `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
+  `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
+  shortcuts · `Esc` closes the top layer, then leaves `/watch`.
+- **Phone.** Portrait keeps the N5 layout (picture on top, panel below) with ⚙ and ⓘ added and the
+  playbar as a `Coming up` filmstrip; landscape is the full-bleed overlay with 44 px targets, tap to
+  show or hide the chrome, and double-tap either side to skip ten seconds.
+- **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
+  `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
+  decided then.
+
 ## Android TV
 
 The paired Android TV client is a watching-first remote surface (decision
