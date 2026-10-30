@@ -55,8 +55,10 @@ const lastChannel = createLastChannelStore({
 
 // The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
 // SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
+// ⚠ Android has no dismissBrowser: Expo returns undefined there, not a promise, and the `.catch` on
+// it threw as every Android phone finished pairing. The viewer leaves the Custom Tab themselves.
 const approvalBrowser: ApprovalBrowser = {
-  close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
+  close: () => void Promise.resolve(WebBrowser.dismissBrowser()).catch(() => undefined),
   name: Platform.OS === "ios" ? "Safari" : "your browser",
   open: (url) => {
     void WebBrowser.openBrowserAsync(url, {
