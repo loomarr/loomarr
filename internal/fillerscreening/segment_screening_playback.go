@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 const (
@@ -25,7 +27,7 @@ type playbackIntegrityRawEvidence struct {
 	Playback           segmentScreeningArtifactObservation `json:"playback"`
 	ManifestSHA256     string                              `json:"manifestSha256"`
 	ConditioningSHA256 string                              `json:"conditioningSha256,omitempty"`
-	Outcome            SegmentScreeningOutcome             `json:"outcome"`
+	Outcome            filler.SegmentScreeningOutcome      `json:"outcome"`
 	ReasonCode         string                              `json:"reasonCode"`
 }
 
@@ -39,7 +41,7 @@ type PlaybackIntegrityEvaluator struct {
 }
 
 func NewPlaybackIntegrityEvaluator(profile SegmentScreeningAxisProfile, replay SegmentScreeningAxisEvidenceReplay, now func() time.Time) (*PlaybackIntegrityEvaluator, error) {
-	if ValidateSegmentScreeningAxisProfile(profile) != nil || profile.Axis != ScreenPlayback || profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
+	if ValidateSegmentScreeningAxisProfile(profile) != nil || profile.Axis != filler.ScreenPlayback || profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
 		return nil, fmt.Errorf("playback integrity evaluator profile is invalid")
 	}
 	if replay == nil || now == nil {
@@ -48,10 +50,10 @@ func NewPlaybackIntegrityEvaluator(profile SegmentScreeningAxisProfile, replay S
 	return &PlaybackIntegrityEvaluator{profile: profile, replay: replay, now: now}, nil
 }
 
-func (e *PlaybackIntegrityEvaluator) Axis() SegmentScreeningAxis { return ScreenPlayback }
+func (e *PlaybackIntegrityEvaluator) Axis() filler.SegmentScreeningAxis { return filler.ScreenPlayback }
 
 func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error) {
-	if e == nil || e.replay == nil || e.now == nil || ValidateSegmentScreeningAxisProfile(e.profile) != nil || e.profile.Axis != ScreenPlayback || e.profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
+	if e == nil || e.replay == nil || e.now == nil || ValidateSegmentScreeningAxisProfile(e.profile) != nil || e.profile.Axis != filler.ScreenPlayback || e.profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("playback integrity evaluator is unavailable")
 	}
 	if err := validateSegmentScreeningMedia(media); err != nil {
@@ -63,7 +65,7 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
-	outcome, reasonCode := ScreenHold, playbackArtifactHoldReason(observation)
+	outcome, reasonCode := filler.ScreenHold, playbackArtifactHoldReason(observation)
 	manifestSHA256 := ""
 	conditioningSHA256 := ""
 	if matches {
@@ -72,12 +74,12 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 			return RecordedSegmentScreeningAxisEvidence{}, err
 		}
 		switch state {
-		case SidecarAbsent:
+		case filler.SidecarAbsent:
 			reasonCode = "playback_sidecar_missing"
-		case SidecarInvalid:
+		case filler.SidecarInvalid:
 			reasonCode = "playback_sidecar_invalid"
-		case SidecarValid:
-			if err := VerifySegmentScreeningSubject(media.Subject, media.Subject.CatalogHash, tags); err != nil {
+		case filler.SidecarValid:
+			if err := filler.VerifySegmentScreeningSubject(media.Subject, media.Subject.CatalogHash, tags); err != nil {
 				reasonCode = "playback_subject_drift"
 				break
 			}
@@ -91,17 +93,17 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 				observation, reasonCode = confirmed, "playback_unsafe"
 				break
 			}
-			manifestSHA256 = MediaAssetManifestAuthoritySHA256(*tags.MediaAssets)
+			manifestSHA256 = filler.MediaAssetManifestAuthoritySHA256(*tags.MediaAssets)
 			if tags.Conditioning != nil {
-				conditioningSHA256 = ConditioningEvidenceSHA256(*tags.Conditioning)
+				conditioningSHA256 = filler.ConditioningEvidenceSHA256(*tags.Conditioning)
 			}
-			switch verdict, _, _ := EvaluateMediaQuality(tags.MediaAssets.Playback.Quality); verdict {
-			case VerdictReject:
-				outcome, reasonCode = ScreenReject, "playback_quality_reject"
-			case VerdictReview:
-				outcome, reasonCode = ScreenHold, "playback_quality_hold"
+			switch verdict, _, _ := filler.EvaluateMediaQuality(tags.MediaAssets.Playback.Quality); verdict {
+			case filler.VerdictReject:
+				outcome, reasonCode = filler.ScreenReject, "playback_quality_reject"
+			case filler.VerdictReview:
+				outcome, reasonCode = filler.ScreenHold, "playback_quality_hold"
 			default:
-				outcome, reasonCode = ScreenPass, "playback_verified"
+				outcome, reasonCode = filler.ScreenPass, "playback_verified"
 			}
 		}
 	}
@@ -137,52 +139,52 @@ func playbackArtifactHoldReason(observation segmentScreeningArtifactObservation)
 	}
 }
 
-func readSegmentScreeningSidecar(mediaPath string) (SidecarTags, SidecarReadState, error) {
-	path := sidecarPathFor(mediaPath)
+func readSegmentScreeningSidecar(mediaPath string) (filler.SidecarTags, filler.SidecarReadState, error) {
+	path := filler.SidecarPathFor(mediaPath)
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return SidecarTags{}, SidecarAbsent, nil
+		return filler.SidecarTags{}, filler.SidecarAbsent, nil
 	}
 	if err != nil {
-		return SidecarTags{}, SidecarInvalid, fmt.Errorf("inspect playback sidecar: %w", err)
+		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("inspect playback sidecar: %w", err)
 	}
 	if infoMode := info.Mode(); infoMode&os.ModeSymlink != 0 || !infoMode.IsRegular() {
-		return SidecarTags{}, SidecarInvalid, nil
+		return filler.SidecarTags{}, filler.SidecarInvalid, nil
 	}
 	if info.Size() <= 0 || info.Size() > segmentScreeningSidecarMaxBytes {
-		return SidecarTags{}, SidecarInvalid, nil
+		return filler.SidecarTags{}, filler.SidecarInvalid, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return SidecarTags{}, SidecarInvalid, fmt.Errorf("open playback sidecar: %w", err)
+		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("open playback sidecar: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil {
-		return SidecarTags{}, SidecarInvalid, fmt.Errorf("stat playback sidecar: %w", err)
+		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("stat playback sidecar: %w", err)
 	}
 	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) || opened.Size() != info.Size() {
-		return SidecarTags{}, SidecarInvalid, nil
+		return filler.SidecarTags{}, filler.SidecarInvalid, nil
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, segmentScreeningSidecarMaxBytes+1))
 	if err != nil {
-		return SidecarTags{}, SidecarInvalid, fmt.Errorf("read playback sidecar: %w", err)
+		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("read playback sidecar: %w", err)
 	}
 	after, err := file.Stat()
 	if err != nil {
-		return SidecarTags{}, SidecarInvalid, fmt.Errorf("restat playback sidecar: %w", err)
+		return filler.SidecarTags{}, filler.SidecarInvalid, fmt.Errorf("restat playback sidecar: %w", err)
 	}
 	if int64(len(raw)) != opened.Size() || after.Size() != opened.Size() {
-		return SidecarTags{}, SidecarInvalid, nil
+		return filler.SidecarTags{}, filler.SidecarInvalid, nil
 	}
-	tags, state, present := decodeSidecarTags(raw)
-	if state != SidecarValid || !present {
-		if state == SidecarValid {
-			state = SidecarAbsent
+	tags, state, present := filler.DecodeSidecarTags(raw)
+	if state != filler.SidecarValid || !present {
+		if state == filler.SidecarValid {
+			state = filler.SidecarAbsent
 		}
-		return SidecarTags{}, state, nil
+		return filler.SidecarTags{}, state, nil
 	}
-	return tags, SidecarValid, nil
+	return tags, filler.SidecarValid, nil
 }
 
 var _ SegmentScreeningEvaluator = (*PlaybackIntegrityEvaluator)(nil)

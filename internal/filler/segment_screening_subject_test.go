@@ -123,22 +123,6 @@ func TestSegmentScreeningSubjectRequiresMeasuredDerivativeQuality(t *testing.T) 
 	}
 }
 
-func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *testing.T) {
-	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())
-	tags, ok := ReadSidecarTags(media.PlaybackPath)
-	if !ok {
-		t.Fatal("playback sidecar is unavailable")
-	}
-	playback := *tags.MediaAssets.Playback
-	playback.Quality.Black = []Interval{{StartMs: 0, EndMs: 5_000}}
-	manifest := *tags.MediaAssets
-	manifest.Playback = &playback
-	tags.MediaAssets = &manifest
-	if _, err := NewSegmentScreeningSubject(playback.Asset.ClipHash, tags); err == nil {
-		t.Fatal("subject accepted playback quality that differed from post-rewrite conditioning")
-	}
-}
-
 func TestVerifySegmentScreeningSubjectRejectsCurrentArtifactDrift(t *testing.T) {
 	manifest := screeningSubjectManifest(t)
 	tags := SidecarTags{MediaAssets: &manifest}

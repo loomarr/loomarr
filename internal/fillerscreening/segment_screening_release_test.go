@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"os"
@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
 	subject := screeningChildSubjectFixture(t)
-	aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
+	aggregate, certification, repository, records, _ := screeningCertificationFixture(t, subject, true)
 	if err := certification.Verify(t.Context(), aggregate); err != nil {
 		t.Fatal(err)
 	}
@@ -28,31 +29,31 @@ func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.
 func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *testing.T) {
 	subject := screeningChildSubjectFixture(t)
 	t.Run("production permission", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, false)
+		aggregate, certification, _, _, _ := screeningCertificationFixture(t, subject, false)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("non-authorizing release passed")
 		}
 	})
 	t.Run("subject", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
+		aggregate, certification, _, _, _ := screeningCertificationFixture(t, subject, true)
 		aggregate.SubjectSHA256 = strings.Repeat("f", 64)
-		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
+		aggregate.SHA256 = filler.SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("subject drift passed")
 		}
 	})
 	t.Run("axis projection", func(t *testing.T) {
-		aggregate, certification, _, _ := screeningCertificationFixture(t, subject, true)
+		aggregate, certification, _, _, _ := screeningCertificationFixture(t, subject, true)
 		aggregate.Results[0].ReasonCode = "different_reason"
-		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
+		aggregate.SHA256 = filler.SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("axis projection drift passed")
 		}
 	})
 	t.Run("raw evidence", func(t *testing.T) {
-		aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
+		aggregate, certification, _, records, root := screeningCertificationFixture(t, subject, true)
 		first := records[0].Evidence
-		if err := os.WriteFile(repository.axisPath("screening-axis-raw", first.RawEvidenceSHA256), []byte("tampered"), 0o600); err != nil {
+		if err := os.WriteFile(screeningBlobPath(root, segmentScreeningAxisRawKind, first.RawEvidenceSHA256), []byte("tampered"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
@@ -60,8 +61,8 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("aggregate evidence", func(t *testing.T) {
-		aggregate, certification, repository, _ := screeningCertificationFixture(t, subject, true)
-		if err := os.Remove(repository.path(aggregate.SHA256)); err != nil {
+		aggregate, certification, _, _, root := screeningCertificationFixture(t, subject, true)
+		if err := os.Remove(screeningBlobPath(root, segmentScreeningEvidenceKind, aggregate.SHA256)); err != nil {
 			t.Fatal(err)
 		}
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
@@ -69,9 +70,9 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("settled operation", func(t *testing.T) {
-		aggregate, certification, repository, records := screeningCertificationFixture(t, subject, true)
+		aggregate, certification, _, records, root := screeningCertificationFixture(t, subject, true)
 		operationSHA256 := segmentScreeningOperationSHA256(subject.SHA256, records[0].Evidence.Profile)
-		if err := os.Remove(repository.operationPath(operationSHA256)); err != nil {
+		if err := os.Remove(screeningBlobPath(root, segmentScreeningOperationKind, operationSHA256)); err != nil {
 			t.Fatal(err)
 		}
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
@@ -79,7 +80,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("profile", func(t *testing.T) {
-		aggregate, _, repository, records := screeningCertificationFixture(t, subject, true)
+		aggregate, _, repository, records, _ := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)
 		profiles[0].PolicySHA256 = strings.Repeat("f", 64)
 		release := screeningReleaseFixture(profiles, true)
@@ -92,7 +93,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 		}
 	})
 	t.Run("Airworthiness profile", func(t *testing.T) {
-		aggregate, _, repository, records := screeningCertificationFixture(t, subject, true)
+		aggregate, _, repository, records, _ := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)
 		evaluator, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileGeneralAudience, profiles)
 		if err != nil {
@@ -112,9 +113,12 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	})
 }
 
-func screeningCertificationFixture(t *testing.T, subject SegmentScreeningSubject, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence) {
+// screeningCertificationFixture also returns the repository root, which the tampering subtests use
+// to reach the stored blobs.
+func screeningCertificationFixture(t *testing.T, subject filler.SegmentScreeningSubject, production bool) (filler.SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence, string) {
 	t.Helper()
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
+	root := filepath.Join(t.TempDir(), "evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,14 +126,14 @@ func screeningCertificationFixture(t *testing.T, subject SegmentScreeningSubject
 		t.Fatal(err)
 	}
 	records := passingAxisEvidence(t, subject)
-	results := make([]SegmentScreeningResult, 0, len(records))
+	results := make([]filler.SegmentScreeningResult, 0, len(records))
 	for _, recorded := range records {
 		if err := repository.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err != nil {
 			t.Fatal(err)
 		}
 		results = append(results, recorded.Evidence.Result())
 	}
-	aggregate, err := NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
+	aggregate, err := filler.NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +144,7 @@ func screeningCertificationFixture(t *testing.T, subject SegmentScreeningSubject
 	if err != nil {
 		t.Fatal(err)
 	}
-	return aggregate, certification, repository, records
+	return aggregate, certification, repository, records, root
 }
 
 func screeningProfiles(records []RecordedSegmentScreeningAxisEvidence) []SegmentScreeningAxisProfile {
@@ -159,7 +163,7 @@ func screeningReleaseFixture(profiles []SegmentScreeningAxisProfile, production 
 	}
 	release := SegmentScreeningReleaseAuthority{
 		SchemaVersion: SegmentScreeningReleaseSchemaVersion, ContractVersion: SegmentScreeningReleaseContractVersion,
-		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: SegmentScreeningContractVersion,
+		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: filler.SegmentScreeningContractVersion,
 		Profiles:                     append([]SegmentScreeningAxisProfile(nil), profiles...),
 		AirworthinessProfile:         fillerairworthiness.ProfileAllAges,
 		AirworthinessAuthoritySHA256: airworthiness.AuthoritySHA256(), ProductionAdmissionAllowed: production,

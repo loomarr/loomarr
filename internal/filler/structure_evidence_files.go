@@ -12,6 +12,26 @@ import (
 	"strings"
 )
 
+// PutBlob publishes body immutably as the blob digest of the given kind under the repository root
+// (root/kind/<digest[:2]>/<digest>.json). It is the one writer an outside package gets: the path
+// is always derived inside the root, an existing blob with different bytes is a conflict, and
+// digest must be a content hash. maximum bounds the body.
+func (r *FileStructureAssessmentEvidenceRepository) PutBlob(ctx context.Context, kind, digest string, body []byte, maximum int) error {
+	if r == nil || r.root == "" || !structureEvidenceDigest(digest) {
+		return fmt.Errorf("immutable evidence identity is invalid")
+	}
+	return r.putImmutable(ctx, r.blobPath(kind, digest), body, maximum)
+}
+
+// ReadBlob reads the blob PutBlob published for kind and digest, bounded by maximum. A missing
+// blob reports an error that wraps fs.ErrNotExist.
+func (r *FileStructureAssessmentEvidenceRepository) ReadBlob(ctx context.Context, kind, digest string, maximum int) ([]byte, error) {
+	if r == nil || r.root == "" || !structureEvidenceDigest(digest) {
+		return nil, fmt.Errorf("immutable evidence identity is invalid")
+	}
+	return r.readImmutable(ctx, r.blobPath(kind, digest), maximum)
+}
+
 func (r *FileStructureAssessmentEvidenceRepository) putImmutable(ctx context.Context, path string, body []byte, maximum int) error {
 	if err := ctx.Err(); err != nil {
 		return err

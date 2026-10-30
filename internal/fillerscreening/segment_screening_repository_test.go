@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"os"
@@ -7,7 +7,8 @@ import (
 )
 
 func TestFileSegmentScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *testing.T) {
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	root := filepath.Join(t.TempDir(), "screening-evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func TestFileSegmentScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *
 	if err != nil || replayed.SHA256 != evidence.SHA256 || !replayed.Passes() {
 		t.Fatalf("replayed=%+v error=%v", replayed, err)
 	}
-	if err := os.WriteFile(repository.path(evidence.SHA256), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(screeningBlobPath(root, segmentScreeningEvidenceKind, evidence.SHA256), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repository.GetSegmentScreeningEvidence(t.Context(), evidence.SHA256); err == nil {
@@ -31,7 +32,8 @@ func TestFileSegmentScreeningEvidenceRepositoryRoundTripsAndRejectsTampering(t *
 }
 
 func TestFileSegmentScreeningEvidenceRepositoryRoundTripsSubject(t *testing.T) {
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	root := filepath.Join(t.TempDir(), "screening-evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +45,7 @@ func TestFileSegmentScreeningEvidenceRepositoryRoundTripsSubject(t *testing.T) {
 	if err != nil || replayed.SHA256 != subject.SHA256 {
 		t.Fatalf("replayed=%+v error=%v", replayed, err)
 	}
-	if err := os.WriteFile(repository.subjectPath(subject.SHA256), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(screeningBlobPath(root, segmentScreeningSubjectKind, subject.SHA256), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repository.GetSegmentScreeningSubject(t.Context(), subject.SHA256); err == nil {
@@ -67,7 +69,8 @@ func TestFileSegmentScreeningEvidenceRepositoryRejectsInvalidIdentity(t *testing
 }
 
 func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord(t *testing.T) {
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	root := filepath.Join(t.TempDir(), "screening-evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +82,8 @@ func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord
 		t.Fatalf("idempotent replay: %v", err)
 	}
 	for _, path := range []string{
-		repository.axisPath("screening-axis-raw", recorded.Evidence.RawEvidenceSHA256),
-		repository.axisPath("screening-axis-records", recorded.Evidence.SHA256),
+		screeningBlobPath(root, segmentScreeningAxisRawKind, recorded.Evidence.RawEvidenceSHA256),
+		screeningBlobPath(root, segmentScreeningAxisRecordKind, recorded.Evidence.SHA256),
 	} {
 		info, statErr := os.Lstat(path)
 		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
@@ -88,11 +91,12 @@ func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord
 		}
 	}
 
-	conflicting, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	conflictingRoot := filepath.Join(t.TempDir(), "screening-evidence")
+	conflicting, err := NewFileSegmentScreeningEvidenceRepository(conflictingRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rawPath := conflicting.axisPath("screening-axis-raw", recorded.Evidence.RawEvidenceSHA256)
+	rawPath := screeningBlobPath(conflictingRoot, segmentScreeningAxisRawKind, recorded.Evidence.RawEvidenceSHA256)
 	if err := os.MkdirAll(filepath.Dir(rawPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +106,7 @@ func TestFileSegmentScreeningEvidenceRepositoryPublishesAxisRawBytesBeforeRecord
 	if err := conflicting.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err == nil {
 		t.Fatal("conflicting raw evidence was accepted")
 	}
-	if _, err := os.Lstat(conflicting.axisPath("screening-axis-records", recorded.Evidence.SHA256)); !os.IsNotExist(err) {
+	if _, err := os.Lstat(screeningBlobPath(conflictingRoot, segmentScreeningAxisRecordKind, recorded.Evidence.SHA256)); !os.IsNotExist(err) {
 		t.Fatalf("axis record published after raw conflict: %v", err)
 	}
 }

@@ -1,14 +1,17 @@
-package filler
+package fillerscreening
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestFileSegmentScreeningEvidenceRepositoryReplaysOneSettledAxisOperation(t *testing.T) {
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	root := filepath.Join(t.TempDir(), "screening-evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,15 +25,15 @@ func TestFileSegmentScreeningEvidenceRepositoryReplaysOneSettledAxisOperation(t 
 		t.Fatalf("found=%v replayed=%+v error=%v", found, replayed, err)
 	}
 	operationSHA256 := segmentScreeningOperationSHA256(subject.SHA256, recorded.Evidence.Profile)
-	info, err := os.Lstat(repository.operationPath(operationSHA256))
+	info, err := os.Lstat(screeningBlobPath(root, segmentScreeningOperationKind, operationSHA256))
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 		t.Fatalf("operation pointer info=%v error=%v", info, err)
 	}
 
 	raw := []byte("different-observation")
 	conflicting, err := NewSegmentScreeningAxisEvidence(
-		subject, recorded.Evidence.Profile, ScreenHold, "manual_review_required",
-		screeningSuitabilityForOutcome(subject, recorded.Evidence.Profile, ScreenHold, raw), raw,
+		subject, recorded.Evidence.Profile, filler.ScreenHold, "manual_review_required",
+		screeningSuitabilityForOutcome(subject, recorded.Evidence.Profile, filler.ScreenHold, raw), raw,
 		time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
@@ -46,7 +49,8 @@ func TestFileSegmentScreeningEvidenceRepositoryReplaysOneSettledAxisOperation(t 
 }
 
 func TestFileSegmentScreeningEvidenceRepositoryRejectsOperationPointerTampering(t *testing.T) {
-	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "screening-evidence"))
+	root := filepath.Join(t.TempDir(), "screening-evidence")
+	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +60,7 @@ func TestFileSegmentScreeningEvidenceRepositoryRejectsOperationPointerTampering(
 		t.Fatal(err)
 	}
 	operationSHA256 := segmentScreeningOperationSHA256(subject.SHA256, recorded.Evidence.Profile)
-	if err := os.WriteFile(repository.operationPath(operationSHA256), []byte("{}"), 0o600); err != nil {
+	if err := os.WriteFile(screeningBlobPath(root, segmentScreeningOperationKind, operationSHA256), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := repository.FindSegmentScreeningAxisEvidence(t.Context(), subject.SHA256, recorded.Evidence.Profile); err == nil {
@@ -70,7 +74,7 @@ func TestFileSegmentScreeningEvidenceRepositoryReportsUnsettledAxisOperation(t *
 		t.Fatal(err)
 	}
 	subject := screeningChildSubjectFixture(t)
-	profile := screeningProfileFixture(ScreenPlayback, "7")
+	profile := screeningProfileFixture(filler.ScreenPlayback, "7")
 	if _, found, err := repository.FindSegmentScreeningAxisEvidence(t.Context(), subject.SHA256, profile); err != nil || found {
 		t.Fatalf("found=%v error=%v", found, err)
 	}

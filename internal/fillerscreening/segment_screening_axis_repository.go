@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"bytes"
@@ -7,12 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 const (
 	segmentScreeningAxisRecordMaxBytes = 64 << 10
 	segmentScreeningAxisRawMaxBytes    = 1 << 20
+
+	segmentScreeningAxisRawKind    = "screening-axis-raw"
+	segmentScreeningAxisRecordKind = "screening-axis-records"
 )
 
 func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningAxisEvidence(ctx context.Context, recorded RecordedSegmentScreeningAxisEvidence) error {
@@ -29,10 +33,10 @@ func (r *FileSegmentScreeningEvidenceRepository) PutSegmentScreeningAxisEvidence
 	if err != nil || len(raw) > segmentScreeningAxisRecordMaxBytes {
 		return fmt.Errorf("marshal segment screening axis evidence")
 	}
-	if err := r.files.putImmutable(ctx, r.axisPath("screening-axis-raw", recorded.Evidence.RawEvidenceSHA256), recorded.RawEvidence, segmentScreeningAxisRawMaxBytes); err != nil {
+	if err := r.files.PutBlob(ctx, segmentScreeningAxisRawKind, recorded.Evidence.RawEvidenceSHA256, recorded.RawEvidence, segmentScreeningAxisRawMaxBytes); err != nil {
 		return fmt.Errorf("persist segment screening raw evidence: %w", err)
 	}
-	if err := r.files.putImmutable(ctx, r.axisPath("screening-axis-records", recorded.Evidence.SHA256), raw, segmentScreeningAxisRecordMaxBytes); err != nil {
+	if err := r.files.PutBlob(ctx, segmentScreeningAxisRecordKind, recorded.Evidence.SHA256, raw, segmentScreeningAxisRecordMaxBytes); err != nil {
 		return fmt.Errorf("persist segment screening axis record: %w", err)
 	}
 	if err := r.putSegmentScreeningOperation(ctx, recorded.Evidence); err != nil {
@@ -46,7 +50,7 @@ func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisEvidence
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
-	rawEvidence, err := r.files.readImmutable(ctx, r.axisPath("screening-axis-raw", evidence.RawEvidenceSHA256), segmentScreeningAxisRawMaxBytes)
+	rawEvidence, err := r.files.ReadBlob(ctx, segmentScreeningAxisRawKind, evidence.RawEvidenceSHA256, segmentScreeningAxisRawMaxBytes)
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("read segment screening raw evidence: %w", err)
 	}
@@ -60,10 +64,10 @@ func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisEvidence
 // GetSegmentScreeningAxisRecord opens only the provider-neutral record. Browser-safe read models
 // use it to reproduce closed evaluator identity without loading private raw evidence into memory.
 func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisRecord(ctx context.Context, evidenceSHA256 string) (SegmentScreeningAxisEvidence, error) {
-	if r == nil || r.files == nil || !structureEvidenceDigest(evidenceSHA256) {
+	if r == nil || r.files == nil || !filler.IsContentHash(evidenceSHA256) {
 		return SegmentScreeningAxisEvidence{}, fmt.Errorf("segment screening axis evidence identity is invalid")
 	}
-	raw, err := r.files.readImmutable(ctx, r.axisPath("screening-axis-records", evidenceSHA256), segmentScreeningAxisRecordMaxBytes)
+	raw, err := r.files.ReadBlob(ctx, segmentScreeningAxisRecordKind, evidenceSHA256, segmentScreeningAxisRecordMaxBytes)
 	if err != nil {
 		return SegmentScreeningAxisEvidence{}, fmt.Errorf("read segment screening axis record: %w", err)
 	}
@@ -81,10 +85,6 @@ func (r *FileSegmentScreeningEvidenceRepository) GetSegmentScreeningAxisRecord(c
 		return SegmentScreeningAxisEvidence{}, fmt.Errorf("segment screening axis path does not match valid evidence")
 	}
 	return evidence, nil
-}
-
-func (r *FileSegmentScreeningEvidenceRepository) axisPath(kind, digest string) string {
-	return filepath.Join(r.files.root, kind, digest[:2], digest+".json")
 }
 
 var _ SegmentScreeningCertificationEvidenceReader = (*FileSegmentScreeningEvidenceRepository)(nil)

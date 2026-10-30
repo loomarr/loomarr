@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -31,8 +32,8 @@ type SegmentScreeningReleaseAuthority struct {
 
 type SegmentScreeningCertificationEvidenceReader interface {
 	SegmentScreeningAxisEvidenceReplay
-	GetSegmentScreeningSubject(context.Context, string) (SegmentScreeningSubject, error)
-	GetSegmentScreeningEvidence(context.Context, string) (SegmentScreeningEvidence, error)
+	GetSegmentScreeningSubject(context.Context, string) (filler.SegmentScreeningSubject, error)
+	GetSegmentScreeningEvidence(context.Context, string) (filler.SegmentScreeningEvidence, error)
 	GetSegmentScreeningAxisEvidence(context.Context, string) (RecordedSegmentScreeningAxisEvidence, error)
 }
 
@@ -58,12 +59,12 @@ func NewSegmentScreeningCertification(authority SegmentScreeningReleaseAuthority
 	return &SegmentScreeningCertification{authority: authority, evidence: evidence}, nil
 }
 
-func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate SegmentScreeningEvidence) error {
+func (c *SegmentScreeningCertification) Verify(ctx context.Context, aggregate filler.SegmentScreeningEvidence) error {
 	return c.Replay(ctx, aggregate)
 }
 
 // Replay verifies the complete release against its immutable screening authority.
-func (c *SegmentScreeningCertification) Replay(ctx context.Context, aggregate SegmentScreeningEvidence) error {
+func (c *SegmentScreeningCertification) Replay(ctx context.Context, aggregate filler.SegmentScreeningEvidence) error {
 	if c == nil || c.evidence == nil {
 		return fmt.Errorf("segment screening certification is unavailable")
 	}
@@ -73,14 +74,14 @@ func (c *SegmentScreeningCertification) Replay(ctx context.Context, aggregate Se
 	if !c.authority.ProductionAdmissionAllowed || c.authority.AggregateContractVersion != aggregate.ContractVersion {
 		return fmt.Errorf("segment screening release does not authorize production admission")
 	}
-	if err := ValidateSegmentScreeningEvidence(aggregate); err != nil || !aggregate.Passes() {
+	if err := filler.ValidateSegmentScreeningEvidence(aggregate); err != nil || !aggregate.Passes() {
 		return fmt.Errorf("segment screening aggregate is invalid or does not pass")
 	}
 	subject, err := c.evidence.GetSegmentScreeningSubject(ctx, aggregate.SubjectSHA256)
 	if err != nil {
 		return fmt.Errorf("replay segment screening subject: %w", err)
 	}
-	if err := ValidateSegmentScreeningSubject(subject); err != nil || subject.SHA256 != aggregate.SubjectSHA256 {
+	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil || subject.SHA256 != aggregate.SubjectSHA256 {
 		return fmt.Errorf("segment screening subject does not reproduce aggregate identity")
 	}
 	persisted, err := c.evidence.GetSegmentScreeningEvidence(ctx, aggregate.SHA256)
@@ -130,12 +131,12 @@ func (c *SegmentScreeningCertification) AuthoritySHA256() string {
 
 func ValidateSegmentScreeningReleaseAuthority(authority SegmentScreeningReleaseAuthority) error {
 	if authority.SchemaVersion != SegmentScreeningReleaseSchemaVersion || authority.ContractVersion != SegmentScreeningReleaseContractVersion ||
-		!isContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != SegmentScreeningContractVersion ||
-		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !isContentHash(authority.AirworthinessAuthoritySHA256) ||
+		!filler.IsContentHash(authority.CertificateSHA256) || authority.AggregateContractVersion != filler.SegmentScreeningContractVersion ||
+		len(authority.Profiles) != len(segmentScreeningAxisOrder) || !filler.IsContentHash(authority.AirworthinessAuthoritySHA256) ||
 		authority.SHA256 != SegmentScreeningReleaseAuthoritySHA256(authority) {
 		return fmt.Errorf("segment screening release authority identity is invalid")
 	}
-	seen := make(map[SegmentScreeningAxis]struct{}, len(authority.Profiles))
+	seen := make(map[filler.SegmentScreeningAxis]struct{}, len(authority.Profiles))
 	for index, profile := range authority.Profiles {
 		if ValidateSegmentScreeningAxisProfile(profile) != nil || profile.Axis != segmentScreeningAxisOrder[index] {
 			return fmt.Errorf("segment screening release profiles are invalid or non-canonical")
@@ -163,7 +164,7 @@ func SegmentScreeningReleaseAuthoritySHA256(authority SegmentScreeningReleaseAut
 }
 
 func canonicalizeSegmentScreeningProfiles(profiles []SegmentScreeningAxisProfile) {
-	order := make(map[SegmentScreeningAxis]int, len(segmentScreeningAxisOrder))
+	order := make(map[filler.SegmentScreeningAxis]int, len(segmentScreeningAxisOrder))
 	for index, axis := range segmentScreeningAxisOrder {
 		order[axis] = index
 	}

@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -29,14 +30,14 @@ func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFourAxisEvidence(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[SegmentScreeningAxis]struct {
-		outcome SegmentScreeningOutcome
+	want := map[filler.SegmentScreeningAxis]struct {
+		outcome filler.SegmentScreeningOutcome
 		reason  string
 	}{
-		ScreenVisualSafety:  {ScreenHold, "visual_safety_not_certified"},
-		ScreenSpokenSafety:  {ScreenHold, "spoken_safety_not_certified"},
-		ScreenWrittenSafety: {ScreenHold, "written_safety_not_certified"},
-		ScreenPlayback:      {ScreenPass, "playback_verified"},
+		filler.ScreenVisualSafety:  {filler.ScreenHold, "visual_safety_not_certified"},
+		filler.ScreenSpokenSafety:  {filler.ScreenHold, "spoken_safety_not_certified"},
+		filler.ScreenWrittenSafety: {filler.ScreenHold, "written_safety_not_certified"},
+		filler.ScreenPlayback:      {filler.ScreenPass, "playback_verified"},
 	}
 	if first.Passes() || len(first.Results) != len(want) || clockCalls != len(want) {
 		t.Fatalf("qualification aggregate = %+v, clock calls = %d", first, clockCalls)

@@ -1,15 +1,17 @@
-package filler
+package fillerscreening
 
 import (
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestSegmentScreeningAxisEvidenceBindsRawBytesAndExactSpan(t *testing.T) {
 	subject := screeningSubjectFixture(t)
 	recorded, err := NewSegmentScreeningAxisEvidence(
-		subject, screeningProfileFixture(ScreenVisualSafety, "1"), ScreenHold, "manual_review",
-		screeningSuitabilityForOutcome(subject, screeningProfileFixture(ScreenVisualSafety, "1"), ScreenHold, []byte(`{"detections":[]}`)),
+		subject, screeningProfileFixture(filler.ScreenVisualSafety, "1"), filler.ScreenHold, "manual_review",
+		screeningSuitabilityForOutcome(subject, screeningProfileFixture(filler.ScreenVisualSafety, "1"), filler.ScreenHold, []byte(`{"detections":[]}`)),
 		[]byte(`{"detections":[]}`),
 		time.Date(2026, time.September, 12, 6, 0, 0, 0, time.UTC),
 	)
@@ -17,7 +19,7 @@ func TestSegmentScreeningAxisEvidenceBindsRawBytesAndExactSpan(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := recorded.Evidence.Result()
-	if result.Axis != ScreenVisualSafety || result.Outcome != ScreenHold || result.AuthoritySHA256 != recorded.Evidence.SHA256 || ValidateRecordedSegmentScreeningAxisEvidence(recorded) != nil {
+	if result.Axis != filler.ScreenVisualSafety || result.Outcome != filler.ScreenHold || result.AuthoritySHA256 != recorded.Evidence.SHA256 || ValidateRecordedSegmentScreeningAxisEvidence(recorded) != nil {
 		t.Fatalf("recorded=%+v result=%+v", recorded, result)
 	}
 

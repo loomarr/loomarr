@@ -1,9 +1,10 @@
-package filler
+package fillerscreening
 
 import (
 	"slices"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -20,7 +21,7 @@ func TestSegmentAirworthinessRejectsCertifiedPositiveDespiteOtherAxisHold(t *tes
 	visual.SHA256 = SegmentScreeningAxisEvidenceSHA256(*visual)
 	records[0].Evidence = *visual
 	records[1].Evidence.Suitability.Coverage = fillerairworthiness.CoverageIncomplete
-	records[1].Evidence.Outcome = ScreenHold
+	records[1].Evidence.Outcome = filler.ScreenHold
 	records[1].Evidence.ReasonCode = "spoken_coverage_incomplete"
 	records[1].Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(records[1].Evidence)
 
@@ -48,15 +49,15 @@ func TestSegmentAggregateRequiresAirworthinessPass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	results := make([]SegmentScreeningResult, 0, len(records))
+	results := make([]filler.SegmentScreeningResult, 0, len(records))
 	for _, record := range records {
 		results = append(results, record.Evidence.Result())
 	}
-	evidence, err := NewSegmentScreeningEvidence(subject, results, decision, records[0].Evidence.AssessedAt)
+	evidence, err := filler.NewSegmentScreeningEvidence(subject, results, decision, records[0].Evidence.AssessedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evidence.Passes() || ValidateSegmentScreeningEvidence(evidence) != nil ||
+	if evidence.Passes() || filler.ValidateSegmentScreeningEvidence(evidence) != nil ||
 		evidence.Airworthiness.Verdict != fillerairworthiness.VerdictHold {
 		t.Fatalf("restricted archive aggregate = %#v", evidence)
 	}
@@ -75,7 +76,7 @@ func TestSafetyAxisEvidenceRequiresBoundSuitabilityWhilePlaybackForbidsIt(t *tes
 	}
 
 	playbackIndex := slices.IndexFunc(records, func(record RecordedSegmentScreeningAxisEvidence) bool {
-		return record.Evidence.Profile.Axis == ScreenPlayback
+		return record.Evidence.Profile.Axis == filler.ScreenPlayback
 	})
 	playback := records[playbackIndex]
 	playback.Evidence.Suitability = cloneSuitabilityAxisEvidence(records[0].Evidence.Suitability)
