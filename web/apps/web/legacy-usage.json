@@ -581,9 +581,32 @@
       "tailwindClasses": 24,
       "legacyUi": 2
     },
+    "src/filler/filler-catalog/catalog-bulk-bar/catalog-bulk-bar.tsx": {
+      "tailwindClasses": 15,
+      "legacyUi": 2
+    },
+    "src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
+      "tailwindClasses": 22,
+      "legacyUi": 5
+    },
+    "src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
+      "tailwindClasses": 5,
+      "legacyUi": 1
+    },
+    "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
+      "tailwindClasses": 4,
+      "legacyUi": 1
+    },
+    "src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
+      "tailwindClasses": 25
+    },
+    "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
+      "tailwindClasses": 29,
+      "legacyUi": 3
+    },
     "src/filler/filler-catalog/filler-catalog.tsx": {
-      "tailwindClasses": 159,
-      "legacyUi": 7
+      "tailwindClasses": 59,
+      "legacyUi": 1
     },
     "src/filler/filler-manage/filler-manage.tsx": {
       "tailwindClasses": 114,

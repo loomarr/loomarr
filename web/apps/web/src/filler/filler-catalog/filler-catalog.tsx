@@ -1,54 +1,26 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import type { ClipEnrichmentFactDTOAxis } from "@loomarr/api/models/clipEnrichmentFactDTOAxis";
-import type { ClipEnrichmentFactDTOEvidence } from "@loomarr/api/models/clipEnrichmentFactDTOEvidence";
-import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
-import { toProblem } from "@loomarr/api/mutator";
-import { isOk, unwrap } from "@loomarr/api/unwrap";
-import { formatBytes, formatClipDuration, pluralize } from "@loomarr/core/format";
+import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { LayoutGrid, List } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipCard } from "@/components/loomarr/filler/clip-card";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Disclosure } from "@/components/ui/disclosure";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useLoomarrEventListener } from "@/events/events-provider";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { ClipDetails } from "../clip-details";
-import { ClipDetailsEditor } from "../clip-details-editor";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import type { FillerSearch } from "../filler-search";
-import { useFillerInvalidate } from "../use-filler-invalidate";
+import { CatalogBulkBar } from "./catalog-bulk-bar";
+import { CatalogToolbar } from "./catalog-toolbar";
+import type { CatalogView } from "./catalog-view-toggle";
+import { ClipInspectorSheet } from "./clip-inspector-sheet";
+import { CompositeCatalogGroup } from "./composite-catalog-group";
 import type { FillerCatalogProps } from "./filler-catalog.type";
-
-// The bulk bar's three dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that
-// field, and the server leaves the other two alone. A single "apply" that posted all three
-// would blank whatever the operator had not touched, which is the failure the BE's per-field
-// optionality exists to prevent.
-//
-// Bulk options omit unknown/unset values: a bulk correction must not accidentally blank
-// optional metadata across a hundred clips. Unknown values remain quiet on ordinary cards.
-// ⚠ Labelled "Set …", not "Era"/"Audience"/"Category". The catalog's FILTER bar already owns
-// those names on this page, and two controls sharing an accessible name is a real ambiguity for
-// anyone driving by keyboard or screen reader — a test caught it as "found multiple elements",
-// which is the same collision seen from the outside. The verb also says what each one does:
-// the filter narrows what you see, this changes what the clips ARE.
-// ⚠ Bulk "Set category" was REMOVED (§10 V45a). Category is a DERIVED shadow of the taxonomy tags —
-// not a directly-settable field — and a single-value bulk menu cannot express a tag SET without either
-// wiping a clip's other tags or inventing a questionable "add one tag to N clips" affordance. Tag
-// editing is per-clip in the details editor, which serves the real vocabulary. Bulk era/audience stay: those
-// ARE single closed-enum values a menu fits. (The old category options were also a rule violation —
-// hardcoded, and a DIFFERENT 6-value set than every other place used; see the no-hardcode rule.)
+import { useCatalogSelection } from "./use-catalog-selection";
+import { useClipSplit } from "./use-clip-split";
 
 // How many clips one page of the catalog holds (§10 V51d).
 //
@@ -57,131 +29,6 @@ import type { FillerCatalogProps } from "./filler-catalog.type";
 // the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
 // 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
 const CATALOG_PAGE_SIZE = 60;
-
-const BULK_TAG_FIELDS = [
-  { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
-  { key: "audience", label: "Set audience", options: Object.values(ListFillerAudience) },
-] as const;
-
-// The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because
-// filler is picked by LOOKING at it — a wall of frames is the point; the list is for scanning
-// a large catalog and bulk-selecting, where a thumbnail per row is noise.
-//
-// Both views open the shared clip panel; bulk selection remains independent.
-const VIEWS = [
-  { id: "grid", label: "Grid", icon: LayoutGrid, title: "Cards with thumbnails and clip details" },
-  { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
-] as const;
-
-const ENRICHMENT_AXIS_LABEL: Record<ClipEnrichmentFactDTOAxis, string> = {
-  kind: "Type",
-  era: "Year",
-  audience: "Audience",
-  brand: "Advertiser",
-  geography: "Location",
-  language: "Language",
-  product: "Product",
-  format: "Format",
-  seasonal: "Season",
-  "audience-cue": "Audience cue",
-  presentation: "Presentation",
-};
-
-const displayCodec = (codec: string | undefined) => {
-  if (!codec) return undefined;
-  const known: Record<string, string> = { h264: "H.264", h265: "H.265", hevc: "HEVC", aac: "AAC" };
-  return known[codec.toLowerCase()] ?? codec.toUpperCase();
-};
-
-const displayFrameRate = (cadence: string | undefined) => {
-  if (!cadence) return undefined;
-  const [rawNumerator, rawDenominator] = cadence.split("/");
-  const numerator = Number(rawNumerator);
-  const denominator = rawDenominator ? Number(rawDenominator) : 1;
-  const fps = numerator / denominator;
-  return Number.isFinite(fps) && fps > 0
-    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(fps)} fps`
-    : undefined;
-};
-
-const displayAudioChannels = (channels: number | undefined) => {
-  if (channels === 1) return "mono";
-  if (channels === 2) return "stereo";
-  return channels ? `${channels} channels` : undefined;
-};
-
-const displayAudioRate = (rate: number | undefined) =>
-  rate
-    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(rate / 1000)} kHz`
-    : undefined;
-
-const ENRICHMENT_EVIDENCE_LABEL: Record<ClipEnrichmentFactDTOEvidence, string> = {
-  operator: "You set this",
-  item_metadata: "Item details",
-  content_observation: "Clip audio or frames",
-  trusted_mapping: "A recognized source",
-  source_default: "Source settings",
-  inference: "Automatic analysis",
-};
-
-interface CompositeCatalogGroupProps {
-  clip: ClipDTO;
-  onManage: () => void;
-  renderParent: (clip: ClipDTO) => ReactNode;
-  renderChild: (clip: ClipDTO) => ReactNode;
-}
-
-const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: CompositeCatalogGroupProps) => {
-  const [open, setOpen] = useState(false);
-  const children = fillerApi.useListFiller(
-    { parentHash: clip.hash, limit: 500 },
-    { query: { enabled: open } },
-  );
-  const rows = unwrap(children.data, (body) => body.clips) ?? [];
-  const total = unwrap(children.data, (body) => body.total) ?? 0;
-
-  return (
-    <div className="flex flex-col gap-2">
-      {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
-          inspection entry point and confirmed split action; replacing it with a
-          bespoke group heading made those established actions disappear. The disclosure below
-          adds hierarchy without creating a second, weaker representation of the parent. */}
-      {renderParent(clip)}
-      <Disclosure open={open} onOpenChange={setOpen}>
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Compilation segments</p>
-              <p className="text-muted-foreground font-mono text-xs">
-                {formatClipDuration(clip.durationMs)} source reel
-              </p>
-            </div>
-            {open && children.isFetching ? (
-              <span className="text-muted-foreground text-xs">Loading segments…</span>
-            ) : null}
-            {open && !children.isFetching ? (
-              <Button variant="outline" size="sm" onClick={onManage}>
-                Manage {pluralize(total, "segment")}
-              </Button>
-            ) : null}
-            <Disclosure.Trigger label={`${open ? "Hide" : "Show"} segments from ${clip.name}`} />
-          </div>
-          <Disclosure.Panel className="border-border border-t p-3">
-            {children.error ? (
-              <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
-            ) : rows.length > 0 ? (
-              <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
-            ) : children.isFetching ? null : (
-              <p className="text-muted-foreground text-sm">
-                No filed segments remain under this compilation.
-              </p>
-            )}
-          </Disclosure.Panel>
-        </Card>
-      </Disclosure>
-    </div>
-  );
-};
 
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
 // ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
@@ -237,8 +84,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       search: (prev) => ({ ...prev, page: undefined, ...next }),
       replace: true,
     });
-  const viewRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const chooseView = (next: (typeof VIEWS)[number]["id"]) =>
+  const chooseView = (next: CatalogView) =>
     navigate({
       to: "/filler/library",
       search: (prev) => ({
@@ -248,73 +94,21 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       }),
       replace: true,
     });
-  const onViewKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let next = index;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % VIEWS.length;
-    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
-      next = (index - 1 + VIEWS.length) % VIEWS.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = VIEWS.length - 1;
-    else return;
-
-    event.preventDefault();
-    viewRefs.current[next]?.focus();
-    const nextView = VIEWS[next];
-    if (nextView) chooseView(nextView.id);
-  };
   // A phone gets the folded toolbar and the 2-up compact grid (#1817, decided on #1908). It's a
   // render decision, not just an arrangement: the compact card drops its chips and aired line.
   const phone = usePhoneWidth();
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
-  // Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle buttons: these are
-  // two states of ONE setting, and a pair of independent buttons announces neither which is
-  // active nor that they are alternatives. On a wide screen it sits at the far end of the
-  // toolbar, as the mock draws it; on a phone it follows the Filters button, icons only.
-  const viewToggle = (
-    <div
-      className={cn("ml-auto flex gap-1", !phone && "order-last")}
-      role="radiogroup"
-      aria-label="Clip view"
-    >
-      {VIEWS.map((v, index) => (
-        <Button
-          key={v.id}
-          ref={(node) => {
-            viewRefs.current[index] = node;
-          }}
-          variant={view === v.id ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-label={v.label}
-          aria-checked={view === v.id}
-          tabIndex={view === v.id ? 0 : -1}
-          title={v.title}
-          onClick={() => chooseView(v.id)}
-          onKeyDown={(event) => onViewKeyDown(event, index)}
-        >
-          <v.icon className="size-4" aria-hidden />
-          {phone ? null : <span>{v.label}</span>}
-        </Button>
-      ))}
-    </div>
-  );
 
   const [inspecting, setInspecting] = useState<string>();
-  const [editing, setEditing] = useState(false);
   const detailTrigger = useRef<HTMLElement>(null);
   const openDetails = (hash: string) => {
     detailTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setEditing(false);
     setInspecting(hash);
-  };
-  const closeDetails = () => {
-    setInspecting(undefined);
-    setEditing(false);
   };
   // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
   // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
   const [splitting, setSplitting] = useState<string>();
+  const clipSplit = useClipSplit();
+  const { job: splitJob } = clipSplit;
 
   // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
   // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
@@ -334,55 +128,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     },
     { query: { enabled: true } },
   );
-  // Exact identity also resolves segments expanded inside a recording, not just the result page.
-  const inspection = fillerApi.useListFiller(
-    { hashes: inspecting ? [inspecting] : [], includeHeld: true, includeComposites: true, limit: 1 },
-    { query: { enabled: Boolean(inspecting) } },
-  );
-  const inspectedClip = unwrap(inspection.data, (body) =>
-    body.clips.find((clip) => clip.hash === inspecting),
-  );
-  const videoLine = inspectedClip?.media
-    ? [
-        inspectedClip.media.width && inspectedClip.media.height
-          ? `${inspectedClip.media.width}×${inspectedClip.media.height}`
-          : undefined,
-        displayCodec(inspectedClip.media.videoCodec),
-        displayFrameRate(inspectedClip.media.frameRate),
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : undefined;
-  const audioLine = inspectedClip?.media
-    ? [
-        displayCodec(inspectedClip.media.audioCodec),
-        displayAudioChannels(inspectedClip.media.audioChannels),
-        displayAudioRate(inspectedClip.media.audioRateHz),
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : undefined;
-  const fileLine = inspectedClip?.media
-    ? [
-        inspectedClip.media.container?.toUpperCase(),
-        inspectedClip.media.bytes ? formatBytes(inspectedClip.media.bytes) : undefined,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : undefined;
   const parent = fillerApi.useListFiller(
     { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
     { query: { enabled: Boolean(parentHash) } },
   );
-
-  // ⚠ `invalidateLifecycle` invalidates the clip list AND the two queue views (Incoming, pool).
-  // The trio was written out by hand at four call sites here, which is three chances to forget
-  // the third key and leave an operator looking at a queue that has already moved on.
-  // ⚠ `invalidateCatalog` no longer has a caller here (§10 V54): the tag dialog's save was its
-  // last one, and that moved to `invalidateLifecycle` because the Incoming rows render the very
-  // badges the dialog edits. Destructuring it "just in case" is how a page keeps a second, weaker
-  // invalidation vocabulary alive for the next writer to reach for by accident.
-  const { invalidateLifecycle } = useFillerInvalidate();
 
   // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
   // source is moving onto the Sources tab, where it belongs — a search is something you do to a
@@ -390,27 +139,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
   // still fires is how a page keeps paying for a feature nobody can reach.
 
-  // Bulk selection (V35). ⚠ Deliberately NOT in the URL, unlike the filters: a selection is a
-  // transient intent about the rows in front of you, and a shared link that carried it would
-  // hand someone else a pre-armed destructive action over clips they never chose.
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const previousResultScope = useRef(resultScope);
-  const toggleSelected = (hash: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(hash)) next.add(hash);
-      return next;
-    });
-  const clearSelection = () => setSelected(new Set());
-  // Selection is intent over the visible result page. Route navigation can change that page
-  // without going through a control here, so observe the result-defining search state rather
-  // than clearing only in individual filter handlers. View is intentionally excluded: it changes
-  // presentation, not the rows on this page.
-  useEffect(() => {
-    if (previousResultScope.current === resultScope) return;
-    previousResultScope.current = resultScope;
-    setSelected(new Set());
-  }, [resultScope]);
+  const selection = useCatalogSelection(resultScope);
   // Paging (§10 V51d).
   //
   // ⚠ `replace: false`, unlike `setFilters`: paging IS navigation, so the back button should walk
@@ -421,95 +150,12 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   // control on the bulk bar is Remove-from-catalog — a selection that survived paging would let
   // one click remove clips from a page nobody is looking at.
   const goToPage = (next: number) => {
-    clearSelection();
+    selection.clear();
     navigate({
       to: "/filler/library",
       search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
     });
   };
-  // "Select all" over the rows currently RENDERED (V35b). ⚠ Scoped to the filtered set on
-  // purpose: `rows` is what the operator can see, and the bulk bar's next control is
-  // "Remove from catalog". Selecting clips hidden behind a filter would arm a destructive
-  // action over rows nobody looked at.
-  //
-  // It doubles as the un-select once everything shown is picked, so the control is not a
-  // one-way door that needs a second button to undo.
-  const allSelected = (rows: readonly ClipDTO[]) =>
-    rows.length > 0 && rows.every((clip) => selected.has(clip.hash));
-  const selectAll = (rows: readonly ClipDTO[]) =>
-    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.hash)));
-
-  // Bulk retag. Each field is independent on the server, so sending only what the operator
-  // picked leaves the other two alone rather than blanking them.
-  const bulkTag = fillerApi.useBulkTagFiller({
-    mutation: {
-      onSuccess: (res) => {
-        clearSelection();
-        invalidateLifecycle();
-        const updated = isOk(res) ? res.data.updated : 0;
-        toast.success(`Retagged ${pluralize(updated, "clip")}`);
-      },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't retag those clips"),
-    },
-  });
-
-  // Removing a clip from the catalog (V35). ⚠ A TOMBSTONE on the server: the clip leaves the
-  // catalog and stops being used in breaks, and the file is untouched. The copy here says
-  // "catalog" for that reason and must keep saying it.
-  const removeClips = fillerApi.useBulkRemoveFiller({
-    mutation: {
-      onSuccess: invalidateLifecycle,
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't remove those clips"),
-    },
-  });
-
-  // `filler_split` SSE frame hands over the proposal id, and we navigate to the review
-  // gate. Same shape as the ingest job below — request returns immediately, progress
-  // arrives on the bus.
-  const [splitJob, setSplitJob] = useState<{
-    clipHash: string;
-    // The status line reads better with a name than a content hash; carried alongside the
-    // identity because the DTO's wire identity (hash) is meaningless to read in a sentence.
-    clipName: string;
-    jobId: string;
-    status: string;
-    error?: string;
-  }>();
-  const split = fillerApi.useSplitFiller({
-    mutation: {
-      onSuccess: (res, vars) => {
-        if (isOk(res)) {
-          setSplitJob({
-            clipHash: vars.data.hash,
-            clipName: pendingSplitName.current ?? vars.data.hash,
-            jobId: res.data.jobId,
-            status: "running",
-          });
-        }
-      },
-    },
-  });
-  // The clip name for whatever split is currently in flight (§10 V45a) — a ref, not state,
-  // because it is write-then-read-once inside the mutation callback above and never rendered
-  // itself; only the resulting `splitJob.clipName` is.
-  const pendingSplitName = useRef<string | undefined>(undefined);
-
-  useLoomarrEventListener({
-    onFillerSplit: (e) => {
-      // Frames for OTHER split jobs (another tab, another admin) are not ours to act on.
-      if (!e.jobId || e.jobId !== splitJob?.jobId) return;
-      if (e.status === "success" && e.proposalId) {
-        setSplitJob(undefined);
-        void navigate({
-          to: "/filler/splits/$proposalId",
-          params: { proposalId: e.proposalId },
-          search: { from: "library" },
-        });
-      } else if (e.status === "error") {
-        setSplitJob((prev) => (prev ? { ...prev, status: "error", error: e.error } : prev));
-      }
-    },
-  });
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
@@ -529,8 +175,8 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     <ClipRow
       key={clip.hash}
       clip={clip}
-      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-      selected={selected.has(clip.hash)}
+      {...(isAdmin ? { onToggleSelect: () => selection.toggle(clip.hash) } : {})}
+      selected={selection.selected.has(clip.hash)}
       onOpen={() => openDetails(clip.hash)}
     />
   );
@@ -539,9 +185,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       key={clip.hash}
       clip={clip}
       {...(isAdmin && clip.isComposite ? { onSplit: () => setSplitting(clip.hash) } : {})}
-      splitPending={Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"}
-      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
-      selected={selected.has(clip.hash)}
+      splitPending={clipSplit.isRunning(clip.hash)}
+      {...(isAdmin ? { onToggleSelect: () => selection.toggle(clip.hash) } : {})}
+      selected={selection.selected.has(clip.hash)}
       onOpen={() => openDetails(clip.hash)}
       compact={phone}
     />
@@ -560,7 +206,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
 
   return (
     <div className="flex flex-col gap-6">
-      {split.error != null && <ErrorState error={split.error} />}
+      {clipSplit.error != null && <ErrorState error={clipSplit.error} />}
       {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
       {parentHash ? (
@@ -594,66 +240,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
         </div>
       ) : null}
 
-      {/* The bulk bar, shown only when something is selected. It appears ABOVE the grid
-              rather than floating over it: a bar that covers the cards hides the very thing the
-              operator is deciding about. */}
-      {selected.size > 0 && (
-        <div className="border-signal/40 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
-          <span className="text-signal font-mono text-xs">{pluralize(selected.size, "clip")} selected</span>
-
-          {BULK_TAG_FIELDS.map((field) => (
-            <Select
-              key={field.key}
-              value=""
-              onValueChange={(value) =>
-                bulkTag.mutate({
-                  data: {
-                    // The selection is HASHES (§10 V45a) — the bulk endpoint now keys on hashes,
-                    // matching the single-clip PATCH.
-                    hashes: [...selected],
-                    [field.key]: field.key === "era" ? Number(value) : value,
-                  },
-                })
-              }
-            >
-              <SelectTrigger className="w-auto min-w-32" aria-label={field.label}>
-                <SelectValue placeholder={field.label} />
-              </SelectTrigger>
-              <SelectContent>
-                {field.options.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
-
-          {/* ⚠ "Remove from catalog", not "Delete". The server's action is a TOMBSTONE: the
-                  clip stops appearing here and stops being used in breaks, and the file stays
-                  exactly where the operator put it. The label has to keep saying catalog. */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={removeClips.isPending}
-            // ⚠ Same KNOWN GAP as the bulk-tag selects above: `paths` is genuinely path-keyed
-            // server-side and `selected` can only carry `clip.hash` now that `ClipDTO` has no
-            // path. See the comment on the bulk-tag Select's onValueChange.
-            onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
-            title="Stop using these clips. The files stay in your folder."
-          >
-            Remove from catalog
-          </Button>
-
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={clearSelection}>
-            Clear
-          </Button>
-        </div>
+      {selection.selected.size > 0 && (
+        <CatalogBulkBar selected={selection.selected} onClear={selection.clear} />
       )}
 
       {/* Split detection progress (§10 V34) — a job, not a request, so it gets a live
-              status line the way ingest does. Success NAVIGATES to the review route; only
-              running/error render here. */}
+          status line the way ingest does. Success NAVIGATES to the review route; only
+          running/error render here. */}
       {splitJob && (
         <p
           role="status"
@@ -666,106 +259,21 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       )}
 
       {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
-              their buttons (V38c). Reporting the outcome of work nothing on this page can start
-              is a result with no cause — an operator reading it has no way to know what produced
-              it or how to produce it again. Per-source outcomes belong on the Sources row that
-              did the work. */}
+          their buttons (V38c). Reporting the outcome of work nothing on this page can start
+          is a result with no cause — an operator reading it has no way to know what produced
+          it or how to produce it again. Per-source outcomes belong on the Sources row that
+          did the work. */}
 
-      {/* On a phone the toolbar folds to one line — search, Filters, and the view toggle — so the
-          first clips land above the fold (#1817, decided on #1908). Filters opens the rest. */}
-      <Card
-        className={cn("flex flex-wrap", phone ? "items-center gap-2 px-3 py-2.5" : "items-end gap-3 p-4")}
-      >
-        {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
-                viewport — a text field far wider than anything typed into it, which reads
-                as a layout bug rather than a generous input. It still grows on narrow
-                screens (min-w-48) and stops being silly on wide ones. */}
-        <div className={cn("min-w-0 flex-1", !phone && "max-w-md min-w-48")}>
-          <Label htmlFor="clip-search" className={cn(phone && "sr-only")}>
-            Search
-          </Label>
-          <Input
-            id="clip-search"
-            value={q}
-            placeholder="Clip name"
-            onChange={(e) => setFilters({ q: e.target.value || undefined })}
-          />
-        </div>
-        {phone ? (
-          <Button
-            variant="outline"
-            size="sm"
-            aria-expanded={filtersOpen}
-            aria-controls="clip-filters"
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            Filters
-          </Button>
-        ) : null}
-        {viewToggle}
-        {!phone || filtersOpen ? (
-          <div
-            id="clip-filters"
-            className={cn(
-              "flex items-end gap-3",
-              phone ? "order-last grid basis-full grid-cols-2" : "contents",
-            )}
-          >
-            <div>
-              <Label htmlFor="clip-kind">Kind</Label>
-              {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-              <Select
-                value={kind || "any"}
-                onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
-              >
-                <SelectTrigger id="clip-kind">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="unclassified">Unclassified</SelectItem>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                  <SelectItem value="bumper">Bumper</SelectItem>
-                  <SelectItem value="station_id">Station ID</SelectItem>
-                  <SelectItem value="psa">PSA</SelectItem>
-                  <SelectItem value="trailer">Trailer</SelectItem>
-                  <SelectItem value="interstitial">Interstitial</SelectItem>
-                  <SelectItem value="political">Political ad</SelectItem>
-                  <SelectItem value="news">News &amp; weather</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="clip-audience">Audience</Label>
-              <Select
-                value={audience || "any"}
-                onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
-              >
-                <SelectTrigger id="clip-audience">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any</SelectItem>
-                  <SelectItem value="kids">Kids</SelectItem>
-                  <SelectItem value="family">Family</SelectItem>
-                  <SelectItem value="general">General</SelectItem>
-                  <SelectItem value="late_night">Late night</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              variant={untagged ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilters({ untagged: untagged ? undefined : true })}
-              // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
-              // without era/audience, so they are never counted as needing work (§10).
-              title="Commercials missing era, audience, or category"
-            >
-              Untagged only
-            </Button>
-          </div>
-        ) : null}
-      </Card>
+      <CatalogToolbar
+        phone={phone}
+        q={q}
+        kind={kind}
+        audience={audience}
+        untagged={untagged}
+        view={view}
+        onFilterChange={setFilters}
+        onViewChange={chooseView}
+      />
 
       {rows === undefined ? (
         <p className="text-muted-foreground text-sm">Loading clips…</p>
@@ -805,7 +313,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       ) : (
         <>
           {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
-                  ("what's next?") — never both in one place. */}
+              ("what's next?") — never both in one place. */}
           <div className="flex items-center gap-3">
             <p className="text-muted-foreground text-sm">
               {pageCount > 1
@@ -813,15 +321,15 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                 : pluralize(total, "clip")}
             </p>
             {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
-                    what is on screen — not the whole catalog. Selecting rows the operator
-                    cannot see, then offering "Remove from catalog", is how a bulk action
-                    surprises someone. The label says so when a filter is active.
-                    ⚠ Paging sharpened that: "on screen" is now one PAGE, so the label says
-                    "Select this page" whenever there is more than one — and `goToPage` clears
-                    the selection, or a Remove would reach rows from a page nobody is looking at. */}
+                what is on screen — not the whole catalog. Selecting rows the operator
+                cannot see, then offering "Remove from catalog", is how a bulk action
+                surprises someone. The label says so when a filter is active.
+                ⚠ Paging sharpened that: "on screen" is now one PAGE, so the label says
+                "Select this page" whenever there is more than one — and `goToPage` clears
+                the selection, or a Remove would reach rows from a page nobody is looking at. */}
             {isAdmin && (
-              <Button variant="ghost" size="sm" onClick={() => selectAll(selectableRows)}>
-                {allSelected(selectableRows)
+              <Button variant="ghost" size="sm" onClick={() => selection.selectAll(selectableRows)}>
+                {selection.allSelected(selectableRows)
                   ? "Clear selection"
                   : pageCount > 1
                     ? "Select this page"
@@ -850,19 +358,19 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           )}
 
           {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
-                  "did my filter work?". Rendered only when there is more than one page, so the
-                  common household catalog never grows a control it does not need.
+              "did my filter work?". Rendered only when there is more than one page, so the
+              common household catalog never grows a control it does not need.
 
-                  ⚠ Prev/Next plus a position, not a numbered page strip. A strip is the V51e
-                  catalog redesign's call to make; what this must not do is leave the clips past
-                  row 60 unreachable, which is what a page size with no pager would be. */}
+              ⚠ Prev/Next plus a position, not a numbered page strip. A strip is the V51e
+              catalog redesign's call to make; what this must not do is leave the clips past
+              row 60 unreachable, which is what a page size with no pager would be. */}
           {pageCount > 1 && (
             <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
                 Previous
               </Button>
               {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
-                      announcement a screen-reader user gets a silently different list. */}
+                  announcement a screen-reader user gets a silently different list. */}
               <p aria-live="polite" className="text-muted-foreground text-sm">
                 Page {page.toLocaleString()} of {pageCount.toLocaleString()}
               </p>
@@ -880,140 +388,26 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       )}
 
       {/* The split confirmation (§10 V54 A8). Resolved from the CURRENT page like its
-              siblings, so a clip that vanishes under a filter closes the dialog rather than
-              confirming a hash that is no longer on screen. */}
+          siblings, so a clip that vanishes under a filter closes the dialog rather than
+          confirming a hash that is no longer on screen. */}
       {splitting && rows && (
         <ConfirmSplitDialog
           clip={rows.find((c) => c.hash === splitting)}
           onConfirm={() => {
             const clip = rows.find((c) => c.hash === splitting);
             setSplitting(undefined);
-            if (!clip) return;
-            pendingSplitName.current = clip.name;
-            split.mutate({ data: { hash: clip.hash } });
+            if (clip) clipSplit.start(clip);
           }}
           onClose={() => setSplitting(undefined)}
         />
       )}
 
-      <Sheet
-        open={Boolean(inspecting)}
-        onOpenChange={(open) => !open && closeDetails()}
-        swipeDirection="right"
-      >
-        {inspecting ? (
-          <SheetContent finalFocus={detailTrigger}>
-            <SheetHeader>
-              <SheetTitle>{inspectedClip?.name ?? "Clip details"}</SheetTitle>
-              <SheetDescription>
-                {editing
-                  ? "Edit details"
-                  : inspectedClip?.held
-                    ? "Preparing"
-                    : inspectedClip?.isComposite
-                      ? "Recording"
-                      : "Ready"}
-              </SheetDescription>
-            </SheetHeader>
-            <div className="space-y-5 p-6">
-              {inspection.error ? (
-                <ErrorState error={inspection.error} onRetry={() => inspection.refetch()} />
-              ) : inspectedClip ? (
-                editing && isAdmin ? (
-                  <ClipDetailsEditor
-                    key={inspectedClip.hash}
-                    clip={inspectedClip}
-                    onClose={() => setEditing(false)}
-                    onSaved={() => {
-                      setEditing(false);
-                      invalidateLifecycle();
-                    }}
-                  />
-                ) : (
-                  <>
-                    <ClipDetails
-                      clip={inspectedClip}
-                      {...(isAdmin ? { onEdit: () => setEditing(true) } : {})}
-                    />
-                    <details className="border-border rounded-lg border p-4 text-sm">
-                      <summary className="cursor-pointer font-medium">More about this clip</summary>
-                      <dl className="mt-3 space-y-2">
-                        {videoLine ? (
-                          <div>
-                            <dt className="text-muted-foreground">Video</dt>
-                            <dd>{videoLine}</dd>
-                          </div>
-                        ) : inspectedClip.quality ? (
-                          <div>
-                            <dt className="text-muted-foreground">Resolution</dt>
-                            <dd>{inspectedClip.quality}</dd>
-                          </div>
-                        ) : null}
-                        {audioLine ? (
-                          <div>
-                            <dt className="text-muted-foreground">Audio</dt>
-                            <dd>{audioLine}</dd>
-                          </div>
-                        ) : null}
-                        {fileLine ? (
-                          <div>
-                            <dt className="text-muted-foreground">File</dt>
-                            <dd>{fileLine}</dd>
-                          </div>
-                        ) : null}
-                        {inspectedClip.language ? (
-                          <div>
-                            <dt className="text-muted-foreground">Language</dt>
-                            <dd>
-                              {inspectedClip.language === "none" ? "No speech" : inspectedClip.language}
-                            </dd>
-                          </div>
-                        ) : null}
-                        {inspectedClip.license ? (
-                          <div>
-                            <dt className="text-muted-foreground">Source license</dt>
-                            <dd className="break-words">{inspectedClip.license}</dd>
-                          </div>
-                        ) : null}
-                        {inspectedClip.enrichment?.facts?.length ? (
-                          <div>
-                            <dt className="text-muted-foreground">How details were found</dt>
-                            <dd>
-                              <ul className="mt-1 space-y-1">
-                                {inspectedClip.enrichment.facts.map((fact) => (
-                                  <li key={fact.axis} className="flex justify-between gap-4">
-                                    <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
-                                    <span className="text-muted-foreground text-right">
-                                      {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </dd>
-                          </div>
-                        ) : null}
-                        {!videoLine &&
-                        !audioLine &&
-                        !fileLine &&
-                        !inspectedClip.quality &&
-                        !inspectedClip.language &&
-                        !inspectedClip.license &&
-                        !inspectedClip.enrichment?.facts?.length ? (
-                          <p className="text-muted-foreground">No additional details recorded yet.</p>
-                        ) : null}
-                      </dl>
-                    </details>
-                  </>
-                )
-              ) : (
-                <p role="status" className="text-muted-foreground text-sm">
-                  {inspection.isLoading ? "Loading clip…" : "This clip is no longer available."}
-                </p>
-              )}
-            </div>
-          </SheetContent>
-        ) : null}
-      </Sheet>
+      <ClipInspectorSheet
+        hash={inspecting}
+        isAdmin={isAdmin}
+        finalFocus={detailTrigger}
+        onClose={() => setInspecting(undefined)}
+      />
     </div>
   );
 };
