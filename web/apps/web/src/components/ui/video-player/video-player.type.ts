@@ -76,6 +76,9 @@ interface VideoPlayerChrome {
   fullscreen: boolean;
   // Back to the live edge (the live transport's Go live).
   goLive: () => void;
+  // Hide the controls now, for a moment the caller draws alone (a station-ID card); held or paused
+  // controls stay. The next pointer move or focus shows them again.
+  hide: () => void;
   hold: (on: boolean) => void;
   muted: boolean;
   playing: boolean;
