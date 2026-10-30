@@ -613,21 +613,55 @@
       "tailwindClasses": 118,
       "legacyUi": 4
     },
+    "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
+      "tailwindClasses": 39,
+      "legacyUi": 3
+    },
+    "src/filler/sources-panel/local-source-form/local-source-form.tsx": {
+      "tailwindClasses": 13,
+      "legacyUi": 4
+    },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "tailwindClasses": 77,
       "legacyUi": 2
     },
+    "src/filler/sources-panel/source-clip-search/source-clip-search.tsx": {
+      "tailwindClasses": 4,
+      "legacyUi": 1
+    },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 44,
+      "legacyUi": 1
+    },
+    "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
+      "tailwindClasses": 4,
       "legacyUi": 1
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
       "tailwindClasses": 20,
       "legacyUi": 2
     },
+    "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
+      "tailwindClasses": 11,
+      "legacyUi": 1
+    },
+    "src/filler/sources-panel/source-preview-section/source-preview-section.tsx": {
+      "tailwindClasses": 5
+    },
+    "src/filler/sources-panel/source-settings/source-settings.tsx": {
+      "tailwindClasses": 13,
+      "legacyUi": 2
+    },
+    "src/filler/sources-panel/source-status/source-status.tsx": {
+      "tailwindClasses": 31,
+      "legacyUi": 1
+    },
+    "src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
+      "tailwindClasses": 40,
+      "legacyUi": 1
+    },
     "src/filler/sources-panel/sources-panel.tsx": {
-      "tailwindClasses": 163,
-      "legacyUi": 6
+      "tailwindClasses": 3
     },
     "src/filler/split-review-page/split-review-page.tsx": {
       "tailwindClasses": 60,

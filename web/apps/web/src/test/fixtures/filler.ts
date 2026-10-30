@@ -1,6 +1,7 @@
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
+import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 
 // Filler fixtures, typed against the generated DTOs so a new required field breaks the build here
 // rather than surfacing as `undefined` in one test's screen. Same reasoning as `./channels`.
@@ -68,4 +69,28 @@ const DEFAULT_KINDS: CoverageDTO["defaultKinds"] = [
   "interstitial",
 ];
 
-export { DEFAULT_KINDS, defectReport, readiness };
+// `fillerSource()` is an enabled, ready watched folder. Override `kind`, `uri`, `actions` and the
+// rest for the source a test is about.
+const fillerSource = (over: Partial<FillerSourceDTO> = {}): FillerSourceDTO => ({
+  id: "folder",
+  kind: "folder",
+  target: "/data/filler",
+  detail: "watched directly",
+  count: 0,
+  incoming: 0,
+  configured: true,
+  fetchable: true,
+  enabled: true,
+  effectiveEnabled: true,
+  providerEnabled: true,
+  switchable: true,
+  removable: false,
+  searchable: false,
+  readiness: "ready",
+  ready: true,
+  locationSource: "installation",
+  actions: ["fetch", "disable"],
+  ...over,
+});
+
+export { DEFAULT_KINDS, defectReport, fillerSource, readiness };
