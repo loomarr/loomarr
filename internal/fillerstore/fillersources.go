@@ -154,6 +154,40 @@ func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography
 	return coverage
 }
 
+// ServesHome reports whether this source may fetch for the installation as configured: the
+// installation names a country and the source serves it. Unlike GeographicallyEligible, which
+// admits everything for an installation with no country, nothing is served before a location is set.
+func (f FillerSource) ServesHome(home filler.Geography) bool {
+	home = home.Normalize()
+	return home.Country != "" && f.GeographicallyEligible(home)
+}
+
+// FetchPlan is this source as the fetcher schedules it — the one projection the fetch job and the
+// Sources page's next-check time both read, so they cannot disagree about whether or when a source
+// is checked. eligible is the caller's geography verdict (normally ServesHome); region its rank.
+//
+// ⚠ The three-state override is resolved HERE, by FetchEvery, and handed to the fetcher already
+// decided (§10 V38c). Re-deriving nil-vs-0-vs-N in the fetcher is how the two would drift, and the
+// way they would drift is toward treating "never" as "inherit" — fetching from a source the
+// operator opted out of.
+func (f FillerSource) FetchPlan(eligible bool, region int, globalEvery time.Duration) filler.FetchSource {
+	every, pollable := f.FetchEvery(globalEvery)
+	if !pollable {
+		every = 0
+	}
+	return filler.FetchSource{
+		ID: f.ID, Kind: f.Kind, URI: f.URI, Enabled: f.EffectiveEnabled() && eligible, Region: region,
+		NeverFetch:        !pollable,
+		Every:             every,
+		LastCheckedAt:     f.LastCheckedAt,
+		CheckFailureCount: f.CheckFailureCount,
+		CheckRetryAt:      f.CheckRetryAt,
+		CheckLeaseUntil:   f.CheckLeaseUntil,
+		MaxPerRun:         f.MaxPerRun(0),
+		ScanCheckpoint:    f.ScanCheckpoint,
+	}
+}
+
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
 // pull plan and be handed to the ingest job.
 //

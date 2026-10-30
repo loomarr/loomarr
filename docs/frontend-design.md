@@ -490,3 +490,95 @@ optional `logoImage` present only when the logo resolves to one of this instance
 - **Resolve the page's distinct hashes before mapping rows**, never inside the per-row mapper (an
   N+1). A failed lookup is an absent record, never an error, so a channel still renders when its
   image row is gone.
+
+## 9. Player chrome — one design for every player
+
+Every Loomarr video player — web Watch, the phone apps, Android TV and Apple TV — wears the same
+chrome (maintainer, 2026-10-29, #2088). The mock of record is
+[`design/watch-player/`](../design/watch-player/README.md): every state on desktop, landscape and
+portrait frames. This section is the rules that mock follows; where they disagree, the mock wins and
+this text is fixed.
+
+**Where it is built.** The chrome is shared design-system code in `@loomarr/ui` (the
+`watching-surface` family, beside `WatchingPanel`), with focus and remote navigation in
+`@loomarr/ui-tv`. Each app supplies only its player adapter (`@loomarr/player`) and its input
+mapping. No platform keeps its own player chrome; the web-only `VideoPlayer` controls are replaced,
+not restyled alongside.
+
+### 9.1 Planes
+
+The chrome is five planes, back to front, and each one is visibly separate:
+
+1. **Picture.** Nothing is drawn on it in a portrait phone layout; elsewhere a bottom scrim carries
+   the planes above.
+2. **The lower-third band** — identity. An amber channel block (`CH` over the number) beside a glass
+   panel: `CH n · name`, the programme line (`Series · S2 E4 "Episode"`, or
+   `Commercials · <clip title>` in a break), a thin progress line, and `9m in · 13m left` (or
+   `2m 14s behind`). The same band is the **station-ID card**: on a settled tune it shows fuller —
+   a larger block and `era · place` — and clears after five seconds.
+3. **The preview playbar** on a glass tray (§9.3).
+4. **The transport** in glass capsules (§9.4).
+5. **The transient layer**: a preview card (pointer), or one right-hand sheet for Info, Settings,
+   Playback info, Channels and Shortcuts over a dimmed picture. While a preview card is open the band
+   steps back a plane — dimmer and slightly softened — so the card is unambiguously in front.
+
+**Elevation exception.** §2.3's "borders first, shadows second" is for page surfaces. Over moving
+video a hairline separates nothing, so player chrome takes its elevation from glass (a translucent
+fill with a top inner highlight and backdrop blur) and a soft drop shadow per plane. These are
+player-chrome tokens, added through the token pipeline (§2.5) — never raw `rgb()` values in
+components. Where a platform has no backdrop blur (React Native without a blur view), the glass
+falls back to a solid tinted fill of the same luminance; the plane order must still read.
+
+### 9.2 Depth is light, never size
+
+- Every segment of the playbar is the same height. Nothing grows, lifts or scales on hover, focus or
+  time. (Tried and rejected in review: it reads as a gimmick.)
+- Now is fully lit with an amber edge. The segment under the pointer or focus is fully lit with a
+  white ring. The rest of the future is dimmed (≈72 % brightness, 70 % saturation) — further away.
+- The 15-minute seekable past is amber-tinted, distinct from both now and the future.
+- Stills and clip thumbnails are always shown as pictures, never as flat colour. A programme without
+  a still gets a fallback tile; its look is decided in the first build step that meets one.
+
+### 9.3 The preview playbar
+
+- **Time-true.** Width is proportional to time, over a window of the fifteen minutes behind live
+  (`DVRHorizon`, seekable) to about two hours ahead (hover or focus only — the future can't be
+  played).
+- **Programmes** carry their still, their name and their start time. **Breaks** show one thumbnail
+  tick per spot in the pod (`pod.entries`), sized by duration, and never shrink below a hoverable
+  width; programmes give up the difference.
+- **Playhead**: a glowing amber line with a knob, and a warm wash over what has been watched. When
+  behind live, a red line marks live.
+- **Preview card** (pointer only), joined to its segment by a connector line:
+  - a programme: the still as hero with the title set on it, an `IN 16 MIN` badge, chips (S/E,
+    rating, genres) and two lines of synopsis;
+  - a break: every spot — thumbnail, name, `brand · era` or its kind (Station ID, Bumper, Coming up),
+    duration — with the one on air marked `ON NOW`.
+- Nothing the server did not supply is invented: clip names follow the viewer-copy rule in
+  [`playback-clients.md`](design/playback-clients.md#android-tv) (a filename-derived name is empty,
+  and the spot reads by its kind).
+
+### 9.4 The transport
+
+- **One primary.** Play/pause is the only solid control: a white disc. Everything else is
+  secondary.
+- **Capsules grouped by job**, left to right: transport (⟲10 · play · ⟳10) · live state (the live
+  indicator or `2m 14s behind · Go live`, and Start over) · volume with its level · then, pushed
+  right, view options (Subtitles · Settings · Info · Channels) · window (Fullscreen · Leave).
+- One glyph size and weight (18 px, 1.75 stroke). Active is an amber glyph with a small amber dot,
+  never a filled square. ⟳10 is disabled at the live edge — there is nothing ahead to skip to.
+- On pointer devices every tool has a tooltip naming its shortcut (`Subtitles  C`); the full map is
+  the `?` sheet ([`playback-clients.md`](design/playback-clients.md)).
+
+### 9.5 Per platform
+
+| | Pointer (web) | Touch, landscape | Touch, portrait (phone) | TV (D-pad) |
+| --- | --- | --- | --- | --- |
+| Chrome | Overlay over the picture | Overlay, 44 px targets | Picture clean on top; the panel below (N5) uses the same band content and capsules | Overlay, TV focus rules |
+| Playbar | Hover bar + preview card | Hover bar, no floating card; a tap on a segment opens the right-hand sheet | A scrollable filmstrip, `Coming up` | Visual design as pointer; focus stands in for hover |
+| Shortcuts | Tooltips + `?` sheet | — | — | Remote keys (see below) |
+
+**Open for the TV adoption step:** the D-pad has no free key for walking the playbar — Up/Down and
+the Channel keys tune, OK opens the Guide, Left opens Surf ([`playback-clients.md`](design/playback-clients.md#android-tv)).
+How a remote reaches the bar and its cards is decided with the maintainer when that step starts, not
+here.

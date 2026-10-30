@@ -10,12 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TAXONOMY_AXES as AXES, type TaxonomyAxis } from "../taxonomy-axes";
 import type { ClipDetailsEditorProps } from "./clip-details-editor.type";
 
-// The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).
-// Ordered product-first because it is the deepest and most-used; the labels are the human forms.
-const AXES = ["product", "format", "presentation", "seasonal", "audience-cue"] as const;
-const AXIS_LABEL: Record<(typeof AXES)[number], string> = {
+const AXIS_LABEL: Record<TaxonomyAxis, string> = {
   product: "Products & topics",
   format: "Format",
   presentation: "Presentation",

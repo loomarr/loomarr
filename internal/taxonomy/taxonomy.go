@@ -198,6 +198,26 @@ func (f *Forest) Resolve(raw string) (string, bool) {
 	return slug, ok
 }
 
+// Ground resolves an operator's whole tag set (§10 V45a): each raw tag through Resolve, duplicates
+// collapsed, sorted. Unlike the tagger, which drops an unknown tag, an operator's edit is refused
+// whole, so Ground reports the first raw tag off the vocabulary instead of dropping it.
+func (f *Forest) Ground(raw []string) (leaves []string, unknown string, ok bool) {
+	leaves = make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, r := range raw {
+		slug, found := f.Resolve(r)
+		if !found {
+			return nil, r, false
+		}
+		if !seen[slug] {
+			seen[slug] = true
+			leaves = append(leaves, slug)
+		}
+	}
+	sort.Strings(leaves)
+	return leaves, "", true
+}
+
 // Ancestors returns slug's parent chain, nearest first, EXCLUDING slug itself — the rollup tags a
 // leaf tag implies. `beer` → [alcohol, drinks]. An unknown or root slug returns nil.
 //

@@ -135,9 +135,6 @@ func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []
 func (a fillerPipelineClipAdapter) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.HoldClips(ctx, paths, at)
 }
-func (a fillerPipelineClipAdapter) ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error) {
-	return a.st.ReleaseCompositeHolds(ctx, paths, at)
-}
 func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
 }
@@ -478,33 +475,13 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 	}
 	out := make([]filler.FetchSource, 0, len(srcs))
 	for _, s := range srcs {
-		geographicallyEligible, region := true, 0
+		eligible, region := true, 0
 		if a.home != nil {
 			home := a.home().Normalize()
-			geographicallyEligible = home.Country != "" && s.GeographicallyEligible(home)
+			eligible = s.ServesHome(home)
 			region = home.RegionRank(s.EffectiveGeography(home).Country)
 		}
-		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
-		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
-		// nil-vs-0-vs-N; re-deriving it in the fetcher is how the two would drift, and the way
-		// they would drift is toward treating "never" as "inherit" — i.e. fetching from a source
-		// the operator opted out of.
-		//
-		every, pollable := s.FetchEvery(a.fetchEvery())
-		if !pollable {
-			every = 0
-		}
-		out = append(out, filler.FetchSource{
-			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.EffectiveEnabled() && geographicallyEligible, Region: region,
-			NeverFetch:        !pollable,
-			Every:             every,
-			LastCheckedAt:     s.LastCheckedAt,
-			CheckFailureCount: s.CheckFailureCount,
-			CheckRetryAt:      s.CheckRetryAt,
-			CheckLeaseUntil:   s.CheckLeaseUntil,
-			MaxPerRun:         s.MaxPerRun(0),
-			ScanCheckpoint:    s.ScanCheckpoint,
-		})
+		out = append(out, s.FetchPlan(eligible, region, a.fetchEvery()))
 	}
 	return out, nil
 }

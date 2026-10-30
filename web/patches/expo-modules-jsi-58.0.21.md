@@ -1,4 +1,4 @@
-# expo-modules-jsi 58.0.20: nested build without -quiet
+# expo-modules-jsi 58.0.21: nested build without -quiet
 
 Tracking: [#1816](https://github.com/loomarr/loomarr/issues/1816) (iPhone TestFlight beta).
 
@@ -17,5 +17,5 @@ cache and the produced framework are unchanged; the build log carries the nested
 output. Remove it when upstream stops passing `-quiet` or Xcode stops reporting warning-only tasks
 as errors. The 58.0.19 release still passed `-quiet`; the patch was re-cut against its script, which
 now also forwards `DEVELOPER_DIR`, `TOOLCHAINS` and `EXPO_CUSTOM_BUILD_ROOT` to the nested build.
-58.0.20's `apple/scripts/build-xcframework.sh` is byte-identical to 58.0.19's, so the patch is
-re-keyed unchanged.
+58.0.20's and 58.0.21's `apple/scripts/build-xcframework.sh` are byte-identical to 58.0.19's, so
+the patch is re-keyed unchanged.

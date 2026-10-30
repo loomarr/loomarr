@@ -53,6 +53,11 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
   VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
   early end, including a stream that ended on a bad fragment, rejoins at once.
+  A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
+  asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
+  frames, the timeline would never pass the boundary, and the packager would ask for that same
+  instant forever. That happened live at the end of a break whose clips ran out before the break
+  did (2026-10-29): a core spun and the picture froze on the last commercial.
 - **Two audiences, one timeline.** A browser tunes a **master playlist** naming a `<format>.m3u8`
   variant, with `BANDWIDTH`, `CODECS` (read from the channel init), `RESOLUTION` and `FRAME-RATE`.
   Asset names are flat: `<format>-init.mp4` and `<format>-segNNNNNNNN.m4s`. A media server's tuner
@@ -487,22 +492,37 @@ gets audio. A hard map without the `?` fails the whole encode on an untagged fil
 goes black rather than one that speaks the wrong language, which is strictly worse. Empty means
 "whatever ffmpeg would have picked", preserving today's behaviour for anyone who wants it.
 
-*A per-channel override is now offered; a per-viewer one is still not (V46).* When the Watch UI (above)
-gave audio a visible control, the question "whose choice is this?" had to be answered honestly. A
-per-**viewer** track is still refused for the reason it always was — it forks the encode per viewer and
-breaks one-encoder-per-channel. But a per-**channel** override is the *same shape* as the instance
-default already described here, just resolved with `policy.playout.audio_language` precedence over the
-global (like every other channel policy, §15) — so the Watch tab's Audio control is **admin-scoped and
-channel-wide**: it re-picks the track for the shared stream, for everyone, exactly as changing the
-instance default would. The per-**title** decision (a subtitled original vs a dub, one program at a
-time) remains a separate, unscoped feature; a channel-wide knob does not pre-empt it.
+*The channel picks the default track; the viewer picks between renditions (#2088).* What
+one-encoder-per-channel forbids is a per-viewer **encode**, not a per-viewer **choice**. An HLS
+alternate rendition is one output per channel that every viewer pulls, and each player picks which one
+it plays. So:
 
-**Subtitles are not a setting yet.** The track probe reports what the current item carries, but the
-encoder deliberately maps video plus one audio stream and drops subtitles. The previously-drawn
-global and Watch-tab burn-in controls were therefore inert and are retired in V55. A future subtitle
-control must add the real encoder filter and its direct-play/transcode consequences in the same
-change; a selectable per-viewer soft track would still require per-viewer output and is outside the
-one-encoder-per-channel model.
+- `policy.playout.audio_language` (with precedence over the global, like every other channel policy,
+  §15) is the channel's **default audio language**, set by an admin in the channel's settings. It
+  is the track the video rendition group's default audio carries.
+- When the airing item also carries another language, playout emits **at most one alternate** audio
+  rendition, so the master playlist carries two audio renditions at most. That is one extra audio-only
+  encode per channel while such an item airs, and nothing per viewer. The viewer chooses between the
+  two in the player.
+- Before #2088 the Watch tab's Audio control re-picked the single shared track for everyone. That is
+  superseded; the admin control is the default language only.
+- The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a
+  separate, unscoped feature.
+
+**Subtitles are soft renditions, with GPU burn-in only for image formats (#2088; not yet built).** The
+track probe reports what the current item carries; today the encoder maps video plus one audio
+stream and drops subtitles (the inert V55-era burn-in controls were retired). The decided shape:
+
+- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are extracted to one **WebVTT rendition per
+  language** per channel, in the master playlist's subtitle group. Each viewer turns them on or off
+  and picks the language in the player, and the choice is remembered per viewer. The cost is a cheap
+  text extraction per channel, never a video re-encode.
+- **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
+  An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
+  video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track
+  is dropped: never a CPU filter in the playout graph.
+- Nothing the server did not supply is invented: a programme without a subtitle stream shows no
+  subtitle choices.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's

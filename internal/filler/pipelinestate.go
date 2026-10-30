@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
@@ -57,22 +58,6 @@ func StageIndex(id StageID) int {
 		}
 	}
 	return -1
-}
-
-// SegmentScreeningCompleted reports that a child advanced beyond the screening rung through its
-// ordinary success path. A StatusDone record alone is insufficient because review verdicts also
-// close their current rung before waiting on a person; requiring the row to be later in the ladder
-// prevents an unrelated lifecycle write from turning an unresolved screen into release authority.
-func SegmentScreeningCompleted(row ClipPipeline) bool {
-	if StageIndex(row.Stage) <= StageIndex(StageScreen) {
-		return false
-	}
-	for _, record := range row.Stages {
-		if record.Stage == StageScreen && record.Status == StatusDone {
-			return true
-		}
-	}
-	return false
 }
 
 // StageStatus is how the CURRENT stage is going.
@@ -184,6 +169,42 @@ type ClipPipeline struct {
 	Stages         []StageRecord
 	EnrolledAt     time.Time
 	UpdatedAt      time.Time
+}
+
+// RestoreRefusal returns a refused row — a machine rejection or an operator dismissal — to review:
+// the pipeline half of a catalog restore (§10 V51b, V54). It deliberately re-runs nothing, because
+// the rule that refused the clip would refuse it again; review is the honest destination, since the
+// machine has done all it can. It reports whether the row changed.
+func (p *ClipPipeline) RestoreRefusal(at time.Time) bool {
+	if p.Disposition != DispositionRejected && p.Disposition != DispositionDismissed {
+		return false
+	}
+	p.Disposition = DispositionReview
+	p.RejectReason, p.RejectDetail = "", ""
+	p.UpdatedAt = at
+	return true
+}
+
+// SettleByOperator records an operator's decision (§10 V54). The row moves to `to` only from one of
+// the listed dispositions; any other is skipped, never coerced — a running row finishes its own
+// ladder, so an early operator verb cannot abandon its remaining rungs. It reports whether the row
+// changed.
+func (p *ClipPipeline) SettleByOperator(to Disposition, at time.Time, from ...Disposition) bool {
+	if !slices.Contains(from, p.Disposition) {
+		return false
+	}
+	p.Disposition = to
+	p.unscheduleIfTerminal()
+	p.UpdatedAt = at
+	return true
+}
+
+// unscheduleIfTerminal zeroes a terminal row's schedule so the work list cannot re-pick it on a
+// clock skew. Every writer that settles a row applies it: the pipeline's own save and an operator's.
+func (p *ClipPipeline) unscheduleIfTerminal() {
+	if p.Disposition.Terminal() {
+		p.NextRun = time.Time{}
+	}
 }
 
 // Record appends (or replaces) this stage's entry on the ladder, and moves the row's own Status

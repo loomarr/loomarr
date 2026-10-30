@@ -58,9 +58,7 @@ type TranscodeStage struct {
 	evidenceTranscode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	identifyFFmpeg    func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
-	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
-	inspect   func(context.Context, string, string, int64, bool) (MediaQuality, error)
-	condition func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
+	condition         func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
 	// removeSource is the local-filesystem boundary after durable re-key. Production uses
 	// os.Remove; tests inject its failure to prove the explicit quarantine survives a restart.
 	removeSource func(string) error
@@ -121,7 +119,6 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 		store: store, probe: probe, clipDir: clipDir, profile: profile,
 		ffmpegPath: ffmpegPath, targetLUFS: targetLUFS, now: now,
 		transcode:    mediatools.Transcode,
-		inspect:      mediatools.InspectQuality,
 		removeSource: os.Remove,
 	}
 }
@@ -386,29 +383,6 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 			return StageResult{}, fmt.Errorf("persist evidence derivative for existing playback: %w", err)
 		}
 		return mediaQualityResult(c, *tags.MediaQuality), nil
-	}
-
-	// Older mezzanines already carry the profile marker but predate content inspection. Re-encoding
-	// would add a needless generation of loss, so spend this rung's bounded transcode budget on one
-	// detector-only decode, persist the evidence beside the bytes, and decide from that.
-	if hasTags && tags.Mezzanine == s.profile.ID() && tags.MediaQuality == nil {
-		in, err := s.probe(ctx, oldFull)
-		if err != nil {
-			return StageResult{}, fmt.Errorf("re-probe %s before quality backfill: %w", oldRel, err)
-		}
-		ffmpeg := ""
-		if s.ffmpegPath != nil {
-			ffmpeg = s.ffmpegPath()
-		}
-		quality, err := s.inspect(ctx, ffmpeg, oldFull, in.DurationMs, !in.Silent)
-		if err != nil {
-			return StageResult{}, err
-		}
-		tags.MediaQuality = &quality
-		if err := WriteSidecarTags(oldFull, tags, false); err != nil {
-			return StageResult{}, fmt.Errorf("persist quality inspection %s: %w", oldRel, err)
-		}
-		return mediaQualityResult(c, quality), nil
 	}
 
 	stageDir := filepath.Join(s.clipDir, transcodeStagingDir)

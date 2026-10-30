@@ -920,6 +920,38 @@ func TestSubFrameRemainderRollsIntoTheNextItem(t *testing.T) {
 	}
 }
 
+// The same remainder on a card slot (a break whose clips ran out before its end) has no item to open,
+// so it slates. Under half a frame of card rounds to no frames of slate, and the timeline cannot move
+// past it: live, the packager asked for that instant forever, a core spinning and the picture frozen
+// on the break's last commercial. It must roll into what airs at the card's end, as an item does.
+func TestSubFrameCardRemainderRollsIntoTheNextItem(t *testing.T) {
+	t0 := time.Unix(1_000_000, 0)
+	boundary := t0.Add(1010 * time.Millisecond) // 25.25 frames: the card's slate rounds to 25
+	var asked atomic.Int64
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		asked.Add(1)
+		if at.Before(boundary) {
+			return Item{Label: "card", Duration: boundary.Sub(at)}, nil
+		}
+		return Item{Label: "b", Duration: time.Hour, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return synth{label: "b"}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, SlateRetry: 2 * time.Second,
+		Now: func() time.Time { return t0 }}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start(t, p)
+	deadline := time.Now().Add(3 * time.Second)
+	for p.Stats().Items < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s := p.Stats(); s.Items < 1 {
+		t.Fatalf("stats %+v after %d schedule lookups: want the item after the card to air", s, asked.Load())
+	}
+}
+
 // A tune-in that lands in an airing's last half frame skips it without airing anything, so the next
 // item is still the tune-in item: it gets FirstItemWait, not the lead a later item needs.
 func TestTuneInOnASubFrameRemainderKeepsTheTuneInWait(t *testing.T) {

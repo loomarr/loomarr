@@ -37,6 +37,25 @@ var axes = []Axis{
 
 func Axes() []Axis { return append([]Axis(nil), axes...) }
 
+var taxonomyAxes = []Axis{AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue, AxisPresentation}
+
+// TaxonomyAxes are the axes a taxonomy tag set spans. An operator's tag edit records every one,
+// an empty set included: a cleared axis is a completed observation, not an unknown.
+func TaxonomyAxes() []Axis { return append([]Axis(nil), taxonomyAxes...) }
+
+// OperatorTaxonomyVersion marks tag evidence grounded against the live vocabulary at edit time.
+const OperatorTaxonomyVersion = "operator-live"
+
+// Operator is an operator's edit as a completed, full-confidence observation. reference names the
+// surface the edit came through (operator.clip_edit, operator.bulk_clip_edit).
+func Operator(clipHash string, axis Axis, value Value, reference, taxonomyVersion string, at time.Time) State {
+	return State{
+		ClipHash: clipHash, Axis: axis, Status: StatusComplete, Value: value,
+		Evidence: Evidence{Kind: EvidenceOperator, Reference: reference, Confidence: 100,
+			Producer: "operator", ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: at.UTC()},
+	}
+}
+
 func (a Axis) Valid() bool {
 	for _, candidate := range axes {
 		if a == candidate {
