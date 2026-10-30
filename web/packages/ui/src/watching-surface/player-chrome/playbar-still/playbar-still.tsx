@@ -1,5 +1,5 @@
 import { semanticColors } from "@loomarr/design-system";
-import { Image, type ImageStyle, View, type ViewStyle } from "react-native";
+import { Image, View } from "react-native";
 
 import { webOnly } from "../glass";
 
@@ -9,8 +9,23 @@ import { webOnly } from "../glass";
 
 const hatch = "repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 255, 255, 0.05) 3px 6px)";
 
+type Length = number | `${number}%`;
+
+// ⚠ The box the still fills in its caller's layout, named field by field rather than as React
+// Native's ViewStyle: Storybook's docgen follows a component's prop types into their imports, and
+// it cannot parse react-native's own source (the build fails on react-native/index.js).
+interface PlaybarStillBox {
+  aspectRatio?: number;
+  borderRadius?: number;
+  flexBasis?: Length;
+  flexGrow?: number;
+  height?: Length;
+  position?: "absolute";
+  width?: Length;
+}
+
 interface PlaybarStillProps {
-  style?: ViewStyle;
+  style?: PlaybarStillBox;
   uri?: string;
 }
 
@@ -20,7 +35,7 @@ const PlaybarStill = ({ style, uri }: PlaybarStillProps) =>
       accessibilityIgnoresInvertColors
       resizeMode="cover"
       source={{ uri }}
-      style={[{ backgroundColor: semanticColors.artwork.placeholder }, style as ImageStyle]}
+      style={[{ backgroundColor: semanticColors.artwork.placeholder }, style]}
     />
   ) : (
     <View
