@@ -36,6 +36,31 @@ that has been dropped and rebuilt; pipeline state records work already paid for.
 is one JSON document (`stages_json`); `stage`, `status`, `disposition` and `next_run` are columns
 because the work list and Incoming filter on them.
 
+## Derivative encode levels
+
+Offline derivatives encode with constant quality on the host's own hardware family (#2121), using
+`encode.FileVideoArgs`. Each family's level is **measured, not chosen**: `cmd/filler-encode-bench`
+encodes a corpus of real source masters at candidate levels and scores each output against its
+source with VMAF. The level is the highest whose per-clip VMAF stays at or above **95 for 90% of
+the corpus** (the 10th percentile). `encode.FileLevel` records it. A family with a file mode but no
+measurement encodes in software instead of guessing (`encode.FileFamily`), and so do the generic
+encoders.
+
+Measured on 30 archive commercials (mostly 480p H.264), 2026-10-30. Size and CPU are relative to the
+software evidence recipe these levels replace (libx264 `slow`, CRF 14: VMAF p10 97.2):
+
+| Family | Level | VMAF median / p10 | Size | Encode CPU | Status |
+| --- | --- | --- | --- | --- | --- |
+| NVENC (GeForce RTX 3080 Ti) | `-cq 25` | 96.8 / 95.2 | 54% | 6% (CPU decode in the bench) | measured |
+| Software (libx264 `veryfast`) | `-crf 16` | 96.7 / 95.3 | 83% | 30% | measured |
+| VAAPI (`-rc_mode CQP`) | — | — | — | — | not yet measured on an Arc: encodes in software |
+| VideoToolbox (`-q:v`) | — | — | — | — | unverified: no Mac |
+
+The next level up fails the floor on both measured families (NVENC `-cq 27`: p10 94.1; x264 CRF 18:
+p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 against 91 at these
+levels). It is a pooled-minimum outlier, not what the floor gates on, and is noted here so a later
+change in the rule starts from it.
+
 ## Budgets are per clip
 
 The scheduler's unit of work is a clip, so **a rung may not spend per segment what the budget allows
