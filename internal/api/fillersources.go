@@ -285,7 +285,7 @@ func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int)
 	return strings.ToUpper(policy[:1]) + policy[1:] + "."
 }
 
-func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, active bool) *SourceAutomaticDownloadsDTO {
+func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
 	if src.Kind != "archive" && src.Kind != "youtube" {
 		return nil
 	}
@@ -301,11 +301,8 @@ func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, active b
 		Mode: mode, EverySeconds: int(every.Seconds()), MaxPerCheck: maxPerCheck,
 		Summary: automaticDownloadSummary(mode, every, maxPerCheck),
 	}
-	plan := filler.FetchSource{
-		Kind: src.Kind, URI: src.URI, Enabled: active, NeverFetch: !pollable, Every: every,
-		LastCheckedAt: src.LastCheckedAt, CheckRetryAt: src.CheckRetryAt, CheckLeaseUntil: src.CheckLeaseUntil,
-	}
-	if next, ok := plan.NextAutomaticCheck(time.Now().UTC()); ok {
+	// The fetcher's own plan for this source, so the page shows the check the job will actually make.
+	if next, ok := src.FetchPlan(eligible, 0, s.fillerFetchEvery()).NextAutomaticCheck(time.Now().UTC()); ok {
 		out.NextCheckAt = next.UTC().Format(time.RFC3339)
 	}
 	return out
@@ -1171,7 +1168,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			if label == "" {
 				label = src.URI
 			}
-			eligible := home.Country != "" && src.GeographicallyEligible(home)
+			eligible := src.ServesHome(home)
 			row := FillerSourceDTO{
 				ID:               src.ID,
 				Kind:             src.Kind,
@@ -1198,7 +1195,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// YouTube, and offering the box would be a control that returns nothing forever.
 				// A folder or library is not searchable for the same reason.
 				Searchable:         src.Kind == "archive" && s.filler != nil,
-				AutomaticDownloads: s.sourceAutomaticDownloads(src, src.EffectiveEnabled() && eligible),
+				AutomaticDownloads: s.sourceAutomaticDownloads(src, eligible),
 				LastCheck:          fillerSourceCheckSummaryDTO(src.LastCheckSummary),
 			}
 			// Exact source attribution (§10 V57), for downloaded and scanned sources alike. Older
