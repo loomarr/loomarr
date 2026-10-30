@@ -196,6 +196,26 @@ func TestRegistry_Invariants(t *testing.T) {
 	}
 }
 
+// A size or percentage only the key spells out reads as a bare number in the box ("50" of what?),
+// so the suffix and the declared unit must agree.
+func TestRegistry_UnitsMatchTheKeySuffix(t *testing.T) {
+	suffixes := map[string]Unit{"_gb": UnitGiB, "_mb": UnitMiB, "_pct": UnitPercent}
+	for _, s := range NewRegistry().All() {
+		want := UnitNone
+		for suffix, unit := range suffixes {
+			if strings.HasSuffix(s.Key, suffix) {
+				want = unit
+			}
+		}
+		if s.Unit != want {
+			t.Errorf("%s: unit = %q, want %q", s.Key, s.Unit, want)
+		}
+		if s.Unit != UnitNone && (s.Kind != KindInt || s.Presentation != PresentationDefault) {
+			t.Errorf("%s: a unit labels a plain number field, not a %s/%q one", s.Key, s.Kind, s.Presentation)
+		}
+	}
+}
+
 func TestRegistry_RejectsMissingOrUnknownPublicOwner(t *testing.T) {
 	for _, owner := range []Owner{"", "settings.nowhere"} {
 		t.Run(string(owner), func(t *testing.T) {

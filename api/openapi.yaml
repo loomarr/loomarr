@@ -10265,6 +10265,9 @@ components:
             type: array
           description: "Conditional visibility: show only when a named key's current value is listed (§5)."
           type: object
+        unit:
+          description: What a plain number counts, shown beside its input, e.g. GiB, MiB or %. Empty for a bare count.
+          type: string
         updatedAt:
           description: RFC3339; empty for env/system writes.
           type: string
