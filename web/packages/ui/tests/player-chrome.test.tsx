@@ -7,12 +7,16 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  type PlaybarSegment,
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
   PlayerInfo,
   PlayerPlaybackInfo,
+  PlayerPortrait,
+  type PlayerPortraitProps,
   PlayerSettings,
+  PlayerSheet,
   PlayerShortcuts,
   type PlayerTransportProps,
 } from "../index";
@@ -315,6 +319,117 @@ describe("PlayerShortcuts", () => {
 
     const rows = Array.from(host.querySelectorAll('[role="listitem"]')).map((row) => row.textContent);
     expect(rows).toEqual(["MMute", "?This sheet"]);
+  });
+});
+
+describe("PlayerPortrait", () => {
+  const MIN = 60_000;
+  // A programme on air since 0, a break still to come, then the next programme.
+  const segments: PlaybarSegment[] = [
+    { chips: [], id: "p1", kind: "programme", name: "Sitcom", startMs: 0, stopMs: 22 * MIN },
+    {
+      id: "b1",
+      kind: "break",
+      spots: [{ detail: "", durationLabel: "30s", durationMs: 30_000, id: "s1", name: "Station ID" }],
+      startMs: 22 * MIN,
+      stopMs: 25 * MIN,
+    },
+    { chips: [], id: "p2", kind: "programme", name: "Late Movie", startMs: 25 * MIN, stopMs: 120 * MIN },
+  ];
+  const portrait = (overrides: Partial<PlayerPortraitProps> = {}) => (
+    <PlayerPortrait
+      band={{ channelName: "Coast 90s", channelNumber: "7", programmeLine: "Sitcom · S2 E4" }}
+      density="touch"
+      formatTime={(ms) => `${ms / MIN}m`}
+      transport={transport({ density: "touch", pointer: false })}
+      {...overrides}
+    />
+  );
+
+  it("stacks the band, the transport and surfing, without the overlay's volume or window tools", () => {
+    const host = mount(
+      portrait({
+        surf: {
+          canPrevious: true,
+          canSurf: true,
+          favourite: false,
+          onChannelDown: vi.fn(),
+          onChannelUp: vi.fn(),
+          onPrevious: vi.fn(),
+        },
+      }),
+    );
+
+    expect(host.textContent).toContain("CH 7 · Coast 90s");
+    expect(host.textContent).toContain("Sitcom · S2 E4");
+    for (const name of ["Leave Watch", "Pause", "Channel up", "Channel down", "Previous", "Settings"])
+      expect(button(host, name), name).toBeDefined();
+    for (const name of ["Mute", "Fullscreen", "Picture-in-picture"])
+      expect(button(host, name), name).toBeUndefined();
+  });
+
+  it("seeks a tile that has begun and the rewind tile, while what's to come only previews", () => {
+    const onSeek = vi.fn();
+    const host = mount(
+      portrait({
+        filmstrip: {
+          onSeek,
+          playheadMs: 10 * MIN,
+          segments,
+          window: { endMs: 120 * MIN, nowMs: 10 * MIN, startMs: -5 * MIN },
+        },
+      }),
+    );
+
+    expect(host.textContent).toContain("Coming up");
+    expect(host.textContent).toContain("NOW");
+    act(() => button(host, "Seek to Sitcom, 0m")?.click());
+    act(() => button(host, "Back to the start of the last 15 minutes")?.click());
+    expect(onSeek.mock.calls).toEqual([[0], [-5 * MIN]]);
+    expect(button(host, "Seek to the break at 22m, 3 min")).toBeUndefined();
+    expect(button(host, "Seek to Late Movie, 25m")).toBeUndefined();
+  });
+
+  it("names the star by what pressing it does", () => {
+    const onFavourite = vi.fn();
+    const host = mount(
+      portrait({
+        surf: {
+          canPrevious: false,
+          canSurf: true,
+          favourite: true,
+          onChannelDown: vi.fn(),
+          onChannelUp: vi.fn(),
+          onFavourite,
+          onPrevious: vi.fn(),
+        },
+      }),
+    );
+
+    act(() => button(host, "Remove from Favorites")?.click());
+    expect(onFavourite).toHaveBeenCalledOnce();
+  });
+
+  it("gives its place to an open sheet", () => {
+    const host = mount(
+      portrait({
+        sheet: (
+          <PlayerSheet
+            channelLabel="CH 7 · Coast 90s"
+            density="touch"
+            icon="settings"
+            inline
+            onClose={vi.fn()}
+            title="Settings"
+          >
+            {null}
+          </PlayerSheet>
+        ),
+      }),
+    );
+
+    expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-label")).toBe("Settings");
+    expect(button(host, "Leave Watch")).toBeUndefined();
   });
 });
 

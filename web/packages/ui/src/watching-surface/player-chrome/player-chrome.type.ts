@@ -157,6 +157,8 @@ interface PlayerSheetProps {
   children: ReactNode;
   density: Density;
   icon: "info" | "keyboard" | "list" | "settings";
+  /** Drawn in the portrait panel's place under the picture, rather than over the picture's right edge. */
+  inline?: boolean;
   onClose: () => void;
   title: string;
 }

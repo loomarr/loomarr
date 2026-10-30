@@ -167,8 +167,11 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
 - **Phone.** Portrait keeps the N5 layout (picture on top, panel below) with ⚙ and ⓘ added and the
-  playbar as a `Coming up` filmstrip; landscape is the full-bleed overlay with 44 px targets, tap to
-  show or hide the chrome, and double-tap either side to skip ten seconds.
+  playbar as a `Coming up` filmstrip (`PlayerPortrait`); the picture carries only the station-ID card
+  and the error cover, and an open sheet takes the panel's place. The panel surfs with ▲ ▼ and
+  Previous and stars the channel; the favourites list leaves it, as in the mock. Landscape is the
+  full-bleed overlay with 44 px targets and only ✕ in the window capsule, tap to show or hide the
+  chrome, and double-tap either side to skip ten seconds.
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
   `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
   decided then.

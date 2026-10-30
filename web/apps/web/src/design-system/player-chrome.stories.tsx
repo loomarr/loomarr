@@ -6,6 +6,7 @@ import {
   PlayerCover,
   PlayerInfo,
   PlayerPlaybackInfo,
+  PlayerPortrait,
   PlayerSettings,
   PlayerSheet,
   PlayerShortcuts,
@@ -387,6 +388,41 @@ const OffAir: Story = {
   ),
 };
 
+// A portrait phone (mock "portrait"): a 16:9 picture over the panel, in a phone-sized frame.
+const portraitOf = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }) => {
+  const args = chromeArgs(state);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: 844, margin: "0 auto", width: 390 }}>
+      <div
+        style={{
+          aspectRatio: "16 / 9",
+          background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
+        }}
+      />
+      <PlayerPortrait
+        band={args.band}
+        density="touch"
+        filmstrip={args.playbar}
+        formatTime={formatTime}
+        surf={{
+          canPrevious: true,
+          canSurf: true,
+          favourite: true,
+          onChannelDown: fn(),
+          onChannelUp: fn(),
+          onFavourite: fn(),
+          onPrevious: fn(),
+        }}
+        transport={args.transport}
+      />
+    </div>
+  );
+};
+
+const Portrait: Story = { render: () => portraitOf(live) };
+
+const PortraitBehind: Story = { render: () => portraitOf({ lagSeconds: 134, mode: "paused" }) };
+
 export default meta;
 export {
   Behind,
@@ -396,6 +432,8 @@ export {
   OffAir,
   PlaybackInfo,
   Playing,
+  Portrait,
+  PortraitBehind,
   Settings,
   Shortcuts,
   StationId,

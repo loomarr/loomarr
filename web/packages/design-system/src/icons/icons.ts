@@ -31,6 +31,7 @@ import Search from "lucide-react-native/icons/search";
 import Settings from "lucide-react-native/icons/settings";
 import SkipBack from "lucide-react-native/icons/skip-back";
 import SkipForward from "lucide-react-native/icons/skip-forward";
+import Star from "lucide-react-native/icons/star";
 import StepBack from "lucide-react-native/icons/step-back";
 import Tv from "lucide-react-native/icons/tv";
 import Users from "lucide-react-native/icons/users";
@@ -52,6 +53,8 @@ const icons = {
   copy: Copy,
   // The trailing mark of a phone list row that opens or connects to something.
   disclosure: ChevronRight,
+  // The player's favourite (§9.4, the portrait panel): the tuned channel in the viewer's Favorites.
+  favourite: Star,
   // Web's phone-width bottom bar (#1785, #1659 Shell nav) — the admin/member destinations
   // the sidebar already names with lucide-react glyphs, so the bar reads as the same product.
   filler: Clapperboard,

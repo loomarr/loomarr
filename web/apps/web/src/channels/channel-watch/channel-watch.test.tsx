@@ -855,7 +855,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   });
 });
 
-// A portrait phone (#1785, native mock 5e): nothing drawn on the picture, the controls under it.
+// A portrait phone (§9, mock "portrait"): the picture bare, the chrome's planes in a panel under it.
 describe("ChannelWatch at phone width", () => {
   beforeEach(() => {
     hls.status = "playing";
@@ -882,7 +882,7 @@ describe("ChannelWatch at phone width", () => {
         onLeave={vi.fn()}
         tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
         drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
-        phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
+        previousId="ch-9"
       />,
       { wrapper: makeWrapper() },
     );
@@ -890,7 +890,7 @@ describe("ChannelWatch at phone width", () => {
   };
 
   // The drawer's star is not on a phone, so the panel's is the only way to fill Favorites there.
-  it("pins and unpins the tuned channel from the star in the channel line", async () => {
+  it("pins and unpins the tuned channel from the panel's star", async () => {
     const { onFavourite } = renderPhone();
     await userEvent.click(await screen.findByRole("button", { name: "Add to Favorites" }));
     expect(onFavourite).toHaveBeenCalledWith("ch-1", true);
@@ -902,23 +902,43 @@ describe("ChannelWatch at phone width", () => {
     expect(onFavourite).toHaveBeenCalledWith("ch-1", false);
   });
 
-  it("mounts no overlay controls on the picture, and the four controls under it", async () => {
+  it("draws the panel under the picture, not the overlay's volume and window tools", async () => {
     renderPhone();
-    expect(await screen.findByRole("button", { name: "Pause" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Playback controls" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Channels" })).not.toBeInTheDocument();
-    for (const name of ["Previous", "Channel −", "Channel +"])
+    const picture = document.querySelector("video")?.parentElement as HTMLElement;
+    const play = await screen.findByRole("button", { name: "Play" });
+    expect(picture).not.toContainElement(play);
+    for (const name of ["Leave Watch", "Previous", "Channel up", "Channel down", "Settings"])
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mute" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Channels" })).not.toBeInTheDocument();
   });
 
-  it("steps and returns through the tuner, and pauses through the live transport", async () => {
+  it("draws the station-ID card on the picture as a tune settles", async () => {
+    renderPhone();
+    const picture = document.querySelector("video")?.parentElement as HTMLElement;
+    await screen.findByRole("button", { name: "Play" });
+    fireEvent.play(document.querySelector("video") as HTMLVideoElement);
+    expect(await within(picture).findByText(`CH ${live.number} · ${live.name}`)).toBeInTheDocument();
+  });
+
+  it("opens a sheet in the panel's place and gives the panel back when it closes", async () => {
+    renderPhone();
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leave Watch" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close Settings" }));
+    expect(screen.getByRole("button", { name: "Leave Watch" })).toBeInTheDocument();
+  });
+
+  it("steps and returns through the tuner, and plays through the live transport", async () => {
     const { step, tune } = renderPhone();
-    await userEvent.click(await screen.findByRole("button", { name: "Channel +" }));
-    await userEvent.click(screen.getByRole("button", { name: "Channel −" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Channel up" }));
+    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
-    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    // jsdom's <video> never leaves `paused`, so the disc offers Play.
+    await userEvent.click(screen.getByRole("button", { name: "Play" }));
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
     expect(tune).toHaveBeenCalledWith("ch-9");
-    expect(hls.liveTransport.pause).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
+    expect(hls.liveTransport.play).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
   });
 });

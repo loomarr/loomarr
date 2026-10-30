@@ -184,6 +184,66 @@ describe("VideoPlayer", () => {
     delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestPictureInPicture;
   });
 
+  // Touch (#2088 decision 12): a tap is the controls', not play's; a double-tap on a side steps 10 s.
+  describe("on touch", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const touchTap = (video: HTMLVideoElement, clientX: number) => {
+      fireEvent.pointerDown(video, { pointerType: "touch" });
+      // A touch fires the mouse events too; they must not reveal the controls by themselves.
+      fireEvent.mouseMove(video);
+      fireEvent.click(video, { clientX });
+    };
+
+    it("shows and hides the controls from a tap, never pausing, and steps 10 s from a double-tap on a side", () => {
+      const transport = {
+        state: { mode: "behind" as const, lagSeconds: 40, viewerTimeMs: 1_000_000, noticeRevision: 0 },
+        play: vi.fn(),
+        pause: vi.fn(),
+        goLive: vi.fn(),
+        seek: vi.fn(),
+      };
+      const seen = vi.fn();
+      const { container } = render(
+        <VideoPlayer
+          attach={() => () => undefined}
+          live
+          liveTransport={transport}
+          renderChrome={(chrome) => {
+            seen(chrome.controlsShown);
+            return null;
+          }}
+        />,
+      );
+      const video = container.querySelector("video") as HTMLVideoElement;
+      video.getBoundingClientRect = () => ({ left: 0, width: 900 }) as DOMRect;
+      const pause = vi.fn();
+      video.pause = pause;
+      fireEvent.play(video);
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(seen).toHaveBeenLastCalledWith(false);
+
+      touchTap(video, 450);
+      act(() => vi.advanceTimersByTime(300));
+      expect(seen).toHaveBeenLastCalledWith(true);
+      touchTap(video, 450);
+      act(() => vi.advanceTimersByTime(300));
+      expect(seen).toHaveBeenLastCalledWith(false);
+      expect(pause).not.toHaveBeenCalled();
+
+      touchTap(video, 100);
+      touchTap(video, 100);
+      expect(transport.seek).toHaveBeenCalledExactlyOnceWith(video, 990_000);
+      touchTap(video, 800);
+      touchTap(video, 800);
+      expect(transport.seek).toHaveBeenLastCalledWith(video, 1_010_000);
+      // Neither double-tap toggled the controls.
+      act(() => vi.advanceTimersByTime(300));
+      expect(seen).toHaveBeenLastCalledWith(false);
+    });
+  });
+
   it("hands the chrome no picture-in-picture toggle where the browser has none", () => {
     Object.defineProperty(document, "pictureInPictureEnabled", { value: false, configurable: true });
     const seen = vi.fn();

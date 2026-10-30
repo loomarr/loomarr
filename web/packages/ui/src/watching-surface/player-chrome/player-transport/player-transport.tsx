@@ -85,6 +85,8 @@ interface ToolButtonProps {
   active?: boolean;
   density: Density;
   disabled?: boolean;
+  /** The glyph drawn solid while active (a chosen favourite's star). */
+  filled?: boolean;
   icon: IconName;
   keyHint?: string;
   label: string;
@@ -97,6 +99,7 @@ const ToolButton = ({
   active = false,
   density,
   disabled = false,
+  filled = false,
   icon,
   keyHint,
   label,
@@ -137,6 +140,7 @@ const ToolButton = ({
       <Icon
         color={active ? playerChrome.signal : hovered ? playerChrome.text : playerChrome.textSecondary}
         decorative
+        filled={filled && active}
         glyph={icons[icon]}
         size="player"
       />
@@ -257,12 +261,27 @@ const LiveState = ({
     </View>
   );
 
-// Start over (§9.4): a quiet text tool beside the live state, back to the programme's start.
-const StartOver = ({ density, onPress }: { density: Density; onPress: () => void }) => {
+// A quiet text tool in a capsule: Start over beside the live state (§9.4), back to the programme's
+// start, and the portrait panel's Previous.
+const TextTool = ({
+  density,
+  disabled = false,
+  icon,
+  label,
+  onPress,
+}: {
+  density: Density;
+  disabled?: boolean;
+  icon?: IconName;
+  label: string;
+  onPress: () => void;
+}) => {
   const [hovered, setHovered] = useState(false);
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onPress}
@@ -273,21 +292,63 @@ const StartOver = ({ density, onPress }: { density: Density; onPress: () => void
         flexDirection: "row",
         gap: 6,
         height: density === "touch" ? 40 : 32,
+        opacity: disabled ? 0.3 : 1,
         paddingHorizontal: 12,
         ...webOnly({ transition: "background-color 140ms ease" }),
       }}
     >
-      <Icon color={playerChrome.text} decorative glyph={icons.startOver} size="compact" />
+      {icon ? <Icon color={playerChrome.text} decorative glyph={icons[icon]} size="compact" /> : null}
       <Text density={density} textRole="guideLabel" tone="primary">
-        Start over
+        {label}
       </Text>
+    </Pressable>
+  );
+};
+
+const StartOver = ({ density, onPress }: { density: Density; onPress: () => void }) => (
+  <TextTool density={density} icon="startOver" label="Start over" onPress={onPress} />
+);
+
+// Play/pause: the transport's one primary control, a white disc.
+const PlayDisc = ({
+  density,
+  onPress,
+  playing,
+}: {
+  density: Density;
+  onPress: () => void;
+  playing: boolean;
+}) => {
+  const size = density === "touch" ? 48 : 44;
+  return (
+    <Pressable
+      accessibilityLabel={playing ? "Pause" : "Play"}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        backgroundColor: playerChrome.disc,
+        borderRadius: 999,
+        height: size,
+        justifyContent: "center",
+        width: size,
+        ...webOnly({
+          boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
+        }),
+      }}
+    >
+      <Icon
+        color={playerChrome.discInk}
+        decorative
+        glyph={playing ? icons.pause : icons.play}
+        size="default"
+      />
     </Pressable>
   );
 };
 
 const PlayerTransport = (props: PlayerTransportProps) => {
   const { density, pointer, playing } = props;
-  const touch = density === "touch";
   return (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
       <Capsule>
@@ -302,29 +363,7 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             tipAlign="start"
           />
         ) : null}
-        <Pressable
-          accessibilityLabel={playing ? "Pause" : "Play"}
-          accessibilityRole="button"
-          onPress={props.onTogglePlay}
-          style={{
-            alignItems: "center",
-            backgroundColor: playerChrome.disc,
-            borderRadius: 999,
-            height: touch ? 48 : 44,
-            justifyContent: "center",
-            width: touch ? 48 : 44,
-            ...webOnly({
-              boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
-            }),
-          }}
-        >
-          <Icon
-            color={playerChrome.discInk}
-            decorative
-            glyph={playing ? icons.pause : icons.play}
-            size="default"
-          />
-        </Pressable>
+        <PlayDisc density={density} onPress={props.onTogglePlay} playing={playing} />
         {props.onSeekForward ? (
           <ToolButton
             density={density}
@@ -392,8 +431,10 @@ const PlayerTransport = (props: PlayerTransportProps) => {
           />
         ) : null}
       </Capsule>
+      {/* A touch window has only the way out (the mock's landscape): the phone's own browser owns
+          fullscreen and picture-in-picture there. */}
       <Capsule>
-        {props.onPictureInPicture ? (
+        {pointer && props.onPictureInPicture ? (
           <ToolButton
             active={props.pictureInPicture}
             density={density}
@@ -404,7 +445,7 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             pointer={pointer}
           />
         ) : null}
-        {props.onFullscreen ? (
+        {pointer && props.onFullscreen ? (
           <ToolButton
             density={density}
             icon={props.fullscreen ? "fullscreenExit" : "fullscreen"}
@@ -427,4 +468,4 @@ const PlayerTransport = (props: PlayerTransportProps) => {
   );
 };
 
-export { PlayerTransport, ToolButton };
+export { Capsule, LiveState, PlayDisc, PlayerTransport, StartOver, TextTool, ToolButton };

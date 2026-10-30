@@ -1,8 +1,8 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
+import { useGuideWindow } from "@loomarr/core/guide";
 import { Surface, Text } from "@loomarr/design-system";
-import { WatchFrame, watchingPanelFromGuide } from "@loomarr/ui";
+import { surfPreviousChannel, WatchFrame } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useMemo } from "react";
@@ -100,24 +100,17 @@ const WatchScreen = ({ id, onRoute, onPictureInPicture }: WatchScreenProps) => {
     [guide.data, nowMs],
   );
 
-  // A portrait phone's panel under the picture (#1785, mock 5e) reads the same guide the way the
-  // native Watching does: now and next for the tuned channel, the favourites with what each has on,
-  // and Previous as the newest recent that isn't this channel.
+  // The portrait panel's Previous (#2088 step 10): the newest playable recent that isn't this channel.
   const favouriteIds = useMemo(() => mineBody?.favourites.map((f) => f.channelId) ?? [], [mineBody]);
   const recentIds = useMemo(() => mineBody?.recent.map((r) => r.channelId) ?? [], [mineBody]);
-  const phone = useMemo(() => {
+  const previousId = useMemo(() => {
     if (!tunedId) return undefined;
-    const body = unwrap(guide.data);
-    // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
-    return watchingPanelFromGuide({
-      channelId: tunedId,
-      favouriteIds,
-      layout: body?.channels ? layoutGuide(body, nowMs) : undefined,
-      nowMs,
-      playableChannelIds: (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId),
-      recentIds,
-    });
-  }, [guide.data, nowMs, tunedId, favouriteIds, recentIds]);
+    // Read defensively, as the drawer does: a body without `channels` has nothing playable.
+    const playable = (unwrap(guide.data)?.channels ?? [])
+      .filter((c) => c.status === "live")
+      .map((c) => c.channelId);
+    return surfPreviousChannel(tunedId, recentIds, playable);
+  }, [guide.data, tunedId, recentIds]);
 
   if (channelQuery.error && !tunedChannel) {
     return (
@@ -167,7 +160,7 @@ const WatchScreen = ({ id, onRoute, onPictureInPicture }: WatchScreenProps) => {
             (favourite ? addFavourite : removeFavourite).mutate({ channelId }),
         }}
         onTuneSettled={(channelId) => recordTune.mutate({ channelId })}
-        phone={phone}
+        previousId={previousId}
       />
     </WatchFrame>
   );

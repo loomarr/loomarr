@@ -21,6 +21,8 @@ type DecorativeIcon = { accessibilityLabel?: never; decorative: true };
 type IconProps = (AccessibleIcon | DecorativeIcon) & {
   /** A theme-invariant colour in place of `tone`: player chrome over a picture (§9, `playerChrome`). */
   color?: string;
+  /** The glyph's shape filled with its colour: a chosen star (the player's favourite, §9.4). */
+  filled?: boolean;
   glyph: LucideIcon;
   size?: IconSize;
   tone?: IconTone;
@@ -30,6 +32,7 @@ const Icon = ({
   accessibilityLabel,
   color,
   decorative,
+  filled = false,
   glyph: Glyph,
   size = "default",
   tone = "secondary",
@@ -49,10 +52,12 @@ const Icon = ({
     warning: theme.stateWarning.val,
   };
 
+  const ink = color ?? tones[tone];
   const glyph = (
     <Glyph
       aria-hidden
-      color={color ?? tones[tone]}
+      color={ink}
+      fill={filled ? ink : "none"}
       size={iconography.size[size]}
       strokeWidth={size === "player" ? iconography.playerStrokeWidth : iconography.strokeWidth}
     />

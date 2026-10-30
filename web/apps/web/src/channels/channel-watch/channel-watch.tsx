@@ -7,15 +7,16 @@ import {
   PlayerChrome,
   PlayerCover,
   PlayerInfo,
+  PlayerPortrait,
   PlayerSettings,
   PlayerSheet,
   PlayerShortcuts,
+  PlayerStationId,
+  type PlayerTransportProps,
   playbarFromTimeline,
-  type SurfChannelData,
-  WatchingPanel,
-  type WatchingScheduleData,
 } from "@loomarr/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
@@ -76,15 +77,8 @@ interface ChannelWatchProps {
   // The player went into or out of the browser's picture-in-picture: the route keeps Watch mounted
   // while it is, so leaving /watch doesn't stop the floating picture (#2088 decision 4).
   onPictureInPicture?: (active: boolean) => void;
-  // What a portrait phone shows under the picture (#1785, native mock 5e), read from the guide: the
-  // tuned channel's now and next, the viewer's favourites, the channel Previous returns to, and the
-  // wall clock.
-  phone?: {
-    schedule?: WatchingScheduleData;
-    favourites: readonly SurfChannelData[];
-    previousId?: string;
-    clockLabel?: string;
-  };
+  // The channel the portrait panel's Previous returns to (#2088 step 10), read from the viewer's recents.
+  previousId?: string;
 }
 
 const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
@@ -175,12 +169,13 @@ const ChannelWatch = ({
   drawer,
   onTuneSettled,
   onPictureInPicture,
-  phone,
+  previousId,
 }: ChannelWatchProps) => {
-  // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
-  // drawn on it, and the controls, what's next and the favourites under it. Wider draws the §9
-  // chrome over the picture; its portrait form comes with the phone step (#2088 step 10).
-  const onPhone = usePhoneWidth() && phone !== undefined;
+  // A portrait phone (§9, mock "portrait"): a 16:9 picture with nothing on it but the station-ID
+  // card, and the chrome's planes stacked in a panel under it. Wider draws the chrome over the picture.
+  const onPhone = usePhoneWidth();
+  // The portrait panel's element, under the picture: the chrome draws into it through a portal.
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
   // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5).
   const touch = useCoarsePointer();
   const density = touch ? "touch" : "pointer";
@@ -470,12 +465,6 @@ const ChannelWatch = ({
     </div>
   ) : undefined;
 
-  // Go live acts on the player's own <video> through the live transport, as the play toggle does.
-  const withVideo = (act: (video: HTMLVideoElement) => unknown) => {
-    const video = videoRef.current;
-    if (video) void act(video);
-  };
-
   // The open sheet, over the dimmed picture. Channels is still the console drawer (#1659 W1) until it
   // is rebuilt on the sheet.
   const openSheet =
@@ -484,6 +473,7 @@ const ChannelWatch = ({
         channelLabel={channelLabel}
         density={density}
         icon="settings"
+        inline={onPhone}
         onClose={closeSheet}
         title="Settings"
       >
@@ -511,6 +501,7 @@ const ChannelWatch = ({
         channelLabel={channelLabel}
         density={density}
         icon="info"
+        inline={onPhone}
         onClose={closeSheet}
         title="Playback info"
       >
@@ -530,6 +521,7 @@ const ChannelWatch = ({
         channelLabel={channelLabel}
         density={density}
         icon="info"
+        inline={onPhone}
         onClose={closeSheet}
         title="Info"
       >
@@ -540,6 +532,7 @@ const ChannelWatch = ({
         channelLabel={channelLabel}
         density={density}
         icon="keyboard"
+        inline={onPhone}
         onClose={closeSheet}
         title="Keyboard shortcuts"
       >
@@ -583,58 +576,97 @@ const ChannelWatch = ({
       </ThemeScope>
     ) : undefined;
 
-  // The chrome over the picture (§9), or the error cover in its place.
+  // The transport and the playbar, acting through the player: the same for both forms of the chrome.
+  const transportFor = (chrome: VideoPlayerChrome): PlayerTransportProps => ({
+    channelsOpen: tuner && drawer ? sheet === "channels" : undefined,
+    density,
+    fullscreen: chrome.fullscreen,
+    infoOpen: sheet === "info",
+    pictureInPicture: chrome.pictureInPicture,
+    live: player.liveTransport.state,
+    muted: chrome.muted,
+    onChannels: tuner && drawer ? () => toggleSheet("channels") : undefined,
+    onFullscreen: chrome.toggleFullscreen,
+    onGoLive: chrome.goLive,
+    onInfo: info ? () => toggleSheet("info") : undefined,
+    onLeave,
+    onPictureInPicture: chrome.togglePictureInPicture,
+    onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
+    onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
+    onSettings: () => toggleSheet("settings"),
+    onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
+    onTogglePlay: chrome.toggle,
+    onToggleMute: () => chrome.setMuted(!chrome.muted),
+    onVolume: chrome.setVolume,
+    playing: chrome.playing,
+    pointer: !touch,
+    settingsOpen: sheet === "settings" || sheet === "playback-info",
+    volume: chrome.volume,
+  });
+  const playbarFor = (chrome: VideoPlayerChrome) =>
+    airings.length > 0
+      ? {
+          onSeek: chrome.seekTo,
+          playheadMs: viewerTimeMs,
+          segments: chromeData.segments,
+          window: chromeData.window,
+        }
+      : undefined;
+
+  // The star pins the tuned channel to the viewer's Favorites, as the drawer's star does (#1816).
+  const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
+
+  // The chrome over the picture (§9), or the error cover in its place. On a portrait phone the picture
+  // carries only the station-ID card (or the error cover), and the planes stack in the panel under it,
+  // drawn from here into the panel so they act through the same player as the overlay does.
   const renderChrome = (chrome: VideoPlayerChrome) => (
     <>
-      <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
-      <HideForIdent hide={chrome.hide} ident={ident} />
       <ReportPictureInPicture active={chrome.pictureInPicture} report={onPictureInPicture} />
-      {errorCover ?? (
-        <PlayerChrome
-          band={chromeData.band}
-          density={density}
-          formatTime={formatGuideTime}
-          ident={ident}
-          onPreviewChange={setPreviewOpen}
-          playbar={
-            airings.length > 0
-              ? {
-                  onSeek: chrome.seekTo,
-                  playheadMs: viewerTimeMs,
-                  segments: chromeData.segments,
-                  window: chromeData.window,
+      {onPhone ? (
+        <>
+          {errorCover ?? (ident ? <PlayerStationId band={chromeData.band} density="touch" /> : null)}
+          {panelEl &&
+            createPortal(
+              <PlayerPortrait
+                band={chromeData.band}
+                density={density}
+                filmstrip={playbarFor(chrome)}
+                formatTime={formatGuideTime}
+                sheet={openSheet}
+                surf={
+                  tuner && {
+                    canPrevious: previousId !== undefined,
+                    canSurf: tuner.canSurf,
+                    favourite: isFavourite,
+                    onChannelDown: () => tuner.step(-1),
+                    onChannelUp: () => tuner.step(1),
+                    onFavourite: drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined,
+                    onPrevious: () => previousId && tuner.tune(previousId),
+                  }
                 }
-              : undefined
-          }
-          sheet={openSheet}
-          transport={{
-            channelsOpen: tuner && drawer ? sheet === "channels" : undefined,
-            density,
-            fullscreen: chrome.fullscreen,
-            infoOpen: sheet === "info",
-            pictureInPicture: chrome.pictureInPicture,
-            live: player.liveTransport.state,
-            muted: chrome.muted,
-            onChannels: tuner && drawer ? () => toggleSheet("channels") : undefined,
-            onFullscreen: chrome.toggleFullscreen,
-            onGoLive: chrome.goLive,
-            onInfo: info ? () => toggleSheet("info") : undefined,
-            onLeave,
-            onPictureInPicture: chrome.togglePictureInPicture,
-            onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
-            onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
-            onSettings: () => toggleSheet("settings"),
-            onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
-            onTogglePlay: chrome.toggle,
-            onToggleMute: () => chrome.setMuted(!chrome.muted),
-            onVolume: chrome.setVolume,
-            playing: chrome.playing,
-            pointer: !touch,
-            settingsOpen: sheet === "settings" || sheet === "playback-info",
-            volume: chrome.volume,
-          }}
-          visible={chrome.controlsShown && !tuning}
-        />
+                transport={transportFor(chrome)}
+              />,
+              panelEl,
+            )}
+        </>
+      ) : (
+        <>
+          <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
+          <HideForIdent hide={chrome.hide} ident={ident} />
+          {errorCover ?? (
+            <PlayerChrome
+              band={chromeData.band}
+              density={density}
+              formatTime={formatGuideTime}
+              ident={ident}
+              onPreviewChange={setPreviewOpen}
+              playbar={playbarFor(chrome)}
+              sheet={openSheet}
+              transport={transportFor(chrome)}
+              visible={chrome.controlsShown && !tuning}
+            />
+          )}
+        </>
       )}
     </>
   );
@@ -645,7 +677,7 @@ const ChannelWatch = ({
     <VideoPlayer
       live
       liveTransport={player.liveTransport}
-      renderChrome={onPhone ? undefined : renderChrome}
+      renderChrome={renderChrome}
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
       // not cut yet) so the viewer sees a channel tuning in, not a black frame. Only while loading —
       // an error draws its own cover, and a playing stream needs no overlay.
@@ -673,33 +705,6 @@ const ChannelWatch = ({
     />
   );
 
-  // The star in the panel's channel line pins the tuned channel, as the drawer's star does on wider
-  // screens and the iPhone's does (#1816). Without it a phone had no way to fill Favorites.
-  const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
-  const phonePanel =
-    onPhone && phone && tuner ? (
-      <WatchingPanel
-        density="touch"
-        channel={{ name: osdChannel.name, number: String(osdChannel.number) }}
-        schedule={phone.schedule}
-        clockLabel={phone.clockLabel}
-        live={player.liveTransport.state}
-        canPrevious={phone.previousId !== undefined}
-        canSurf={tuner.canSurf}
-        onPrevious={() => phone.previousId && tuner.tune(phone.previousId)}
-        onChannelDown={() => tuner.step(-1)}
-        onChannelUp={() => tuner.step(1)}
-        onPause={() => withVideo((video) => player.liveTransport.pause(video))}
-        onPlay={() => withVideo((video) => player.liveTransport.play(video))}
-        onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
-        onLeave={onLeave}
-        favourites={phone.favourites}
-        isFavourite={isFavourite}
-        onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
-        onTune={tuner.tune}
-      />
-    ) : undefined;
-
   if (paused) {
     return (
       <section className="relative flex min-h-0 flex-1 flex-col">
@@ -726,7 +731,6 @@ const ChannelWatch = ({
     <section className="flex min-h-0 flex-1 flex-col">
       <div className={cn("relative", !onPhone && "min-h-0 flex-1")}>
         {playerEl}
-        {onPhone && errorCover}
         {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
             would only repeat it; it stays as the screen-reader announcement. */}
         {(tuning || tuner?.acknowledging) && tuner && (
@@ -738,7 +742,10 @@ const ChannelWatch = ({
           />
         )}
       </div>
-      {phonePanel}
+      {/* The portrait panel's host: layout only, the panel itself is @loomarr/ui's PlayerPortrait. */}
+      {onPhone ? (
+        <div ref={setPanelEl} style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0 }} />
+      ) : null}
     </section>
   );
 };
