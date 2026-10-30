@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	_ "modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
 )
 
@@ -84,7 +85,7 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return &sqlStore{db: db, dialect: DialectSQLite, path: path, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}, nil
+	return &sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}, nil
 }
 
 // openSQLiteReadOnly is the migration source opener. Both URI mode=ro and
@@ -102,5 +103,5 @@ func openSQLiteReadOnly(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping read-only sqlite: %w", err)
 	}
-	return &sqlStore{db: db, dialect: DialectSQLite, path: path, ph: passthrough}, nil
+	return &sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough}, nil
 }

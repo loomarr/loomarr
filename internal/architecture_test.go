@@ -187,6 +187,29 @@ func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 	}
 }
 
+// internal/store/storedb is the persistence kernel every store package builds on (Querier, Tx,
+// Dialect, the epoch codec, the advisory lock, ErrNotFound). It stays a leaf: the moment it imports
+// a Loomarr package, a cluster package that needs the kernel can no longer be imported by that
+// package without a cycle, and the split of internal/store stops being possible. Test files are
+// exempt, as in the gate above; only the production import set counts.
+func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	const kernel = modulePath + "/internal/store/storedb"
+	pkg, ok := pkgs[kernel]
+	if !ok {
+		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", kernel)
+	}
+	if len(pkg.GoFiles) == 0 {
+		t.Fatalf("%s has no production files", kernel)
+	}
+	for _, imported := range pkg.Imports {
+		if strings.HasPrefix(imported, modulePath+"/") {
+			t.Errorf("%s imports %s — storedb is the dependency-free kernel of the store split; "+
+				"code that needs a Loomarr type belongs in a store package, not in the kernel", kernel, imported)
+		}
+	}
+}
+
 // The Image service's pixel boundary is the required Rust worker (§22). Keeping Go's image
 // codecs out of this package prevents a certification helper or a convenient local decode from
 // quietly becoming a second production implementation. Other domains can own measured, bounded
