@@ -1548,10 +1548,6 @@ func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testi
 		t.Fatal("a persisted verdict must not be re-encoded")
 		return MediaQuality{}, nil
 	}
-	stage.inspect = func(context.Context, string, string, int64, bool) (MediaQuality, error) {
-		t.Fatal("retry must use the persisted quality evidence")
-		return MediaQuality{}, nil
-	}
 	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Silent advert", Kind: Commercial}}
 	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")

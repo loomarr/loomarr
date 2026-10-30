@@ -58,9 +58,7 @@ type TranscodeStage struct {
 	evidenceTranscode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
 	identifyFFmpeg    func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
-	// inspect backfills quality facts for a mezzanine made before those facts rode the encode.
-	inspect   func(context.Context, string, string, int64, bool) (MediaQuality, error)
-	condition func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
+	condition         func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
 	// removeSource is the local-filesystem boundary after durable re-key. Production uses
 	// os.Remove; tests inject its failure to prove the explicit quarantine survives a restart.
 	removeSource func(string) error
@@ -121,7 +119,6 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 		store: store, probe: probe, clipDir: clipDir, profile: profile,
 		ffmpegPath: ffmpegPath, targetLUFS: targetLUFS, now: now,
 		transcode:    mediatools.Transcode,
-		inspect:      mediatools.InspectQuality,
 		removeSource: os.Remove,
 	}
 }
