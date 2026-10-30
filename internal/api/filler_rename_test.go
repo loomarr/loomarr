@@ -112,6 +112,35 @@ func TestPatchClip_RenameRefusals(t *testing.T) {
 	}
 }
 
+// A rename alongside a field the server refuses saves nothing: every refusal is decided before the
+// first write, so a 422 never stands in front of a half-applied edit.
+func TestPatchClip_RenameWithARefusedFieldSavesNothing(t *testing.T) {
+	h, dir := renameFixture(t)
+	for _, tc := range []struct{ name, field string }{
+		{"unknown tag", `"tags":["not-a-real-tag"]`},
+		{"local without a station", `"geography":{"scope":"local","country":"US"}`},
+		{"bad air date", `"geography":{"scope":"national","country":"US","airDate":"1991-13-40"}`},
+		{"bad scope", `"geography":{"scope":"regional","country":"US"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"hash":"h-widgetmax","name":"Widgetmax Turbo Blender","era":1991,` + tc.field + `}`
+			if resp := h.Do(http.MethodPatch, "/v1/filler/tags", adminToken, body); resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatalf("→ %d, want 422", resp.StatusCode)
+			}
+		})
+	}
+	got, err := h.Store.GetClip(context.Background(), "h-widgetmax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clipcatalog.NameFromFilename || got.Era != 0 {
+		t.Errorf("after refusals = %q (%q) era %d, want the clip untouched", got.Name, got.NameSource, got.Era)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Widgetmax Ad 1991.info.json")); !os.IsNotExist(err) {
+		t.Errorf("a refused edit wrote a sidecar (%v)", err)
+	}
+}
+
 // The 120-character limit counts the trimmed name in characters, not bytes or raw input.
 func TestPatchClip_RenameLengthCountsTheTrimmedName(t *testing.T) {
 	h, _ := renameFixture(t)
