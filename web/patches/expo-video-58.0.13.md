@@ -1,4 +1,4 @@
-# expo-video 58.0.12: one HTTP client per process
+# expo-video 58.0.13: one HTTP client per process
 
 Tracking: [#1037](https://github.com/loomarr/loomarr/issues/1037) (G3 warm surf).
 
@@ -18,13 +18,16 @@ expo-video ships a precompiled Android AAR, which a source patch cannot reach, s
 this package out of prebuilt modules (`expo.autolinking.android.buildFromSource` in
 `web/apps/tv/package.json`). Remove both together when upstream reuses its client.
 
+58.0.13 only rebuilt the precompiled iOS binaries against React Native 0.88.1; its
+`DataSourceUtils.kt` is byte-identical to 58.0.12's, so the patch is re-keyed unchanged.
+
 ## iOS: Swift Testing linkage (retired)
 
 The SDK 58 canary's precompiled `ExpoVideo.xcframework` compiled its `CachePolicyTests` Swift Testing
 suite into the framework, so `otool -L` listed `@rpath/Testing.framework/Testing` and the phone died
 in dyld at launch; the phone therefore listed expo-video in `expo.autolinking.ios.buildFromSource`.
-`llvm-otool -L` on all four 58.0.12 slices (`prebuilds/output/{debug,release}`, device and
-Simulator) lists no Testing framework, while the canary's release device slice still does. The
-explicit entry is gone. ExpoVideo still builds from source on iOS, because it depends on
+`llvm-otool -L` on all four 58.0.12 slices, and again on 58.0.13's rebuilt ones
+(`prebuilds/output/{debug,release}`, device and Simulator), lists no Testing framework, while the
+canary's release device slice still does. The explicit entry is gone. ExpoVideo still builds from source on iOS, because it depends on
 ExpoModulesCore, which the phone builds from source, and Expo's precompiled-module resolver keeps
 interdependent pods all prebuilt or all from source (`dependency_unavailable`).
