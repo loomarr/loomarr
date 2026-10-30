@@ -165,7 +165,7 @@ func (ci *CreativeIdentity) Run(ctx context.Context) (IdentityResult, error) {
 	for i, c := range all {
 		paths[i] = c.Path
 	}
-	referenced := referencedAssets(ci.clipDir, paths)
+	referenced := ReferencedAssets(ci.clipDir, paths)
 	survivorOf := make([]int, len(measured))
 	for i := range survivorOf {
 		survivorOf[i] = i
@@ -383,6 +383,21 @@ func removeOwnFiles(clipDir, full string, tags SidecarTags, referenced map[strin
 	return failed
 }
 
+// RemoveRetiredCopy is removeOwnFiles for a caller outside this package that retires a clip itself:
+// it deletes the files of the catalog clip clipRef (a clip path or hash), which the caller has
+// already taken off the catalog. clipRef resolves through ClipPath, so the playback file and
+// sidecar it deletes are always inside clipDir's shard layout; the media assets named by tags are
+// deleted only when referenced (from ReferencedAssets) shows this is their last clip. The count
+// is decremented as assets are claimed. It reports each file it could not remove, and an
+// unresolvable clipRef as a single failure with nothing deleted.
+func RemoveRetiredCopy(clipDir, clipRef string, tags SidecarTags, referenced map[string]int) map[string]error {
+	full, err := ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
+	if err != nil {
+		return map[string]error{clipRef: err}
+	}
+	return removeOwnFiles(clipDir, full, tags, referenced)
+}
+
 func derivativePath(d *MediaDerivativeLineage) string {
 	if d == nil {
 		return ""
@@ -390,8 +405,10 @@ func derivativePath(d *MediaDerivativeLineage) string {
 	return d.Asset.Path
 }
 
-// referencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
-func referencedAssets(clipDir string, paths []string) map[string]int {
+// ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
+// paths are catalog clip paths, removed clips included; the result is the "referenced" argument of
+// RemoveRetiredCopy. It only reads.
+func ReferencedAssets(clipDir string, paths []string) map[string]int {
 	out := map[string]int{}
 	for _, path := range paths {
 		full, err := ClipPath(clipDir, path, filepath.Ext(path))

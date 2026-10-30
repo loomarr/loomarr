@@ -21,9 +21,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
-| `defects` | 5 | — |
+| `creative` | 5 | — |
+| `defects` | 6 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `filler` | 7 | `defects`, `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
+| `filler` | 8 | `creative`, `defects`, `diagnostics`, `fillerstructure`, `llm`, `schedule`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `holidayvocab` | 7 | — |
 | `httpx` | 9 | `metrics` |
@@ -31,7 +32,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `invitation` | 6 | `contact` |
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
-| `llm` | 8 | `httpx`, `metrics` |
+| `llm` | 9 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
@@ -40,7 +41,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 21 | `holidayvocab`, `inventory`, `provision` |
 | `storagegovernor` | 6 | — |
-| `store` | 16 | `contact`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 16 | `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -58,9 +59,9 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
-- **`creative`** · 4 importers
+- **`creative`** · 5 importers
   Decides whether two filler clips are the same advert (#2033).
-- **`defects`** · 5 importers
+- **`defects`** · 6 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
@@ -173,7 +174,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 3
 
-- **`llm`** · 8 importers · → `httpx`, `metrics`
+- **`llm`** · 9 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
@@ -223,13 +224,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 7 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
+- **`filler`** · 8 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8
 
 - **`clipfetch`** · 1 importer · → `bgexec`, `filler`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
+- **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
+  Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
@@ -305,12 +308,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

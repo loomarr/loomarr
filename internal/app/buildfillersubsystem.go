@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
@@ -37,7 +38,7 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
-	defects   *filler.DefectReports
+	defects   *fillerdefectfloor.DefectReports
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
@@ -86,7 +87,7 @@ func buildFillerSubsystem(
 	} else {
 		result.decisions = decisionService
 	}
-	result.defects = filler.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
+	result.defects = fillerdefectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.
@@ -295,9 +296,9 @@ func buildFillerSubsystem(
 	ffmpegPath := set.str("playout.ffmpeg_path")
 	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
 	defectTools := buildFillerMediaTools(set, metricRecorder)
-	defectJudge := filler.NewVisionDefectJudge(judgeVision, defectTools,
+	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
-	registry.Add(fillerDefectsJob(filler.NewDefectFloor(
+	registry.Add(fillerDefectsJob(fillerdefectfloor.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
