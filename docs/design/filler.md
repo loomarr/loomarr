@@ -526,7 +526,8 @@ date never becomes an era.
   unknown or mismatched era, duration, quality, role, audience or taxonomy, or ranked below the
   limit). Ranking is deterministic: fitness, representation quality, diversity, then identity.
 - Approval revalidates each candidate's source, policy and novelty, then hands the **candidate
-  URLs**, never the collection URL, to the manifest-backed ingest path.
+  URLs**, never the collection URL, to the manifest-backed ingest path. It applies the fetcher's
+  source rule (`ServesHome`), so an installation with no location approves nothing.
 - Scheduled acquisition adopts this selector only after parity tests; there must not be two ranking
   algorithms. Intent chooses promising evidence; it does not certify it.
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -44,6 +45,12 @@ func decodePull(t *testing.T, res *http.Response) pullBody {
 	return b
 }
 
+// locatedInUS is the live config of an installation that has set its location, the precondition
+// for approving any pull (ServesHome).
+func locatedInUS(key string) string {
+	return map[string]string{"filler.home_country": "US"}[key]
+}
+
 func seedSource(t *testing.T, st fillerstore.Store, id, uri string, enabled bool) {
 	t.Helper()
 	ctx := context.Background()
@@ -71,7 +78,7 @@ func seedPull(t *testing.T, st fillerstore.Store, id string, plan []filler.PullP
 }
 
 func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-drop-one", []filler.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "one", URL: "https://archive.org/details/one"},
@@ -91,7 +98,7 @@ func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.
 // The commit point. Approving is the ONLY path that enqueues, and it enqueues through the
 // existing ingest job rather than a downloader of its own.
 func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-only-download-path", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	if len(ff.ingested) != 0 {
@@ -121,7 +128,7 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 // A retry after the first decision is durable must not enqueue the same downloads twice.
 // The concurrent boundary is covered separately with two requests held at the commit point.
 func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-cannot-approve-twice", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -137,7 +144,7 @@ func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
 }
 
 func TestApproveFillerPull_RevalidatesCandidateAgainstOtherQueuedWork(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-revalidate", []filler.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "same", URL: "https://archive.org/details/same"},
@@ -162,7 +169,7 @@ func TestApproveFillerPull_RevalidatesCandidateAgainstOtherQueuedWork(t *testing
 // what was proposed as well as what was agreed to, or "we approved this" loses the half that
 // matters.
 func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "keep", "https://archive.org/details/keep", true)
 	seedSource(t, st, "drop", "https://archive.org/details/drop", true)
 	created := seedPull(t, st, "pull-dropped-rows", []filler.PullPlanRow{
@@ -190,7 +197,7 @@ func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
 // Approving with everything dropped is refused, not recorded as an approval that fetched
 // nothing: in the history those two are indistinguishable.
 func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-empty-commit", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -207,7 +214,7 @@ func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
 // ⚠ Re-checked at the COMMIT point. A source can be switched off while a pull sits in the queue,
 // and approving into it would fetch from something the operator turned off.
 func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-source-disabled", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -224,8 +231,30 @@ func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
 	}
 }
 
-func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
+// Approval follows the fetcher's rule (ServesHome): before the installation has a location no
+// source serves it, so an attended approval downloads nothing either, and says why.
+func TestApproveFillerPull_RefusesBeforeALocationIsSet(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	created := seedPull(t, st, "pull-no-location", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", res.StatusCode)
+	}
+	if body, _ := io.ReadAll(res.Body); !strings.Contains(string(body), "Set your location first") {
+		t.Errorf("refusal = %s, want it to name the missing location", body)
+	}
+	if len(ff.ingested) != 0 {
+		t.Errorf("fetched with no location set: %v", ff.ingested)
+	}
+	if got, err := st.GetPull(t.Context(), created.ID); err != nil || got.Status != filler.PullPending {
+		t.Errorf("pull after the refusal = %q (%v), want it still pending", got.Status, err)
+	}
+}
+
+func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-provider-paused", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -245,7 +274,7 @@ func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
 // Dismissing records the decision and downloads nothing. The row is KEPT — the history answers
 // what was declined, too.
 func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-dismiss", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -264,7 +293,7 @@ func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
 // §19 negatives. These routes decide what gets downloaded, so a member must not reach any of
 // them — least of all approve.
 func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-require-admin", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -284,7 +313,7 @@ func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
 
 // Both requests pass the read-side guard before either reaches durable approval.
 func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-concurrent-decision", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	entered, release := make(chan struct{}, 2), make(chan struct{})
@@ -327,7 +356,7 @@ func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
 }
 
 func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	p := filler.Pull{ID: "historical-source-plan", Status: filler.PullPending, CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}}}
 	if err := st.UpsertPull(t.Context(), p); err != nil {
@@ -390,7 +419,7 @@ func TestListFillerPulls_ResolvesProposedByName(t *testing.T) {
 }
 
 func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-concurrent-dismissal", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -449,7 +478,7 @@ func decodeBulkApproveFillerPulls(t *testing.T, res *http.Response) bulkApproveF
 }
 
 func TestBulkApproveFillerPulls_AllSucceed(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	p1 := seedPull(t, st, "pull-bulk-1", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	p2 := seedPull(t, st, "pull-bulk-2", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
@@ -486,7 +515,7 @@ func TestBulkApproveFillerPulls_AllSucceed(t *testing.T) {
 // One already-decided id must not abort the rest, but the caller still has to learn which ids
 // did not go through — mirrors TestBulkApprove_PartialFailureReportsPerID.
 func TestBulkApproveFillerPulls_PartialFailureReportsPerID(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	p1 := seedPull(t, st, "pull-bulk-partial-1", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	p2 := seedPull(t, st, "pull-bulk-partial-2", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
@@ -523,7 +552,7 @@ func TestBulkApproveFillerPulls_PartialFailureReportsPerID(t *testing.T) {
 // already-decided pull is a 409 that retrying repeats forever, while a download that couldn't
 // start is a 502 upstream fault worth sending again.
 func TestBulkApproveFillerPulls_ClassifiesEachFailureForRetry(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	decided := seedPull(t, st, "pull-bulk-decided", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	stalled := seedPull(t, st, "pull-bulk-stalled", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
@@ -560,7 +589,7 @@ func TestBulkApproveFillerPulls_ClassifiesEachFailureForRetry(t *testing.T) {
 // enqueued is the exact committed-row count each approval queued (Refs #1817, #1876) — the same
 // fact bulk-approve-proposals reports — and is absent, never 0, on a result that didn't approve.
 func TestBulkApproveFillerPulls_ReportsEnqueuedPerApprovedPull(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	two := seedPull(t, st, "pull-bulk-two", []filler.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "one", URL: "https://archive.org/details/one"},
@@ -592,7 +621,7 @@ func TestBulkApproveFillerPulls_ReportsEnqueuedPerApprovedPull(t *testing.T) {
 }
 
 func TestBulkApproveFillerPulls_UnknownID(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	srv, st, _ := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	p1 := seedPull(t, st, "pull-bulk-unknown", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -621,7 +650,7 @@ func TestBulkApproveFillerPulls_UnknownID(t *testing.T) {
 
 // §19: the gate is admin-only, and bulk is still the gate. A member must approve NOTHING.
 func TestBulkApproveFillerPulls_MemberIsRejected(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-bulk-member", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
@@ -638,7 +667,7 @@ func TestBulkApproveFillerPulls_MemberIsRejected(t *testing.T) {
 }
 
 func TestBulkApproveFillerPulls_EmptyIDsRejected(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	srv, _, _ := newFillerServerWithConfig(t, nil, locatedInUS)
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve", `{"ids":[]}`, adminToken)
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 400 || res.StatusCode >= 500 {
@@ -650,7 +679,7 @@ func TestBulkApproveFillerPulls_EmptyIDsRejected(t *testing.T) {
 // filler downloads can exceed the 24-25 used for interactive lookups, so this bounds request
 // size without forcing the client to chunk (Refs #1659).
 func TestBulkApproveFillerPulls_BatchSizeCap(t *testing.T) {
-	srv, _, _ := newFillerServer(t)
+	srv, _, _ := newFillerServerWithConfig(t, nil, locatedInUS)
 	ids := make([]string, 0, 101)
 	for i := 0; i < 101; i++ {
 		ids = append(ids, fmt.Sprintf("pull-%d", i))
