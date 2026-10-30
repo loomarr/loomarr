@@ -36,8 +36,8 @@ describe("ChannelDefaultAudio", () => {
     const policy = { watermark: { look: "tint" as const }, playout: {} };
     renderCard({ channel: channel({ status: "live", policy }), savePolicy });
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Default audio language" }));
-    await userEvent.click(await screen.findByRole("option", { name: /French/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Default audio language/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /French/ }));
 
     expect(savePolicy).toHaveBeenCalledWith({ ...policy, playout: { audioLanguage: "fra" } });
   });
@@ -50,10 +50,10 @@ describe("ChannelDefaultAudio", () => {
       savePolicy,
     });
 
-    const picker = screen.getByRole("combobox", { name: "Default audio language" });
+    const picker = screen.getByRole("button", { name: /^Default audio language/ });
     expect(picker).toHaveTextContent("JPN");
     await userEvent.click(picker);
-    await userEvent.click(await screen.findByRole("option", { name: "Auto (default)" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /^Auto \(default\)/ }));
 
     expect(savePolicy).toHaveBeenCalledWith({ playout: { audioLanguage: "" } });
   });

@@ -421,6 +421,39 @@ describe("Action render composition", () => {
     expect(link?.textContent).toBe("Go");
   });
 
+  it("names a composed link by `role`, never the RN-only `accessibilityRole` attribute", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action accessibilityRole="link" render={<a href="/watch/ch-1" />}>
+            Watch
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const link = host.querySelector("a");
+    expect(link?.getAttribute("role")).toBe("link");
+    expect(link?.hasAttribute("accessibilityrole")).toBe(false);
+  });
+
+  it("pads a composed link as CSS, the same inset a Pressable gets", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action render={<a href="/watch/ch-1" />} variant="outline">
+            Watch
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const link = host.querySelector("a") as HTMLAnchorElement;
+    expect(link.style.paddingLeft).not.toBe("");
+    expect(link.style.paddingLeft).toBe(link.style.paddingRight);
+    expect(link.getAttribute("style")).not.toContain("padding-horizontal");
+  });
+
   // Mirrors the legacy Button's own `render` contract test: neither side's className is
   // dropped, and both click handlers fire.
   it("keeps both sides' className and chains both click handlers", () => {

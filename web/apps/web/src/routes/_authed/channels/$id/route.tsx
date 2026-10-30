@@ -5,10 +5,11 @@ import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
+import { Action, Surface } from "@loomarr/design-system";
 import { ChannelIdent } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
@@ -16,7 +17,6 @@ import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -272,20 +272,28 @@ const ChannelDetailLayout = () => {
         {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
             TV link, so the viewer goes on from there. */}
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <Button render={<Link to="/watch/$id" params={{ id }} />}>
-            <Play className="size-4 fill-current" aria-hidden />
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderWidth={0}
+          flexDirection="row"
+          flexWrap="wrap"
+          gap={8}
+        >
+          {/* Action names its host a button unless told otherwise; these are links. */}
+          <Action accessibilityRole="link" icon="play" render={<Link to="/watch/$id" params={{ id }} />}>
             Watch
-          </Button>
+          </Action>
           {mediaServerUrl && (
-            <Button
+            <Action
+              accessibilityRole="link"
               variant="outline"
               render={<a href={mediaServerUrl} target="_blank" rel="noopener noreferrer" />}
             >
-              Open in {mediaServerName}
-            </Button>
+              {`Open in ${mediaServerName}`}
+            </Action>
           )}
-        </div>
+        </Surface>
       </header>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin

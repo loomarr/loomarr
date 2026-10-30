@@ -1,10 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide } from "@loomarr/core/guide";
-import { watchingPanelFromGuide } from "@loomarr/ui";
+import { Surface, Text } from "@loomarr/design-system";
+import { WatchFrame, watchingPanelFromGuide } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useCanGoBack, useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
 import { DRAWER_NOW_PERCENT, drawerChannels } from "@/channels/drawer-channels";
@@ -15,6 +16,20 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 
 // How often the drawer's rows move on: minutes left and the strip's window.
 const NOW_TICK_MS = 30_000;
+
+// The loading and error states sit in the middle of the black frame.
+const Centered = ({ children }: { children: ReactNode }) => (
+  <Surface
+    alignItems="center"
+    backgroundColor="transparent"
+    borderWidth={0}
+    flex={1}
+    justifyContent="center"
+    padding={24}
+  >
+    {children}
+  </Surface>
+);
 
 // WATCH — play a channel live, full-bleed (#2088 step 1, `playback-clients.md` "Watch (web)"). Its
 // own route, outside the channel page: the authed layout drops the app shell here, so the picture
@@ -98,27 +113,27 @@ const WatchScreen = () => {
 
   if (channelQuery.error && !tunedChannel) {
     return (
-      <main className="bg-background flex min-h-dvh items-center justify-center p-6">
-        <ErrorState error={channelQuery.error} onRetry={() => channelQuery.refetch()} />
-      </main>
+      <WatchFrame title="Watch">
+        <Centered>
+          <ErrorState error={channelQuery.error} onRetry={() => channelQuery.refetch()} />
+        </Centered>
+      </WatchFrame>
     );
   }
   if (!tunedChannel) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-black">
-        <p className="text-muted-foreground text-sm">Loading channel…</p>
-      </main>
+      <WatchFrame title="Watch">
+        <Centered>
+          <Text textRole="hint" tone="muted">
+            Loading channel…
+          </Text>
+        </Centered>
+      </WatchFrame>
     );
   }
 
-  // Exactly the window's height, not at least it: the picture's `h-full` needs a definite height to
-  // fill, or it falls back to 16:9 and leaves a band. A portrait phone's panel scrolls under it.
   return (
-    <main className="flex h-dvh flex-col overflow-y-auto bg-black">
-      {/* A visually-hidden heading: the player labels itself visibly through its top bar (CH n and
-          the channel name), which is not a heading, and the page still needs one to be provably
-          reachable (the visible-heading reachability check). */}
-      <h1 className="sr-only">Watch {tunedChannel.name}</h1>
+    <WatchFrame title={`Watch ${tunedChannel.name}`}>
       <ChannelWatch
         channel={tunedChannel}
         isAdmin={isAdmin}
@@ -145,7 +160,7 @@ const WatchScreen = () => {
         onTuneSettled={(channelId) => recordTune.mutate({ channelId })}
         phone={phone}
       />
-    </main>
+    </WatchFrame>
   );
 };
 

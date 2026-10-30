@@ -13,7 +13,7 @@
       "legacyUi": 2
     },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 172,
+      "tailwindClasses": 169,
       "legacyUi": 4
     },
     "src/channels/guide-page/guide-page.tsx": {
@@ -718,9 +718,6 @@
     "src/routes/_authed/channels/$id/route.tsx": {
       "tailwindClasses": 88,
       "legacyUi": 1
-    },
-    "src/routes/_authed/channels/$id/watch.tsx": {
-      "tailwindClasses": 1
     },
     "src/routes/_authed/filler/settings/route.tsx": {
       "tailwindClasses": 6
