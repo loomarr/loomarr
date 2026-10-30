@@ -57,4 +57,40 @@ describe("ChannelDefaultAudio", () => {
 
     expect(savePolicy).toHaveBeenCalledWith({ playout: { audioLanguage: "" } });
   });
+
+  it("offers the airing image subtitles to burn in, saved beside the audio language", async () => {
+    server.use(
+      getChannelTracksMockHandler({
+        audio: [{ index: 0, language: "jpn" }],
+        subtitles: [
+          { index: 0, language: "eng" },
+          { index: 1, language: "eng", burnable: true },
+        ],
+      }),
+    );
+    const savePolicy = vi.fn();
+    renderCard({
+      channel: channel({ status: "live", policy: { playout: { audioLanguage: "jpn" } } }),
+      savePolicy,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /^Burned-in subtitles/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /English/ }));
+    expect(savePolicy).toHaveBeenCalledWith({ playout: { audioLanguage: "jpn", burnSubtitles: "eng" } });
+  });
+
+  it("Off saves as empty", async () => {
+    server.use(getChannelTracksMockHandler({ audio: [], subtitles: [] }));
+    const savePolicy = vi.fn();
+    renderCard({
+      channel: channel({ status: "live", policy: { playout: { burnSubtitles: "eng" } } }),
+      savePolicy,
+    });
+
+    const picker = screen.getByRole("button", { name: /^Burned-in subtitles/ });
+    expect(picker).toHaveTextContent("ENG");
+    await userEvent.click(picker);
+    await userEvent.click(await screen.findByRole("radio", { name: /^Off/ }));
+    expect(savePolicy).toHaveBeenCalledWith({ playout: { burnSubtitles: "" } });
+  });
 });

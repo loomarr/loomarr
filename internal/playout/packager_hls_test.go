@@ -121,7 +121,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for gain, want := range map[float64]string{-2.5: "volume=-2.5dB", 0: ""} {
-		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, slot, itemFault{})
+		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, nil, slot, itemFault{})
 		if err != nil {
 			t.Fatal(err)
 		}

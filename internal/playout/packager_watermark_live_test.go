@@ -64,7 +64,7 @@ func (p *livePackager) encode(bug *Watermark, name string) (string, Pipeline) {
 	t := p.t
 	t.Helper()
 	it := PackagerItem{Label: name, Input: p.src, Remaining: time.Second, Format: p.facts}
-	pl, args, err := packagerItemArgs(p.host, p.out, it, bug, packager.Slot{Frames: checkFrames, AudioFrames: 47}, itemFault{})
+	pl, args, err := packagerItemArgs(p.host, p.out, it, bug, nil, packager.Slot{Frames: checkFrames, AudioFrames: 47}, itemFault{})
 	if err != nil {
 		t.Fatal(err)
 	}

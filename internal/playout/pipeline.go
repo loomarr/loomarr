@@ -130,6 +130,8 @@ type Pipeline struct {
 	CostClass FormatClass
 	// Watermark: the graph burns in the channel's bug (BuildItem).
 	Watermark bool
+	// Subtitles: the graph burns in an image subtitle track (BuildItemBurning).
+	Subtitles bool
 }
 
 const (
@@ -183,7 +185,14 @@ func Build(host encode.HostProfile, src MediaFormat, out OutputProfile) (Pipelin
 // that cannot draw it on the GPU gets the bug-free pipeline with the reason in Fallbacks; the bug
 // never refuses a programme.
 func BuildItem(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
-	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm}
+	return BuildItemBurning(host, src, out, wm, nil)
+}
+
+// BuildItemBurning is BuildItem that also burns in an image subtitle track when burn is non-nil
+// (burnin.go). Like the bug, a host that cannot blend it on the GPU drops it, with the reason in
+// Fallbacks; it never refuses a programme.
+func BuildItemBurning(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *Watermark, burn *SubtitleBurn) (Pipeline, error) {
+	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm, burn: burn}
 	b.p.Family = host.Family
 	if out.premium() {
 		switch {
@@ -198,6 +207,7 @@ func BuildItem(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *
 	b.p.AudioEncode = []string{"-c:a", "aac", "-profile:a", "aac_low", "-b:a", strconv.Itoa(out.AudioKbps) + "k", "-ac", "2", "-ar", "48000"}
 	if host.Family != encode.FamilyVAAPI && host.Family != encode.FamilyNVENC {
 		b.overlay() // no GPU overlay graph: declares the disabled bug
+		b.burning() // and the dropped subtitles
 	}
 	var err error
 	switch host.Family {
@@ -288,6 +298,7 @@ type builder struct {
 	// tonemap: an HDR source into an SDR output. convert: an SDR or HLG source into an HDR10 output.
 	tonemap, convert bool
 	wm               *Watermark
+	burn             *SubtitleBurn
 	p                Pipeline
 }
 
@@ -491,14 +502,25 @@ func (b *builder) vaapi() error {
 			fmt.Sprintf("pad_opencl=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2:color=black", b.out.Width, b.out.Height),
 			"hwmap=derive_device=vaapi:reverse=1")
 	}
-	if b.overlay() {
+	if bug, subs := b.overlay(), b.burning(); bug || subs {
 		// The shipped OpenCL kernel on the surface mapped from VAAPI, zero-copy both ways
-		// (watermark.go, #1613). Every kernel input carries the output's labels and time base.
-		b.p.Watermark = true
+		// (watermark.go, #1613), once for the subtitles and once for the bug above them. Every
+		// kernel input carries the output's labels and time base.
 		f = append(f, conformColour, "settb=AVTB", "hwmap=derive_device=opencl")
-		b.p.VideoFilter = strings.Join(f, ",") + "[main];" + b.kernelBug() +
-			";[main][wm][wa]program_opencl=source=" + b.wm.Kernel + ":kernel=blend_bug:inputs=3," +
-			"hwmap=derive_device=vaapi:reverse=1,format=vaapi," + b.tail()
+		g, in := strings.Join(f, ",")+"[main]", "main"
+		if subs {
+			b.p.Subtitles = true
+			g += ";" + b.kernelSubtitles() + ";[main][sw][sa]program_opencl=source=" + b.burn.Kernel + ":kernel=blend_bug:inputs=3"
+			in = "sub"
+		}
+		if bug {
+			b.p.Watermark = true
+			if subs {
+				g += "[sub]"
+			}
+			g += ";" + b.kernelBug() + ";[" + in + "][wm][wa]program_opencl=source=" + b.wm.Kernel + ":kernel=blend_bug:inputs=3"
+		}
+		b.p.VideoFilter = g + ",hwmap=derive_device=vaapi:reverse=1,format=vaapi," + b.tail()
 		return nil
 	}
 	b.p.VideoFilter = strings.Join(append(f, b.tail()), ",")
@@ -510,9 +532,10 @@ func (b *builder) nvenc() error {
 	filterDevice := "cu"
 	hw := b.hardwareDecodes()
 	// overlay_cuda blends alpha only onto a yuv420p main (watermark.go).
-	bug := b.overlay()
+	bug, subs := b.overlay(), b.burning()
+	blend := bug || subs
 	mainFormat := "nv12"
-	if bug {
+	if blend {
 		mainFormat = "yuv420p"
 	}
 	var f []string
@@ -546,7 +569,7 @@ func (b *builder) nvenc() error {
 		} else {
 			f = append(f, conv, "hwupload_cuda", "scale_cuda="+b.fit()+":format=p010le")
 		}
-	case !b.tonemap && bug:
+	case !b.tonemap && blend:
 		f = append(f, "scale_cuda="+b.fit()+":format="+mainFormat)
 	case !b.tonemap:
 		f = append(f, "scale_cuda="+b.fit()+":format="+b.scaleFormat("p010le"))
@@ -578,7 +601,7 @@ func (b *builder) nvenc() error {
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "cuda", "-hwaccel_device", "cu", "-hwaccel_output_format", "cuda")
 	}
-	if bug && b.tonemap {
+	if blend && b.tonemap {
 		f = append(f, "scale_cuda=format="+mainFormat)
 	}
 	switch {
@@ -588,7 +611,7 @@ func (b *builder) nvenc() error {
 		b.fallback("pad", "pad_cuda takes 8-bit frames only: the 10-bit letterbox is added on the CPU at output size")
 		f = append(f, "hwdownload", "format=p010le", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "hwupload_cuda")
 	}
-	if bug {
+	if blend {
 		// overlay_cuda outputs the aligned surface (1088 lines at 1080p); passthrough=0 makes the
 		// scale a real pass that restores the output geometry and a bug-off-identical SPS. The bug's
 		// RGB→YUV matrix is stated, as on the VAAPI path: ffmpeg's unstated default is BT.601, which
@@ -596,10 +619,21 @@ func (b *builder) nvenc() error {
 		// overlay_cuda negotiates one colourspace and range for both inputs, and an untagged main
 		// cannot meet the tagged bug once both are CUDA frames, so the main takes the output's own
 		// declaration (conformColour, metadata only: tail() declares the same) before the blend.
-		b.p.Watermark = true
-		b.p.VideoFilter = overlaid(append(f, conformColour), "movie=filename="+b.wm.Straight+",format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda",
-			"overlay_cuda="+b.bugPosition(),
-			fmt.Sprintf("scale_cuda=w=%d:h=%d:format=yuv420p:passthrough=0", b.out.Width, b.out.Height), b.tail())
+		g, in := strings.Join(append(f, conformColour), ","), "main"
+		if subs {
+			// ⚠ The full-frame subtitle canvas reaches the aligned rows, and scaling 1088 lines back
+			// to 1080 squeezed them into a green stripe along the bottom: crop them away first.
+			b.p.Subtitles = true
+			g += "[main];" + b.subtitleSource() + ",hwupload_cuda[sb];[main][sb]overlay_cuda=eof_action=repeat," +
+				fmt.Sprintf("crop=w=%d:h=%d:x=0:y=0", b.out.Width, b.out.Height)
+			in = "sub"
+		}
+		if bug {
+			b.p.Watermark = true
+			g += "[" + in + "];movie=filename=" + b.wm.Straight + ",format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda[wm];" +
+				"[" + in + "][wm]overlay_cuda=" + b.bugPosition()
+		}
+		b.p.VideoFilter = g + fmt.Sprintf(",scale_cuda=w=%d:h=%d:format=yuv420p:passthrough=0,", b.out.Width, b.out.Height) + b.tail()
 		return nil
 	}
 	b.p.VideoFilter = strings.Join(append(f, b.tail()), ",")

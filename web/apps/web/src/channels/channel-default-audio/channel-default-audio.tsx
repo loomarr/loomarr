@@ -3,12 +3,13 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ChannelAudioSection } from "@loomarr/ui";
-import { AUTO_SENTINEL, audioOptions, withSaved } from "./audio-options";
+import { AUTO_SENTINEL, audioOptions, burnOptions, OFF_SENTINEL, withSaved } from "./audio-options";
 
-// The channel's default audio language (#2088), on Channel info beside the On-screen logo: admin-only,
-// autosaving `policy.playout.audioLanguage` through the page's one writer like the other fields. It
-// moved here from the player's Audio menu when Watch became its own route; the player's Settings
-// sheet now shows it read-only.
+// The channel's default audio language and burned-in subtitles (#2088), on Channel info beside the
+// On-screen logo: admin-only, autosaving `policy.playout.audioLanguage` and
+// `policy.playout.burnSubtitles` through the page's one writer like the other fields. The audio
+// default moved here from the player's Audio menu when Watch became its own route; the player's
+// Settings sheet now shows it read-only.
 
 interface ChannelDefaultAudioProps {
   channel: ChannelDTO;
@@ -17,23 +18,26 @@ interface ChannelDefaultAudioProps {
 
 const ChannelDefaultAudio = ({ channel, savePolicy }: ChannelDefaultAudioProps) => {
   // The choices are the tracks the airing programme actually carries, so only a channel on air has
-  // any to offer beyond Auto and the saved value.
+  // any to offer beyond Auto/Off and the saved values.
   const tracks = channelsApi.useChannelTracks(channel.id, {
     query: { enabled: channel.status === "live", retry: false },
   });
+  const airing = unwrap(tracks.data);
   const value = channel.policy?.playout?.audioLanguage || AUTO_SENTINEL;
-  const options = withSaved(audioOptions(unwrap(tracks.data)?.audio ?? []), value);
+  const burn = channel.policy?.playout?.burnSubtitles || OFF_SENTINEL;
+  const savePlayout = (playout: NonNullable<ChannelPolicy["playout"]>) =>
+    savePolicy({ ...channel.policy, playout: { ...channel.policy?.playout, ...playout } });
 
   return (
     <ChannelAudioSection
-      options={options}
+      options={withSaved(audioOptions(airing?.audio ?? []), value)}
       value={value}
-      onValueChange={(v) =>
-        savePolicy({
-          ...channel.policy,
-          playout: { ...channel.policy?.playout, audioLanguage: v === AUTO_SENTINEL ? "" : v },
-        })
-      }
+      onValueChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
+      subtitles={{
+        options: withSaved(burnOptions(airing?.subtitles ?? []), burn),
+        value: burn,
+        onValueChange: (v) => savePlayout({ burnSubtitles: v === OFF_SENTINEL ? "" : v }),
+      }}
     />
   );
 };

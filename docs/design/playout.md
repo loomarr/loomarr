@@ -537,9 +537,26 @@ retired); soft subtitles never enter the stream:
     once and extracts a track in five-minute source chunks (an input seek, `-c:s webvtt`), cached
     in memory and shared by every viewer (`internal/app/playoutsubtitles.go`). Breaks carry none.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
-  An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
+  An admin can set a channel to **burn in** the image track in one language
+  (`policy.playout.burnSubtitles`, Channel info → Audio and subtitles). That is a GPU overlay in the
   video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track
   is dropped: never a CPU filter in the playout graph.
+  - *How (step 8, `internal/playout/burnin.go`, `pgs.go`):* a track is prepared once, in the
+    background: copied out as `.sup`, decoded in Go into the full canvas at each change, and the
+    stills converted together into one-frame ffv1 files that are already yuva420p BT.709. Each
+    encoder reads an ffconcat list written for its own seek (the still on screen at that moment
+    first, then each change for exactly as long as it shows) through a `movie=` source inside its
+    `-vf`, and blends it where the bug is blended: `overlay_cuda` on NVENC (cropping the aligned
+    rows before the passthrough scale), the bug's `program_opencl` kernel on VAAPI. The canvas is
+    fitted into the output as its own frame, so a cropped film's subtitles land in the letterbox.
+  - *Why not ffmpeg's own route:* `[0:s:N]` into an overlay re-sends and re-converts the whole
+    canvas on every video frame (a quarter of a core per stream); stills cost only at a change
+    (measured ~0.005 cores on the GeForce, ~0.009 on the household Arc). Seeking a sparse stream
+    with `-ss` loses the still already on screen, so the list starts at the seek instead.
+  - *Limits:* the first airing of a title airs without them while its track is prepared (the next
+    programme's track is queued as the current one starts); prepared tracks are kept for the 48
+    most recently aired. PGS only: VOBSUB keeps its palette outside the stream and is dropped like
+    any track a host cannot draw. No HDR10 output (the overlays take 8-bit frames).
 - Nothing the server did not supply is invented: a programme without a subtitle stream shows no
   subtitle choices.
 

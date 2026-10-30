@@ -68,11 +68,12 @@ func (r *playoutResolver) fillSubtitles(ctx context.Context, sa *playout.Subtitl
 	if input == "" {
 		return
 	}
-	tracks, err := r.subtitles.tracks(ctx, input, r.probeTracks)
+	all, err := r.subtitles.tracks(ctx, input, r.probeTracks)
 	if err != nil {
 		r.logDebug("playout: subtitle tracks not probed", "item", airing.LibraryItemID, "err", err)
 		return
 	}
+	tracks := textSubtitles(all)
 	sa.Tracks = tracks
 	if pick == nil || r.extractSubtitles == nil {
 		return
@@ -95,6 +96,17 @@ func (r *playoutResolver) fillSubtitles(ctx context.Context, sa *playout.Subtitl
 		}
 		sa.Cues = append(sa.Cues, wallCues(cues, airing.Offset, at, partStart, lo, hi, sa.Stop)...)
 	}
+}
+
+// textSubtitles is the tracks the sidecar offers: the text ones. Image tracks can only be burned in.
+func textSubtitles(all []playout.Track) []playout.Track {
+	text := []playout.Track{}
+	for _, t := range all {
+		if playout.IsTextSubtitle(t.Codec) {
+			text = append(text, t)
+		}
+	}
+	return text
 }
 
 // wallCues places source-time cues on the wall clock: source `offset` aired at `at`. A cue from
@@ -139,7 +151,7 @@ func minTime(a, b time.Time) time.Time {
 	return b
 }
 
-// subtitleCache holds probed text tracks per source and extracted cues per (source, track, chunk),
+// subtitleCache holds probed subtitle tracks per source and extracted cues per (source, track, chunk),
 // so every viewer of a channel, polling every half minute, shares one probe and one extraction.
 // Bounded first-in first-out: a channel walks forward through its sources, so the oldest entry is
 // the one nobody needs.
@@ -153,18 +165,13 @@ type subtitleCache struct {
 const subtitleCacheEntries = 256
 
 func (c *subtitleCache) tracks(ctx context.Context, input string, probe playout.TrackProber) ([]playout.Track, error) {
+	// Every subtitle track, text and image: the sidecar offers the text ones, burn-in the image ones.
 	v, err := c.load("tracks|"+input, func() (any, error) {
 		all, err := probe(ctx, input)
 		if err != nil {
 			return nil, err
 		}
-		text := []playout.Track{}
-		for _, t := range all.Subtitles {
-			if playout.IsTextSubtitle(t.Codec) {
-				text = append(text, t)
-			}
-		}
-		return text, nil
+		return append([]playout.Track{}, all.Subtitles...), nil
 	})
 	if err != nil {
 		return nil, err

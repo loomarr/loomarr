@@ -64,7 +64,8 @@ func TestSubtitleCache_SharesOneExtractionAndRetriesAFailure(t *testing.T) {
 	}
 }
 
-func TestSubtitleCache_OffersOnlyTextTracks(t *testing.T) {
+// The cache keeps every subtitle track (burn-in needs the image ones); the sidecar offers only text.
+func TestSubtitleCache_KeepsEveryTrackAndTheSidecarOffersText(t *testing.T) {
 	var c subtitleCache
 	probe := func(context.Context, string) (playout.MediaTracks, error) {
 		return playout.MediaTracks{Subtitles: []playout.Track{
@@ -72,8 +73,11 @@ func TestSubtitleCache_OffersOnlyTextTracks(t *testing.T) {
 			{Index: 1, Language: "eng", Codec: "subrip"},
 		}}, nil
 	}
-	tracks, err := c.tracks(context.Background(), "in", probe)
-	if err != nil || len(tracks) != 1 || tracks[0].Index != 1 {
-		t.Fatalf("tracks = %+v, err = %v", tracks, err)
+	all, err := c.tracks(context.Background(), "in", probe)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("tracks = %+v, err = %v", all, err)
+	}
+	if text := textSubtitles(all); len(text) != 1 || text[0].Index != 1 {
+		t.Fatalf("sidecar offers %+v, want only the subrip track", text)
 	}
 }

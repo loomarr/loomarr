@@ -139,6 +139,19 @@ type PlayoutPolicy struct {
 	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
 	// whole channel, exactly as changing the instance default would.
 	AudioLanguage string `json:"audioLanguage,omitempty"`
+	// BurnSubtitles is the ISO 639-2 language whose IMAGE subtitle track (Blu-ray PGS) this
+	// channel burns into its programmes (#2088 step 8), when a programme carries one. Empty = never.
+	// Image subtitles cannot travel beside the stream as text, so burning them in is the only way
+	// to show them; text tracks stay each viewer's own choice (the subtitles sidecar).
+	BurnSubtitles string `json:"burnSubtitles,omitempty"`
+}
+
+// BurnSubtitlesLanguage is the language a channel burns image subtitles in, or "" for none.
+func BurnSubtitlesLanguage(policy ChannelPolicy) string {
+	if p := policy.Playout; p != nil {
+		return strings.ToLower(strings.TrimSpace(p.BurnSubtitles))
+	}
+	return ""
 }
 
 // Playout backend values are shared by settings, channel policy, and transition

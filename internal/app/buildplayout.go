@@ -238,6 +238,17 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		pathMap: func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) },
 		log:     log,
 	}
+	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
+	// and blended by its kernel. Prepared tracks are derived files beside the bugs, outside the
+	// image store.
+	if deps.watermarks != nil {
+		burnDir, err := filepath.Abs(filepath.Join(filepath.Dir(filepath.Clean(settings.ImagesDir.Get(set))), "subtitle-burn"))
+		if err == nil {
+			playoutRes.burns = newSubtitleBurns(rootCtx, burnDir,
+				playout.FFmpegBurnInWith(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+				deps.watermarks.overlayWorks, deps.watermarks.blendKernel, log)
+		}
+	}
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
 	// the app's lifetime; sources are read directly through the path map, never through Emby.

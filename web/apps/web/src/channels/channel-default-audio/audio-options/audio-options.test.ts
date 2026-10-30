@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { AUTO_SENTINEL, audioOptions, withSaved } from "./audio-options";
+import { AUTO_SENTINEL, audioOptions, burnOptions, OFF_SENTINEL, withSaved } from "./audio-options";
+
+describe("burnOptions", () => {
+  it("leads with Off, then each language of the airing programme's image tracks, never text ones", () => {
+    const opts = burnOptions([
+      { index: 0, language: "eng" },
+      { index: 1, language: "eng", burnable: true },
+      { index: 2, language: "eng", burnable: true, title: "SDH" },
+      { index: 3, language: "fra" },
+      { index: 4, burnable: true },
+    ]);
+    expect(opts).toEqual([
+      { value: OFF_SENTINEL, label: "Off" },
+      { value: "eng", label: "English" },
+    ]);
+  });
+});
 
 describe("audioOptions", () => {
   it("leads with Auto, then one entry per distinct language the airing media carries", () => {

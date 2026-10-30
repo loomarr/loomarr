@@ -27,23 +27,38 @@ const OPTIONS = [
   { label: "French", value: "fra" },
 ];
 
+const SUBTITLE_OPTIONS = [
+  { label: "Off", value: "off" },
+  { label: "English", value: "eng" },
+];
+
+const mount = (onValueChange: (v: string) => void, onSubtitles: (v: string) => void) => {
+  const host = doc.createElement("div");
+  doc.body.append(host);
+  const root = createRoot(host);
+  act(() =>
+    root.render(
+      <LoomarrProvider theme="dark">
+        <ChannelAudioSection
+          onValueChange={onValueChange}
+          options={OPTIONS}
+          subtitles={{ onValueChange: onSubtitles, options: SUBTITLE_OPTIONS, value: "off" }}
+          value="eng"
+        />
+      </LoomarrProvider>,
+    ),
+  );
+  return { host, root };
+};
+
 describe("ChannelAudioSection", () => {
   it("shows the saved language and hands a new choice back, closing the list", () => {
     const onValueChange = vi.fn();
-    const host = doc.createElement("div");
-    doc.body.append(host);
-    const root = createRoot(host);
-    act(() =>
-      root.render(
-        <LoomarrProvider theme="dark">
-          <ChannelAudioSection onValueChange={onValueChange} options={OPTIONS} value="eng" />
-        </LoomarrProvider>,
-      ),
-    );
+    const { host, root } = mount(onValueChange, vi.fn());
 
-    expect(host.querySelector('[role="region"]')?.getAttribute("aria-label")).toBe("Audio");
-    const field = host.querySelector('[aria-expanded="false"]');
-    expect(field?.getAttribute("aria-label")).toBe("Default audio language, English");
+    expect(host.querySelector('[role="region"]')?.getAttribute("aria-label")).toBe("Audio and subtitles");
+    const field = host.querySelector('[aria-label="Default audio language, English"]');
+    expect(field?.getAttribute("aria-expanded")).toBe("false");
 
     act(() => field?.click());
     const french = Array.from(host.querySelectorAll('[role="radio"]')).find((n) =>
@@ -53,6 +68,22 @@ describe("ChannelAudioSection", () => {
 
     expect(onValueChange).toHaveBeenCalledWith("fra");
     expect(host.querySelectorAll('[role="radio"]')).toHaveLength(0);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("has the burned-in subtitles picker under the audio one, with its own choices", () => {
+    const onSubtitles = vi.fn();
+    const { host, root } = mount(vi.fn(), onSubtitles);
+
+    const field = host.querySelector('[aria-label="Burned-in subtitles, Off"]');
+    act(() => field?.click());
+    const english = Array.from(host.querySelectorAll('[role="radio"]')).find((n) =>
+      n.textContent?.includes("English"),
+    );
+    act(() => english?.click());
+
+    expect(onSubtitles).toHaveBeenCalledWith("eng");
     act(() => root.unmount());
     host.remove();
   });

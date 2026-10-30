@@ -1,7 +1,7 @@
 import {
   getChannelFillerCoverageMockHandler,
-  getChannelsNowNextMockHandler,
   getChannelSubtitlesMockHandler,
+  getChannelsNowNextMockHandler,
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,

@@ -83,6 +83,10 @@ func (c *channelWatermarks) blendKernel() string {
 	return c.kernel
 }
 
+// overlayWorks reports whether an encoder's GPU overlay passed its self-check; the first ask
+// starts the check, and until it passes nothing is drawn. Burned-in subtitles share the gate.
+func (c *channelWatermarks) overlayWorks(enc encode.Encoder) bool { return c.gate(enc).works.Load() }
+
 // watermarkGate is an encoder's self-check verdict: works draws the bug at all, colour draws the
 // coloured looks in colour (otherwise they air in white, #1659 Q2).
 type watermarkGate struct{ works, colour atomic.Bool }

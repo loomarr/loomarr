@@ -1,9 +1,9 @@
 import {
   getChannelGuideMockHandler,
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelsNowNextMockHandler,
   getChannelTimelineMockHandler,
-  getChannelSubtitlesMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
   getFillerDecisionActivityMockHandler,

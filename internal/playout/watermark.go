@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/loomarr/loomarr/internal/encode"
 )
@@ -186,12 +185,6 @@ func (b *builder) overlay() bool {
 		return false
 	}
 	return true
-}
-
-// overlaid joins the main chain with the bug: main[main]; bug[wm]; [main][wm]blend,after. The main
-// chain's input and the last chain's output are the simple graph's own, so ItemArgs keeps -vf.
-func overlaid(main []string, bug, blend string, after ...string) string {
-	return strings.Join(main, ",") + "[main];" + bug + "[wm];[main][wm]" + strings.Join(append([]string{blend}, after...), ",")
 }
 
 // bugPTS is where the kernel's bug inputs sit in time: before any programme frame. program_opencl's

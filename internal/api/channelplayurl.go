@@ -236,6 +236,7 @@ type TrackDTO struct {
 	Index    int    `json:"index" doc:"Position among tracks of its own type — the N in -map 0:a:N / 0:s:N."`
 	Language string `json:"language,omitempty" doc:"ISO 639-2 code, lowercased; empty when the media left it untagged."`
 	Title    string `json:"title,omitempty" doc:"Free-text stream title when the media carries one (e.g. 'Commentary')."`
+	Burnable bool   `json:"burnable,omitempty" doc:"Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."`
 }
 
 type channelTracksOutput struct {
@@ -277,7 +278,8 @@ func (s *Server) channelTracks(ctx context.Context, in *channelIDInput) (*channe
 		out.Body.Audio = append(out.Body.Audio, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title})
 	}
 	for _, t := range tracks.Subtitles {
-		out.Body.Subtitles = append(out.Body.Subtitles, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title})
+		out.Body.Subtitles = append(out.Body.Subtitles, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title,
+			Burnable: playout.IsBurnableSubtitle(t.Codec)})
 	}
 	return out, nil
 }

@@ -171,6 +171,9 @@ type playoutResolver struct {
 	// lists tracks without cues.
 	extractSubtitles   playout.SubtitleExtractor
 	subtitles          subtitleCache
+	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
+	// Nil ⇒ nothing is burned in.
+	burns              *subtitleBurns
 	processDiagnostics *diagnostics.ProcessManager
 	log                *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that

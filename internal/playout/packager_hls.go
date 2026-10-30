@@ -45,6 +45,19 @@ type PackagerItem struct {
 	// or a read of the schedule airs nothing. The packager resolves an airing again after an encoder
 	// restart, so the recorder is idempotent per airing.
 	RecordAiringServed func(ctx context.Context)
+	// Subtitles is a programme's image subtitle track to burn in (burnin.go), resolved per item at
+	// this packager's encoder like the bug; nil when the channel burns none in.
+	Subtitles SubtitlesFor
+}
+
+// SubtitlesFor returns a programme's prepared track to burn in on an encoder, or nil when it is not
+// prepared yet or the encoder's GPU overlay failed its self-check (the item airs without it).
+type SubtitlesFor func(enc encode.Encoder) *ItemSubtitles
+
+// ItemSubtitles is a prepared track and the VAAPI family's blend kernel (WriteBlendKernel).
+type ItemSubtitles struct {
+	Track  *BurnIn
+	Kernel string
 }
 
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
@@ -609,18 +622,25 @@ func (m *PackagerHLS) schedule(
 		if it.Watermark != nil {
 			wm = it.Watermark(ctx, host.Encoder, out.Width, out.Height)
 		}
+		var subs *ItemSubtitles
+		if it.Subtitles != nil {
+			subs = it.Subtitles(host.Encoder)
+		}
 		// The frames the packager took from this item (0 until it reports, and never for an item whose
 		// channel stopped): the cost sample's media.
 		var delivered atomic.Int64
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			pl, args, err := packagerItemArgs(host, itemOut, it, wm, slot, faults.get(it.Input))
+			// Each encoder reads a subtitle list written for its own seek, removed when it closes.
+			burn, removeList := itemBurn(it, subs, log)
+			pl, args, err := packagerItemArgs(host, itemOut, it, wm, burn, slot, faults.get(it.Input))
 			if err != nil {
+				removeList()
 				return nil, err
 			}
 			if len(pl.Fallbacks) > 0 {
 				log.Info("packager hls: item leaves the GPU", "item", it.Label, "fallbacks", strings.Join(pl.Fallbacks, "; "))
 			}
-			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
+			rc, err := startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
 				before := faults.get(it.Input)
 				if faults.record(it.Input, pl, decodeFault) {
 					if leftTheGPU(before, faults.get(it.Input), host) {
@@ -638,6 +658,11 @@ func (m *PackagerHLS) schedule(
 					lease.ObserveCPU(itemClass, cpu, media)
 				}
 			}, ladder.watch(monitor, log, it.Label))
+			if err != nil {
+				removeList()
+				return nil, err
+			}
+			return closeThen{rc, removeList}, nil
 		}
 		item.Delivered = func(frames int64) { delivered.Store(frames) }
 		return item, nil
@@ -828,13 +853,40 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 	return true
 }
 
+// itemBurn writes the item's subtitle list for its seek; remove deletes it. Without a prepared track,
+// or when the list cannot be written (the programme then airs without them), burn is nil.
+func itemBurn(it PackagerItem, subs *ItemSubtitles, log *slog.Logger) (burn *SubtitleBurn, remove func()) {
+	if subs == nil || subs.Track == nil {
+		return nil, func() {}
+	}
+	list, remove, err := subs.Track.WriteList(it.Seek)
+	if err != nil {
+		log.Warn("packager hls: subtitle list not written; the item airs without them", "item", it.Label, "err", err)
+		return nil, func() {}
+	}
+	return &SubtitleBurn{List: list, Width: subs.Track.Width, Height: subs.Track.Height, Kernel: subs.Kernel}, remove
+}
+
+// closeThen runs after once the encoder's stream is closed.
+type closeThen struct {
+	io.ReadCloser
+	after func()
+}
+
+func (c closeThen) Close() error {
+	err := c.ReadCloser.Close()
+	c.after()
+	return err
+}
+
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
-// the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
-// a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+// the host less any stage this source faulted, the channel's bug when wm is non-nil and its image
+// subtitles when burn is non-nil (a programme on a host whose overlay passed its self-check), the
+// filler gain in its audio stage, fMP4 out.
+func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, burn *SubtitleBurn, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
 	h := fault.apply(host)
-	h.Overlay = wm != nil
-	pl, err := BuildItem(h, it.Format, out, wm)
+	h.Overlay = wm != nil || burn != nil
+	pl, err := BuildItemBurning(h, it.Format, out, wm, burn)
 	if err != nil {
 		return Pipeline{}, nil, err
 	}

@@ -21,6 +21,24 @@ const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] =>
   return opts;
 };
 
+// OFF_SENTINEL is "burn no subtitles in", lowered to "" on the wire like AUTO_SENTINEL.
+const OFF_SENTINEL = "off";
+
+// burnOptions builds the Burned-in subtitles choices (#2088 step 8): Off, then each language of
+// the airing programme's IMAGE subtitle tracks (`burnable`). Text tracks are each viewer's own
+// choice in the player, so they are not offered here.
+const burnOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
+  const seen = new Set<string>();
+  const opts: { value: string; label: string }[] = [{ value: OFF_SENTINEL, label: "Off" }];
+  for (const t of tracks) {
+    const lang = t.language ?? "";
+    if (!t.burnable || !lang || seen.has(lang)) continue;
+    seen.add(lang);
+    opts.push({ value: lang, label: languageLabel(lang) });
+  }
+  return opts;
+};
+
 // withSaved keeps the currently-saved value present in an options list even when the airing does
 // not carry that track. The channel may be set to French while this film is English-only: the
 // preference still applies when a programme with that track airs, so it stays visible, labelled by
@@ -30,4 +48,4 @@ const withSaved = (options: { value: string; label: string }[], value: string) =
     ? [...options, { value, label: value.toUpperCase() }]
     : options;
 
-export { AUTO_SENTINEL, audioOptions, withSaved };
+export { AUTO_SENTINEL, audioOptions, burnOptions, OFF_SENTINEL, withSaved };
