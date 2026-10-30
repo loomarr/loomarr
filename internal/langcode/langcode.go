@@ -9,8 +9,11 @@ package langcode
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
 )
 
 // bibliographic maps the ISO 639-2/B codes to their 639-2/T twins. x/text knows only the T forms,
@@ -84,4 +87,20 @@ func Valid(code string) bool {
 	}
 	_, err := language.ParseBase(c)
 	return err == nil
+}
+
+// SelfName names a language in itself, as the player's Audio and Subtitles read (§9 mock:
+// "Español · stereo"): CLDR's endonym from x/text, its first letter capitalised, so every client
+// shows the same name whatever its platform knows (Hermes has no Intl.DisplayNames). A code that
+// names no one language (`und`, a local-use code, an unknown one) has no name: "".
+func SelfName(code string) string {
+	if !Valid(code) {
+		return ""
+	}
+	name := display.Self.Name(language.Make(Normalize(code)))
+	if name == "" {
+		return ""
+	}
+	first, size := utf8.DecodeRuneInString(name)
+	return string(unicode.ToUpper(first)) + name[size:]
 }

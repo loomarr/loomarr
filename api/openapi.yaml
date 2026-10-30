@@ -11091,11 +11091,15 @@ components:
         language:
           description: ISO 639-2 code, lowercased; empty when the media left it untagged.
           type: string
+        languageName:
+          description: The language named in itself ('Español'), as the player shows it; empty when the code names no one language.
+          type: string
         title:
           description: The stream's title when the media carries one; empty otherwise.
           type: string
       required:
         - language
+        - languageName
         - title
       type: object
     SuggestionEvent:
@@ -11872,6 +11876,9 @@ components:
           type: integer
         language:
           description: ISO 639-2 code, lowercased; empty when the media left it untagged.
+          type: string
+        languageName:
+          description: The language named in itself ('Español'), as the player shows it; empty when the code names no one language (untagged, 'und').
           type: string
         title:
           description: Free-text stream title when the media carries one (e.g. 'Commentary').

@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LiveSubtitles } from "../src/live-subtitles";
 import { type PairedSubtitles, usePairedSubtitles } from "../src/paired-subtitles";
 
-const english = { language: "eng", title: "" };
+const english = { language: "eng", languageName: "English", title: "" };
 const windowWith = (text: string): ChannelSubtitlesOutputBody => ({
   airings: [{ cues: [{ endMs: 60_000, startMs: 0, text }], startMs: 0, stopMs: 600_000, tracks: [english] }],
 });

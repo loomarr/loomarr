@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { useLiveSubtitles } from "./use-live-subtitles";
 
-const english = { language: "eng", title: "" };
-const englishSDH = { language: "eng", title: "SDH" };
+const english = { language: "eng", languageName: "English", title: "" };
+const englishSDH = { language: "eng", languageName: "English", title: "SDH" };
 const asked: URLSearchParams[] = [];
 
 // A subtitled programme until 1,000,000, then a break with nothing to offer.

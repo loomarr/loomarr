@@ -1,5 +1,4 @@
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
-import { ownLanguageLabel } from "../language-label";
 
 // The Settings sheet's audio (#2088 decision 6) for the programme at the playhead: the tracks API
 // says which audio tracks the stream's Default and Alternate renditions carry, and the viewer's
@@ -38,10 +37,9 @@ interface AiringAudio {
 }
 
 // As the §9 mock reads: the language in itself, then its channels (the encode is always stereo).
-// "und" is ISO 639's "undetermined", a language no one speaks: it reads as none, not as "root"
-// (CLDR's name for it) or "UND" (where the platform has no language names).
-const label = (track: TrackDTO) =>
-  track.language && track.language !== "und" ? `${ownLanguageLabel(track.language)} · stereo` : "Stereo";
+// The name is the server's, so a phone (whose engine has no language names) reads as web does; a
+// track it can't name ("und", untagged) reads as no language.
+const label = (track: TrackDTO) => (track.languageName ? `${track.languageName} · stereo` : "Stereo");
 
 const audioChoice = (airing: AiringAudio | undefined, preference: AudioPreference): AudioChoice => {
   const def = airing?.audio.find((track) => track.index === airing.defaultAudio);

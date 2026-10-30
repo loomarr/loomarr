@@ -1,6 +1,5 @@
 import type { ChannelSubtitlesParams } from "@loomarr/api/models/channelSubtitlesParams";
 import type { SubtitleAiringDTO } from "@loomarr/api/models/subtitleAiringDTO";
-import { languageLabel } from "@loomarr/core/language-label";
 
 // The viewer's subtitles (#2088 step 7): off, or a text track of the programme at the playhead,
 // remembered across channels. The subtitles sidecar (GET /v1/channels/{id}/subtitles) lists each
@@ -12,6 +11,8 @@ import { languageLabel } from "@loomarr/core/language-label";
 interface LiveSubtitleTrack {
   /** ISO 639-2, e.g. `eng`; empty when the media left it untagged. */
   language: string;
+  /** The language named in itself, the server's ("Español"); empty when it names no one language. */
+  languageName?: string;
   /** The stream's title ("SDH"); empty when the media carries none. */
   title: string;
 }
@@ -57,9 +58,15 @@ const nextSubtitles = (tracks: readonly LiveSubtitleTrack[], choice: LiveSubtitl
   return track ? { language: track.language, title: track.title } : "off";
 };
 
-/** A track's label in the player: its language, and its title beside it when it has one. */
-const subtitleLabel = (track: LiveSubtitleTrack) =>
-  track.title ? `${languageLabel(track.language)} · ${track.title}` : languageLabel(track.language);
+/**
+ * A track's label in the player: its language named in itself, as the server names it so every
+ * platform reads alike, and its title beside it when it has one. An unnamed language reads by its
+ * code, or as "Subtitles" when it has none.
+ */
+const subtitleLabel = (track: LiveSubtitleTrack) => {
+  const language = track.languageName || track.language.toUpperCase() || "Subtitles";
+  return track.title ? `${language} · ${track.title}` : language;
+};
 
 // The window is read in steps, so a playing viewer refetches once per step rather than per tick: a
 // little behind the playhead (a cue already on screen) and a step and more ahead (the next cues in

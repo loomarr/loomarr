@@ -206,8 +206,8 @@ describe("ChannelWatch pickers", () => {
     localStorage.removeItem("loomarr.player.audio");
     stubTracks({
       audio: [
-        { index: 0, language: "eng" },
-        { index: 1, language: "spa" },
+        { index: 0, language: "eng", languageName: "English" },
+        { index: 1, language: "spa", languageName: "Español" },
       ],
       defaultAudio: 0,
       alternateAudio: 1,
@@ -439,8 +439,9 @@ describe("ChannelWatch — full-bleed route", () => {
   // mock's viewer time is 1,000,000), offered in Settings, on the CC tool and on C; the viewer's
   // choice is remembered, asked of the sidecar, and its cues go to the player.
   describe("subtitles", () => {
-    const english = { language: "eng", title: "" };
-    const spanish = { language: "spa", title: "" };
+    // Named in themselves by the server, as every client shows them.
+    const english = { language: "eng", languageName: "English", title: "" };
+    const spanish = { language: "spa", languageName: "Español", title: "" };
     const asked: URLSearchParams[] = [];
     // One programme around the playhead carrying English and Spanish; with a pick, that track's cue.
     const stubSubtitles = (body?: ChannelSubtitlesOutputBody) => {
@@ -479,13 +480,13 @@ describe("ChannelWatch — full-bleed route", () => {
         within(group)
           .getAllByRole("radio")
           .map((o) => o.getAttribute("aria-label")),
-      ).toEqual(["Off", "English", "Spanish"]);
+      ).toEqual(["Off", "English", "Español"]);
       expect(within(group).getByRole("radio", { name: "Off" })).toBeChecked();
       expect(hls.subtitleCues).toBeUndefined();
       // Off asks for the tracks alone: no extraction for a viewer not reading them.
       expect(asked.at(-1)?.has("language")).toBe(false);
 
-      await userEvent.click(within(group).getByRole("radio", { name: "Spanish" }));
+      await userEvent.click(within(group).getByRole("radio", { name: "Español" }));
       await waitFor(() => expect(hls.subtitleCues?.cues.map((c) => c.text)).toEqual(["spa cue"]));
       expect(hls.subtitleCues?.language).toBe("spa");
       expect(asked.at(-1)?.get("language")).toBe("spa");

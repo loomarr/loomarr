@@ -6,9 +6,9 @@ import { audioChoice } from "./audio-choice";
 describe("audioChoice", () => {
   const dubbed = {
     audio: [
-      { index: 0, language: "spa" },
-      { index: 1, language: "eng" },
-      { index: 2, language: "eng", title: "Commentary" },
+      { index: 0, language: "spa", languageName: "Español" },
+      { index: 1, language: "eng", languageName: "English" },
+      { index: 2, language: "eng", languageName: "English", title: "Commentary" },
     ],
     defaultAudio: 1,
     alternateAudio: 0,
@@ -32,14 +32,17 @@ describe("audioChoice", () => {
 
   it("falls back to the default when the alternate is another language, or there is none", () => {
     expect(audioChoice(dubbed, "fra").alternate).toBe(false);
-    const single = audioChoice({ audio: [{ index: 0, language: "eng" }], defaultAudio: 0 }, "spa");
+    const single = audioChoice(
+      { audio: [{ index: 0, language: "eng", languageName: "English" }], defaultAudio: 0 },
+      "spa",
+    );
     expect(single).toEqual({
       alternate: false,
       options: [{ label: "English · stereo", selected: true, value: "default" }],
     });
   });
 
-  it("names an undetermined language as no language at all", () => {
+  it("names a language the server can't name as no language at all", () => {
     expect(
       audioChoice({ audio: [{ index: 0, language: "und" }], defaultAudio: 0 }, "default").options,
     ).toEqual([{ label: "Stereo", selected: true, value: "default" }]);

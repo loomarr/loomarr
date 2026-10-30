@@ -44,21 +44,4 @@ const languageLabel = (code: string): string => {
   return c.toUpperCase();
 };
 
-// ownLanguageLabel names a language in itself ("spa" → "Español"), as a player's audio menu does
-// (the §9 mock): a viewer looking for their language finds it in the words they read. Intl writes
-// some endonyms lowercase ("español"), so the first letter is raised in that language's own rules.
-// Unresolvable or malformed codes fall back like languageLabel.
-const ownLanguageLabel = (code: string): string => {
-  const c = code.trim();
-  if (!c) return "Unknown";
-  try {
-    const name = new Intl.DisplayNames([c], { type: "language" }).of(c);
-    if (name && name.toLowerCase() !== c.toLowerCase())
-      return name.charAt(0).toLocaleUpperCase(c) + name.slice(1);
-  } catch {
-    // malformed code, or no Intl.DisplayNames — fall through
-  }
-  return languageLabel(c);
-};
-
-export { languageLabel, ownLanguageLabel };
+export { languageLabel };

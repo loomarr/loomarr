@@ -93,7 +93,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
-- **`langcode`** · 2 importers
+- **`langcode`** · 3 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
@@ -348,7 +348,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `settings`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `langcode`, `metrics`, `notifications`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `settings`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 16

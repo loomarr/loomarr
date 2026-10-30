@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -235,8 +236,10 @@ func normalizeQuality(q string) string {
 type TrackDTO struct {
 	Index    int    `json:"index" doc:"Position among tracks of its own type — the N in -map 0:a:N / 0:s:N."`
 	Language string `json:"language,omitempty" doc:"ISO 639-2 code, lowercased; empty when the media left it untagged."`
-	Title    string `json:"title,omitempty" doc:"Free-text stream title when the media carries one (e.g. 'Commentary')."`
-	Burnable bool   `json:"burnable,omitempty" doc:"Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."`
+	// LanguageName is the server's, so every client shows one name whatever its platform knows.
+	LanguageName string `json:"languageName,omitempty" doc:"The language named in itself ('Español'), as the player shows it; empty when the code names no one language (untagged, 'und')."`
+	Title        string `json:"title,omitempty" doc:"Free-text stream title when the media carries one (e.g. 'Commentary')."`
+	Burnable     bool   `json:"burnable,omitempty" doc:"Subtitles only: an image track (Blu-ray PGS) a channel can burn into its programmes; text tracks are each viewer's choice instead."`
 }
 
 type channelTracksInput struct {
@@ -289,11 +292,12 @@ func (s *Server) channelTracks(ctx context.Context, in *channelTracksInput) (*ch
 		return out, nil
 	}
 	for _, t := range tracks.Audio {
-		out.Body.Audio = append(out.Body.Audio, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title})
+		out.Body.Audio = append(out.Body.Audio, TrackDTO{Index: t.Index, Language: t.Language,
+			LanguageName: langcode.SelfName(t.Language), Title: t.Title})
 	}
 	for _, t := range tracks.Subtitles {
-		out.Body.Subtitles = append(out.Body.Subtitles, TrackDTO{Index: t.Index, Language: t.Language, Title: t.Title,
-			Burnable: playout.IsBurnableSubtitle(t.Codec)})
+		out.Body.Subtitles = append(out.Body.Subtitles, TrackDTO{Index: t.Index, Language: t.Language,
+			LanguageName: langcode.SelfName(t.Language), Title: t.Title, Burnable: playout.IsBurnableSubtitle(t.Codec)})
 	}
 	out.Body.DefaultAudio = pick.Default
 	if pick.Alternate != pick.Default {

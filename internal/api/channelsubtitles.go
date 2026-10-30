@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -30,8 +31,9 @@ type channelSubtitlesInput struct {
 
 // SubtitleTrackDTO is one text subtitle track an airing's programme carries.
 type SubtitleTrackDTO struct {
-	Language string `json:"language" doc:"ISO 639-2 code, lowercased; empty when the media left it untagged."`
-	Title    string `json:"title" doc:"The stream's title when the media carries one; empty otherwise."`
+	Language     string `json:"language" doc:"ISO 639-2 code, lowercased; empty when the media left it untagged."`
+	LanguageName string `json:"languageName" doc:"The language named in itself ('Español'), as the player shows it; empty when the code names no one language."`
+	Title        string `json:"title" doc:"The stream's title when the media carries one; empty otherwise."`
 }
 
 // SubtitleCueDTO is one cue on the wall clock.
@@ -81,7 +83,8 @@ func (s *Server) channelSubtitles(ctx context.Context, in *channelSubtitlesInput
 		dto := SubtitleAiringDTO{StartMs: a.Start.UnixMilli(), StopMs: a.Stop.UnixMilli(),
 			Tracks: []SubtitleTrackDTO{}, Cues: []SubtitleCueDTO{}}
 		for _, t := range a.Tracks {
-			dto.Tracks = append(dto.Tracks, SubtitleTrackDTO{Language: t.Language, Title: t.Title})
+			dto.Tracks = append(dto.Tracks, SubtitleTrackDTO{Language: t.Language,
+				LanguageName: langcode.SelfName(t.Language), Title: t.Title})
 		}
 		for _, c := range a.Cues {
 			dto.Cues = append(dto.Cues, SubtitleCueDTO{StartMs: c.Start.UnixMilli(), EndMs: c.End.UnixMilli(), Text: c.Text})

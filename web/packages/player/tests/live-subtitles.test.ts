@@ -4,6 +4,7 @@ import {
   cueLinesAt,
   nextSubtitles,
   selectSubtitleTrack,
+  subtitleLabel,
   subtitlesAtPlayhead,
   subtitleWindow,
 } from "../src/live-subtitles";
@@ -66,16 +67,21 @@ describe("subtitleWindow", () => {
 });
 
 describe("subtitlesAtPlayhead", () => {
+  // As the sidecar sends them: each track named in itself.
+  const named = [
+    { ...english, languageName: "English" },
+    { ...spanish, languageName: "Español" },
+  ];
   const airings = [
-    { cues: [], startMs: 0, stopMs: 100, tracks: [english, spanish] },
+    { cues: [], startMs: 0, stopMs: 100, tracks: named },
     { cues: [], startMs: 100, stopMs: 200, tracks: [] },
   ];
 
   it("offers the tracks of the programme at the playhead, and the one the choice plays", () => {
     expect(subtitlesAtPlayhead(airings, 50, spanish)).toEqual({
       active: 1,
-      playing: spanish,
-      tracks: [english, spanish],
+      playing: named[1],
+      tracks: named,
     });
     expect(subtitlesAtPlayhead(airings, 150, spanish)).toEqual({
       active: -1,
@@ -83,6 +89,18 @@ describe("subtitlesAtPlayhead", () => {
       tracks: [],
     });
     expect(subtitlesAtPlayhead(undefined, 50, spanish).tracks).toEqual([]);
+  });
+});
+
+describe("subtitleLabel", () => {
+  it("names the track in its own language, as the server names it, with its title beside it", () => {
+    expect(subtitleLabel({ language: "spa", languageName: "Español", title: "" })).toBe("Español");
+    expect(subtitleLabel({ language: "eng", languageName: "English", title: "SDH" })).toBe("English · SDH");
+  });
+
+  it("falls back to the code, then to Subtitles, where the server has no name", () => {
+    expect(subtitleLabel({ language: "qaa", languageName: "", title: "" })).toBe("QAA");
+    expect(subtitleLabel({ language: "", title: "Forced" })).toBe("Subtitles · Forced");
   });
 });
 

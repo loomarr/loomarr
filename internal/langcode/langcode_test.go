@@ -33,3 +33,14 @@ func TestValidAcceptsLanguagesAndRejectsTheRest(t *testing.T) {
 		}
 	}
 }
+
+func TestSelfNameNamesALanguageInItself(t *testing.T) {
+	for in, want := range map[string]string{
+		"eng": "English", "spa": "Español", "fre": "Français", "deu": "Deutsch", "jpn": "日本語",
+		"und": "", "": "", "qaa": "", "klingon": "",
+	} {
+		if got := langcode.SelfName(in); got != want {
+			t.Errorf("SelfName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
