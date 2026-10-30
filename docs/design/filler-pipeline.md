@@ -71,10 +71,19 @@ Decoded frames split once:
   full-size branch matched the CPU detectors exactly on every clip that diverged, and cost about
   13% more detector CPU with no extra wall time.
 
-Evidence and playback encode at the same level, so the evidence picture is the one that airs. The
-evidence copy keeps its 1-second keyframes and its own audio rate. Recipes are `filler-*-v2`, and
+**One encode, two roles.** Evidence and playback share one recipe: 1-second keyframes and 256 kbps
+audio. The evidence recipe is derived from the playback recipe, never restated. A top-level clip's
+playback rendition is a byte copy of the evidence file, carrying the evidence encode's detector
+findings, so the evidence picture is exactly the one that airs. A conditioned split child still
+encodes, because its input is the conditioned cut, not the master. Recipes are `filler-*-v2`, and
 the libx264 v1 records written before this change still validate, so no stored clip's lineage
 breaks.
+
+**A tune stops an encode.** The transcode rung runs under the playout budget's background context.
+When a live transcode is admitted, the encode stops at once. The rung yields as a deferral: no
+attempt is spent, and no other encode starts in that pass while playback runs. Transcription and
+splitting only wait before they start. A long recording's transcription interrupted at every tune
+would never finish.
 
 The next level up fails the floor on both measured families (NVENC `-cq 27`: p10 94.1; x264 CRF 18:
 p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 against 91 at these

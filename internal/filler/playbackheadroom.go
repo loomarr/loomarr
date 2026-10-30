@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -16,6 +17,9 @@ type PlaybackHeadroom interface {
 	// PlaybackBusy reports whether media work should wait, with a short operator-facing reason
 	// for the log line.
 	PlaybackBusy() (busy bool, reason string)
+	// BackgroundContext derives the context a preemptible rung runs under. It ends the moment a
+	// live transcode is admitted, so a viewer's tune never waits on filler work (#2121).
+	BackgroundContext(ctx context.Context) (context.Context, context.CancelFunc)
 }
 
 // PlaybackYield bounds how long a media rung waits for playback to clear.
@@ -59,6 +63,32 @@ func (p *Pipeline) WithPlaybackHeadroom(h PlaybackHeadroom, y PlaybackYield) *Pi
 // yieldsToPlayback reports whether a rung of this cost is media-heavy enough to wait for playback.
 func yieldsToPlayback(c StageCost) bool {
 	return c == CostTranscode || c == CostWhisper || c == CostSplit
+}
+
+// preemptedByPlayback reports whether a rung of this cost is stopped mid-run when playback starts:
+// the encodes (#2121). Transcription and splitting only wait before they start: a long recording's
+// transcription interrupted at every tune would never finish.
+func preemptedByPlayback(c StageCost) bool {
+	return c == CostTranscode
+}
+
+// runYielding runs a preemptible rung under the playback budget's background context. When that
+// context ends while the pass's own has not, playback took the machine: the rung yields as a
+// deferral (no attempt spent, due next pass) and the rest of this pass starts no media work.
+func (p *Pipeline) runYielding(ctx context.Context, s *spend, stage Stage, clip StoreClip) (StageResult, error) {
+	if p.headroom == nil || !preemptedByPlayback(stage.Cost()) {
+		return p.runStage(ctx, stage, clip)
+	}
+	bctx, cancel := p.headroom.BackgroundContext(ctx)
+	defer cancel()
+	out, err := p.runStage(bctx, stage, clip)
+	if err != nil && bctx.Err() != nil && ctx.Err() == nil {
+		s.playbackBusy = true
+		p.logger().Info("filler pipeline: playback started — the stage yields and resumes on a later pass",
+			"stage", string(stage.ID()), "clip", clip.Hash)
+		return out, fmt.Errorf("%w: yielded to playback: %w", ErrDeferred, err)
+	}
+	return out, err
 }
 
 // waitForHeadroom blocks (bounded) until playback leaves room for a media rung. It returns false
