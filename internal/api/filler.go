@@ -801,6 +801,28 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		}
 		return nil, err
 	}
+	// ⚠ EVERY refusal is decided before the first write. The writes below are separate store calls,
+	// so a tag or station rejected after the rename used to leave the clip renamed and retagged
+	// behind a 422 — the operator saw "not saved" for an edit that had half-saved.
+	//
+	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
+	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
+	// grounded exactly as the tagger grounds the model — an unknown slug is a 422, never silently
+	// persisted. The store derives `category` from the accepted set in the same transaction, against
+	// its current graph; the client never supplies that compatibility shadow.
+	if in.Body.Tags != nil {
+		if operatorLeaves, operatorForest, err = s.groundOperatorTags(ctx, *in.Body.Tags); err != nil {
+			return nil, err
+		}
+	}
+	var geography *fillerenrichment.Geography
+	if in.Body.Geography != nil {
+		g, err := s.resolveOperatorGeography(ctx, *in.Body.Geography)
+		if err != nil {
+			return nil, err
+		}
+		geography = &g
+	}
 	// The rename goes before every other write, so a sidecar that cannot be updated refuses the
 	// whole edit rather than saving half of it.
 	if name != "" {
@@ -820,17 +842,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
-	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
-	// grounded (forest.Resolve) exactly as the tagger grounds the model — an unknown slug is a 422,
-	// never silently persisted. The store derives `category` from the accepted set in the same
-	// transaction, against its current graph; the client never supplies that compatibility shadow.
 	if in.Body.Tags != nil {
-		leaves, forest, err := s.groundOperatorTags(ctx, *in.Body.Tags)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
+		if err := s.store.SetClipTags(ctx, clip.Hash, operatorLeaves); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
@@ -839,7 +852,6 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			}
 			return nil, err
 		}
-		operatorForest, operatorLeaves = forest, leaves
 	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
@@ -862,58 +874,12 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	if in.Body.Geography != nil {
-		g := in.Body.Geography
-		scope := filler.GeographicScope(g.Scope)
-		geo := filler.Geography{Country: g.Country}.Normalize()
-		if err := geo.Validate(); err != nil {
-			return nil, errUnprocessable("Invalid geography", err.Error())
-		}
-		airDate := strings.TrimSpace(g.AirDate)
-		if airDate != "" {
-			if _, err := time.Parse(time.DateOnly, airDate); err != nil {
-				return nil, errUnprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
-			}
-		}
-		// Every station resolves against the directory (#2059 decision 5): a local clip airs near
-		// it, and a national one keeps it as provenance.
-		station := ""
-		if typed := strings.TrimSpace(g.Station); typed != "" && scope != filler.GeographicUnknown {
-			dir, err := s.stationDirectory(ctx)
-			if err != nil {
-				return nil, huma.Error500InternalServerError("load broadcast stations", err)
-			}
-			found, ok := dir.Resolve(typed, airDate)
-			if !ok {
-				return nil, errUnprocessable("Unknown station", "That call sign doesn't match exactly one TV station on that air date. Check the call sign and date.")
-			}
-			if geo.Country != "" && geo.Country != found.Country {
-				return nil, errUnprocessable("Invalid geography", "That station is in "+found.Country+", not "+geo.Country+".")
-			}
-			station, geo.Country = found.ID, found.Country
-		}
-		switch scope {
-		case filler.GeographicUnknown:
-			geo = filler.Geography{}
-		case filler.GeographicNational:
-			if geo.Country == "" {
-				return nil, errUnprocessable("Invalid geography", "National clips require a country.")
-			}
-		case filler.GeographicLocal:
-			if station == "" {
-				return nil, errUnprocessable("Invalid geography", "Local clips require the broadcast station they belong to.")
-			}
-		default:
-			return nil, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
-		}
-		if err := s.store.UpdateClipGeography(ctx, clip.Hash, string(scope), geo.Country,
-			strings.TrimSpace(g.Network), station, airDate, "operator", now); err != nil {
+	if geography != nil {
+		g := *geography
+		if err := s.store.UpdateClipGeography(ctx, clip.Hash, g.Scope, g.Country, g.Network, g.Station, g.AirDate, "operator", now); err != nil {
 			return nil, err
 		}
-		operatorGeography = &fillerenrichment.Value{Geography: fillerenrichment.Geography{
-			Scope: string(scope), Country: geo.Country,
-			Network: strings.TrimSpace(g.Network), Station: station, AirDate: airDate,
-		}}
+		operatorGeography = &fillerenrichment.Value{Geography: g}
 	}
 	if in.Body.Brand != nil {
 		brand := strings.TrimSpace(*in.Body.Brand)
