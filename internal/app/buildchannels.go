@@ -18,13 +18,13 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -59,7 +59,7 @@ func buildChannels(
 	libraryClient *library.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
-	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
+	jobReg *jobs.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,

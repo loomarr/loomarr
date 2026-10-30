@@ -95,8 +95,8 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 
 | Looking for… | It is in | Not in |
 | --- | --- | --- |
-| Channel identity, `DesiredLineup`, `ChannelPolicy`, ordering and seasonal math (pure, no I/O) | `internal/schedule` | `internal/scheduler` |
-| The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/scheduler` | `internal/schedule` |
+| Channel identity, `DesiredLineup`, `ChannelPolicy`, ordering and seasonal math (pure, no I/O) | `internal/schedule` | `internal/jobs` |
+| The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/jobs` | `internal/schedule` |
 | Materializing a channel and converging its Tunarr projection; the per-channel mutex | `internal/channels` | `internal/reconcile` |
 | The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/reconcile` | `internal/channels` |
 | Turning an approved Proposal into a channel, preserving operator edits | `internal/binder` | `internal/channels` |
@@ -108,7 +108,7 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 `internal/tunarr` is the Tunarr port and is unrelated to
 [`programming-design.md`](../programming-design.md), which covers `ChannelPolicy` heuristics. The
 "Provisioner" is `provision` + `reconcile` + `requester` + `store`; the "Scheduler" is `schedule` +
-`channels` + `tunarr`, and does not include `scheduler`. Every package, its layer and its imports
+`channels` + `tunarr`, and does not include `jobs`. Every package, its layer and its imports
 are in the generated [package map](package-map.md).
 
 ## Backend structure rules

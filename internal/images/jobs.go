@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 )
 
 // The image service's scheduled jobs (§22, §18.1).
 //
 // ⚠ These live here rather than in internal/app, unlike the filler jobs. The exception there is
-// structural: `store` imports `filler` for the Clip type, so `filler` importing `scheduler` (which
+// structural: `store` imports `filler` for the Clip type, so `filler` importing `jobs` (which
 // imports `store`) is an import cycle. Nothing imports this package, so the normal convention —
 // a subsystem declares its own jobs, as channels, auth, reconcile and recurate all do — applies.
 //
@@ -25,12 +25,12 @@ import (
 // same reason it is necessary. `Adopt` deliberately returns before the bytes exist, so until this
 // runs a surface shows a placeholder — the delay is directly visible to a person looking at the
 // guide. A pass costs one indexed SELECT on an idle install.
-func FetchJob(f *Fetcher) scheduler.Job {
-	return scheduler.Job{
+func FetchJob(f *Fetcher) jobs.Job {
+	return jobs.Job{
 		// Network downloads, N per pass. One slow upstream is enough to pass River's 1m default,
 		// and a SIGKILL mid-fetch leaves a half-written file rather than a recorded miss.
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "images-fetch", Group: scheduler.GroupArtwork, Title: "Download pending artwork",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "images-fetch", Group: jobs.GroupArtwork, Title: "Download pending artwork",
 		Description: "Downloads recorded artwork that is still showing as a placeholder.",
 		DefaultCron: "0 * * * * *", ScheduleKey: "job.images_fetch.schedule",
 		Run: func(ctx context.Context) error { _, err := f.FetchPending(ctx); return err },
@@ -43,12 +43,12 @@ func FetchJob(f *Fetcher) scheduler.Job {
 // produce this format however the install is configured. ⚠ It is not an operator off switch, and
 // the job is registered even when set: an absent Tasks row is indistinguishable from a job that
 // runs fine and has never failed, which is the ambiguity §18.1 added DisabledReason to remove.
-func AVIFJobSpec(j *AVIFJob, disabledReason string) scheduler.Job {
-	return scheduler.Job{
+func AVIFJobSpec(j *AVIFJob, disabledReason string) jobs.Job {
+	return jobs.Job{
 		// AVIF encoding is CPU- and memory-intensive over a batch, so it must not inherit
 		// River's one-minute ceiling.
-		Timeout: scheduler.LongJobTimeout,
-		Name:    "images-avif", Group: scheduler.GroupArtwork, Title: "Encode AVIF artwork",
+		Timeout: jobs.LongJobTimeout,
+		Name:    "images-avif", Group: jobs.GroupArtwork, Title: "Encode AVIF artwork",
 		Description: "Creates smaller AVIF variants while retaining WebP fallbacks for browser compatibility.",
 		DefaultCron: "0 20 * * * *", ScheduleKey: "job.images_avif.schedule",
 		DisabledReason: disabledReason,
@@ -59,9 +59,9 @@ func AVIFJobSpec(j *AVIFJob, disabledReason string) scheduler.Job {
 // MaintenanceJob restores missing originals and then applies the image-store retention policy.
 // They share one daily outcome: keep durable artwork available while bounding storage. Both stages
 // run even when one fails, so a transient provider error cannot prevent compliance cleanup.
-func MaintenanceJob(f *Fetcher, g *GC) scheduler.Job {
-	return scheduler.Job{
-		Name: "images-maintenance", Group: scheduler.GroupArtwork, Title: "Maintain stored artwork",
+func MaintenanceJob(f *Fetcher, g *GC) jobs.Job {
+	return jobs.Job{
+		Name: "images-maintenance", Group: jobs.GroupArtwork, Title: "Maintain stored artwork",
 		Description: "Restores recoverable files, enforces retention, removes unreferenced images, and evicts variants above budget.",
 		DefaultCron: "0 0 5 * * *", ScheduleKey: "job.images_maintenance.schedule",
 		Run: func(ctx context.Context) error {
@@ -82,9 +82,9 @@ func MaintenanceJob(f *Fetcher, g *GC) scheduler.Job {
 // ⚠ Its work list empties on a healthy install, which is what makes the cadence cheap: the query
 // selects only clips that have artwork on disk and no image identity yet, so a steady state costs
 // one indexed query and nothing else.
-func AdoptJobSpec(j *AdoptJob) scheduler.Job {
-	return scheduler.Job{
-		Name: "images-adopt-artwork", Group: scheduler.GroupArtwork, Title: "Adopt clip artwork",
+func AdoptJobSpec(j *AdoptJob) jobs.Job {
+	return jobs.Job{
+		Name: "images-adopt-artwork", Group: jobs.GroupArtwork, Title: "Adopt clip artwork",
 		Description: "Moves clip thumbnails and previews into the shared image library for consistent delivery.",
 		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.images_adopt_artwork.schedule",
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },

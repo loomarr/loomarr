@@ -31,7 +31,7 @@ internal/devbootstrap	17
 internal	15
 internal/backendtransition	15
 internal/recurate	14
-internal/scheduler	14
+internal/jobs	14
 internal/mediatools	12
 internal/proposaloutlook	11
 internal/playout/packager	10

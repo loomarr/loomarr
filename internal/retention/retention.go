@@ -20,9 +20,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/recovery"
-	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // Windows are the configured retention periods, read per run.
@@ -243,9 +243,9 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 const housekeepingTimeout = 25 * time.Minute
 
 // Job returns the single daily system-housekeeping task (§18.1).
-func (s *Service) Job() scheduler.Job {
-	return scheduler.Job{
-		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
+func (s *Service) Job() jobs.Job {
+	return jobs.Job{
+		Name: "housekeeping", Group: jobs.GroupSystem, Title: "Clean up old data",
 		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
 		Timeout: housekeepingTimeout,

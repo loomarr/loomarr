@@ -84,7 +84,7 @@ the fix, so a container rollback fails safe instead of corrupting data.
 
 ## The job scheduler
 
-All recurring background work runs under one scheduler (`internal/scheduler`): a code registry of
+All recurring background work runs under one scheduler (`internal/jobs`): a code registry of
 named jobs, each with a user-editable schedule and a **Run now** trigger.
 
 - **Jobs are code; schedules are settings; history is state.** Each schedule is a 6-field,

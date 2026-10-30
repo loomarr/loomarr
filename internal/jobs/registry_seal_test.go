@@ -1,11 +1,11 @@
-package scheduler_test
+package jobs_test
 
 import (
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 )
 
 // ⚠ **THE SEAL (§18.1).** `New` snapshots the registry into a map, so a job added afterwards
@@ -16,10 +16,10 @@ import (
 // that looked complete and a job that silently never ran. A boot-time panic naming the job is
 // the honest failure.
 func TestRegistry_AddAfterNewPanics(t *testing.T) {
-	reg := scheduler.NewRegistry()
-	reg.Add(scheduler.Job{Name: "early", Group: scheduler.GroupSystem, Title: "Early", Description: "test job early.", DefaultCron: "0 0 * * * *",
+	reg := jobs.NewRegistry()
+	reg.Add(jobs.Job{Name: "early", Group: jobs.GroupSystem, Title: "Early", Description: "test job early.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
-	_ = scheduler.New(nil, reg, nil, nil, nil)
+	_ = jobs.New(nil, reg, nil, nil, nil)
 
 	defer func() {
 		r := recover()
@@ -32,21 +32,21 @@ func TestRegistry_AddAfterNewPanics(t *testing.T) {
 			t.Errorf("panic = %q, want it to name the offending job", r)
 		}
 	}()
-	reg.Add(scheduler.Job{Name: "late", Group: scheduler.GroupSystem, Title: "Late", Description: "test job late.", DefaultCron: "0 0 * * * *",
+	reg.Add(jobs.Job{Name: "late", Group: jobs.GroupSystem, Title: "Late", Description: "test job late.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
 }
 
 // The seal must not fire on the NORMAL path — every job registered before New is kept, or
 // the guard would be indistinguishable from a registry that rejects everything.
 func TestRegistry_AddsBeforeNewAllSurvive(t *testing.T) {
-	reg := scheduler.NewRegistry()
-	reg.AddAll([]scheduler.Job{
-		{Name: "a", Group: scheduler.GroupSystem, Title: "A", Description: "test job a.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
-		{Name: "b", Group: scheduler.GroupSystem, Title: "B", Description: "test job b.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
+	reg := jobs.NewRegistry()
+	reg.AddAll([]jobs.Job{
+		{Name: "a", Group: jobs.GroupSystem, Title: "A", Description: "test job a.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
+		{Name: "b", Group: jobs.GroupSystem, Title: "B", Description: "test job b.", DefaultCron: "0 0 * * * *", Run: func(context.Context) error { return nil }},
 	})
-	reg.Add(scheduler.Job{Name: "c", Group: scheduler.GroupSystem, Title: "C", Description: "test job c.", DefaultCron: "0 0 * * * *",
+	reg.Add(jobs.Job{Name: "c", Group: jobs.GroupSystem, Title: "C", Description: "test job c.", DefaultCron: "0 0 * * * *",
 		Run: func(context.Context) error { return nil }})
-	_ = scheduler.New(nil, reg, nil, nil, nil)
+	_ = jobs.New(nil, reg, nil, nil, nil)
 
 	if got := len(reg.Jobs()); got != 3 {
 		t.Errorf("registry has %d jobs, want 3 — the seal must not drop pre-New registrations", got)
@@ -61,12 +61,12 @@ func TestRegistry_AddsBeforeNewAllSurvive(t *testing.T) {
 func TestRegistry_RequiresTitleAndDescription(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		job  scheduler.Job
+		job  jobs.Job
 		want string
 	}{
-		{"no group", scheduler.Job{Name: "x", Title: "X", Description: "d", DefaultCron: "0 0 * * * *"}, "invalid Group"},
-		{"no title", scheduler.Job{Name: "x", Group: scheduler.GroupSystem, Description: "d", DefaultCron: "0 0 * * * *"}, "no Title"},
-		{"no description", scheduler.Job{Name: "x", Group: scheduler.GroupSystem, Title: "X", DefaultCron: "0 0 * * * *"}, "no Description"},
+		{"no group", jobs.Job{Name: "x", Title: "X", Description: "d", DefaultCron: "0 0 * * * *"}, "invalid Group"},
+		{"no title", jobs.Job{Name: "x", Group: jobs.GroupSystem, Description: "d", DefaultCron: "0 0 * * * *"}, "no Title"},
+		{"no description", jobs.Job{Name: "x", Group: jobs.GroupSystem, Title: "X", DefaultCron: "0 0 * * * *"}, "no Description"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
@@ -79,7 +79,7 @@ func TestRegistry_RequiresTitleAndDescription(t *testing.T) {
 					t.Errorf("panic = %q, want it to mention %q and the job name", msg, tc.want)
 				}
 			}()
-			scheduler.NewRegistry().Add(tc.job)
+			jobs.NewRegistry().Add(tc.job)
 		})
 	}
 }
@@ -87,9 +87,9 @@ func TestRegistry_RequiresTitleAndDescription(t *testing.T) {
 // AddAll on an empty/nil slice is a no-op: a subsystem that is not wired returns no jobs
 // rather than making the composition root ask whether it has any.
 func TestRegistry_AddAllTolerating(t *testing.T) {
-	reg := scheduler.NewRegistry()
+	reg := jobs.NewRegistry()
 	reg.AddAll(nil)
-	reg.AddAll([]scheduler.Job{})
+	reg.AddAll([]jobs.Job{})
 	if got := len(reg.Jobs()); got != 0 {
 		t.Errorf("registry has %d jobs, want 0", got)
 	}

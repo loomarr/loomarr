@@ -731,7 +731,7 @@ type InventoryStore interface {
 // interfaces above, which is what the composition root and the conformance suite
 // hold. Callers that need one domain should depend on that domain's interface
 // instead: the narrow role interfaces domain packages already declare for
-// themselves (binder.Store, filler.Store, scheduler.ScheduleStore, …) are the
+// themselves (binder.Store, filler.Store, jobs.ScheduleStore, …) are the
 // pattern, and these groups exist so a consumer has something to name without
 // re-declaring one.
 //

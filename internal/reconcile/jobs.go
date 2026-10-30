@@ -3,7 +3,7 @@ package reconcile
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 )
 
 // Each service declares its OWN scheduler job (§18.1).
@@ -20,9 +20,9 @@ import (
 // knows how to run, so a Job without its service cannot be constructed by accident.
 
 // Job returns the reconcile tick as a scheduler job — the deadline/retry backstop (§4).
-func (r *Reconciler) Job() scheduler.Job {
-	return scheduler.Job{
-		Name: "reconcile", Group: scheduler.GroupAcquisitions, Title: "Reconcile acquisitions",
+func (r *Reconciler) Job() jobs.Job {
+	return jobs.Job{
+		Name: "reconcile", Group: jobs.GroupAcquisitions, Title: "Reconcile acquisitions",
 		Description: "Advances approved requests through download, retry, and completion states.",
 		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
 		Run: func(ctx context.Context) error { _, err := r.Tick(ctx); return err },
@@ -35,16 +35,16 @@ func (r *Reconciler) Job() scheduler.Job {
 // runs often over a recent window, Full is the daily safety net for whatever that window
 // missed. Registering one without the other is a misconfiguration that would look like it
 // worked.
-func (s *LibraryScan) Jobs() []scheduler.Job {
-	return []scheduler.Job{
+func (s *LibraryScan) Jobs() []jobs.Job {
+	return []jobs.Job{
 		{
-			Name: "library-scan", Group: scheduler.GroupAcquisitions, Title: "Scan recent library additions",
+			Name: "library-scan", Group: jobs.GroupAcquisitions, Title: "Scan recent library additions",
 			Description: "Marks approved titles as available when they appear among recent media-server additions.",
 			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Incremental(ctx); return err },
 		},
 		{
-			Name: "library-full-scan", Group: scheduler.GroupAcquisitions, Title: "Scan the full library",
+			Name: "library-full-scan", Group: jobs.GroupAcquisitions, Title: "Scan the full library",
 			Description: "Checks the entire media-server library as a daily safety net for missed additions.",
 			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Full(ctx); return err },
@@ -61,9 +61,9 @@ func (s *LibraryScan) Jobs() []scheduler.Job {
 // that Loomarr is polling Sonarr.
 //
 // The two are mutually exclusive (a provider is arr XOR seerr), so the names never collide.
-func (q *QueuePoll) Job(name, title, description string) scheduler.Job {
-	return scheduler.Job{
-		Name: name, Group: scheduler.GroupAcquisitions, Title: title, Description: description,
+func (q *QueuePoll) Job(name, title, description string) jobs.Job {
+	return jobs.Job{
+		Name: name, Group: jobs.GroupAcquisitions, Title: title, Description: description,
 		DefaultCron: "0 * * * * *", ScheduleKey: "job." + jobKey(name) + ".schedule",
 		Run: func(ctx context.Context) error { _, err := q.Poll(ctx); return err },
 	}

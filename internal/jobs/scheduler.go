@@ -1,11 +1,11 @@
-// Package scheduler runs Loomarr's recurring background work as named, tunable,
+// Package jobs runs Loomarr's recurring background work as named, tunable,
 // on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as
 // System → Tasks. One heartbeat loop replaces the previous scattering of bespoke
 // time.Ticker goroutines: a code-defined registry of jobs, each with a default
 // interval overridable via a settings key, all claimable through the same
 // lease as titles/channels so a job never double-runs across replicas, and all
 // triggerable on demand ("Run now").
-package scheduler
+package jobs
 
 import (
 	"context"

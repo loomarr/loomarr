@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/reconcile"
-	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
 // channelMaintenanceJob composes the two prerequisites for a current channel guide. Episode
@@ -16,7 +16,7 @@ func channelMaintenanceJob(
 	runner *channels.Runner,
 	episodes *reconcile.EpisodeRefresh,
 	applyBackend func(context.Context) error,
-) scheduler.Job {
+) jobs.Job {
 	job := runner.Job()
 	job.Name = "channel-maintenance"
 	job.Title = "Maintain live channels"
