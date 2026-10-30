@@ -13,8 +13,6 @@ import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { useCrashReportUpload } from "@loomarr/native-app";
 import {
   createLastChannelStore,
-  NativePlayerView,
-  type PairedClient,
   PairedNativeImage,
   usePairedAccount,
   usePairedClient,
@@ -30,17 +28,15 @@ import {
   PairingShell,
   RequestsJourney,
   ScreenHeader,
-  StatePanel,
-  WatchingPanel,
-  watchingPanelFromGuide,
 } from "@loomarr/ui";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
-import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
+import { AppState, BackHandler, Platform, View } from "react-native";
 import { nativeApp } from "../src/native-app";
+import { WatchingScreen } from "../src/watching-screen";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -89,90 +85,6 @@ const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedba
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 
-// Watching (#1659 mocks 5e/5g, #1785): the picture edge to edge, and the controls, what's next and
-// the favourites under it, the same panel the web phone draws.
-const WatchingScreen = ({ client }: { client: PairedClient }) => {
-  const {
-    catalogState,
-    controller,
-    guideSnapshot,
-    myChannels,
-    myChannelsSnapshot,
-    refresh,
-    snapshot,
-    transport,
-  } = client;
-  const haptic = useHaptic();
-  const [nowMs, setNowMs] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-  const playableChannelIds = useMemo(() => snapshot.catalog.map(({ id }) => id), [snapshot.catalog]);
-  const panel = watchingPanelFromGuide({
-    channelId: snapshot.channel?.id,
-    favouriteIds: myChannelsSnapshot.favouriteIds,
-    layout: guideSnapshot.layout,
-    nowMs,
-    playableChannelIds,
-    recentIds: myChannelsSnapshot.recentIds,
-  });
-  const { previousId } = panel;
-  const channelId = snapshot.channel?.id;
-  const isFavourite = channelId !== undefined && myChannelsSnapshot.favouriteIds.includes(channelId);
-  const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={{ aspectRatio: 16 / 9, backgroundColor: "black", width: "100%" }}>
-        <NativePlayerView style={{ flex: 1 }} transport={transport} />
-      </View>
-      {failure ? (
-        <StatePanel
-          action={{
-            label: "Try again",
-            onPress: () => (catalogState.error ? refresh() : void controller.retry()),
-          }}
-          density="touch"
-          description={failure}
-          kind="error"
-          title="Can't play this channel"
-        />
-      ) : snapshot.channel ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-          <WatchingPanel
-            canPrevious={previousId !== undefined}
-            canSurf={snapshot.catalog.length > 1}
-            channel={{ name: snapshot.channel.name, number: String(snapshot.channel.number) }}
-            clockLabel={panel.clockLabel}
-            density="touch"
-            favourites={panel.favourites}
-            isFavourite={isFavourite}
-            live={snapshot.livePlayback ?? { lagSeconds: 0, mode: "live" }}
-            onChannelDown={() => {
-              haptic.selection();
-              void controller.step(-1);
-            }}
-            onChannelUp={() => {
-              haptic.selection();
-              void controller.step(1);
-            }}
-            onGoLive={() => void controller.goLive()}
-            onPause={controller.pause}
-            onPlay={() => void controller.play()}
-            onPrevious={() => previousId && void controller.tuneChannel(previousId)}
-            onToggleFavourite={() => channelId && void myChannels.setFavourite(channelId, !isFavourite)}
-            onTune={(channelId) => void controller.tuneChannel(channelId)}
-            reconnecting={snapshot.status === "tuning" && snapshot.reconnecting !== undefined}
-            schedule={panel.schedule}
-          />
-        </ScrollView>
-      ) : catalogState.loading ? (
-        <StatePanel density="touch" kind="loading" title="Loading channels" />
-      ) : null}
-    </View>
-  );
-};
-
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
   // The Device sheet: opened from the Guide's and Requests' header buttons, docked above the tab bar.
@@ -194,6 +106,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     initialTune: "none",
     lastChannel,
     session,
+    timeline: true,
   });
   const { controller, guide, myChannelsSnapshot, snapshot } = client;
   // Opening Watching with nothing tuned yet resumes the channel the device last watched.
@@ -292,7 +205,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
           />
         </View>
       ) : (
-        <WatchingScreen client={client} />
+        <WatchingScreen client={client} credential={credential} onLeave={() => setActive("guide")} />
       )}
     </ClientShell>
   );

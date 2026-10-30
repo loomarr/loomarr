@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   type PlaybarSegment,
+  PlaybarStillSourceProvider,
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
@@ -480,6 +481,37 @@ describe("PlayerPortrait", () => {
       expect(host.querySelector(`[aria-label="${name}"]`), name).not.toBeNull();
       expect(button(host, `Seek to ${name}`), name).toBeUndefined();
     }
+  });
+
+  it("draws each still through the client's image source, and the fallback tile where it has none", () => {
+    // A paired phone resolves the server's path against its server; a path it won't sign draws the tile.
+    const source = (uri: string) =>
+      uri === "/v1/images/p1" ? { uri: `https://tv.example${uri}` } : undefined;
+    const host = mount(
+      <PlaybarStillSourceProvider value={source}>
+        {portrait({
+          filmstrip: {
+            playheadMs: 10 * MIN,
+            segments: [
+              { ...segments[0], stillUri: "/v1/images/p1" } as PlaybarSegment,
+              { ...segments[2], stillUri: "https://elsewhere.example/p2.jpg" } as PlaybarSegment,
+            ],
+            window: { endMs: 120 * MIN, nowMs: 10 * MIN, startMs: -5 * MIN },
+          },
+        })}
+      </PlaybarStillSourceProvider>,
+    );
+
+    const images = Array.from(host.querySelectorAll("img")).map((img) => img.getAttribute("src"));
+    expect(images).toEqual(["https://tv.example/v1/images/p1"]);
+  });
+
+  it("leaves Settings out where the player has none", () => {
+    const host = mount(
+      portrait({ transport: { ...transport({ density: "touch", pointer: false }), onSettings: undefined } }),
+    );
+    expect(button(host, "Settings")).toBeUndefined();
+    expect(button(host, "Pause")).toBeDefined();
   });
 
   it("names the star by what pressing it does", () => {

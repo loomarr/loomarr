@@ -133,9 +133,9 @@ interface PlayerTransportProps {
   volume: number;
   onToggleMute: () => void;
   onVolume: (volume: number) => void;
-  /** Settings (⚙): open or close the settings sheet. */
-  settingsOpen: boolean;
-  onSettings: () => void;
+  /** Settings (⚙): open or close the settings sheet; omitted where the player has none yet. */
+  settingsOpen?: boolean;
+  onSettings?: () => void;
   /** Subtitles (CC, `C`): the next track or off; omitted while the programme carries none. */
   subtitlesOn?: boolean;
   onSubtitles?: () => void;

@@ -1,2 +1,2 @@
-export type { PlaybarStillProps } from "./playbar-still";
-export { PlaybarStill } from "./playbar-still";
+export type { PlaybarStillProps, PlaybarStillSource } from "./playbar-still";
+export { PlaybarStill, PlaybarStillSourceProvider } from "./playbar-still";

@@ -1,3 +1,4 @@
+import type { ChannelTimeline } from "@loomarr/core/channel-timeline";
 import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics";
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
 import type { MyChannelsController, MyChannelsSnapshot } from "@loomarr/core/my-channels";
@@ -34,6 +35,8 @@ interface PairedClientOptions {
   /** Every tune the controller starts; the latest function is always called. */
   onTune?: (report: PlayerTuneReport) => void;
   session: PairingSession;
+  /** Load the tuned channel's timeline for a client that wears the §9 player chrome (#2127). */
+  timeline?: boolean;
 }
 
 /** One paired server's playback, guide and the viewer's channels, shared by the TV and the phone. */
@@ -48,6 +51,8 @@ interface PairedClient {
   refresh: () => void;
   serverVersion?: string;
   snapshot: PlayerSnapshot;
+  /** The tuned channel's timeline, when the client asked for it and it has loaded. */
+  timeline?: ChannelTimeline;
   transport: NativePlayerTransport;
 }
 

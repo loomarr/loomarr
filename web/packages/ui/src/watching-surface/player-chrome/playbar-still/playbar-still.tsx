@@ -1,5 +1,6 @@
 import { semanticColors } from "@loomarr/design-system";
-import { Image, View } from "react-native";
+import { createContext, useContext } from "react";
+import { Image, type ImageURISource, View } from "react-native";
 
 import { webOnly } from "../glass";
 
@@ -24,17 +25,28 @@ interface PlaybarStillBox {
   width?: Length;
 }
 
+/**
+ * How a still's path becomes an image source. A browser loads the server's path as it is; a paired
+ * native client resolves it against its server and signs it, and returns undefined for a path it
+ * must not send its token to, which draws the fallback tile.
+ */
+type PlaybarStillSource = (uri: string) => ImageURISource | undefined;
+
+const PlaybarStillSourceContext = createContext<PlaybarStillSource>((uri) => ({ uri }));
+
 interface PlaybarStillProps {
   style?: PlaybarStillBox;
   uri?: string;
 }
 
-const PlaybarStill = ({ style, uri }: PlaybarStillProps) =>
-  uri ? (
+const PlaybarStill = ({ style, uri }: PlaybarStillProps) => {
+  const source = useContext(PlaybarStillSourceContext);
+  const resolved = uri ? source(uri) : undefined;
+  return resolved ? (
     <Image
       accessibilityIgnoresInvertColors
       resizeMode="cover"
-      source={{ uri }}
+      source={resolved}
       style={[{ backgroundColor: semanticColors.artwork.placeholder }, style]}
     />
   ) : (
@@ -45,6 +57,10 @@ const PlaybarStill = ({ style, uri }: PlaybarStillProps) =>
       ]}
     />
   );
+};
 
-export type { PlaybarStillProps };
-export { PlaybarStill };
+/** Supplies the stills' image sources to the player chrome under it. */
+const PlaybarStillSourceProvider = PlaybarStillSourceContext.Provider;
+
+export type { PlaybarStillProps, PlaybarStillSource };
+export { PlaybarStill, PlaybarStillSourceProvider };

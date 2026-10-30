@@ -169,8 +169,8 @@ type playoutResolver struct {
 	// extractSubtitles turns a source's text track into cues for the subtitles sidecar (#2088 step
 	// 7; playoutsubtitles.go), and subtitles caches its probes and extractions. Nil ⇒ the sidecar
 	// lists tracks without cues.
-	extractSubtitles   playout.SubtitleExtractor
-	subtitles          subtitleCache
+	extractSubtitles playout.SubtitleExtractor
+	subtitles        subtitleCache
 	// burns prepares the image subtitle tracks channels burn in (#2088 step 8; subtitleburn.go).
 	// Nil ⇒ nothing is burned in.
 	burns              *subtitleBurns

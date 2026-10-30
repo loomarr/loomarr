@@ -411,14 +411,16 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             pointer={pointer}
           />
         ) : null}
-        <ToolButton
-          active={props.settingsOpen}
-          density={density}
-          icon="settings"
-          label="Settings"
-          onPress={props.onSettings}
-          pointer={pointer}
-        />
+        {props.onSettings ? (
+          <ToolButton
+            active={props.settingsOpen}
+            density={density}
+            icon="settings"
+            label="Settings"
+            onPress={props.onSettings}
+            pointer={pointer}
+          />
+        ) : null}
         {props.onInfo ? (
           <ToolButton
             active={props.infoOpen}

@@ -1,4 +1,6 @@
 export { playbarFromTimeline } from "./playbar-data";
+export type { PlaybarStillSource } from "./playbar-still";
+export { PlaybarStillSourceProvider } from "./playbar-still";
 export { PlayerChrome } from "./player-chrome";
 export type {
   PlaybarBreak,

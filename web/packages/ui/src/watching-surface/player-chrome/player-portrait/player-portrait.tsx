@@ -218,14 +218,16 @@ const PlayerPortrait = ({
           {/* Pushed right by its margin, not a spacer: a spacer is one more gap to fit. */}
           <View style={{ marginLeft: "auto" }}>
             <Capsule>
-              <ToolButton
-                active={transport.settingsOpen}
-                density={density}
-                icon="settings"
-                label="Settings"
-                onPress={transport.onSettings}
-                pointer={false}
-              />
+              {transport.onSettings ? (
+                <ToolButton
+                  active={transport.settingsOpen}
+                  density={density}
+                  icon="settings"
+                  label="Settings"
+                  onPress={transport.onSettings}
+                  pointer={false}
+                />
+              ) : null}
               {transport.onInfo ? (
                 <ToolButton
                   active={transport.infoOpen}

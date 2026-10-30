@@ -133,6 +133,7 @@ export type {
   PlaybarProgramme,
   PlaybarSegment,
   PlaybarSpot,
+  PlaybarStillSource,
   PlaybarWindow,
   PlayerBandData,
   PlayerChromeProps,
@@ -148,14 +149,12 @@ export type {
   PlayerStationIdProps,
   PlayerTransportProps,
   WatchFrameProps,
-  WatchingPanelData,
-  WatchingPanelDataArgs,
-  WatchingPanelProps,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
 } from "./src/watching-surface";
 export {
+  PlaybarStillSourceProvider,
   PlayerChrome,
   PlayerCover,
   PlayerInfo,
@@ -167,8 +166,6 @@ export {
   PlayerStationId,
   playbarFromTimeline,
   WatchFrame,
-  WatchingPanel,
   WatchingSurface,
-  watchingPanelFromGuide,
   watchingScheduleTimeMs,
 } from "./src/watching-surface";

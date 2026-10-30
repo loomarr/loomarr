@@ -1,3 +1,4 @@
+import { createChannelTimelineSource } from "@loomarr/core/channel-timeline";
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
 import { createGuideController, createGuideSourcePort, guideWindow } from "@loomarr/core/guide";
@@ -13,6 +14,7 @@ import { createExpoVideoTransport } from "../native/native";
 import { createNativeEventStreamFactory } from "../native-event-stream";
 import { createNativePlaybackDiagnostics, nativeTransportOf } from "../native-playback-diagnostics";
 import { createNativePlayerLifecycle } from "../native-player-lifecycle";
+import { usePairedTimeline } from "../paired-timeline";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "../play-url-source";
 import { createPlayerController } from "../player-controller";
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
@@ -35,6 +37,7 @@ const usePairedClient = ({
   marks,
   onTune,
   session,
+  timeline: wantsTimeline = false,
 }: PairedClientOptions): PairedClient => {
   const onTuneRef = useRef(onTune);
   onTuneRef.current = onTune;
@@ -168,6 +171,8 @@ const usePairedClient = ({
     };
   }, [reporting, transport]);
   const channelId = snapshot.channel?.id;
+  const timelineSource = useMemo(() => createChannelTimelineSource(request), [request]);
+  const timeline = usePairedTimeline(timelineSource, wantsTimeline ? channelId : undefined);
   useEffect(() => {
     reporting?.playback.channelChanged(channelId);
     if (channelId) void guide.refresh(channelId);
@@ -228,6 +233,7 @@ const usePairedClient = ({
     refresh,
     serverVersion,
     snapshot,
+    timeline,
     transport,
   };
 };

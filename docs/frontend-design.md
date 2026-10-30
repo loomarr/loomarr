@@ -500,7 +500,7 @@ portrait frames. This section is the rules that mock follows; where they disagre
 this text is fixed.
 
 **Where it is built.** The chrome is shared design-system code in `@loomarr/ui` (the
-`watching-surface` family, beside `WatchingPanel`), with focus and remote navigation in
+`watching-surface` family), with focus and remote navigation in
 `@loomarr/ui-tv`. Each app supplies only its player adapter (`@loomarr/player`) and its input
 mapping. No platform keeps its own player chrome; the web-only `VideoPlayer` controls are replaced,
 not restyled alongside.
