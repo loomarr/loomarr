@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/recovery"
@@ -75,14 +74,7 @@ func (s *sqlStore) withPasswordRecoveryLock(
 	userID string,
 	fn func(context.Context) error,
 ) error {
-	if s.dialect == DialectPostgres {
-		return s.withPostgresAdvisoryLock(ctx, "password recovery lock", "password-recovery:", userID, fn)
-	}
-	value, _ := s.passwordRecoveryLocks.LoadOrStore(userID, &sync.Mutex{})
-	lock := value.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
-	return fn(ctx)
+	return s.passwordRecoveryLocks.With(ctx, s.kernel(), "password recovery lock", "password-recovery:", userID, fn)
 }
 
 func (s *sqlStore) GetPasswordRecovery(

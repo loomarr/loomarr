@@ -4,7 +4,9 @@
 // What belongs here: the database/sql abstractions the stores are written against (Querier, Tx,
 // Scannable), the backend name and its placeholder styles (Dialect, Placeholder), the Unix-seconds
 // time-column codec (Epoch, FromEpoch), the cross-replica advisory lock, ErrNotFound, and the
-// portable unique-violation test. Each of these is about talking to SQLite or Postgres, not about
+// portable unique-violation test. Handle (with its concrete DB) bundles the pool, Begin, dialect,
+// placeholder rebinding and advisory lock a cluster store needs to run its own statements and
+// transactions; KeyedLock is the per-key serialization each cluster owns for its own domain. Each of these is about talking to SQLite or Postgres, not about
 // what Loomarr stores.
 //
 // What does not belong here: any domain type (Channel, Job, Proposal, ...), any SQL that names a
