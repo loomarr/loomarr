@@ -91,9 +91,6 @@ func (m *progMemStore) SetClipsRemoved(context.Context, []string, time.Time) (in
 func (m *progMemStore) HoldClips(context.Context, []string, time.Time) (int, error) {
 	return 0, nil
 }
-func (m *progMemStore) ReleaseCompositeHolds(context.Context, []string, time.Time) (int, error) {
-	return 0, nil
-}
 func (m *progMemStore) CommitFillerReady(_ context.Context, commit ReadyCommit) error {
 	c := m.clips[commit.Event.ClipHash]
 	c.Held = false

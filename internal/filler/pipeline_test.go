@@ -49,20 +49,6 @@ func (m *pipeMemStore) HoldClips(_ context.Context, paths []string, _ time.Time)
 	return n, nil
 }
 
-func (m *pipeMemStore) ReleaseCompositeHolds(_ context.Context, paths []string, _ time.Time) (int, error) {
-	n := 0
-	for _, p := range paths {
-		for hash, c := range m.clips {
-			if c.Path == p && c.IsComposite {
-				c.Held = false
-				m.clips[hash] = c
-				n++
-			}
-		}
-	}
-	return n, nil
-}
-
 func (m *pipeMemStore) SetClipLanguage(context.Context, string, string, time.Time) error {
 	return nil
 }
@@ -580,96 +566,6 @@ func TestPipeline_DiagnosticRetryStatusDistinguishesAutomaticFromManualRecovery(
 	status, err = p.DiagnosticRetryStatus(context.Background(), row.ClipHash)
 	if err != nil || status.Automatic || !status.RetryAt.IsZero() {
 		t.Fatalf("manual diagnostic retry = %+v, %v", status, err)
-	}
-}
-
-func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudget(t *testing.T) {
-	dir := t.TempDir()
-	st := newPipeMemStore()
-	hash := "legacy-quality"
-	path := "aa/bb/legacy.mp4"
-	full := filepath.Join(dir, filepath.FromSlash(path))
-	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte("mezzanine"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := filler.WriteSidecarTags(full, filler.SidecarTags{
-		Mezzanine: "h264-crf20-aac192",
-	}, false); err != nil {
-		t.Fatal(err)
-	}
-	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: path, Name: "Legacy advert"}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionReady,
-		Stages:      []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone}},
-	}
-	transcode := stage(filler.StageTranscode)
-	transcode.cost = filler.CostTranscode
-	p := newPipe(st, []filler.Stage{transcode}, filler.Budget{
-		MaxTranscodes: func() int { return 0 },
-	}).WithRewind(st, dir)
-
-	res, err := p.RunOnce(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	row := st.rows[hash]
-	if res.Requeued != 1 || row.Stage != filler.StageTranscode || row.Disposition != filler.DispositionRunning {
-		t.Fatalf("result/row = %+v / %+v, want queued quality backfill", res, row)
-	}
-	if transcode.runs != 0 {
-		t.Error("quality backfill ignored the transcode budget")
-	}
-}
-
-func TestPipeline_RepairsCompletedCompositeHeldByOlderConfirm(t *testing.T) {
-	st := newPipeMemStore()
-	const hash = "legacy-confirmed-reel"
-	st.put(filler.StoreClip{Clip: filler.Clip{
-		Hash: hash, Path: "reels/legacy-confirmed.mp4", Name: "Legacy confirmed reel",
-		IsComposite: true, Held: true,
-	}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionComplete,
-	}
-
-	res, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Repaired != 1 {
-		t.Fatalf("pipeline reported %d repaired composites, want 1", res.Repaired)
-	}
-	if got := st.clips[hash]; got.Held {
-		t.Fatalf("completed composite remains held after compatibility pass: %+v", got)
-	}
-}
-
-func TestPipeline_DoesNotReleaseCompositeWithSplitProposalStillWaiting(t *testing.T) {
-	st := newPipeMemStore()
-	const hash = "partly-confirmed-reel"
-	st.put(filler.StoreClip{Clip: filler.Clip{
-		Hash: hash, Path: "reels/partly-confirmed.mp4", Name: "Partly confirmed reel",
-		IsComposite: true, Held: true,
-	}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionComplete,
-	}
-	st.proposals = []filler.SplitProposal{{
-		ID: "proposal-with-leftovers", ClipHash: hash,
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
-	}}
-
-	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := st.clips[hash]; !got.Held {
-		t.Fatalf("composite with a pending split proposal was filed: %+v", got)
 	}
 }
 

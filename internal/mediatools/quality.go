@@ -1,52 +1,12 @@
 package mediatools
 
-import (
-	"bytes"
-	"context"
-	"fmt"
-	"sort"
-	"strconv"
-
-	"github.com/loomarr/loomarr/internal/bgexec"
-)
+import "sort"
 
 const (
 	qualityBlackFilter  = "blackdetect=d=0.1:pix_th=0.20"
 	qualityVideoFilters = qualityBlackFilter + ",freezedetect=n=-60dB:d=2"
 	qualityAudioFilter  = "silencedetect=n=-35dB:d=0.3"
 )
-
-// InspectQuality measures black, content-silent and frozen spans in one decode. It exists for
-// mezzanines produced before quality facts rode the transcode pass; new ingest gets the same facts
-// from Transcode without paying for a second decode.
-func InspectQuality(ctx context.Context, ffmpegPath, file string, durationMs int64, hadAudio bool) (MediaQuality, error) {
-	return InspectQualityIn(ctx, ffmpegPath, file, 0, durationMs, hadAudio)
-}
-
-// InspectQualityIn measures one already-bounded segment without decoding media
-// before it. Returned intervals are relative to that segment.
-func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, endMS int64, hadAudio bool) (MediaQuality, error) {
-	if startMS < 0 || endMS <= startMS {
-		return MediaQuality{}, fmt.Errorf("inspect media quality requires a positive bounded span")
-	}
-	durationMs := endMS - startMS
-	args := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info", "-ss", msToSeconds(startMS), "-t", msToSeconds(durationMs), "-i", file,
-		"-vf", "setpts=PTS-STARTPTS," + qualityVideoFilters}
-	if hadAudio {
-		args = append(args, "-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter)
-	} else {
-		args = append(args, "-an")
-	}
-	args = append(args, "-f", "null", "-")
-
-	var stderr bytes.Buffer
-	cmd := bgexec.FFmpeg(ctx, FFmpegOr(ffmpegPath), args...)
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return MediaQuality{}, fmt.Errorf("inspect media quality %s: %w: %s", file, err, stderr.String())
-	}
-	return qualityFromDetectorOutput(stderr.String(), durationMs), nil
-}
 
 func qualityFromDetectorOutput(stderr string, durationMs int64) MediaQuality {
 	return MediaQuality{
