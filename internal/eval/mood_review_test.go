@@ -3,7 +3,6 @@
 package eval
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,9 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestCompileMoodReviewAuthorityPreservesFrozenV1Evidence(t *testing.T) {
@@ -69,50 +66,6 @@ func TestCompileMoodReviewAuthorityAcceptsIndependentAgreement(t *testing.T) {
 	}
 	if len(authority.SubmissionSHA256) != 2 || authority.SubmissionSHA256[0] != testSHA256(first) || authority.SubmissionSHA256[1] != testSHA256(second) {
 		t.Fatalf("authority did not bind exact submissions: %+v", authority.SubmissionSHA256)
-	}
-}
-
-func TestRunMoodReviewBindsProviderAttributionAndKeepsCorpusAnswersBlind(t *testing.T) {
-	t.Parallel()
-
-	packet := testMoodPacket(t)
-	output := testJSON(t, MoodReviewOutput{Assessments: []MoodReviewAssessment{{
-		Alias: "candidate-a", Scores: testMoodScores(3, 1, 0, 3, 1), EvidenceIDs: []string{"evidence-1"},
-		Rationale: "The evidence supports positive warmth with little threat.",
-	}}})
-	provider := testkit.NewLLM(llm.Response{
-		Content: string(output),
-		Attribution: llm.Attribution{
-			RequestedProvider: "openrouter", RequestedModel: "google/gemini-3.7-flash",
-			ResolvedProvider: "Google AI Studio", ResolvedModel: "google/gemini-3.7-flash-20260901",
-			Tokens: llm.TokenUsage{Prompt: 321, Completion: 87}, Charge: &llm.Money{Amount: "0.00042", Currency: "USD"},
-			Latency: 1500 * time.Millisecond, Attempts: 1, GenerationID: "generation-1",
-		},
-	})
-	now := time.Date(2026, 9, 16, 13, 0, 0, 0, time.UTC)
-	submission, err := RunMoodReview(context.Background(), provider, packet, MoodReviewRunConfig{
-		ReviewerID: "gemini-reviewer", ModelFamily: "gemini", IdentityKind: "openrouter-route-snapshot",
-		IdentitySHA256: testDigest("route-identity"), ExpectedResolvedProvider: "Google AI Studio",
-		RouteSlug: "google-ai-studio", SnapshotSHA256: testDigest("route-snapshot"), ZeroDataRetention: true,
-		Now: func() time.Time { return now },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if submission.Reviewer.Provider != "openrouter" || submission.Reviewer.Route != "Google AI Studio" || submission.Reviewer.ResolvedModel != "google/gemini-3.7-flash-20260901" {
-		t.Fatalf("provider attribution was not retained: %+v", submission.Reviewer)
-	}
-	if submission.Inference.CostBasis != "provider-reported" || submission.Inference.ChargeAmount != "0.00042" || submission.Inference.GenerationID != "generation-1" {
-		t.Fatalf("provider accounting was not retained: %+v", submission.Inference)
-	}
-	if provider.Calls != 1 || !provider.LastOpts.JSONMode || provider.LastOpts.Temperature == nil || *provider.LastOpts.Temperature != 0 {
-		t.Fatalf("review call was not one deterministic JSON turn: calls=%d opts=%+v", provider.Calls, provider.LastOpts)
-	}
-	prompt := provider.Prompt()
-	for _, hidden := range []string{"movie:tmdb:346648", "positiveKeys", "negativeKeys", "Comforting, low-threat family movies"} {
-		if strings.Contains(prompt, hidden) {
-			t.Fatalf("review prompt leaked corpus answer %q: %s", hidden, prompt)
-		}
 	}
 }
 

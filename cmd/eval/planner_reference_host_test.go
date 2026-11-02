@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestRunPublishesOneImmutableProviderFreeManifest(t *testing.T) {
+func TestPlannerReferenceHostPublishesOneImmutableProviderFreeManifest(t *testing.T) {
 	root := t.TempDir()
 	scorecardPath, capturePath, evidenceDir := writeFixture(t, root)
 	outPath := filepath.Join(root, "out", "manifest.json")
@@ -20,7 +20,7 @@ func TestRunPublishesOneImmutableProviderFreeManifest(t *testing.T) {
 		"--generated-at", "2026-10-15T15:01:00Z", "--out", outPath,
 	}
 	var stdout, stderr bytes.Buffer
-	if code := run(args, &stdout, &stderr); code != 0 {
+	if code := runPlannerReferenceHost(args, &stdout, &stderr); code != 0 {
 		t.Fatalf("run code = %d, stderr = %s", code, stderr.String())
 	}
 	raw, err := os.ReadFile(outPath)
@@ -34,7 +34,7 @@ func TestRunPublishesOneImmutableProviderFreeManifest(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run(args, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "file exists") {
+	if code := runPlannerReferenceHost(args, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "file exists") {
 		t.Fatalf("second run code = %d, stderr = %s", code, stderr.String())
 	}
 	again, err := os.ReadFile(outPath)

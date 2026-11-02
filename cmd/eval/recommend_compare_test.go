@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/recommend"
 )
 
-func TestCommandWritesOfflineSharedModelDecision(t *testing.T) {
+func TestRecommendCompareWritesOfflineSharedModelDecision(t *testing.T) {
 	dir := t.TempDir()
 	cardPath := func(profile, model string, score float64) string {
 		t.Helper()
@@ -38,7 +38,7 @@ func TestCommandWritesOfflineSharedModelDecision(t *testing.T) {
 	out := filepath.Join(dir, "comparison.json")
 	summary := filepath.Join(dir, "comparison.md")
 	var stderr bytes.Buffer
-	code := run([]string{
+	code := runRecommendCompare([]string{
 		"--out", out, "--summary", summary, "--shared-profile", "shared-planner",
 		cardPath("shared-planner", "qwen:9b", .90), cardPath("alternative", "gemma:12b", .91),
 	}, &stderr)

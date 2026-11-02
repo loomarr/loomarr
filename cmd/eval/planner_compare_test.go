@@ -13,7 +13,7 @@ import (
 	eval "github.com/loomarr/loomarr/internal/eval"
 )
 
-func TestRunWritesMachineAndHumanPlannerComparison(t *testing.T) {
+func TestPlannerCompareWritesMachineAndHumanPlannerComparison(t *testing.T) {
 	dir := t.TempDir()
 	selection := eval.CertificationSelection{QualityMargin: 0.02, Weights: eval.CertificationQualityWeights{
 		GroundedCompletion: 0.20, CorrectToolOperation: 0.20, SchemaValidity: 0.10,
@@ -47,7 +47,7 @@ func TestRunWritesMachineAndHumanPlannerComparison(t *testing.T) {
 	comparisonPath := filepath.Join(dir, "comparison.json")
 	summaryPath := filepath.Join(dir, "comparison.md")
 	var stderr bytes.Buffer
-	code := run([]string{
+	code := runPlannerCompare([]string{
 		"--out", comparisonPath, "--summary", summaryPath,
 		writeCard("gemma", 0.98, 10<<30), writeCard("qwen", 0.97, 7<<30),
 	}, &stderr)
@@ -74,7 +74,7 @@ func TestRunWritesMachineAndHumanPlannerComparison(t *testing.T) {
 	}
 }
 
-func TestRunWritesEvidenceAndFailsWhenNoCandidateIsEligible(t *testing.T) {
+func TestPlannerCompareWritesEvidenceAndFailsWhenNoCandidateIsEligible(t *testing.T) {
 	dir := t.TempDir()
 	selection := eval.CertificationSelection{QualityMargin: 0.02, Weights: eval.CertificationQualityWeights{
 		GroundedCompletion: 0.20, CorrectToolOperation: 0.20, SchemaValidity: 0.10,
@@ -103,7 +103,7 @@ func TestRunWritesEvidenceAndFailsWhenNoCandidateIsEligible(t *testing.T) {
 	comparisonPath := filepath.Join(dir, "comparison.json")
 	summaryPath := filepath.Join(dir, "comparison.md")
 	var stderr bytes.Buffer
-	code := run([]string{"--out", comparisonPath, "--summary", summaryPath, paths[0], paths[1]}, &stderr)
+	code := runPlannerCompare([]string{"--out", comparisonPath, "--summary", summaryPath, paths[0], paths[1]}, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "no candidate cleared") {
 		t.Fatalf("run = %d; stderr = %s", code, stderr.String())
 	}
