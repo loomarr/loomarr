@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -545,7 +546,7 @@ type archiveCatalog interface {
 // Search finds items inside one archive collection, for the station searches of a short pass
 // (#2059 decision 9). A YouTube channel cannot be searched within, so it yields nothing: a
 // station-tagged channel is already that station's material, and its listing is the search.
-func (e registeredSourceEnumerator) Search(ctx context.Context, source filler.FetchSource, query string, limit int) ([]filler.DiscoveredRef, error) {
+func (e registeredSourceEnumerator) Search(ctx context.Context, source filler.FetchSource, query string, limit int) ([]sourceprovider.Item, error) {
 	if source.Kind != "archive" {
 		return nil, nil
 	}
@@ -560,10 +561,10 @@ func (e registeredSourceEnumerator) Search(ctx context.Context, source filler.Fe
 	return archiveRefs(res.Items), nil
 }
 
-func archiveRefs(items []clipfetch.DiscoveredItem) []filler.DiscoveredRef {
-	out := make([]filler.DiscoveredRef, 0, len(items))
+func archiveRefs(items []clipfetch.DiscoveredItem) []sourceprovider.Item {
+	out := make([]sourceprovider.Item, 0, len(items))
 	for _, it := range items {
-		out = append(out, filler.DiscoveredRef{
+		out = append(out, sourceprovider.Item{
 			ID: it.ID, URL: "https://archive.org/details/" + it.ID,
 			Title: it.Title, License: it.License, ObservedYear: it.Year,
 			PublishedAt: it.Date, DurationMS: it.DurationMS, Height: it.Height,
@@ -572,7 +573,7 @@ func archiveRefs(items []clipfetch.DiscoveredItem) []filler.DiscoveredRef {
 	return out
 }
 
-func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]sourceprovider.Item, int, error) {
 	switch source.Kind {
 	case "archive":
 		archive := e.archive
@@ -607,9 +608,9 @@ func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler
 		if err != nil {
 			return nil, 0, err
 		}
-		out := make([]filler.DiscoveredRef, len(items))
+		out := make([]sourceprovider.Item, len(items))
 		for i, item := range items {
-			out[i] = filler.DiscoveredRef{
+			out[i] = sourceprovider.Item{
 				ID: item.ID, URL: item.URL, Title: item.Title, License: item.License,
 				ObservedYear: item.ReleaseYear, PublishedAt: item.PublishedAt,
 				DurationMS: item.DurationMS, DurationKnown: item.DurationKnown, Height: item.Height,
@@ -845,7 +846,7 @@ type fillerServiceAdapter struct {
 	storageCleanup   *clipfetch.AcquisitionCleaner
 }
 
-func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	switch provider {
 	case "archive":
 		finder := a.archiveFinder
@@ -863,7 +864,7 @@ func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, quer
 	}
 }
 
-func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error) {
+func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error) {
 	switch provider {
 	case "archive":
 		finder := a.archiveFinder
@@ -873,11 +874,11 @@ func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input
 		return finder.Resolve(ctx, input)
 	case "youtube":
 		if a.youtubeFinder == nil {
-			return filler.SourceSuggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+			return sourceprovider.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
 		}
 		return a.youtubeFinder.Resolve(ctx, input)
 	default:
-		return filler.SourceSuggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
+		return sourceprovider.Suggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
 	}
 }
 
@@ -1051,7 +1052,7 @@ func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, source
 	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
 
-func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error) {
 	targets := make([]filler.AcquisitionTarget, 0, len(items))
 	for _, item := range items {
 		targets = append(targets, filler.AcquisitionTarget{

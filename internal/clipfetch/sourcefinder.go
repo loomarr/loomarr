@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 )
 
 const maxSourceSuggestions = 8
@@ -31,13 +32,13 @@ type ArchiveSourceFinder struct {
 }
 
 type sourceFinderCacheEntry struct {
-	results []filler.SourceSuggestion
+	results []sourceprovider.Suggestion
 	usedAt  time.Time
 }
 
 type sourceFinderCall struct {
 	done    chan struct{}
-	results []filler.SourceSuggestion
+	results []sourceprovider.Suggestion
 	err     error
 }
 
@@ -82,24 +83,24 @@ func (text *archiveText) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (f *ArchiveSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *ArchiveSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	query = strings.TrimSpace(query)
 	if len(query) < 2 || len(query) > 120 {
 		return nil, fmt.Errorf("%w: archive collection search must be between 2 and 120 characters", filler.ErrInvalidSourceReference)
 	}
 	normalized := strings.Join(strings.Fields(query), " ")
-	return f.cached(ctx, "suggest:"+strings.ToLower(normalized)+":"+strconv.Itoa(limit), func() ([]filler.SourceSuggestion, error) {
+	return f.cached(ctx, "suggest:"+strings.ToLower(normalized)+":"+strconv.Itoa(limit), func() ([]sourceprovider.Suggestion, error) {
 		return f.suggestUncached(ctx, normalized, limit)
 	})
 }
 
-func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	if strings.Contains(query, "/") {
 		resolved, err := f.resolveUncached(ctx, query)
 		if err != nil {
 			return nil, err
 		}
-		return []filler.SourceSuggestion{resolved}, nil
+		return []sourceprovider.Suggestion{resolved}, nil
 	}
 	terms := archiveSearchTerms(query)
 	if terms == "" {
@@ -119,7 +120,7 @@ func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string,
 	if err := f.client.getJSON(ctx, f.client.base+"/advancedsearch.php?"+values.Encode(), &response); err != nil {
 		return nil, fmt.Errorf("%w: archive collection search %q: %v", filler.ErrSourceProvider, query, err)
 	}
-	results := make([]filler.SourceSuggestion, 0, len(response.Response.Docs))
+	results := make([]sourceprovider.Suggestion, 0, len(response.Response.Docs))
 	for _, doc := range response.Response.Docs {
 		id := strings.TrimSpace(doc.Identifier)
 		if id == "" {
@@ -129,7 +130,7 @@ func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string,
 		if title == "" {
 			title = id
 		}
-		results = append(results, filler.SourceSuggestion{
+		results = append(results, sourceprovider.Suggestion{
 			Provider: "archive", TargetType: "collection", CanonicalID: id,
 			CanonicalURL: "https://archive.org/details/" + url.PathEscape(id),
 			Title:        title, Description: strings.TrimSpace(string(doc.Description)), ItemCount: doc.ItemCount,
@@ -138,39 +139,39 @@ func (f *ArchiveSourceFinder) suggestUncached(ctx context.Context, query string,
 	return results, nil
 }
 
-func (f *ArchiveSourceFinder) Resolve(ctx context.Context, input string) (filler.SourceSuggestion, error) {
+func (f *ArchiveSourceFinder) Resolve(ctx context.Context, input string) (sourceprovider.Suggestion, error) {
 	input = strings.TrimSpace(input)
-	results, err := f.cached(ctx, "resolve:"+strings.ToLower(input), func() ([]filler.SourceSuggestion, error) {
+	results, err := f.cached(ctx, "resolve:"+strings.ToLower(input), func() ([]sourceprovider.Suggestion, error) {
 		resolved, resolveErr := f.resolveUncached(ctx, input)
 		if resolveErr != nil {
 			return nil, resolveErr
 		}
-		return []filler.SourceSuggestion{resolved}, nil
+		return []sourceprovider.Suggestion{resolved}, nil
 	})
 	if err != nil {
-		return filler.SourceSuggestion{}, err
+		return sourceprovider.Suggestion{}, err
 	}
 	return results[0], nil
 }
 
-func (f *ArchiveSourceFinder) resolveUncached(ctx context.Context, input string) (filler.SourceSuggestion, error) {
+func (f *ArchiveSourceFinder) resolveUncached(ctx context.Context, input string) (sourceprovider.Suggestion, error) {
 	id := archiveCollectionID(input)
 	if id == "" {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: enter an Archive.org identifier or details URL", filler.ErrInvalidSourceReference)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: enter an Archive.org identifier or details URL", filler.ErrInvalidSourceReference)
 	}
 	metadata, err := f.client.metadata(ctx, id)
 	if err != nil {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: %v", filler.ErrSourceProvider, err)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: %v", filler.ErrSourceProvider, err)
 	}
 	if metadata.Metadata.MediaType != "collection" {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: archive item %q is %q, not a collection", filler.ErrInvalidSourceReference, id, metadata.Metadata.MediaType)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: archive item %q is %q, not a collection", filler.ErrInvalidSourceReference, id, metadata.Metadata.MediaType)
 	}
 	title := strings.TrimSpace(metadata.Metadata.Title)
 	if title == "" {
 		title = id
 	}
 	previewItems, itemCount, _ := f.collectionPreview(ctx, id)
-	return filler.SourceSuggestion{
+	return sourceprovider.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: id,
 		CanonicalURL: "https://archive.org/details/" + url.PathEscape(id),
 		Title:        title, Description: strings.TrimSpace(metadata.Metadata.Description),
@@ -183,7 +184,7 @@ func (f *ArchiveSourceFinder) resolveUncached(ctx context.Context, input string)
 // while popularity is deliberately preview-only and does not alter acquisition ordering.
 // It is advisory: callers deliberately keep a valid collection resolvable when examples are
 // temporarily unavailable.
-func (f *ArchiveSourceFinder) collectionPreview(ctx context.Context, id string) ([]filler.SourcePreviewItem, int, error) {
+func (f *ArchiveSourceFinder) collectionPreview(ctx context.Context, id string) ([]sourceprovider.PreviewItem, int, error) {
 	values := url.Values{}
 	escapedID := strings.ReplaceAll(id, `"`, `\"`)
 	values.Set("q", `collection:"`+escapedID+`" AND mediatype:movies AND (`+
@@ -197,7 +198,7 @@ func (f *ArchiveSourceFinder) collectionPreview(ctx context.Context, id string) 
 	if err := f.client.getJSON(ctx, f.client.base+"/advancedsearch.php?"+values.Encode(), &response); err != nil {
 		return nil, 0, err
 	}
-	items := make([]filler.SourcePreviewItem, 0, min(len(response.Response.Docs), maxSourcePreviewItems))
+	items := make([]sourceprovider.PreviewItem, 0, min(len(response.Response.Docs), maxSourcePreviewItems))
 	for _, doc := range response.Response.Docs {
 		id := strings.TrimSpace(doc.Identifier)
 		if id == "" {
@@ -207,7 +208,7 @@ func (f *ArchiveSourceFinder) collectionPreview(ctx context.Context, id string) 
 		if title == "" {
 			title = id
 		}
-		items = append(items, filler.SourcePreviewItem{
+		items = append(items, sourceprovider.PreviewItem{
 			Title: title,
 			URL:   "https://archive.org/details/" + url.PathEscape(id),
 		})
@@ -230,13 +231,13 @@ func archiveSearchTerms(query string) string {
 	return strings.Join(terms, " ")
 }
 
-func (f *ArchiveSourceFinder) cached(ctx context.Context, key string, load func() ([]filler.SourceSuggestion, error)) ([]filler.SourceSuggestion, error) {
+func (f *ArchiveSourceFinder) cached(ctx context.Context, key string, load func() ([]sourceprovider.Suggestion, error)) ([]sourceprovider.Suggestion, error) {
 	now := f.now()
 	f.mu.Lock()
 	if entry, ok := f.cache[key]; ok && now.Sub(entry.usedAt) < f.ttl {
 		entry.usedAt = now
 		f.cache[key] = entry
-		results := append([]filler.SourceSuggestion(nil), entry.results...)
+		results := append([]sourceprovider.Suggestion(nil), entry.results...)
 		f.mu.Unlock()
 		return results, nil
 	}
@@ -247,7 +248,7 @@ func (f *ArchiveSourceFinder) cached(ctx context.Context, key string, load func(
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-done:
-			return append([]filler.SourceSuggestion(nil), call.results...), call.err
+			return append([]sourceprovider.Suggestion(nil), call.results...), call.err
 		}
 	}
 	call := &sourceFinderCall{done: make(chan struct{})}
@@ -256,9 +257,9 @@ func (f *ArchiveSourceFinder) cached(ctx context.Context, key string, load func(
 
 	results, err := load()
 	f.mu.Lock()
-	call.results, call.err = append([]filler.SourceSuggestion(nil), results...), err
+	call.results, call.err = append([]sourceprovider.Suggestion(nil), results...), err
 	if err == nil {
-		f.cache[key] = sourceFinderCacheEntry{results: append([]filler.SourceSuggestion(nil), results...), usedAt: now}
+		f.cache[key] = sourceFinderCacheEntry{results: append([]sourceprovider.Suggestion(nil), results...), usedAt: now}
 		f.pruneCache()
 	}
 	delete(f.inflight, key)

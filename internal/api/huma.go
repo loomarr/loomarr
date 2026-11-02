@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -415,8 +416,8 @@ type FillerService interface {
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
 	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
-	SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error)
-	ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error)
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
 	// a job id immediately (§10). Downloads take minutes to hours, so this is
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
@@ -428,7 +429,7 @@ type FillerService interface {
 	// IngestSourceItems queues exact candidates discovered inside one registered source. The
 	// source identity and provider kind are server-owned policy; RemoteID preserves provider
 	// deduplication and this path never registers an item as another source.
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (jobID string, err error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)

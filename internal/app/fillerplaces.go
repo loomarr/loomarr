@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -96,7 +97,7 @@ type openArchiveSearch struct {
 	languages func(context.Context) (string, error)
 }
 
-func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]filler.DiscoveredRef, error) {
+func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]sourceprovider.Item, error) {
 	res, err := o.archive.Search(ctx, query, limit)
 	if err != nil {
 		return nil, err

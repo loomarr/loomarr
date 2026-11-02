@@ -194,19 +194,34 @@ func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 // package without a cycle, and the split of internal/store stops being possible. Test files are
 // exempt, as in the gate above; only the production import set counts.
 func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
-	pkgs := loomarrPackages(t)
-	const kernel = modulePath + "/internal/store/storedb"
-	pkg, ok := pkgs[kernel]
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/store/storedb",
+		"storedb is the dependency-free kernel of the store split; code that needs a Loomarr type "+
+			"belongs in a store package, not in the kernel")
+}
+
+// internal/sourceprovider is the contract every filler source provider implements. filler,
+// fillerstore, api and the provider packages all name it; the moment it imports one of them, the
+// others can no longer import it without a cycle. Test files are exempt; only the production import
+// set counts.
+func TestSourceProviderImportsNoLoomarrPackage(t *testing.T) {
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/sourceprovider",
+		"sourceprovider is the provider contract filler, api and every provider share; a type it "+
+			"needs from Loomarr moves into it, or the contract is drawn in the wrong place")
+}
+
+// requireLeafPackage fails if path's production code imports any Loomarr package.
+func requireLeafPackage(t *testing.T, pkgs map[string]*build.Package, path, why string) {
+	t.Helper()
+	pkg, ok := pkgs[path]
 	if !ok {
-		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", kernel)
+		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", path)
 	}
 	if len(pkg.GoFiles) == 0 {
-		t.Fatalf("%s has no production files", kernel)
+		t.Fatalf("%s has no production files", path)
 	}
 	for _, imported := range pkg.Imports {
 		if strings.HasPrefix(imported, modulePath+"/") {
-			t.Errorf("%s imports %s — storedb is the dependency-free kernel of the store split; "+
-				"code that needs a Loomarr type belongs in a store package, not in the kernel", kernel, imported)
+			t.Errorf("%s imports %s — %s", path, imported, why)
 		}
 	}
 }

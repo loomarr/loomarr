@@ -14,6 +14,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -198,7 +199,7 @@ type FillerSourceCheckSummaryDTO struct {
 	MetadataIncomplete int `json:"metadataIncomplete"`
 }
 
-func fillerSourceCheckSummaryDTO(summary filler.SourceCheckSummary) *FillerSourceCheckSummaryDTO {
+func fillerSourceCheckSummaryDTO(summary sourceprovider.Outcomes) *FillerSourceCheckSummaryDTO {
 	var total int
 	for _, count := range summary {
 		total += count
@@ -207,15 +208,15 @@ func fillerSourceCheckSummaryDTO(summary filler.SourceCheckSummary) *FillerSourc
 		return nil
 	}
 	return &FillerSourceCheckSummaryDTO{
-		Queued:             summary[filler.SourceOutcomeQueued],
-		AlreadyKnown:       summary[filler.SourceOutcomeAlreadyKnown],
-		TooShort:           summary[filler.SourceOutcomeTooShort],
-		TooLong:            summary[filler.SourceOutcomeTooLong],
-		Live:               summary[filler.SourceOutcomeLive],
-		Upcoming:           summary[filler.SourceOutcomeUpcoming],
-		Private:            summary[filler.SourceOutcomePrivate],
-		Unavailable:        summary[filler.SourceOutcomeUnavailable],
-		MetadataIncomplete: summary[filler.SourceOutcomeMetadataIncomplete],
+		Queued:             summary[sourceprovider.OutcomeQueued],
+		AlreadyKnown:       summary[sourceprovider.OutcomeAlreadyKnown],
+		TooShort:           summary[sourceprovider.OutcomeTooShort],
+		TooLong:            summary[sourceprovider.OutcomeTooLong],
+		Live:               summary[sourceprovider.OutcomeLive],
+		Upcoming:           summary[sourceprovider.OutcomeUpcoming],
+		Private:            summary[sourceprovider.OutcomePrivate],
+		Unavailable:        summary[sourceprovider.OutcomeUnavailable],
+		MetadataIncomplete: summary[sourceprovider.OutcomeMetadataIncomplete],
 	}
 }
 
@@ -602,7 +603,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 		return nil, errConflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
 
-	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []filler.DiscoveredRef{{
+	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []sourceprovider.Item{{
 		ID: in.Body.RemoteID, URL: in.Body.URL,
 	}})
 	if errors.Is(err, filler.ErrProviderPaused) {
@@ -632,18 +633,19 @@ func (s *Server) registeredFillerSourceTargets(ctx context.Context) (map[string]
 	return registered, nil
 }
 
-func sourceSuggestionDTO(source filler.SourceSuggestion, registered map[string]bool) FillerSourceSuggestionDTO {
+func sourceSuggestionDTO(source sourceprovider.Suggestion, registered map[string]bool) FillerSourceSuggestionDTO {
 	previewItems := make([]FillerSourcePreviewItemDTO, 0, len(source.PreviewItems))
 	for _, item := range source.PreviewItems {
 		previewItems = append(previewItems, FillerSourcePreviewItemDTO{
 			Title: item.Title, URL: item.URL, DurationMS: item.DurationMS,
 		})
 	}
+	provider := string(source.Provider)
 	return FillerSourceSuggestionDTO{
-		Provider: source.Provider, TargetType: source.TargetType, CanonicalID: source.CanonicalID,
+		Provider: provider, TargetType: source.TargetType, CanonicalID: source.CanonicalID,
 		CanonicalURL: source.CanonicalURL, Title: source.Title, Description: source.Description,
 		ItemCount: source.ItemCount, PreviewItems: previewItems,
-		AlreadyAdded: registered[source.Provider+":"+source.CanonicalID] || registered[source.Provider+":"+source.CanonicalURL],
+		AlreadyAdded: registered[provider+":"+source.CanonicalID] || registered[provider+":"+source.CanonicalURL],
 	}
 }
 
@@ -803,7 +805,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		}
 		validType := resolved.TargetType == "collection" && kind == "archive" ||
 			(resolved.TargetType == "channel" || resolved.TargetType == "playlist") && kind == "youtube"
-		if resolved.Provider != kind || !validType {
+		if resolved.Provider != sourceprovider.ID(kind) || !validType {
 			return nil, huma.Error502BadGateway("verify source", errors.New("provider returned the wrong source kind"))
 		}
 		canonical := resolved.CanonicalID

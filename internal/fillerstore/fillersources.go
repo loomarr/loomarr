@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -60,8 +61,8 @@ type FillerSource struct {
 	CheckRetryAt      time.Time
 	CheckLeaseUntil   time.Time
 	// ScanCheckpoint and LastCheckSummary are the restart-safe automatic-acquisition read model.
-	ScanCheckpoint   filler.SourceScanCheckpoint
-	LastCheckSummary filler.SourceCheckSummary
+	ScanCheckpoint   sourceprovider.Checkpoint
+	LastCheckSummary sourceprovider.Outcomes
 	CreatedAt        time.Time
 	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
 	// searched and not downloaded from.
@@ -340,14 +341,14 @@ func (s *sqlStore) loadFillerSourceCheckSummaries(ctx context.Context, sources [
 	}
 	for rows.Next() {
 		var id string
-		var disposition filler.SourceOutcome
+		var disposition sourceprovider.Outcome
 		var count int
 		if err := rows.Scan(&id, &disposition, &count); err != nil {
 			return fmt.Errorf("scan filler source check outcome: %w", err)
 		}
 		if source := byID[id]; source != nil {
 			if source.LastCheckSummary == nil {
-				source.LastCheckSummary = filler.SourceCheckSummary{}
+				source.LastCheckSummary = sourceprovider.Outcomes{}
 			}
 			source.LastCheckSummary[disposition] = count
 		}
