@@ -364,38 +364,19 @@ func (f *Fetcher) RunSource(ctx context.Context, sourceID string) (FetchResult, 
 	return f.run(ctx, sourceID, false)
 }
 
+// run is one fetch pass: the due sources in region order, each checked by checkSource, then open
+// search for whatever the sources left short.
 func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (FetchResult, error) {
 	var res FetchResult
 	srcs, err := f.store.ListFetchSources(ctx)
 	if err != nil {
 		return res, fmt.Errorf("list sources: %w", err)
 	}
-	globalPerRun := f.limits.MaxPerRun()
-	if globalPerRun < 1 {
-		globalPerRun = 1
-	}
-	providerLimit := 50
-	if f.limits.MaxProviderPerRun != nil && f.limits.MaxProviderPerRun() > 0 {
-		providerLimit = f.limits.MaxProviderPerRun()
-	}
+	p := &fetchPass{f: f, scheduled: scheduled, res: &res, providerQueued: map[string]int{}}
+	p.globalPerRun, p.providerLimit = f.passLimits()
 	if sourceID != "" {
-		res.MaxPerCheck = globalPerRun
-		found := false
-		for _, src := range srcs {
-			if src.ID != sourceID {
-				continue
-			}
-			found = true
-			if src.MaxPerRun > 0 {
-				res.MaxPerCheck = src.MaxPerRun
-			}
-			break
-		}
-		if !found {
-			return res, ErrFetchSourceNotFound
-		}
-		if res.MaxPerCheck > providerLimit {
-			res.MaxPerCheck = providerLimit
+		if res.MaxPerCheck, err = p.manualCap(srcs, sourceID); err != nil {
+			return res, err
 		}
 	}
 
@@ -403,27 +384,9 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	// a minute, while an ordinary source is due every six hours; an idle wake must remain a cheap
 	// source-state read rather than walking the filler directory 359 extra times between checks.
 	now := f.now()
-	due := make([]FetchSource, 0, len(srcs))
-	for _, src := range srcs {
-		if sourceID != "" && src.ID != sourceID {
-			continue
-		}
-		if !src.Enabled || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
-			if sourceID != "" && src.ID == sourceID && !src.Enabled {
-				return res, ErrSourceDisabled
-			}
-			continue
-		}
-		if scheduled {
-			next, automatic := src.NextAutomaticCheck(now)
-			if !automatic || next.After(now) {
-				continue
-			}
-		}
-		due = append(due, src)
-	}
-	if len(due) == 0 {
-		return res, nil
+	due, err := dueSources(srcs, sourceID, scheduled, now)
+	if err != nil || len(due) == 0 {
+		return res, err
 	}
 	if scheduled && now.UnixMilli() < f.metUntil.Load() {
 		res.StoppedBy = "target"
@@ -433,369 +396,512 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	// limit reached partway through the pass is then spent on the home country.
 	slices.SortStableFunc(due, func(a, b FetchSource) int { return a.Region - b.Region })
 
-	have, err := f.store.CatalogPaths(ctx)
-	if err != nil {
-		return res, fmt.Errorf("read catalog: %w", err)
+	if stop, err := p.prepare(ctx, now); err != nil || stop {
+		return res, err
 	}
-	// The catalog is one input to selection; source-local history and acquisition intent also
-	// determine whether a discovered item is eligible to be offered again.
-	existing, err := f.store.ListAcquisitionRemoteStates(ctx)
-	if err != nil {
-		return res, fmt.Errorf("read acquisition remote states: %w", err)
-	}
-	if existing == nil {
-		existing = map[string]ExistingRemoteState{}
-	}
-	// Treat the store result as a snapshot: in-pass queue state must not mutate adapter-owned
-	// fixture or store state across retry attempts.
-	inPass := make(map[string]ExistingRemoteState, len(existing))
-	for key, state := range existing {
-		inPass[key] = state
-	}
-	// Channel coverage gaps steer which items this pass takes first (#749). Read once per pass
-	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
-	// steering is an optimisation, and the source still deserves its bounded refresh.
-	var gaps CoverageGaps
-	targeted := false
-	if f.gaps != nil {
-		if gaps, err = f.gaps(ctx); err != nil {
-			f.log.Warn("filler auto-fetch: coverage gaps unavailable; selecting without them", "err", err)
-			gaps = CoverageGaps{}
-		} else {
-			targeted = true
-		}
-	}
-	// An unattended pass fetches toward the pool target and stops when it is met (#2035). The
-	// operator's click is not held to it: asking a source for more is a deliberate act.
-	if scheduled && targeted && gaps.Met() {
-		f.metUntil.Store(now.Add(TargetRecheck).UnixMilli())
-		res.StoppedBy = "target"
-		return res, nil
-	}
-	gapReason := ""
-	if len(gaps.Eras) > 0 {
-		gapReason = " Items from " + formatEraWindows(gaps.Eras) + " go first: channels there cannot fill a break from their own era."
-	}
-	if len(gaps.Roles) > 0 {
-		gapReason += " Bumpers and station IDs go first: no break has one to open or close on."
-	}
-
-	if max := f.limits.MaxCatalogClips(); max > 0 && len(have) >= max {
-		res.StoppedBy = "catalog"
-		f.logStop("catalog", len(have), max)
-		return res, nil
-	}
-	providerQueued := map[string]int{}
 	for _, src := range due {
 		select {
 		case <-ctx.Done():
 			return res, ctx.Err()
 		default:
 		}
-		if providerQueued[src.Kind] >= providerLimit {
-			res.StoppedBy = "provider"
-			continue
+		done, err := p.checkSource(ctx, src)
+		if err != nil {
+			return res, err
 		}
-		// Property 1: only enabled sources, and only ones with somewhere to fetch FROM. The
-		// config-backed folder/library rows have no URI and are scanned, not fetched.
-		//
-		// NeverFetch is the source's effective automatic opt-out, distinct from Enabled. A
-		// source can be on — searched, its clips counted, its switch showing "on" — while opting
-		// out of UNATTENDED fetching. Collapsing the two would make "stop auto-downloading from
-		// this one" require switching it off entirely, which also stops search.
-		// This source's cap: its own override, or the global. A busy collection and a small
-		// playlist want different numbers, which one figure served badly.
-		perRun := src.MaxPerRun
-		if perRun < 1 {
-			perRun = globalPerRun
-		}
-		remaining := providerLimit - providerQueued[src.Kind]
-		providerBound := perRun > remaining
-		if providerBound {
-			perRun = remaining
-		}
-		// The shortfall caps what is taken, not what is listed: a short over-list of a source whose
-		// newest items are all held would report nothing new while the pool stays short.
-		listFor := perRun
-		if scheduled && targeted && gaps.Short > 0 && len(gaps.Roles) == 0 {
-			if left := gaps.Short - res.Queued; left < perRun {
-				if left < 1 {
-					res.StoppedBy = "target"
-					break
-				}
-				perRun = left
-			}
-		}
-		checkAt := f.now()
-		leaseUntil := checkAt.Add(SourceCheckLease)
-		claimed, claimErr := f.store.ClaimCheck(ctx, src.ID, src.LastCheckedAt, checkAt, leaseUntil)
-		if claimErr != nil {
-			return res, fmt.Errorf("claim source %q: %w", src.ID, claimErr)
-		}
-		if !claimed {
-			if !scheduled {
-				return res, fmt.Errorf("%w: %s", ErrSourceCheckInProgress, src.ID)
-			}
-			continue
-		}
-		res.SourcesPolled++
-
-		// Over-list so that a page full of already-held items still yields new ones. Without
-		// this a source whose first N items are all catalogued would report "nothing new"
-		// forever while the rest of the collection sat unfetched.
-		enumerationLimit := listFor * 4
-		if src.Kind == "youtube" {
-			enumerationLimit = YouTubeInitialLookback
-		}
-		items, _, derr := f.enum.Enumerate(ctx, src, enumerationLimit)
-		if derr != nil {
-			retryAt := f.now().Add(SourceCheckRetryDelay(src.CheckFailureCount + 1))
-			if failErr := f.store.FailCheck(ctx, src.ID, leaseUntil, retryAt); failErr != nil {
-				return res, fmt.Errorf("record source %q check failure: %w", src.ID, failErr)
-			}
-			if !scheduled {
-				return res, fmt.Errorf("list source %q: %w", src.ID, derr)
-			}
-			f.log.Warn("filler auto-fetch: source could not be listed", "source", src.ID, "err", derr)
-			continue
-		}
-		var stationHits map[string]string
-		if scheduled && targeted && src.Kind == "archive" {
-			items, stationHits = f.withStationHits(ctx, src, items, gaps.Stations, listFor)
-		}
-		outcomes := SourceCheckSummary{}
-		checkpoint := src.ScanCheckpoint
-		replaceOutcomes := true
-		completeCheck := func() error {
-			if completeErr := f.store.CompleteCheck(ctx, src.ID, leaseUntil, SourceCheckCompletion{
-				CheckedAt: f.now(), Checkpoint: checkpoint,
-				Outcomes: outcomes, ReplaceOutcomes: replaceOutcomes,
-			}); completeErr != nil {
-				return fmt.Errorf("complete source %q check: %w", src.ID, completeErr)
-			}
-			if len(outcomes) > 0 {
-				if res.Outcomes == nil {
-					res.Outcomes = SourceCheckSummary{}
-				}
-				for outcome, count := range outcomes {
-					res.Outcomes[outcome] += count
-				}
-			}
-			return nil
-		}
-
-		// The scheduled path uses the same deterministic selector as explicit pulls. There are no
-		// hard semantic constraints here—the remote listing cannot certify them—but declared rights,
-		// representation quality, era-observation diversity, and stable identity now choose the
-		// bounded prefix instead of whichever item the provider returned first.
-		candidates := make([]AcquisitionCandidate, 0, len(items))
-		preferredCampaigns := map[string]AcquisitionCandidate{}
-		if src.Kind == "youtube" {
-			// The cursor can split one provider listing across several checks. Choose the best
-			// explicit duration variant from the whole bounded listing before applying that cursor,
-			// otherwise a :15 cut in one check and a :30 cut in the next both reach the catalog.
-			for _, item := range items {
-				if _, rejected := f.automaticRejection(src, item); rejected {
-					continue
-				}
-				campaign := sourceCampaignKey(item.Title)
-				if campaign == "" {
-					continue
-				}
-				candidate := AcquisitionCandidate{
-					Identity: RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID},
-					URL:      item.URL, Title: item.Title, License: item.License, ObservedYear: item.ObservedYear,
-					PublishedAt: item.PublishedAt, DurationMS: item.DurationMS, Height: item.Height,
-				}
-				current, found := preferredCampaigns[campaign]
-				if !found || sourceVariantBetter(candidate, current) {
-					preferredCampaigns[campaign] = candidate
-				}
-			}
-		}
-		consider := items
-		if src.Kind == "youtube" {
-			start := 0
-			replaceOutcomes = checkpoint.Cursor == ""
-			if checkpoint.Cursor != "" {
-				found := false
-				for i, item := range items {
-					if item.ID == checkpoint.Cursor {
-						start, found = i+1, true
-						break
-					}
-				}
-				if !found {
-					// Provider lists can shift or remove an item. Restart the bounded sweep and rely
-					// on exact durable identity dedupe; guessing an offset could skip unseen work.
-					checkpoint.Cursor = ""
-					checkpoint.PendingWatermark = ""
-					replaceOutcomes = true
-				}
-			}
-			if start < len(items) && checkpoint.PendingWatermark == "" {
-				checkpoint.PendingWatermark = items[0].ID
-			}
-			consider = items[start:]
-		}
-		lastExamined := ""
-		reachedYouTubeCap := false
-		for i, item := range consider {
-			if src.Kind == "youtube" && checkpoint.Watermark != "" && item.ID == checkpoint.Watermark {
-				break
-			}
-			if item.ID != "" {
-				lastExamined = item.ID
-			}
-			if outcome, rejected := f.automaticRejection(src, item); rejected {
-				outcomes[outcome]++
-				continue
-			}
-			if campaign := sourceCampaignKey(item.Title); campaign != "" {
-				if preferred := preferredCampaigns[campaign]; preferred.Identity.RemoteID != item.ID {
-					res.Skipped++
-					outcomes[SourceOutcomeAlreadyKnown]++
-					continue
-				}
-			}
-			identity := RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID}
-			if src.Kind == "youtube" && inPass[identity.Key()] != "" {
-				res.Skipped++
-				outcomes[SourceOutcomeAlreadyKnown]++
-				continue
-			}
-			candidate := AcquisitionCandidate{
-				Identity: identity,
-				URL:      item.URL, Title: item.Title, License: item.License,
-				ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
-				DurationMS: item.DurationMS, Height: item.Height,
-				StationSearch: stationHits[item.ID],
-			}
-			candidates = append(candidates, candidate)
-			if src.Kind == "youtube" && len(candidates) == perRun {
-				reachedYouTubeCap = i < len(consider)-1
-				break
-			}
-		}
-		if src.Kind == "youtube" {
-			if reachedYouTubeCap {
-				checkpoint.Cursor = lastExamined
-			} else {
-				if checkpoint.PendingWatermark != "" {
-					checkpoint.Watermark = checkpoint.PendingWatermark
-				}
-				checkpoint.Cursor = ""
-				checkpoint.PendingWatermark = ""
-			}
-		}
-		selection, serr := PlanAcquisitionFor(AcquisitionIntent{
-			Count:         perRun,
-			CatalogReason: "Bounded scheduled refresh of a registered source." + gapReason,
-		}, candidates, inPass, gaps)
-		if serr != nil {
-			if completeErr := completeCheck(); completeErr != nil {
-				return res, completeErr
-			}
-			if !scheduled {
-				return res, fmt.Errorf("select source %q: %w", src.ID, serr)
-			}
-			f.log.Warn("filler auto-fetch: source candidates could not be selected", "source", src.ID, "err", serr)
-			continue
-		}
-		var urls []string
-		selectedItems := make([]DiscoveredRef, 0, len(selection.Selected))
-		for _, decision := range selection.Rejected {
-			switch decision.Disposition {
-			case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
-				res.Skipped++
-				outcomes[SourceOutcomeAlreadyKnown]++
-			}
-		}
-		for _, decision := range selection.Selected {
-			urls = append(urls, decision.Candidate.URL)
-			selectedItems = append(selectedItems, DiscoveredRef{
-				ID: decision.Candidate.Identity.RemoteID, URL: decision.Candidate.URL,
-				Title: decision.Candidate.Title, License: decision.Candidate.License,
-				ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
-				DurationMS: decision.Candidate.DurationMS, Height: decision.Candidate.Height,
-				Gap: decision.Gap,
-			})
-		}
-		if len(urls) == 0 {
-			if completeErr := completeCheck(); completeErr != nil {
-				return res, completeErr
-			}
-			continue
-		}
-		var ierr error
-		if identified, ok := f.ingest.(IdentifiedFetchIngestor); ok {
-			_, ierr = identified.IngestSourceItems(ctx, src.ID, src.Kind, selectedItems)
-		} else {
-			_, ierr = f.ingest.IngestSource(ctx, src.ID, src.Kind, urls)
-		}
-		if ierr != nil {
-			retryAt := f.now().Add(SourceCheckRetryDelay(src.CheckFailureCount + 1))
-			if failErr := f.store.FailCheck(ctx, src.ID, leaseUntil, retryAt); failErr != nil {
-				return res, fmt.Errorf("record source %q queue failure: %w", src.ID, failErr)
-			}
-			if !scheduled {
-				return res, fmt.Errorf("queue source %q: %w", src.ID, ierr)
-			}
-			f.log.Warn("filler auto-fetch: queueing failed", "source", src.ID, "err", ierr)
-			continue
-		}
-		outcomes[SourceOutcomeQueued] += len(urls)
-		// Only a successful queue becomes in-pass state. A failed queue must leave an exact
-		// identity eligible for a healthy retry later in this pass.
-		for _, decision := range selection.Selected {
-			inPass[decision.Candidate.Identity.Key()] = RemoteQueued
-		}
-		res.Queued += len(urls)
-		providerQueued[src.Kind] += len(urls)
-		// ⚠ Stamped only AFTER a successful queue, and only when something was actually queued —
-		// a source whose whole page was already catalogued `continue`s above without touching
-		// this. "Last fetched" must mean "last brought something in", or a source that has been
-		// polled fruitlessly for a week reads as freshly productive.
-		//
-		// A failure here is logged, not fatal: the clips ARE queued, and losing the whole pass
-		// over a cosmetic timestamp would be the worse trade.
-		if merr := f.store.MarkFetched(ctx, src.ID, f.now()); merr != nil {
-			f.log.Warn("filler auto-fetch: could not stamp the source", "source", src.ID, "err", merr)
-		}
-		if completeErr := completeCheck(); completeErr != nil {
-			return res, completeErr
-		}
-		if providerBound && providerQueued[src.Kind] >= providerLimit && checkpoint.Cursor != "" {
-			res.StoppedBy = "provider"
+		if done {
+			break
 		}
 	}
-
-	// Open search comes last (#2059 decision 10): only a pass the sources left short asks the whole
-	// provider, and only for nearby stations in the eras it is short of.
-	if scheduled && targeted && f.open != nil && res.StoppedBy != "target" && len(gaps.Stations) > 0 && len(gaps.Eras) > 0 {
-		count := globalPerRun
-		if gaps.Short > 0 {
-			count = min(count, gaps.Short-res.Queued)
-		}
-		count = min(count, providerLimit-providerQueued["archive"])
-		if count > 0 {
-			queued, err := f.openSearch(ctx, gaps, inPass, count)
-			if err != nil {
-				return res, err
-			}
-			res.Queued += queued
-			providerQueued["archive"] += queued
-		}
+	if err := p.searchOpen(ctx); err != nil {
+		return res, err
 	}
 	if res.Queued > 0 {
 		f.log.Info("filler auto-fetch", "sources", res.SourcesPolled, "queued", res.Queued, "skipped", res.Skipped)
 	}
 	if res.StoppedBy == "provider" && f.log != nil {
 		f.log.Info("filler auto-fetch paused at the provider pass limit",
-			"max_per_provider", providerLimit,
+			"max_per_provider", p.providerLimit,
 			"note", "remaining due sources will be considered on the next scheduler pass")
 	}
 	return res, nil
+}
+
+// fetchPass is one pass's shared state: its limits, what the pool is short of, and what the pass
+// has queued so far.
+type fetchPass struct {
+	f         *Fetcher
+	scheduled bool
+	res       *FetchResult
+
+	globalPerRun, providerLimit int
+	providerQueued              map[string]int
+
+	// inPass is the acquisition state the pass started from, plus what it has queued since.
+	inPass    map[string]ExistingRemoteState
+	gaps      CoverageGaps
+	targeted  bool
+	gapReason string
+}
+
+// passLimits are a pass's default per-source cap and its per-provider ceiling.
+func (f *Fetcher) passLimits() (globalPerRun, providerLimit int) {
+	globalPerRun = max(f.limits.MaxPerRun(), 1)
+	providerLimit = 50
+	if f.limits.MaxProviderPerRun != nil && f.limits.MaxProviderPerRun() > 0 {
+		providerLimit = f.limits.MaxProviderPerRun()
+	}
+	return globalPerRun, providerLimit
+}
+
+// manualCap is a manual run's cap for its one source: the source's own, or the global one, held
+// to the provider ceiling.
+func (p *fetchPass) manualCap(srcs []FetchSource, sourceID string) (int, error) {
+	i := slices.IndexFunc(srcs, func(src FetchSource) bool { return src.ID == sourceID })
+	if i < 0 {
+		return p.globalPerRun, ErrFetchSourceNotFound
+	}
+	limit := p.globalPerRun
+	if srcs[i].MaxPerRun > 0 {
+		limit = srcs[i].MaxPerRun
+	}
+	return min(limit, p.providerLimit), nil
+}
+
+// dueSources are the sources a pass checks: every enabled source with somewhere to fetch FROM
+// whose automatic check is due, or for a manual run just the one named, due or not. The
+// config-backed folder/library rows have no URI and are scanned, not fetched. A named source that
+// is switched off is refused.
+//
+// NextAutomaticCheck carries the source's NeverFetch opt-out, which is distinct from Enabled: a
+// source can be on (searched, its clips counted) while opting out of UNATTENDED fetching.
+func dueSources(srcs []FetchSource, sourceID string, scheduled bool, now time.Time) ([]FetchSource, error) {
+	due := make([]FetchSource, 0, len(srcs))
+	for _, src := range srcs {
+		if sourceID != "" && src.ID != sourceID {
+			continue
+		}
+		if !src.Enabled || src.URI == "" || src.Kind == "folder" || src.Kind == "library" {
+			if sourceID != "" && !src.Enabled {
+				return nil, ErrSourceDisabled
+			}
+			continue
+		}
+		if scheduled {
+			if next, automatic := src.NextAutomaticCheck(now); !automatic || next.After(now) {
+				continue
+			}
+		}
+		due = append(due, src)
+	}
+	return due, nil
+}
+
+// prepare reads what the pass selects against: the catalog, each remote item's acquisition state
+// and the pool's coverage gaps. stop reports a pass that ends here because its target is met or
+// its catalog is full; res.StoppedBy says which.
+func (p *fetchPass) prepare(ctx context.Context, now time.Time) (stop bool, err error) {
+	f := p.f
+	have, err := f.store.CatalogPaths(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read catalog: %w", err)
+	}
+	// The catalog is one input to selection; source-local history and acquisition intent also
+	// determine whether a discovered item is eligible to be offered again.
+	existing, err := f.store.ListAcquisitionRemoteStates(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read acquisition remote states: %w", err)
+	}
+	// Treat the store result as a snapshot: in-pass queue state must not mutate adapter-owned
+	// fixture or store state across retry attempts.
+	p.inPass = make(map[string]ExistingRemoteState, len(existing))
+	for key, state := range existing {
+		p.inPass[key] = state
+	}
+	// Channel coverage gaps steer which items this pass takes first (#749). Read once per pass
+	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
+	// steering is an optimisation, and the source still deserves its bounded refresh.
+	if f.gaps != nil {
+		gaps, gapsErr := f.gaps(ctx)
+		if gapsErr != nil {
+			f.log.Warn("filler auto-fetch: coverage gaps unavailable; selecting without them", "err", gapsErr)
+		} else {
+			p.gaps, p.targeted = gaps, true
+		}
+	}
+	// An unattended pass fetches toward the pool target and stops when it is met (#2035). The
+	// operator's click is not held to it: asking a source for more is a deliberate act.
+	if p.scheduled && p.targeted && p.gaps.Met() {
+		f.metUntil.Store(now.Add(TargetRecheck).UnixMilli())
+		p.res.StoppedBy = "target"
+		return true, nil
+	}
+	if len(p.gaps.Eras) > 0 {
+		p.gapReason = " Items from " + formatEraWindows(p.gaps.Eras) + " go first: channels there cannot fill a break from their own era."
+	}
+	if len(p.gaps.Roles) > 0 {
+		p.gapReason += " Bumpers and station IDs go first: no break has one to open or close on."
+	}
+	if max := f.limits.MaxCatalogClips(); max > 0 && len(have) >= max {
+		p.res.StoppedBy = "catalog"
+		f.logStop("catalog", len(have), max)
+		return true, nil
+	}
+	return false, nil
+}
+
+// sourceBudget is how many items one source may take this pass.
+type sourceBudget struct {
+	// take caps what is selected. list sizes the listing: it is take before the pool's shortfall
+	// cut it, because a short over-list of a source whose newest items are all held would report
+	// nothing new while the pool stays short.
+	take, list int
+	// providerBound is a take cut short by the provider ceiling.
+	providerBound bool
+}
+
+// budget is src's share of the pass: its own cap or the global one, held to what its provider has
+// left and, on an unattended pass, to the pool's shortfall. ok is false once that shortfall is
+// queued, which ends the pass.
+func (p *fetchPass) budget(src FetchSource) (b sourceBudget, ok bool) {
+	// The source's own override, or the global. A busy collection and a small playlist want
+	// different numbers, which one figure served badly.
+	b.take = src.MaxPerRun
+	if b.take < 1 {
+		b.take = p.globalPerRun
+	}
+	if remaining := p.providerLimit - p.providerQueued[src.Kind]; b.take > remaining {
+		b.take, b.providerBound = remaining, true
+	}
+	b.list = b.take
+	if p.scheduled && p.targeted && p.gaps.Short > 0 && len(p.gaps.Roles) == 0 {
+		if left := p.gaps.Short - p.res.Queued; left < b.take {
+			if left < 1 {
+				return b, false
+			}
+			b.take = left
+		}
+	}
+	return b, true
+}
+
+// checkSource is one due source's bounded check: claim it, then list, select and queue. done
+// reports that the pool's shortfall is already queued, which ends the pass.
+func (p *fetchPass) checkSource(ctx context.Context, src FetchSource) (done bool, err error) {
+	if p.providerQueued[src.Kind] >= p.providerLimit {
+		p.res.StoppedBy = "provider"
+		return false, nil
+	}
+	b, ok := p.budget(src)
+	if !ok {
+		p.res.StoppedBy = "target"
+		return true, nil
+	}
+	checkAt := p.f.now()
+	c := &sourceCheck{
+		pass: p, src: src, leaseUntil: checkAt.Add(SourceCheckLease),
+		checkpoint: src.ScanCheckpoint, outcomes: SourceCheckSummary{}, replaceOutcomes: true,
+	}
+	claimed, err := p.f.store.ClaimCheck(ctx, src.ID, src.LastCheckedAt, checkAt, c.leaseUntil)
+	if err != nil {
+		return false, fmt.Errorf("claim source %q: %w", src.ID, err)
+	}
+	if !claimed {
+		if !p.scheduled {
+			return false, fmt.Errorf("%w: %s", ErrSourceCheckInProgress, src.ID)
+		}
+		return false, nil
+	}
+	p.res.SourcesPolled++
+	return false, c.run(ctx, b)
+}
+
+// sourceCheck is one claimed source's check: its lease, its scan checkpoint and the outcomes it
+// records when it completes.
+type sourceCheck struct {
+	pass            *fetchPass
+	src             FetchSource
+	leaseUntil      time.Time
+	checkpoint      SourceScanCheckpoint
+	outcomes        SourceCheckSummary
+	replaceOutcomes bool
+}
+
+// run lists the source, selects from the listing and queues the selection.
+func (c *sourceCheck) run(ctx context.Context, b sourceBudget) error {
+	p, f, src := c.pass, c.pass.f, c.src
+	// Over-list so that a page full of already-held items still yields new ones. Without
+	// this a source whose first N items are all catalogued would report "nothing new"
+	// forever while the rest of the collection sat unfetched.
+	enumerationLimit := b.list * 4
+	if src.Kind == "youtube" {
+		enumerationLimit = YouTubeInitialLookback
+	}
+	items, _, err := f.enum.Enumerate(ctx, src, enumerationLimit)
+	if err != nil {
+		return c.fail(ctx, "check", "list", "filler auto-fetch: source could not be listed", err)
+	}
+	var stationHits map[string]string
+	if p.scheduled && p.targeted && src.Kind == "archive" {
+		items, stationHits = f.withStationHits(ctx, src, items, p.gaps.Stations, b.list)
+	}
+
+	// The scheduled path uses the same deterministic selector as explicit pulls. There are no
+	// hard semantic constraints here—the remote listing cannot certify them—but declared rights,
+	// representation quality, era-observation diversity, and stable identity now choose the
+	// bounded prefix instead of whichever item the provider returned first.
+	selection, err := PlanAcquisitionFor(AcquisitionIntent{
+		Count:         b.take,
+		CatalogReason: "Bounded scheduled refresh of a registered source." + p.gapReason,
+	}, c.candidates(items, stationHits, b.take), p.inPass, p.gaps)
+	if err != nil {
+		if completeErr := c.complete(ctx); completeErr != nil {
+			return completeErr
+		}
+		return c.report("select", "filler auto-fetch: source candidates could not be selected", err)
+	}
+	for _, decision := range selection.Rejected {
+		switch decision.Disposition {
+		case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
+			p.res.Skipped++
+			c.outcomes[SourceOutcomeAlreadyKnown]++
+		}
+	}
+	if len(selection.Selected) == 0 {
+		return c.complete(ctx)
+	}
+	return c.queue(ctx, selection.Selected, b)
+}
+
+// candidates are the listing items this check offers the selector, in listing order. A YouTube
+// listing is read through the scan checkpoint, which this advances, and stops at take. Of a
+// campaign's duration cuts, only the preferred one is offered.
+func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]string, take int) []AcquisitionCandidate {
+	p, src := c.pass, c.src
+	preferred := p.f.preferredCampaignCuts(src, items)
+	consider := items
+	if src.Kind == "youtube" {
+		consider = c.youtubeWindow(items)
+	}
+	candidates := make([]AcquisitionCandidate, 0, len(items))
+	lastExamined := ""
+	reachedYouTubeCap := false
+	for i, item := range consider {
+		if src.Kind == "youtube" && c.checkpoint.Watermark != "" && item.ID == c.checkpoint.Watermark {
+			break
+		}
+		if item.ID != "" {
+			lastExamined = item.ID
+		}
+		if outcome, rejected := p.f.automaticRejection(src, item); rejected {
+			c.outcomes[outcome]++
+			continue
+		}
+		if campaign := sourceCampaignKey(item.Title); campaign != "" {
+			if cut := preferred[campaign]; cut.Identity.RemoteID != item.ID {
+				p.res.Skipped++
+				c.outcomes[SourceOutcomeAlreadyKnown]++
+				continue
+			}
+		}
+		identity := RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID}
+		if src.Kind == "youtube" && p.inPass[identity.Key()] != "" {
+			p.res.Skipped++
+			c.outcomes[SourceOutcomeAlreadyKnown]++
+			continue
+		}
+		candidates = append(candidates, AcquisitionCandidate{
+			Identity: identity,
+			URL:      item.URL, Title: item.Title, License: item.License,
+			ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
+			DurationMS: item.DurationMS, Height: item.Height,
+			StationSearch: stationHits[item.ID],
+		})
+		if src.Kind == "youtube" && len(candidates) == take {
+			reachedYouTubeCap = i < len(consider)-1
+			break
+		}
+	}
+	if src.Kind == "youtube" {
+		if reachedYouTubeCap {
+			c.checkpoint.Cursor = lastExamined
+		} else {
+			if c.checkpoint.PendingWatermark != "" {
+				c.checkpoint.Watermark = c.checkpoint.PendingWatermark
+			}
+			c.checkpoint.Cursor = ""
+			c.checkpoint.PendingWatermark = ""
+		}
+	}
+	return candidates
+}
+
+// preferredCampaignCuts is, for each campaign in a YouTube listing, the duration cut to take.
+// The cursor can split one provider listing across several checks. Choose the best explicit
+// duration variant from the whole bounded listing before applying that cursor, otherwise a :15
+// cut in one check and a :30 cut in the next both reach the catalog.
+func (f *Fetcher) preferredCampaignCuts(src FetchSource, items []DiscoveredRef) map[string]AcquisitionCandidate {
+	preferred := map[string]AcquisitionCandidate{}
+	if src.Kind != "youtube" {
+		return preferred
+	}
+	for _, item := range items {
+		if _, rejected := f.automaticRejection(src, item); rejected {
+			continue
+		}
+		campaign := sourceCampaignKey(item.Title)
+		if campaign == "" {
+			continue
+		}
+		candidate := AcquisitionCandidate{
+			Identity: RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID},
+			URL:      item.URL, Title: item.Title, License: item.License, ObservedYear: item.ObservedYear,
+			PublishedAt: item.PublishedAt, DurationMS: item.DurationMS, Height: item.Height,
+		}
+		current, found := preferred[campaign]
+		if !found || sourceVariantBetter(candidate, current) {
+			preferred[campaign] = candidate
+		}
+	}
+	return preferred
+}
+
+// youtubeWindow is the part of a YouTube listing this check reads: from just past the
+// checkpoint's cursor, or all of it when a sweep starts or its cursor item is gone.
+func (c *sourceCheck) youtubeWindow(items []DiscoveredRef) []DiscoveredRef {
+	start := 0
+	c.replaceOutcomes = c.checkpoint.Cursor == ""
+	if c.checkpoint.Cursor != "" {
+		if i := slices.IndexFunc(items, func(item DiscoveredRef) bool { return item.ID == c.checkpoint.Cursor }); i >= 0 {
+			start = i + 1
+		} else {
+			// Provider lists can shift or remove an item. Restart the bounded sweep and rely
+			// on exact durable identity dedupe; guessing an offset could skip unseen work.
+			c.checkpoint.Cursor = ""
+			c.checkpoint.PendingWatermark = ""
+			c.replaceOutcomes = true
+		}
+	}
+	if start < len(items) && c.checkpoint.PendingWatermark == "" {
+		c.checkpoint.PendingWatermark = items[0].ID
+	}
+	return items[start:]
+}
+
+// queue hands the selection to ingest and, once it is queued, records it: in-pass state, the
+// pass's counts and the source's last-fetched stamp.
+func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision, b sourceBudget) error {
+	p, f, src := c.pass, c.pass.f, c.src
+	urls := make([]string, 0, len(selected))
+	items := make([]DiscoveredRef, 0, len(selected))
+	for _, decision := range selected {
+		urls = append(urls, decision.Candidate.URL)
+		items = append(items, DiscoveredRef{
+			ID: decision.Candidate.Identity.RemoteID, URL: decision.Candidate.URL,
+			Title: decision.Candidate.Title, License: decision.Candidate.License,
+			ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
+			DurationMS: decision.Candidate.DurationMS, Height: decision.Candidate.Height,
+			Gap: decision.Gap,
+		})
+	}
+	var err error
+	if identified, ok := f.ingest.(IdentifiedFetchIngestor); ok {
+		_, err = identified.IngestSourceItems(ctx, src.ID, src.Kind, items)
+	} else {
+		_, err = f.ingest.IngestSource(ctx, src.ID, src.Kind, urls)
+	}
+	if err != nil {
+		return c.fail(ctx, "queue", "queue", "filler auto-fetch: queueing failed", err)
+	}
+	c.outcomes[SourceOutcomeQueued] += len(urls)
+	// Only a successful queue becomes in-pass state. A failed queue must leave an exact
+	// identity eligible for a healthy retry later in this pass.
+	for _, decision := range selected {
+		p.inPass[decision.Candidate.Identity.Key()] = RemoteQueued
+	}
+	p.res.Queued += len(urls)
+	p.providerQueued[src.Kind] += len(urls)
+	// ⚠ Stamped only AFTER a successful queue, and only when something was actually queued —
+	// a source whose whole page was already catalogued completes in run without reaching
+	// this. "Last fetched" must mean "last brought something in", or a source that has been
+	// polled fruitlessly for a week reads as freshly productive.
+	//
+	// A failure here is logged, not fatal: the clips ARE queued, and losing the whole pass
+	// over a cosmetic timestamp would be the worse trade.
+	if err := f.store.MarkFetched(ctx, src.ID, f.now()); err != nil {
+		f.log.Warn("filler auto-fetch: could not stamp the source", "source", src.ID, "err", err)
+	}
+	if err := c.complete(ctx); err != nil {
+		return err
+	}
+	if b.providerBound && p.providerQueued[src.Kind] >= p.providerLimit && c.checkpoint.Cursor != "" {
+		p.res.StoppedBy = "provider"
+	}
+	return nil
+}
+
+// complete ends the check: the store records its checkpoint and outcomes and releases the lease,
+// and the outcomes join the pass's.
+func (c *sourceCheck) complete(ctx context.Context) error {
+	f, res := c.pass.f, c.pass.res
+	if err := f.store.CompleteCheck(ctx, c.src.ID, c.leaseUntil, SourceCheckCompletion{
+		CheckedAt: f.now(), Checkpoint: c.checkpoint,
+		Outcomes: c.outcomes, ReplaceOutcomes: c.replaceOutcomes,
+	}); err != nil {
+		return fmt.Errorf("complete source %q check: %w", c.src.ID, err)
+	}
+	if len(c.outcomes) > 0 && res.Outcomes == nil {
+		res.Outcomes = SourceCheckSummary{}
+	}
+	for outcome, count := range c.outcomes {
+		res.Outcomes[outcome] += count
+	}
+	return nil
+}
+
+// fail records a failed check, so the source retries after its backoff, then reports cause.
+// stage names the failure in the record's error; verb names the step in the reported one.
+func (c *sourceCheck) fail(ctx context.Context, stage, verb, warning string, cause error) error {
+	f := c.pass.f
+	retryAt := f.now().Add(SourceCheckRetryDelay(c.src.CheckFailureCount + 1))
+	if err := f.store.FailCheck(ctx, c.src.ID, c.leaseUntil, retryAt); err != nil {
+		return fmt.Errorf("record source %q %s failure: %w", c.src.ID, stage, err)
+	}
+	return c.report(verb, warning, cause)
+}
+
+// report is a failure's effect on the pass: a manual run fails with it, while a scheduled pass
+// logs it and moves on to its next source.
+func (c *sourceCheck) report(verb, warning string, cause error) error {
+	if !c.pass.scheduled {
+		return fmt.Errorf("%s source %q: %w", verb, c.src.ID, cause)
+	}
+	c.pass.f.log.Warn(warning, "source", c.src.ID, "err", cause)
+	return nil
+}
+
+// searchOpen comes after the sources (#2059 decision 10): only an unattended pass the sources left
+// short asks the whole provider, and only for nearby stations in the eras it is short of.
+func (p *fetchPass) searchOpen(ctx context.Context) error {
+	gaps := p.gaps
+	if !p.scheduled || !p.targeted || p.f.open == nil || p.res.StoppedBy == "target" || len(gaps.Stations) == 0 || len(gaps.Eras) == 0 {
+		return nil
+	}
+	count := p.globalPerRun
+	if gaps.Short > 0 {
+		count = min(count, gaps.Short-p.res.Queued)
+	}
+	count = min(count, p.providerLimit-p.providerQueued["archive"])
+	if count <= 0 {
+		return nil
+	}
+	queued, err := p.f.openSearch(ctx, gaps, p.inPass, count)
+	if err != nil {
+		return err
+	}
+	p.res.Queued += queued
+	p.providerQueued["archive"] += queued
+	return nil
 }
 
 func sourceCampaignKey(title string) string {
