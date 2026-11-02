@@ -125,7 +125,6 @@ export {
   surfChannelData,
   surfGroupsFromGuide,
   surfPreviousChannel,
-  watchingScheduleFromGuide,
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
@@ -150,10 +149,8 @@ export type {
   PlayerShortcutsProps,
   PlayerStationIdProps,
   PlayerTransportProps,
+  TvWatchingProps,
   WatchFrameProps,
-  WatchingProgrammeData,
-  WatchingScheduleData,
-  WatchingSurfaceProps,
 } from "./src/watching-surface";
 export {
   PlaybarStillSourceProvider,
@@ -168,9 +165,8 @@ export {
   PlayerShortcuts,
   PlayerStationId,
   playbarFromTimeline,
+  TvWatching,
   useAutoHideControls,
   useFrameTap,
   WatchFrame,
-  WatchingSurface,
-  watchingScheduleTimeMs,
 } from "./src/watching-surface";

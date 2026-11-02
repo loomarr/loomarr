@@ -67,15 +67,17 @@ const PlayerPortrait = ({
         style={{ backgroundColor: playerChrome.sheet, flex: 1 }}
       >
         <View style={{ alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
-          <Capsule>
-            <ToolButton
-              density={density}
-              icon="close"
-              label="Leave Watch"
-              onPress={transport.onLeave}
-              pointer={false}
-            />
-          </Capsule>
+          {transport.onLeave ? (
+            <Capsule>
+              <ToolButton
+                density={density}
+                icon="close"
+                label="Leave Watch"
+                onPress={transport.onLeave}
+                pointer={false}
+              />
+            </Capsule>
+          ) : null}
           <Capsule>
             <LiveState density={density} live={transport.live} onGoLive={transport.onGoLive} />
           </Capsule>

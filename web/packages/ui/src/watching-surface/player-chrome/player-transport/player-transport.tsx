@@ -3,7 +3,7 @@ import { type Density, Icon, type IconName, icons, playerChrome, Text } from "@l
 import { type ReactNode, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
-import { glass, webOnly } from "../glass";
+import { focusRing, glass, webOnly } from "../glass";
 import type { PlayerTransportProps } from "../player-chrome.type";
 
 // The transport (§9.4, plane 4): glass capsules grouped by job — ⟲ play ⟳ · live state and Start
@@ -110,6 +110,9 @@ const ToolButton = ({
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const size = density === "touch" ? 44 : 36;
+  // On a TV, focus stands in for hover (§9): the well lights and the tool names itself.
+  const tv = density === "tv";
+  const lit = hovered || (tv && focused);
   return (
     <Pressable
       accessibilityLabel={label}
@@ -123,22 +126,18 @@ const ToolButton = ({
       onPress={onPress}
       style={{
         alignItems: "center",
-        backgroundColor: active ? playerChrome.signalPast : hovered ? playerChrome.glassTop : "transparent",
+        backgroundColor: active ? playerChrome.signalPast : lit ? playerChrome.glassTop : "transparent",
         borderRadius: 999,
         height: size,
         justifyContent: "center",
         opacity: disabled ? 0.3 : 1,
         width: size,
-        ...webOnly({
-          outlineColor: playerChrome.signal,
-          outlineStyle: focused ? "solid" : "none",
-          outlineWidth: 2,
-          transition: "background-color 140ms ease",
-        }),
+        ...focusRing(focused, density),
+        ...webOnly({ transition: "background-color 140ms ease" }),
       }}
     >
       <Icon
-        color={active ? playerChrome.signal : hovered ? playerChrome.text : playerChrome.textSecondary}
+        color={active ? playerChrome.signal : lit ? playerChrome.text : playerChrome.textSecondary}
         decorative
         filled={filled && active}
         glyph={icons[icon]}
@@ -156,8 +155,8 @@ const ToolButton = ({
           }}
         />
       ) : null}
-      {pointer && (hovered || focused) ? (
-        <Tooltip align={tipAlign} density={density} keyHint={keyHint} label={label} />
+      {(pointer && (hovered || focused)) || (tv && focused) ? (
+        <Tooltip align={tipAlign} density={density} keyHint={pointer ? keyHint : undefined} label={label} />
       ) : null}
     </Pressable>
   );
@@ -226,8 +225,9 @@ const LiveState = ({
   density,
   live,
   onGoLive,
-}: Pick<PlayerTransportProps, "density" | "live" | "onGoLive">) =>
-  live.mode === "live" ? (
+}: Pick<PlayerTransportProps, "density" | "live" | "onGoLive">) => {
+  const [focused, setFocused] = useState(false);
+  return live.mode === "live" ? (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 6, height: 36, paddingHorizontal: 12 }}>
       <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 7, width: 7 }} />
       <Text density={density} shout strong textRole="guideIdent" tone="live">
@@ -241,6 +241,8 @@ const LiveState = ({
       </Text>
       <Pressable
         accessibilityRole="button"
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
         onPress={onGoLive}
         style={{
           alignItems: "center",
@@ -251,6 +253,8 @@ const LiveState = ({
           gap: 6,
           height: density === "touch" ? 40 : 30,
           paddingHorizontal: 10,
+          // The pill keeps its own red edge until focus takes it.
+          ...(focused ? focusRing(true, density) : {}),
         }}
       >
         <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 7, width: 7 }} />
@@ -260,6 +264,7 @@ const LiveState = ({
       </Pressable>
     </View>
   );
+};
 
 // A quiet text tool in a capsule: Start over beside the live state (§9.4), back to the programme's
 // start, and the portrait panel's Previous.
@@ -277,23 +282,28 @@ const TextTool = ({
   onPress: () => void;
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const lit = hovered || (density === "tv" && focused);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onPress}
       style={{
         alignItems: "center",
-        backgroundColor: hovered ? playerChrome.glassTop : "transparent",
+        backgroundColor: lit ? playerChrome.glassTop : "transparent",
         borderRadius: 999,
         flexDirection: "row",
         gap: 6,
         height: density === "touch" ? 40 : 32,
         opacity: disabled ? 0.3 : 1,
         paddingHorizontal: 12,
+        ...focusRing(focused, density),
         ...webOnly({ transition: "background-color 140ms ease" }),
       }}
     >
@@ -320,10 +330,15 @@ const PlayDisc = ({
   playing: boolean;
 }) => {
   const size = density === "touch" ? 48 : 44;
+  const [focused, setFocused] = useState(false);
   return (
     <Pressable
       accessibilityLabel={playing ? "Pause" : "Play"}
       accessibilityRole="button"
+      // A remote's OK brings the controls up on Play/Pause (#2088 decision 15).
+      hasTVPreferredFocus={density === "tv"}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onPress={onPress}
       style={{
         alignItems: "center",
@@ -332,6 +347,7 @@ const PlayDisc = ({
         height: size,
         justifyContent: "center",
         width: size,
+        ...focusRing(focused, density),
         ...webOnly({
           boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
         }),
@@ -349,6 +365,7 @@ const PlayDisc = ({
 
 const PlayerTransport = (props: PlayerTransportProps) => {
   const { density, pointer, playing } = props;
+  const window = Boolean(props.onLeave || (pointer && (props.onPictureInPicture || props.onFullscreen)));
   return (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
       <Capsule>
@@ -432,6 +449,16 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             pointer={pointer}
           />
         ) : null}
+        {props.onGuide ? (
+          <ToolButton
+            density={density}
+            icon="guide"
+            label="Guide"
+            onPress={props.onGuide}
+            pointer={pointer}
+            tipAlign={props.onChannels || window ? "center" : "end"}
+          />
+        ) : null}
         {props.onChannels ? (
           <ToolButton
             active={props.channelsOpen}
@@ -441,42 +468,47 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             label="Channels"
             onPress={props.onChannels}
             pointer={pointer}
+            tipAlign={window ? "center" : "end"}
           />
         ) : null}
       </Capsule>
       {/* A touch window has only the way out (the mock's landscape): the phone's own browser owns
-          fullscreen and picture-in-picture there. */}
-      <Capsule>
-        {pointer && props.onPictureInPicture ? (
-          <ToolButton
-            active={props.pictureInPicture}
-            density={density}
-            icon="pictureInPicture"
-            keyHint="P"
-            label={props.pictureInPicture ? "Exit picture-in-picture" : "Picture-in-picture"}
-            onPress={props.onPictureInPicture}
-            pointer={pointer}
-          />
-        ) : null}
-        {pointer && props.onFullscreen ? (
-          <ToolButton
-            density={density}
-            icon={props.fullscreen ? "fullscreenExit" : "fullscreen"}
-            keyHint="F"
-            label={props.fullscreen ? "Exit fullscreen" : "Fullscreen"}
-            onPress={props.onFullscreen}
-            pointer={pointer}
-          />
-        ) : null}
-        <ToolButton
-          density={density}
-          icon="close"
-          label="Leave Watch"
-          onPress={props.onLeave}
-          pointer={pointer}
-          tipAlign="end"
-        />
-      </Capsule>
+          fullscreen and picture-in-picture there. A TV has none of the three. */}
+      {window ? (
+        <Capsule>
+          {pointer && props.onPictureInPicture ? (
+            <ToolButton
+              active={props.pictureInPicture}
+              density={density}
+              icon="pictureInPicture"
+              keyHint="P"
+              label={props.pictureInPicture ? "Exit picture-in-picture" : "Picture-in-picture"}
+              onPress={props.onPictureInPicture}
+              pointer={pointer}
+            />
+          ) : null}
+          {pointer && props.onFullscreen ? (
+            <ToolButton
+              density={density}
+              icon={props.fullscreen ? "fullscreenExit" : "fullscreen"}
+              keyHint="F"
+              label={props.fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              onPress={props.onFullscreen}
+              pointer={pointer}
+            />
+          ) : null}
+          {props.onLeave ? (
+            <ToolButton
+              density={density}
+              icon="close"
+              label="Leave Watch"
+              onPress={props.onLeave}
+              pointer={pointer}
+              tipAlign="end"
+            />
+          ) : null}
+        </Capsule>
+      ) : null}
     </View>
   );
 };

@@ -1,3 +1,5 @@
+import { serverNowOf } from "@loomarr/core/channel-timeline";
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -13,18 +15,21 @@ import {
   createPlaybackMarks,
   NativePlayerView,
   PairedNativeImage,
+  pairedNativeImageSource,
   usePairedClient,
+  useStationIdent,
 } from "@loomarr/player/native";
-import type { ClientDestination } from "@loomarr/ui";
+import type { ClientDestination, TvWatchingProps } from "@loomarr/ui";
 import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  PlaybarStillSourceProvider,
   pairingBackAvailable,
+  playbarFromTimeline,
   SurfJourney,
-  WatchingSurface,
-  watchingScheduleFromGuide,
-  watchingScheduleTimeMs,
+  TvWatching,
+  useAutoHideControls,
 } from "@loomarr/ui";
 import {
   createTvAutoTuneSetting,
@@ -76,8 +81,10 @@ const certMarks = createPlaybackMarks({
 });
 /** A remote key older than this did not cause the tune (a guide pick, a retry, the boot tune). */
 const keyToTuneMaxMs = 1_500;
-/** How long the Favorites confirmation stays up after a long-press of Select. */
-const favouriteNoteMs = 2_500;
+/** How long a note (a Favorites change, an expired pause) stays up. */
+const noteMs = 2_500;
+/** ±10 s, as on every player (#2088 decision 2). */
+const SEEK_STEP_MS = 10_000;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -126,8 +133,6 @@ const useTvMenuKey = (enabled: boolean) => {
 
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
-  const [controlsActivityKey, setControlsActivityKey] = useState(0);
-  const [controlsVisible, setControlsVisible] = useState(true);
   const lastKeyAtMs = useRef<number | undefined>(undefined);
   const {
     catalogState,
@@ -139,6 +144,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     refresh,
     serverVersion,
     snapshot,
+    timeline,
     transport,
   } = usePairedClient({
     credential,
@@ -158,7 +164,15 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       });
     },
     session,
+    timeline: true,
   });
+  // The §9 controls show and hide as on every player, and clear at once for the station-ID card.
+  const playing = snapshot.status === "playing";
+  const { controlsShown, dismissControls, hideControls, revealControls } = useAutoHideControls(playing);
+  const ident = useStationIdent(snapshot);
+  useEffect(() => {
+    if (ident) hideControls();
+  }, [ident, hideControls]);
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
@@ -185,30 +199,28 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     // The choice applies now; an unwritable store just means the next launch reads the default.
     void autoTuneSetting.save(durationMs).catch(() => undefined);
   }, []);
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      const destination = clientBackDestination(active);
-      if (!destination) return false;
-      setActive(destination);
-      return true;
-    });
-    return () => subscription.remove();
-  }, [active]);
-  useTvMenuKey(clientBackDestination(active) !== null);
   // Pending crash reports (last launch's included) go to this server once paired.
   useCrashReportUpload(credential, session);
   useEffect(() => nativeApp.crashReports.recordBreadcrumb("navigation", active), [active]);
   const runRemoteIntent = useCallback(
     (intent: TvWatchingRemoteIntent | undefined) => {
       switch (intent?.kind) {
+        case "seek": {
+          const viewerTimeMs = controller.getSnapshot().livePlayback?.viewerTimeMs;
+          if (viewerTimeMs !== undefined) controller.seek(viewerTimeMs + intent.direction * SEEK_STEP_MS);
+          break;
+        }
         case "step":
           void controller.step(intent.direction);
           break;
         case "tune-number":
           void controller.tuneNumber(intent.digits);
           break;
-        case "open-guide":
-          setActive("guide");
+        case "show-controls":
+          revealControls();
+          break;
+        case "hide-controls":
+          dismissControls();
           break;
         case "open-surf":
           setActive("surf");
@@ -223,49 +235,73 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         }
       }
     },
-    [controller],
+    [controller, dismissControls, revealControls],
   );
-  const showControlsForActivity = useCallback(() => {
-    setControlsVisible(true);
-    setControlsActivityKey((key) => key + 1);
-  }, []);
+  // The remote's map depends on whether the controls are up (#2088 decision 15).
   const dispatchRemoteEvent = useCallback(
     (event: TvWatchingRemoteEvent) => {
       if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
-      const result = reduceTvWatchingRemote(remoteStateRef.current, event, autoTuneMs);
+      const result = reduceTvWatchingRemote(remoteStateRef.current, event, autoTuneMs, controlsShown);
       remoteStateRef.current = result.state;
       setRemoteState(result.state);
-      if (result.handled) showControlsForActivity();
       runRemoteIntent(result.intent);
+      return result.handled;
     },
-    [autoTuneMs, runRemoteIntent, showControlsForActivity],
+    [autoTuneMs, controlsShown, runRemoteIntent],
   );
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      // Back hides the controls first; over a bare picture it leaves Watching, the app's root.
+      if (active === "watching" && dispatchRemoteEvent({ key: "back" })) return true;
+      const destination = clientBackDestination(active);
+      if (!destination) return false;
+      setActive(destination);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [active, dispatchRemoteEvent]);
+  useTvMenuKey(clientBackDestination(active) !== null || (active === "watching" && controlsShown));
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
     const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), keyActionOf(eventKeyAction));
-    if (event && event.key !== "select") dispatchRemoteEvent(event);
+    if (!event) return;
+    // A key among the controls keeps them up a while longer; Back (tvOS: Menu) is the one that hides them.
+    if (controlsShown && event.key !== "back" && event.key !== "menu") revealControls();
+    // OK reaches the focused control, or the bare-picture layer, as its own press; Back reaches the
+    // BackHandler above.
+    if (event.key !== "select" && event.key !== "back") dispatchRemoteEvent(event);
   });
+  // A short note bottom left, over whatever is drawn, announced to a screen reader too.
+  const [note, setNote] = useState<string | undefined>(undefined);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(noteTimer.current), []);
+  const showNote = useCallback((text: string) => {
+    setNote(text);
+    void AccessibilityInfo.announceForAccessibility(text);
+    clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(undefined), noteMs);
+  }, []);
+  // A pause held past the window's edge plays on from live, and says so (as web's player does).
+  const noticeRevision = snapshot.livePlayback?.noticeRevision ?? 0;
+  useEffect(() => {
+    if (noticeRevision > 0) showNote("That paused point is no longer available, so you're back live.");
+  }, [noticeRevision, showNote]);
   // A long-press of Select on a Guide or Surf row stars or unstars that row's channel (a short
   // press still tunes). The controller shows the change at once and puts it back if the server
   // refuses, so the note reads what the lists say afterwards rather than what was asked for.
-  const [favouriteNote, setFavouriteNote] = useState<string | undefined>(undefined);
-  const favouriteNoteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(favouriteNoteTimer.current), []);
   const toggleFavourite = useCallback(
     async (channelId: string) => {
       const { starred } = tvFavouriteToggle(channelId, myChannels.getSnapshot().favouriteIds);
       await myChannels.setFavourite(channelId, starred);
       const applied = myChannels.getSnapshot().favouriteIds.includes(channelId) === starred;
       const name = snapshot.catalog.find(({ id }) => id === channelId)?.name;
-      const note = applied
-        ? `${starred ? "Added to" : "Removed from"} Favorites${name ? ` · ${name}` : ""}`
-        : "Couldn't update Favorites";
-      setFavouriteNote(note);
-      void AccessibilityInfo.announceForAccessibility(note);
-      clearTimeout(favouriteNoteTimer.current);
-      favouriteNoteTimer.current = setTimeout(() => setFavouriteNote(undefined), favouriteNoteMs);
+      showNote(
+        applied
+          ? `${starred ? "Added to" : "Removed from"} Favorites${name ? ` · ${name}` : ""}`
+          : "Couldn't update Favorites",
+      );
     },
-    [myChannels, snapshot.catalog],
+    [myChannels, showNote, snapshot.catalog],
   );
   // tvOS also delivers the held row's own press when the finger lifts; it is not a tune request.
   const longSelectAtMs = useRef<number | undefined>(undefined);
@@ -275,7 +311,6 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       return;
     }
     void controller.tuneChannel(channelId);
-    showControlsForActivity();
     setActive("watching");
   };
   useTVEventHandler(({ eventKeyAction, eventType }) => {
@@ -305,57 +340,93 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     remoteStateRef.current = initialTvWatchingRemoteState;
     setRemoteState(initialTvWatchingRemoteState);
   }, [active]);
-  const [clockMs, setClockMs] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setClockMs(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-  const schedule = watchingScheduleFromGuide(
-    guideSnapshot.layout,
-    snapshot.channel?.id,
-    watchingScheduleTimeMs(snapshot, clockMs),
-  );
-  const dismissControls = useCallback(() => setControlsVisible(false), []);
   const markSwitchShown = useCallback(
     (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
     [controller],
   );
+  const stillSource = useMemo(() => (uri: string) => pairedNativeImageSource(credential, uri), [credential]);
+
+  // The §9 chrome's content: the lower third, the playbar and the transport, read from the tuned
+  // channel's timeline at the playhead, as on every player.
+  const live = snapshot.livePlayback ?? {
+    lagSeconds: 0,
+    mode: "live" as const,
+    noticeRevision: 0,
+    viewerTimeMs: Date.now(),
+  };
+  const channel = snapshot.channel;
+  const chromeData = channel
+    ? playbarFromTimeline({
+        airings: timeline?.airings ?? [],
+        channel: { name: channel.name, number: String(channel.number) },
+        live,
+        nowMs: timeline ? serverNowOf(timeline) : Date.now(),
+        playheadMs: live.viewerTimeMs,
+      })
+    : undefined;
+  const timeZone = guideSnapshot.layout?.timezone;
+  const seekBy = (ms: number) => controller.seek(live.viewerTimeMs + ms);
+  const startOverMs = chromeData?.startOverMs;
+  const chrome: TvWatchingProps["chrome"] = chromeData
+    ? {
+        band: chromeData.band,
+        formatTime: (ms) => formatGuideTime(ms, timeZone),
+        ident,
+        playbar: timeline
+          ? {
+              onSeek: controller.seek,
+              playheadMs: live.viewerTimeMs,
+              segments: chromeData.segments,
+              window: chromeData.window,
+            }
+          : undefined,
+        transport: {
+          density: "tv",
+          live,
+          // The TV's own remote owns the volume; a TV transport draws none.
+          muted: false,
+          onChannels: () => setActive("surf"),
+          onGoLive: () => void controller.goLive(),
+          onGuide: () => setActive("guide"),
+          onSeekBack: () => seekBy(-SEEK_STEP_MS),
+          onSeekForward: () => seekBy(SEEK_STEP_MS),
+          onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
+          onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
+          onToggleMute: () => undefined,
+          onVolume: () => undefined,
+          playing,
+          pointer: false,
+          volume: 1,
+        },
+      }
+    : undefined;
   return (
     <View style={{ flex: 1 }}>
-      <WatchingSurface
-        channelDigits={remoteHasDigits}
-        chromeVisible={active === "watching"}
-        controlsActivityKey={controlsActivityKey}
-        controlsVisible={controlsVisible}
-        density="tv"
-        loading={catalogState.loading}
-        loadError={catalogState.error}
-        onChannelDown={() => void controller.step(-1)}
-        onChannelUp={() => void controller.step(1)}
-        onChangeServer={() => session.chooseServer()}
-        onDismissControls={dismissControls}
-        onGoLive={() => void controller.goLive()}
-        onOpenGuide={() => {
-          // The release of a long press on Watching is not an OK press.
-          if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now()))
-            longSelectAtMs.current = undefined;
-          else dispatchRemoteEvent({ key: "select" });
-        }}
-        onOpenSurf={() => setActive("surf")}
-        onPause={controller.pause}
-        onPlay={() => void controller.play()}
-        onPrevious={() => void controller.previous()}
-        onRetry={() => {
-          if (catalogState.error) refresh();
-          else void controller.retry();
-        }}
-        onShowControls={showControlsForActivity}
-        onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
-        numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
-        player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
-        schedule={schedule}
-        snapshot={snapshot}
-      />
+      <PlaybarStillSourceProvider value={stillSource}>
+        <TvWatching
+          chrome={chrome}
+          chromeVisible={active === "watching"}
+          controlsShown={controlsShown}
+          loading={catalogState.loading}
+          loadError={catalogState.error}
+          numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
+          onBarePress={() => {
+            // The release of a long press on Watching is not an OK press.
+            if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now()))
+              longSelectAtMs.current = undefined;
+            else dispatchRemoteEvent({ key: "select" });
+          }}
+          onChangeServer={() => session.chooseServer()}
+          onLeave={() => setActive("guide")}
+          onRetry={() => {
+            if (catalogState.error) refresh();
+            else void controller.retry();
+          }}
+          onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
+          player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
+          snapshot={snapshot}
+        />
+      </PlaybarStillSourceProvider>
       {active === "watching" ? null : (
         <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
           {active === "guide" ? (
@@ -440,25 +511,27 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               serverVersion={serverVersion}
             />
           )}
-          {favouriteNote ? (
-            <Surface
-              accessibilityLiveRegion="polite"
-              alignItems="center"
-              backgroundColor="surfaceEntry"
-              borderRadius={8}
-              bottom={48}
-              left={48}
-              paddingHorizontal={20}
-              paddingVertical={12}
-              position="absolute"
-            >
-              <Text density="tv" numberOfLines={1} textRole="reading">
-                {favouriteNote}
-              </Text>
-            </Surface>
-          ) : null}
         </View>
       )}
+      {note ? (
+        // Over the picture the lower third owns the foot, so the note takes the readout's top left.
+        <Surface
+          accessibilityLiveRegion="polite"
+          alignItems="center"
+          backgroundColor="surfaceEntry"
+          borderRadius={8}
+          bottom={active === "watching" ? undefined : 48}
+          left={48}
+          paddingHorizontal={20}
+          paddingVertical={12}
+          position="absolute"
+          top={active === "watching" ? 48 : undefined}
+        >
+          <Text density="tv" numberOfLines={1} textRole="reading">
+            {note}
+          </Text>
+        </Surface>
+      ) : null}
     </View>
   );
 };

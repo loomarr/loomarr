@@ -71,11 +71,19 @@ const useAutoHideControls = (playing: boolean) => {
   }, [playing, armHide]);
 
   // The caller clears the picture for a moment of its own (a station-ID card): hide now, unless a
-  // control is holding or playback is paused. The next pointer move or focus brings them back.
+  // control is holding or playback is paused — a paused player whose autoplay was refused must keep
+  // its Play. The next pointer move or focus brings them back.
   const hideControls = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     if (heldRef.current === 0 && playing) setControlsShown(false);
   }, [playing]);
+
+  // The viewer's own word (a TV remote's Back): hide now, paused too, unless a control is holding.
+  // Nothing brings them back until the viewer asks again.
+  const dismissControls = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (heldRef.current === 0) setControlsShown(false);
+  }, []);
 
   useEffect(() => {
     // Paused, or a control is holding (open menu) ⇒ keep controls shown. Otherwise, playing: hide
@@ -92,7 +100,15 @@ const useAutoHideControls = (playing: boolean) => {
     };
   }, [playing, held, hovering, armHide]);
 
-  return { controlsShown, hideControls, holdControls, onPointerActive, onPointerLeave, revealControls };
+  return {
+    controlsShown,
+    dismissControls,
+    hideControls,
+    holdControls,
+    onPointerActive,
+    onPointerLeave,
+    revealControls,
+  };
 };
 
 export { useAutoHideControls };

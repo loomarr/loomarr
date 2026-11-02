@@ -66,7 +66,7 @@ describe("useAutoHideControls", () => {
   });
 
   // The caller's own moment (a station-ID card) clears the controls at once; a move brings them back.
-  // Held or paused controls stay, as they would for any hide.
+  // Held or paused controls stay: a player whose autoplay was refused keeps its Play.
   it("hides at the caller's word during playback, but not while held or paused", () => {
     const { result } = renderHook(() => useAutoHideControls(true));
     act(() => result.current.onPointerActive());
@@ -81,6 +81,21 @@ describe("useAutoHideControls", () => {
 
     const paused = renderHook(() => useAutoHideControls(false));
     act(() => paused.result.current.hideControls());
+    expect(paused.result.current.controlsShown).toBe(true);
+  });
+
+  // The viewer's own word (a TV's Back) clears the picture paused too; nothing re-shows it until they ask.
+  it("dismisses at the viewer's word, paused or playing, but not while held", () => {
+    const paused = renderHook(() => useAutoHideControls(false));
+    act(() => paused.result.current.dismissControls());
+    expect(paused.result.current.controlsShown).toBe(false);
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(paused.result.current.controlsShown).toBe(false);
+    act(() => paused.result.current.revealControls());
+    expect(paused.result.current.controlsShown).toBe(true);
+
+    act(() => paused.result.current.holdControls.hold(true));
+    act(() => paused.result.current.dismissControls());
     expect(paused.result.current.controlsShown).toBe(true);
   });
 

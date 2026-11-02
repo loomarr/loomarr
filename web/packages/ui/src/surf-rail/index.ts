@@ -4,7 +4,6 @@ export {
   surfChannelData,
   surfGroupsFromGuide,
   surfPreviousChannel,
-  watchingScheduleFromGuide,
 } from "./surf-data";
 export type { SurfJourneyProps } from "./surf-journey";
 export { SurfJourney } from "./surf-journey";

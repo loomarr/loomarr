@@ -17,6 +17,7 @@ import {
   useNativeVideoHeight,
   usePairedSubtitles,
   useSampledPlaybackFacts,
+  useStationIdent,
 } from "@loomarr/player/native";
 import {
   PlaybarStillSourceProvider,
@@ -37,7 +38,7 @@ import {
 } from "@loomarr/ui";
 import { lockAsync, OrientationLock, unlockAsync } from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPreference, useSubtitlesPreference } from "./player-preferences";
@@ -50,8 +51,6 @@ import { useAudioPreference, useSubtitlesPreference } from "./player-preferences
 
 /** ±10 s, as on every player (#2088 decision 2). */
 const SEEK_STEP_MS = 10_000;
-/** The station-ID card shows for five seconds on every settled tune (§9.1). */
-const IDENT_MS = 5_000;
 
 // PLAYBACK INFO (#2088 decision 13): the Stream rows, read from the player each second while open.
 // The platform picks the rung itself, so the quality is always Auto.
@@ -100,23 +99,7 @@ const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenP
   const channelId = channel?.id;
   const playing = snapshot.status === "playing";
 
-  // The station ID, shown once as each tune settles and dropped while the next one tunes. Keyed by
-  // the tune, not by playing: resuming from pause is not a new arrival.
-  const [identFor, setIdentFor] = useState<number>();
-  const settledAttempt = playing ? snapshot.attemptId : undefined;
-  const shownAttempt = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (settledAttempt === undefined || settledAttempt === shownAttempt.current) return;
-    shownAttempt.current = settledAttempt;
-    setIdentFor(settledAttempt);
-  }, [settledAttempt]);
-  // The card's own five seconds, whatever the viewer does meanwhile.
-  useEffect(() => {
-    if (identFor === undefined) return;
-    const timer = setTimeout(() => setIdentFor(undefined), IDENT_MS);
-    return () => clearTimeout(timer);
-  }, [identFor]);
-  const ident = identFor !== undefined && identFor === snapshot.attemptId && snapshot.status !== "tuning";
+  const ident = useStationIdent(snapshot);
 
   // A new channel closes the sheet: it described the one left behind.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the channel is the trigger, not an input.

@@ -1,14 +1,13 @@
-import { layoutGuide } from "@loomarr/core/guide";
-import type { PlayerSnapshot } from "@loomarr/player";
+import { type GuideLayout, layoutGuide } from "@loomarr/core/guide";
 import { describe, expect, it } from "vitest";
 
-import {
-  restoreSurfSelection,
-  surfGroupsFromGuide,
-  surfPreviousChannel,
-  watchingScheduleFromGuide,
-  watchingScheduleTimeMs,
-} from "../index";
+import { restoreSurfSelection, surfChannelData, surfGroupsFromGuide, surfPreviousChannel } from "../index";
+
+/** The channel's Surf row at a moment: what airs now and next. */
+const nowOn = (guide: GuideLayout, channelId: string, nowMs: number) => {
+  const channel = guide.channels.find((candidate) => candidate.source.channelId === channelId);
+  return channel ? surfChannelData(channel, nowMs, guide.timezone) : undefined;
+};
 
 const layout = layoutGuide(
   {
@@ -89,37 +88,16 @@ describe("Surf data", () => {
     });
   });
 
-  it("maps the tuned Channel's authoritative Guide identity into Watching", () => {
-    expect(watchingScheduleFromGuide(layout, "seven", 2_000)).toMatchObject({
+  it("moves a Channel's row on with the clock", () => {
+    expect(nowOn(layout, "seven", 2_000)).toMatchObject({
       next: { title: "Next" },
       now: { episodeLabel: "S07E02", progressPercent: 50, title: "Now" },
     });
-    expect(watchingScheduleFromGuide(layout, "missing", 2_000)).toBeUndefined();
+    // "Next" began at 3 000.
+    expect(nowOn(layout, "seven", 4_000)).toMatchObject({ now: { title: "Next" } });
   });
 
-  it("moves Up next on with the clock while a failed tune shows no frame", () => {
-    const channel = { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 };
-    const tunedAt = { lagSeconds: 0, mode: "live" as const, noticeRevision: 0, viewerTimeMs: 2_000 };
-    const failed: PlayerSnapshot = {
-      catalog: [channel],
-      channel,
-      error: "Loomarr couldn't start this channel's in-app stream.",
-      livePlayback: tunedAt,
-      recentChannelIds: [],
-      status: "failed",
-    };
-
-    // "Next" began at 3 000; long after, a failed tune must not still announce it as up next.
-    expect(watchingScheduleFromGuide(layout, "seven", watchingScheduleTimeMs(failed, 4_000))).toMatchObject({
-      now: { title: "Next" },
-    });
-    expect(watchingScheduleTimeMs({ ...failed, status: "tuning" }, 4_000)).toBe(4_000);
-    // A frame on screen keeps describing itself, even a paused one far behind the clock.
-    expect(watchingScheduleTimeMs({ ...failed, status: "paused" }, 4_000)).toBe(2_000);
-    expect(watchingScheduleTimeMs({ ...failed, status: "playing" }, 4_000)).toBe(2_000);
-  });
-
-  it("moves Watching through programme, named filler clips, and the returning programme", () => {
+  it("moves a row through programme, named filler clips, and the returning programme", () => {
     const transitionLayout = layoutGuide(
       {
         channels: [
@@ -184,11 +162,11 @@ describe("Surf data", () => {
       2_000,
     );
 
-    expect(watchingScheduleFromGuide(transitionLayout, "seven", 2_500)).toMatchObject({
+    expect(nowOn(transitionLayout, "seven", 2_500)).toMatchObject({
       next: { title: "Commercials" },
       now: { progressPercent: 75, title: "Kettle Kids · Before the break" },
     });
-    const fillerSchedule = watchingScheduleFromGuide(transitionLayout, "seven", 3_500);
+    const fillerSchedule = nowOn(transitionLayout, "seven", 3_500);
     expect(fillerSchedule).toMatchObject({
       next: { title: "Kettle Kids · After the break" },
       now: {
@@ -199,10 +177,10 @@ describe("Surf data", () => {
     });
     expect(JSON.stringify(fillerSchedule)).not.toContain("raw-first-hash");
     expect(JSON.stringify(fillerSchedule)).not.toContain("/raw/first-source.mp4");
-    expect(watchingScheduleFromGuide(transitionLayout, "seven", 4_100)).toMatchObject({
+    expect(nowOn(transitionLayout, "seven", 4_100)).toMatchObject({
       now: { facts: ["Second Brand"], title: "Commercials · Second sponsor spot" },
     });
-    expect(watchingScheduleFromGuide(transitionLayout, "seven", 5_000)).toMatchObject({
+    expect(nowOn(transitionLayout, "seven", 5_000)).toMatchObject({
       now: { progressPercent: 0, title: "Kettle Kids · After the break" },
     });
   });
@@ -247,7 +225,7 @@ describe("Surf data", () => {
       2_000,
     );
 
-    expect(watchingScheduleFromGuide(breakLayout, "seven", 2_000)).toMatchObject({
+    expect(nowOn(breakLayout, "seven", 2_000)).toMatchObject({
       now: { facts: ["Widgetmax"], title: "Commercials" },
     });
   });

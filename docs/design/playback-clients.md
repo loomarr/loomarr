@@ -173,8 +173,8 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   full-bleed overlay with 44 px targets and only ✕ in the window capsule, tap to show or hide the
   chrome, and double-tap either side to skip ten seconds.
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
-  `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
-  decided then.
+  `@loomarr/ui` after the web route ships, one PR each. The TV's remote follows
+  [Android TV](#android-tv)'s Watching.
 
 ## Android TV
 
@@ -185,9 +185,19 @@ device-profile and signed-HLS contracts as Web, acting with the role of the pers
 media-server token and no second playback API. It installs as a Leanback launcher app and never edits
 the user's home-screen ordering.
 
-- **Watching** is full-screen video. Up/down and Channel keys tune adjacent Channels, number keys
-  enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. Channel
-  identity and the programme bar appear together and clear after five seconds. During filler the
+- **Watching** is full-screen video under the
+  [player chrome](../frontend-design.md#9-player-chrome--one-design-for-every-player) every player wears,
+  at TV density (#2088 decision 15, #2141). The remote follows Emby, Jellyfin and Plex:
+  - **Controls hidden:** OK or Down shows them, with focus on Play/Pause. Left/Right step 10 s
+    (forward has nowhere to go while live). Up and the Channel keys tune adjacent Channels, number
+    keys enter a Channel, Play/Pause plays and pauses, Menu (☰) opens Surf, and Back returns to the
+    launcher.
+  - **Controls shown:** the D-pad moves focus between the tools, and nothing tunes. Back hides the
+    controls, paused too; on Apple TV, Menu is that Back while they show. Guide and Channels (Surf)
+    are tools in the transport, beside each other: Surf has no way to the Guide.
+  - The controls hide after a short idle, as on every player; any key among them keeps them up. The
+    station-ID card clears them as each tune settles, and there is no ✕: Watching is the app's root.
+  During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where
   its name came from (`name_source`: source, sidecar, grounded, curated or filename), and a name

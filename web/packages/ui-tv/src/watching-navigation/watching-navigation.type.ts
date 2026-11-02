@@ -9,9 +9,11 @@ type TvWatchingRemoteEvent =
   | { direction: "down" | "up"; key: "channel" };
 
 type TvWatchingRemoteIntent =
+  /** Seek 10 s back (-1) or forward (1) on the channel's window. */
+  | { direction: -1 | 1; kind: "seek" }
   | { direction: -1 | 1; kind: "step" }
   | { digits: string; kind: "tune-number" }
-  | { kind: "open-guide" | "open-surf" | "toggle-pause" };
+  | { kind: "hide-controls" | "open-surf" | "show-controls" | "toggle-pause" };
 
 type TvWatchingRemoteState = {
   numberEntry?: {

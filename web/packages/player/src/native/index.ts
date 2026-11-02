@@ -9,4 +9,5 @@ export * from "../paired-subtitles";
 export * from "../playback-info";
 export * from "../playback-marks";
 export * from "../shell-pause";
+export * from "../station-ident";
 export * from "./native";

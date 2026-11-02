@@ -7,6 +7,7 @@ import {
   MAX_NUMBER_ENTRY_MS,
   MIN_NUMBER_ENTRY_MS,
   reduceTvWatchingRemote,
+  type TvWatchingRemoteEvent,
   type TvWatchingRemoteState,
   tvNumberEntryPresentation,
   tvWatchingRemoteEventFromNative,
@@ -57,46 +58,60 @@ describe("TV Watching remote navigation", () => {
   it("long-presses Select once, on release, as handled activity with no intent", () => {
     const presses = [0, 1].map((action) => tvWatchingRemoteEventFromNative("longSelect", 100, action));
     expect(presses).toEqual([undefined, { key: "longSelect" }]);
-    // No programme details panel exists yet: the press wakes the chrome and opens nothing.
+    // No programme details panel exists yet: the press opens nothing.
     expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "longSelect" })).toEqual({
       handled: true,
       state: initialTvWatchingRemoteState,
     });
   });
 
-  it("leaves a long press from opening the Guide the way a short Select does", () => {
-    const short = reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "select" });
-    const long = reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "longSelect" });
-    expect(short.intent).toEqual({ kind: "open-guide" });
-    expect(long.intent).toBeUndefined();
-  });
-
-  it("keeps a swipe down on the touch surface as channel down", () => {
-    expect(tvWatchingRemoteEventFromNative("down", 100, 1)).toEqual({ key: "down" });
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "down" }).intent).toEqual({
-      direction: -1,
-      kind: "step",
-    });
-  });
-
-  it("maps the current Shield remote controls and leaves platform-owned keys unhandled", () => {
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "up" })).toMatchObject({
+  // #2088 decision 15: with the controls hidden the remote drives the picture.
+  it("maps the remote over a bare picture: OK or Down shows the controls, Left/Right step 10 s", () => {
+    const hidden = (event: TvWatchingRemoteEvent) =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, event, DEFAULT_NUMBER_ENTRY_MS, false);
+    expect(hidden({ key: "select" })).toMatchObject({ handled: true, intent: { kind: "show-controls" } });
+    expect(hidden({ key: "down" })).toMatchObject({ handled: true, intent: { kind: "show-controls" } });
+    expect(hidden({ key: "left" })).toMatchObject({ handled: true, intent: { direction: -1, kind: "seek" } });
+    expect(hidden({ key: "right" })).toMatchObject({ handled: true, intent: { direction: 1, kind: "seek" } });
+    expect(hidden({ key: "up" })).toMatchObject({ handled: true, intent: { direction: 1, kind: "step" } });
+    expect(hidden({ direction: "down", key: "channel" })).toMatchObject({
       handled: true,
-      intent: { direction: 1, kind: "step" },
+      intent: { direction: -1, kind: "step" },
     });
+    expect(hidden({ key: "playPause" }).intent).toEqual({ kind: "toggle-pause" });
+    // Android TV's ☰ key still opens Surf; tvOS's Menu is the platform's Back and reaches no app at the root.
+    expect(hidden({ key: "menu" }).intent).toEqual({ kind: "open-surf" });
+    // Back leaves Watching, which the platform's back handling owns.
+    expect(hidden({ key: "back" }).handled).toBe(false);
+    expect(hidden({ key: "longSelect" }).intent).toBeUndefined();
+  });
+
+  // With the controls shown the D-pad belongs to focus, Back hides them, and nothing tunes.
+  it("hands the D-pad to focus while the controls show, and Back hides them", () => {
+    const shown = (event: TvWatchingRemoteEvent) =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, event, DEFAULT_NUMBER_ENTRY_MS, true);
+    for (const key of ["up", "down", "left", "right", "select", "menu"] as const) {
+      expect(shown({ key })).toEqual({ handled: false, state: initialTvWatchingRemoteState });
+    }
+    expect(shown({ direction: "up", key: "channel" }).handled).toBe(false);
+    expect(shown({ atMs: 10, digit: "4", key: "digit" }).handled).toBe(false);
+    expect(shown({ key: "back" })).toEqual({
+      handled: true,
+      intent: { kind: "hide-controls" },
+      state: initialTvWatchingRemoteState,
+    });
+    expect(shown({ key: "playPause" }).intent).toEqual({ kind: "toggle-pause" });
+  });
+
+  it("finishes a number typed over the picture even after the controls come up", () => {
+    const typed = reduceTvWatchingRemote(initialTvWatchingRemoteState, {
+      atMs: 0,
+      digit: "7",
+      key: "digit",
+    }).state;
     expect(
-      reduceTvWatchingRemote(initialTvWatchingRemoteState, { direction: "down", key: "channel" }),
-    ).toMatchObject({ handled: true, intent: { direction: -1, kind: "step" } });
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "select" })).toMatchObject({
-      handled: true,
-      intent: { kind: "open-guide" },
-    });
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "menu" })).toMatchObject({
-      handled: true,
-      intent: { kind: "open-surf" },
-    });
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "back" }).handled).toBe(false);
-    expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "right" }).handled).toBe(false);
+      reduceTvWatchingRemote(typed, { atMs: 1_200, key: "timeout" }, DEFAULT_NUMBER_ENTRY_MS, true).intent,
+    ).toEqual({ digits: "7", kind: "tune-number" });
   });
 
   it("keeps the last three digits and restarts the bounded timeout", () => {
@@ -122,7 +137,7 @@ describe("TV Watching remote navigation", () => {
     });
   });
 
-  it("commits digits with Select instead of opening Guide", () => {
+  it("commits digits with Select instead of showing the controls", () => {
     const entered = reduceTvWatchingRemote(initialTvWatchingRemoteState, {
       atMs: 10,
       digit: "7",

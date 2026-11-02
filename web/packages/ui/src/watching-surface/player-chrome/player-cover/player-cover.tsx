@@ -13,11 +13,25 @@ interface PlayerCoverProps {
   /** The error's own words, when the player has them; the off-air sentence otherwise. */
   message?: string;
   onLeave: () => void;
+  /** The way out's words where it goes somewhere particular (a TV's "Change server"); "Leave" otherwise. */
+  leaveLabel?: string;
   onRetry?: () => void;
+  /** "Retry channel" unless what failed is not a channel (a TV's catalog: "Retry"). */
+  retryLabel?: string;
   title: string;
 }
 
-const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, title }: PlayerCoverProps) => (
+const PlayerCover = ({
+  channelLabel,
+  density,
+  kind,
+  leaveLabel = "Leave",
+  message,
+  onLeave,
+  onRetry,
+  retryLabel = "Retry channel",
+  title,
+}: PlayerCoverProps) => (
   <View
     role={kind === "error" ? "alert" : "status"}
     style={{
@@ -50,13 +64,19 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
       {channelLabel}
     </Text>
     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+      {/* A remote has no pointer to find the cover's buttons with: the way on takes the focus. */}
       {onRetry ? (
-        <Action density={density} onPress={onRetry}>
-          Retry channel
+        <Action density={density} hasTVPreferredFocus={density === "tv"} onPress={onRetry}>
+          {retryLabel}
         </Action>
       ) : null}
-      <Action density={density} onPress={onLeave} variant="outline">
-        Leave
+      <Action
+        density={density}
+        hasTVPreferredFocus={density === "tv" && !onRetry}
+        onPress={onLeave}
+        variant="outline"
+      >
+        {leaveLabel}
       </Action>
     </View>
   </View>

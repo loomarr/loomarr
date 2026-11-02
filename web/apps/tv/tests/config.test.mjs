@@ -361,18 +361,20 @@ test("publishes the container-safe discovery port from the Loomarr container", a
   assert.match(compose, /loomarr:[\s\S]*ports:\s*\["51029:51029\/udp"\]/);
 });
 
-test("keeps the Watching inactivity callback stable across playback renders", async () => {
+test("shows and hides Watching's controls as every player does (#2141)", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /const dismissControls = useCallback\(\(\) => setControlsVisible\(false\), \[\]\)/);
-  assert.match(appSource, /onDismissControls=\{dismissControls\}/);
-  assert.doesNotMatch(appSource, /onDismissControls=\{\(\) => setControlsVisible\(false\)\}/);
+  assert.match(appSource, /useAutoHideControls\(playing\)/);
+  // The station-ID card clears the picture of the controls as it arrives.
+  assert.match(appSource, /const ident = useStationIdent\(snapshot\);/);
+  assert.match(appSource, /if \(ident\) hideControls\(\);/);
+  assert.match(appSource, /controlsShown=\{controlsShown\}/);
 });
 
 test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  const watching = appSource.indexOf("<WatchingSurface");
+  const watching = appSource.indexOf("<TvWatching");
   const overlay = appSource.indexOf('{active === "watching" ? null : (');
   assert.ok(watching >= 0, "the paired root must render the shared Watching surface");
   assert.ok(overlay > watching, "transient destinations must render after the mounted Watching surface");
@@ -393,7 +395,9 @@ test("drives every Watching state from the generated catalog and authoritative G
     /createCatalogRefresher\(\{ controller, list: createChannelCatalogPort\(request\)\.list \}\)/,
   );
   assert.match(pairedClient, /await catalogRefresher\.refresh\(\)/);
-  assert.match(appSource, /watchingScheduleFromGuide\(/);
+  // The §9 chrome reads the tuned channel's timeline, as every player's does.
+  assert.match(appSource, /timeline: true,/);
+  assert.match(appSource, /playbarFromTimeline\(/);
   assert.match(appSource, /loading=\{catalogState\.loading\}/);
   assert.match(appSource, /loadError=\{catalogState\.error\}/);
   assert.match(appSource, /if \(catalogState\.error\) refresh\(\)/);
@@ -431,8 +435,20 @@ test("routes the native remote through TV adapters and preserves platform-home B
     appSource,
     /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), keyActionOf\(eventKeyAction\)\)/,
   );
-  assert.match(appSource, /event && event\.key !== "select"/);
-  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs\)/);
+  // OK reaches the focused control as its own press, and Back the BackHandler.
+  assert.match(
+    appSource,
+    /if \(event\.key !== "select" && event\.key !== "back"\) dispatchRemoteEvent\(event\)/,
+  );
+  // The map depends on whether the controls are up (#2088 decision 15).
+  assert.match(
+    appSource,
+    /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs, controlsShown\)/,
+  );
+  assert.match(
+    appSource,
+    /if \(active === "watching" && dispatchRemoteEvent\(\{ key: "back" \}\)\) return true;/,
+  );
   // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
   assert.match(appSource, /createTvAutoTuneSetting\(\{\s*getItem: SecureStore\.getItemAsync/);
   // The Guide's time edges page through the shared reducer (#1659 decision N4).
@@ -440,47 +456,55 @@ test("routes the native remote through TV adapters and preserves platform-home B
     appSource,
     /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
   );
-  // Watching's OK opens the Guide, except the press tvOS sends when a long press of Select lifts.
+  // OK over the bare picture goes to the remote map, except the press tvOS sends when a long press
+  // of Select lifts.
   assert.match(
     appSource,
-    /onOpenGuide=\{\(\) => \{[\s\S]*?tvPressIsLongSelectRelease\(longSelectAtMs\.current, Date\.now\(\)\)[\s\S]*?else dispatchRemoteEvent\(\{ key: "select" \}\);\s*\}\}/,
+    /onBarePress=\{\(\) => \{[\s\S]*?tvPressIsLongSelectRelease\(longSelectAtMs\.current, Date\.now\(\)\)[\s\S]*?else dispatchRemoteEvent\(\{ key: "select" \}\);\s*\}\}/,
   );
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
   assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);
   // tvOS routes Menu to BackHandler only while the menu key is enabled: on wherever Back has a
-  // destination, off at the roots so Menu goes Home there (#1500 audit #1).
+  // destination or Watching's controls are up to hide, off at the roots so Menu goes Home there
+  // (#1500 audit #1).
   assert.match(
     appSource,
     /TVEventControl\.enableTVMenuKey\(\);\s*return \(\) => TVEventControl\.disableTVMenuKey\(\)/,
   );
-  assert.match(appSource, /useTvMenuKey\(clientBackDestination\(active\) !== null\)/);
+  assert.match(
+    appSource,
+    /useTvMenuKey\(clientBackDestination\(active\) !== null \|\| \(active === "watching" && controlsShown\)\)/,
+  );
   assert.match(appSource, /useTvMenuKey\(pairingBackAvailable\(pairingState\)\)/);
 });
 
 test("offers digit entry only on a remote with number keys", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  // The Siri Remote has no digits (#1500 audit #3): no "0–9 jump" hint, no channel-number wait.
+  // The Siri Remote has no digits (#1500 audit #3): no channel-number wait to choose.
   assert.match(appSource, /const isTvOS = Platform\.OS === "ios" && Platform\.isTV;/);
   assert.match(appSource, /const remoteHasDigits = !isTvOS/);
-  assert.match(appSource, /channelDigits=\{remoteHasDigits\}/);
   assert.match(appSource, /autoTune=\{\s*remoteHasDigits\s*\?/);
 });
 
-test("restarts Watching inactivity only for handled remote and tune activity", async () => {
+test("keeps Watching's controls up while the remote is used among them", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
-  assert.match(appSource, /if \(result\.handled\) showControlsForActivity\(\);/);
-
-  // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts.
+  // Every key but the one that hides them (Back; tvOS: Menu) restarts their idle time.
   assert.match(
     appSource,
-    /const tuneFromList = \(channelId: string\) => \{[\s\S]*?void controller\.tuneChannel\(channelId\);\s*showControlsForActivity\(\);\s*setActive\("watching"\);\s*\};/,
+    /if \(controlsShown && event\.key !== "back" && event\.key !== "menu"\) revealControls\(\);/,
+  );
+
+  // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts;
+  // the tune's station-ID card, not the controls, greets the channel.
+  assert.match(
+    appSource,
+    /const tuneFromList = \(channelId: string\) => \{[\s\S]*?void controller\.tuneChannel\(channelId\);\s*setActive\("watching"\);\s*\};/,
   );
   const tuneHandlers = appSource.match(/onTune=\{tuneFromList\}/g);
-  assert.equal(tuneHandlers?.length, 2, "Guide and Surf tune paths must restart Watching inactivity");
+  assert.equal(tuneHandlers?.length, 2, "Guide and Surf share one tune path");
 });
 
 test("restores Guide and Surf focus by identity through the TV registries", async () => {

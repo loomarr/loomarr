@@ -4,10 +4,9 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { WatchingSurface } from "../index";
+import { TvWatching } from "../index";
 
 (
   globalThis as typeof globalThis & {
@@ -26,15 +25,6 @@ const tuning: PlayerSnapshot = {
   tuneReason: "step",
 };
 const playing: PlayerSnapshot = { ...tuning, status: "playing" };
-const schedule = {
-  next: { timeLabel: "9:30 PM", title: "Later" },
-  now: {
-    progressPercent: 40,
-    remainingLabel: "12m left",
-    timeLabel: "9:00 PM–9:30 PM",
-    title: "The Current Frontier",
-  },
-};
 
 // This package compiles without the DOM lib, so type just the jsdom surface these tests use.
 type DomElement = {
@@ -55,23 +45,17 @@ const mount = () => {
   return { container, root: createRoot(container) };
 };
 
-const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof WatchingSurface>[0]> = {}) => (
+const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof TvWatching>[0]> = {}) => (
   <LoomarrProvider>
-    <WatchingSurface
-      density="tv"
-      onChannelDown={vi.fn()}
-      onChannelUp={vi.fn()}
-      onDismissControls={vi.fn()}
-      onGoLive={vi.fn()}
-      onOpenGuide={vi.fn()}
-      onOpenSurf={vi.fn()}
-      onPause={vi.fn()}
-      onPlay={vi.fn()}
-      onPrevious={vi.fn()}
+    <TvWatching
+      chromeVisible
+      controlsShown={false}
+      loading={false}
+      onBarePress={vi.fn()}
+      onChangeServer={vi.fn()}
+      onLeave={vi.fn()}
       onRetry={vi.fn()}
-      onShowControls={vi.fn()}
       player={<div data-player="one-native-player" />}
-      schedule={schedule}
       snapshot={snapshot}
       {...props}
     />
@@ -225,29 +209,22 @@ describe("TV channel switch overlay (B4, #1627)", () => {
   it("centres the loading spinner (its own align-self must not undo the container's centring)", () => {
     const dom = globalThis as unknown as {
       document: { body: { appendChild: (node: unknown) => void } };
-      getComputedStyle: (node: DomElement) => { alignSelf: string };
+      getComputedStyle: (node: DomElement) => { alignItems: string; alignSelf: string };
     };
     const { container, root } = mount();
     dom.document.body.appendChild(container);
     act(() =>
-      root.render(
-        surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true, schedule: {} }),
-      ),
+      root.render(surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true })),
     );
     const spinner = container.querySelector('[aria-label="Loading channels"]');
     if (!spinner) throw new Error("no loading spinner rendered");
     // A spinner that aligns itself to the start sits at the screen's left edge unless a
-    // shrink-wrapping, centred wrapper carries it.
+    // shrink-wrapping wrapper carries it, centred by the loading panel around it.
     expect(dom.getComputedStyle(spinner).alignSelf).toBe("flex-start");
-    expect(dom.getComputedStyle(spinner.parentElement).alignSelf).toBe("center");
+    expect(dom.getComputedStyle(spinner.parentElement.parentElement).alignItems).toBe("center");
     // Unmount: a tree left mounted keeps its spinner animating after jsdom tears down, and the
     // next frame throws "window is not defined" as an unhandled error that fails the run.
     act(() => root.unmount());
     container.remove();
-  });
-
-  it("is never drawn on touch density (the web Watch page adopts it separately)", () => {
-    expect(renderToStaticMarkup(surface(tuning, { density: "touch" }))).not.toContain("Tuning in to channel");
-    expect(renderToStaticMarkup(surface(tuning))).toContain("Tuning in to channel");
   });
 });

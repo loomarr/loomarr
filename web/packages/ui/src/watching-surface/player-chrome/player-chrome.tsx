@@ -35,49 +35,54 @@ const PlayerChrome = ({
   // The station-ID card stands in for hidden controls: the band alone, fuller (mock "station-id").
   const card = ident && !visible && !sheet;
   const shown = controls || card;
+  // A remote moves focus through whatever is mounted, seen or not, so a TV mounts the controls only
+  // while they show; elsewhere they fade.
+  const mounted = shown || density !== "tv";
   return (
     <ThemeScope theme="dark">
-      <View
-        aria-hidden={!shown || undefined}
-        pointerEvents={shown ? "box-none" : "none"}
-        style={{
-          bottom: 0,
-          gap: touch ? 6 : 12,
-          left: 0,
-          opacity: shown ? 1 : 0,
-          paddingBottom: touch ? 10 : 20,
-          paddingHorizontal: touch ? 16 : 32,
-          paddingTop: touch ? 40 : 96,
-          position: "absolute",
-          right: 0,
-          zIndex: 30,
-          ...gradientOr(
-            `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
-            playerChrome.scrimMid,
-          ),
-          ...webOnly({ transition: "opacity 220ms ease" }),
-        }}
-      >
-        <LowerThirdBand
-          band={band}
-          density={density}
-          ident={card}
-          steppedBack={previewOpen && transport.pointer}
-        />
-        {card ? null : playbar ? (
-          <PreviewPlaybar
+      {mounted ? (
+        <View
+          aria-hidden={!shown || undefined}
+          pointerEvents={shown ? "box-none" : "none"}
+          style={{
+            bottom: 0,
+            gap: touch ? 6 : 12,
+            left: 0,
+            opacity: shown ? 1 : 0,
+            paddingBottom: touch ? 10 : 20,
+            paddingHorizontal: touch ? 16 : 32,
+            paddingTop: touch ? 40 : 96,
+            position: "absolute",
+            right: 0,
+            zIndex: 30,
+            ...gradientOr(
+              `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
+              playerChrome.scrimMid,
+            ),
+            ...webOnly({ transition: "opacity 220ms ease" }),
+          }}
+        >
+          <LowerThirdBand
+            band={band}
             density={density}
-            formatTime={formatTime}
-            onPreviewChange={preview}
-            onSeek={playbar.onSeek}
-            playheadMs={playbar.playheadMs}
-            pointer={transport.pointer}
-            segments={playbar.segments}
-            window={playbar.window}
+            ident={card}
+            steppedBack={previewOpen && transport.pointer}
           />
-        ) : null}
-        {card ? null : <PlayerTransport {...transport} />}
-      </View>
+          {card ? null : playbar ? (
+            <PreviewPlaybar
+              density={density}
+              formatTime={formatTime}
+              onPreviewChange={preview}
+              onSeek={playbar.onSeek}
+              playheadMs={playbar.playheadMs}
+              pointer={transport.pointer}
+              segments={playbar.segments}
+              window={playbar.window}
+            />
+          ) : null}
+          {card ? null : <PlayerTransport {...transport} />}
+        </View>
+      ) : null}
       {sheet ? (
         <>
           <View

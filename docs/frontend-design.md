@@ -578,7 +578,11 @@ falls back to a solid tinted fill of the same luminance; the plane order must st
 | Playbar | Hover bar + preview card | Hover bar, no floating card; a tap on a segment opens the right-hand sheet | A scrollable filmstrip, `Coming up` | Visual design as pointer; focus stands in for hover |
 | Shortcuts | Tooltips + `?` sheet | — | — | Remote keys (see below) |
 
-**Open for the TV adoption step:** the D-pad has no free key for walking the playbar — Up/Down and
-the Channel keys tune, OK opens the Guide, Left opens Surf ([`playback-clients.md`](design/playback-clients.md#android-tv)).
-How a remote reaches the bar and its cards is decided with the maintainer when that step starts, not
-here.
+**The TV remote** (#2088 decision 15, settled with the maintainer for the TV adoption step) follows
+Emby, Jellyfin and Plex: over a bare picture OK or Down brings the controls up on Play/Pause and
+Left/Right step 10 s. With the controls up the D-pad is focus's, Up from the transport enters the
+playbar, where focus walks the blocks and shows each preview card as hover does, and OK on the past
+seeks there. Back hides the controls. Guide and Surf move off OK and Left into the transport as tools
+(Guide, Channels), and a TV draws no ✕: Watching is its root. Focus wears the web's amber ring
+and lights a tool's well as hover would. Keys in full:
+[`playback-clients.md`](design/playback-clients.md#android-tv).

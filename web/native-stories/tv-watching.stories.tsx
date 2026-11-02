@@ -1,10 +1,10 @@
 import { LoomarrProvider } from "@loomarr/design-system";
-import { type WatchingScheduleData, WatchingSurface, type WatchingSurfaceProps } from "@loomarr/ui";
+import { TvWatching, type TvWatchingProps } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { View } from "react-native";
 
 const channel = { id: "nature", inAppPlayable: true, name: "Nature Documentaries", number: 21 };
-type WatchingSnapshot = WatchingSurfaceProps["snapshot"];
+type WatchingSnapshot = TvWatchingProps["snapshot"];
 
 const snapshot: WatchingSnapshot = {
   attemptId: 3,
@@ -15,55 +15,74 @@ const snapshot: WatchingSnapshot = {
   recentChannelIds: ["games"],
   status: "playing",
 };
-const schedule: WatchingScheduleData = {
-  next: { timeLabel: "2:30 AM", title: "Blue Planet — The Deep" },
-  now: {
-    badge: { label: "On now", tone: "live" },
-    episodeLabel: "S2E4",
-    facts: ["1996", "TV-PG", "Drama · Adventure"],
-    progressPercent: 83,
-    timeLabel: "2:00 AM–2:30 AM",
-    title: "Nature Documentaries — “Pilot episode”",
-  },
-};
 
 /** A data: URI, never a remote URL: the snapshot suite must not depend on the network. */
 const STILL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAAVUlEQVR4nA3JIRIAIQwDwHsTGh1dHY2OruxUIZFIZCVPPNbu1+AdAUzDIvbAEcpxv0bvDHAaF7kHj1jOF/KugKZpUXvoSOV6kd4zkNNyMffIoyzP+wOonSmh7IzuzQAAAABJRU5ErkJggg==";
 
+const noop = () => undefined;
+
+const chromeFor = (state: WatchingSnapshot, ident = false): TvWatchingProps["chrome"] => {
+  const live = state.livePlayback ?? { lagSeconds: 0, mode: "live" as const };
+  return {
+    band: {
+      channelName: channel.name,
+      channelNumber: String(channel.number),
+      progress: 0.83,
+      programmeLine: "Blue Planet · S2 E4 “The Deep”",
+      station: "1990s · Portland, ME",
+      timeLabel: "25m in · 5m left",
+    },
+    formatTime: () => "2:30 AM",
+    ident,
+    transport: {
+      density: "tv",
+      live,
+      muted: false,
+      onChannels: noop,
+      onGoLive: noop,
+      onGuide: noop,
+      onSeekBack: noop,
+      onSeekForward: noop,
+      onToggleMute: noop,
+      onTogglePlay: noop,
+      onVolume: noop,
+      playing: state.status === "playing",
+      pointer: false,
+      volume: 1,
+    },
+  };
+};
+
 const Preview = ({
-  loading,
+  controlsShown = true,
+  ident = false,
+  loading = false,
   loadError,
   numberEntry,
-  scheduleData = schedule,
   state = snapshot,
 }: {
+  controlsShown?: boolean;
+  ident?: boolean;
   loading?: boolean;
   loadError?: string;
-  numberEntry?: WatchingSurfaceProps["numberEntry"];
-  scheduleData?: WatchingScheduleData;
+  numberEntry?: TvWatchingProps["numberEntry"];
   state?: WatchingSnapshot;
 }) => (
   <LoomarrProvider>
     <View style={{ height: "100%", width: "100%" }}>
-      <WatchingSurface
-        density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
+      <TvWatching
+        chrome={state.channel ? chromeFor(state, ident) : undefined}
+        chromeVisible
+        controlsShown={controlsShown}
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}
-        onChannelDown={() => undefined}
-        onChannelUp={() => undefined}
-        onDismissControls={() => undefined}
-        onGoLive={() => undefined}
-        onOpenGuide={() => undefined}
-        onOpenSurf={() => undefined}
-        onPause={() => undefined}
-        onPlay={() => undefined}
-        onPrevious={() => undefined}
-        onRetry={() => undefined}
-        onShowControls={() => undefined}
+        onBarePress={noop}
+        onChangeServer={noop}
+        onLeave={noop}
+        onRetry={noop}
         player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
-        schedule={scheduleData}
         snapshot={state}
       />
     </View>
@@ -72,15 +91,16 @@ const Preview = ({
 
 const meta = {
   component: Preview,
-  title: "Loomarr Components/Watching Surface",
+  title: "Loomarr Components/TV Watching",
 } satisfies Meta<typeof Preview>;
 
 type Story = StoryObj<typeof meta>;
-const CurrentAndNext: Story = {};
+const Controls: Story = {};
+const BarePicture: Story = { args: { controlsShown: false } };
+const StationId: Story = { args: { controlsShown: false, ident: true } };
 const Loading: Story = {
-  args: { loading: true, scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
+  args: { loading: true, state: { catalog: [], recentChannelIds: [], status: "empty" } },
 };
-const Tuning: Story = { args: { state: { ...snapshot, status: "tuning" } } };
 // A viewer-initiated tune (channel up/down) is what raises the switch overlay: the surf card over the
 // channel's dimmed still, or over plain black when the channel has no still yet.
 const TuningSwitch: Story = { args: { state: { ...snapshot, status: "tuning", tuneReason: "step" } } };
@@ -90,8 +110,14 @@ const TuningSwitchWithStill: Story = {
 const PlaybackError: Story = {
   args: { state: { ...snapshot, error: "The stream could not be decoded.", status: "failed" } },
 };
+const CatalogError: Story = {
+  args: {
+    loadError: "This Loomarr isn't answering.",
+    state: { catalog: [], recentChannelIds: [], status: "empty" },
+  },
+};
 const NumberEntry: Story = {
-  args: { numberEntry: { channelName: "Nature Documentaries", digits: "21" } },
+  args: { controlsShown: false, numberEntry: { channelName: "Nature Documentaries", digits: "21" } },
 };
 const Paused: Story = {
   args: {
@@ -111,21 +137,24 @@ const BehindLive: Story = {
   },
 };
 const EmptyChannel: Story = {
-  args: { scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
+  args: { state: { catalog: [], recentChannelIds: [], status: "empty" } },
 };
+// The chrome stays dark over the picture in a light app (§9).
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
 export {
+  BarePicture,
   BehindLive,
-  CurrentAndNext,
+  CatalogError,
+  Controls,
   EmptyChannel,
   Light,
   Loading,
   NumberEntry,
   Paused,
   PlaybackError,
-  Tuning,
+  StationId,
   TuningSwitch,
   TuningSwitchWithStill,
 };

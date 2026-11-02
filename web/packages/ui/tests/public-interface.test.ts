@@ -21,7 +21,7 @@ import {
   SurfJourney,
   SurfRail,
   TransientOverlay,
-  WatchingSurface,
+  TvWatching,
 } from "../index";
 
 describe("ui public interface", () => {
@@ -46,6 +46,6 @@ describe("ui public interface", () => {
     expect(StatePanel).toBeTypeOf("function");
     expect(SurfJourney).toBeTypeOf("function");
     expect(SurfRail).toBeTypeOf("function");
-    expect(WatchingSurface).toBeTypeOf("function");
+    expect(TvWatching).toBeTypeOf("function");
   });
 });

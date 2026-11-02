@@ -1,1 +1,1 @@
-export { glass, gradientOr, panelGlass, webOnly } from "./glass";
+export { focusRing, glass, gradientOr, panelGlass, webOnly } from "./glass";

@@ -57,11 +57,28 @@ const numberEntryIntent = (state: TvWatchingRemoteState, handled: boolean): TvWa
     : { handled, state };
 };
 
+/**
+ * The remote on Watching (#2088 decision 15). Over a bare picture it drives the picture: OK or Down
+ * shows the controls, Left/Right step 10 s, Up and Channel ± tune. While the controls show, the D-pad
+ * and OK belong to focus, Back hides them, and nothing tunes; Play/Pause works either way.
+ */
 const reduceTvWatchingRemote = (
   state: TvWatchingRemoteState,
   event: TvWatchingRemoteEvent,
   durationMs: number = DEFAULT_NUMBER_ENTRY_MS,
+  controlsShown = false,
 ): TvWatchingRemoteResult => {
+  if (controlsShown) {
+    switch (event.key) {
+      case "back":
+        return { handled: true, intent: { kind: "hide-controls" }, state };
+      case "playPause":
+      case "timeout":
+        break;
+      default:
+        return { handled: false, state };
+    }
+  }
   switch (event.key) {
     case "digit": {
       const digits = `${state.numberEntry?.digits ?? ""}${event.digit}`.slice(-MAX_CHANNEL_DIGITS);
@@ -77,20 +94,25 @@ const reduceTvWatchingRemote = (
     case "select":
       return state.numberEntry
         ? numberEntryIntent(state, true)
-        : { handled: true, intent: { kind: "open-guide" }, state };
+        : { handled: true, intent: { kind: "show-controls" }, state };
+    case "down":
+      return { handled: true, intent: { kind: "show-controls" }, state };
     case "playPause":
       return { handled: true, intent: { kind: "toggle-pause" }, state };
-    // The Watching screen has no programme details panel yet, so a long press only wakes the chrome
-    // (a handled key with no intent). It is the seam where the panel opens once it has a mock.
+    // Watching has no programme details panel yet, so a long press is a handled key with no intent.
+    // It is the seam where the panel opens once it has a mock.
     case "longSelect":
       return { handled: true, state };
     case "left":
+      return { handled: true, intent: { direction: -1, kind: "seek" }, state };
+    case "right":
+      return { handled: true, intent: { direction: 1, kind: "seek" }, state };
+    // Android TV's ☰ key. tvOS's Menu is its Back, and reaches the app only where there is somewhere
+    // to go back to, so it never arrives here over a bare picture.
     case "menu":
       return { handled: true, intent: { kind: "open-surf" }, state };
     case "up":
       return { handled: true, intent: { direction: 1, kind: "step" }, state };
-    case "down":
-      return { handled: true, intent: { direction: -1, kind: "step" }, state };
     case "channel":
       return {
         handled: true,
@@ -98,7 +120,6 @@ const reduceTvWatchingRemote = (
         state,
       };
     case "back":
-    case "right":
       return { handled: false, state };
   }
 };
