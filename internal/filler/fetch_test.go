@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -469,6 +470,35 @@ func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
 				t.Errorf("compilations off: too_long outcomes = %d, want the reel counted once", n)
 			}
 		}
+	}
+}
+
+// The pass result explains what every source it checked saw, summed: it is what a manual run
+// reports, so a source's outcomes stored but not added to the pass would leave the operator with
+// "nothing happened".
+func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "s1", Kind: "archive", URI: "coll-1", Enabled: true},
+			{ID: "s2", Kind: "archive", URI: "coll-2", Enabled: true},
+		},
+		offers: []filler.DiscoveredRef{
+			{ID: "reel", URL: "https://archive.org/details/reel", DurationMS: 30 * 60 * 1000},
+			{ID: "spot", URL: "https://archive.org/details/spot", DurationMS: 45 * 1000},
+		},
+	}
+	l := limits(10, 2000)
+	l.Compilations = filler.CompilationGate{
+		Take: func() bool { return false },
+		Over: func() time.Duration { return 2 * time.Minute },
+	}
+	res, err := newFetcher(t, stub, l).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filler.SourceCheckSummary{filler.SourceOutcomeTooLong: 2, filler.SourceOutcomeQueued: 2}
+	if !maps.Equal(res.Outcomes, want) {
+		t.Fatalf("pass outcomes = %v, want %v — one reel held back and one spot queued per source", res.Outcomes, want)
 	}
 }
 
