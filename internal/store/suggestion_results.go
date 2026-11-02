@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // CommitSuggestionSuccess is the generation-success persistence boundary. A
@@ -159,10 +161,7 @@ func (s *sqlStore) ReviseSubmittedProposal(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		lockQuery += ` FOR UPDATE`
-	}
+	lockQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var status string
 	if err := tx.QueryRowContext(ctx, s.ph(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound

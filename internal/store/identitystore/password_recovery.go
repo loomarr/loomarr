@@ -208,9 +208,7 @@ func (s *Store) RedeemPasswordRecovery(
 		WHERE g.token_hash = ? AND g.consumed_at = 0 AND g.revoked_at = 0
 		  AND g.expires_at > ? AND r.status = 'pending' AND r.expires_at > ?
 		  AND u.disabled = ? AND u.media_server_linked = ? AND u.password_hash <> ''`
-	if s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE OF r, g, u`
-	}
+	query = storedb.LockRowsOf(s.h.Dialect(), query, `r, g, u`)
 	value, err := scanPasswordRecovery(tx.QueryRowContext(ctx, s.h.Rebind(query),
 		grantHash, epoch(at), epoch(at), false, false))
 	if err != nil {

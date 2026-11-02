@@ -47,10 +47,7 @@ func (c ClipTx) Require(ctx context.Context, hash string) error {
 // EnrichmentRevision reads the clip's descriptive-input revision. On Postgres it locks the row
 // until the transaction ends, so a pass records against the revision it read.
 func (c ClipTx) EnrichmentRevision(ctx context.Context, hash string) (int64, error) {
-	query := `SELECT enrichment_revision FROM clips WHERE hash = ?`
-	if c.s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE`
-	}
+	query := storedb.LockRows(c.s.h.Dialect(), `SELECT enrichment_revision FROM clips WHERE hash = ?`)
 	var revision int64
 	err := c.tx.QueryRowContext(ctx, c.s.h.Rebind(query), hash).Scan(&revision)
 	return revision, err
@@ -131,10 +128,8 @@ func (c ClipTx) ClearSourceDefaultGeography(ctx context.Context, hash string, at
 // AddLeafTags adds taxonomy leaves to the clip's asserted leaves and rebuilds its rollups, under
 // the same taxonomy lock as graph edits. Leaves it already has are kept once.
 func (c ClipTx) AddLeafTags(ctx context.Context, hash string, tags []string) error {
-	if c.s.h.Dialect() == storedb.DialectPostgres {
-		if _, err := c.tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
-			return fmt.Errorf("add clip tags: taxonomy lock: %w", err)
-		}
+	if err := storedb.XactLock(ctx, c.s.h.Dialect(), c.tx, taxonomySharedLockSQL); err != nil {
+		return fmt.Errorf("add clip tags: taxonomy lock: %w", err)
 	}
 	leaves, err := getClipTagsFrom(ctx, c.tx, c.s.h.Rebind, hash, true)
 	if err != nil {
@@ -232,10 +227,7 @@ type ClipPublication struct {
 // LockPublication reads the clip's publication state. On Postgres it locks the row until the
 // transaction ends. A missing clip is ErrNotFound.
 func (c ClipTx) LockPublication(ctx context.Context, hash string) (ClipPublication, error) {
-	query := `SELECT held, removed_at, is_composite, source, placement FROM clips WHERE hash = ?`
-	if c.s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE`
-	}
+	query := storedb.LockRows(c.s.h.Dialect(), `SELECT held, removed_at, is_composite, source, placement FROM clips WHERE hash = ?`)
 	var p ClipPublication
 	var removedAt int64
 	err := c.tx.QueryRowContext(ctx, c.s.h.Rebind(query), hash).Scan(&p.Held, &removedAt, &p.Composite, &p.Source, &p.Placement)

@@ -315,9 +315,7 @@ func (s *Store) RedeemInvitation(
 		FROM invitations i JOIN invitation_grants g ON g.invitation_id = i.id
 		WHERE g.token_hash = ? AND g.consumed_at = 0 AND g.revoked_at = 0 AND g.expires_at > ?
 		  AND i.status = 'pending' AND i.expires_at > ?`
-	if s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE OF i, g`
-	}
+	query = storedb.LockRowsOf(s.h.Dialect(), query, `i, g`)
 	var value invitation.Invitation
 	var kind, role, status, conveyance string
 	var createdAt, expiresAt, terminalAt int64

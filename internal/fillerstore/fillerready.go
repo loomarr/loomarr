@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // GetFillerReadyEvent returns the effective publication event for one clip.
@@ -73,10 +74,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return fmt.Errorf("lock ready clip %s: %w", e.ClipHash, err)
 	}
 
-	pipelineQuery := clipPipelineSelect + ` WHERE clip_hash = ?`
-	if s.dialect == store.DialectPostgres {
-		pipelineQuery += ` FOR UPDATE`
-	}
+	pipelineQuery := storedb.LockRows(s.dialect, clipPipelineSelect+` WHERE clip_hash = ?`)
 	current, err := scanClipPipeline(tx.QueryRowContext(ctx, s.ph(pipelineQuery), e.ClipHash))
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.ErrNotFound

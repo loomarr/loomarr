@@ -56,7 +56,7 @@ func currentGeneratedSecret(
 		return "", fmt.Errorf("read %s: generated secrets are unavailable", secret)
 	}
 	before := secrets.Value(secret)
-	if dialect != store.DialectPostgres {
+	if !store.SupportsReplicas(dialect) {
 		if before == "" {
 			return "", fmt.Errorf("read %s: generated secret is empty", secret)
 		}

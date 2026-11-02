@@ -124,7 +124,7 @@ func trackReplicaSettingsRefresh(
 	interval time.Duration,
 	after func(),
 ) bool {
-	if dialect != store.DialectPostgres || svc == nil {
+	if !store.SupportsReplicas(dialect) || svc == nil {
 		return false
 	}
 	owner.goRun(func(ctx context.Context) { svc.RefreshEvery(ctx, interval, after) })

@@ -183,11 +183,8 @@ func (s *Store) ClaimDueNotificationAttempt(
 		return notifications.Attempt{}, fmt.Errorf("claim notification attempt: terminalize recovered intents: %w", err)
 	}
 
-	query := notificationAttemptSelect +
-		` WHERE status = 'queued' AND available_at <= ? ORDER BY available_at, id LIMIT 1`
-	if s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE SKIP LOCKED`
-	}
+	query := storedb.LockRowsSkipLocked(s.h.Dialect(), notificationAttemptSelect+
+		` WHERE status = 'queued' AND available_at <= ? ORDER BY available_at, id LIMIT 1`)
 	attempt, err := scanNotificationAttempt(tx.QueryRowContext(ctx, s.h.Rebind(query), epoch(now)))
 	if errors.Is(err, notifications.ErrNotFound) {
 		if commitErr := tx.Commit(); commitErr != nil {

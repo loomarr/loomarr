@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const catalogProjectionBackfillVersion = 2
@@ -202,10 +203,7 @@ func (s *sqlStore) applyFillerEnrichmentTx(ctx context.Context, tx store.Tx, can
 		return fillerenrichment.State{}, false, err
 	}
 	candidate = grounded
-	query := `SELECT ` + enrichmentColumns + ` FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = ?`
-	if s.dialect == store.DialectPostgres {
-		query += ` FOR UPDATE`
-	}
+	query := storedb.LockRows(s.dialect, `SELECT `+enrichmentColumns+` FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = ?`)
 	current, err := scanEnrichment(tx.QueryRowContext(ctx, s.ph(query), candidate.ClipHash, string(candidate.Axis)))
 	if errors.Is(err, sql.ErrNoRows) || errors.Is(errors.Unwrap(err), sql.ErrNoRows) {
 		current = fillerenrichment.State{}

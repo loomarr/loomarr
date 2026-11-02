@@ -122,7 +122,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store/storedb`** · 3 importers
+- **`store/storedb`** · 4 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
 - **`taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -244,7 +244,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
-- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`, `store/catalogstore`
+- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`, `store/catalogstore`, `store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparers that render and verify the normalized whole-source and per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
