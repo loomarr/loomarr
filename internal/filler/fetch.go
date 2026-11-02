@@ -674,8 +674,8 @@ func (c *sourceCheck) run(ctx context.Context, b sourceBudget) error {
 }
 
 // candidates are the listing items this check offers the selector, in listing order. A YouTube
-// listing is read through the scan checkpoint, which this advances, and stops at take. Of a
-// campaign's duration cuts, only the preferred one is offered.
+// listing is read through the scan checkpoint, which this advances, and stops at take; of a
+// campaign's duration cuts there, only the preferred one is offered.
 func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]string, take int) []AcquisitionCandidate {
 	p, src := c.pass, c.src
 	preferred := p.f.preferredCampaignCuts(src, items)
@@ -697,7 +697,7 @@ func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]s
 			c.outcomes[outcome]++
 			continue
 		}
-		if campaign := sourceCampaignKey(item.Title); campaign != "" {
+		if campaign := sourceCampaignKey(item.Title); src.Kind == "youtube" && campaign != "" {
 			if cut := preferred[campaign]; cut.Identity.RemoteID != item.ID {
 				p.res.Skipped++
 				c.outcomes[SourceOutcomeAlreadyKnown]++
