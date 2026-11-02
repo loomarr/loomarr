@@ -2,6 +2,7 @@ import { audioChoice } from "@loomarr/core/audio-choice";
 import { serverNowOf } from "@loomarr/core/channel-timeline";
 import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
+import { Screen } from "@loomarr/design-system";
 import { useHaptic } from "@loomarr/design-system/haptics";
 import {
   cueLinesAt,
@@ -36,8 +37,9 @@ import {
 } from "@loomarr/ui";
 import { lockAsync, OrientationLock, unlockAsync } from "expo-screen-orientation";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAudioPreference, useSubtitlesPreference } from "./player-preferences";
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
@@ -67,10 +69,12 @@ const PlaybackInfo = ({
 interface WatchingScreenProps {
   client: PairedClient;
   credential: PairingCredential;
+  /** The shell's tab bar, docked under the portrait panel; landscape leaves it out. */
+  footer: ReactNode;
   onLeave: () => void;
 }
 
-const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) => {
+const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenProps) => {
   const {
     catalogState,
     controller,
@@ -121,6 +125,7 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
   // Landscape's overlay shows and hides like every player's: hidden after a while playing, held while
   // a sheet is open, and cleared at once for the station-ID card.
   const screen = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const landscape = screen.width > screen.height;
   // Watching alone follows the phone round; leaving it puts the app back in portrait.
   useEffect(() => {
@@ -320,79 +325,96 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
           onPress={(e) => tap(e.nativeEvent.locationX / screen.width)}
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
-        {ident ? null : <PlayerCaption density="touch" lines={captionLines} />}
-        {errorCover ??
-          (chrome ? (
-            <PlaybarStillSourceProvider value={stillSource}>
-              <PlayerChrome
-                band={chrome.band}
-                density="touch"
-                formatTime={formatTime}
-                ident={ident}
-                playbar={playbar}
-                sheet={openSheet}
-                transport={transportProps}
-                visible={controls.controlsShown && snapshot.status !== "tuning"}
-              />
-            </PlaybarStillSourceProvider>
-          ) : catalogState.loading ? (
-            <StatePanel density="touch" kind="loading" title="Loading channels" />
-          ) : null)}
+        {/* The picture runs under the system bars; what sits on it keeps clear of them. */}
+        <View
+          pointerEvents="box-none"
+          style={{
+            bottom: insets.bottom,
+            left: insets.left,
+            position: "absolute",
+            right: insets.right,
+            top: insets.top,
+          }}
+        >
+          {ident ? null : <PlayerCaption density="touch" lines={captionLines} />}
+          {errorCover ??
+            (chrome ? (
+              <PlaybarStillSourceProvider value={stillSource}>
+                <PlayerChrome
+                  band={chrome.band}
+                  density="touch"
+                  formatTime={formatTime}
+                  ident={ident}
+                  playbar={playbar}
+                  sheet={openSheet}
+                  transport={transportProps}
+                  visible={controls.controlsShown && snapshot.status !== "tuning"}
+                />
+              </PlaybarStillSourceProvider>
+            ) : catalogState.loading ? (
+              <StatePanel density="touch" kind="loading" title="Loading channels" />
+            ) : null)}
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={{ backgroundColor: "black", flex: 1 }}>
-      <View style={{ aspectRatio: 16 / 9, backgroundColor: "black", width: "100%" }}>
-        <NativePlayerView style={{ flex: 1 }} transport={transport} />
-        {errorCover ??
-          (ident && chrome ? (
-            <View pointerEvents="none" style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-              <PlayerStationId band={chrome.band} density="touch" />
-            </View>
-          ) : (
-            <PlayerCaption density="touch" lines={captionLines} />
-          ))}
-      </View>
-      {chrome ? (
-        <PlaybarStillSourceProvider value={stillSource}>
-          <PlayerPortrait
-            band={chrome.band}
+    <Screen density="touch" flush footer={footer}>
+      <View style={{ backgroundColor: "black", flex: 1 }}>
+        <View style={{ aspectRatio: 16 / 9, backgroundColor: "black", width: "100%" }}>
+          <NativePlayerView style={{ flex: 1 }} transport={transport} />
+          {errorCover ??
+            (ident && chrome ? (
+              <View
+                pointerEvents="none"
+                style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+              >
+                <PlayerStationId band={chrome.band} density="touch" />
+              </View>
+            ) : (
+              <PlayerCaption density="touch" lines={captionLines} />
+            ))}
+        </View>
+        {chrome ? (
+          <PlaybarStillSourceProvider value={stillSource}>
+            <PlayerPortrait
+              band={chrome.band}
+              density="touch"
+              filmstrip={playbar}
+              formatTime={formatTime}
+              sheet={openSheet}
+              surf={{
+                canPrevious: previousId !== undefined,
+                canSurf: snapshot.catalog.length > 1,
+                favourite: isFavourite,
+                onChannelDown: () => {
+                  haptic.selection();
+                  void controller.step(-1);
+                },
+                onChannelUp: () => {
+                  haptic.selection();
+                  void controller.step(1);
+                },
+                onFavourite: () => channelId && void myChannels.setFavourite(channelId, !isFavourite),
+                onPrevious: () => previousId && void controller.tuneChannel(previousId),
+              }}
+              transport={transportProps}
+            />
+          </PlaybarStillSourceProvider>
+        ) : catalogState.loading ? (
+          <StatePanel density="touch" kind="loading" title="Loading channels" />
+        ) : failure ? (
+          <StatePanel
+            action={{ label: "Try again", onPress: retry }}
             density="touch"
-            filmstrip={playbar}
-            formatTime={formatTime}
-            sheet={openSheet}
-            surf={{
-              canPrevious: previousId !== undefined,
-              canSurf: snapshot.catalog.length > 1,
-              favourite: isFavourite,
-              onChannelDown: () => {
-                haptic.selection();
-                void controller.step(-1);
-              },
-              onChannelUp: () => {
-                haptic.selection();
-                void controller.step(1);
-              },
-              onFavourite: () => channelId && void myChannels.setFavourite(channelId, !isFavourite),
-              onPrevious: () => previousId && void controller.tuneChannel(previousId),
-            }}
-            transport={transportProps}
+            description={failure}
+            kind="error"
+            title="Can't play this channel"
           />
-        </PlaybarStillSourceProvider>
-      ) : catalogState.loading ? (
-        <StatePanel density="touch" kind="loading" title="Loading channels" />
-      ) : failure ? (
-        <StatePanel
-          action={{ label: "Try again", onPress: retry }}
-          density="touch"
-          description={failure}
-          kind="error"
-          title="Can't play this channel"
-        />
-      ) : null}
-    </View>
+        ) : null}
+      </View>
+    </Screen>
   );
 };
 

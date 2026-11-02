@@ -205,7 +205,15 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
           />
         </View>
       ) : (
-        <WatchingScreen client={client} credential={credential} onLeave={() => setActive("guide")} />
+        // Watching draws the tab bar itself: in landscape the picture takes the whole screen.
+        (navigation) => (
+          <WatchingScreen
+            client={client}
+            credential={credential}
+            footer={navigation}
+            onLeave={() => setActive("guide")}
+          />
+        )
       )}
     </ClientShell>
   );
