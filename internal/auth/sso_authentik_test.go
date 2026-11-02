@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 const (
@@ -55,7 +55,7 @@ func TestSSO_AgainstRealAuthentik(t *testing.T) {
 	ctx := context.Background()
 
 	// Only `sam` is allowlisted. Authentik will authenticate `stranger` perfectly well.
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: ssoUser, Role: "member", UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)

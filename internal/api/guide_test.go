@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // GET /v1/guide — the time-grid endpoint (V13b). Distinct from /v1/playout/guide.xml, which the
@@ -594,7 +595,7 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 	})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: "clip-1", Path: "clip-1.mp4", Name: "Period commercial", Kind: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "filler-still", HoverImageHash: "filler-hover",
 	}}); err != nil {

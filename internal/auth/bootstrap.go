@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // ErrBootstrapClosed is returned when bootstrap is attempted after an admin
@@ -26,9 +27,9 @@ type IDGen func() string
 // explicit media-server import.
 type ProvisionerStore interface {
 	CountAdmins(ctx context.Context) (int, error)
-	CreateUserUnlessInvited(ctx context.Context, u store.User, now time.Time) error
-	GetUser(ctx context.Context, id string) (store.User, error)
-	UpsertUser(ctx context.Context, u store.User) error
+	CreateUserUnlessInvited(ctx context.Context, u identitystore.User, now time.Time) error
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
+	UpsertUser(ctx context.Context, u identitystore.User) error
 }
 
 // Provisioner owns local-admin bootstrap and explicit media-server import (§11).
@@ -52,10 +53,10 @@ func NewProvisioner(st ProvisionerStore, lib UserLister, newID IDGen, now func()
 // Bootstrap creates the first local admin (§11), succeeding only while no admin
 // exists — the first success closes the door (a later call → ErrBootstrapClosed).
 // The password is Argon2id-hashed; a local id is minted (never a media-server id).
-func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) (store.User, error) {
+func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) (identitystore.User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
-		return store.User{}, ErrInvalidBootstrap
+		return identitystore.User{}, ErrInvalidBootstrap
 	}
 	// Gate on "no admin exists yet". This is a check-then-act; a UNIQUE-less users
 	// table can't enforce single-bootstrap at the DB, but bootstrap is a rare
@@ -65,26 +66,26 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 	// would create a second admin, acceptable and visible in the users list).
 	n, err := p.store.CountAdmins(ctx)
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	if n > 0 {
-		return store.User{}, ErrBootstrapClosed
+		return identitystore.User{}, ErrBootstrapClosed
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
-		return store.User{}, fmt.Errorf("hash password: %w", err)
+		return identitystore.User{}, fmt.Errorf("hash password: %w", err)
 	}
 	now := p.now()
-	u := store.User{
+	u := identitystore.User{
 		ID:           p.newID(),
 		Name:         username,
-		Role:         store.RoleAdmin,
+		Role:         identitystore.RoleAdmin,
 		PasswordHash: hash,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
 	if err := p.store.CreateUserUnlessInvited(ctx, u, now); err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	return u, nil
 }
@@ -163,13 +164,13 @@ func (p *Provisioner) Import(ctx context.Context, ids []string) (int, error) {
 		if !ok {
 			continue // asked to import an id the server doesn't have — skip, never invent
 		}
-		role := store.RoleMember
+		role := identitystore.RoleMember
 		if su.IsAdmin {
-			role = store.RoleAdmin
+			role = identitystore.RoleAdmin
 		}
 		// Preserve an existing row's Loomarr-owned role/quota; only (re)assert
 		// identity + disabled. A brand-new import creates the row.
-		u := store.User{
+		u := identitystore.User{
 			ID: su.ID, Name: su.Name, Role: role, Disabled: su.Disabled, MediaServerLinked: true,
 			CreatedAt: now, UpdatedAt: now,
 		}

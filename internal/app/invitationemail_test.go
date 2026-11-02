@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/recovery"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -120,8 +120,8 @@ func TestPasswordRecoveryRequestDoesNotEnumerateNotificationQueueFailure(t *test
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "eligible", Name: "Eligible", Role: store.RoleMember, PasswordHash: "$argon2id$existing",
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "eligible", Name: "Eligible", Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -157,8 +157,8 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "person-1", Name: "Ada", Role: store.RoleMember, PasswordHash: "$argon2id$existing",
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "person-1", Name: "Ada", Role: identitystore.RoleMember, PasswordHash: "$argon2id$existing",
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -228,15 +228,15 @@ func TestProductEmailMaterializerResolvesVerifiedEnabledAdministratorsForGroupEv
 	now := time.Unix(1_900_000_000, 0).UTC()
 	for _, candidate := range []struct {
 		id, name, email string
-		role            store.Role
+		role            identitystore.Role
 		disabled        bool
 	}{
-		{"admin-ada", "Ada", "ada@example.com", store.RoleAdmin, false},
-		{"admin-grace", "Grace", "grace@example.com", store.RoleAdmin, false},
-		{"member", "Member", "member@example.com", store.RoleMember, false},
-		{"disabled-admin", "Disabled", "disabled@example.com", store.RoleAdmin, true},
+		{"admin-ada", "Ada", "ada@example.com", identitystore.RoleAdmin, false},
+		{"admin-grace", "Grace", "grace@example.com", identitystore.RoleAdmin, false},
+		{"member", "Member", "member@example.com", identitystore.RoleMember, false},
+		{"disabled-admin", "Disabled", "disabled@example.com", identitystore.RoleAdmin, true},
 	} {
-		if err := st.UpsertUser(ctx, store.User{
+		if err := st.UpsertUser(ctx, identitystore.User{
 			ID: candidate.id, Name: candidate.name, Role: candidate.role, Disabled: candidate.disabled,
 			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
@@ -279,8 +279,8 @@ func TestSMTPProviderRowTestUsesTheCommonDestinationQueue(t *testing.T) {
 	ctx := t.Context()
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "admin-1", Name: "Ada", Role: store.RoleAdmin, CreatedAt: now, UpdatedAt: now,
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "admin-1", Name: "Ada", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

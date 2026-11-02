@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/invitation"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 func (s *Server) registerInvitationRedemption(api huma.API) {
@@ -78,7 +78,7 @@ func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput
 	}
 	var token string
 	var expires time.Time
-	var user store.User
+	var user identitystore.User
 	if preview.Kind == invitation.KindLibrary {
 		token, expires, user, err = s.invitationRedemption.RedeemLibrary(
 			ctx, in.Body.Grant, in.Body.Username, in.Body.Password)

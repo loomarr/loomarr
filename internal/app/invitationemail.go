@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 const notificationWorkerLimit = 100
@@ -111,7 +112,7 @@ func (e currentNotificationEligibility) Eligible(
 	if audience == notifications.RecipientPerson {
 		return true, nil
 	}
-	return user.Role == store.RoleAdmin, nil
+	return user.Role == identitystore.RoleAdmin, nil
 }
 
 func (r invitationEmailRouter) Routes(ctx context.Context, intent notifications.Intent) ([]notifications.Route, error) {
@@ -176,7 +177,7 @@ type invitationEmailMaterializer struct {
 
 type productEmailRecipientReader interface {
 	GetContactAddresses(context.Context, string) (contact.Set, error)
-	ListUsers(context.Context) ([]store.User, error)
+	ListUsers(context.Context) ([]identitystore.User, error)
 }
 
 func (m invitationEmailMaterializer) Materialize(
@@ -218,7 +219,7 @@ func (m invitationEmailMaterializer) Materialize(
 		}
 		messages := make([]notifications.EmailMessage, 0, len(users))
 		for _, user := range users {
-			if user.Disabled || user.Role != store.RoleAdmin {
+			if user.Disabled || user.Role != identitystore.RoleAdmin {
 				continue
 			}
 			addresses, addressErr := m.contacts.GetContactAddresses(ctx, user.ID)

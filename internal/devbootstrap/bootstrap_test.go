@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 func TestEnsureCreatesOneDeveloperAndCompletesSetup(t *testing.T) {
@@ -27,7 +28,7 @@ func TestEnsureCreatesOneDeveloperAndCompletesSetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.Role != store.RoleAdmin || user.PasswordHash == "" {
+	if user.Role != identitystore.RoleAdmin || user.PasswordHash == "" {
 		t.Fatalf("developer = %+v, want a local admin created through bootstrap", user)
 	}
 	if completed, err := st.GetSetting(ctx, "setup.completed"); err != nil || completed != "true" {

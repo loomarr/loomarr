@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 func deviceFixture(t *testing.T) (*DeviceManager, store.Store, func(time.Duration)) {
@@ -15,8 +16,8 @@ func deviceFixture(t *testing.T) (*DeviceManager, store.Store, func(time.Duratio
 	now := time.Unix(1_700_000_000, 0).UTC()
 	clock := &now
 	mgr := NewDeviceManager(st, func() time.Time { return *clock })
-	if err := st.UpsertUser(t.Context(), store.User{
-		ID: "u-member", Name: "member", Role: store.RoleMember,
+	if err := st.UpsertUser(t.Context(), identitystore.User{
+		ID: "u-member", Name: "member", Role: identitystore.RoleMember,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +158,8 @@ func TestDisabledUserLosesDeviceAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertUser(t.Context(), store.User{
-		ID: "u-member", Name: "member", Role: store.RoleMember, Disabled: true,
+	if err := st.UpsertUser(t.Context(), identitystore.User{
+		ID: "u-member", Name: "member", Role: identitystore.RoleMember, Disabled: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +216,7 @@ func TestRevokingOneDeviceLeavesOthers(t *testing.T) {
 func TestDeviceRevocationIsScopedToItsOwner(t *testing.T) {
 	t.Parallel()
 	mgr, st, _ := deviceFixture(t)
-	if err := st.UpsertUser(t.Context(), store.User{ID: "u-other", Name: "other", Role: store.RoleMember}); err != nil {
+	if err := st.UpsertUser(t.Context(), identitystore.User{ID: "u-other", Name: "other", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	deviceCode, userCode, _, err := mgr.StartPairing(t.Context(), "TV")

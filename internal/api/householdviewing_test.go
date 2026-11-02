@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -69,9 +69,9 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
-		seedImported(t, defaults.Store, "u-sis", "sis", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
+		seedImported(t, defaults.Store, "u-sis", "sis", identitystore.RoleMember)
 		cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 		sessions := pollPlayout{&fakePlayoutSessions{}}
 		return api.Router(defaults.Log, api.Options{

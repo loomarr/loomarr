@@ -122,3 +122,134 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 	})
 	return refs
 }
+
+// clusterPackages are the store's cluster packages. The store re-exports their types and
+// sentinels by alias so its own Store contract can name them unqualified.
+var clusterPackages = map[string]bool{
+	modulePath + "/internal/store/identitystore": true,
+	modulePath + "/internal/store/catalogstore":  true,
+}
+
+// The store's cluster aliases are for the store itself. Everything else names the cluster type
+// (identitystore.User, catalogstore.Clip), so a reader lands on the package that owns it. The
+// alias names are read from the store's own declarations, so adding an alias needs no edit here.
+func TestStoreClusterAliasesStayInsideTheStore(t *testing.T) {
+	packages := loomarrPackages(t)
+	storePkg := packages[modulePath+"/internal/store"]
+	if storePkg == nil {
+		t.Fatal("internal/store is not in the package graph")
+	}
+	aliases := storeClusterAliases(t, storePkg)
+	if len(aliases) == 0 {
+		t.Fatal("found no cluster aliases in internal/store — the scan would vacuously pass")
+	}
+	for packagePath, pkg := range packages {
+		if packagePath == modulePath+"/internal/store" {
+			continue
+		}
+		files := append(append(append(append([]string(nil), pkg.GoFiles...), pkg.CgoFiles...),
+			pkg.TestGoFiles...), pkg.XTestGoFiles...)
+		for _, name := range files {
+			path := filepath.Join(pkg.Dir, name)
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			storeNames := importNames(t, path, file, modulePath+"/internal/store")
+			if len(storeNames) == 0 {
+				continue
+			}
+			ast.Inspect(file, func(node ast.Node) bool {
+				selector, ok := node.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				ident, ok := selector.X.(*ast.Ident)
+				if !ok || !storeNames[ident.Name] {
+					return true
+				}
+				if cluster, ok := aliases[selector.Sel.Name]; ok {
+					t.Errorf("%s:%d names store.%s — use %s.%s", path, fset.Position(selector.Pos()).Line,
+						selector.Sel.Name, cluster, selector.Sel.Name)
+				}
+				return true
+			})
+		}
+	}
+}
+
+// storeClusterAliases maps each exported store declaration whose value is a cluster package's
+// identifier (type User = identitystore.User, var ErrTaxonConflict = catalogstore.ErrTaxonConflict)
+// to that cluster package's name.
+func storeClusterAliases(t *testing.T, storePkg *build.Package) map[string]string {
+	t.Helper()
+	aliases := map[string]string{}
+	for _, name := range storePkg.GoFiles {
+		path := filepath.Join(storePkg.Dir, name)
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		clusters := map[string]bool{}
+		for importPath := range clusterPackages {
+			for alias := range importNames(t, path, file, importPath) {
+				clusters[alias] = true
+			}
+		}
+		if len(clusters) == 0 {
+			continue
+		}
+		record := func(name *ast.Ident, value ast.Expr) {
+			selector, ok := value.(*ast.SelectorExpr)
+			if !ok || !name.IsExported() {
+				return
+			}
+			if ident, ok := selector.X.(*ast.Ident); ok && clusters[ident.Name] {
+				aliases[name.Name] = ident.Name
+			}
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				switch spec := spec.(type) {
+				case *ast.TypeSpec:
+					record(spec.Name, spec.Type)
+				case *ast.ValueSpec:
+					for i, name := range spec.Names {
+						if i < len(spec.Values) {
+							record(name, spec.Values[i])
+						}
+					}
+				}
+			}
+		}
+	}
+	return aliases
+}
+
+// importNames returns the names file uses for importPath: its base name, or the rename.
+func importNames(t *testing.T, path string, file *ast.File, importPath string) map[string]bool {
+	t.Helper()
+	names := map[string]bool{}
+	for _, imp := range file.Imports {
+		got, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			t.Fatalf("unquote import in %s: %v", path, err)
+		}
+		if got != importPath {
+			continue
+		}
+		name := filepath.Base(importPath)
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		if name != "_" && name != "." {
+			names[name] = true
+		}
+	}
+	return names
+}

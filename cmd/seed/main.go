@@ -41,6 +41,8 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -106,7 +108,7 @@ func main() {
 // seedAdmin creates the first local admin through the sanctioned bootstrap path
 // (Argon2id-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
 // is closed — we surface that and reuse it rather than forging a second one.
-func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.User, error) {
+func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (identitystore.User, error) {
 	// lib=nil: import is unavailable offline; seed only needs the bootstrap path.
 	p := auth.NewProvisioner(st, nil, usrID, time.Now)
 	admin, err := p.Bootstrap(ctx, adminUser, adminPass)
@@ -118,7 +120,7 @@ func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.
 	// of the seed (which needs an admin id for audit) still runs, and warn loudly.
 	existing, gerr := st.GetUserByName(ctx, adminUser)
 	if gerr != nil {
-		return store.User{}, fmt.Errorf("bootstrap failed (%w) and no existing %q admin to reuse: %v", err, adminUser, gerr)
+		return identitystore.User{}, fmt.Errorf("bootstrap failed (%w) and no existing %q admin to reuse: %v", err, adminUser, gerr)
 	}
 	log.Printf("seed: admin already exists (%v) — reusing %q; delete the DB to reseed from scratch", err, adminUser)
 	return existing, nil
@@ -134,10 +136,10 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 		return nil
 	}
 	now := time.Now()
-	m := store.User{
+	m := identitystore.User{
 		ID:        usrID(),
 		Name:      "casey",
-		Role:      store.RoleMember,
+		Role:      identitystore.RoleMember,
 		Quota:     5, // pending-acquisition cap
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -394,7 +396,7 @@ func seedClips(ctx context.Context, st store.Store) error {
 	}
 	now := time.Now()
 	for _, seeded := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
+		if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
 			return fmt.Errorf("upsert clip %q: %w", seeded.clip.Name, err)
 		}
 		if err := st.SetClipTags(ctx, seeded.clip.Hash, seeded.tags); err != nil {

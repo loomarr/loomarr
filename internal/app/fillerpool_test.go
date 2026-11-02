@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -22,7 +23,7 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 	st := testkit.MigratedSQLiteStore(t)
 
 	for _, c := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
+		if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 var (
@@ -21,7 +22,7 @@ var (
 // public activation flow. Redemption itself remains one store transaction.
 type InvitationRedemptionStore interface {
 	GetInvitationByGrant(context.Context, string, time.Time) (invitation.Invitation, error)
-	RedeemInvitation(context.Context, string, store.User, store.Session, time.Time) (invitation.Invitation, error)
+	RedeemInvitation(context.Context, string, identitystore.User, identitystore.Session, time.Time) (invitation.Invitation, error)
 }
 
 // InvitationRedemptionService proves the invited credential before asking the
@@ -65,35 +66,35 @@ func (s *InvitationRedemptionService) RedeemLocal(
 	ctx context.Context,
 	bearer string,
 	password string,
-) (token string, expires time.Time, user store.User, err error) {
+) (token string, expires time.Time, user identitystore.User, err error) {
 	value, err := s.Preview(ctx, bearer)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	if value.Kind != invitation.KindLocal {
-		return "", time.Time{}, store.User{}, ErrInvalidInvitation
+		return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 	}
 	if len(password) < MinPasswordLen {
-		return "", time.Time{}, store.User{}, ErrWeakPassword
+		return "", time.Time{}, identitystore.User{}, ErrWeakPassword
 	}
 	passwordHash, err := hashPassword(password)
 	if err != nil {
-		return "", time.Time{}, store.User{}, fmt.Errorf("hash invitation password: %w", err)
+		return "", time.Time{}, identitystore.User{}, fmt.Errorf("hash invitation password: %w", err)
 	}
 	at := s.now()
-	user = store.User{
-		ID: s.newID(), Name: value.Username, Role: store.Role(value.Role), PasswordHash: passwordHash,
+	user = identitystore.User{
+		ID: s.newID(), Name: value.Username, Role: identitystore.Role(value.Role), PasswordHash: passwordHash,
 		CreatedAt: at, UpdatedAt: at,
 	}
 	token, session, err := s.mgr.prepare(user.ID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	if _, err := s.store.RedeemInvitation(ctx, invitation.HashGrant(bearer), user, session, at); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return "", time.Time{}, store.User{}, ErrInvalidInvitation
+			return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 		}
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	return token, session.ExpiresAt, user, nil
 }
@@ -103,45 +104,45 @@ func (s *InvitationRedemptionService) RedeemLibrary(
 	bearer string,
 	username string,
 	password string,
-) (token string, expires time.Time, user store.User, err error) {
+) (token string, expires time.Time, user identitystore.User, err error) {
 	value, err := s.Preview(ctx, bearer)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	if value.Kind != invitation.KindLibrary {
-		return "", time.Time{}, store.User{}, ErrInvalidInvitation
+		return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 	}
 	if s.lib == nil {
-		return "", time.Time{}, store.User{}, ErrInvitationProviderUnavailable
+		return "", time.Time{}, identitystore.User{}, ErrInvitationProviderUnavailable
 	}
 	providerUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
 		if errors.Is(err, library.ErrProviderUnavailable) {
-			return "", time.Time{}, store.User{}, ErrInvitationProviderUnavailable
+			return "", time.Time{}, identitystore.User{}, ErrInvitationProviderUnavailable
 		}
-		return "", time.Time{}, store.User{}, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials
 	}
 	if providerUser.ID != value.LibraryUserID || providerUser.Disabled {
-		return "", time.Time{}, store.User{}, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials
 	}
 	passwordHash, err := hashPassword(password)
 	if err != nil {
-		return "", time.Time{}, store.User{}, fmt.Errorf("hash invitation password: %w", err)
+		return "", time.Time{}, identitystore.User{}, fmt.Errorf("hash invitation password: %w", err)
 	}
 	at := s.now()
-	user = store.User{
-		ID: providerUser.ID, Name: providerUser.Name, Role: store.Role(value.Role),
+	user = identitystore.User{
+		ID: providerUser.ID, Name: providerUser.Name, Role: identitystore.Role(value.Role),
 		MediaServerLinked: true, PasswordHash: passwordHash, CreatedAt: at, UpdatedAt: at,
 	}
 	token, session, err := s.mgr.prepare(user.ID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	if _, err := s.store.RedeemInvitation(ctx, invitation.HashGrant(bearer), user, session, at); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return "", time.Time{}, store.User{}, ErrInvalidInvitation
+			return "", time.Time{}, identitystore.User{}, ErrInvalidInvitation
 		}
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	return token, session.ExpiresAt, user, nil
 }

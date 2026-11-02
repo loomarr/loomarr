@@ -15,7 +15,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 type diagnosticEventServiceFunc func(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error)
@@ -66,11 +66,11 @@ func (diagnosticUserAuthorizer) Authorize(r *http.Request) api.Role {
 	return role
 }
 
-func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *store.User) {
+func (diagnosticUserAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *identitystore.User) {
 	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != memberToken {
 		return api.RoleAnonymous, nil
 	}
-	user := store.User{ID: "member_1", Name: "Viewer", Role: store.RoleMember}
+	user := identitystore.User{ID: "member_1", Name: "Viewer", Role: identitystore.RoleMember}
 	return api.RoleMember, &user
 }
 

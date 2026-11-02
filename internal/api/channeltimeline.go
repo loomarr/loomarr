@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // The Watch player's mini-guide timeline (§9.1 Watch, V47).
@@ -272,7 +273,7 @@ func (s *Server) podStillHashes(ctx context.Context, airings []GuideAiring) map[
 	if len(clipHashes) == 0 {
 		return nil
 	}
-	clips, err := s.store.ListClips(ctx, store.ClipFilter{Hashes: clipHashes})
+	clips, err := s.store.ListClips(ctx, catalogstore.ClipFilter{Hashes: clipHashes})
 	if err != nil {
 		s.log.Warn("timeline: pod still lookup failed", "err", err)
 		return nil

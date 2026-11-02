@@ -11,12 +11,13 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 var ErrInvalidPasswordRecovery = errors.New("auth: password recovery is invalid or expired")
 
 type PasswordRecoveryStore interface {
-	GetUserByName(context.Context, string) (store.User, error)
+	GetUserByName(context.Context, string) (identitystore.User, error)
 	GetContactAddresses(context.Context, string) (contact.Set, error)
 	CreatePasswordRecovery(context.Context, recovery.Record) error
 	GetPasswordRecovery(context.Context, string, time.Time) (recovery.Record, error)

@@ -28,6 +28,8 @@ import (
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/viewing"
 )
@@ -490,12 +492,12 @@ type FillerResearchService interface {
 // atomic graph transaction; this seam adds an authoritative preview and post-commit channel
 // convergence without making HTTP handlers understand either implementation.
 type TaxonomyEditor interface {
-	Preview(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
-	Apply(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
+	Preview(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
+	Apply(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
 }
 
 type TaxonomyImpact struct {
-	Store    store.TaxonomyEditImpact
+	Store    catalogstore.TaxonomyEditImpact
 	Channels []TaxonomyChannelImpact
 }
 
@@ -934,7 +936,7 @@ type UserSyncer interface {
 // Implemented by auth.Provisioner.
 type Provisioner interface {
 	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
-	Bootstrap(ctx context.Context, username, password string) (store.User, error)
+	Bootstrap(ctx context.Context, username, password string) (identitystore.User, error)
 	// Import allowlists the named media-server user ids (admin-only).
 	Import(ctx context.Context, ids []string) (int, error)
 	// Candidates lists media-server accounts available to import, each flagged with
@@ -947,11 +949,11 @@ type Provisioner interface {
 
 // LoginService verifies credentials and issues a session (Phase 9, §11).
 type LoginService interface {
-	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error)
+	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error)
 	// DevLogin issues a session for an existing admin with no credential (§11).
 	// Only ever called when the server was started with LOOMARR_DEV_LOGIN=1 — the
 	// route is not registered otherwise.
-	DevLogin(ctx context.Context) (token string, expires time.Time, u store.User, err error)
+	DevLogin(ctx context.Context) (token string, expires time.Time, u identitystore.User, err error)
 	Disable(ctx context.Context, userID string) error
 }
 
@@ -966,7 +968,7 @@ type PasswordService interface {
 	ChangePassword(ctx context.Context, userID, current, next string) error
 	// CreateLocal mints a local account — an allowlist row carrying an Argon2id hash.
 	// Admin-only at the route layer; the same kind of explicit write as Import.
-	CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error)
+	CreateLocal(ctx context.Context, username, password string, role identitystore.Role, quota int) (identitystore.User, error)
 	// ResetPassword is the ADMIN path: no current password (that's the point), so it
 	// relies entirely on the caller's role. Deliberately not the same call as
 	// ChangePassword — sharing one would make the "prove you know it" check optional.
@@ -995,8 +997,8 @@ type InvitationDeliveryService interface {
 // accepted only in request bodies and never enter a route, query, or durable DTO.
 type InvitationRedemptionService interface {
 	Preview(context.Context, string) (invitation.Invitation, error)
-	RedeemLocal(context.Context, string, string) (string, time.Time, store.User, error)
-	RedeemLibrary(context.Context, string, string, string) (string, time.Time, store.User, error)
+	RedeemLocal(context.Context, string, string) (string, time.Time, identitystore.User, error)
+	RedeemLibrary(context.Context, string, string, string) (string, time.Time, identitystore.User, error)
 }
 
 // PasswordRecoveryService is the public, enumeration-safe local credential recovery seam.
@@ -1010,7 +1012,7 @@ type PasswordRecoveryService interface {
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
-	List(ctx context.Context, userID string) ([]store.Session, error)
+	List(ctx context.Context, userID string) ([]identitystore.Session, error)
 	RevokeHash(ctx context.Context, tokenHash string) error
 }
 

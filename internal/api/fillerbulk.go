@@ -9,7 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -117,7 +117,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		// graph in one transaction. Without Tags, both taxonomy fields remain untouched.
 		if in.Body.Tags != nil {
 			if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
-				if errors.Is(err, store.ErrTaxonConflict) {
+				if errors.Is(err, catalogstore.ErrTaxonConflict) {
 					return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while these clips were being edited. Review the tags and try again.")
 				}
 				return nil, huma.Error500InternalServerError("retag clips", err)

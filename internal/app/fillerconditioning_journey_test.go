@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -122,7 +123,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				{Hash: parentHash, Path: filepath.Base(parentFull), Name: "Retained parent", IsComposite: true},
 				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Kind: filler.Commercial, ParentHash: parentHash},
 			} {
-				if err := st.UpsertClip(ctx, store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
+				if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -231,7 +232,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	if err := os.WriteFile(parentFull, []byte("compilation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "Compilation", Kind: filler.Commercial,
 		Source: "test-folder",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
@@ -332,11 +333,11 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatal(err)
 	}
 
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var child store.Clip
+	var child catalogstore.Clip
 	for _, clip := range clips {
 		if clip.ParentHash == compHash {
 			child = clip

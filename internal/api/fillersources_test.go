@@ -14,12 +14,12 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // serverWithClips builds a server over a real SQLite store seeded with clips, so the
 // per-source counts are counted rather than stubbed — the read-model's whole job.
-func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *httptest.Server {
+func serverWithClips(t *testing.T, cfg map[string]string, clips []catalogstore.Clip) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -44,8 +44,8 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *h
 	return srv
 }
 
-func clip(path, source string) store.Clip {
-	var c store.Clip
+func clip(path, source string) catalogstore.Clip {
+	var c catalogstore.Clip
 	// Hash AND Path — identity is the hash since V38c; a Path-only clip has an empty id, and the
 	// store keys on it, so every row would collide on "".
 	c.Hash = path
@@ -314,7 +314,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("b.mp4", "filler-dir"),
 		clip("c.mp4", "library"),
@@ -342,7 +342,7 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 	held := clip("incoming.mp4", "filler-dir")
 	held.Held = true
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{held})
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{held})
 	body := getSources(t, srv)
 
 	folder := sourceOfKind(t, body, "folder")
@@ -391,7 +391,7 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 // ⚠ Total is sent rather than summed client-side: a clip whose `source` matches no known row
 // still belongs to the catalog, and a client adding up the rows would under-report it.
 func TestFillerSources_TotalIncludesUnrecognizedProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("weird.mp4", "hand-copied-by-an-operator"),
 	})

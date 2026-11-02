@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // /v1/auth/sso/* — the OIDC credential path (§11 SSO, D-F, V8).
@@ -60,7 +60,7 @@ type SSOService interface {
 	Start(ctx context.Context, returnTo string) (authURL, state string, err error)
 	// Exchange completes the flow. Claims come back even on failure, so a refusal can be
 	// explained rather than merely reported.
-	Exchange(ctx context.Context, state, code string) (token string, expires time.Time, u store.User, claims auth.SSOClaims, returnTo string, err error)
+	Exchange(ctx context.Context, state, code string) (token string, expires time.Time, u identitystore.User, claims auth.SSOClaims, returnTo string, err error)
 }
 
 // registerSSO mounts the two redirect routes when a provider is wired.

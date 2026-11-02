@@ -11,7 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 const (
@@ -183,7 +183,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyW
 	if more {
 		rows = rows[:incomingPageLimit]
 	}
-	clips := make([]store.Clip, 0, len(rows))
+	clips := make([]catalogstore.Clip, 0, len(rows))
 	for _, row := range rows {
 		clip, clipErr := s.store.GetClip(ctx, row.ClipHash)
 		if clipErr != nil {
@@ -246,7 +246,7 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 	return group, nil
 }
 
-func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
+func incomingStatusDTO(clip catalogstore.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
 	var thumb *ImageDTO
 	if image != nil {
 		thumb = image(clip.Hash)

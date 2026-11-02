@@ -30,6 +30,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // ErrInferenceNotReserved reports a settlement that lost the reserved-state
@@ -139,8 +140,8 @@ type FillerDecisionStore interface {
 type FillerEnrichmentStore interface {
 	ListFillerEnrichment(ctx context.Context, clipHash string) ([]fillerenrichment.State, error)
 	ApplyFillerEnrichment(ctx context.Context, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error)
-	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
-	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
+	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]catalogstore.Clip, error)
+	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]catalogstore.Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
 	ListSettledGeographyClips(ctx context.Context) ([]SettledGeographyClip, error)
 }
@@ -245,7 +246,7 @@ type FillerPipelineStore interface {
 	// CommitConditioningPublication checks the transcode rung's owner-bound publication record,
 	// then has the core adopt the conditioned target (store.AdoptConditionedClip). Any mismatch
 	// is filler.ErrConditioningOwnershipMismatch.
-	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target store.Clip) error
+	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target catalogstore.Clip) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
