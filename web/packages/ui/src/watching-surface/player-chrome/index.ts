@@ -32,3 +32,6 @@ export type { PlayerShortcutsProps } from "./player-shortcuts";
 export { PlayerShortcuts } from "./player-shortcuts";
 export type { PlayerStationIdProps } from "./player-station-id";
 export { PlayerStationId } from "./player-station-id";
+export { useAutoHideControls } from "./use-auto-hide-controls";
+export type { FrameTapOptions } from "./use-frame-tap";
+export { useFrameTap } from "./use-frame-tap";

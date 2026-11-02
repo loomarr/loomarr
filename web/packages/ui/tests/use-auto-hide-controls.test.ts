@@ -1,6 +1,28 @@
-import { act, renderHook } from "@testing-library/react";
+// @vitest-environment jsdom
+
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoHideControls } from "./use-auto-hide-controls";
+
+import { useAutoHideControls, useFrameTap } from "../index";
+
+// The package compiles without the DOM lib; jsdom supplies the document at run time.
+const document = (
+  globalThis as unknown as { document: { createElement(t: string): Parameters<typeof createRoot>[0] } }
+).document;
+
+// Renders a hook once and keeps its latest value, as testing-library's renderHook does.
+const renderHook = <T>(hook: () => T) => {
+  const result = { current: undefined as T };
+  const Probe = () => {
+    result.current = hook();
+    return null;
+  };
+  act(() => createRoot(document.createElement("div")).render(createElement(Probe)));
+  return { result };
+};
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The overlay auto-hide, tested at the hook boundary: `playing` in, `controlsShown` + handlers out.
 // Timers are faked so the IDLE (mouse present) and GRACE (mouse gone) windows are deterministic.
@@ -102,5 +124,67 @@ describe("useAutoHideControls", () => {
     act(() => result.current.holdControls.hold(false)); // still one hold outstanding
     act(() => vi.advanceTimersByTime(700));
     expect(result.current.controlsShown).toBe(true);
+  });
+});
+
+// Touch (#2088 decision 12): a tap is the controls', a double-tap on a side steps.
+describe("useFrameTap", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const tapper = (live: boolean, controlsShown: boolean) => {
+    const calls = { hide: 0, reveal: 0, steps: [] as number[] };
+    const { result } = renderHook(() =>
+      useFrameTap({
+        controlsShown,
+        hideControls: () => (calls.hide += 1),
+        live,
+        onStep: (direction) => calls.steps.push(direction),
+        revealControls: () => (calls.reveal += 1),
+      }),
+    );
+    return { calls, tap: (across: number) => act(() => result.current(across)) };
+  };
+
+  it("toggles the controls once the double-tap window has passed", () => {
+    const hidden = tapper(true, false);
+    hidden.tap(0.5);
+    expect(hidden.calls.reveal).toBe(0);
+    act(() => vi.advanceTimersByTime(300));
+    expect(hidden.calls.reveal).toBe(1);
+
+    const shown = tapper(true, true);
+    shown.tap(0.1);
+    act(() => vi.advanceTimersByTime(300));
+    expect(shown.calls.hide).toBe(1);
+  });
+
+  it("steps from a double-tap on the left or right third, without toggling", () => {
+    const { calls, tap } = tapper(true, false);
+    tap(0.1);
+    tap(0.2);
+    tap(0.9);
+    tap(0.8);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(calls.steps).toEqual([-1, 1]);
+    expect(calls.reveal).toBe(0);
+  });
+
+  it("never steps from the middle, across sides, too slowly, or off a live channel", () => {
+    const middle = tapper(true, false);
+    middle.tap(0.5);
+    middle.tap(0.5);
+    const across = tapper(true, false);
+    across.tap(0.1);
+    across.tap(0.9);
+    const slow = tapper(true, false);
+    slow.tap(0.1);
+    act(() => vi.advanceTimersByTime(400));
+    slow.tap(0.1);
+    const notLive = tapper(false, false);
+    notLive.tap(0.1);
+    notLive.tap(0.1);
+    act(() => vi.advanceTimersByTime(1_000));
+    for (const { calls } of [middle, across, slow, notLive]) expect(calls.steps).toEqual([]);
   });
 });

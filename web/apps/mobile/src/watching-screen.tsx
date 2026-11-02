@@ -7,6 +7,7 @@ import {
   cueLinesAt,
   type NativePlayerTransport,
   NativePlayerView,
+  nextSubtitles,
   type PairedClient,
   pairedNativeImageSource,
   rungLabel,
@@ -19,6 +20,7 @@ import {
 import {
   PlaybarStillSourceProvider,
   PlayerCaption,
+  PlayerChrome,
   PlayerCover,
   PlayerInfo,
   PlayerPlaybackInfo,
@@ -29,9 +31,13 @@ import {
   playbarFromTimeline,
   StatePanel,
   surfPreviousChannel,
+  useAutoHideControls,
+  useFrameTap,
 } from "@loomarr/ui";
+import { lockAsync, OrientationLock, unlockAsync } from "expo-screen-orientation";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { View } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { useAudioPreference, useSubtitlesPreference } from "./player-preferences";
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
@@ -112,6 +118,26 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
   // biome-ignore lint/correctness/useExhaustiveDependencies: the channel is the trigger, not an input.
   useEffect(() => setSheet(undefined), [channelId]);
 
+  // Landscape's overlay shows and hides like every player's: hidden after a while playing, held while
+  // a sheet is open, and cleared at once for the station-ID card.
+  const screen = useWindowDimensions();
+  const landscape = screen.width > screen.height;
+  // Watching alone follows the phone round; leaving it puts the app back in portrait.
+  useEffect(() => {
+    void unlockAsync();
+    return () => void lockAsync(OrientationLock.PORTRAIT_UP);
+  }, []);
+  const controls = useAutoHideControls(playing);
+  const { hideControls, holdControls } = controls;
+  useEffect(() => {
+    if (!sheet) return;
+    holdControls.hold(true);
+    return () => holdControls.hold(false);
+  }, [sheet, holdControls]);
+  useEffect(() => {
+    if (ident) hideControls();
+  }, [ident, hideControls]);
+
   const stillSource = useMemo(() => (uri: string) => pairedNativeImageSource(credential, uri), [credential]);
 
   const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
@@ -155,118 +181,188 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
   const isFavourite = channelId !== undefined && myChannelsSnapshot.favouriteIds.includes(channelId);
   const retry = () => (catalogState.error ? refresh() : void controller.retry());
   const seekBy = (ms: number) => controller.seek(live.viewerTimeMs + ms);
+  const tap = useFrameTap({
+    ...controls,
+    live: true,
+    onStep: (direction) => seekBy(direction * SEEK_STEP_MS),
+  });
+
+  // One sheet for both forms: in the portrait panel's place, or over the picture's right edge.
+  const openSheet =
+    sheet === "info" && info ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density="touch"
+        icon="info"
+        inline={!landscape}
+        onClose={() => setSheet(undefined)}
+        title="Info"
+      >
+        <PlayerInfo density="touch" formatTime={formatTime} info={info} />
+      </PlayerSheet>
+    ) : sheet === "settings" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density="touch"
+        icon="settings"
+        inline={!landscape}
+        onClose={() => setSheet(undefined)}
+        title="Settings"
+      >
+        <PlayerSettings
+          audio={
+            audio.options.length > 1
+              ? { onSelect: setAudioPreference, options: audio.options }
+              : { options: audio.options }
+          }
+          density="touch"
+          onPlaybackInfo={() => setSheet("playback-info")}
+          subtitles={
+            subtitles.tracks.length > 0
+              ? {
+                  onSelect: (value) =>
+                    setSubtitles(value === "off" ? "off" : (subtitles.tracks[Number(value)] ?? "off")),
+                  options: [
+                    { label: "Off", selected: subtitles.active < 0, value: "off" },
+                    ...subtitles.tracks.map((track, i) => ({
+                      label: subtitleLabel(track),
+                      selected: i === subtitles.active,
+                      value: String(i),
+                    })),
+                  ],
+                }
+              : undefined
+          }
+          quality={{
+            options: [
+              {
+                label: videoHeight ? `Auto · ${rungLabel(videoHeight)}` : "Auto",
+                selected: true,
+                value: "auto",
+              },
+            ],
+          }}
+        />
+      </PlayerSheet>
+    ) : sheet === "playback-info" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density="touch"
+        icon="info"
+        inline={!landscape}
+        onClose={() => setSheet(undefined)}
+        title="Playback info"
+      >
+        <PlaybackInfo lagSeconds={live.lagSeconds} transport={transport} />
+      </PlayerSheet>
+    ) : undefined;
+
+  const playbar =
+    chrome && timeline
+      ? {
+          onSeek: controller.seek,
+          playheadMs: live.viewerTimeMs,
+          segments: chrome.segments,
+          window: chrome.window,
+        }
+      : undefined;
+  const transportProps = {
+    density: "touch" as const,
+    infoOpen: sheet === "info",
+    live,
+    // The phone's own buttons own the volume; a touch transport draws none.
+    muted: false,
+    onGoLive: () => void controller.goLive(),
+    onInfo: info ? () => toggleSheet("info") : undefined,
+    onLeave,
+    onSeekBack: () => seekBy(-SEEK_STEP_MS),
+    onSeekForward: () => seekBy(SEEK_STEP_MS),
+    onSettings: () => toggleSheet("settings"),
+    onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
+    onSubtitles:
+      subtitles.tracks.length > 0
+        ? () => setSubtitles(nextSubtitles(subtitles.tracks, subtitlesChoice))
+        : undefined,
+    onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
+    onToggleMute: () => undefined,
+    onVolume: () => undefined,
+    playing,
+    pointer: false,
+    settingsOpen: sheet === "settings" || sheet === "playback-info",
+    subtitlesOn: subtitles.active >= 0,
+    volume: 1,
+  };
+
+  const errorCover = failure ? (
+    <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0, zIndex: 40 }}>
+      <PlayerCover
+        channelLabel={channelLabel}
+        density="touch"
+        kind="error"
+        message={failure}
+        onLeave={onLeave}
+        onRetry={retry}
+        title="Can't play this channel"
+      />
+    </View>
+  ) : undefined;
+
+  // Landscape (#2088 decision 12): the picture full-bleed under the same overlay as every other
+  // player. A tap is the controls', a double-tap on a side steps 10 s.
+  if (landscape) {
+    return (
+      <View style={{ backgroundColor: "black", flex: 1 }}>
+        <StatusBar hidden />
+        <NativePlayerView style={{ flex: 1 }} transport={transport} />
+        <Pressable
+          accessibilityLabel={controls.controlsShown ? "Hide the controls" : "Show the controls"}
+          accessibilityRole="button"
+          onPress={(e) => tap(e.nativeEvent.locationX / screen.width)}
+          style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+        />
+        {ident ? null : <PlayerCaption density="touch" lines={captionLines} />}
+        {errorCover ??
+          (chrome ? (
+            <PlaybarStillSourceProvider value={stillSource}>
+              <PlayerChrome
+                band={chrome.band}
+                density="touch"
+                formatTime={formatTime}
+                ident={ident}
+                playbar={playbar}
+                sheet={openSheet}
+                transport={transportProps}
+                visible={controls.controlsShown && snapshot.status !== "tuning"}
+              />
+            </PlaybarStillSourceProvider>
+          ) : catalogState.loading ? (
+            <StatePanel density="touch" kind="loading" title="Loading channels" />
+          ) : null)}
+      </View>
+    );
+  }
 
   return (
     <View style={{ backgroundColor: "black", flex: 1 }}>
       <View style={{ aspectRatio: 16 / 9, backgroundColor: "black", width: "100%" }}>
         <NativePlayerView style={{ flex: 1 }} transport={transport} />
-        {failure ? (
-          <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-            <PlayerCover
-              channelLabel={channelLabel}
-              density="touch"
-              kind="error"
-              message={failure}
-              onLeave={onLeave}
-              onRetry={retry}
-              title="Can't play this channel"
-            />
-          </View>
-        ) : ident && chrome ? (
-          <View pointerEvents="none" style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-            <PlayerStationId band={chrome.band} density="touch" />
-          </View>
-        ) : (
-          <PlayerCaption density="touch" lines={captionLines} />
-        )}
+        {errorCover ??
+          (ident && chrome ? (
+            <View pointerEvents="none" style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
+              <PlayerStationId band={chrome.band} density="touch" />
+            </View>
+          ) : (
+            <PlayerCaption density="touch" lines={captionLines} />
+          ))}
       </View>
       {chrome ? (
         <PlaybarStillSourceProvider value={stillSource}>
           <PlayerPortrait
             band={chrome.band}
             density="touch"
-            filmstrip={
-              timeline
-                ? {
-                    onSeek: controller.seek,
-                    playheadMs: live.viewerTimeMs,
-                    segments: chrome.segments,
-                    window: chrome.window,
-                  }
-                : undefined
-            }
+            filmstrip={playbar}
             formatTime={formatTime}
-            sheet={
-              sheet === "info" && info ? (
-                <PlayerSheet
-                  channelLabel={channelLabel}
-                  density="touch"
-                  icon="info"
-                  inline
-                  onClose={() => setSheet(undefined)}
-                  title="Info"
-                >
-                  <PlayerInfo density="touch" formatTime={formatTime} info={info} />
-                </PlayerSheet>
-              ) : sheet === "settings" ? (
-                <PlayerSheet
-                  channelLabel={channelLabel}
-                  density="touch"
-                  icon="settings"
-                  inline
-                  onClose={() => setSheet(undefined)}
-                  title="Settings"
-                >
-                  <PlayerSettings
-                    audio={
-                      audio.options.length > 1
-                        ? { onSelect: setAudioPreference, options: audio.options }
-                        : { options: audio.options }
-                    }
-                    density="touch"
-                    onPlaybackInfo={() => setSheet("playback-info")}
-                    subtitles={
-                      subtitles.tracks.length > 0
-                        ? {
-                            onSelect: (value) =>
-                              setSubtitles(
-                                value === "off" ? "off" : (subtitles.tracks[Number(value)] ?? "off"),
-                              ),
-                            options: [
-                              { label: "Off", selected: subtitles.active < 0, value: "off" },
-                              ...subtitles.tracks.map((track, i) => ({
-                                label: subtitleLabel(track),
-                                selected: i === subtitles.active,
-                                value: String(i),
-                              })),
-                            ],
-                          }
-                        : undefined
-                    }
-                    quality={{
-                      options: [
-                        {
-                          label: videoHeight ? `Auto · ${rungLabel(videoHeight)}` : "Auto",
-                          selected: true,
-                          value: "auto",
-                        },
-                      ],
-                    }}
-                  />
-                </PlayerSheet>
-              ) : sheet === "playback-info" ? (
-                <PlayerSheet
-                  channelLabel={channelLabel}
-                  density="touch"
-                  icon="info"
-                  inline
-                  onClose={() => setSheet(undefined)}
-                  title="Playback info"
-                >
-                  <PlaybackInfo lagSeconds={live.lagSeconds} transport={transport} />
-                </PlayerSheet>
-              ) : undefined
-            }
+            sheet={openSheet}
             surf={{
               canPrevious: previousId !== undefined,
               canSurf: snapshot.catalog.length > 1,
@@ -282,20 +378,7 @@ const WatchingScreen = ({ client, credential, onLeave }: WatchingScreenProps) =>
               onFavourite: () => channelId && void myChannels.setFavourite(channelId, !isFavourite),
               onPrevious: () => previousId && void controller.tuneChannel(previousId),
             }}
-            transport={{
-              infoOpen: sheet === "info",
-              live,
-              onGoLive: () => void controller.goLive(),
-              onInfo: info ? () => toggleSheet("info") : undefined,
-              onLeave,
-              onSettings: () => toggleSheet("settings"),
-              onSeekBack: () => seekBy(-SEEK_STEP_MS),
-              onSeekForward: () => seekBy(SEEK_STEP_MS),
-              onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
-              onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
-              playing,
-              settingsOpen: sheet === "settings" || sheet === "playback-info",
-            }}
+            transport={transportProps}
           />
         </PlaybarStillSourceProvider>
       ) : catalogState.loading ? (

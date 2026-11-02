@@ -47,8 +47,13 @@ test("uses a prototype application identity", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
   assert.match(config.expo.android.package, /\.prototype$/);
-  // Watching puts the controls under a 16:9 picture (Q-N5); landscape waits for #1831.
-  assert.equal(config.expo.orientation, "portrait");
+  // The app starts in portrait and stays there; only Watching unlocks rotation, for the landscape
+  // overlay (#1831, #2127). iOS must list landscape for that unlock to work.
+  assert.equal(config.expo.orientation, "default");
+  assert.deepEqual(
+    config.expo.plugins.find((plugin) => plugin[0] === "expo-screen-orientation"),
+    ["expo-screen-orientation", { initialOrientation: "PORTRAIT_UP" }],
+  );
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
 });
 
@@ -119,7 +124,7 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
     },
   ]);
   // Everything else is the development config, untouched.
-  assert.equal(config.orientation, "portrait");
+  assert.equal(config.orientation, "default");
   assert.ok(config.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   assert.match(config.android.package, /\.prototype$/);
 });

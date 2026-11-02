@@ -129,6 +129,7 @@ export {
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
+  FrameTapOptions,
   PlaybarBreak,
   PlaybarProgramme,
   PlaybarSegment,
@@ -167,6 +168,8 @@ export {
   PlayerShortcuts,
   PlayerStationId,
   playbarFromTimeline,
+  useAutoHideControls,
+  useFrameTap,
   WatchFrame,
   WatchingSurface,
   watchingScheduleTimeMs,

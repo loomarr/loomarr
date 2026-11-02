@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useAutoHideControls, useFrameTap } from "@loomarr/ui";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
-import { useAutoHideControls } from "./internal/use-auto-hide-controls";
 import { useFullscreen } from "./internal/use-fullscreen";
 import { usePictureInPicture } from "./internal/use-picture-in-picture";
 import { usePlaybackState } from "./internal/use-playback-state";
@@ -34,8 +34,6 @@ const SCRUB_STEP = 5;
 const LIVE_SEEK_STEP_MS = 10_000;
 // −/= step the volume a tenth at a time, as the slider's arrow keys do.
 const VOLUME_STEP = 0.1;
-// Two taps this close together on the same side of a touch frame are a double-tap.
-const DOUBLE_TAP_MS = 300;
 
 // Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
 // This is a poster, not a hidden player or decoder: transport teardown can release immediately,
@@ -158,39 +156,28 @@ const VideoPlayer = ({
     if (el && liveTransport) void liveTransport.goLive(el);
   };
 
-  // Touch (#2088 decision 12): a tap shows or hides the controls rather than pausing, and on a live
-  // channel a double-tap on the left or right third steps 10 s. A tap waits out the double-tap window
-  // before acting, so the second tap of a double is never also a toggle. The last pointer's kind is
+  // Touch (#2088 decision 12): a tap is the controls' and a double-tap on a side steps 10 s, as on
+  // every player (`useFrameTap`); a mouse click still plays and pauses. The last pointer's kind is
   // kept because a touch also fires the mouse events a mouse would, which must not reveal the controls
   // on their own.
   const pointerKindRef = useRef("mouse");
   const notePointer = (e: React.PointerEvent) => {
     pointerKindRef.current = e.pointerType;
   };
-  const tapRef = useRef<{ at: number; side: number; timer?: number }>({ at: 0, side: 0 });
-  useEffect(() => () => window.clearTimeout(tapRef.current.timer), []);
+  const tap = useFrameTap({
+    controlsShown,
+    hideControls,
+    live: Boolean(live),
+    onStep: (direction) => seekLiveBy(direction * LIVE_SEEK_STEP_MS),
+    revealControls,
+  });
   const onFrameClick = (e: React.MouseEvent<HTMLVideoElement>) => {
     if (pointerKindRef.current !== "touch") {
       toggle();
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const side = x < 1 / 3 ? -1 : x > 2 / 3 ? 1 : 0;
-    const now = performance.now();
-    const tap = tapRef.current;
-    window.clearTimeout(tap.timer);
-    if (live && side !== 0 && side === tap.side && now - tap.at < DOUBLE_TAP_MS) {
-      tapRef.current = { at: 0, side: 0 };
-      seekLiveBy(side * LIVE_SEEK_STEP_MS);
-      return;
-    }
-    const shown = controlsShown;
-    tapRef.current = {
-      at: now,
-      side,
-      timer: window.setTimeout(() => (shown ? hideControls() : revealControls()), DOUBLE_TAP_MS),
-    };
+    tap((e.clientX - rect.left) / rect.width);
   };
   const onMouseActive = () => {
     if (pointerKindRef.current !== "touch") onPointerActive();
