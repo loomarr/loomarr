@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -44,7 +45,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Kind: filler.Commercial,
 		DurationMs: 30_000, Era: 1994, Audience: filler.General,
 	}
-	if err := st.UpsertClip(t.Context(), store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
+	if err := st.UpsertClip(t.Context(), catalogstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
@@ -80,7 +81,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 		t.Fatal("seed taxonomy has no beer")
 	}
 	beer.Parent = "food"
-	edit := store.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}
+	edit := catalogstore.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}
 
 	preview, err := editor.Preview(t.Context(), edit)
 	if err != nil {
@@ -114,7 +115,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Kind: filler.Commercial,
 		DurationMs: 30_000, Era: 1994, Audience: filler.General,
 	}
-	if err := st.UpsertClip(t.Context(), store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
+	if err := st.UpsertClip(t.Context(), catalogstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SetClipTags(t.Context(), clip.Hash, []string{"beer"}); err != nil {
@@ -163,7 +164,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 		wake:  &fillerChannelWake{st: st, channels: engine, log: slog.New(slog.DiscardHandler)},
 		now:   func() time.Time { return now.Add(time.Minute) },
 	}
-	if _, err := editor.Apply(t.Context(), store.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
+	if _, err := editor.Apply(t.Context(), catalogstore.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
 		t.Fatal(err)
 	}
 	assertChannelHasFiller(t, st, channel.ID, false)
@@ -181,7 +182,7 @@ func TestTaxonomyEditor_ResolverOnlyEditDoesNotReconcileChannels(t *testing.T) {
 		store: st,
 		wake:  &fillerChannelWake{st: st, channels: recorder, log: slog.New(slog.DiscardHandler)},
 	}
-	if _, err := editor.Apply(t.Context(), store.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
+	if _, err := editor.Apply(t.Context(), catalogstore.TaxonomyEdit{Slug: beer.Slug, Taxon: beer}); err != nil {
 		t.Fatal(err)
 	}
 	if len(recorder.snapshots) != 0 {

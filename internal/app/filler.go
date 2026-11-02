@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -88,11 +89,11 @@ func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string
 }
 
 // fillerClip is the filler package's view of a stored clip.
-func fillerClip(c store.Clip) filler.StoreClip {
+func fillerClip(c catalogstore.Clip) filler.StoreClip {
 	return filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
 }
 
-func fillerClips(clips []store.Clip) []filler.StoreClip {
+func fillerClips(clips []catalogstore.Clip) []filler.StoreClip {
 	out := make([]filler.StoreClip, len(clips))
 	for i, c := range clips {
 		out[i] = fillerClip(c)
@@ -108,7 +109,7 @@ func fillerClips(clips []store.Clip) []filler.StoreClip {
 // and on the local backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer
 // already recorded.
 func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]filler.StoreClip, error) {
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: f.IncludeHeld})
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]f
 type fillerStoreAdapter struct{ st fillerstore.Store }
 
 func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
-	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+	return a.st.UpsertClip(ctx, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
 	c, err := a.st.GetClip(ctx, id)
@@ -151,10 +152,10 @@ func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.Stor
 	return fillerStoreAdapter(a).UpsertClip(ctx, c)
 }
 func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
-	return a.st.ReplaceClipIdentity(ctx, oldHash, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+	return a.st.ReplaceClipIdentity(ctx, oldHash, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, c filler.StoreClip) error {
-	return a.st.CommitConditioningPublication(ctx, publication, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+	return a.st.CommitConditioningPublication(ctx, publication, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
@@ -233,13 +234,13 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 type fillerIdentityStoreAdapter struct{ fillerstore.Store }
 
 func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
-	clips, err := a.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
+	clips, err := a.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
 	if err != nil {
 		return nil, err
 	}
 	// A corrupt defect row is omitted and that copy ranks as unmeasured; the rest still rank.
 	records, err := a.ListClipDefects(ctx)
-	if err != nil && !errors.Is(err, store.ErrCorruptClipDefects) {
+	if err != nil && !errors.Is(err, catalogstore.ErrCorruptClipDefects) {
 		return nil, err
 	}
 	out := make([]filler.IdentityClip, len(clips))
@@ -264,7 +265,7 @@ func (a fillerIdentityStoreAdapter) ListWantedCopies(ctx context.Context) ([]fil
 	return out, nil
 }
 func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c filler.InferiorCopy) error {
-	return a.Store.MergeInferiorCopy(ctx, store.InferiorCopy{
+	return a.Store.MergeInferiorCopy(ctx, catalogstore.InferiorCopy{
 		ClipHash: c.ClipHash, SourceHash: c.SourceHash, SurvivorHash: c.SurvivorHash, DecidedAt: c.DecidedAt,
 	})
 }
@@ -484,7 +485,7 @@ func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.Fetch
 // very much already on disk — omitting it would make auto-fetch re-download everything sitting in
 // the review queue, on every pass, forever.
 func (a fetchStoreAdapter) CatalogPaths(ctx context.Context) ([]string, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeRemoved: true})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true, IncludeRemoved: true})
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +645,7 @@ func (a clipExposureAdapter) FillerAirings(ctx context.Context) (filler.AiringHi
 // ListClips means none of them can forget it. Adding IncludeHeld to this call would put every
 // unreviewed download into live channels.
 func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -672,7 +673,7 @@ func (a fillerSplitStoreAdapter) GetClip(ctx context.Context, id string) (filler
 	return fillerStoreAdapter{st: a.st}.GetClip(ctx, id)
 }
 func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +686,7 @@ func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clip
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
-	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+	return a.st.UpsertClip(ctx, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
 func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
 	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
@@ -1532,7 +1533,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// count for that queue.
 	// Counted in SQL, not materialised: this loaded every column of every untagged row purely
 	// to take len() of the slice.
-	report.Untagged, err = a.store.CountClips(ctx, store.ClipFilter{UntaggedOnly: true})
+	report.Untagged, err = a.store.CountClips(ctx, catalogstore.ClipFilter{UntaggedOnly: true})
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
@@ -1783,7 +1784,7 @@ func (a fillerDefectStoreAdapter) GetClip(ctx context.Context, hash string) (fil
 }
 
 func (a fillerDefectStoreAdapter) ListClipPaths(ctx context.Context) ([]string, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
 	if err != nil {
 		return nil, err
 	}
@@ -1803,7 +1804,7 @@ func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, cli
 }
 
 func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]fillerdefectfloor.DefectClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		return nil, err
 	}
@@ -1825,7 +1826,7 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 
 func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]fillerdefectfloor.DefectRecord, error) {
 	rows, err := a.st.ListClipDefects(ctx)
-	if errors.Is(err, store.ErrCorruptClipDefects) {
+	if errors.Is(err, catalogstore.ErrCorruptClipDefects) {
 		err = fmt.Errorf("%w: %w", fillerdefectfloor.ErrDefectRecordsCorrupt, err)
 	} else if err != nil {
 		return nil, err
@@ -1843,7 +1844,7 @@ func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash s
 }
 
 func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r fillerdefectfloor.DefectRecord) error {
-	return a.st.UpsertClipDefects(ctx, store.ClipDefectRecord(r))
+	return a.st.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord(r))
 }
 
 func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]fillerdefectfloor.DefectLabel, error) {

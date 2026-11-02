@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -110,8 +111,8 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("idea-req-%d", next.Add(1)) }
 		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
@@ -365,8 +366,8 @@ func newManualChannelHarness(
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
 		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })

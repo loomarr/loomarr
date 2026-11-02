@@ -43,7 +43,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // autheliaImage is pinned. A floating tag would make this test's meaning change under us:
@@ -68,7 +68,7 @@ func TestSSO_AgainstRealAuthelia(t *testing.T) {
 
 	// Only `sam` is allowlisted. Authelia will happily authenticate `stranger` too, which is
 	// exactly the case §11 exists for.
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: ssoUser, Role: "member", UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)

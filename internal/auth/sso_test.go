@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -150,7 +151,7 @@ func TestSSO_DisabledRowIsRefusedThroughTheRealFlow(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: "sam", Role: "member", Disabled: true, UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -219,7 +220,7 @@ func TestSSO_AllowlistedRowSignsIn(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -260,7 +261,7 @@ func TestSSO_TokenFromAnotherLoginIsRefused(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
@@ -315,7 +316,7 @@ func TestSSO_TokenForAnotherClientIsRefused(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
@@ -347,7 +348,7 @@ func TestSSO_ExpiredTokenIsRefused(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
@@ -377,7 +378,7 @@ func TestSSO_StateCannotBeReplayed(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
@@ -455,7 +456,7 @@ func TestSSO_UserinfoWithAMismatchedSubjectIsIgnored(t *testing.T) {
 	ctx := context.Background()
 	// `admin` IS allowlisted — so if the mismatched claim were trusted, the login would
 	// SUCCEED as the wrong person. That is the failure this guards.
-	if err := st.UpsertUser(ctx, store.User{ID: "u-admin", Name: "admin", Role: "admin", UpdatedAt: time.Now()}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-admin", Name: "admin", Role: "admin", UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
@@ -492,7 +493,7 @@ func TestSSO_ProfileClaimsFromUserinfo(t *testing.T) {
 
 	st := newSSOStore(t)
 	ctx := context.Background()
-	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
@@ -530,7 +531,7 @@ func TestSSO_SendsPKCE(t *testing.T) {
 	st := newSSOStore(t)
 	ctx := context.Background()
 
-	if err := st.UpsertUser(ctx, store.User{
+	if err := st.UpsertUser(ctx, identitystore.User{
 		ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)

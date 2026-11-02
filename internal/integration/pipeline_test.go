@@ -36,6 +36,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -49,7 +50,7 @@ const adminToken = "admin-integration-token"
 type clipCatalog struct{ st store.Store }
 
 func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +221,7 @@ func seedFillerClips(t *testing.T, st store.Store) {
 		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
-		if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
+		if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
 			t.Fatal(err)
 		}
 	}

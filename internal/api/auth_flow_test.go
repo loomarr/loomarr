@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -35,8 +36,8 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 
 		return api.Router(defaults.Log, api.Options{
 			Store:        defaults.Store,
@@ -54,9 +55,9 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 
 // seedImported allowlists a media-server user directly (§11: the store IS the
 // allowlist), so the flow tests can log in as an imported user.
-func seedImported(t *testing.T, st store.Store, id, name string, role store.Role) {
+func seedImported(t *testing.T, st store.Store, id, name string, role identitystore.Role) {
 	t.Helper()
-	u := store.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	u := identitystore.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +422,7 @@ func TestBreakGlassToken(t *testing.T) {
 
 // seedLocalUser creates a local user through the real password service. The
 // harness otherwise seeds imported users, so a local one is explicit.
-func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role store.Role) {
+func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role identitystore.Role) {
 	t.Helper()
 	passwords := auth.NewPasswordService(st, func() string { return id }, time.Now)
 	_, err := passwords.CreateLocal(context.Background(), name, password, role, 0)
@@ -453,7 +454,7 @@ func TestMemberForbiddenOnPasswordAdminRoutes(t *testing.T) {
 func TestChangeOwnPassword_MemberAllowed(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", identitystore.RoleMember)
 	sess := login(t, srv, "localkid", "original-pw")
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", sess,
@@ -476,7 +477,7 @@ func TestChangeOwnPassword_MemberAllowed(t *testing.T) {
 func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", identitystore.RoleMember)
 	sess := login(t, srv, "localkid", "original-pw")
 
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", sess,
@@ -534,7 +535,7 @@ func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Role != store.RoleMember {
+	if u.Role != identitystore.RoleMember {
 		t.Errorf("role = %q, want member when the field is omitted", u.Role)
 	}
 }
@@ -544,7 +545,7 @@ func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
 func TestResetUserPassword_AdminPath(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
-	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", identitystore.RoleMember)
 	admin := login(t, srv, "boss", "pw")
 	victim := login(t, srv, "localkid", "original-pw")
 

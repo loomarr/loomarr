@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Local account management (§11). These cover the two operations the identity model
@@ -23,13 +24,13 @@ func newPasswordService(t *testing.T) (*PasswordService, store.Store) {
 }
 
 // seedLocal writes a local user with a known password.
-func seedLocal(t *testing.T, st store.Store, id, name, password string, role store.Role) {
+func seedLocal(t *testing.T, st store.Store, id, name, password string, role identitystore.Role) {
 	t.Helper()
 	hash, err := hashPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertUser(context.Background(), store.User{
+	if err := st.UpsertUser(context.Background(), identitystore.User{
 		ID: id, Name: name, Role: role, PasswordHash: hash, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -41,7 +42,7 @@ func seedLocal(t *testing.T, st store.Store, id, name, password string, role sto
 func TestChangePassword_UpdatesHashAndVerifies(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	seedLocal(t, st, "u1", "owner", "original-pw", store.RoleAdmin)
+	seedLocal(t, st, "u1", "owner", "original-pw", identitystore.RoleAdmin)
 
 	if err := svc.ChangePassword(ctx, "u1", "original-pw", "a-longer-new-pw"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
@@ -64,7 +65,7 @@ func TestChangePassword_UpdatesHashAndVerifies(t *testing.T) {
 func TestChangePassword_RequiresCurrentPassword(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	seedLocal(t, st, "u1", "owner", "original-pw", store.RoleAdmin)
+	seedLocal(t, st, "u1", "owner", "original-pw", identitystore.RoleAdmin)
 
 	err := svc.ChangePassword(ctx, "u1", "not-the-password", "a-longer-new-pw")
 	if !errors.Is(err, ErrWrongPassword) {
@@ -82,7 +83,7 @@ func TestChangePassword_RequiresCurrentPassword(t *testing.T) {
 func TestChangePassword_RejectsImportedUser(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember, MediaServerLinked: true}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u2", Name: "emby-user", Role: identitystore.RoleMember, MediaServerLinked: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.ChangePassword(ctx, "u2", "anything", "a-longer-new-pw"); !errors.Is(err, ErrNotLocalUser) {
@@ -92,7 +93,7 @@ func TestChangePassword_RejectsImportedUser(t *testing.T) {
 
 func TestChangePassword_RejectsShortPassword(t *testing.T) {
 	svc, st := newPasswordService(t)
-	seedLocal(t, st, "u1", "owner", "original-pw", store.RoleAdmin)
+	seedLocal(t, st, "u1", "owner", "original-pw", identitystore.RoleAdmin)
 	if err := svc.ChangePassword(context.Background(), "u1", "original-pw", "short"); !errors.Is(err, ErrWeakPassword) {
 		t.Fatalf("err = %v, want ErrWeakPassword", err)
 	}
@@ -104,7 +105,7 @@ func TestChangePassword_RejectsShortPassword(t *testing.T) {
 func TestChangePassword_RevokesAllSessions(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	seedLocal(t, st, "u1", "owner", "original-pw", store.RoleAdmin)
+	seedLocal(t, st, "u1", "owner", "original-pw", identitystore.RoleAdmin)
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 
 	tokenA, _, err := mgr.Issue(ctx, "u1")
@@ -131,7 +132,7 @@ func TestCreateLocal_AddsAnAllowlistRowWithAHash(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
 
-	u, err := svc.CreateLocal(ctx, "second-admin", "a-good-password", store.RoleMember, 5)
+	u, err := svc.CreateLocal(ctx, "second-admin", "a-good-password", identitystore.RoleMember, 5)
 	if err != nil {
 		t.Fatalf("CreateLocal: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestCreateLocal_AddsAnAllowlistRowWithAHash(t *testing.T) {
 	if !verifyPassword(got.PasswordHash, "a-good-password") {
 		t.Error("stored hash does not verify against the given password")
 	}
-	if got.Role != store.RoleMember || got.Quota != 5 {
+	if got.Role != identitystore.RoleMember || got.Quota != 5 {
 		t.Errorf("role/quota not persisted: %+v", got)
 	}
 }
@@ -155,13 +156,13 @@ func TestCreateLocal_AddsAnAllowlistRowWithAHash(t *testing.T) {
 func TestCreateLocal_RejectsDuplicateUsername(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	seedLocal(t, st, "u1", "owner", "original-pw", store.RoleAdmin)
+	seedLocal(t, st, "u1", "owner", "original-pw", identitystore.RoleAdmin)
 
-	if _, err := svc.CreateLocal(ctx, "owner", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
+	if _, err := svc.CreateLocal(ctx, "owner", "a-good-password", identitystore.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
 		t.Fatalf("err = %v, want ErrDuplicateUsername", err)
 	}
 	// Case differences are still the same name to a human and to login.
-	if _, err := svc.CreateLocal(ctx, "OWNER", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
+	if _, err := svc.CreateLocal(ctx, "OWNER", "a-good-password", identitystore.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
 		t.Fatalf("case-different duplicate: err = %v, want ErrDuplicateUsername", err)
 	}
 }
@@ -176,14 +177,14 @@ func TestCreateLocal_RejectsInvitedUsername(t *testing.T) {
 	if err := st.CreateInvitation(context.Background(), reserved, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.CreateLocal(context.Background(), " grace ", "a-good-password", store.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
+	if _, err := svc.CreateLocal(context.Background(), " grace ", "a-good-password", identitystore.RoleMember, 0); !errors.Is(err, ErrDuplicateUsername) {
 		t.Fatalf("err = %v, want ErrDuplicateUsername", err)
 	}
 }
 
 func TestCreateLocal_RejectsShortPassword(t *testing.T) {
 	svc, _ := newPasswordService(t)
-	if _, err := svc.CreateLocal(context.Background(), "newbie", "short", store.RoleMember, 0); !errors.Is(err, ErrWeakPassword) {
+	if _, err := svc.CreateLocal(context.Background(), "newbie", "short", identitystore.RoleMember, 0); !errors.Is(err, ErrWeakPassword) {
 		t.Fatalf("err = %v, want ErrWeakPassword", err)
 	}
 }
@@ -193,7 +194,7 @@ func TestCreateLocal_RejectsShortPassword(t *testing.T) {
 func TestResetPassword_SetsHashAndRevokesTargetSessions(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	seedLocal(t, st, "u1", "forgetful", "lost-to-time", store.RoleMember)
+	seedLocal(t, st, "u1", "forgetful", "lost-to-time", identitystore.RoleMember)
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	tok, _, err := mgr.Issue(ctx, "u1")
 	if err != nil {
@@ -217,7 +218,7 @@ func TestResetPassword_SetsHashAndRevokesTargetSessions(t *testing.T) {
 func TestResetPassword_RejectsImportedUser(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
-	if err := st.UpsertUser(ctx, store.User{ID: "u2", Name: "emby-user", Role: store.RoleMember, MediaServerLinked: true}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "u2", Name: "emby-user", Role: identitystore.RoleMember, MediaServerLinked: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.ResetPassword(ctx, "u2", "an-admin-set-pw"); !errors.Is(err, ErrNotLocalUser) {
@@ -231,8 +232,8 @@ func TestChangePassword_LeavesRoleAndQuotaAlone(t *testing.T) {
 	svc, st := newPasswordService(t)
 	ctx := context.Background()
 	hash, _ := hashPassword("original-pw")
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "u1", Name: "member", Role: store.RoleMember, Quota: 3, AutoApprove: true,
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "u1", Name: "member", Role: identitystore.RoleMember, Quota: 3, AutoApprove: true,
 		PasswordHash: hash, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -241,7 +242,7 @@ func TestChangePassword_LeavesRoleAndQuotaAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ := st.GetUser(ctx, "u1")
-	if u.Role != store.RoleMember || u.Quota != 3 || !u.AutoApprove {
+	if u.Role != identitystore.RoleMember || u.Quota != 3 || !u.AutoApprove {
 		t.Errorf("password change disturbed identity fields: %+v", u)
 	}
 }

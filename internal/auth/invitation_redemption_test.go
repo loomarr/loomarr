@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -50,7 +51,7 @@ func TestInvitationRedemption_LocalCreatesArgon2idUserAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID != "local-user" || user.Name != invited.Username || user.Role != store.RoleAdmin ||
+	if user.ID != "local-user" || user.Name != invited.Username || user.Role != identitystore.RoleAdmin ||
 		user.MediaServerLinked || !verifyPassword(user.PasswordHash, "correct horse battery staple") {
 		t.Fatalf("redeemed user = %+v", user)
 	}
@@ -150,7 +151,7 @@ func TestInvitationRedemption_LibraryProvesPinnedIdentityAndStoresOfflineVerifie
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID != invited.LibraryUserID || user.Name != "Grace" || user.Role != store.RoleMember ||
+	if user.ID != invited.LibraryUserID || user.Name != "Grace" || user.Role != identitystore.RoleMember ||
 		!user.MediaServerLinked || !verifyPassword(user.PasswordHash, "provider-password") {
 		t.Fatalf("redeemed user = %+v", user)
 	}

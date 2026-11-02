@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 func (s *Server) registerInvitations(api huma.API) {
@@ -241,9 +242,9 @@ func invitationMutationError(err error) error {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return errNotFound("Invitation not found", "That invitation doesn't exist or can no longer be changed.")
-	case errors.Is(err, store.ErrInvitationIdentityConflict):
+	case errors.Is(err, identitystore.ErrInvitationIdentityConflict):
 		return errConflict("Person already reserved", "That person already has an account or a pending invitation.")
-	case errors.Is(err, store.ErrContactAddressConflict):
+	case errors.Is(err, identitystore.ErrContactAddressConflict):
 		return errConflict("Email already in use", "That contact address is already attached to another person or invitation.")
 	default:
 		return errUnprocessable("Invitation couldn't be saved", "Check the selected person and invitation details, then try again.")

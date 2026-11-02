@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -223,7 +223,7 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 	if err != nil {
 		return nil, err
 	}
-	if u, ok := userFrom(ctx); ok && u.Role == store.RoleAdmin {
+	if u, ok := userFrom(ctx); ok && u.Role == identitystore.RoleAdmin {
 		return nil, apiErr(http.StatusForbidden, "Channel ideas are for members",
 			"Requests go to an admin for approval. As an admin, make the channel yourself from the guide.")
 	}

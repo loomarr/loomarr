@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -1700,14 +1701,14 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	record := func(hash string, era int, blur float64, j *defects.Judgement) store.ClipDefectRecord {
+	record := func(hash string, era int, blur float64, j *defects.Judgement) catalogstore.ClipDefectRecord {
 		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 		a := defects.Assess(r, era)
 		verdict, reason := defects.Decide(a, j)
-		return store.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
+		return catalogstore.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
 			Verdict: verdict, VerdictReason: reason, MeasuredAt: now}
 	}
-	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
+	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
 		t.Fatal("a record with no measurement or verdict version was stored")
 	}
 	unjudged := record(one.Hash, 1988, 4, nil)
@@ -1762,8 +1763,8 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	labelTwo := store.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
-	if want := map[string]store.ClipDefectLabel{
+	labelTwo := catalogstore.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
+	if want := map[string]catalogstore.ClipDefectLabel{
 		one.Hash: {Label: defects.LabelFail, Era: 2012, LabelledAt: now}, two.Hash: labelTwo,
 	}; !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels = %+v, want %+v: judging again must keep a label and the era it was given for", labels, want)
@@ -6418,7 +6419,7 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	}
 	// The loser's defect record describes bytes that are about to be deleted (#2034).
 	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
-	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{
+	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{
 		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988),
 		Verdict: defects.VerdictPass, MeasuredAt: now,
 	}); err != nil {

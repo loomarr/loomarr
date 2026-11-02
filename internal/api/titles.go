@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // registerMiddleware resolves each request's role + user (§7) before the
@@ -20,7 +21,7 @@ func (s *Server) registerMiddleware(api huma.API) {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		r, _ := humago.Unwrap(ctx)
 		role := RoleAnonymous
-		var user *store.User
+		var user *identitystore.User
 		var deviceID string
 		if s.auth != nil {
 			if ia, ok := s.auth.(identityAuthorizer); ok {

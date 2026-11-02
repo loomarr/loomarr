@@ -15,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // SSO is the third credential path onto §11's owned identity (D-F, V8).
@@ -94,7 +95,7 @@ type SSOConfig struct {
 
 // SSOStore is the allowlist lookup needed after the provider proves identity.
 type SSOStore interface {
-	GetUserByName(ctx context.Context, name string) (store.User, error)
+	GetUserByName(ctx context.Context, name string) (identitystore.User, error)
 }
 
 // ready reports whether every field a login needs is present. Enabled alone is not enough —
@@ -199,10 +200,10 @@ func (s *SSOService) Start(ctx context.Context, returnTo string) (authURL, state
 // ⚠ The claims are returned even on FAILURE (alongside the error), so the API can show the
 // operator what the provider said. A refusal an operator cannot debug is a refusal they will
 // work around by disabling the allowlist.
-func (s *SSOService) Exchange(ctx context.Context, state, code string) (token string, expires time.Time, u store.User, claims SSOClaims, returnTo string, err error) {
+func (s *SSOService) Exchange(ctx context.Context, state, code string) (token string, expires time.Time, u identitystore.User, claims SSOClaims, returnTo string, err error) {
 	cfg := s.cfg()
 	if !cfg.ready() {
-		return "", time.Time{}, store.User{}, claims, "", ErrSSONotConfigured
+		return "", time.Time{}, identitystore.User{}, claims, "", ErrSSONotConfigured
 	}
 
 	s.mu.Lock()
@@ -211,22 +212,22 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 	delete(s.pending, state) // single use, whatever the outcome
 	s.mu.Unlock()
 	if !ok {
-		return "", time.Time{}, store.User{}, claims, "", ErrSSOStateMismatch
+		return "", time.Time{}, identitystore.User{}, claims, "", ErrSSOStateMismatch
 	}
 
 	provider, err := s.oidcProvider(ctx, cfg.Issuer)
 	if err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, err
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, err
 	}
 	conf := s.oauthConfig(cfg, provider)
 
 	tok, err := conf.Exchange(ctx, code, oauth2.VerifierOption(p.verifier))
 	if err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, fmt.Errorf("sso: code exchange: %w", err)
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, fmt.Errorf("sso: code exchange: %w", err)
 	}
 	rawID, ok := tok.Extra("id_token").(string)
 	if !ok || rawID == "" {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, errors.New("sso: provider returned no id_token")
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, errors.New("sso: provider returned no id_token")
 	}
 
 	// Verified against the issuer's published keys, with audience and expiry checked by the
@@ -234,16 +235,16 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 	// the kind of security code that looks right and is not.
 	idTok, err := provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}).Verify(ctx, rawID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, fmt.Errorf("sso: id_token: %w", err)
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, fmt.Errorf("sso: id_token: %w", err)
 	}
 	if idTok.Nonce != p.nonce {
 		// A valid token for a login this server did not start.
-		return "", time.Time{}, store.User{}, claims, p.returnTo, ErrSSOStateMismatch
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, ErrSSOStateMismatch
 	}
 
 	var raw ssoRawClaims
 	if err := idTok.Claims(&raw); err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, fmt.Errorf("sso: claims: %w", err)
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, fmt.Errorf("sso: claims: %w", err)
 	}
 
 	// ⚠ **The profile claims come from USERINFO, not the id_token** — found by testing against
@@ -282,24 +283,24 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 	// what makes SSO a credential path rather than a provisioning one (§11, D-F).
 	name := claims.MatchName()
 	if name == "" {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, ErrInvalidCredentials
 	}
 	row, err := s.store.GetUserByName(ctx, name)
 	if errors.Is(err, store.ErrNotFound) {
 		s.logRefusal(name, claims)
-		return "", time.Time{}, store.User{}, claims, p.returnTo, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, ErrInvalidCredentials
 	}
 	if err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, err
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, err
 	}
 	if row.Disabled {
 		// Same refusal as every other path: a disabled row cannot sign in by any credential.
-		return "", time.Time{}, store.User{}, claims, p.returnTo, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, ErrInvalidCredentials
 	}
 
 	token, expires, err = s.mgr.Issue(ctx, row.ID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, claims, p.returnTo, err
+		return "", time.Time{}, identitystore.User{}, claims, p.returnTo, err
 	}
 	return token, expires, row, claims, p.returnTo, nil
 }

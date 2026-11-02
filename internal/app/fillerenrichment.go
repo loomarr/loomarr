@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -198,7 +198,7 @@ func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context
 	return fillerEnrichmentCandidates(clips, err)
 }
 
-func fillerEnrichmentCandidates(clips []store.Clip, err error) ([]fillerenrichment.Candidate, error) {
+func fillerEnrichmentCandidates(clips []catalogstore.Clip, err error) ([]fillerenrichment.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}

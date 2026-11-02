@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -92,7 +93,7 @@ func existingAdmin(ctx context.Context, st store.Store) (string, error) {
 		return "", fmt.Errorf("list users: %w", err)
 	}
 	for _, u := range users {
-		if u.Role == store.RoleAdmin {
+		if u.Role == identitystore.RoleAdmin {
 			return u.ID, nil
 		}
 	}

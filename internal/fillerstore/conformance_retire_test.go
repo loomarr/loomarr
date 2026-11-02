@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // #2036: a copy that fails the floor is retired. The row outlives its file, so it is the "wanted:
@@ -24,11 +24,11 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	verdict := func(hash string, v defects.Verdict, reason string) store.ClipDefectRecord {
-		return store.ClipDefectRecord{ClipHash: hash, Readings: defects.Readings{Version: defects.MeasurementVersion},
+	verdict := func(hash string, v defects.Verdict, reason string) catalogstore.ClipDefectRecord {
+		return catalogstore.ClipDefectRecord{ClipHash: hash, Readings: defects.Readings{Version: defects.MeasurementVersion},
 			Assessment: defects.Assessment{Version: defects.FloorVersion}, Era: 1988, Verdict: v, VerdictReason: reason, MeasuredAt: at}
 	}
-	for _, r := range []store.ClipDefectRecord{verdict(bad.Hash, defects.VerdictFail, "detectors"),
+	for _, r := range []catalogstore.ClipDefectRecord{verdict(bad.Hash, defects.VerdictFail, "detectors"),
 		verdict(passing.Hash, defects.VerdictPass, "detectors")} {
 		if err := s.UpsertClipDefects(ctx, r); err != nil {
 			t.Fatal(err)
@@ -49,7 +49,7 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 		!wanted[0].RetiredAt.Equal(at) {
 		t.Fatalf("wanted = %+v, want only the retired copy", wanted)
 	}
-	if listed, err := s.ListClips(ctx, store.ClipFilter{IncludeHeld: true}); err != nil {
+	if listed, err := s.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true}); err != nil {
 		t.Fatal(err)
 	} else if len(listed) != 1 || listed[0].Hash != passing.Hash {
 		t.Fatalf("catalog = %+v, want only the passing copy", listed)
@@ -72,7 +72,7 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, better); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MergeInferiorCopy(ctx, store.InferiorCopy{ClipHash: bad.Hash, SourceHash: bad.Hash,
+	if err := s.MergeInferiorCopy(ctx, catalogstore.InferiorCopy{ClipHash: bad.Hash, SourceHash: bad.Hash,
 		SurvivorHash: better.Hash, DecidedAt: at.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}

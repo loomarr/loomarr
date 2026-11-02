@@ -11,13 +11,14 @@ import (
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // quotaStore is an in-memory stand-in for the slices AutoApprover needs. It is a fake,
 // not a mock: the assertions are about what ends up in it, not about which calls it saw.
 type quotaStore struct {
-	users     map[string]store.User
+	users     map[string]identitystore.User
 	titles    map[provision.Key]provision.Record
 	proposals map[string]store.Proposal
 	channels  map[string]store.Channel
@@ -33,19 +34,19 @@ type quotaStore struct {
 
 func newQuotaStore() *quotaStore {
 	return &quotaStore{
-		users:     map[string]store.User{},
+		users:     map[string]identitystore.User{},
 		titles:    map[provision.Key]provision.Record{},
 		proposals: map[string]store.Proposal{},
 		channels:  map[string]store.Channel{},
 	}
 }
 
-func (q *quotaStore) GetUser(_ context.Context, id string) (store.User, error) {
+func (q *quotaStore) GetUser(_ context.Context, id string) (identitystore.User, error) {
 	q.dataMu.RLock()
 	defer q.dataMu.RUnlock()
 	u, ok := q.users[id]
 	if !ok {
-		return store.User{}, store.ErrNotFound
+		return identitystore.User{}, store.ErrNotFound
 	}
 	return u, nil
 }
@@ -240,7 +241,7 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 
 	t.Run("approves while within the cap", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 3}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 3}
 		p := proposalWith("p1", "grace", "submitted", 101, 102)
 		st.proposals["p1"] = p
 
@@ -269,7 +270,7 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 	// The load-bearing case: over quota, the proposal must NOT acquire anything.
 	t.Run("holds an over-cap proposal for an admin without enqueueing", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 2}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 2}
 		// Two already pending from an earlier approved proposal.
 		st.proposals["old"] = proposalWith("old", "grace", "approved", 201, 202)
 		st.titles[movieKey(t, 201)] = provision.Record{Key: movieKey(t, 201), State: provision.Wanted}
@@ -301,7 +302,7 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 	// up as content arrives rather than being a lifetime budget.
 	t.Run("terminal titles no longer count against the cap", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 2}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 2}
 		st.proposals["old"] = proposalWith("old", "grace", "approved", 201, 202)
 		st.titles[movieKey(t, 201)] = provision.Record{Key: movieKey(t, 201), State: provision.Available}
 		st.titles[movieKey(t, 202)] = provision.Record{Key: movieKey(t, 202), State: provision.Unavailable}
@@ -322,7 +323,7 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 	// would depend on unrelated activity.
 	t.Run("an existing title is not charged again", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 1}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}
 		st.proposals["old"] = proposalWith("old", "grace", "approved", 201)
 		st.titles[movieKey(t, 201)] = provision.Record{Key: movieKey(t, 201), State: provision.Wanted}
 		// The new proposal asks for a title that ALREADY exists (someone else's).
@@ -342,7 +343,7 @@ func TestAutoApprove_RespectsQuota(t *testing.T) {
 
 	t.Run("falls back to the default cap when the user's quota is 0", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 0}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 0}
 		st.proposals["old"] = proposalWith("old", "grace", "approved", 201)
 		st.titles[movieKey(t, 201)] = provision.Record{Key: movieKey(t, 201), State: provision.Wanted}
 
@@ -360,7 +361,7 @@ func TestAutoApprove_ConcurrentProposalsShareTheRemainingQuota(t *testing.T) {
 	ctx := context.Background()
 	st := newQuotaStore()
 	st.requireQuotaLock = true
-	st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 1}
+	st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}
 	for _, p := range []store.Proposal{
 		proposalWith("race-a", "grace", "submitted", 401),
 		proposalWith("race-b", "grace", "submitted", 402),
@@ -415,7 +416,7 @@ func TestAutoApprove_ConcurrentProposalsShareTheRemainingQuota(t *testing.T) {
 func TestAutoApprove_ReleasesQuotaOrderingBeforePostCommitWork(t *testing.T) {
 	ctx := context.Background()
 	st := newQuotaStore()
-	st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 1}
+	st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}
 	p := proposalWith("post-commit", "grace", "submitted", 450)
 	st.proposals[p.ID] = p
 
@@ -441,7 +442,7 @@ func TestAutoApprove_ReleasesQuotaOrderingBeforePostCommitWork(t *testing.T) {
 func TestAutoApprove_RequiresTheGrant(t *testing.T) {
 	ctx := context.Background()
 	st := newQuotaStore()
-	st.users["grace"] = store.User{ID: "grace", AutoApprove: false, Quota: 99}
+	st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: false, Quota: 99}
 	p := proposalWith("p1", "grace", "submitted", 101)
 	st.proposals["p1"] = p
 
@@ -473,7 +474,7 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 
 	t.Run("disabled requester", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99, Disabled: true}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 99, Disabled: true}
 		p := proposalWith("p1", "grace", "submitted", 101)
 		st.proposals["p1"] = p
 		if d, _ := autoApprover(st, 99).Consider(ctx, p); d.Approved {
@@ -491,7 +492,7 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 
 	t.Run("quota title read fails", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 99}
 		st.proposals["old"] = proposalWith("old", "grace", "approved", 201)
 		p := proposalWith("p1", "grace", "submitted", 101)
 		st.proposals[p.ID] = p
@@ -507,7 +508,7 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 
 	t.Run("requester lock fails", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 99}
 		p := proposalWith("p1", "grace", "submitted", 101)
 		st.proposals[p.ID] = p
 		st.quotaLockErr = errors.New("database lock unavailable")
@@ -522,7 +523,7 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 
 	t.Run("approved audit is malformed", func(t *testing.T) {
 		st := newQuotaStore()
-		st.users["grace"] = store.User{ID: "grace", AutoApprove: true, Quota: 99}
+		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 99}
 		st.proposals["old"] = store.Proposal{ID: "old", CreatedBy: "grace", Status: "approved", ProposalJSON: `{`}
 		p := proposalWith("p1", "grace", "submitted", 101)
 		st.proposals[p.ID] = p

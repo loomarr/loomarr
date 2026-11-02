@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -24,7 +25,7 @@ func newStore(t *testing.T) store.Store {
 func TestTokenHashedAtRest(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
-	_ = st.UpsertUser(ctx, store.User{ID: "u1", Name: "A", Role: store.RoleMember})
+	_ = st.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "A", Role: identitystore.RoleMember})
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 
 	token, _, err := mgr.Issue(ctx, "u1")
@@ -44,12 +45,12 @@ func TestTokenHashedAtRest(t *testing.T) {
 func TestResolveValid(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
-	_ = st.UpsertUser(ctx, store.User{ID: "u1", Name: "A", Role: store.RoleAdmin})
+	_ = st.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "A", Role: identitystore.RoleAdmin})
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	token, _, _ := mgr.Issue(ctx, "u1")
 
 	u, err := mgr.Resolve(ctx, token, "")
-	if err != nil || u.ID != "u1" || u.Role != store.RoleAdmin {
+	if err != nil || u.ID != "u1" || u.Role != identitystore.RoleAdmin {
 		t.Fatalf("Resolve = %+v, %v; want admin u1", u, err)
 	}
 }
@@ -58,7 +59,7 @@ func TestResolveValid(t *testing.T) {
 func TestResolveDisabledUser(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
-	_ = st.UpsertUser(ctx, store.User{ID: "u1", Name: "A", Role: store.RoleMember})
+	_ = st.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "A", Role: identitystore.RoleMember})
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	token, _, _ := mgr.Issue(ctx, "u1")
 
@@ -109,7 +110,7 @@ type disableBeforeCreateSession struct {
 	hook func()
 }
 
-func (s disableBeforeCreateSession) CreateSession(ctx context.Context, sess store.Session) error {
+func (s disableBeforeCreateSession) CreateSession(ctx context.Context, sess identitystore.Session) error {
 	s.hook()
 	return s.Store.CreateSession(ctx, sess)
 }
@@ -290,7 +291,7 @@ func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 	// boss is imported (as admin); kid is NOT imported.
 	importOne(t, st, "u-boss", "boss", true)
 
-	if _, _, u, err := svc.Login(ctx, "boss", "pw", "ip|boss"); err != nil || u.Role != store.RoleAdmin {
+	if _, _, u, err := svc.Login(ctx, "boss", "pw", "ip|boss"); err != nil || u.Role != identitystore.RoleAdmin {
 		t.Errorf("imported admin → %v (%v), want admin login", u.Role, err)
 	}
 	// kid has VALID media-server creds but is not on the allowlist → denied.
@@ -321,10 +322,10 @@ func TestImport_RoleAssignment(t *testing.T) {
 	if err != nil || n != 2 {
 		t.Fatalf("import → %d,%v want 2,nil", n, err)
 	}
-	if u, _ := st.GetUser(ctx, adminID); u.Role != store.RoleAdmin {
+	if u, _ := st.GetUser(ctx, adminID); u.Role != identitystore.RoleAdmin {
 		t.Errorf("media-server admin imported as → %v, want admin", u.Role)
 	}
-	if u, _ := st.GetUser(ctx, memberID); u.Role != store.RoleMember {
+	if u, _ := st.GetUser(ctx, memberID); u.Role != identitystore.RoleMember {
 		t.Errorf("non-admin imported → %v, want member", u.Role)
 	}
 	// An id the server doesn't list is skipped, never invented.
@@ -341,7 +342,7 @@ func TestBootstrap_OnceOnly(t *testing.T) {
 	prov := NewProvisioner(st, nil, seqID(), func() time.Time { return now })
 
 	u, err := prov.Bootstrap(ctx, "owner", "s3cret-pw")
-	if err != nil || u.Role != store.RoleAdmin || u.PasswordHash == "" {
+	if err != nil || u.Role != identitystore.RoleAdmin || u.PasswordHash == "" {
 		t.Fatalf("bootstrap → %+v, %v (want admin with a hash)", u, err)
 	}
 	// A local admin can now log in against the Argon2id hash (no media server).
@@ -365,11 +366,11 @@ func TestBootstrap_OnceOnly(t *testing.T) {
 // Provisioner.Import does, without needing the media-server list fixture.
 func importOne(t *testing.T, st store.Store, id, name string, admin bool) {
 	t.Helper()
-	role := store.RoleMember
+	role := identitystore.RoleMember
 	if admin {
-		role = store.RoleAdmin
+		role = identitystore.RoleAdmin
 	}
-	u := store.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: now, UpdatedAt: now}
+	u := identitystore.User{ID: id, Name: name, Role: role, MediaServerLinked: true, CreatedAt: now, UpdatedAt: now}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -509,8 +510,8 @@ func TestLocalLogin_UpgradesLegacyBcryptAfterSuccessfulVerification(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "local-legacy", Name: "legacy", Role: store.RoleAdmin, PasswordHash: string(legacy),
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "local-legacy", Name: "legacy", Role: identitystore.RoleAdmin, PasswordHash: string(legacy),
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)

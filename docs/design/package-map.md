@@ -191,7 +191,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`store/catalogstore`** · 1 importer · → `broadcaststation`, `clipcatalog`, `creative`, `defects`, `holidayvocab`, `schedule`, `store/storedb`, `taxonomy`
+- **`store/catalogstore`** · 4 importers · → `broadcaststation`, `clipcatalog`, `creative`, `defects`, `holidayvocab`, `schedule`, `store/storedb`, `taxonomy`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 
 ### Layer 4
@@ -206,7 +206,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`store/identitystore`** · 1 importer · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
+- **`store/identitystore`** · 4 importers · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 
 ### Layer 5
@@ -244,7 +244,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
-- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`
+- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`, `store/catalogstore`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparers that render and verify the normalized whole-source and per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
@@ -253,7 +253,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 9
 
-- **`auth`** · 3 importers · → `contact`, `invitation`, `library`, `recovery`, `store`
+- **`auth`** · 3 importers · → `contact`, `invitation`, `library`, `recovery`, `store`, `store/identitystore`
   Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
@@ -323,12 +323,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

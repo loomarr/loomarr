@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -1167,7 +1168,7 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 	st := newStore(t)
 
 	// A user holding the auto-approve grant, comfortably within quota.
-	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1239,7 +1240,7 @@ func TestWorker_AutoApproveCommitsChannel(t *testing.T) {
 func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.CreateJob(ctx, store.Job{
@@ -1298,7 +1299,7 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(

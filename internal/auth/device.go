@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // PairingTTL is how long a code shown on a TV stays valid.
@@ -39,16 +40,16 @@ var ErrPairingNotApproved = errors.New("auth: pairing not approved")
 // DeviceStore is the pairing, device-token, and owning-user surface needed by
 // device authentication. Session and unrelated identity mutations stay outside it.
 type DeviceStore interface {
-	CreateDevicePairing(ctx context.Context, pairing store.DevicePairing) error
+	CreateDevicePairing(ctx context.Context, pairing identitystore.DevicePairing) error
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
-	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (store.DevicePairing, error)
-	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (store.DevicePairing, error)
+	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (identitystore.DevicePairing, error)
+	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (identitystore.DevicePairing, error)
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
-	CreateDeviceToken(ctx context.Context, token store.DeviceToken) error
-	GetDeviceToken(ctx context.Context, tokenHash string) (store.DeviceToken, error)
-	ListDeviceTokensForUser(ctx context.Context, userID string) ([]store.DeviceToken, error)
+	CreateDeviceToken(ctx context.Context, token identitystore.DeviceToken) error
+	GetDeviceToken(ctx context.Context, tokenHash string) (identitystore.DeviceToken, error)
+	ListDeviceTokensForUser(ctx context.Context, userID string) ([]identitystore.DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
-	GetUser(ctx context.Context, id string) (store.User, error)
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
 }
 
 // DeviceManager runs the pairing handshake and issues device credentials.
@@ -61,7 +62,7 @@ type DeviceManager struct {
 // token hash: it is safe to use as a revocation handle and cannot authenticate a request.
 type DevicePrincipal struct {
 	ID   string
-	User store.User
+	User identitystore.User
 }
 
 // NewDeviceManager builds a device manager. now defaults to time.Now.
@@ -128,7 +129,7 @@ func (m *DeviceManager) StartPairing(ctx context.Context, deviceName string) (de
 	}
 	now := m.now()
 	expires = now.Add(PairingTTL)
-	err = m.store.CreateDevicePairing(ctx, store.DevicePairing{
+	err = m.store.CreateDevicePairing(ctx, identitystore.DevicePairing{
 		DeviceCodeHash: hashToken(deviceCode),
 		UserCode:       userCode,
 		DeviceName:     deviceName,
@@ -173,7 +174,7 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 		return "", "", err
 	}
 	now := m.now()
-	err = m.store.CreateDeviceToken(ctx, store.DeviceToken{
+	err = m.store.CreateDeviceToken(ctx, identitystore.DeviceToken{
 		TokenHash:  hashToken(token),
 		UserID:     pairing.UserID,
 		DeviceName: pairing.DeviceName,
@@ -191,12 +192,12 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 
 // Pending resolves a still-unapproved pairing by the code a human typed, so an approval screen can
 // name the device before granting it anything ("Approve Living Room Shield?"). Read-only.
-func (m *DeviceManager) Pending(ctx context.Context, rawUserCode string) (store.DevicePairing, error) {
+func (m *DeviceManager) Pending(ctx context.Context, rawUserCode string) (identitystore.DevicePairing, error) {
 	return m.store.GetDevicePairingByUserCode(ctx, NormalizeUserCode(rawUserCode), m.now())
 }
 
 // ListFor returns a user's paired devices for the revocation UI.
-func (m *DeviceManager) ListFor(ctx context.Context, userID string) ([]store.DeviceToken, error) {
+func (m *DeviceManager) ListFor(ctx context.Context, userID string) ([]identitystore.DeviceToken, error) {
 	return m.store.ListDeviceTokensForUser(ctx, userID)
 }
 

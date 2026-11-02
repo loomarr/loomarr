@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 const firefoxOnMac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:128.0) Gecko/20100101 Firefox/128.0"
@@ -16,7 +16,7 @@ const firefoxOnMac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:128.0) Gec
 func TestLastSeen_SessionUseShowsOnRosterAndSessionList(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv := harness.Server
-	seedImported(t, harness.Store, "u-never", "never", store.RoleMember)
+	seedImported(t, harness.Store, "u-never", "never", identitystore.RoleMember)
 	admin := login(t, srv, "boss", "pw")
 	member := login(t, srv, "kid", "pw")
 
