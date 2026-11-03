@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -51,6 +52,38 @@ func list(t *testing.T, p *youtube.Provider, cp sourceprovider.Checkpoint, req s
 		t.Fatal(err)
 	}
 	return listing
+}
+
+// Registration is stricter than ingest: a registered source is fetched unattended, so a typo'd or
+// look-alike host must be refused rather than stored as a row that can never fetch.
+func TestProvider_AddressAcceptsOnlyYouTubeHosts(t *testing.T) {
+	p := youtube.New(nil)
+	for _, tc := range []struct{ in, want string }{
+		{"https://www.youtube.com/playlist?list=PL123", "https://www.youtube.com/playlist?list=PL123"},
+		{"youtube.com/@vault/videos", "https://youtube.com/@vault/videos"},
+		{"https://youtu.be/abc", "https://youtu.be/abc"},
+		{"  https://m.youtube.com/channel/UC1  ", "https://m.youtube.com/channel/UC1"},
+
+		{"", ""},
+		{"https://example.com/playlist?list=PL123", ""},
+		{"https://youtube.com.evil.test/playlist?list=PL123", ""},
+		{"https://www.youtube.com/", ""},
+	} {
+		if got := p.Address(tc.in); got != tc.want {
+			t.Errorf("Address(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// Without yt-dlp the provider still answers, naming the sentinel the API turns into advice.
+func TestProvider_FinderFailsWithTheProviderSentinelWhenUnavailable(t *testing.T) {
+	p := youtube.New(nil)
+	if _, err := p.Suggest(t.Context(), "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("Suggest without a finder = %v, want filler.ErrSourceProvider", err)
+	}
+	if _, err := p.Resolve(t.Context(), "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("Resolve without a finder = %v, want filler.ErrSourceProvider", err)
+	}
 }
 
 func TestProvider_IsFetchedAndListsByAReadBoundedByTheLookback(t *testing.T) {

@@ -11,12 +11,14 @@ package youtube
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 )
 
@@ -34,6 +36,7 @@ type Enumerator func(ctx context.Context, target string, limit int) ([]sourcepro
 // Provider lists YouTube channels and playlists.
 type Provider struct {
 	enumerate Enumerator
+	finder    sourceprovider.Finder
 }
 
 // New builds the provider over an Enumerator. A nil Enumerator makes every listing fail, as an
@@ -69,7 +72,78 @@ func (*Provider) ID() sourceprovider.ID { return ID }
 func (*Provider) Describe() sourceprovider.Description {
 	return sourceprovider.Description{
 		Label: "YouTube", AddressHint: "https://www.youtube.com/@channel/videos", Fetched: true,
+		GroupDetail:  "playlists you've added — titles and descriptions are kept for tagging",
+		SourceDetail: "New clips are checked before they can play.",
+		SearchDown:   "YouTube search isn’t available right now. Paste a channel or playlist URL instead.",
+		ResolveDown:  "YouTube couldn’t check that source right now. Try again in a moment.",
+		BadAddress: sourceprovider.Problem{
+			Title:  "That doesn't look like a YouTube playlist or channel",
+			Detail: "Paste a playlist URL (youtube.com/playlist?list=…) or a channel URL.",
+		},
 	}
+}
+
+// WithFinder gives the provider the means to suggest channels and verify an address. Without one,
+// as on an installation without yt-dlp, both fail with filler.ErrSourceProvider.
+func (p *Provider) WithFinder(finder sourceprovider.Finder) *Provider {
+	p.finder = finder
+	return p
+}
+
+// Suggest implements sourceprovider.Finder.
+func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
+	if p.finder == nil {
+		return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+	}
+	return p.finder.Suggest(ctx, query, limit)
+}
+
+// Resolve implements sourceprovider.Finder.
+func (p *Provider) Resolve(ctx context.Context, input string) (sourceprovider.Suggestion, error) {
+	if p.finder == nil {
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
+	}
+	return p.finder.Resolve(ctx, input)
+}
+
+// Address implements sourceprovider.Addresser: it validates a playlist or channel URL for
+// registration and returns the canonical URL to store, or "" if it is not one.
+//
+// It is deliberately stricter than clipfetch.KindForURL, which defaults an unknown host to YouTube
+// because yt-dlp handles the widest set of sites. That default is right for an ingest, where an
+// admin pastes one URL deliberately and watches it work. It is wrong here: a registered source
+// persists and is fetched unattended, so a typo'd host would become a permanent row that can never
+// fetch, with the failure surfacing much later and far from the mistake.
+//
+// It accepts the shapes an operator actually pastes — a playlist, a channel, a @handle, a /c/ or
+// /user/ URL — on youtube.com (with or without a subdomain) or youtu.be.
+func (*Provider) Address(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	// Scheme is optional in what people paste; normalise so the host check is uniform.
+	probe := v
+	if !strings.Contains(probe, "://") {
+		probe = "https://" + probe
+	}
+	u, err := url.Parse(probe)
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	// Exact host match, never strings.Contains: "youtube.com.evil.test" contains the string and is
+	// a different site. A substring check would register an attacker-chosen host as a trusted
+	// source.
+	if host != "youtube.com" && host != "m.youtube.com" && host != "music.youtube.com" && host != "youtu.be" {
+		return ""
+	}
+	// A bare host with no path identifies nothing to fetch.
+	if strings.Trim(u.Path, "/") == "" && u.RawQuery == "" {
+		return ""
+	}
+	u.Scheme = "https"
+	return u.String()
 }
 
 // List reads the source's newest-first sweep from just past the checkpoint's cursor and offers up

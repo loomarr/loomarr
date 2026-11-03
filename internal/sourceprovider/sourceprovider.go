@@ -36,6 +36,54 @@ type Description struct {
 	// Fetched is false for a provider whose sources are scanned where they are (a folder, the
 	// media library) rather than downloaded.
 	Fetched bool
+	// GroupDetail is the sentence under the provider's row in the source list, which rolls up the
+	// sources registered under it. Empty for a provider whose sources are not grouped.
+	GroupDetail string
+	// SourceDetail is the sentence under each of its registered sources. Empty shows the source's
+	// own address instead.
+	SourceDetail string
+	// SearchDown and ResolveDown are what an operator reads when the provider's service cannot be
+	// reached while searching for a source or checking one. Empty falls back to a generic message.
+	SearchDown, ResolveDown string
+	// BadAddress is what an operator reads when the address they typed is not one this provider
+	// can use. It names the shape the provider accepts.
+	BadAddress Problem
+}
+
+// Problem is a refusal's headline and the way out of it.
+type Problem struct {
+	Title, Detail string
+}
+
+// Addresser reads the address an operator typed when registering a source. A provider without one
+// cannot have sources registered by hand.
+type Addresser interface {
+	// Address returns the canonical address to store, or "" when the provider cannot use raw. A
+	// provider validates by its own grammar: an archive.org identifier and a YouTube URL share no
+	// rule.
+	Address(raw string) string
+}
+
+// Capabilities are the optional interfaces a provider implements, as the UI needs to know them.
+type Capabilities struct {
+	// Listable providers are fetched: filler checks their sources on a schedule.
+	Listable bool
+	// Searchable providers search inside a registered source.
+	Searchable bool
+	// Discoverable providers suggest sources for a query and verify an address before it is
+	// registered.
+	Discoverable bool
+	// OpenSearchable providers search beyond their registered sources.
+	OpenSearchable bool
+}
+
+// CapabilitiesOf reports which optional interfaces p implements.
+func CapabilitiesOf(p Provider) Capabilities {
+	_, listable := p.(Lister)
+	_, searchable := p.(Searcher)
+	_, discoverable := p.(Finder)
+	_, openSearchable := p.(OpenSearcher)
+	return Capabilities{Listable: listable, Searchable: searchable, Discoverable: discoverable, OpenSearchable: openSearchable}
 }
 
 // Source is the part of a registered source a provider reads.
@@ -165,7 +213,8 @@ type OpenSearcher interface {
 }
 
 // Finder helps an operator choose a source: it suggests sources for a query and resolves an
-// address the operator typed.
+// address the operator typed. It returns only targets the provider can register as a source, such
+// as a channel or playlist, so a caller need not check the target's type.
 type Finder interface {
 	Suggest(ctx context.Context, query string, limit int) ([]Suggestion, error)
 	Resolve(ctx context.Context, input string) (Suggestion, error)

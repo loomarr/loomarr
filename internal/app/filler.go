@@ -727,10 +727,10 @@ type fillerServiceAdapter struct {
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
-	sources       fillerSourceRegistry
-	archiveFinder *clipfetch.ArchiveSourceFinder
-	youtubeFinder *clipfetch.YouTubeSourceFinder
-	home          func() filler.Geography
+	sources fillerSourceRegistry
+	// providers suggests and verifies the sources an operator is about to register.
+	providers *sourceprovider.Registry
+	home      func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
@@ -756,39 +756,19 @@ type fillerServiceAdapter struct {
 }
 
 func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
-	switch provider {
-	case "archive":
-		finder := a.archiveFinder
-		if finder == nil {
-			finder = clipfetch.NewArchiveSourceFinder()
-		}
-		return finder.Suggest(ctx, query, limit)
-	case "youtube":
-		if a.youtubeFinder == nil {
-			return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
-		}
-		return a.youtubeFinder.Suggest(ctx, query, limit)
-	default:
+	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+	if !ok {
 		return nil, fmt.Errorf("source suggestions are not implemented for %s", provider)
 	}
+	return finder.Suggest(ctx, query, limit)
 }
 
 func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error) {
-	switch provider {
-	case "archive":
-		finder := a.archiveFinder
-		if finder == nil {
-			finder = clipfetch.NewArchiveSourceFinder()
-		}
-		return finder.Resolve(ctx, input)
-	case "youtube":
-		if a.youtubeFinder == nil {
-			return sourceprovider.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
-		}
-		return a.youtubeFinder.Resolve(ctx, input)
-	default:
+	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+	if !ok {
 		return sourceprovider.Suggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
 	}
+	return finder.Resolve(ctx, input)
 }
 
 var _ api.FillerRewinder = fillerServiceAdapter{}
@@ -1607,7 +1587,7 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		// proceeds either way, which is the property that matters.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, "archive", u, id, now()))
+		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, string(clipfetch.Archive), u, id, now()))
 	}
 }
 

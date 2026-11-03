@@ -112,6 +112,9 @@ type Server struct {
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
+	// sourceProviders is every provider a filler source can name. It answers what each one is and
+	// can do; nil names none, so no source is fetched and none can be added.
+	sourceProviders *sourceprovider.Registry
 	// intakeLanguages is Options.IntakeLanguages; nil reports no intake language.
 	intakeLanguages func(context.Context) (string, error)
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
@@ -1074,6 +1077,7 @@ type Options struct {
 	Events          EventSource                      // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Shutdown        <-chan struct{}                  // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	SourceProviders *sourceprovider.Registry         // /v1/filler/providers and source validation; nil ⇒ none registered
 	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
 	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
 	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501

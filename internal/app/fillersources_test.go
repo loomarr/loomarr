@@ -466,6 +466,29 @@ func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T)
 	}
 }
 
+// Suggesting and verifying a source go to the provider that owns the kind: a provider that cannot
+// find sources, or none at all, is refused, and YouTube without yt-dlp fails with the sentinel the
+// API turns into advice.
+func TestFillerServiceAdapter_FindsSourcesThroughTheRegisteredProvider(t *testing.T) {
+	adapter := fillerServiceAdapter{
+		providers: fillerSourceProviders("", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler)),
+	}
+	for _, kind := range []string{"folder", "vimeo"} {
+		if _, err := adapter.SuggestSources(t.Context(), kind, "retro", 3); err == nil {
+			t.Errorf("SuggestSources(%q) succeeded, want a refusal: that provider cannot suggest sources", kind)
+		}
+		if _, err := adapter.ResolveSource(t.Context(), kind, "x"); err == nil {
+			t.Errorf("ResolveSource(%q) succeeded, want a refusal", kind)
+		}
+	}
+	if _, err := adapter.SuggestSources(t.Context(), "youtube", "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("SuggestSources(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	}
+	if _, err := adapter.ResolveSource(t.Context(), "youtube", "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("ResolveSource(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	}
+}
+
 // fakeArchiveCatalog lists items without runtimes, as Archive.org's one-request search does, and
 // fills them in only when asked for per-item metadata.
 type fakeArchiveCatalog struct {
