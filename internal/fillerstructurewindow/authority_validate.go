@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 func ValidateMaterializationAuthority(authority MaterializationAuthority) error {
-	profile := CanonicalProfile()
-	if authority.SchemaVersion != MaterializationAuthoritySchemaVersion || authority.ContractVersion != MaterializationAuthorityContractVersion ||
+	media, ok := fillerstructuremedia.ProfileBySHA256(authority.AssessmentMediaProfileSHA256)
+	profile := ProfileFor(media)
+	if !ok || authority.SchemaVersion != MaterializationAuthoritySchemaVersion || authority.ContractVersion != MaterializationAuthorityContractVersion ||
 		!contentHash(authority.WindowCertificationSHA256) || !contentHash(authority.ShortLongShadowSHA256) ||
 		authority.WindowProfileSHA256 != profile.SHA256 || authority.AssessmentMediaProfileSHA256 != profile.AssessmentMediaProfileSHA256 ||
 		authority.MinimumSourceDurationMS <= 0 || authority.MaximumSourceDurationMS < authority.MinimumSourceDurationMS ||
@@ -55,7 +57,8 @@ func VerifyMaterializationAuthority(artifact fillerstructure.Artifact, authority
 		!slices.Contains(authority.AllowedUnits, decision.Unit) {
 		return errors.New("structure window decision is outside certified materialization policy")
 	}
-	plan, err := NewPlan(decision.Source)
+	media, _ := fillerstructuremedia.ProfileBySHA256(authority.AssessmentMediaProfileSHA256)
+	plan, err := NewPlan(decision.Source, media)
 	if err != nil || plan.Profile.SHA256 != authority.WindowProfileSHA256 || decision.Input.PlanSHA256 != plan.SHA256 ||
 		len(decision.Input.Items) != len(plan.Windows) || len(decision.Input.Items) > authority.MaximumWindows {
 		return errors.New("structure window decision does not reproduce the certified plan")

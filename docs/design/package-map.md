@@ -27,7 +27,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `creative` | 6 | — |
 | `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `encode` | 6 | `config` |
+| `encode` | 8 | `config` |
 | `filler` | 11 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
@@ -157,7 +157,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
-- **`encode`** · 6 importers · → `config`
+- **`encode`** · 8 importers · → `config`
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`holidayvocab`** · 8 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
@@ -225,7 +225,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 5
 
-- **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
+- **`fillerstructuremedia`** · 4 importers · → `encode`, `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
@@ -273,7 +273,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`fillerscreening`** · 1 importer · → `filler`, `fillerairworthiness`, `fillerstructureassessment`, `mediatools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
-- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 1 importer · → `encode`, `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructuremedia`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`provisionbackstop`** · 1 importer · → `activity`, `jobs`, `library`, `provision`, `requester`, `schedule`, `store`
   Provisioning backstop (design §4, §7, §18).
@@ -346,7 +346,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

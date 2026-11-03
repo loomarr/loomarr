@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
@@ -269,6 +270,11 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
 	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
+	// after boot.
+	encodeHost := func() encode.HostProfile {
+		return playoutRes.fileEncodeHost(encode.Encoder(set.str("playout.encoder")))
+	}
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
 	// pays nothing and the Tasks row still exists to be seen and paused.
@@ -361,9 +367,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 			return lufs
 		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
 		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
-		WithEncodeHost(func() encode.HostProfile {
-			return playoutRes.fileEncodeHost(encode.Encoder(set.str("playout.encoder")))
-		}).
+		WithEncodeHost(encodeHost).
 		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
@@ -416,7 +420,8 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 				if deploymentErr != nil {
 					log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
 				}
-				windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment)
+				cutFamily := func() encode.Family { return fillerstructuremedia.CutFamily(encodeHost()) }
+				windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment, cutFamily)
 				if runtimeErr != nil {
 					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
 				} else if windowRuntime != nil {
