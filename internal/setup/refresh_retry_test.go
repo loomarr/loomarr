@@ -23,6 +23,7 @@ type fakeEmby struct {
 	statuses []int
 	posts    int
 	guide    int
+	onPost   func() // called after each tuner POST is counted, when set
 }
 
 func (f *fakeEmby) handler() http.Handler {
@@ -35,6 +36,9 @@ func (f *fakeEmby) handler() http.Handler {
 			i := f.posts
 			f.posts++
 			f.mu.Unlock()
+			if f.onPost != nil {
+				f.onPost()
+			}
 			if i >= len(f.statuses) {
 				i = len(f.statuses) - 1
 			}
@@ -129,14 +133,28 @@ func TestRefreshTarget_ClientErrorIsNotRetriedNorTransient(t *testing.T) {
 func TestRefreshTarget_StopsRetryingWhenContextCancelled(t *testing.T) {
 	defer setup.SetRefreshBackoffForTest(time.Hour, time.Hour)()
 	fake, connector, urls := refreshFixture(t, 500)
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Cancel shortly after the first attempt reaches the server, so the cancellation lands after
+	// that attempt and, on an unloaded machine, while the retry waits out its backoff. Where it
+	// lands never changes the outcome (one POST, a failure), only how much of the backoff
+	// select the run covers, so a slow machine cannot fail the test.
+	fake.onPost = func() { time.AfterFunc(20*time.Millisecond, cancel) }
 
-	start := time.Now()
-	err := connector.RefreshTarget(ctx, urls)
-	if err == nil || time.Since(start) > 5*time.Second {
-		t.Fatalf("err=%v after %v, want prompt failure on cancellation", err, time.Since(start))
+	done := make(chan error, 1)
+	go func() { done <- connector.RefreshTarget(ctx, urls) }()
+
+	// The backoff is an hour: only cancellation can end the call, so waiting on it is not a timing bet.
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("RefreshTarget = nil, want failure on cancellation")
+		}
+	case <-time.After(time.Minute):
+		t.Fatal("RefreshTarget kept retrying after the context was cancelled")
 	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
 	if fake.posts != 1 {
 		t.Errorf("tuner POSTs = %d, want 1", fake.posts)
 	}
