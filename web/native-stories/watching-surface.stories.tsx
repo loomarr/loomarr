@@ -50,17 +50,11 @@ const Preview = ({
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}
-        onChannelDown={() => undefined}
-        onChannelUp={() => undefined}
         onDismissControls={() => undefined}
         onGoLive={() => undefined}
         onOpenGuide={() => undefined}
-        onOpenSurf={() => undefined}
-        onPause={() => undefined}
         onPlay={() => undefined}
-        onPrevious={() => undefined}
         onRetry={() => undefined}
-        onShowControls={() => undefined}
         player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
         schedule={scheduleData}
         snapshot={state}

@@ -57,17 +57,11 @@ const mount = () => {
 const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof WatchingSurface>[0]> = {}) => (
   <LoomarrProvider>
     <WatchingSurface
-      onChannelDown={vi.fn()}
-      onChannelUp={vi.fn()}
       onDismissControls={vi.fn()}
       onGoLive={vi.fn()}
       onOpenGuide={vi.fn()}
-      onOpenSurf={vi.fn()}
-      onPause={vi.fn()}
       onPlay={vi.fn()}
-      onPrevious={vi.fn()}
       onRetry={vi.fn()}
-      onShowControls={vi.fn()}
       player={<div data-player="one-native-player" />}
       schedule={schedule}
       snapshot={snapshot}

@@ -40,19 +40,13 @@ interface WatchingSurfaceProps {
   loading?: boolean;
   loadError?: string;
   numberEntry?: ChannelNumberEntry;
-  onChannelDown: () => void;
-  onChannelUp: () => void;
   /** Returns to server selection while preserving the current credential as a restart fallback. */
   onChangeServer?: () => void;
   onDismissControls: () => void;
   onGoLive: () => void;
   onOpenGuide: () => void;
-  onOpenSurf: () => void;
-  onPause: () => void;
   onPlay: () => void;
-  onPrevious: () => void;
   onRetry: () => void;
-  onShowControls: () => void;
   /** Instrumentation (TV): the channel switch overlay showed its readout or its still. */
   onSwitchShown?: (what: "osd" | "still") => void;
   player: ReactNode;

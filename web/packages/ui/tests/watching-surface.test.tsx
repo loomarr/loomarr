@@ -55,18 +55,12 @@ const renderSurface = (
         loading={options.loading}
         loadError={options.loadError}
         numberEntry={options.numberEntry}
-        onChannelDown={vi.fn()}
-        onChannelUp={vi.fn()}
         onChangeServer={options.onChangeServer}
         onDismissControls={vi.fn()}
         onGoLive={vi.fn()}
         onOpenGuide={vi.fn()}
-        onOpenSurf={vi.fn()}
-        onPause={vi.fn()}
         onPlay={vi.fn()}
-        onPrevious={vi.fn()}
         onRetry={vi.fn()}
-        onShowControls={vi.fn()}
         player={<div data-player="one-native-player" />}
         schedule={options.schedule}
         snapshot={snapshot}
@@ -86,17 +80,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             controlsActivityKey={controlsActivityKey}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={onDismissControls}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             schedule={{
               now: { progressPercent, timeLabel: "9:00 PM–9:30 PM", title: "The Current Frontier" },
@@ -127,17 +115,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             controlsActivityKey={controlsActivityKey}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={dismiss}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
@@ -278,17 +260,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             numberEntry={{ channelName: "Nature", digits: "21", expiresAtMs: 2_200 }}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={vi.fn()}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
@@ -316,17 +292,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             numberEntry={numberEntry}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={vi.fn()}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
