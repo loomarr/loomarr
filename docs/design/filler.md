@@ -70,10 +70,12 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
   the re-key does to it. Screening verdicts, enrichment, research, cost ledgers and the Ready
   event judge the content, so they move: a Ready clip re-encoded from its master keeps its
   history. Fingerprints and the defect record measured the old bytes, so they are dropped and
-  measured again. The identities of a copy that lost a merge stay, so intake keeps skipping them.
-  A schema test fails on a `clip_hash` column the list does not name. The web-research attempts
-  are the one reference with a real foreign key, which has no `ON UPDATE`, so they step out of the
-  table while the row is re-keyed and come back under the new hash in the same transaction.
+  measured again. A clip re-encoded while it airs brings a record measured on its new bytes into
+  the same transaction ([the library re-encode](filler-pipeline.md#the-library-re-encode)). The
+  identities of a copy that lost a merge stay, so intake keeps skipping them. A schema test fails
+  on a `clip_hash` column the list does not name. The web-research attempts are the one reference
+  with a real foreign key, which has no `ON UPDATE`, so they step out of the table while the row
+  is re-keyed and come back under the new hash in the same transaction.
 - **Legacy hash-named files repair themselves at sync.** A file whose stem is an old
   machine-generated hash but whose bytes hash differently is refiled at its canonical path without
   overwriting, and a hash-shaped display name is replaced from the durable catalog name, then from

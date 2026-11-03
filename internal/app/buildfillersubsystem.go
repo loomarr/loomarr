@@ -167,8 +167,23 @@ func buildFillerSubsystem(
 	registry.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
+	ffmpegPath := set.str("playout.ffmpeg_path")
+	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
+	defectTools := buildFillerMediaTools(set, metricRecorder)
+	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
+		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
+	defectFloor := fillerdefectfloor.NewDefectFloor(
+		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
+		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
+			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
+		},
+		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
+			return defectTools.Fingerprint(ctx, file, 0, durationMs)
+		}, defectJudge, layout.ClipDir(), time.Now, log,
+	)
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
-		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver)
+		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
+		defectFloor.CheckReplacement)
 	stations := &stationDirectory{list: st.ListBroadcastStations}
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichment := fillerenrichment.NewRunner(
@@ -293,20 +308,7 @@ func buildFillerSubsystem(
 			return lufs
 		}, time.Now, log,
 	)))
-	ffmpegPath := set.str("playout.ffmpeg_path")
-	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
-	defectTools := buildFillerMediaTools(set, metricRecorder)
-	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
-		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
-	registry.Add(fillerDefectsJob(fillerdefectfloor.NewDefectFloor(
-		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
-		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
-			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
-		},
-		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
-			return defectTools.Fingerprint(ctx, file, 0, durationMs)
-		}, defectJudge, layout.ClipDir(), time.Now, log,
-	)))
+	registry.Add(fillerDefectsJob(defectFloor))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
 	// folder there is nothing to download into, and the cache lives in memory only.
 	runtimesPath := ""
