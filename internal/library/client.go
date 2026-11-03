@@ -308,11 +308,11 @@ func (c *Client) doAuthenticate(req *http.Request, out *authResponse) error {
 		return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	switch class := httpx.ClassifyStatus(resp.StatusCode); {
-	case class == httpx.ClassNone:
-	case class == httpx.ClassAuth:
+	switch httpx.ClassifyStatus(resp.StatusCode) {
+	case httpx.ClassNone:
+	case httpx.ClassAuth:
 		return ErrCredentialsRejected
-	case class == httpx.ClassTransient:
+	case httpx.ClassTransient:
 		return fmt.Errorf("%w: status %d", ErrProviderUnavailable, resp.StatusCode)
 	default:
 		return fmt.Errorf("authenticate media-server user: status %d", resp.StatusCode)
