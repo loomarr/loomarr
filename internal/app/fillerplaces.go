@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -102,8 +103,11 @@ func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit i
 	if err != nil {
 		return nil, err
 	}
-	return archiveRefs(res.Items), nil
+	return archiveprovider.Items(res.Items), nil
 }
+
+// Provider is the provider an open-search hit is acquired from.
+func (o openArchiveSearch) Provider() sourceprovider.ID { return archiveprovider.ID }
 
 func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error) {
 	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())

@@ -202,7 +202,7 @@ type searchingStub struct {
 	searched []string
 }
 
-func (s *searchingStub) Search(_ context.Context, source filler.FetchSource, query string, _ int) ([]sourceprovider.Item, error) {
+func (s *searchingStub) search(source filler.FetchSource, query string, _ int) ([]sourceprovider.Item, error) {
 	s.searched = append(s.searched, source.URI+"?"+query)
 	return s.hits[query], nil
 }
@@ -223,7 +223,7 @@ func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{
 		fetchStub:        stub.fetchStub,
 		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) { return nil, nil },
-	}, stub, stub.fetchStub, limits(1, 2000), discardLog()).
+	}, providersOver(t, stub.list, stub.search), stub.fetchStub, limits(1, 2000), discardLog()).
 		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil })
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -248,6 +248,8 @@ type openSearchStub struct {
 	hits     map[string][]sourceprovider.Item
 	searched []string
 }
+
+func (o *openSearchStub) Provider() sourceprovider.ID { return "archive" }
 
 func (o *openSearchStub) OpenSearch(_ context.Context, query string, _ int) ([]sourceprovider.Item, error) {
 	o.searched = append(o.searched, query)

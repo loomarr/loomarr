@@ -14,6 +14,9 @@ import (
 // OpenSearcher finds listings across a whole provider, outside every registered source (#2059
 // decision 10). A short pass asks it only once the enabled sources have had their turn.
 type OpenSearcher interface {
+	// Provider is the provider whose whole catalog it searches: the provider a hit is acquired
+	// from, and whose pass budget its hits spend.
+	Provider() sourceprovider.ID
 	OpenSearch(ctx context.Context, query string, limit int) ([]sourceprovider.Item, error)
 	// Gate is the pass's listing gate, read once per pass that searches.
 	Gate(ctx context.Context) (ListingGate, error)

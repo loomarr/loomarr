@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -441,23 +442,27 @@ func TestIngest_StorageRefusalHappensBeforeDurableQueueMutation(t *testing.T) {
 	}
 }
 
-func TestRegisteredSourceEnumerator_UsesStoredYouTubeKind(t *testing.T) {
-	ytdlp := testkit.Executable(t, "yt-dlp", `#!/bin/sh
-case "$*" in
-  *--no-config*--flat-playlist*--skip-download*--dump-single-json*--playlist-end\ 4*https://www.youtube.com/@retroads/videos) ;;
-  *) exit 9 ;;
-esac
-printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/watch?v=one","duration":31.5,"availability":"public","live_status":"not_live"}]}'
-`)
-	items, _, err := (registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytdlp)}).Enumerate(
-		t.Context(), filler.FetchSource{Kind: "youtube", URI: "https://www.youtube.com/@retroads/videos"}, 4)
-	if err != nil {
-		t.Fatal(err)
+// The production registry names every provider a source row can have, so a row is never inert for
+// want of a registration, and the folder and library are scanned, never fetched.
+func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T) {
+	providers := fillerSourceProviders("yt-dlp", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler))
+	for _, id := range []sourceprovider.ID{"youtube", "archive"} {
+		if _, fetched := providers.Lister(id); !fetched {
+			t.Errorf("provider %q is not registered as fetched", id)
+		}
 	}
-	if len(items) != 1 || items[0].ID != "one" || items[0].URL != "https://www.youtube.com/watch?v=one" ||
-		!items[0].DurationKnown || items[0].DurationMS != 31_500 ||
-		items[0].Availability != "public" || items[0].LiveStatus != "not_live" {
-		t.Fatalf("items = %+v, want bounded YouTube result", items)
+	for _, id := range []sourceprovider.ID{"folder", "library"} {
+		provider, registered := providers.Get(id)
+		if !registered {
+			t.Errorf("provider %q is not registered", id)
+			continue
+		}
+		if provider.Describe().Fetched {
+			t.Errorf("provider %q is described as fetched, want scanned where it is", id)
+		}
+		if _, fetched := providers.Lister(id); fetched {
+			t.Errorf("provider %q can be listed, want none: a scanned source is never fetched", id)
+		}
 	}
 }
 
@@ -508,20 +513,21 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.Disco
 // #1773 (supervisor decision): each Archive.org item's runtime is read once and remembered on
 // disk, so a later pull (and a restarted server) reuses it instead of paying Archive.org's
 // per-item throttle again. Only what is still unknown is asked for.
-func TestRegisteredSourceEnumerator_ArchiveRuntimesAreReadOnce(t *testing.T) {
+func TestArchiveProvider_RuntimesAreReadOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
 	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
 	enumerate := func() map[string]sourceprovider.Item {
 		t.Helper()
 		// A fresh cache over the same file each time: what a restarted server would see.
-		catalog := cachedArchiveCatalog{archiveCatalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
-		items, _, err := (registeredSourceEnumerator{archive: catalog, archiveRuntimes: func() bool { return true }}).Enumerate(
-			t.Context(), filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10)
+		catalog := cachedArchiveCatalog{Catalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
+		provider := archiveprovider.New(archiveprovider.Config{Catalog: catalog, Runtimes: func() bool { return true }})
+		listing, err := provider.List(t.Context(), sourceprovider.Source{ID: "s", URI: "reels_collection"},
+			sourceprovider.ListRequest{Take: 10, List: 10})
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]sourceprovider.Item{}
-		for _, item := range items {
+		for _, item := range listing.Items {
 			got[item.ID] = item
 		}
 		return got
@@ -539,45 +545,6 @@ func TestRegisteredSourceEnumerator_ArchiveRuntimesAreReadOnce(t *testing.T) {
 	}
 	if second["reel"].DurationMS != 30*60*1000 || second["spot"].DurationMS != 45*1000 || second["spot"].Height != 480 {
 		t.Errorf("remembered items came back as reel=%+v spot=%+v, want their runtimes and quality", second["reel"], second["spot"])
-	}
-}
-
-// #1773: with compilations held back, an Archive.org listing is enriched with runtimes before
-// selection, since the search carries none and the gate can only hold back what it can measure.
-// With compilations taken, the listing stays one request.
-func TestRegisteredSourceEnumerator_ArchiveRuntimesWhenCompilationsWait(t *testing.T) {
-	for _, hold := range []bool{true, false} {
-		archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}}
-		items, _, err := (registeredSourceEnumerator{archive: archive, archiveRuntimes: func() bool { return hold }}).Enumerate(
-			t.Context(), filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := map[string]int{}
-		for _, item := range items {
-			got[item.ID] = item.DurationMS
-		}
-		if hold && (archive.enriched != 1 || got["reel"] != 30*60*1000 || got["spot"] != 45*1000) {
-			t.Errorf("compilations held back: enriched %d times, runtimes %v; want one enrichment and both runtimes", archive.enriched, got)
-		}
-		if !hold && archive.enriched != 0 {
-			t.Errorf("compilations taken: enriched %d times, want the listing left at one request", archive.enriched)
-		}
-	}
-}
-
-// Reading runtimes never spends more than half of what is left of the caller's deadline, so a
-// planned pull over many Archive.org sources can't fail its own 90 s deadline on runtimes.
-func TestRegisteredSourceEnumerator_ArchiveRuntimesLeaveTheCallerTime(t *testing.T) {
-	archive := &fakeArchiveCatalog{}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	if _, _, err := (registeredSourceEnumerator{archive: archive, archiveRuntimes: func() bool { return true }}).Enumerate(
-		ctx, filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10); err != nil {
-		t.Fatal(err)
-	}
-	if archive.allowed <= 0 || archive.allowed > 5*time.Second {
-		t.Fatalf("runtimes were given %s of a 10 s deadline, want at most half", archive.allowed)
 	}
 }
 
