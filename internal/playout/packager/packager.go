@@ -34,6 +34,10 @@ type Item struct {
 	// reader is closed. It is not called for an item that never produced, or whose channel stopped
 	// mid-item. An encoder's cost is its CPU over this media, not over its slot.
 	Delivered func(frames int64)
+	// Served, if set, is called once when a viewer first receives a segment of this item
+	// (SegmentServed, WaitSegment). An item that is encoded but never fetched, such as a neighbour
+	// warm's, never calls it. It runs on the fetching goroutine, so it must be quick.
+	Served func()
 	// Wait, if set, is the least time the item gets to produce its first fragment: an item resumed
 	// on a new rung after its encoder ran the timeline's lead down would otherwise miss a deadline
 	// already past and slate, where a short hold keeps the picture.
@@ -142,6 +146,8 @@ type Packager struct {
 	// Timeline counters, owned by Run: the next video tick (90 kHz) and audio sample (48 kHz).
 	v, a int64
 	seq  uint32
+	// airing is the item whose fragments are being appended, nil while the slate is. Owned by Run.
+	airing *servedOnce
 
 	mu       sync.Mutex
 	epoch    time.Time // wall instant of media time 0
@@ -381,6 +387,9 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			"first_fragment_ms", p.cfg.Now().Sub(openedAt).Milliseconds())
 	}
 	p.count(func(s *Stats) { s.Items++ })
+	if item.Served != nil {
+		p.airing = &servedOnce{fn: item.Served}
+	}
 
 	var nv, na int64
 	first := true
@@ -407,6 +416,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		}
 		frag = f
 	}
+	p.airing = nil // whatever slates the rest of the slot is not this item
 	if item.Delivered != nil && ctx.Err() == nil {
 		item.Delivered(nv) // before the encoder is stopped and reaped
 	}
@@ -535,7 +545,7 @@ func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int
 	if err := os.WriteFile(filepath.Join(p.cfg.Dir, name), b, 0o600); err != nil {
 		return fmt.Errorf("packager: write segment: %w", err)
 	}
-	seg := segment{seq: p.seq, name: name, start: p.v, dur: c[videoTrack] * p.frameDur}
+	seg := segment{seq: p.seq, name: name, start: p.v, dur: c[videoTrack] * p.frameDur, served: p.airing}
 	p.seq++
 	p.v += seg.dur
 	p.a += c[audioTrack] * aacFrame
@@ -654,16 +664,19 @@ func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) 
 		p.mu.Lock()
 		listed := p.window.listable(p.listEdgeLocked(p.cfg.Now()))
 		var name string
+		var served *servedOnce
 		switch {
 		case len(p.window.segs) > 0 && seq < p.window.segs[0].seq:
 			p.mu.Unlock()
 			return nil, ErrSegmentGone
 		case len(listed) > 0 && seq <= listed[len(listed)-1].seq:
-			name = listed[seq-listed[0].seq].name
+			seg := listed[seq-listed[0].seq]
+			name, served = seg.name, seg.served
 		}
 		done, err, changed := p.done, p.err, p.changed
 		p.mu.Unlock()
 		if name != "" {
+			served.fire()
 			return os.ReadFile(filepath.Join(p.cfg.Dir, name))
 		}
 		if done {
@@ -680,6 +693,22 @@ func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) 
 		}
 		t.Stop()
 	}
+}
+
+// SegmentServed records that a viewer is receiving the named segment file (an HLS media segment
+// fetch): the first fetch of any segment of an item calls the item's Served. A name that is not a
+// segment of the window, the init segment and slate segments call nothing.
+func (p *Packager) SegmentServed(name string) {
+	p.mu.Lock()
+	var served *servedOnce
+	for _, s := range p.window.segs {
+		if s.name == name {
+			served = s.served
+			break
+		}
+	}
+	p.mu.Unlock()
+	served.fire()
 }
 
 // Init returns the channel init segment as served, or nil before the first item produced.

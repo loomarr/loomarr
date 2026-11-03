@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,21 @@ type segment struct {
 	seq        uint32
 	name       string
 	start, dur int64 // channel media ticks, 90 kHz
+	// served is the item that produced the segment, nil for a slate segment. Every segment of one
+	// item shares it, so the item is served once however many of its segments are fetched.
+	served *servedOnce
+}
+
+// servedOnce fires an item's Served callback the first time a viewer receives one of its segments.
+type servedOnce struct {
+	once sync.Once
+	fn   func()
+}
+
+func (s *servedOnce) fire() {
+	if s != nil {
+		s.once.Do(s.fn)
+	}
 }
 
 // window is the DVR window of published segments, oldest first.

@@ -48,6 +48,7 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	}
 	item.Input, item.Seek = streamURL, airing.Offset
 	item.Watermark = s.watermarkFor(channelID, airing)
+	item.RecordAiringServed = func(ctx context.Context) { s.res.RecordAiringServed(ctx, channelID, airing, at) }
 	t1 := time.Now()
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()
