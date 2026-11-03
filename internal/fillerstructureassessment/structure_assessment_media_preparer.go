@@ -26,6 +26,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	sourceRoot string
 	mediaRoot  string
 	ffmpegPath string
+	profile    fillerstructuremedia.Profile
 	probe      filler.Prober
 	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
@@ -34,14 +35,18 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 }
 
 // NewFFmpegStructureAssessmentMediaPreparer binds production media preparation to the configured
-// ffmpeg toolchain, the retained-source root, and a separately owned private derivative root.
-func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath string) (*FFmpegStructureAssessmentMediaPreparer, error) {
+// ffmpeg toolchain, the retained-source root, a separately owned private derivative root, and the
+// one media profile it cuts to.
+func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath string, profile fillerstructuremedia.Profile) (*FFmpegStructureAssessmentMediaPreparer, error) {
 	if sourceRoot == "" || !filepath.IsAbs(sourceRoot) || filepath.Clean(sourceRoot) != sourceRoot ||
 		mediaRoot == "" || !filepath.IsAbs(mediaRoot) || filepath.Clean(mediaRoot) != mediaRoot {
 		return nil, errors.New("structure assessment media preparer requires clean absolute source and media roots")
 	}
+	if !fillerstructuremedia.Supported(profile) {
+		return nil, errors.New("structure assessment media preparer requires a supported media profile")
+	}
 	return &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, probe: filler.FFprobeNextTo(ffmpegPath),
+		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, profile: profile, probe: filler.FFprobeNextTo(ffmpegPath),
 		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
 		snapshot: filler.SnapshotOwnedFile,
@@ -83,7 +88,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) Prepare(ctx context.Context, in
 	}
 	_ = os.Remove(outputPath)
 	defer func() { _ = os.Remove(outputPath) }()
-	arguments := fillerstructuremedia.PartArguments(prepared.SnapshotPath, 0, input.Source.DurationMs, outputPath)
+	arguments := fillerstructuremedia.PartArguments(profile, prepared.SnapshotPath, 0, input.Source.DurationMs, outputPath)
 	if err := p.run(ctx, mediatools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
 		return filler.StructureAssessmentMedia{}, fmt.Errorf("render structure assessment media: %w", err)
 	}
