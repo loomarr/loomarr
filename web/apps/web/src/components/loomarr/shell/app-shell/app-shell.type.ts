@@ -7,6 +7,7 @@ import type { ComponentType, ReactNode } from "react";
 type NavTo =
   | "/dashboard"
   | "/guide"
+  | "/prototype/library" // PROTOTYPE (#2151 step 2) — throwaway branch only
   | "/requests"
   | "/filler"
   | "/people"
@@ -44,6 +45,8 @@ interface AppShellProps {
   serverVersion?: string;
   /** A count pill on a nav entry — e.g. Requests' "needs you" count. Omitted or 0 shows nothing. */
   badges?: Partial<Record<NavTo, number>>;
+  /** PROTOTYPE (#2151 step 2): a thin amber progress bar (0–1) under a nav entry while work runs. */
+  progress?: Partial<Record<NavTo, number>>;
   onOpenCommand?: () => void;
   onLogout?: () => void;
   /**

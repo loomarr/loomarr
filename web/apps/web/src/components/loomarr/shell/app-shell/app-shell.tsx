@@ -5,6 +5,7 @@ import {
   Clapperboard,
   House,
   Inbox,
+  Library as LibraryIcon,
   ListChecks,
   LogOut,
   PlayCircle,
@@ -61,6 +62,7 @@ const ADMIN_NAV: NavItem[] = [
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
+  { to: "/prototype/library", label: "Library", icon: LibraryIcon }, // PROTOTYPE (#2151)
   { to: "/requests", label: "Requests", icon: Inbox },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },
@@ -113,6 +115,7 @@ const AppShell = ({
   userName = "Operator",
   serverVersion,
   badges,
+  progress,
   onOpenCommand,
   onLogout,
   watchChannelId,
@@ -177,7 +180,7 @@ const AppShell = ({
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
-              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              "text-static-400 hover:bg-accent hover:text-foreground relative flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
               forcedActive === undefined
                 ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
@@ -196,6 +199,14 @@ const AppShell = ({
                     className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
                   >
                     {badges?.[item.to]}
+                  </span>
+                )}
+                {item.to !== "/watch/$id" && progress?.[item.to] !== undefined && (
+                  <span className="bg-static-800 absolute right-3 bottom-0.5 left-10 h-0.5 overflow-hidden rounded-full">
+                    <span
+                      className="bg-primary block h-full"
+                      style={{ width: `${Math.round((progress[item.to] ?? 0) * 100)}%` }}
+                    />
                   </span>
                 )}
               </>
