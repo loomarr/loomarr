@@ -31,7 +31,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
-| `httpx` | 9 | `metrics` |
+| `httpx` | 10 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
@@ -170,7 +170,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 2
 
-- **`httpx`** · 9 importers · → `metrics`
+- **`httpx`** · 10 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
@@ -233,7 +233,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`images`** · 2 importers · → `images/rustgen`, `jobs`, `logchange`
+- **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`
   One pipeline every image in Loomarr travels (§22).
 - **`retention`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
