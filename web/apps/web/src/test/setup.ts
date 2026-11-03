@@ -2,6 +2,7 @@
 // …) for the Testing Library component tests. Loaded via vite.config test.setupFiles.
 import { configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { FakeEventSource } from "./fake-event-source";
 import { installServerLifecycle } from "./msw/server";
 import "@testing-library/jest-dom/vitest";
 
@@ -15,16 +16,11 @@ import "@testing-library/jest-dom/vitest";
 // just later. What it removes is a red build caused by CPU contention rather than by the code.
 configure({ asyncUtilTimeout: 5000 });
 
-// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on
-// mount. A no-op stub lets components that open the stream render in tests.
-class MockEventSource {
-  onmessage: ((ev: MessageEvent) => void) | null = null;
-  constructor(public url: string) {}
-  addEventListener(): void {}
-  removeEventListener(): void {}
-  close(): void {}
-}
-globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on mount. The
+// scriptable fake lets components that open the stream render, and lets a test emit frames down
+// it. A test can still replace it with `vi.stubGlobal("EventSource", …)`.
+globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+afterEach(() => FakeEventSource.reset());
 
 // DOM APIs jsdom doesn't implement, shimmed so components that use them can render in tests.
 //

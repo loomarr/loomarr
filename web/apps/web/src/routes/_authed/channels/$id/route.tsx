@@ -18,7 +18,6 @@ import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-chann
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
-import { useLoomarrEventListener } from "@/events/events-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { ChannelDetailProvider } from "./-channel-detail-context";
@@ -150,9 +149,10 @@ const ChannelDetailLayout = () => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getPreviewChannelCycleQueryKey(id) });
   };
 
-  // Live update: a background reconcile (this edit, the sweep, a title landing) emits a
-  // `channel` frame — refresh so the page reflects it with no manual action.
-  useLoomarrEventListener({ onChannel: () => invalidate() });
+  // Live update needs nothing here: a background reconcile (this edit, the sweep, a title
+  // landing) emits a `channel` frame, and the SSE bus invalidates every `/v1/channels*` read
+  // (detail, now/next, upcoming, pods, cycle) plus the guide. `invalidate` above is for callers
+  // that change the lineup without a frame.
 
   // Every edit on this page, from every section, saves through the channel's one serial queue
   // (#1895, #1899): editors that each sent their own PATCH raced on the channel revision and lost

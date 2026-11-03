@@ -1,21 +1,17 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { layoutGuide } from "@loomarr/core/guide";
+import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
 import { Surface, Text } from "@loomarr/design-system";
 import { WatchFrame, watchingPanelFromGuide } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useCanGoBack, useRouter } from "@tanstack/react-router";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
 import { DRAWER_NOW_PERCENT, drawerChannels } from "@/channels/drawer-channels";
-import { defaultGuideWindow } from "@/channels/guide-window";
 import { useChannelTuner } from "@/channels/use-channel-tuner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
-
-// How often the drawer's rows move on: minutes left and the strip's window.
-const NOW_TICK_MS = 30_000;
 
 // The loading and error states sit in the middle of the black frame.
 const Centered = ({ children }: { children: ReactNode }) => (
@@ -69,12 +65,8 @@ const WatchScreen = () => {
   // The channels drawer reads the guide window Home and the Guide already share, and the viewer's
   // favourites and recents (#1666). A star or a settled tune answers with both lists, which replace
   // the cached ones.
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
-    return () => clearInterval(tick);
-  }, []);
-  const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs), {
+  const { nowMs, window: guideWindow } = useGuideWindow();
+  const guide = channelsApi.useChannelGuide(guideWindow, {
     query: { retry: false, placeholderData: keepPreviousData },
   });
   const queryClient = useQueryClient();
