@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import type { SourceActions } from "../use-source-actions";
-import { SourceDetailSheet, sourceKindLabel } from "./source-detail-sheet";
+import { SourceDetailSheet } from "./source-detail-sheet";
 
 const actions = {
   error: undefined,
@@ -25,15 +25,6 @@ const renderSheet = (source?: ReturnType<typeof fillerSource>, onClose = vi.fn()
     </QueryClientProvider>,
   );
 
-describe("sourceKindLabel", () => {
-  it("describes each kind in an operator's words", () => {
-    expect(sourceKindLabel(fillerSource({ kind: "archive" }))).toBe("Archive.org collection");
-    expect(sourceKindLabel(fillerSource({ kind: "youtube" }))).toBe("YouTube channel or playlist");
-    expect(sourceKindLabel(fillerSource({ kind: "library" }))).toBe("Media server library");
-    expect(sourceKindLabel(fillerSource({ kind: "folder" }))).toBe("Folder on this server");
-  });
-});
-
 beforeEach(() => {
   server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
 });
@@ -49,8 +40,31 @@ describe("SourceDetailSheet", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Ads");
-    expect(dialog).toHaveTextContent("Media server library");
+    await screen.findByText("Media server library");
     expect(screen.getByRole("heading", { name: "Ready" })).toBeVisible();
+  });
+
+  it("describes a source in the words its provider gave", async () => {
+    server.use(
+      getListFillerProvidersMockHandler({
+        providers: [
+          ...fillerProviders,
+          {
+            id: "thirdparty",
+            label: "Third Party",
+            sourceNoun: "Third Party feed",
+            fetched: true,
+            listable: true,
+            searchable: false,
+            discoverable: false,
+            openSearchable: false,
+            addable: true,
+          },
+        ],
+      }),
+    );
+    renderSheet(fillerSource({ id: "thirdparty:one", kind: "thirdparty", target: "One" }));
+    expect(await screen.findByText("Third Party feed")).toBeVisible();
   });
 
   it("calls the drop-in folder by its own name", async () => {

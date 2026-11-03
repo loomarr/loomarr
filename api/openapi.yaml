@@ -217,12 +217,7 @@ components:
           maxLength: 2
           type: string
         kind:
-          description: Which kind of source this is
-          enum:
-            - archive
-            - youtube
-            - folder
-            - library
+          description: The provider's id, as listed by GET /v1/filler/providers, whose sources are added by typing an address
           type: string
         label:
           description: Operator-facing name; falls back to the identifier
@@ -3297,6 +3292,8 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          type: string
         height:
           format: int64
           type: integer
@@ -4471,12 +4468,34 @@ components:
         addressHint:
           description: An example of the address a source of this provider takes
           type: string
+        addressLabel:
+          description: Names the field a source's address is typed into when the provider has no finder
+          type: string
+        blurb:
+          description: The sentence under the provider's heading on the source page
+          type: string
         discoverable:
           description: Sources can be suggested for a query and an address verified before it is added
           type: boolean
         fetched:
           description: Sources are downloaded on a schedule; false means they are scanned where they are
           type: boolean
+        findAdd:
+          description: The button that registers the source the finder chose
+          type: string
+        findLabel:
+          description: Names the source finder's field; absent unless discoverable
+          type: string
+        findMinQuery:
+          description: The fewest characters a search runs with
+          format: int64
+          type: integer
+        findNoMatches:
+          description: What a search with no results tells the operator to do next
+          type: string
+        findPlaceholder:
+          description: The source finder's placeholder
+          type: string
         id:
           description: The provider's persisted identity, as a source row's kind
           type: string
@@ -4489,9 +4508,15 @@ components:
         openSearchable:
           description: The provider can be searched beyond its registered sources
           type: boolean
+        previewHeading:
+          description: Introduces the examples shown from a source
+          type: string
         searchable:
           description: A registered source can be searched in place
           type: boolean
+        sourceNoun:
+          description: What one registered source is, as the source drawer's subtitle
+          type: string
       required:
         - id
         - label
@@ -4785,11 +4810,7 @@ components:
           format: int64
           type: integer
         kind:
-          enum:
-            - folder
-            - library
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         lastCheck:
           $ref: "#/components/schemas/FillerSourceCheckSummaryDTO"
@@ -4808,6 +4829,9 @@ components:
           type: string
         onForPlace:
           type: boolean
+        pageUrl:
+          description: The source's own page at its provider; absent when it has none
+          type: string
         parentId:
           type: string
         providerEnabled:
@@ -4860,6 +4884,9 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          description: Player that plays the item in place; absent when the provider does not allow it
+          type: string
         title:
           type: string
         url:
@@ -4895,9 +4922,7 @@ components:
           maxItems: 3
           type: array
         provider:
-          enum:
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         targetType:
           enum:
@@ -4925,12 +4950,16 @@ components:
           format: uri
           readOnly: true
           type: string
+        exact:
+          description: "The query was an address, not words: suggestions holds the one source it names, already checked"
+          type: boolean
         suggestions:
           items:
             $ref: "#/components/schemas/FillerSourceSuggestionDTO"
           type: array
       required:
         - suggestions
+        - exact
       type: object
     FillerSourcesOutputBody:
       additionalProperties: false
@@ -15524,13 +15553,12 @@ paths:
       description: Admin only (§10 V51c). Changes provider policy without rewriting child source switches or removing clips already in the catalog.
       operationId: set-filler-provider-enabled
       parameters:
-        - in: path
+        - description: A fetched provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A fetched provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15559,13 +15587,12 @@ paths:
       description: Admin only (§10 V67). Validates one exact provider URL or identifier and returns its canonical target without registering or downloading it.
       operationId: resolve-filler-source
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15594,13 +15621,12 @@ paths:
       description: Admin only (§10 V67). Searches one provider for source candidates without registering a source, downloading media, or granting background-work authority.
       operationId: suggest-filler-sources
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
         - explode: false
           in: query

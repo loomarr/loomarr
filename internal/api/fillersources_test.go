@@ -760,3 +760,103 @@ func TestListFillerProviders_IsAdminOnly(t *testing.T) {
 		t.Fatalf("member GET providers → %d, want 403", resp.StatusCode)
 	}
 }
+
+// Everything the source page used to carry per provider arrives on the descriptor.
+func TestListFillerProviders_CarriesTheWordsTheSourcePageShows(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
+	var got struct {
+		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]api.FillerProviderDescriptionDTO{}
+	for _, p := range got.Providers {
+		byID[p.ID] = p
+	}
+	youtube := byID["youtube"]
+	if youtube.SourceNoun != "YouTube channel or playlist" || youtube.FindMinQuery != 3 ||
+		youtube.FindLabel != "Find a YouTube channel or playlist" || youtube.Blurb == "" || youtube.PreviewHeading == "" {
+		t.Errorf("youtube = %+v", youtube)
+	}
+	if folder := byID["folder"]; folder.AddressHint == "" || folder.AddressLabel != "Folder path" || folder.FindLabel != "" {
+		t.Errorf("folder = %+v, want an address field and no finder", folder)
+	}
+}
+
+// An address is checked, not searched for: the finder answers with the one source it names.
+func TestFillerSourceSuggestions_CheckAnAddressInsteadOfSearchingForIt(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.resolvedSource = sourceprovider.Suggestion{
+		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
+		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
+		PreviewItems: []sourceprovider.PreviewItem{{Title: "First ad", URL: "https://archive.org/details/ad_one"}},
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=classic_tv_commercials", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET suggestions → %d: %s", resp.StatusCode, readBody(t, resp))
+	}
+	var body struct {
+		Exact       bool                            `json:"exact"`
+		Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Exact || len(body.Suggestions) != 1 || len(body.Suggestions[0].PreviewItems) != 1 {
+		t.Fatalf("body = %+v", body)
+	}
+	if got := body.Suggestions[0].PreviewItems[0].EmbedURL; got != "https://archive.org/embed/ad_one?autoplay=1" {
+		t.Errorf("embed = %q, want the provider's player", got)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("an address was searched for: %#v", ff.sourceSuggestionCalls)
+	}
+
+	words := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=cartoons", adminToken, "")
+	if words.StatusCode != http.StatusOK || len(ff.sourceSuggestionCalls) != 1 {
+		t.Fatalf("a word was not searched for: %d %#v", words.StatusCode, ff.sourceSuggestionCalls)
+	}
+}
+
+// The provider decides how short a search may be, so the route no longer needs one number for all.
+func TestFillerSourceSuggestions_HoldAProviderToItsOwnMinimum(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=tv", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("2-character YouTube search → %d, want 422", resp.StatusCode)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("a too-short search reached the finder: %#v", ff.sourceSuggestionCalls)
+	}
+}
+
+// A provider the registry does not know is refused by the registry, not by a list in the route.
+func TestFillerProviderRoutes_RefuseAnUnknownProviderByRegistry(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers/nonesuch/suggestions?q=classic", adminToken, ""); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("suggestions for an unknown provider → %d, want 422", resp.StatusCode)
+	}
+	if resp := do(t, srv, http.MethodPatch, "/v1/filler/providers/nonesuch", adminToken, `{"enabled":false}`); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("PATCH an unknown provider → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestFillerSources_LinkARegisteredSourceToItsOwnPage(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertFillerSource(t.Context(), fillerstore.NewFillerSource(
+		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Now().UTC(),
+	)); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range getSources(t, srv).Sources {
+		if source.ID == "archive:tv_ads" {
+			if source.PageURL != "https://archive.org/details/tv_ads" {
+				t.Fatalf("pageUrl = %q", source.PageURL)
+			}
+			return
+		}
+	}
+	t.Fatal("registered source missing from the list")
+}

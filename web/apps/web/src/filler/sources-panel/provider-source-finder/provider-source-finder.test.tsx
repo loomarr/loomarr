@@ -11,7 +11,6 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
-import type { RemoteProviderKind } from "../../use-filler-providers";
 import { ProviderSourceFinder } from "./provider-source-finder";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -20,16 +19,29 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </QueryClientProvider>
 );
 
-const providerNamed = (id: RemoteProviderKind) => {
+const providerNamed = (id: string) => {
   const provider = fillerProviders.find((candidate) => candidate.id === id);
   if (!provider) throw new Error(`no ${id} provider in the fixture registry`);
-  return { ...provider, id };
+  return provider;
 };
 const archiveProvider = providerNamed("archive");
 const youtubeProvider = providerNamed("youtube");
 
+// A provider the web has never heard of: every word and number on its finder comes from this.
+const thirdProvider = {
+  ...archiveProvider,
+  id: "thirdparty",
+  label: "Third Party",
+  findLabel: "Find a Third Party feed",
+  findPlaceholder: "Look a feed up",
+  findAdd: "Add feed",
+  findNoMatches: "Nothing here. Paste the feed's address.",
+  findMinQuery: 4,
+  previewHeading: "Samples from Third Party",
+};
+
 const suggestion = (id: string, title: string, alreadyAdded = false) => ({
-  provider: "archive" as const,
+  provider: "archive",
   targetType: "collection" as const,
   canonicalId: id,
   canonicalUrl: `https://archive.org/details/${id}`,
@@ -39,7 +51,7 @@ const suggestion = (id: string, title: string, alreadyAdded = false) => ({
 });
 
 const youtubeSuggestion = (id: string, title: string, targetType: "channel" | "playlist" = "channel") => ({
-  provider: "youtube" as const,
+  provider: "youtube",
   targetType,
   canonicalId: id,
   canonicalUrl:
@@ -53,7 +65,12 @@ const youtubeSuggestion = (id: string, title: string, targetType: "channel" | "p
 const archivePreview = {
   ...suggestion("classic_tv", "Classic TV"),
   previewItems: [
-    { title: "First station break", url: "https://archive.org/details/station_break_one", durationMs: 31500 },
+    {
+      title: "First station break",
+      url: "https://archive.org/details/station_break_one",
+      embedUrl: "https://archive.org/embed/station_break_one?autoplay=1",
+      durationMs: 31500,
+    },
     { title: "Second station break", url: "https://archive.org/details/station_break_two" },
   ],
 };
@@ -65,7 +82,7 @@ describe("ProviderSourceFinder", () => {
     server.use(
       getSuggestFillerSourcesMockHandler(({ request }) => {
         expect(new URL(request.url).searchParams.get("q")).toBe("classic tv");
-        return { suggestions: [suggestion("classic_tv", "Classic TV")] };
+        return { exact: false, suggestions: [suggestion("classic_tv", "Classic TV")] };
       }),
       getResolveFillerSourceMockHandler(async ({ request }) => {
         const body = (await request.json()) as { input: string };
@@ -112,13 +129,39 @@ describe("ProviderSourceFinder", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await userEvent.click(screen.getByRole("button", { name: "Add collection" }));
 
-    await waitFor(() => expect(calls).toEqual([{ kind: "archive", uri: "classic_tv", label: "Classic TV" }]));
+    await waitFor(() =>
+      expect(calls).toEqual([
+        { kind: "archive", uri: "https://archive.org/details/classic_tv", label: "Classic TV" },
+      ]),
+    );
+  });
+
+  it("takes an address the server recognized as the checked source, without a second check", async () => {
+    let resolutions = 0;
+    server.use(
+      getSuggestFillerSourcesMockHandler({ exact: true, suggestions: [archivePreview] }),
+      getResolveFillerSourceMockHandler(() => {
+        resolutions++;
+        return archivePreview;
+      }),
+    );
+
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
+    const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
+    // The page does not know what an address looks like: the server's answer says so.
+    await userEvent.type(input, "anything the provider recognizes");
+
+    await screen.findByRole("button", { name: "Add collection" });
+    expect(input).toHaveValue("Classic TV");
+    expect(screen.getByText("Popular videos in this collection")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Preview" })).toHaveLength(2);
+    expect(resolutions).toBe(0);
   });
 
   it("cancels a checked source without adding it and returns focus to search", async () => {
     const calls: unknown[] = [];
     server.use(
-      getResolveFillerSourceMockHandler(archivePreview),
+      getSuggestFillerSourcesMockHandler({ exact: true, suggestions: [archivePreview] }),
       getAddFillerSourceMockHandler(async ({ request }) => {
         calls.push(await request.json());
         return { id: "archive:classic_tv", label: "Classic TV", uri: "classic_tv", enabled: true };
@@ -139,26 +182,28 @@ describe("ProviderSourceFinder", () => {
   });
 
   it("does not replace newer search text with a stale exact-source response", async () => {
-    let releaseResolution: (() => void) | undefined;
+    let releaseSearch: (() => void) | undefined;
     server.use(
-      getResolveFillerSourceMockHandler(async () => {
-        await new Promise<void>((resolve) => {
-          releaseResolution = resolve;
-        });
-        return archivePreview;
+      getSuggestFillerSourcesMockHandler(async ({ request }) => {
+        if (new URL(request.url).searchParams.get("q") === "https://archive.org/details/classic_tv") {
+          await new Promise<void>((resolve) => {
+            releaseSearch = resolve;
+          });
+          return { exact: true, suggestions: [archivePreview] };
+        }
+        return { exact: false, suggestions: [] };
       }),
-      getSuggestFillerSourcesMockHandler({ suggestions: [] }),
     );
 
     render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(input, "https://archive.org/details/classic_tv");
-    await screen.findByRole("button", { name: "Checking…" });
+    await screen.findByRole("button", { name: "Searching…" });
     await userEvent.clear(input);
     await userEvent.type(input, "new collection");
-    releaseResolution?.();
+    releaseSearch?.();
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Checking…" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Searching…" })).not.toBeInTheDocument());
     expect(input).toHaveValue("new collection");
     expect(screen.queryByRole("button", { name: "Add collection" })).not.toBeInTheDocument();
   });
@@ -166,6 +211,7 @@ describe("ProviderSourceFinder", () => {
   it("supports the keyboard and prevents adding a duplicate", async () => {
     server.use(
       getSuggestFillerSourcesMockHandler({
+        exact: false,
         suggestions: [
           suggestion("first", "First collection"),
           suggestion("already_here", "Already here", true),
@@ -185,37 +231,12 @@ describe("ProviderSourceFinder", () => {
     expect(screen.getByRole("button", { name: "Add collection" })).toBeDisabled();
   });
 
-  it("sends a pasted Archive URL straight to exact resolution", async () => {
-    let searches = 0;
-    let resolvedInput = "";
-    server.use(
-      getSuggestFillerSourcesMockHandler(() => {
-        searches++;
-        return { suggestions: [] };
-      }),
-      getResolveFillerSourceMockHandler(async ({ request }) => {
-        const body = (await request.json()) as { input: string };
-        resolvedInput = body.input;
-        return suggestion("classic_tv", "Classic TV");
-      }),
-    );
-    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
-    await userEvent.type(
-      screen.getByRole("combobox", { name: "Find an Archive.org collection" }),
-      "https://archive.org/details/classic_tv",
-    );
-
-    await screen.findByRole("button", { name: "Add collection" });
-    expect(resolvedInput).toBe("https://archive.org/details/classic_tv");
-    expect(searches).toBe(0);
-  });
-
   it("finds a YouTube channel and registers its verified URL", async () => {
     const calls: unknown[] = [];
     server.use(
       getSuggestFillerSourcesMockHandler(({ request }) => {
         expect(new URL(request.url).pathname).toContain("/providers/youtube/suggestions");
-        return { suggestions: [youtubeSuggestion("UC-retro", "Retro Reels")] };
+        return { exact: false, suggestions: [youtubeSuggestion("UC-retro", "Retro Reels")] };
       }),
       getResolveFillerSourceMockHandler({
         ...youtubeSuggestion("UC-retro", "Retro Reels"),
@@ -223,6 +244,7 @@ describe("ProviderSourceFinder", () => {
           {
             title: "Retro ad one",
             url: "https://www.youtube.com/watch?v=video-one",
+            embedUrl: "https://www.youtube-nocookie.com/embed/video-one?autoplay=1&playsinline=1",
             durationMs: 45000,
           },
         ],
@@ -267,93 +289,40 @@ describe("ProviderSourceFinder", () => {
     );
   });
 
-  it("sends a pasted YouTube URL straight to exact resolution", async () => {
-    let searches = 0;
-    let resolvedInput = "";
-    server.use(
-      getSuggestFillerSourcesMockHandler(() => {
-        searches++;
-        return { suggestions: [] };
-      }),
-      getResolveFillerSourceMockHandler(async ({ request }) => {
-        const body = (await request.json()) as { input: string };
-        resolvedInput = body.input;
-        return youtubeSuggestion("PL123", "Favorite breaks", "playlist");
-      }),
-    );
-
-    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
-    await userEvent.type(
-      screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }),
-      "https://www.youtube.com/playlist?list=PL123",
-    );
-
-    await screen.findByRole("button", { name: "Add source" });
-    expect(resolvedInput).toBe("https://www.youtube.com/playlist?list=PL123");
-    expect(searches).toBe(0);
-    expect(screen.getByText("Playlist")).toBeInTheDocument();
-  });
-
-  it("recognizes a YouTube handle without treating it as search text", async () => {
-    let searches = 0;
-    let resolvedInput = "";
-    server.use(
-      getSuggestFillerSourcesMockHandler(() => {
-        searches++;
-        return { suggestions: [] };
-      }),
-      getResolveFillerSourceMockHandler(async ({ request }) => {
-        const body = (await request.json()) as { input: string };
-        resolvedInput = body.input;
-        return youtubeSuggestion("UC-retro", "Retro Reels");
-      }),
-    );
-
-    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
-    await userEvent.type(
-      screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }),
-      "@retroads",
-    );
-
-    await screen.findByRole("button", { name: "Add source" });
-    expect(resolvedInput).toBe("@retroads");
-    expect(searches).toBe(0);
-  });
-
   it("does not search while the provider is paused", async () => {
     let calls = 0;
     server.use(
       getSuggestFillerSourcesMockHandler(() => {
         calls++;
-        return { suggestions: [] };
+        return { exact: false, suggestions: [] };
       }),
     );
     render(<ProviderSourceFinder provider={archiveProvider} enabled={false} />, { wrapper });
     expect(screen.getByRole("combobox", { name: "Find an Archive.org collection" })).toBeDisabled();
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(calls).toBe(0);
   });
 
-  it("waits for a useful YouTube query before starting search", async () => {
+  it("waits for the number of characters the provider says a search is worth", async () => {
     let calls = 0;
     server.use(
       getSuggestFillerSourcesMockHandler(() => {
         calls++;
-        return { suggestions: [] };
+        return { exact: false, suggestions: [] };
       }),
     );
     render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }), "tv");
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await new Promise((resolve) => setTimeout(resolve, 650));
     expect(calls).toBe(0);
   });
 
-  it("keeps the search text when there are no matches", async () => {
-    server.use(getSuggestFillerSourcesMockHandler({ suggestions: [] }));
+  it("keeps the search text when there are no matches, and says what the provider says to do", async () => {
+    server.use(getSuggestFillerSourcesMockHandler({ exact: false, suggestions: [] }));
     render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const emptyInput = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(emptyInput, "no matches");
-    await screen.findByText(/no collections found/i);
+    await screen.findByText("No collections found. Paste the exact URL to check it.");
     expect(emptyInput).toHaveValue("no matches");
   });
 
@@ -382,5 +351,63 @@ describe("ProviderSourceFinder", () => {
     });
     await userEvent.type(screen.getByRole("combobox", { name: "Find an Archive.org collection" }), "classic");
     await screen.findByText("Registry Name is not responding right now. Try again in a moment.");
+  });
+
+  // A provider added to the server's registry gets a working finder from its description alone.
+  it("renders and works for a provider the page has never heard of", async () => {
+    const calls: unknown[] = [];
+    const searches: string[] = [];
+    server.use(
+      getSuggestFillerSourcesMockHandler(({ request }) => {
+        const url = new URL(request.url);
+        searches.push(`${url.pathname}?q=${url.searchParams.get("q")}`);
+        return {
+          exact: false,
+          suggestions: [
+            {
+              ...suggestion("feed_one", "Feed One"),
+              provider: "thirdparty",
+              canonicalUrl: "https://third.example/feed_one",
+            },
+          ],
+        };
+      }),
+      getResolveFillerSourceMockHandler({
+        ...suggestion("feed_one", "Feed One"),
+        provider: "thirdparty",
+        canonicalUrl: "https://third.example/feed_one",
+        previewItems: [{ title: "Sample one", url: "https://third.example/one" }],
+      }),
+      getAddFillerSourceMockHandler(async ({ request }) => {
+        calls.push(await request.json());
+        return {
+          id: "thirdparty:feed_one",
+          label: "Feed One",
+          uri: "https://third.example/feed_one",
+          enabled: true,
+        };
+      }),
+    );
+
+    render(<ProviderSourceFinder provider={thirdProvider} enabled />, { wrapper });
+    const input = screen.getByRole("combobox", { name: "Find a Third Party feed" });
+    expect(input).toHaveAttribute("placeholder", "Look a feed up");
+
+    await userEvent.type(input, "fee");
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(searches).toEqual([]);
+
+    await userEvent.type(input, "d one");
+    await userEvent.click(await screen.findByRole("option", { name: /feed one/i }));
+    const add = await screen.findByRole("button", { name: "Add feed" });
+    expect(await screen.findByText("Samples from Third Party")).toBeInTheDocument();
+    await userEvent.click(add);
+
+    expect(searches).toEqual(["/v1/filler/providers/thirdparty/suggestions?q=feed one"]);
+    await waitFor(() =>
+      expect(calls).toEqual([
+        { kind: "thirdparty", uri: "https://third.example/feed_one", label: "Feed One" },
+      ]),
+    );
   });
 });

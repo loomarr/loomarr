@@ -44,16 +44,14 @@ const SourcesPanel = ({
         selectedId={selectedSourceID}
         onToggleEnabled={(id, enabled) => actions.updateSource(id, { enabled })}
         toggling={actions.updatingSourceID ?? null}
-        onToggleProvider={(kind, enabled) => {
-          const remote = providers.discoverable(kind);
-          if (remote) actions.toggleProvider(remote.id, enabled);
-        }}
+        descriptions={providers.providers}
+        onToggleProvider={actions.toggleProvider}
         togglingProvider={actions.togglingProvider ?? null}
         renderLocalSetup={isAdmin ? <LocalSourceForm /> : undefined}
         error={actions.error ?? sourcesError ?? null}
         renderProviderSetup={(row) => {
-          const remote = providers.discoverable(row.kind);
-          return remote ? <ProviderSourceFinder provider={remote} enabled={row.enabled} /> : undefined;
+          const finder = providers.discoverable(row.kind);
+          return finder ? <ProviderSourceFinder provider={finder} enabled={row.enabled} /> : undefined;
         }}
       />
 

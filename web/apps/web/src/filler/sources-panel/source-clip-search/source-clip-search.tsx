@@ -11,11 +11,11 @@ import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 import { useQueuedClipJobs } from "../use-queued-clip-jobs";
 
 interface SourceClipSearchProps {
-  /** An Archive.org source whose actions include `search`. Remount per source (`key`). */
+  /** A source whose actions include `search`. Remount per source (`key`). */
   source: FillerSourceDTO;
 }
 
-// "Find a specific clip": search one Archive.org collection, preview a hit, queue it for download.
+// "Find a specific clip": search one source, preview a hit, queue it for download.
 // Owns the whole flow — the query, the lazily measured runtimes, the queued jobs and the preview
 // dialog — so none of it re-renders the rest of the drawer on a keystroke.
 const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
@@ -64,7 +64,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
       <Disclosure open={open} onOpenChange={setOpen} className="border-border border-t pt-5">
         <Disclosure.SectionTrigger
           title="Find a specific clip"
-          description="Search this Archive.org collection by title or keyword."
+          description={`Search this ${provider?.sourceNoun ?? "source"} by title or keyword.`}
         />
         <Disclosure.Panel className="pt-4">
           <SourceSearch
@@ -88,6 +88,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
               setPreview({
                 title: clip.title || clip.id,
                 url: clip.url,
+                embedUrl: clip.embedUrl,
                 durationMs: stats[clip.id]?.durationMs ?? clip.durationMs,
               })
             }
@@ -102,7 +103,6 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
       {provider && (
         <SourceItemPreviewDialog
           item={preview}
-          kind={provider.id}
           providerLabel={provider.label}
           onClose={() => setPreview(undefined)}
         />

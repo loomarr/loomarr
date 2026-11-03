@@ -1,15 +1,14 @@
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { RemoteProviderKind } from "../../use-filler-providers";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
 interface SourceContentPreviewProps {
-  kind: RemoteProviderKind;
-  /** The provider's operator-facing name, from the provider registry. */
-  providerLabel: string;
+  /** The provider the source belongs to, from the provider registry. */
+  provider: FillerProviderDescriptionDTO;
   canonicalUrl: string;
   previewItems?: FillerSourcePreviewItemDTO[];
   loading?: boolean;
@@ -17,15 +16,13 @@ interface SourceContentPreviewProps {
 }
 
 const SourceContentPreview = ({
-  kind,
-  providerLabel,
+  provider,
   canonicalUrl,
   previewItems,
   loading = false,
   error,
 }: SourceContentPreviewProps) => {
   const [previewing, setPreviewing] = useState<FillerSourcePreviewItemDTO>();
-  const heading = kind === "archive" ? "Popular videos in this collection" : "A few videos from this source";
   const showExamples = loading || Boolean(error) || Boolean(previewItems?.length);
 
   return (
@@ -36,13 +33,13 @@ const SourceContentPreview = ({
         target="_blank"
         rel="noreferrer"
       >
-        Open on {providerLabel}
+        Open on {provider.label}
         <ExternalLink className="size-3" aria-hidden />
       </a>
 
       {showExamples && (
         <div className="border-border mt-3 border-t pt-3">
-          <p className="text-xs font-medium">{heading}</p>
+          {provider.previewHeading && <p className="text-xs font-medium">{provider.previewHeading}</p>}
           {loading && (
             <div
               className="text-muted-foreground mt-2 flex items-center gap-2 text-xs"
@@ -94,8 +91,7 @@ const SourceContentPreview = ({
 
       <SourceItemPreviewDialog
         item={previewing}
-        kind={kind}
-        providerLabel={providerLabel}
+        providerLabel={provider.label}
         onClose={() => setPreviewing(undefined)}
       />
     </>

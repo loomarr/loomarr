@@ -557,6 +557,8 @@ type DiscoveredClip struct {
 	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
 	// API call — which is why it is built here rather than fetched.
 	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+	// EmbedURL plays the item in its provider's own player; absent when it cannot be embedded.
+	EmbedURL string `json:"embedUrl,omitempty"`
 }
 
 // DiscoveredClipStats is what a per-item metadata call learns about one result (§10, V35) —

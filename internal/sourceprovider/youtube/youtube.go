@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -80,7 +81,53 @@ func (*Provider) Describe() sourceprovider.Description {
 			Title:  "That doesn't look like a YouTube playlist or channel",
 			Detail: "Paste a playlist URL (youtube.com/playlist?list=…) or a channel URL.",
 		},
+		Blurb:          "Channels and playlists you choose from YouTube.",
+		SourceNoun:     "YouTube channel or playlist",
+		PreviewHeading: "A few videos from this source",
+		Find: sourceprovider.FindCopy{
+			Label:       "Find a YouTube channel or playlist",
+			Placeholder: "Search channels or paste a channel or playlist URL",
+			Add:         "Add source",
+			NoMatches:   "No channels found. Paste a channel or playlist URL to check it.",
+			MinQuery:    3,
+		},
 	}
+}
+
+var (
+	// youtubeURL is any YouTube or youtu.be address.
+	youtubeURL = regexp.MustCompile(`(?i)^(https?://)?((www|m|music)\.)?(youtube\.com|youtu\.be)/`)
+	// youtubeHandle is an @handle.
+	youtubeHandle = regexp.MustCompile(`(?i)^@[a-z0-9._-]+$`)
+	// youtubeChannelID is a channel's UC… identifier.
+	youtubeChannelID = regexp.MustCompile(`(?i)^UC[a-z0-9_-]{10,}$`)
+	// youtubePlaylistID is a playlist's identifier, whichever prefix its kind carries.
+	youtubePlaylistID = regexp.MustCompile(`(?i)^(PL|UU|LL|FL|RD|OLAK5uy_)[a-z0-9_-]{8,}$`)
+	// youtubeVideoID is the v= parameter of a watch URL.
+	youtubeVideoID = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
+
+// Recognizes implements sourceprovider.Recognizer.
+func (*Provider) Recognizes(input string) bool {
+	input = strings.TrimSpace(input)
+	return youtubeURL.MatchString(input) || youtubeHandle.MatchString(input) ||
+		youtubeChannelID.MatchString(input) || youtubePlaylistID.MatchString(input)
+}
+
+// SourceURL implements sourceprovider.Linker: a registered source is stored as its URL.
+func (*Provider) SourceURL(address string) string { return strings.TrimSpace(address) }
+
+// EmbedURL implements sourceprovider.Linker: a watch URL plays in the privacy-enhanced embed.
+func (*Provider) EmbedURL(itemURL string) string {
+	u, err := url.Parse(itemURL)
+	if err != nil || strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") != "youtube.com" {
+		return ""
+	}
+	id := u.Query().Get("v")
+	if !youtubeVideoID.MatchString(id) {
+		return ""
+	}
+	return "https://www.youtube-nocookie.com/embed/" + url.PathEscape(id) + "?autoplay=1&playsinline=1"
 }
 
 // WithFinder gives the provider the means to suggest channels and verify an address. Without one,

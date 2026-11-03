@@ -16,6 +16,7 @@ import {
   getResolveFillerSourceMockHandler,
   getSetFillerProviderEnabledMockHandler,
   getSetFillerSourceEnabledMockHandler,
+  getSuggestFillerSourcesMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -195,7 +196,11 @@ const stubSources = () => {
         title: "Classic TV",
         alreadyAdded: true,
         previewItems: [
-          { title: "First station break", url: "https://archive.org/details/station_break_one" },
+          {
+            title: "First station break",
+            url: "https://archive.org/details/station_break_one",
+            embedUrl: "https://archive.org/embed/station_break_one?autoplay=1",
+          },
           { title: "Second station break", url: "https://archive.org/details/station_break_two" },
         ],
       };
@@ -399,7 +404,7 @@ describe("SourcesPanel", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Classic TV Commercials" })).toBeInTheDocument();
-    expect(screen.getByText("Archive.org collection")).toBeInTheDocument();
+    expect(await screen.findByText("Archive.org collection")).toBeInTheDocument();
   });
 
   it("returns focus to the selected row when the source workspace closes", async () => {
@@ -425,6 +430,8 @@ describe("SourcesPanel", () => {
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     const local = await screen.findByRole("region", { name: "Your files" });
+    await userEvent.click(await within(local).findByRole("combobox", { name: "Kind of source to add" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Media library" }));
     const library = await within(local).findByRole("textbox", { name: "Library name" });
     await userEvent.type(library, "Commercials");
     await userEvent.click(within(local).getByRole("button", { name: /add source/i }));
@@ -455,13 +462,18 @@ describe("SourcesPanel", () => {
   it("adds remote targets inside their provider without a kind selector", async () => {
     const { adds } = stubSources();
     server.use(
-      getResolveFillerSourceMockHandler({
-        provider: "youtube",
-        targetType: "channel",
-        canonicalId: "UC-retroads",
-        canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
-        title: "Retro Ads",
-        alreadyAdded: false,
+      getSuggestFillerSourcesMockHandler({
+        exact: true,
+        suggestions: [
+          {
+            provider: "youtube",
+            targetType: "channel",
+            canonicalId: "UC-retroads",
+            canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
+            title: "Retro Ads",
+            alreadyAdded: false,
+          },
+        ],
       }),
     );
     renderPanel([
@@ -692,6 +704,7 @@ describe("SourcesPanel", () => {
         kind: "archive",
         id: "archive:classic",
         uri: "classic_tv",
+        pageUrl: "https://archive.org/details/classic_tv",
         target: "Classic TV",
         searchable: true,
       }),

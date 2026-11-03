@@ -5,7 +5,6 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { RemoteProviderKind } from "../../use-filler-providers";
 
 interface UpdateSourceCallbacks {
   onSuccess?: () => void;
@@ -59,7 +58,7 @@ const useSourceActions = ({ onSourceRemoved }: { onSourceRemoved: () => void }) 
     },
   });
 
-  const [togglingProvider, setTogglingProvider] = useState<RemoteProviderKind>();
+  const [togglingProvider, setTogglingProvider] = useState<string>();
   const toggleProviderMutation = fillerApi.useSetFillerProviderEnabled({
     mutation: {
       onSettled: () => setTogglingProvider(undefined),
@@ -99,7 +98,7 @@ const useSourceActions = ({ onSourceRemoved }: { onSourceRemoved: () => void }) 
     },
     removing: removeSourceMutation.isPending,
     removingSourceID: removeSourceMutation.isPending ? removingSource : undefined,
-    toggleProvider: (kind: RemoteProviderKind, enabled: boolean) => {
+    toggleProvider: (kind: string, enabled: boolean) => {
       setTogglingProvider(kind);
       toggleProviderMutation.mutate({ kind, data: { enabled } });
     },

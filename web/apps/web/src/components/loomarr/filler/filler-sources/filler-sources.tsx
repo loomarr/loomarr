@@ -124,6 +124,7 @@ const FillerSources = ({
   togglingProvider,
   renderProviderSetup,
   renderLocalSetup,
+  descriptions = [],
   error,
   now,
   className,
@@ -305,9 +306,7 @@ const FillerSources = ({
                 <p className="text-muted-foreground mt-1 text-sm">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`
-                    : provider.kind === "archive"
-                      ? "Public collections of commercials, bumpers, and other broadcast material."
-                      : "Channels and playlists you choose from YouTube."}
+                    : descriptions.find((description) => description.id === provider.kind)?.blurb}
                 </p>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-3">

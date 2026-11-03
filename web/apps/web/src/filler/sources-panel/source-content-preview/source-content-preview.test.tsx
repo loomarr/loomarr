@@ -1,32 +1,39 @@
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SourceContentPreview } from "./source-content-preview";
 
+const provider: FillerProviderDescriptionDTO = {
+  id: "registry",
+  label: "Registry Name",
+  previewHeading: "A few from the registry",
+  fetched: true,
+  listable: true,
+  searchable: false,
+  discoverable: true,
+  openSearchable: false,
+  addable: true,
+};
+
 describe("SourceContentPreview", () => {
   it("holds the example section in place while its three preview links load", () => {
     const { rerender } = render(
-      <SourceContentPreview
-        kind="youtube"
-        providerLabel="Registry Name"
-        canonicalUrl="https://www.youtube.com/channel/example/videos"
-        loading
-      />,
+      <SourceContentPreview provider={provider} canonicalUrl="https://example.test/channel/videos" loading />,
     );
 
     expect(screen.getByRole("link", { name: /Open on Registry Name/ })).toBeVisible();
-    expect(screen.getByText("A few videos from this source")).toBeInTheDocument();
+    expect(screen.getByText("A few from the registry")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading examples…");
     expect(screen.getByRole("status").querySelector(".animate-spin")).not.toBeNull();
 
     rerender(
       <SourceContentPreview
-        kind="youtube"
-        providerLabel="Registry Name"
-        canonicalUrl="https://www.youtube.com/channel/example/videos"
+        provider={provider}
+        canonicalUrl="https://example.test/channel/videos"
         previewItems={[
-          { title: "First", url: "https://www.youtube.com/watch?v=first" },
-          { title: "Second", url: "https://www.youtube.com/watch?v=second" },
-          { title: "Third", url: "https://www.youtube.com/watch?v=third" },
+          { title: "First", url: "https://example.test/watch?v=first" },
+          { title: "Second", url: "https://example.test/watch?v=second" },
+          { title: "Third", url: "https://example.test/watch?v=third" },
         ]}
       />,
     );

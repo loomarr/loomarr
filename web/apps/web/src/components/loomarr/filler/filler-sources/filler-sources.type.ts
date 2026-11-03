@@ -1,3 +1,4 @@
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { ReactNode } from "react";
 
@@ -31,6 +32,8 @@ interface FillerSourcesProps {
   renderProviderSetup?: (provider: FillerSourceDTO) => ReactNode;
   /** Folder/library add flow, rendered inside the first-class Your files group. */
   renderLocalSetup?: ReactNode;
+  /** What each provider says about itself (from `GET /v1/filler/providers`), for its heading's blurb. */
+  descriptions?: FillerProviderDescriptionDTO[];
   error?: string | null;
   // Injectable clock (§5.2) for "checked 47d ago". Without it the stories' fixed check dates
   // aged a day per day, and the visual gate failed whichever filler PR next re-rendered them.
