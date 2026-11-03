@@ -20,6 +20,7 @@
     "@loomarr/crash-reports-native": "workspace:*",
     "@loomarr/design-system": "workspace:*",
     "@loomarr/lan-discovery-native": "workspace:*",
+    "@loomarr/native-app": "workspace:*",
     "@loomarr/player": "workspace:*",
     "@loomarr/ui": "workspace:*",
     "expo": "58.0.22",
