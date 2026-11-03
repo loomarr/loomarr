@@ -13,8 +13,8 @@ import {
   DEVICES,
   type Device,
   SCAN_STATES,
-  type ScanState,
   SCREENS,
+  type ScanState,
   type Screen,
 } from "@/library/library-prototype/prototype-state";
 import { PrototypeSwitcher } from "@/library/library-prototype/prototype-switcher";
@@ -61,7 +61,14 @@ const PrototypeLibrary = () => {
           src={`/prototype/library?${qs.toString()}`}
           className="ring-static-800 h-[844px] w-[390px] rounded-[36px] bg-black ring-8"
         />
-        <PrototypeSwitcher variants={VARIANTS} variant={current.key} screen={search.screen} scan={search.scan} device={search.device} onChange={set} />
+        <PrototypeSwitcher
+          variants={VARIANTS}
+          variant={current.key}
+          screen={search.screen}
+          scan={search.scan}
+          device={search.device}
+          onChange={set}
+        />
       </div>
     );
   }
@@ -74,7 +81,12 @@ const PrototypeLibrary = () => {
     ) : search.screen === "wizard" ? (
       <WizardLibraryStep scan={search.scan} device={search.device} />
     ) : (
-      <Component screen={search.screen} scan={search.scan} device={search.device} go={(screen) => set({ screen })} />
+      <Component
+        screen={search.screen}
+        scan={search.scan}
+        device={search.device}
+        go={(screen) => set({ screen })}
+      />
     );
 
   return (
@@ -86,13 +98,24 @@ const PrototypeLibrary = () => {
           isAdmin
           userName="Adela Hale"
           badges={{ "/prototype/library": status.unmatched, "/requests": 2 }}
-          progress={running && status.progress ? { "/prototype/library": status.progress.done / status.progress.total } : undefined}
+          progress={
+            running && status.progress
+              ? { "/prototype/library": status.progress.done / status.progress.total }
+              : undefined
+          }
         >
           {body}
         </AppShell>
       )}
       {!search.framed && (
-        <PrototypeSwitcher variants={VARIANTS} variant={current.key} screen={search.screen} scan={search.scan} device={search.device} onChange={set} />
+        <PrototypeSwitcher
+          variants={VARIANTS}
+          variant={current.key}
+          screen={search.screen}
+          scan={search.scan}
+          device={search.device}
+          onChange={set}
+        />
       )}
     </>
   );
