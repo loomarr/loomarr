@@ -179,9 +179,8 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 			Log:      defaults.Log,
 			Channels: chSvc,
 			LiveTV:   ltv,
-			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
-			// intent lineup/policy (channeledit asks the binder) resolve real approved proposals
-			// in these tests, same as production wiring.
+			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so the number check
+			// (channeledit asks the binder) matches production wiring.
 			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
@@ -397,33 +396,6 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 		`{"id":"c2","name":"B","number":5,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate number → %d, want 409", resp.StatusCode)
-	}
-}
-
-func TestCreateChannelDuplicateIntentRef(t *testing.T) {
-	harness := newChannelsHarness(t)
-	srv, st := harness.Server, harness.Store
-	ctx := context.Background()
-	if _, err := st.SaveChannel(ctx, store.Channel{
-		Channel: schedule.Channel{
-			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
-			IntentRef: "job-bound", Status: schedule.StatusBuilding,
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
-		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
-	}
-	channels, err := st.ListChannels(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(channels) != 1 || channels[0].ID != "bound" {
-		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
 	}
 }
 

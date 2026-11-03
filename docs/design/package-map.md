@@ -328,7 +328,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 ### Layer 14
 
 - **`channeledit`** · 1 importer · → `activity`, `binder`, `provision`, `schedule`, `store`
-  One write path for an operator's channel changes (§7): creating a hand-made or approved-intent channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
+  One write path for an operator's channel changes (§7): creating a hand-made channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
 
 ### Layer 15
 

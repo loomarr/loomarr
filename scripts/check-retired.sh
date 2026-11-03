@@ -406,6 +406,12 @@ RETIRED=(
   # still verifies those artifacts, but no new review is run.
   'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
   'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
+  # #2147 — POST /v1/channels makes hand-made channels only. Binding a channel to an approved
+  # proposal is approval's write (binder.Plan), never a second route with its own copy of the rules.
+  'LineupFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'PolicyFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'RequestFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
