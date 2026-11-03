@@ -120,6 +120,15 @@ func TestResolve_TechnicalFacts(t *testing.T) {
 	}
 }
 
+func TestResolve_DimensionsComeFromOneSource(t *testing.T) {
+	widthOnly := mp.Record{Source: header, Kind: mp.KindMovie, Technical: &mp.Technical{Width: 1920}}
+	both := mp.Record{Source: radarr, Kind: mp.KindMovie, Technical: &mp.Technical{Width: 1280, Height: 720}}
+	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie, Records: []mp.Record{widthOnly, both}}).Technical
+	if got.Width.Value != 1280 || got.Height.Value != 720 || got.Width.From != radarr {
+		t.Errorf("dimensions = %dx%d from %+v, want 1280x720 from one source", got.Width.Value, got.Height.Value, got.Width.From)
+	}
+}
+
 func TestResolve_IdentityAndNumbering(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -303,11 +312,11 @@ func TestResolve_Certification(t *testing.T) {
 			records: []mp.Record{cert(header, mp.KindMovie, "TV-MA", "US"), cert(embedded, mp.KindMovie, "TV-MA", "US"), cert(link, mp.KindMovie, "TV-MA", "US")},
 		},
 		{
-			name:      "an unrated episode inherits its series' strictest",
-			kind:      mp.KindEpisode,
-			records:   []mp.Record{desc(sonarr, mp.KindEpisode, "E", "")},
-			series:    []mp.Record{cert(sonarr, mp.KindSeries, "TV-14", "US"), cert(nfoTVDB, mp.KindSeries, "TV-MA", "")},
-			rating:    "TV-MA", from: nfoTVDB, inherited: true,
+			name:    "an unrated episode inherits its series' strictest",
+			kind:    mp.KindEpisode,
+			records: []mp.Record{desc(sonarr, mp.KindEpisode, "E", "")},
+			series:  []mp.Record{cert(sonarr, mp.KindSeries, "TV-14", "US"), cert(nfoTVDB, mp.KindSeries, "TV-MA", "")},
+			rating:  "TV-MA", from: nfoTVDB, inherited: true,
 		},
 		{
 			name:    "an episode rated below its series keeps its own rating",
@@ -324,11 +333,11 @@ func TestResolve_Certification(t *testing.T) {
 			rating:  "TV-MA", from: tvdbCat,
 		},
 		{
-			name:      "an episode whose only rating is ungrounded still inherits",
-			kind:      mp.KindEpisode,
-			records:   []mp.Record{cert(nfoTVDB, mp.KindEpisode, "15", "GB")},
-			series:    []mp.Record{cert(sonarr, mp.KindSeries, "TV-14", "US")},
-			rating:    "TV-14", from: sonarr, inherited: true,
+			name:    "an episode whose only rating is ungrounded still inherits",
+			kind:    mp.KindEpisode,
+			records: []mp.Record{cert(nfoTVDB, mp.KindEpisode, "15", "GB")},
+			series:  []mp.Record{cert(sonarr, mp.KindSeries, "TV-14", "US")},
+			rating:  "TV-14", from: sonarr, inherited: true,
 		},
 		{
 			name:    "an episode never inherits from records that are not its series",

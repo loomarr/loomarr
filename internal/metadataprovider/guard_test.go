@@ -21,8 +21,9 @@ import (
 // described. This gate reads the production source of the whole module and fails on:
 //
 //   - == or != with a provider ID constant (metadataprovider.IDSonarr …) on either side,
-//   - == or != between a provider's ID() and a non-empty string literal,
-//   - a switch on ID(), or a case listing a provider ID constant,
+//   - == or != between a provider ID (ID() or a Provider field) and a non-empty string literal,
+//   - a switch on ID() or a Provider field, or a case listing a provider ID constant,
+//   - slices.Contains or slices.Index searching for a provider ID constant,
 //   - a provider ID built from a string literal outside the file that declares the set.
 //
 // Using an ID as a map key, stamping it as provenance, or passing it to the registry is fine.
@@ -95,6 +96,9 @@ func f(p mp.Provider, s mp.Source) {
 	switch p.ID() {}
 	switch s.Provider { case mp.IDSonarr: }
 	_ = mp.ID("radarr")
+	if s.Provider == "sonarr" {}
+	switch s.Provider { case "nfo": }
+	_ = slices.Contains(ids, mp.IDSonarr)
 }
 func clean(p mp.Provider, m map[mp.ID]int, s mp.Source) {
 	_ = m[mp.IDSonarr]
@@ -112,11 +116,11 @@ func clean(p mp.Provider, m map[mp.ID]int, s mp.Source) {
 	names := importNames(file, "example/internal/metadataprovider")
 	consts := map[string]bool{"IDSonarr": true, "IDRadarr": true, "IDNFO": true}
 	got := idComparisons(fset, file, names, consts, false, false)
-	if len(got) != 7 {
-		t.Fatalf("found %d violations, want 7 (and none in clean):\n%s", len(got), strings.Join(got, "\n"))
+	if len(got) != 11 {
+		t.Fatalf("found %d violations, want 11 (and none in clean):\n%s", len(got), strings.Join(got, "\n"))
 	}
 	for _, finding := range got {
-		if line, _ := strconv.Atoi(strings.SplitN(finding, ":", 2)[0]); line >= 12 {
+		if line, _ := strconv.Atoi(strings.SplitN(finding, ":", 2)[0]); line >= 15 {
 			t.Errorf("flagged allowed code: %s", finding)
 		}
 	}
@@ -263,6 +267,15 @@ func idComparisons(fset *token.FileSet, f *ast.File, names, consts map[string]bo
 		sel, ok := call.Fun.(*ast.SelectorExpr)
 		return ok && sel.Sel.Name == "ID"
 	}
+	// isProviderValue is an expression that holds a provider ID: a call to ID(), or a field named
+	// Provider (Source.Provider and its like).
+	isProviderValue := func(e ast.Expr) bool {
+		if isIDCall(e) {
+			return true
+		}
+		sel, ok := unwrap(e).(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "Provider"
+	}
 	isLiteral := func(e ast.Expr) bool {
 		lit, ok := unwrap(e).(*ast.BasicLit)
 		return ok && lit.Kind == token.STRING && lit.Value != `""` && lit.Value != "``"
@@ -283,12 +296,12 @@ func idComparisons(fset *token.FileSet, f *ast.File, names, consts map[string]bo
 			switch {
 			case isConst(l) || isConst(r):
 				report(x, "compares with a provider ID constant")
-			case (isIDCall(l) && isLiteral(r)) || (isIDCall(r) && isLiteral(l)):
-				report(x, "compares a provider's ID() with a string")
+			case (isProviderValue(l) && isLiteral(r)) || (isProviderValue(r) && isLiteral(l)):
+				report(x, "compares a provider ID with a string")
 			}
 		case *ast.SwitchStmt:
-			if x.Tag != nil && isIDCall(x.Tag) {
-				report(x, "switches on a provider's ID()")
+			if x.Tag != nil && isProviderValue(x.Tag) {
+				report(x, "switches on a provider ID")
 			}
 			for _, stmt := range x.Body.List {
 				clause := stmt.(*ast.CaseClause)
@@ -299,6 +312,10 @@ func idComparisons(fset *token.FileSet, f *ast.File, names, consts map[string]bo
 		case *ast.CallExpr:
 			if !allowLiteral && isIDType(x.Fun) && len(x.Args) == 1 && isLiteral(x.Args[0]) {
 				report(x, "builds a provider ID from a string")
+			}
+			if sel, ok := x.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "Contains" || sel.Sel.Name == "Index") &&
+				slices.ContainsFunc(x.Args, isConst) {
+				report(x, "searches for a provider ID constant")
 			}
 		}
 		return true

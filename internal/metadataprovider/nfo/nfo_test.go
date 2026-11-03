@@ -147,8 +147,8 @@ func TestParse_KeepsARatingsCountry(t *testing.T) {
 
 func TestParse_RefusesUnsafeOrMalformedDocuments(t *testing.T) {
 	cases := map[string]string{
-		"external entity": `<?xml version="1.0"?><!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/hostname">]><movie><title>&x;</title></movie>`,
-		"internal entity": `<!DOCTYPE movie [<!ENTITY a "aaaaaaaaaa">]><movie><title>&a;&a;</title></movie>`,
+		"external entity":  `<?xml version="1.0"?><!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/hostname">]><movie><title>&x;</title></movie>`,
+		"internal entity":  `<!DOCTYPE movie [<!ENTITY a "aaaaaaaaaa">]><movie><title>&a;&a;</title></movie>`,
 		"undefined entity": `<movie><title>&undefined;</title></movie>`,
 		"wrong root":       `<tvshow><title>Elsewhere</title></tvshow>`,
 		"unclosed":         `<movie><title>Half`,
@@ -180,6 +180,57 @@ func TestParse_DropsMalformedIDs(t *testing.T) {
 	}
 	if rec.Source.Catalog != "anidb" {
 		t.Errorf("catalog = %q, want the only id's namespace", rec.Source.Catalog)
+	}
+}
+
+func TestParse_ReadsLegacySingleByteEncodings(t *testing.T) {
+	for label, title := range map[string][]byte{
+		"ISO-8859-1":   []byte("Caf\xe9 Lumi\xe8re"),
+		"windows-1252": []byte("Caf\xe9 \x93Lumi\xe8re\x94"),
+	} {
+		doc := append([]byte(`<?xml version="1.0" encoding="`+label+`"?><movie><title>`), title...)
+		doc = append(doc, []byte("</title></movie>")...)
+		rec, err := nfo.Parse(mp.KindMovie, doc)
+		if err != nil {
+			t.Fatalf("%s: %v", label, err)
+		}
+		want := map[string]string{"ISO-8859-1": "Café Lumière", "windows-1252": "Café “Lumière”"}[label]
+		if rec.Descriptive.Title != want {
+			t.Errorf("%s title = %q, want %q", label, rec.Descriptive.Title, want)
+		}
+	}
+	if _, err := nfo.Parse(mp.KindMovie, []byte(`<?xml version="1.0" encoding="shift_jis"?><movie/>`)); err == nil {
+		t.Error("an unsupported encoding parsed")
+	}
+}
+
+func TestParse_RuntimeToleratesAMinutesUnit(t *testing.T) {
+	for raw, want := range map[string]time.Duration{"112": 112 * time.Minute, "112 min": 112 * time.Minute, "1h 52min": 0, "abc": 0} {
+		rec, err := nfo.Parse(mp.KindMovie, []byte("<movie><runtime>"+raw+"</runtime></movie>"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.Descriptive.Runtime != want {
+			t.Errorf("runtime %q = %v, want %v", raw, rec.Descriptive.Runtime, want)
+		}
+	}
+}
+
+func TestParse_ABrokenSecondEpisodeFailsTheFile(t *testing.T) {
+	doc := `<episodedetails><season>1</season><episode>1</episode></episodedetails>
+<episodedetails><season>1</season><episode>2`
+	if _, err := nfo.Parse(mp.KindEpisode, []byte(doc)); err == nil {
+		t.Error("a truncated second episode was dropped silently")
+	}
+}
+
+func TestFetch_MovieNFODescribesOnlyASingleMovieFolder(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Movies")
+	write(t, filepath.Join(dir, "movie.nfo"), []byte("<movie><title>Folder</title></movie>"))
+	write(t, filepath.Join(dir, "First (2001).mkv"), nil)
+	write(t, filepath.Join(dir, "Second (2002).mp4"), nil)
+	if _, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(dir, "First (2001).mkv"))); !errors.Is(err, mp.ErrNotFound) {
+		t.Errorf("a shared folder's movie.nfo = %v, want ErrNotFound", err)
 	}
 }
 

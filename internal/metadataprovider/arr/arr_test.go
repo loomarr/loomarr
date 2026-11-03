@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -136,7 +137,7 @@ func TestSonarr_SeriesWithoutRatingOrTMDBIDLeavesThemOut(t *testing.T) {
 		t.Errorf("ids = %+v, want only the TVDB id (tmdbId 0 and no imdbId)", rec.IDs)
 	}
 	tech := rec.Children[0].Technical
-	if tech.Duration != 22*time.Minute+31*time.Second || !tech.Interlaced || tech.Width != 640 || tech.AudioLanguages != nil {
+	if tech.Duration != 22*time.Minute+31*time.Second || !tech.Interlaced || tech.Width != 640 || tech.AudioLanguages != nil || tech.HDR {
 		t.Errorf("technical = %+v", *tech)
 	}
 }
@@ -256,6 +257,28 @@ func TestArr_RejectedKeyIsAnErrorThatCarriesNoKey(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), secret) {
 		t.Fatal("the error carries the API key")
+	}
+}
+
+func TestArr_RefusesARedirectSoTheKeyNeverLeavesTheApp(t *testing.T) {
+	leaked := make(chan string, 1)
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		leaked <- r.Header.Get("X-Api-Key")
+	}))
+	t.Cleanup(elsewhere.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	_, err := arr.NewSonarr(conn(redirector.URL), &http.Client{}).List(context.Background())
+	if err == nil {
+		t.Fatal("a redirect was followed to an answer")
+	}
+	select {
+	case key := <-leaked:
+		t.Fatalf("the redirect target received a request (key %t)", key != "")
+	default:
 	}
 }
 

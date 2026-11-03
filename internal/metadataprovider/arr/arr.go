@@ -43,11 +43,15 @@ type client struct {
 	http *http.Client
 }
 
+// newClient copies httpClient (or a plain one with a timeout) and refuses every redirect: Go
+// forwards X-Api-Key across hosts, and an arr's read API never redirects.
 func newClient(app string, conn Conn, httpClient *http.Client) client {
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultTimeout}
+	c := http.Client{Timeout: defaultTimeout}
+	if httpClient != nil {
+		c = *httpClient
 	}
-	return client{app: app, conn: conn, http: httpClient}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client{app: app, conn: conn, http: &c}
 }
 
 // endpoint resolves the connection for one operation.
@@ -98,15 +102,11 @@ func (c client) get(ctx context.Context, ep endpoint, path string, query url.Val
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 		return errStatus{app: c.app, path: path, code: resp.StatusCode}
 	}
-	body := io.LimitReader(resp.Body, maxBody+1)
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return fmt.Errorf("%s %s: %w", c.app, path, err)
-	}
-	if len(data) > maxBody {
-		return fmt.Errorf("%s %s: response exceeds %d bytes", c.app, path, maxBody)
-	}
-	if err := json.Unmarshal(data, v); err != nil {
+	body := &io.LimitedReader{R: resp.Body, N: maxBody + 1}
+	if err := json.NewDecoder(body).Decode(v); err != nil {
+		if body.N <= 0 {
+			return fmt.Errorf("%s %s: response exceeds %d bytes", c.app, path, maxBody)
+		}
 		return fmt.Errorf("%s %s: decode: %w", c.app, path, err)
 	}
 	return nil
@@ -170,7 +170,7 @@ func technical(info *mediaInfo, size int64) *mp.Technical {
 		Duration:          parseRunTime(info.RunTime),
 		SizeBytes:         size,
 		VideoCodec:        strings.TrimSpace(info.VideoCodec),
-		HDR:               strings.TrimSpace(info.VideoDynamicRange) != "",
+		HDR:               isHDR(info.VideoDynamicRange),
 		Interlaced:        strings.EqualFold(strings.TrimSpace(info.ScanType), "interlaced"),
 		AudioCodec:        strings.TrimSpace(info.AudioCodec),
 		AudioChannels:     info.AudioChannels,
@@ -179,6 +179,12 @@ func technical(info *mediaInfo, size int64) *mp.Technical {
 	}
 	t.Width, t.Height = parseResolution(info.Resolution)
 	return t
+}
+
+// isHDR reads the arr's dynamic range, which is empty or "SDR" for standard range.
+func isHDR(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && !strings.EqualFold(s, "SDR")
 }
 
 // parseRunTime reads "44:12", "1:02:03" or "01:02:03.5". An unreadable value is zero, a gap.

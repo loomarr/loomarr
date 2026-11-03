@@ -139,7 +139,7 @@
       "videoBitrate": 1200000,
       "videoCodec": "XviD",
       "videoFps": 29.97,
-      "videoDynamicRange": "",
+      "videoDynamicRange": "SDR",
       "videoDynamicRangeType": "",
       "resolution": "640x480",
       "runTime": "0:22:31",

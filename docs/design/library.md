@@ -105,10 +105,12 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   every episode: the episode's own TVDB id, its numbering including the air-order position of specials,
   its current file and the arr's media summary. Radarr returns a movie by TMDB id. Ratings from Radarr
   carry its configured certification country. The connection is read once per operation.
-- **NFO** (`metadataprovider/nfo`) is a sidecar, resolved by the media path: `<file>.nfo`, `movie.nfo`, or
-  `tvshow.nfo` in a series folder. It reads typed `uniqueid` elements, guide text, `mpaa` and numbering.
-  The default `uniqueid` names its catalog. Reads are capped at 1 MiB, refuse symlinks and any DOCTYPE,
-  and drop malformed ids.
+- **NFO** (`metadataprovider/nfo`) is a sidecar, resolved by the media path: `<file>.nfo`, `movie.nfo`
+  when the folder holds only that video, or `tvshow.nfo` in a series folder. It reads typed `uniqueid`
+  elements, guide text, `mpaa` and numbering. The default `uniqueid` names its catalog. Reads are capped
+  at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop malformed
+  ids.
+- **Arr requests never follow a redirect**, so the API key cannot reach another host.
 
 **Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
 providers. A field takes the highest-ranked source that has a value for it. Numbering and the file list

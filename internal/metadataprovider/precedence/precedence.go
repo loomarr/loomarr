@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	mp"github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -250,8 +250,15 @@ func resolveTechnical(out *Resolved, records []mp.Record) {
 	t.SizeBytes = first(records, func(rec mp.Record) int64 { return rec.Technical.SizeBytes })
 	t.Container = first(records, func(rec mp.Record) string { return rec.Technical.Container })
 	t.VideoCodec = first(records, func(rec mp.Record) string { return rec.Technical.VideoCodec })
-	t.Width = first(records, func(rec mp.Record) int { return rec.Technical.Width })
-	t.Height = first(records, func(rec mp.Record) int { return rec.Technical.Height })
+	for _, rec := range records {
+		// Dimensions are one fact: a width from one source and a height from another can
+		// describe a picture no file has.
+		if rec.Technical.Width > 0 && rec.Technical.Height > 0 {
+			t.Width = Picked[int]{Value: rec.Technical.Width, From: rec.Source}
+			t.Height = Picked[int]{Value: rec.Technical.Height, From: rec.Source}
+			break
+		}
+	}
 	t.AudioCodec = first(records, func(rec mp.Record) string { return rec.Technical.AudioCodec })
 	t.AudioChannels = first(records, func(rec mp.Record) float64 { return rec.Technical.AudioChannels })
 	t.AudioLanguages = firstSlice(records, func(rec mp.Record) []string { return rec.Technical.AudioLanguages })
@@ -279,7 +286,9 @@ func resolveArtwork(records []mp.Record) []Picked[mp.ArtworkRef] {
 }
 
 // strictest returns the highest rating on the ladder among grounded records. A rating in another
-// country's system, or one the ladder does not know (such as "NR"), grounds nothing. Ties keep the
+// country's system, or one the ladder does not know (such as "NR"), grounds nothing. A rating whose
+// source names no country is read as US when the ladder knows it, so an unprefixed NFO "PG" from
+// another system reads as MPAA PG; that is the cost of NFOs that omit the country. Ties keep the
 // higher-ranked source.
 func (r *Resolver) strictest(records []mp.Record) (Picked[Certification], bool) {
 	var best Picked[Certification]

@@ -84,17 +84,43 @@ func candidates(kind mp.Kind, media string) []string {
 	case mp.KindSeries:
 		return []string{filepath.Join(media, "tvshow.nfo")}
 	case mp.KindMovie:
-		return []string{sidecar(media), filepath.Join(filepath.Dir(media), "movie.nfo")}
+		if soleVideo(media) {
+			return []string{sidecar(media), filepath.Join(filepath.Dir(media), "movie.nfo")}
+		}
+		return []string{sidecar(media)}
 	default:
 		return []string{sidecar(media)}
 	}
+}
+
+// videoExtensions are the containers a movie folder's video file may use.
+var videoExtensions = map[string]bool{
+	".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true,
+	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
+}
+
+// soleVideo reports whether media is the only video in its folder. Kodi's movie.nfo describes a
+// folder, so in a folder of several movies it describes none of them.
+func soleVideo(media string) bool {
+	entries, err := os.ReadDir(filepath.Dir(media))
+	if err != nil {
+		return false
+	}
+	videos := 0
+	for _, e := range entries {
+		if !e.IsDir() && videoExtensions[strings.ToLower(filepath.Ext(e.Name()))] {
+			videos++
+		}
+	}
+	return videos <= 1
 }
 
 func sidecar(media string) string {
 	return strings.TrimSuffix(media, filepath.Ext(media)) + ".nfo"
 }
 
-// readBounded reads a regular file of at most MaxSize bytes. It does not follow a symlink.
+// readBounded reads a regular file of at most MaxSize bytes. It does not follow a symlink: the
+// opened file must be the one Lstat saw, so a link swapped in between is refused too.
 func readBounded(path string) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -111,6 +137,13 @@ func readBounded(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, opened) {
+		return nil, fmt.Errorf("nfo: %s changed while it was opened", filepath.Base(path))
+	}
 	data, err := io.ReadAll(io.LimitReader(f, MaxSize+1))
 	if err != nil {
 		return nil, err
@@ -140,16 +173,18 @@ func Parse(kind mp.Kind, data []byte) (mp.Record, error) {
 	}
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = true
+	dec.CharsetReader = charsetReader
 	var docs []document
+	var end int64
 	for {
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			if len(docs) > 0 {
-				// Kodi allows a scraper URL after the document; whatever follows the
-				// last complete element is not ours to read.
+			// Kodi allows a scraper URL after the document, which is not ours to read. Markup
+			// after the last complete element is a broken document, not a URL.
+			if len(docs) > 0 && !bytes.Contains(data[end:], []byte("<")) {
 				break
 			}
 			return mp.Record{}, fmt.Errorf("nfo: %w", err)
@@ -169,6 +204,7 @@ func Parse(kind mp.Kind, data []byte) (mp.Record, error) {
 				return mp.Record{}, fmt.Errorf("nfo: %w", err)
 			}
 			docs = append(docs, doc)
+			end = dec.InputOffset()
 			if kind != mp.KindEpisode {
 				return recordFrom(kind, docs), nil
 			}
@@ -222,7 +258,7 @@ func recordFrom(kind mp.Kind, docs []document) mp.Record {
 			Genres:        cleanAll(doc.Genres),
 			Network:       firstNonEmpty(cleanAll(doc.Studios)),
 			Status:        clean(doc.Status),
-			Runtime:       time.Duration(positive(doc.Runtime)) * time.Minute,
+			Runtime:       time.Duration(leadingMinutes(doc.Runtime)) * time.Minute,
 		},
 	}
 	if rec.Descriptive.Year == 0 && len(rec.Descriptive.PremiereDate) == 10 {
@@ -350,6 +386,49 @@ func positive(s string) int {
 		return 0
 	}
 	return n
+}
+
+// leadingMinutes reads Kodi's runtime, which is minutes, sometimes followed by a unit ("112 min").
+// Any other form is a gap.
+func leadingMinutes(s string) int {
+	s = strings.TrimSpace(s)
+	digits := strings.TrimRightFunc(s, func(r rune) bool { return r < '0' || r > '9' })
+	if rest := strings.TrimSpace(s[len(digits):]); rest != "" && !strings.EqualFold(rest, "min") && !strings.EqualFold(rest, "mins") && !strings.EqualFold(rest, "minutes") {
+		return 0
+	}
+	return positive(digits)
+}
+
+// charsetReader decodes the legacy single-byte encodings old scrapers wrote. UTF-8 needs none.
+func charsetReader(label string, input io.Reader) (io.Reader, error) {
+	var high *[32]rune
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "iso-8859-1", "iso8859-1", "latin1", "latin-1":
+	case "windows-1252", "cp1252":
+		high = &cp1252
+	default:
+		return nil, fmt.Errorf("nfo: unsupported encoding %q", label)
+	}
+	raw, err := io.ReadAll(io.LimitReader(input, MaxSize))
+	if err != nil {
+		return nil, err
+	}
+	var out strings.Builder
+	out.Grow(len(raw))
+	for _, b := range raw {
+		r := rune(b)
+		if high != nil && b >= 0x80 && b < 0xA0 && high[b-0x80] != 0 {
+			r = high[b-0x80]
+		}
+		out.WriteRune(r)
+	}
+	return strings.NewReader(out.String()), nil
+}
+
+// cp1252 is windows-1252's 0x80–0x9F block; zero entries are undefined and pass through.
+var cp1252 = [32]rune{
+	'€', 0, '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', 0, 'Ž', 0,
+	0, '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', 0, 'ž', 'Ÿ',
 }
 
 // whole reads a non-negative integer; season 0 holds specials.
