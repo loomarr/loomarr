@@ -19,13 +19,13 @@ func buildLibraryRoots(st store.LibraryRootStore, set resolved, lib *library.Cli
 	if st == nil {
 		return nil
 	}
-	return &scan.Roots{
+	return &scan.Library{Roots: &scan.Roots{
 		Store:   st,
 		Sources: func() []scan.Source { return libraryRootSources(set, lib) },
 		PathMap: func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) },
 		Disk:    scan.OSDisk{},
 		Now:     time.Now,
-	}
+	}}
 }
 
 // libraryRootSources is every authority that can name a library folder: the media server when

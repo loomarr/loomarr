@@ -9,6 +9,7 @@ One area of the [package map](../package-map.md#start-here).
 ## Imports from other areas
 
 - **platform** · 14 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **media** · 1 import — 
 - **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
 
 ## Packages
@@ -17,13 +18,13 @@ One area of the [package map](../package-map.md#start-here).
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
-- **`inventory`** · 6 importers
+- **`inventory`** · 7 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library`** · 12 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`library/scan`** · 2 importers · → `library`, `store`
+- **`library/scan`** · 2 importers · → `inventory`, `library`, `mediaheader`, `metadataprovider`, `metadataprovider/precedence`, `store`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
-- **`metadataprovider`** · 6 importers
+- **`metadataprovider`** · 7 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`metadataprovider/arr`** · → `metadataprovider`
   Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
@@ -31,7 +32,7 @@ One area of the [package map](../package-map.md#start-here).
   The artwork beside the media as a metadata provider (#2151 decision 19).
 - **`metadataprovider/nfo`** · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
-- **`metadataprovider/precedence`** · → `metadataprovider`, `rating`
+- **`metadataprovider/precedence`** · 1 importer · → `metadataprovider`, `rating`
   Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`metadataprovider/providertest`** · → `metadataprovider`
   Conformance suite every metadata provider runs.

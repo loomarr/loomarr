@@ -5,6 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { libraryStatus } from "@/test/fixtures/library";
 import { server } from "@/test/msw/server";
 import { SettingsLibrary } from "./settings-library";
 
@@ -35,7 +36,7 @@ describe("SettingsLibrary", () => {
     let discoveries = 0;
     server.use(
       getListLibraryRootsMockHandler({ roots: [], pathMap: [] }),
-      getLibraryStatusMockHandler({ health: "needs_folders", inUse: 0, offline: 0, toConfirm: 0 }),
+      getLibraryStatusMockHandler(libraryStatus({ health: "needs_folders", inUse: 0 })),
       http.post("*/v1/library/roots/discover", () => {
         discoveries += 1;
         return HttpResponse.json({ roots: [], pathMap: [], sources: [] });
@@ -53,7 +54,7 @@ describe("SettingsLibrary", () => {
     let discoveries = 0;
     server.use(
       getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
-      getLibraryStatusMockHandler({ health: "ok", inUse: 1, offline: 0, toConfirm: 0 }),
+      getLibraryStatusMockHandler(libraryStatus()),
       http.post("*/v1/library/roots/discover", () => {
         discoveries += 1;
         return HttpResponse.json({ roots: [], pathMap: [], sources: [] });
@@ -68,7 +69,7 @@ describe("SettingsLibrary", () => {
   it("shows why a typed folder was refused", async () => {
     server.use(
       getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
-      getLibraryStatusMockHandler({ health: "ok", inUse: 1, offline: 0, toConfirm: 0 }),
+      getLibraryStatusMockHandler(libraryStatus()),
       http.post("*/v1/library/roots", () =>
         HttpResponse.json(
           { title: "Loomarr can't open this folder", detail: "Check that it is mounted", status: 422 },

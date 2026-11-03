@@ -44,6 +44,7 @@ import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -304,7 +305,7 @@ const stubReachable = () => {
       ],
       pathMap: [],
     }),
-    getLibraryStatusMockHandler({ health: "ok", inUse: 1, offline: 0, toConfirm: 0 }),
+    getLibraryStatusMockHandler(libraryStatus()),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },

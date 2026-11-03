@@ -170,6 +170,33 @@ that rating, whether it is stricter or not.
   "Loomarr can't open this folder" rather than hanging the page.
 - `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
 
+## Scanner
+
+`scan.Importer` writes what is on disk to the inventory, alongside the media server's origin (#2151
+step 5). Nothing reads the scanner's origins until the cutover.
+
+- **One origin per file.** Each root is an authority (`scan:<digest>`); each media file under it
+  is an origin keyed by its path within the root. Files that carry the same ids join one item, as
+  the media server's origin of the same title does. A series is an origin keyed by its folder.
+- **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
+  path translated by the path map), ids in the file's and its folders' names (`{tmdb-1234}`), the
+  name's `S01E02`, and the NFO beside it. A file nothing grounds is still written, with no ids.
+  Extras (trailers, `extras/` folders and the like) are their own items, related to the movie
+  beside them.
+- **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
+  its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
+  either changed, and reads its header only when its bytes changed. An arr that fails to list
+  defers identity rewrites rather than demoting files.
+- **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
+  and wait while any playout session is live.
+- **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
+  missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
+  status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` applies it.
+  Releasing a root forgets its files at once.
+- **Passes.** `scan.Scanner` runs one at start, hourly, and on `POST /v1/library/scan`;
+  `library.scanner.enabled` stops them, and the status reports the scanner off. Walks skip `trickplay/`, `extrafanart/`, `.actors/`, `@eaDir/` and folders holding an
+  `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+
 ## Cached series episodes
 
 Expanding a series into episodes costs one media-server call per show, which used to dominate guide
