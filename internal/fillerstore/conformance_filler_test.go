@@ -1090,6 +1090,59 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// #2121: an airing clip switches to its re-encode in one transaction. The re-key drops the record
+// measured on the old bytes and the replacement's takes its place under the new hash; a record
+// the store refuses rolls the whole switch back, so the clip still airs under its old identity.
+func testAiringClipReplacement(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
+	old := sampleClip("airing-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old.UpdatedAt = at
+	if err := s.UpsertClip(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	record := func(blur float64) catalogstore.ClipDefectRecord {
+		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
+		a := defects.Assess(r, old.Era)
+		verdict, reason := defects.Decide(a, nil)
+		return catalogstore.ClipDefectRecord{ClipHash: old.Hash, Readings: r, Era: old.Era, Assessment: a,
+			Verdict: verdict, VerdictReason: reason, MeasuredAt: at}
+	}
+	if err := s.UpsertClipDefects(ctx, record(4)); err != nil {
+		t.Fatal(err)
+	}
+	reencoded := old
+	reencoded.Hash, reencoded.Path = "airing-new-bytes", "ai/ri/airing-new-bytes.mp4"
+	reencoded.UpdatedAt = at.Add(time.Hour)
+
+	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, catalogstore.ClipDefectRecord{}); err == nil {
+		t.Fatal("a switch with no defect verdict committed")
+	}
+	if _, err := s.GetClip(ctx, old.Hash); err != nil {
+		t.Fatalf("a refused switch moved the clip: %v", err)
+	}
+	if _, found, err := s.GetClipDefects(ctx, old.Hash); err != nil || !found {
+		t.Fatalf("a refused switch dropped the airing clip's record: found=%v %v", found, err)
+	}
+
+	replacement := record(3)
+	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, replacement); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := s.GetClipDefects(ctx, old.Hash); err != nil || found {
+		t.Errorf("the old bytes' record outlived the switch: found=%v %v", found, err)
+	}
+	got, found, err := s.GetClipDefects(ctx, reencoded.Hash)
+	if err != nil || !found || got.Readings.BlurMean != 3 || got.Verdict != replacement.Verdict {
+		t.Errorf("new bytes' record = %+v found=%v %v", got, found, err)
+	}
+	if c, err := s.GetClip(ctx, reencoded.Hash); err != nil || c.Path != reencoded.Path {
+		t.Errorf("clip after switch = %+v, %v", c, err)
+	}
+}
+
 // A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
 // The store adopts that exact held row and moves the source-owned graph in one transaction; the
 // same operation then recognizes the target-only post-rekey state after a process restart.

@@ -26,20 +26,7 @@ const defectMeasureBudget = 40 * time.Second
 const defectJudgeCalls = 6
 
 // DefectRecord is one clip's latest defect measurement and the verdict it earned (#2034).
-type DefectRecord struct {
-	ClipHash   string
-	Readings   defects.Readings
-	Era        int
-	Assessment defects.Assessment
-	// Judgement is the judge's ruling on a borderline assessment; nil until one is had.
-	Judgement *defects.Judgement
-	// JudgeFailures counts asks that brought back no ruling since the last one; the clip waits
-	// behind clips with fewer.
-	JudgeFailures int
-	Verdict       defects.Verdict
-	VerdictReason string
-	MeasuredAt    time.Time
-}
+type DefectRecord = defects.Record
 
 // ErrDefectRecordsCorrupt marks a ListClipDefects result that omitted unreadable rows; the rest of
 // the map is usable. Any other error is a failed read.

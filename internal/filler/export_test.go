@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/defects"
 )
 
 // CertifiedShadowFixture exposes the certified two-segment proposal and its policies to the
@@ -105,4 +107,18 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
 	}
 	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
+}
+
+// AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an
+// NVENC host that re-encodes it, for the library re-encode's pipeline tests. Each replacement's
+// defect check calls check; switches counts the commits.
+func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, StoreClip, func() int) {
+	t.Helper()
+	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c StoreClip, staged string) (defects.Record, error) {
+		if err := check(ctx); err != nil {
+			return defects.Record{}, err
+		}
+		return passingCheck(nil)(ctx, c, staged)
+	})
+	return stage, airing, func() int { return store.calls }
 }

@@ -132,7 +132,10 @@ func buildOperations(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
 	providerValidators = append(accountDelivery.validators, providerValidators...)
-	jobService := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	jobService, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	if err != nil {
+		return operationsBuild{}, err
+	}
 	triggerHealth := func(ctx context.Context) {
 		if jobService == nil {
 			return
@@ -417,9 +420,9 @@ func buildScheduler(
 	owner *generationLifecycle,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) api.JobService {
+) (api.JobService, error) {
 	if st == nil {
-		return nil
+		return nil, nil
 	}
 	service := jobs.New(st, registry, func(key, fallback string) string {
 		if configured := set.str(key); configured != "" {
@@ -428,15 +431,16 @@ func buildScheduler(
 		return fallback
 	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
-	if pool := store.PoolOf(st); pool != nil {
-		stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
-		if err != nil {
-			log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
-		} else {
-			owner.addStop(stop)
-		}
-	} else {
-		log.Error("scheduler: store exposes no pool — no job will run on its schedule")
+	// River is the only job executor: without it nothing runs on its schedule, so a failure to
+	// start fails the build rather than serving an app with a dead background.
+	pool := store.PoolOf(st)
+	if pool == nil {
+		return nil, errors.New("start River job queue: store exposes no database pool")
 	}
-	return jobsAdapter{s: service}
+	stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
+	if err != nil {
+		return nil, fmt.Errorf("start River job queue: %w", err)
+	}
+	owner.addStop(stop)
+	return jobsAdapter{s: service}, nil
 }

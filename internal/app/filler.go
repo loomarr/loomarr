@@ -154,6 +154,17 @@ func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.Stor
 func (a fillerPipelineClipAdapter) ReplaceClipIdentity(ctx context.Context, oldHash string, c filler.StoreClip) error {
 	return a.st.ReplaceClipIdentity(ctx, oldHash, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }
+func (a fillerPipelineClipAdapter) ReplaceAiringClip(ctx context.Context, oldHash string, c filler.StoreClip, rec defects.Record) error {
+	return a.st.ReplaceAiringClip(ctx, oldHash, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, rec)
+}
+
+// fillerAiringClipsAdapter lists the clips on air for the library re-encode (#2121): the default
+// filter leaves out held, removed and composite clips.
+type fillerAiringClipsAdapter struct{ st fillerstore.Store }
+
+func (a fillerAiringClipsAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	return listWorkClips(ctx, a.st, f)
+}
 func (a fillerPipelineClipAdapter) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, c filler.StoreClip) error {
 	return a.st.CommitConditioningPublication(ctx, publication, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 }

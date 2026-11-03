@@ -71,27 +71,6 @@ func (f *fakeStore) ListScheduledJobs(_ context.Context) ([]store.ScheduledJob, 
 	return out, nil
 }
 
-// ClaimDueScheduledJobs returns rows whose NextRun <= now, leasing them to now+lease — the
-// same contract as the SQL implementation.
-func (f *fakeStore) ClaimDueScheduledJobs(_ context.Context, now time.Time, lease time.Duration) ([]store.ScheduledJob, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var due []store.ScheduledJob
-	for name, j := range f.rows {
-		// Paused rows are skipped, as the claim SQL does with `AND paused = 0/FALSE`.
-		if j.Paused {
-			continue
-		}
-		if !j.NextRun.After(now) {
-			leased := j
-			leased.NextRun = now.Add(lease)
-			f.rows[name] = leased
-			due = append(due, j) // return the pre-lease row (matches SQL RETURNING of the row identity)
-		}
-	}
-	return due, nil
-}
-
 type fakeClock struct {
 	mu sync.Mutex
 	t  time.Time
@@ -109,8 +88,9 @@ func testLog() *slog.Logger { return slog.New(slog.DiscardHandler) }
 // simple recurring schedule whose next-tick is deterministic.
 const everyMinute = "0 * * * * *"
 
-// A registered job with no state row is seeded due-now and runs on the first tick.
-func TestReconcileSeedsAndRuns(t *testing.T) {
+// A registered job with no state row is seeded due-now; executing it records the outcome and
+// the next cron tick.
+func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
@@ -124,19 +104,10 @@ func TestReconcileSeedsAndRuns(t *testing.T) {
 	if j, _ := st.GetScheduledJob(ctx, "a"); j.NextRun != clk.now() {
 		t.Fatalf("seeded next_run = %v, want now", j.NextRun)
 	}
-	s.tick(ctx)
-	// ⚠ Wait for the STORE WRITE, not the run counter. `ran` is incremented INSIDE the job
-	// function, while next_run/last_result are written after it returns — so waiting on the
-	// counter can observe a job that has run but not yet recorded, and the assertions below
-	// then read the seeded 30m default and an empty last_result.
-	//
-	// A real flake, not a theoretical one: it failed CI on main and reproduces locally with
-	// `-count=200 -cpu=1,2` (it needs contention, which is why a 24-core dev box never sees
-	// it and a 4-core runner does).
-	waitFor(t, func() bool {
-		j, err := st.GetScheduledJob(ctx, "a")
-		return err == nil && j.LastResult != ""
-	})
+	s.execute(ctx, s.jobs["a"], false)
+	if ran.Load() != 1 {
+		t.Fatalf("job ran %d times, want 1", ran.Load())
+	}
 
 	// After running, next_run is the next cron tick — strictly after now, within a minute.
 	j, _ := st.GetScheduledJob(ctx, "a")
@@ -148,7 +119,7 @@ func TestReconcileSeedsAndRuns(t *testing.T) {
 	}
 }
 
-func TestRunPublishesJobLifecycleToGenerationMetrics(t *testing.T) {
+func TestExecutePublishesJobLifecycleToGenerationMetrics(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	reg := NewRegistry().Add(Job{
@@ -158,43 +129,22 @@ func TestRunPublishesJobLifecycleToGenerationMetrics(t *testing.T) {
 	})
 	recorder := metrics.New(metrics.Options{})
 	scheduler := New(st, reg, nil, clk.now, testLog()).WithObserver(recorder)
-	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
-	go scheduler.Run(ctx)
+	scheduler.execute(t.Context(), scheduler.jobs["health-check"], false)
 
-	// Poll the scrape itself, not the store (GH #1686): execute persists LastResult before it
-	// notifies the observer, so a scrape taken as soon as the store says "ok" could land between
-	// the two and miss the finished-job series.
 	wants := []string{
 		`loomarr_scheduler_job_executions_total{job="health-check",result="success",trigger="scheduled"} 1`,
 		`loomarr_scheduler_job_duration_seconds_count{job="health-check"} 1`,
 		`loomarr_scheduler_jobs_running{job="health-check"} 0`,
 		`loomarr_scheduler_job_last_success_timestamp_seconds{job="health-check"} 1000`,
 	}
-	var body string
-	for i := 0; i < 100; i++ {
-		scrape := httptest.NewRecorder()
-		recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-		body = scrape.Body.String()
-		if containsAll(body, wants) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	scrape := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := scrape.Body.String()
 	for _, want := range wants {
 		if !strings.Contains(body, want) {
 			t.Errorf("generation scrape does not contain %q", want)
 		}
 	}
-}
-
-func containsAll(s string, subs []string) bool {
-	for _, sub := range subs {
-		if !strings.Contains(s, sub) {
-			return false
-		}
-	}
-	return true
 }
 
 func TestExecutePublishesBoundedFailureKinds(t *testing.T) {
@@ -233,76 +183,6 @@ func TestExecutePublishesBoundedFailureKinds(t *testing.T) {
 	}
 }
 
-// A job not yet due is NOT run.
-func TestNotDueDoesNotRun(t *testing.T) {
-	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
-	var ran atomic.Int64
-	reg := NewRegistry().Add(Job{Name: "a", Group: GroupSystem, Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
-	s := New(st, reg, nil, clk.now, testLog())
-	// Seed it due in the future.
-	_ = st.UpsertScheduledJob(context.Background(), store.ScheduledJob{Name: "a", NextRun: clk.now().Add(time.Hour)})
-
-	s.tick(context.Background())
-	time.Sleep(20 * time.Millisecond)
-	if ran.Load() != 0 {
-		t.Errorf("ran %d, want 0 (not due)", ran.Load())
-	}
-}
-
-// The lease prevents a second tick from re-running a job while the first run is in flight.
-func TestLeasePreventsDoubleRun(t *testing.T) {
-	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
-	release := make(chan struct{})
-	var starts int
-	var mu sync.Mutex
-	reg := NewRegistry().Add(Job{Name: "slow", Group: GroupSystem, Title: "Slow", Description: "test job slow.", DefaultCron: everyMinute, Run: func(context.Context) error {
-		mu.Lock()
-		starts++
-		mu.Unlock()
-		<-release // block so the job is "in flight" across the second tick
-		return nil
-	}})
-	s := New(st, reg, nil, clk.now, testLog())
-	ctx := context.Background()
-	s.reconcileRegistry(ctx)
-
-	s.tick(ctx) // claims + starts the job (leases next_run to now+30m)
-	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return starts == 1 })
-	s.tick(ctx) // job still running, leased into the future → not re-claimed
-	time.Sleep(20 * time.Millisecond)
-	mu.Lock()
-	got := starts
-	mu.Unlock()
-	if got != 1 {
-		t.Errorf("job started %d times, want 1 (lease must block the re-claim)", got)
-	}
-	close(release)
-}
-
-// Trigger forces an off-cycle run even when the job isn't otherwise due.
-func TestTriggerRunsOffCycle(t *testing.T) {
-	st := newFakeStore()
-	clk := &fakeClock{t: time.Unix(1000, 0)}
-	var ran atomic.Int64
-	reg := NewRegistry().Add(Job{Name: "a", Group: GroupSystem, Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
-	s := New(st, reg, nil, clk.now, testLog())
-	ctx := context.Background()
-	// Not due for an hour.
-	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "a", NextRun: clk.now().Add(time.Hour)})
-
-	if err := s.Trigger(ctx, "a"); err != nil {
-		t.Fatalf("trigger: %v", err)
-	}
-	s.tick(ctx) // Trigger set next_run=now → now due
-	waitFor(t, func() bool { return ran.Load() == 1 })
-
-	if err := s.Trigger(ctx, "nope"); !errors.Is(err, ErrUnknownJob) {
-		t.Errorf("trigger unknown = %v, want ErrUnknownJob", err)
-	}
-}
-
 // An erroring job records last_result=error and never wedges the others.
 func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 	st := newFakeStore()
@@ -313,16 +193,15 @@ func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 		Add(Job{Name: "good", Group: GroupSystem, Title: "Good", Description: "test job good.", DefaultCron: everyMinute, Run: func(context.Context) error { okRan.Add(1); return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
-	s.reconcileRegistry(ctx)
 
-	s.tick(ctx)
-	waitFor(t, func() bool {
-		bad, _ := st.GetScheduledJob(ctx, "bad")
-		return bad.LastResult == "error" && okRan.Load() == 1
-	})
+	s.execute(ctx, s.jobs["bad"], false)
+	s.execute(ctx, s.jobs["good"], false)
 	bad, _ := st.GetScheduledJob(ctx, "bad")
-	if bad.LastError == "" {
-		t.Error("erroring job should record last_error")
+	if bad.LastResult != "error" || bad.LastError == "" {
+		t.Errorf("erroring job recorded result %q error %q, want error with text", bad.LastResult, bad.LastError)
+	}
+	if okRan.Load() != 1 {
+		t.Errorf("good job ran %d times, want 1", okRan.Load())
 	}
 }
 
@@ -345,16 +224,11 @@ func TestTimedOutJobStillRecordsItsResult(t *testing.T) {
 		Run: func(c context.Context) error { cancel(); return c.Err() },
 	})
 	s := New(st, reg, nil, clk.now, testLog())
-	s.reconcileRegistry(ctx)
 
-	s.tick(ctx)
+	s.execute(ctx, s.jobs["slow"], false)
 
-	waitFor(t, func() bool {
-		j, _ := st.GetScheduledJob(context.Background(), "slow")
-		return j.LastResult == "error"
-	})
 	j, _ := st.GetScheduledJob(context.Background(), "slow")
-	if j.LastError == "" {
+	if j.LastResult != "error" || j.LastError == "" {
 		t.Error("a job killed by its deadline recorded no error — the record died with the context")
 	}
 	if j.NextRun.IsZero() {
@@ -369,13 +243,11 @@ func TestPanicIsContained(t *testing.T) {
 	reg := NewRegistry().Add(Job{Name: "panics", Group: GroupSystem, Title: "Panics", Description: "test job panics.", DefaultCron: everyMinute, Run: func(context.Context) error { panic("kaboom") }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
-	s.reconcileRegistry(ctx)
 
-	s.tick(ctx)
-	waitFor(t, func() bool {
-		j, _ := st.GetScheduledJob(ctx, "panics")
-		return j.LastResult == "error"
-	})
+	s.execute(ctx, s.jobs["panics"], false)
+	if j, _ := st.GetScheduledJob(ctx, "panics"); j.LastResult != "error" {
+		t.Errorf("panicking job recorded result %q, want error", j.LastResult)
+	}
 }
 
 // The effective cron reads the settings resolver, falling back to the default when unset,
@@ -431,16 +303,4 @@ func TestListJoinsRegistryAndState(t *testing.T) {
 	if got[0].Title != "First" || got[0].LastResult != "ok" || got[0].Schedule != everyMinute {
 		t.Errorf("first status wrong: %+v", got[0])
 	}
-}
-
-// waitFor polls cond up to ~1s (the scheduler runs jobs in goroutines).
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	for i := 0; i < 100; i++ {
-		if cond() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("condition not met within timeout")
 }

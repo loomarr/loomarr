@@ -359,6 +359,33 @@ func (s *Store) ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip)
 	return nil
 }
 
+// ReplaceAiringClip is ReplaceClipIdentity for a clip that stays on air through its re-encode
+// (#2121). The re-key drops the defect record measured on the old bytes; defects, measured on the
+// new bytes before the switch, takes its place in the same transaction, so the clip never airs
+// with no verdict, nor with one for bytes it no longer has.
+func (s *Store) ReplaceAiringClip(ctx context.Context, oldHash string, c Clip, defects ClipDefectRecord) error {
+	if oldHash == "" || c.Hash == "" || c.Path == "" || oldHash == c.Hash {
+		return fmt.Errorf("replace airing clip: old hash, a different new hash and path are required")
+	}
+	defects.ClipHash = c.Hash
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("replace airing clip %s: %w", oldHash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := s.replaceClipIdentityTx(ctx, tx, oldHash, c); err != nil {
+		return err
+	}
+	if err := s.upsertClipDefects(ctx, tx, defects); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("replace airing clip %s: %w", oldHash, err)
+	}
+	return nil
+}
+
 func (s *Store) replaceClipIdentityTx(ctx context.Context, tx storedb.Tx, oldHash string, c Clip) error {
 	restoreResearch, err := s.liftResearchAttemptsTx(ctx, tx, oldHash)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 )
 
 // Reason is the server-owned explanation for refusing managed work.
@@ -114,8 +115,11 @@ func State(snapshot Snapshot) CapacityState {
 }
 
 // Governor atomically accounts for every in-process reservation sharing a real
-// filesystem. Its mutex deliberately covers measurement as well as mutation:
-// two callers cannot both observe the same unspent bytes and reserve them.
+// filesystem. Its mutex covers the cheap capacity measurement, the in-memory
+// managed-bytes totals and the reservations, so two callers cannot both observe
+// the same unspent bytes and reserve them. It is never held across a walk of the
+// managed tree: each total is walked once on first use, adjusted as leases report
+// written bytes, and re-walked in the background every usageRefreshInterval.
 type Governor struct {
 	meter  Meter
 	policy func(Domain) Policy
@@ -123,7 +127,12 @@ type Governor struct {
 	mu           sync.Mutex
 	nextLeaseID  uint64
 	reservations map[uint64]reservation
+	usage        map[usageKey]*usage
+	now          func() time.Time
+	refreshes    sync.WaitGroup
 }
+
+var errManagedInvalid = errors.New("managed storage measurement is invalid")
 
 type reservation struct {
 	filesystemID string
@@ -142,7 +151,7 @@ func New(meter Meter, policy func(Domain) Policy) *Governor {
 			return Policy{AutomaticBudget: domain == DomainFiller}
 		}
 	}
-	return &Governor{meter: meter, policy: policy, reservations: make(map[uint64]reservation)}
+	return &Governor{meter: meter, policy: policy, reservations: make(map[uint64]reservation), usage: make(map[usageKey]*usage), now: time.Now}
 }
 
 // Snapshot reports current automatic filler capacity without reserving it.
@@ -156,6 +165,9 @@ func (g *Governor) DomainSnapshot(ctx context.Context, path string, domain Domai
 	if !validDomain(domain) {
 		return Decision{Snapshot: Snapshot{Domain: domain, Reason: ReasonCapacityUnavailable}, Err: errors.New("storage domain is unknown")}
 	}
+	if err := g.prepareUsage(ctx, path, domain); err != nil {
+		return Decision{Snapshot: Snapshot{Domain: domain, Reason: ReasonCapacityUnavailable}, Err: err}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.snapshotLocked(ctx, path, domain, Automatic, 0)
@@ -163,9 +175,6 @@ func (g *Governor) DomainSnapshot(ctx context.Context, path string, domain Domai
 
 // Reserve atomically grants estimated work or returns one typed pause reason.
 func (g *Governor) Reserve(ctx context.Context, request Request) (*Lease, Decision) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
 	if request.EstimatedBytes <= 0 {
 		decision := Decision{Snapshot: Snapshot{Domain: normalizeDomain(request.Domain), Reason: ReasonEstimateUnknown}}
 		return nil, decision
@@ -175,6 +184,11 @@ func (g *Governor) Reserve(ctx context.Context, request Request) (*Lease, Decisi
 		decision := Decision{Snapshot: Snapshot{Domain: request.Domain, Reason: ReasonCapacityUnavailable}, Err: errors.New("storage domain is unknown")}
 		return nil, decision
 	}
+	if err := g.prepareUsage(ctx, request.Path, request.Domain); err != nil {
+		return nil, Decision{Snapshot: Snapshot{Domain: request.Domain, Reason: ReasonCapacityUnavailable}, Err: err}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	decision := g.snapshotLocked(ctx, request.Path, request.Domain, request.Mode, 0)
 	if !decision.Allowed {
 		return nil, decision
@@ -195,7 +209,7 @@ func (g *Governor) Reserve(ctx context.Context, request Request) (*Lease, Decisi
 	decision.Snapshot.ReservedBytes += request.EstimatedBytes
 	decision.Snapshot.FilesystemReservedBytes += request.EstimatedBytes
 	decision.Snapshot.AvailableBytes -= request.EstimatedBytes
-	return &Lease{governor: g, id: id}, decision
+	return &Lease{governor: g, id: id, path: request.Path, domain: request.Domain}, decision
 }
 
 // Lease is an exclusive claim on estimated bytes. Revalidate before execution,
@@ -204,6 +218,8 @@ func (g *Governor) Reserve(ctx context.Context, request Request) (*Lease, Decisi
 type Lease struct {
 	governor *Governor
 	id       uint64
+	path     string
+	domain   Domain
 }
 
 // Revalidate re-measures capacity and converts written bytes into real managed
@@ -214,6 +230,9 @@ func (l *Lease) Revalidate(ctx context.Context, writtenBytes int64) Decision {
 		return Decision{Snapshot: Snapshot{Reason: ReasonCapacityUnavailable}, Err: errors.New("storage lease is unavailable")}
 	}
 	g := l.governor
+	if err := g.prepareUsage(ctx, l.path, l.domain); err != nil {
+		return Decision{Snapshot: Snapshot{Domain: l.domain, Reason: ReasonCapacityUnavailable}, Err: err}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -239,6 +258,7 @@ func (l *Lease) Revalidate(ctx context.Context, writtenBytes int64) Decision {
 		return decision
 	}
 
+	g.addUsageLocked(usageKey{filesystemID: current.filesystemID, domain: current.domain}, writtenBytes-current.written)
 	current.written = writtenBytes
 	current.remaining = remaining
 	g.reservations[l.id] = current
@@ -272,13 +292,11 @@ func (g *Governor) snapshotLocked(ctx context.Context, path string, domain Domai
 	if measurement.ID == "" || measurement.TotalBytes <= 0 || measurement.FreeBytes < 0 || measurement.FreeBytes > measurement.TotalBytes {
 		return Decision{Snapshot: Snapshot{Domain: domain, Reason: ReasonCapacityUnavailable}, Err: errors.New("filesystem measurement is invalid")}
 	}
-	managed, err := g.meter.ManagedBytes(ctx, measurement.ID, domain)
-	if err != nil || managed < 0 {
-		if err == nil {
-			err = errors.New("managed storage measurement is invalid")
-		}
-		return Decision{Snapshot: Snapshot{Domain: domain, FilesystemID: measurement.ID, Reason: ReasonCapacityUnavailable}, Err: err}
+	entry := g.usage[usageKey{filesystemID: measurement.ID, domain: domain}]
+	if entry == nil || !entry.loaded {
+		return Decision{Snapshot: Snapshot{Domain: domain, FilesystemID: measurement.ID, Reason: ReasonCapacityUnavailable}, Err: errManagedInvalid}
 	}
+	managed := entry.bytes
 	filesystemReserved, domainReserved := g.reservedLocked(measurement.ID, domain, excludedLease)
 	softBudget, softLimit := g.policy(domain).budget(measurement.TotalBytes)
 	snapshot := Snapshot{
@@ -370,6 +388,9 @@ func (l *Lease) Extend(ctx context.Context, newEstimate int64) Decision {
 		return Decision{Snapshot: Snapshot{Reason: ReasonCapacityUnavailable}, Err: errors.New("storage lease is unavailable")}
 	}
 	g := l.governor
+	if err := g.prepareUsage(ctx, l.path, l.domain); err != nil {
+		return Decision{Snapshot: Snapshot{Domain: l.domain, Reason: ReasonCapacityUnavailable}, Err: err}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 

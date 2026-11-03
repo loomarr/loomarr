@@ -9,26 +9,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // ClipDefectRecord is one clip's latest defect measurement and the verdict it earned (#2034).
-type ClipDefectRecord struct {
-	ClipHash   string
-	Readings   defects.Readings
-	Era        int // the era the verdict was judged against
-	Assessment defects.Assessment
-	// Judgement is the vision judge's ruling on a borderline assessment; nil until one is had.
-	Judgement *defects.Judgement
-	// JudgeFailures counts asks that brought back no ruling since the last one.
-	JudgeFailures int
-	// Verdict is the final standing: the assessment, with a borderline one settled by the judge.
-	Verdict       defects.Verdict
-	VerdictReason string
-	MeasuredAt    time.Time
-}
+type ClipDefectRecord = defects.Record
 
 // UpsertClipDefects records a clip's measurement and verdict, replacing any earlier one.
 func (s *Store) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error {
+	return s.upsertClipDefects(ctx, s.h, r)
+}
+
+// upsertClipDefects writes through q, the pool or a transaction.
+func (s *Store) upsertClipDefects(ctx context.Context, q storedb.Querier, r ClipDefectRecord) error {
 	if r.ClipHash == "" || r.Readings.Version == "" || r.Assessment.Version == "" || r.Verdict == "" {
 		return fmt.Errorf("upsert clip defects: clip hash, measurement and floor versions, and a verdict are required")
 	}
@@ -48,7 +41,7 @@ func (s *Store) UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error
 		}
 		judgement = string(raw)
 	}
-	_, err = s.h.ExecContext(ctx, s.h.Rebind(
+	_, err = q.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO filler_clip_defects (clip_hash, measurement_version, floor_version, era, outcome,
 		   readings_json, assessment_json, judgement_json, judge_failures, verdict, verdict_reason, measured_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

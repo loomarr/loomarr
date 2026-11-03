@@ -90,6 +90,33 @@ p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 a
 levels). It is a pooled-minimum outlier, not what the floor gates on, and is noted here so a later
 change in the rule starts from it.
 
+## The library re-encode
+
+The clips already on air move onto the current profile once, automatically (#2121). It is the
+one deliberate exception to the rule against backfill.
+
+- **Which clips.** An airing top-level clip whose playback was encoded from its retained source
+  master, under a profile other than the current one. A clip whose playback file is its own
+  download has no original to encode from again, and a split child is cut from its parent, so
+  neither is replaced. A host without a hardware encoder replaces nothing: the re-encode is what
+  moves the library onto the GPU, and on the CPU it would spend the machine for no saving.
+- **Only idle capacity.** A pipeline pass that finds no due conveyor work re-encodes one clip, so
+  a new arrival always goes first. It runs under the playout budget's background context, so a
+  tune stops it as a deferral and the next idle pass goes again.
+- **The old file keeps airing.** The clip is never held. The replacement is encoded from the
+  master into the hidden staging folder and verified there like any derivative. Then the defect
+  floor measures the staged file and the judge rules on a borderline picture, as at admission.
+  Only bytes the floor admits are published, and the switch is one transaction: the re-key, and
+  the floor's record for the new bytes in place of the old one's. The old playback file and
+  evidence copy go after the commit; the master always stays.
+- **A failed replacement changes nothing.** An encode error, a QC or loudness refusal, a defect
+  verdict, a judge that cannot rule, or a failed commit discards the replacement, and its bytes
+  with it, so a scan cannot catalogue it as a second clip. The clip airs on as it was. The pass
+  retries on the pipeline's backoff, three attempts, then not again until a restart.
+- **No content check runs again.** A top-level clip's safety, rights and enrichment verdicts are
+  of its source, which the re-encode does not change, and the re-key carries them to the new
+  bytes. The defect floor runs again because it judges the bytes that air.
+
 ## Budgets are per clip
 
 The scheduler's unit of work is a clip, so **a rung may not spend per segment what the budget allows

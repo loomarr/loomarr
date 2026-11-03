@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // JudgeVersion names the judge's prompt and reply contract. A new version rules on every
@@ -72,6 +73,30 @@ func Decide(a Assessment, j *Judgement) (Verdict, string) {
 	default:
 		return VerdictFail, "no vision model configured to rule on a borderline clip"
 	}
+}
+
+// Record is one clip's latest defect measurement and the verdict it earned (#2034). The floor
+// keeps one per clip; a clip re-encoded while it airs carries the one its new bytes earned (#2121).
+type Record struct {
+	ClipHash   string
+	Readings   Readings
+	Era        int // the era the verdict was judged against
+	Assessment Assessment
+	// Judgement is the judge's ruling on a borderline assessment; nil until one is had.
+	Judgement *Judgement
+	// JudgeFailures counts asks that brought back no ruling since the last one; the clip waits
+	// behind clips with fewer.
+	JudgeFailures int
+	// Verdict is the final standing: the assessment, with a borderline one settled by the judge.
+	Verdict       Verdict
+	VerdictReason string
+	MeasuredAt    time.Time
+}
+
+// Admits reports whether the verdict lets a clip air: it passed, or had too little picture to
+// judge.
+func (r Record) Admits() bool {
+	return r.Verdict == VerdictPass || r.Verdict == VerdictUndecided
 }
 
 // SameQuestion reports whether a ruling on one assessment still answers another: the same band
