@@ -103,8 +103,17 @@ never decides.
 - The OpenRouter adapter uses one fallback-disabled, zero-retention route and a strict schema,
   hashes everything, and durably reserves the request digest and worst-case charge in the shared
   filler-inference budget before sending. A journal refuses a second reservation for the same
-  request. An unknown settlement keeps the full reservation; open and budget-held entries are
-  recovery holds, never permission to resend.
+  request once the call has an answer. An unknown settlement keeps the full reservation, and an
+  open entry is a recovery hold, never permission to resend.
+- **Only a known outcome is replayed.** A window call that is accepted, refused or invalid
+  (provider answer), unsettled with response bytes, or over its reservation has a response that may
+  have been billed, so it is published and replays without a second call. A call that produced **no
+  answer** is not published and is retried on the next pass: a budget hold (nothing was sent, so the
+  retry replaces the hold) and a transport failure (no response came back, so the lost request keeps
+  its reservation in the budget and the retry reserves a new attempt of the same request, bounded by
+  that budget). The earlier windows of the same source replay, and the pass fails as retryable
+  rather than storing a held decision, so a day of budget exhaustion or a network blip never pins a
+  source at split review.
 - The reducer publishes an immutable artifact with every candidate and the reason for each
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.
