@@ -398,6 +398,31 @@ func TestResolve_Artwork(t *testing.T) {
 	}
 }
 
+func TestResolve_KeywordsRatingAndCollectionFollowDescriptiveText(t *testing.T) {
+	collection := &mp.CollectionRef{ID: mp.ExternalID{Namespace: mp.NamespaceTMDBCollection, Value: "90000801"}, Name: "Invented Collection"}
+	fromTMDB := mp.Record{Source: tmdbCat, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{
+		Title: "T", Keywords: []string{"a", "b"}, CommunityRating: 7.5, Collection: collection,
+	}}
+	fromNFO := mp.Record{Source: nfoTMDB, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{
+		Title: "N", Keywords: []string{"z"}, CommunityRating: 3, Collection: &mp.CollectionRef{ID: mp.ExternalID{Namespace: mp.NamespaceTMDBCollection, Value: "1"}},
+	}}
+	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie, Records: []mp.Record{fromNFO, fromTMDB}})
+	if !reflect.DeepEqual(got.Keywords.Value, []string{"a", "b"}) || got.Keywords.From != tmdbCat {
+		t.Errorf("keywords = %+v, want the catalog's", got.Keywords)
+	}
+	if got.CommunityRating.Value != 7.5 || got.CommunityRating.From != tmdbCat {
+		t.Errorf("community rating = %+v, want the catalog's", got.CommunityRating)
+	}
+	if got.Collection.Value != *collection || got.Collection.From != tmdbCat {
+		t.Errorf("collection = %+v, want the catalog's", got.Collection)
+	}
+
+	gap := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie, Records: []mp.Record{desc(tmdbCat, mp.KindMovie, "T", ""), fromNFO}})
+	if gap.CommunityRating.Value != 3 || gap.CommunityRating.From != nfoTMDB {
+		t.Errorf("a lower source fills a gap the catalog leaves: %+v", gap.CommunityRating)
+	}
+}
+
 func TestResolve_NothingKnownIsUnknown(t *testing.T) {
 	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie})
 	if got.Title.Known() || got.Certification.Known() || got.Technical.Duration.Known() || got.IDs != nil || got.Numbering.Known() {
