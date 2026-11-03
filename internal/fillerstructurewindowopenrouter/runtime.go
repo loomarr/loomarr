@@ -11,9 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
@@ -28,13 +30,16 @@ const (
 type SnapshotFetcher func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error)
 
 type CertifiedRuntimeConfig struct {
-	Authority     fillerstructurewindow.MaterializationAuthority
-	Deployment    Deployment
-	APIKey        string
-	SourceRoot    string
-	MediaRoot     string
-	EvidenceRoot  string
-	FFmpegPath    string
+	Authority    fillerstructurewindow.MaterializationAuthority
+	Deployment   Deployment
+	APIKey       string
+	SourceRoot   string
+	MediaRoot    string
+	EvidenceRoot string
+	FFmpegPath   string
+	// CutFamily is the family this host cuts on now (fillerstructuremedia.CutFamily). It is asked
+	// per source because a host's encoder settles after boot.
+	CutFamily     func() encode.Family
 	Ledger        Ledger
 	Client        *http.Client
 	Now           func() time.Time
@@ -45,6 +50,7 @@ type CertifiedRuntimeConfig struct {
 // profiles, then delegates one source to the provider-neutral family-major window runtime.
 type CertifiedRuntime struct {
 	config   CertifiedRuntimeConfig
+	media    fillerstructuremedia.Profile
 	preparer fillerstructureassessment.StructureAssessmentWindowMediaPreparer
 	evidence *fillerstructureassessment.FileStructureAssessmentEvidenceRepository
 	client   *http.Client
@@ -58,8 +64,14 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 		return nil, err
 	}
 	if config.APIKey == "" || config.Ledger == nil || !cleanAbsolutePath(config.SourceRoot) || !cleanAbsolutePath(config.MediaRoot) ||
-		!cleanAbsolutePath(config.EvidenceRoot) || config.MediaRoot == config.EvidenceRoot || config.FFmpegPath == "" {
-		return nil, errors.New("structure window certified runtime requires credential, distinct storage roots, ffmpeg, and ledger")
+		!cleanAbsolutePath(config.EvidenceRoot) || config.MediaRoot == config.EvidenceRoot || config.FFmpegPath == "" || config.CutFamily == nil {
+		return nil, errors.New("structure window certified runtime requires credential, distinct storage roots, ffmpeg, cut family, and ledger")
+	}
+	// The certification reviewed cuts made to one media profile, so the runtime cuts to exactly that
+	// one, whatever this host would choose.
+	media, ok := fillerstructuremedia.ProfileBySHA256(config.Authority.AssessmentMediaProfileSHA256)
+	if !ok {
+		return nil, errors.New("structure window authority certifies an unsupported assessment-media profile")
 	}
 	now := config.Now
 	if now == nil {
@@ -77,7 +89,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	if client == nil {
 		client = httpx.NewNamed("filler-structure-window-openrouter", httpx.TimeoutLLM)
 	}
-	preparer, err := fillerstructureassessment.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath)
+	preparer, err := fillerstructureassessment.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath, media)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +97,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	if err != nil {
 		return nil, err
 	}
-	return &CertifiedRuntime{config: config, preparer: preparer, evidence: evidence, client: client}, nil
+	return &CertifiedRuntime{config: config, media: media, preparer: preparer, evidence: evidence, client: client}, nil
 }
 
 func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAssessmentSource) (fillerstructure.Artifact, error) {
@@ -96,8 +108,14 @@ func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAss
 		input.Source.DurationMs > r.config.Authority.MaximumSourceDurationMS {
 		return fillerstructure.Artifact{}, errors.New("structure window source is outside the reviewed duration envelope")
 	}
+	// A cut on another family is a picture nobody certified (#2121): an authority certified on the
+	// GPU does not run on a host that has fallen back to software, nor the reverse. Like any runtime
+	// failure, the proposal waits at split review rather than splitting uncertified.
+	if family := r.config.CutFamily(); family != r.media.Family {
+		return fillerstructure.Artifact{}, fmt.Errorf("structure window authority certifies %s cuts; this host cuts on %s", r.media.Family, family)
+	}
 	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
+	plan, err := fillerstructurewindow.NewPlan(source, r.media)
 	if err != nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
 	}
