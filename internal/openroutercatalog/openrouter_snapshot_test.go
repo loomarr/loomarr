@@ -87,19 +87,14 @@ func TestFetchOpenRouterSnapshotPreservesTieredEndpointPricing(t *testing.T) {
 	}
 }
 
-func TestValidateOpenRouterSnapshotReplaysLegacyTierlessSchema(t *testing.T) {
+// A snapshot from before the pricing-tier schema is rejected, never replayed: snapshots are
+// fetched live and held in memory, so the caller refetches a current one.
+func TestValidateOpenRouterSnapshotRejectsPreTierSchema(t *testing.T) {
 	t.Parallel()
 	snapshot := validOpenRouterSnapshot()
-	snapshot.SchemaVersion = legacyOpenRouterSnapshotSchema
-	if err := ValidateOpenRouterSnapshot(snapshot); err != nil {
-		t.Fatal(err)
-	}
-	snapshot.Models[0].Endpoints[0].PricingOverrides = []OpenRouterPricingOverride{{
-		MinimumPromptTokens: 200_000,
-		Pricing:             map[string]string{"prompt": "0.000002"},
-	}}
-	if err := ValidateOpenRouterSnapshot(snapshot); err == nil || !strings.Contains(err.Error(), "cannot contain pricing overrides") {
-		t.Fatalf("legacy tier validation error=%v", err)
+	snapshot.SchemaVersion = OpenRouterSnapshotSchemaVersion - 1
+	if err := ValidateOpenRouterSnapshot(snapshot); err == nil || !strings.Contains(err.Error(), "schema") {
+		t.Fatalf("pre-tier schema validation error=%v, want a schema rejection", err)
 	}
 }
 
