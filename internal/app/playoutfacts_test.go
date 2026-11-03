@@ -122,3 +122,36 @@ func TestPlayoutResolver_LineupFormatUnchangedFileKeepsFacts(t *testing.T) {
 		t.Fatalf("read after revalidation hit the library again: %d", got)
 	}
 }
+
+func TestPlayoutResolver_InventoryHDRFollowsTheLibraryTransfer(t *testing.T) {
+	hdr10 := `{"Id":"item-1","Type":"Movie","MediaSources":[{"Id":"s","ETag":"a","MediaStreams":[
+		{"Index":0,"Type":"Video","Codec":"hevc","ColorTransfer":"smpte2084","ColorPrimaries":"bt2020"}]}]}`
+	hlg := `{"Id":"item-1","Type":"Movie","MediaSources":[{"Id":"s","ETag":"a","MediaStreams":[
+		{"Index":0,"Type":"Video","Codec":"hevc","ColorTransfer":"arib-std-b67","ColorPrimaries":"bt2020"}]}]}`
+	sdr := `{"Id":"item-1","Type":"Movie","MediaSources":[{"Id":"s","ETag":"a","MediaStreams":[
+		{"Index":0,"Type":"Video","Codec":"h264","ColorTransfer":"bt709","ColorPrimaries":"bt709"}]}]}`
+	for name, tc := range map[string]struct {
+		item string
+		want bool
+	}{"hdr10": {hdr10, true}, "hlg": {hlg, true}, "sdr": {sdr, false}} {
+		t.Run(name, func(t *testing.T) {
+			server := testkit.NewMediaServer(t)
+			server.InventoryItems = map[string]json.RawMessage{"item-1": json.RawMessage(tc.item)}
+			r := &playoutResolver{
+				lib: newTestLibraryClient(server), inventory: inventory.New(testkit.MigratedSQLiteStore(t)),
+				now: time.Now,
+			}
+			if got := r.inventoryHDR(t.Context(), "item-1"); got != tc.want {
+				t.Fatalf("inventoryHDR = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	// An item the inventory and library both lack is unknown, which is not HDR.
+	r := &playoutResolver{
+		lib: newTestLibraryClient(testkit.NewMediaServer(t)), inventory: inventory.New(testkit.MigratedSQLiteStore(t)),
+		now: time.Now,
+	}
+	if r.inventoryHDR(t.Context(), "missing") {
+		t.Fatal("unknown item reported HDR")
+	}
+}

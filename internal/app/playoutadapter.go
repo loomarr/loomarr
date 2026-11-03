@@ -374,9 +374,9 @@ func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, off
 	return time.Duration(keyframe.PTSMs) * time.Millisecond, true
 }
 
-// inventoryHDR reports whether the item's library source is HDR, from Loomarr's own inventory only
-// (never the media server, never ffprobe). Unknown is false: an untone-mapped still is dim, not
-// broken.
+// inventoryHDR reports whether the item's library source carries an HDR transfer (PQ/HLG), from
+// the inventory's stream facts (never ffprobe), importing the item when they are missing or stale.
+// Unknown is false: an untone-mapped still is dim, not broken.
 func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
 	if r.inventory == nil || r.lib == nil {
 		return false
@@ -385,19 +385,8 @@ func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string
 	if err != nil {
 		return false
 	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
-		RequiredCoverage: []string{"videoStreams"},
-	})
-	if err != nil || !ok {
-		return false
-	}
-	for _, stream := range source.Observation.Facts.Streams {
-		if stream.Kind == inventory.StreamVideo && stream.HDR {
-			return true
-		}
-	}
-	return false
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
+	return ok && playoutFormatOf(source.Observation.Facts).HDR()
 }
 
 // acceptedCycle is the broadcast commit boundary: the cycle the channel airs at `at` and the
