@@ -216,7 +216,7 @@ func buildFillerSubsystem(
 	var researchRunner *fillerresearch.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
 		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
-		structuredClient := httpx.NewNamedObserved("filler_structured_research", httpx.TimeoutReference, metricRecorder)
+		structuredClient := httpx.NewNamedObserved(httpx.TargetFillerStructuredResearch, httpx.TimeoutReference, metricRecorder)
 		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
@@ -252,7 +252,7 @@ func buildFillerSubsystem(
 					MonthlyLimit: set.intv("filler.research.monthly_limit"),
 				}
 			}, st, fillerresearch.WebOptions{
-				Client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, metricRecorder),
+				Client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, metricRecorder),
 				Now:    time.Now,
 			})
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,

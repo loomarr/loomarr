@@ -57,7 +57,7 @@ func NewArrObserved(c ArrConns, recorder *metrics.Recorder) *Arr {
 		sonarr: c.Sonarr, radarr: c.Radarr,
 		sonarrQualityProfile: c.SonarrQualityProfile, sonarrRootFolder: c.SonarrRootFolder,
 		radarrQualityProfile: c.RadarrQualityProfile, radarrRootFolder: c.RadarrRootFolder,
-		http: httpx.NewNamedObserved("arr", httpx.TimeoutArr, recorder),
+		http: httpx.NewNamedObserved(httpx.TargetArr, httpx.TimeoutArr, recorder),
 	}
 }
 

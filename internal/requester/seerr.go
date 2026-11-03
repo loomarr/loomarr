@@ -38,7 +38,7 @@ func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
 
 // NewSeerrDynamicObserved binds operational requests to one application generation.
 func NewSeerrDynamicObserved(conn func() (baseURL, apiKey string), recorder *metrics.Recorder) *Seerr {
-	return &Seerr{conn: conn, http: httpx.NewNamedObserved("seerr", httpx.TimeoutSeerr, recorder)}
+	return &Seerr{conn: conn, http: httpx.NewNamedObserved(httpx.TargetSeerr, httpx.TimeoutSeerr, recorder)}
 }
 
 func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }

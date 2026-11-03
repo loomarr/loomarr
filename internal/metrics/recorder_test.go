@@ -254,7 +254,7 @@ func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 
 func TestRecorderUsesBoundedNotificationOutboundTarget(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
-	transport := recorder.InstrumentTransport("notification-provider", roundTripFunc(func(*http.Request) (*http.Response, error) {
+	transport := recorder.InstrumentTransport("notifications", roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusNoContent,
 			Body:       io.NopCloser(strings.NewReader("")),

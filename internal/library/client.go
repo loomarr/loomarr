@@ -86,7 +86,7 @@ func New(flavor Flavor, baseURL, token, deviceID string) *Client {
 // NewDynamic builds a Library client whose complete connection is resolved once
 // per public operation (config-design §3 hot-apply).
 func NewDynamic(current ConnectionSource, deviceID string) *Client {
-	return newDynamicWithHTTP(current, deviceID, httpx.NewNamed("library", httpx.TimeoutLibrary))
+	return newDynamicWithHTTP(current, deviceID, httpx.NewNamed(httpx.TargetLibrary, httpx.TimeoutLibrary))
 }
 
 // NewDynamicObserved binds outbound observations to one application generation.
@@ -96,7 +96,7 @@ func NewDynamicObserved(
 	recorder *metrics.Recorder,
 ) *Client {
 	return newDynamicWithHTTP(
-		current, deviceID, httpx.NewNamedObserved("library", httpx.TimeoutLibrary, recorder),
+		current, deviceID, httpx.NewNamedObserved(httpx.TargetLibrary, httpx.TimeoutLibrary, recorder),
 	)
 }
 
@@ -105,7 +105,7 @@ func newDynamicWithHTTP(current ConnectionSource, deviceID string, httpClient *h
 		current = func() Connection { return Connection{} }
 	}
 	if httpClient == nil {
-		httpClient = httpx.NewNamed("library", httpx.TimeoutLibrary)
+		httpClient = httpx.NewNamed(httpx.TargetLibrary, httpx.TimeoutLibrary)
 	}
 	return &Client{
 		current:  current,

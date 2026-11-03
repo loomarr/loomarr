@@ -91,8 +91,8 @@ func NewDynamicObserved(config func() Config, recorder *metrics.Recorder) *Tunar
 func newDynamic(config func() Config, recorder *metrics.Recorder) *Tunarr {
 	t := &Tunarr{
 		config:   config,
-		http:     httpx.NewNamedObserved("tunarr", httpx.TimeoutTunarr, recorder),
-		bulkHTTP: httpx.NewNamedObserved("tunarr-bulk", httpx.TimeoutTunarrBulk, recorder),
+		http:     httpx.NewNamedObserved(httpx.TargetTunarr, httpx.TimeoutTunarr, recorder),
+		bulkHTTP: httpx.NewNamedObserved(httpx.TargetTunarrBulk, httpx.TimeoutTunarrBulk, recorder),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t
