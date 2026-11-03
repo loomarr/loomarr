@@ -241,7 +241,9 @@ The concrete rules are:
   It was a hardcoded `true` on the database switchover response — the only place that could set
   it — which made it a property of *one endpoint* rather than of the instance. It is now derived
   by comparing each restart-scoped key's **running/applied** value against its **resolved/desired**
-  value, so
+  value. Every bootstrap key is restart-scoped (a generation reads them all when it starts,
+  `LOG_LEVEL` included), and `config.ChangedKeys` walks the struct, so a new boot key is covered
+  without a list to maintain. So
   `GET /v1/system/restart` can name the specific key: *"You changed `filler.dir`. Loomarr is still
   running the old value until it restarts."*
   ⚠ **Derived, never a sticky boolean someone remembers to set.** A flag written at the moment of
