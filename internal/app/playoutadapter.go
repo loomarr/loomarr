@@ -545,6 +545,12 @@ func (r *playoutResolver) ChannelCodec(ctx context.Context, channelID string) st
 	return ch.BroadcastCodec
 }
 
+// inventoryFreshness is how long an imported library observation answers without asking the media
+// server again. A library file keeps its item id when it is replaced, and only the server can say
+// the file changed, so a read past this age re-imports the item; the import compares the source
+// revision (ETag, else content-derived) and drops the measurements of any revision that moved on.
+const inventoryFreshness = 24 * time.Hour
+
 // LineupFormats returns the stream facts of each distinct programme in the channel's cycle, the
 // input to playout.DeriveChannelFormats (#1512 G10). The facts come from Loomarr's inventory; an
 // item it has not observed yet is imported once from the library's own media information, never
@@ -577,24 +583,43 @@ func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID str
 	if err != nil {
 		return playout.MediaFormat{}
 	}
-	request := inventory.SourceRequest{Item: inventory.ItemRef{Origin: &origin}, RequiredCoverage: []string{"streams"}}
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
+	if !ok {
+		return playout.MediaFormat{}
+	}
+	return playoutFormatOf(source.Observation.Facts)
+}
+
+// freshLibrarySource is a library item's source facts from the inventory while they are within
+// inventoryFreshness, else from one re-import of the item. The import carries the file's current
+// revision, so a replaced file's old facts and measurements are dropped rather than served.
+func (r *playoutResolver) freshLibrarySource(
+	ctx context.Context, libraryItemID string, origin inventory.OriginKey, coverage string,
+) (inventory.ResolvedSource, bool) {
+	request := inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryFreshness,
+		RequiredCoverage: []string{coverage},
+	}
 	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
-		return playoutFormatOf(source.Observation.Facts)
+		return source, true
 	}
 	snapshot, present, err := r.lib.InventorySnapshot(ctx, libraryItemID)
 	if err != nil || !present {
-		return playout.MediaFormat{}
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library media observation unavailable", "item", libraryItemID, "err", err)
+		}
+		return inventory.ResolvedSource{}, false
 	}
 	if _, err := r.inventory.ApplySnapshot(ctx, snapshot); err != nil {
 		if r.log != nil {
-			r.log.Debug("formats: library media observation not persisted", "item", libraryItemID, "err", err)
+			r.log.Debug("playout: library media observation not persisted", "item", libraryItemID, "err", err)
 		}
-		return playout.MediaFormat{}
+		return inventory.ResolvedSource{}, false
 	}
-	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
-		return playoutFormatOf(source.Observation.Facts)
-	}
-	return playout.MediaFormat{}
+	// The import just stamped these facts, so age no longer applies; coverage still does.
+	request.MaxAge = 0
+	source, ok, err := r.inventory.ResolveSource(ctx, request)
+	return source, err == nil && ok
 }
 
 // maxCodecProbes bounds how many program files ComputeChannelCodec probes to decide the majority.
@@ -1167,8 +1192,6 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-const inventoryAudioFreshness = 24 * time.Hour
-
 func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
 	if r.audioLanguage == nil || streamURL == "" {
 		return 0
@@ -1267,27 +1290,11 @@ func (r *playoutResolver) inventoryAudioTracks(
 	if err != nil {
 		return nil, false
 	}
-	request := inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryAudioFreshness,
-		RequiredCoverage: []string{"audioStreams"},
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "audioStreams")
+	if !ok {
+		return nil, false
 	}
-	if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
-		return playoutAudioTracks(source.Observation.Facts.Streams), true
-	}
-
-	snapshot, present, importErr := r.lib.InventorySnapshot(ctx, libraryItemID)
-	if importErr == nil && present {
-		if _, applyErr := r.inventory.ApplySnapshot(ctx, snapshot); applyErr == nil {
-			if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
-				return playoutAudioTracks(source.Observation.Facts.Streams), true
-			}
-		} else if r.log != nil {
-			r.log.Debug("playout: library media observation not persisted", "err", applyErr)
-		}
-	} else if importErr != nil && r.log != nil {
-		r.log.Debug("playout: library media observation unavailable", "err", importErr)
-	}
-	return nil, false
+	return playoutAudioTracks(source.Observation.Facts.Streams), true
 }
 
 func (r *playoutResolver) recordSourceMeasurement(
