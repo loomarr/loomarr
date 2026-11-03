@@ -1,52 +1,59 @@
 // PROTOTYPE — throwaway (#2151 step 2). Variant D ("Appliance") shared bits: the lit artwork
 // stand-in, station bug, colour bars, lock-in moment, accordion and plain-words helpers.
 // Design-system primitives only; Tailwind is layout glue. Motion is <=300ms and `motion-safe`.
-import { ArtworkFrame, Surface, Text } from "@loomarr/design-system";
+import { BrandMark, Surface, Text } from "@loomarr/design-system";
 import { ArrowLeft, Search } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 // One page frame for the Library and for title pages, so content starts at the same x.
 const FRAME = "mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-8";
 
-// A hue-lit stand-in for artwork: never a remote image. Depth is light (a gradient and a soft
-// highlight), never size. Inside a `group` it lights a white ring on hover and focus.
+// A film-like stand-in for artwork: never a remote image (the real build shows TMDB art). A dark
+// tile barely tinted by the title's hue, one soft top light, and the title set small at the foot
+// like a one-sheet. No initials, no saturated colour: the chrome stays neutral and the artwork
+// carries what colour there is. Inside a `group` it lights a white ring on hover and focus.
+const tile = (hue: number) =>
+  `radial-gradient(120% 70% at 50% 0%, hsl(${hue} 22% 30% / 0.55), transparent 70%), linear-gradient(180deg, hsl(${hue} 14% 15%), hsl(${hue} 10% 7%))`;
+
 const Poster = ({
   hue,
   title,
   big = false,
+  bare = false,
   dim = false,
   children,
 }: {
   hue: number;
   title: string;
   big?: boolean;
+  bare?: boolean; // thumbnails: the tile alone, too small to carry type
   dim?: boolean;
   children?: ReactNode;
 }) => (
   <div
-    className="relative aspect-[2/3] w-full overflow-hidden rounded-lg ring-white/0 group-hover:ring-2 group-hover:ring-white group-focus-visible:ring-2 group-focus-visible:ring-white"
-    style={dim ? { filter: "brightness(0.72) saturate(0.7)" } : undefined}
+    className="relative aspect-[2/3] w-full overflow-hidden rounded-md ring-1 ring-white/10 group-hover:ring-2 group-hover:ring-white group-focus-visible:ring-2 group-focus-visible:ring-white"
+    style={dim ? { filter: "brightness(0.6) saturate(0.6)" } : undefined}
   >
-    <div
-      className="absolute inset-0"
-      style={{
-        backgroundImage: `radial-gradient(circle at 30% 18%, hsl(${hue} 70% 68% / 0.32), transparent 62%), linear-gradient(165deg, hsl(${hue} 42% 34%), hsl(${hue} 40% 14%))`,
-      }}
-    />
-    <div className="absolute inset-0">
-      <ArtworkFrame
-        alignItems="center"
-        height="100%"
-        justifyContent="center"
-        state="ready"
-        style={{ backgroundColor: "transparent" }}
-        width="100%"
-      >
-        <Text style={{ color: `hsl(${hue} 60% 82%)` }} textRole={big ? "display" : "title"}>
-          {title.replace(/^The /, "").slice(0, 1)}
+    {/* A plain tile, not ArtworkFrame: that primitive frames a real image and draws its own
+        fallback label, which garbles at thumbnail size. */}
+    <div aria-hidden="true" className="absolute inset-0" style={{ backgroundImage: tile(hue) }} />
+    {bare ? null : (
+      <div className={`absolute inset-x-0 bottom-0 ${big ? "p-5" : "p-3"}`}>
+        <Text
+          numberOfLines={3}
+          style={{
+            color: "rgba(255,255,255,0.82)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            wordBreak: "keep-all",
+            overflowWrap: "normal",
+          }}
+          textRole={big ? "body" : "label"}
+        >
+          {title}
         </Text>
-      </ArtworkFrame>
-    </div>
+      </div>
+    )}
     {children}
   </div>
 );
@@ -54,7 +61,7 @@ const Poster = ({
 // A fixed-width poster for rows and lists.
 const Thumb = ({ hue, title, width = 40 }: { hue: number; title: string; width?: number }) => (
   <div className="shrink-0" style={{ width }}>
-    <Poster hue={hue} title={title} />
+    <Poster bare hue={hue} title={title} />
   </div>
 );
 
@@ -192,15 +199,8 @@ const ChannelBug = ({ raw }: { raw: string }) => {
   );
 };
 
-// Static colour bars for idle surfaces only (empty states). Never on the grid or forms.
-const BARS = [0, 55, 120, 180, 215, 275, 330];
-const ColorBars = () => (
-  <div aria-hidden="true" className="flex h-2 w-full max-w-xs overflow-hidden rounded-full opacity-80">
-    {BARS.map((h) => (
-      <div className="flex-1" key={h} style={{ backgroundColor: `hsl(${h} 55% 52%)` }} />
-    ))}
-  </div>
-);
+// The brand chroma bar, for idle surfaces only (empty states). Never on the grid or forms.
+const ColorBars = () => <BrandMark contained={false} decorative size={6} width={120} />;
 
 // Signature moment: static -> clear (200ms), then the card leaves. Instant under reduced motion.
 const LockIn = ({

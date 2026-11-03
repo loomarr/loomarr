@@ -6,12 +6,18 @@ import { COLLECTION_EDIT, COLLECTIONS, type CollectionRow } from "./prototype-da
 import type { Screen } from "./prototype-state";
 import { BackLink, channelPhrase, Heading, Poster, TextBox, Thumb } from "./variant-d-parts";
 
-// Three posters fanned out behind one another: a collection reads as a pile of real things.
+// Three posters fanned out behind one another: a collection reads as a pile of real things. All
+// bare (the name sits beside the pile, and is too long to set at this width); the ones behind are
+// darker, so the pile is one colour family, not a rainbow.
 const PosterStack = ({ hue, name }: { hue: number; name: string }) => (
   <div className="relative h-40 w-28 shrink-0">
     {[2, 1, 0].map((i) => (
-      <div className="absolute w-24" key={i} style={{ left: i * 8, top: (2 - i) * 6 }}>
-        <Poster hue={(hue + i * 24) % 360} title={name} />
+      <div
+        className="absolute w-24"
+        key={i}
+        style={{ left: i * 8, top: (2 - i) * 6, filter: i === 0 ? undefined : `brightness(${1 - i * 0.22})` }}
+      >
+        <Poster bare hue={hue} title={name} />
       </div>
     ))}
   </div>

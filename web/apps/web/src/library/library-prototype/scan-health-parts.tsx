@@ -97,7 +97,8 @@ const LitBar = ({ percent, label, paused }: { percent: number; label: string; pa
   );
 };
 
-// A small hue-lit poster tile (never a remote image) that slides in, one after another.
+// A small poster stand-in (never a remote image) that slides in, one after another. Same film-like
+// look as variant D's Poster: a dark, barely tinted tile with the title set small.
 const ReadyChip = ({ title, hue, index }: { title: string; hue: number; index: number }) => {
   const motion = useMotionAllowed();
   const [shown, setShown] = useState(false);
@@ -109,24 +110,33 @@ const ReadyChip = ({ title, hue, index }: { title: string; hue: number; index: n
   return (
     <div
       style={{
+        width: 64,
         opacity: visible ? 1 : 0,
         transform: visible ? "none" : "translateY(8px)",
         transition: motion ? "opacity 300ms ease-out, transform 300ms ease-out" : "none",
       }}
     >
+      {/* Too narrow to set the title on the tile: a plain tile with a caption, as in the grid. */}
       <Surface
         width={64}
         height={92}
         borderRadius="control"
         borderWidth={0}
-        alignItems="center"
-        justifyContent="center"
-        padding="inline"
-        style={{ backgroundColor: `hsl(${hue} 38% 24%)` }}
-        aria-label={`${title} is ready`}
-        role="img"
+        style={{
+          backgroundImage: `radial-gradient(120% 70% at 50% 0%, hsl(${hue} 22% 30% / 0.55), transparent 70%), linear-gradient(180deg, hsl(${hue} 14% 15%), hsl(${hue} 10% 7%))`,
+        }}
+        aria-hidden
+      />
+      {/* The design system truncates inside a clipped, min-width-0 box (as the guide grid does). */}
+      <Surface
+        backgroundColor="transparent"
+        borderWidth={0}
+        marginTop={6}
+        minWidth={0}
+        overflow="hidden"
+        width={64}
       >
-        <Text textRole="label" style={{ color: `hsl(${hue} 60% 78%)`, textAlign: "center" }}>
+        <Text numberOfLines={1} textRole="label" tone="secondary">
           {title}
         </Text>
       </Surface>

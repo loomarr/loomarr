@@ -133,7 +133,7 @@ const TitlePage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) 
           aria-hidden="true"
           className="pointer-events-none absolute top-0 -left-16 h-[520px] w-[calc(100%+4rem)]"
           style={{
-            backgroundImage: `radial-gradient(ellipse 420px 260px at 420px 260px, hsl(${item.hue} 60% 50% / 0.3), transparent)`,
+            backgroundImage: `radial-gradient(ellipse 420px 260px at 420px 260px, hsl(${item.hue} 25% 40% / 0.16), transparent)`,
           }}
         />
         <div className="relative w-44 shrink-0 self-center md:w-52">
