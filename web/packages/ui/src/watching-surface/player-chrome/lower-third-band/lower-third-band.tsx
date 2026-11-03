@@ -45,8 +45,10 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           borderBottomLeftRadius: 8,
           borderTopLeftRadius: 8,
           justifyContent: "center",
+          // The tile's width, grown for a number that needs more (CH 101 at TV size), never wrapped.
+          minWidth: ident ? (compact ? 64 : 96) : compact ? 48 : 64,
+          paddingHorizontal: 8,
           paddingVertical: 6,
-          width: ident ? (compact ? 64 : 96) : compact ? 48 : 64,
           ...webOnly({
             backgroundImage: `linear-gradient(180deg, ${playerChrome.signal}, ${playerChrome.signalDeep})`,
             boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 0 rgba(0, 0, 0, 0.15)",
@@ -61,6 +63,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           textRole={
             ident ? (compact ? "channelNumber" : "display") : compact ? "guideNumber" : "channelNumber"
           }
+          numberOfLines={1}
           tone="inverse"
         >
           {band.channelNumber}

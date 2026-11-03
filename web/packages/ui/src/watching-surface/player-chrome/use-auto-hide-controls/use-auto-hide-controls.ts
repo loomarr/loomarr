@@ -13,16 +13,17 @@ const GRACE_MS = 600;
 // Hiding is a decision over two FACTS, not a race between events:
 //  - `held`: a bar control (an open menu) is interacting; while > 0 the controls never hide, else the
 //    auto-hide would pull the bar out from under the open menu. Re-checked at the timer's fire time.
-//  - `hovering`: the pointer is over the frame. It picks the WINDOW, not whether to hide: a pointer
-//    resting on the frame hides after IDLE (a full-bleed player's frame is the whole window, so the
-//    pointer never leaves it), one that has left hides after the shorter GRACE.
+//  - `pointerGone`: a pointer was over the frame and has left it. It picks the WINDOW, not whether to
+//    hide: one that has left hides after the shorter GRACE; otherwise IDLE — a pointer resting on the
+//    frame (a full-bleed player's frame is the whole window, so it never leaves), or no pointer at all
+//    (a TV remote, a phone), where a stall ending must not cut short the controls the viewer opened.
 // Each is mirrored into a ref so the fire-time callback sees the live value; the state copies drive
 // the re-render + effect. `holdControls` is handed to HoldControlsContext so caller-supplied bar
 // controls (which the player never sees at author time) can raise/lower `held`.
 const useAutoHideControls = (playing: boolean) => {
   const [controlsShown, setControlsShown] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [hovering, setHovering] = useState(false);
+  const [pointerGone, setPointerGone] = useState(false);
   const [held, setHeld] = useState(0);
   const heldRef = useRef(0);
 
@@ -48,22 +49,21 @@ const useAutoHideControls = (playing: boolean) => {
     }, after);
   }, []);
 
-  // Pointer entered / moved over the frame: mark hovering and reveal, re-arming the idle window.
+  // Pointer entered / moved over the frame: mark it present and reveal, re-arming the idle window.
   const onPointerActive = useCallback(() => {
-    setHovering(true);
+    setPointerGone(false);
     setControlsShown(true);
     // While playing, a still mouse over the frame hides after the idle window; paused stays shown.
     if (playing) armHide(IDLE_MS);
     else if (hideTimer.current) clearTimeout(hideTimer.current);
   }, [playing, armHide]);
 
-  // Pointer left the frame: drop hovering. The effect below (dep: hovering) then arms the short GRACE
-  // hide — we don't hide inline so open menus (which portal OUTSIDE the frame, firing leave) still win
-  // via `held`.
-  const onPointerLeave = useCallback(() => setHovering(false), []);
+  // Pointer left the frame. The effect below (dep: pointerGone) then arms the short GRACE hide — we
+  // don't hide inline so open menus (which portal OUTSIDE the frame, firing leave) still win via `held`.
+  const onPointerLeave = useCallback(() => setPointerGone(true), []);
 
-  // Focus reveals but must not claim "hovering" (a still pointer elsewhere shouldn't be pinned shown by
-  // a focus). It just shows and, while playing, arms the idle window like a pointer would.
+  // Focus reveals but says nothing about the pointer. It just shows and, while playing, arms the idle
+  // window like a pointer would.
   const revealControls = useCallback(() => {
     setControlsShown(true);
     if (playing) armHide(IDLE_MS);
@@ -87,18 +87,18 @@ const useAutoHideControls = (playing: boolean) => {
 
   useEffect(() => {
     // Paused, or a control is holding (open menu) ⇒ keep controls shown. Otherwise, playing: hide
-    // after IDLE with the pointer resting on the frame, or after the short GRACE once it has left (or
-    // a menu just closed with the pointer elsewhere) rather than lingering.
+    // after the short GRACE once the pointer has left (or a menu just closed with it elsewhere) rather
+    // than lingering, else after IDLE.
     if (!playing || held > 0) {
       setControlsShown(true);
       if (hideTimer.current) clearTimeout(hideTimer.current);
       return;
     }
-    armHide(hovering ? IDLE_MS : GRACE_MS);
+    armHide(pointerGone ? GRACE_MS : IDLE_MS);
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, [playing, held, hovering, armHide]);
+  }, [playing, held, pointerGone, armHide]);
 
   return {
     controlsShown,

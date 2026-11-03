@@ -32,12 +32,16 @@ const Capsule = ({ children, end }: { children: ReactNode; end?: boolean }) => (
 // Which way a tooltip hangs: centred over its tool, or held inside the screen at the bar's two ends.
 type TipAlign = "center" | "start" | "end";
 
-const tipAnchor = (align: TipAlign) =>
+// The tooltip hangs in a track wider than any label, anchored to its 36 px button: a native absolute
+// view is otherwise only as wide as the button and cuts the label to "…".
+const TIP_TRACK = 240;
+
+const tipTrack = (align: TipAlign) =>
   align === "start"
-    ? { left: 0 }
+    ? { alignItems: "flex-start" as const, left: 0 }
     : align === "end"
-      ? { right: 0 }
-      : { left: "50%" as const, transform: [{ translateX: "-50%" }] };
+      ? { alignItems: "flex-end" as const, right: 0 }
+      : { alignItems: "center" as const, left: "50%" as const, marginLeft: -TIP_TRACK / 2 };
 
 const Tooltip = ({
   align,
@@ -52,32 +56,31 @@ const Tooltip = ({
 }) => (
   <View
     pointerEvents="none"
-    style={{
-      ...tipAnchor(align),
-      alignItems: "center",
-      backgroundColor: playerChrome.tooltip,
-      borderRadius: 6,
-      bottom: "100%",
-      flexDirection: "row",
-      gap: 6,
-      marginBottom: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      position: "absolute",
-      ...webOnly({ boxShadow: `0 0 0 1px ${playerChrome.glassRing}`, whiteSpace: "nowrap" }),
-    }}
+    style={{ ...tipTrack(align), bottom: "100%", marginBottom: 10, position: "absolute", width: TIP_TRACK }}
   >
-    {/* One line: the tooltip hangs off a 36 px button, which would otherwise wrap it word by word. */}
-    <Text density={density} numberOfLines={1} textRole="guideLabel" tone="primary">
-      {label}
-    </Text>
-    {keyHint ? (
-      <View style={{ backgroundColor: playerChrome.glassTop, borderRadius: 3, paddingHorizontal: 4 }}>
-        <Text density={density} textRole="guideMeta" tone="secondary">
-          {keyHint}
-        </Text>
-      </View>
-    ) : null}
+    <View
+      style={{
+        alignItems: "center",
+        backgroundColor: playerChrome.tooltip,
+        borderRadius: 6,
+        flexDirection: "row",
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        ...webOnly({ boxShadow: `0 0 0 1px ${playerChrome.glassRing}`, whiteSpace: "nowrap" }),
+      }}
+    >
+      <Text density={density} numberOfLines={1} textRole="guideLabel" tone="primary">
+        {label}
+      </Text>
+      {keyHint ? (
+        <View style={{ backgroundColor: playerChrome.glassTop, borderRadius: 3, paddingHorizontal: 4 }}>
+          <Text density={density} textRole="guideMeta" tone="secondary">
+            {keyHint}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   </View>
 );
 

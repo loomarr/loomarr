@@ -37,6 +37,7 @@
       "../../scripts/with-workspace-bundle-inputs.cjs",
       "../../scripts/with-shield-release-signing.cjs",
       "../../scripts/with-loomarr-android-network.cjs",
+      "../../scripts/with-tv-play-pause-key.cjs",
       "../../scripts/with-loomarr-fonts.cjs",
       "../../scripts/with-tvos-render-scale.cjs",
       [

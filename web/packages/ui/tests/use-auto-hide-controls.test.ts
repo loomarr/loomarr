@@ -99,6 +99,25 @@ describe("useAutoHideControls", () => {
     expect(paused.result.current.controlsShown).toBe(true);
   });
 
+  // A TV remote or a phone has no pointer: a stall ending under controls the viewer opened gives them
+  // the idle window, not the short grace meant for a pointer that has left.
+  it("gives controls revealed without a pointer the idle window after a stall", () => {
+    const result = { current: undefined as unknown as ReturnType<typeof useAutoHideControls> };
+    const Probe = ({ playing }: { playing: boolean }) => {
+      result.current = useAutoHideControls(playing);
+      return null;
+    };
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(Probe, { playing: true })));
+    act(() => result.current.revealControls());
+    act(() => root.render(createElement(Probe, { playing: false }))); // the stream stalls
+    act(() => root.render(createElement(Probe, { playing: true }))); // and comes back
+    act(() => vi.advanceTimersByTime(700));
+    expect(result.current.controlsShown).toBe(true);
+    act(() => vi.advanceTimersByTime(2200));
+    expect(result.current.controlsShown).toBe(false);
+  });
+
   it("hides shortly after the pointer leaves during playback", () => {
     const { result } = renderHook(() => useAutoHideControls(true));
     act(() => result.current.onPointerActive());

@@ -29,6 +29,8 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
   // Apple TV lays out at Android TV's 960-wide scale and draws it sharp at the screen's (#2141).
   assert.ok(config.expo.plugins.includes("../../scripts/with-tvos-render-scale.cjs"));
+  // Play/Pause is the app's own, never also the media session's (#2088 decision 15).
+  assert.ok(config.expo.plugins.includes("../../scripts/with-tv-play-pause-key.cjs"));
   assert.equal(config.expo.name, "Loomarr TV Prototype");
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
