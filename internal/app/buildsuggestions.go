@@ -117,7 +117,7 @@ func buildSuggestions(
 		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
-		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved("reference", httpx.TimeoutReference, metricRecorder)))
+		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
 	service := suggest.NewService(st, suggester, suggest.Config{
 		Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 	}, newID, time.Now, log).

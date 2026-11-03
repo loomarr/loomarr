@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -86,7 +85,7 @@ func New(flavor Flavor, baseURL, token, deviceID string) *Client {
 // NewDynamic builds a Library client whose complete connection is resolved once
 // per public operation (config-design §3 hot-apply).
 func NewDynamic(current ConnectionSource, deviceID string) *Client {
-	return newDynamicWithHTTP(current, deviceID, httpx.NewNamed("library", httpx.TimeoutLibrary))
+	return newDynamicWithHTTP(current, deviceID, httpx.NewNamed(httpx.TargetLibrary, httpx.TimeoutLibrary))
 }
 
 // NewDynamicObserved binds outbound observations to one application generation.
@@ -96,7 +95,7 @@ func NewDynamicObserved(
 	recorder *metrics.Recorder,
 ) *Client {
 	return newDynamicWithHTTP(
-		current, deviceID, httpx.NewNamedObserved("library", httpx.TimeoutLibrary, recorder),
+		current, deviceID, httpx.NewNamedObserved(httpx.TargetLibrary, httpx.TimeoutLibrary, recorder),
 	)
 }
 
@@ -105,7 +104,7 @@ func newDynamicWithHTTP(current ConnectionSource, deviceID string, httpClient *h
 		current = func() Connection { return Connection{} }
 	}
 	if httpClient == nil {
-		httpClient = httpx.NewNamed("library", httpx.TimeoutLibrary)
+		httpClient = httpx.NewNamed(httpx.TargetLibrary, httpx.TimeoutLibrary)
 	}
 	return &Client{
 		current:  current,
@@ -309,12 +308,13 @@ func (c *Client) doAuthenticate(req *http.Request, out *authResponse) error {
 		return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	switch httpx.ClassifyStatus(resp.StatusCode) {
+	case httpx.ClassNone:
+	case httpx.ClassAuth:
 		return ErrCredentialsRejected
-	case resp.StatusCode >= http.StatusInternalServerError:
+	case httpx.ClassTransient:
 		return fmt.Errorf("%w: status %d", ErrProviderUnavailable, resp.StatusCode)
-	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+	default:
 		return fmt.Errorf("authenticate media-server user: status %d", resp.StatusCode)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -404,12 +404,11 @@ func (c *Client) do(req *http.Request, out any) error {
 		return fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Include a snippet of the response body — a bare "status 500" hides the
-		// media server's own explanation (e.g. Emby's reason for rejecting a tuner
-		// add), which is exactly what an operator needs to fix a wiring failure.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &StatusError{Method: req.Method, Path: req.URL.Path, Status: resp.StatusCode, Body: strings.TrimSpace(string(snippet))}
+	// The error carries a snippet of the response body — a bare "status 500" hides the
+	// media server's own explanation (e.g. Emby's reason for rejecting a tuner add),
+	// which is exactly what an operator needs to fix a wiring failure.
+	if err := httpx.CheckStatus(resp); err != nil {
+		return err
 	}
 	if out == nil {
 		return nil
@@ -420,29 +419,15 @@ func (c *Client) do(req *http.Request, out any) error {
 	return nil
 }
 
-// StatusError is a non-2xx media-server answer. It keeps the status machine-readable so callers
-// can tell a busy server (5xx) from a rejected request (4xx) without parsing the message.
-type StatusError struct {
-	Method, Path string
-	Status       int
-	Body         string
-}
-
-func (e *StatusError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("%s %s: status %d", e.Method, e.Path, e.Status)
-	}
-	return fmt.Sprintf("%s %s: status %d: %s", e.Method, e.Path, e.Status, e.Body)
-}
-
 // TransientClass names why a media-server call failed in a way a later attempt may cure —
-// "server-error" (5xx), "timeout", or "connection" (dial/reset) — or "" when it is not
-// transient (a rejected request, a cancelled context, or anything unrecognised). Emby answers
-// 500 ServiceUnavailable while it is busy, which is not a wiring fault.
+// "server-error" (a status httpx classifies as transient), "timeout", or "connection"
+// (dial/reset) — or "" when it is not transient (a rejected request, a cancelled context, or
+// anything unrecognised). Emby answers 500 ServiceUnavailable while it is busy, which is not a
+// wiring fault.
 func TransientClass(err error) string {
-	var status *StatusError
+	var status *httpx.StatusError
 	if errors.As(err, &status) {
-		if status.Status >= 500 {
+		if httpx.Classify(status) == httpx.ClassTransient {
 			return "server-error"
 		}
 		return ""
@@ -474,13 +459,5 @@ func (c *Client) doTolerate404(req *http.Request) error {
 	if resp.StatusCode == http.StatusNotFound {
 		return nil
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		msg := strings.TrimSpace(string(snippet))
-		if msg == "" {
-			return fmt.Errorf("%s %s: status %d", req.Method, req.URL.Path, resp.StatusCode)
-		}
-		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, msg)
-	}
-	return nil
+	return httpx.CheckStatus(resp)
 }

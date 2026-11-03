@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -433,6 +434,37 @@ func TestTransientClass(t *testing.T) {
 	for _, e := range []error{errors.New("boom"), context.Canceled, fmt.Errorf("POST /x: status 401: no")} {
 		if got := library.TransientClass(e); got != "" {
 			t.Errorf("%v class = %q, want not transient", e, got)
+		}
+	}
+}
+
+// A non-2xx media-server answer is the shared httpx.StatusError, and TransientClass
+// follows httpx's classification of it rather than a private status rule.
+func TestNon2xxIsAnHTTPXStatusError(t *testing.T) {
+	for _, tc := range []struct {
+		status    int
+		wantClass httpx.Class
+		wantLabel string
+	}{
+		{http.StatusInternalServerError, httpx.ClassTransient, "server-error"},
+		{http.StatusTooManyRequests, httpx.ClassTransient, "server-error"},
+		{http.StatusUnauthorized, httpx.ClassAuth, ""},
+		{http.StatusNotImplemented, httpx.ClassPermanent, ""},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+		}))
+		err := newLiveTVClient(srv.URL).RescanTuner(context.Background(), "http://192.0.2.79:8001/api/channels.m3u")
+		srv.Close()
+		var status *httpx.StatusError
+		if !errors.As(err, &status) || status.Status != tc.status {
+			t.Fatalf("status %d: err = %v, want *httpx.StatusError", tc.status, err)
+		}
+		if got := httpx.Classify(err); got != tc.wantClass {
+			t.Errorf("status %d: Classify = %v, want %v", tc.status, got, tc.wantClass)
+		}
+		if got := library.TransientClass(err); got != tc.wantLabel {
+			t.Errorf("status %d: TransientClass = %q, want %q", tc.status, got, tc.wantLabel)
 		}
 	}
 }
