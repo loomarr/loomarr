@@ -267,7 +267,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutResolver) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
 	encodeHost := func() encode.HostProfile {
@@ -348,29 +348,31 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now)
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 		func() bool { return set.boolv("filler.vision.enabled") }, time.Now)
+	transcodeStage := filler.NewTranscodeStage(
+		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		clipDir, mediatools.DefaultMezzanine(),
+		func() string { return set.str("playout.ffmpeg_path") },
+		// The playback target, for the too_quiet floor only: files are never levelled on
+		// disk, playout corrects them at air time (#2032).
+		func() float64 {
+			// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
+			// correction at all", which no numeric kind can express), so it is parsed
+			// here. An unparseable value yields 0, meaning no target and no floor.
+			lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+			if err != nil {
+				return 0
+			}
+			return lufs
+		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
+		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
+		WithEncodeHost(encodeHost).
+		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
 			func() int64 { return set.dur("filler.min_duration").Milliseconds() },
 			func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
-		filler.NewTranscodeStage(
-			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
-			clipDir, mediatools.DefaultMezzanine(),
-			func() string { return set.str("playout.ffmpeg_path") },
-			// The playback target, for the too_quiet floor only: files are never levelled on
-			// disk, playout corrects them at air time (#2032).
-			func() float64 {
-				// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
-				// correction at all", which no numeric kind can express), so it is parsed
-				// here. An unparseable value yields 0, meaning no target and no floor.
-				lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
-				if err != nil {
-					return 0
-				}
-				return lufs
-			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
-			WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
-			WithEncodeHost(encodeHost),
+		transcodeStage,
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
@@ -489,7 +491,9 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 			MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
 		},
 		emitter.FillerClipStage, time.Now, log).
-		WithRewind(fillerRewindAdapter{st}, clipDir)
+		WithRewind(fillerRewindAdapter{st}, clipDir).
+		// Idle passes move the airing library onto the current encode profile (#2121).
+		WithLibraryReencode(transcodeStage, fillerAiringClipsAdapter{st})
 	if headroom != nil {
 		// Media rungs yield to live playback instead of competing with it for CPU (#1512 G5).
 		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())

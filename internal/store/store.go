@@ -366,6 +366,9 @@ type ClipStore interface {
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
+	// ReplaceAiringClip re-keys a clip that stayed on air through its re-encode, and records the
+	// defect verdict its new bytes earned before the switch, in one transaction (#2121).
+	ReplaceAiringClip(ctx context.Context, oldHash string, c Clip, defects ClipDefectRecord) error
 	// AdoptConditionedClip is the exact owner-bound variant used after a conditioned target is
 	// visible. It atomically adopts a held Sync reconstruction, performs an ordinary source-only
 	// re-key, or recognizes the exact target-only post-rekey state (§10 V65). The filler store's

@@ -68,6 +68,9 @@ type TranscodeStage struct {
 	removeSource func(string) error
 	diagnostics  *diagnostics.ProcessManager
 	storage      *storagegovernor.Governor
+	// airingStore and airingCheck back ReplaceAiring (WithAiringReplacement).
+	airingStore AiringReplacementStore
+	airingCheck ReplacementCheck
 }
 
 // WithMediaDerivatives enables the V66 evidence/playback recipe contract. Production composition
@@ -197,6 +200,13 @@ const transcodeStagingDir = ".transcode"
 // path, and atomically re-keys the catalog metadata. The original remains intact until the new
 // file, sidecar and database references are all durable.
 func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
+	return s.run(ctx, c, nil)
+}
+
+// run is Run, and with swap set the re-encode of a clip that keeps airing (ReplaceAiring): the
+// staged bytes must pass swap's checks before they publish, a refusal is ErrReplacementRefused,
+// and the switch commits their defect record.
+func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap) (StageResult, error) {
 	if s.store == nil {
 		return StageResult{}, fmt.Errorf("transcode %s: no clip store is configured", c.Path)
 	}
@@ -278,6 +288,11 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 	evidence, mediaTool, err := s.prepareEvidenceDerivative(ctx, sourceMaster, in, ffmpeg, enc, storageWrites)
 	if err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: %w", oldRel, err)
+	}
+	if swap != nil && evidence != nil {
+		// The evidence encode is already filed under its own digest. Until the switch commits,
+		// nothing names it, so a replacement that stops short takes it away again.
+		defer swap.discardUncommitted(s.clipDir, evidence.Asset.Path)
 	}
 
 	req := mediatools.TranscodeRequest{
@@ -374,6 +389,9 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		// Verification has already refused audio without a valid measurement, so a clip with sound
 		// always reaches here measured.
 		if reject, ok := tooQuietToCorrect(target, playbackQC.Loudness); ok {
+			if swap != nil {
+				return StageResult{}, fmt.Errorf("%w: %s", ErrReplacementRefused, reject.Detail)
+			}
 			return reject, nil
 		}
 		reportProgress(ctx, StageTranscode, 95)
@@ -453,6 +471,12 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		}
 	}
 
+	if swap != nil {
+		if err := swap.admit(ctx, c, stageFull, newHash, quality); err != nil {
+			return StageResult{}, err
+		}
+	}
+
 	// Build the replacement sidecar while the media is still hidden from the catalog scan.
 	if err := copySidecarForTransform(oldFull, stageFull); err != nil {
 		return StageResult{}, fmt.Errorf("transcode %s: copy sidecar: %w", oldRel, err)
@@ -501,9 +525,12 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		}
 	}
 	var commitErr error
-	if publication != nil {
+	switch {
+	case publication != nil:
 		commitErr = s.store.CommitConditioningPublication(ctx, *publication, updated)
-	} else {
+	case swap != nil:
+		commitErr = swap.commit(ctx, c.Hash, updated, newFull)
+	default:
 		commitErr = s.store.ReplaceClipIdentity(ctx, c.Hash, updated)
 	}
 	if commitErr != nil {
@@ -533,6 +560,9 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 				Note: "re-encoded, but the original file could not be deleted"}, nil
 		}
 		_ = os.Remove(sidecarPathFor(oldFull))
+	}
+	if swap != nil {
+		swap.removeOldEvidence(s.clipDir, assets)
 	}
 
 	return mediaQualityResult(updated, quality), nil
