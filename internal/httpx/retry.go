@@ -139,7 +139,7 @@ func retryReason(
 	case http.StatusGatewayTimeout:
 		return metrics.OutboundRetryStatus504, true
 	default:
-		return 0, false
+		return metrics.OutboundRetryStatusOther, true
 	}
 }
 

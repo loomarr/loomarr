@@ -29,7 +29,10 @@ var statusLadder = []struct {
 	{http.StatusTooManyRequests, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
 	{http.StatusInternalServerError, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
 	{http.StatusBadGateway, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
-	{http.StatusNotImplemented, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
+	// A retry cannot make a service implement the method or the HTTP version.
+	{http.StatusNotImplemented, notifications.FailurePermanent, notifications.OutcomeConfigurationInvalid},
+	{http.StatusHTTPVersionNotSupported, notifications.FailurePermanent, notifications.OutcomeConfigurationInvalid},
+	{http.StatusInsufficientStorage, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
 	// A CDN in front of a webhook answers 52x for an origin that is briefly down.
 	{522, notifications.FailureTransientPreAcceptance, notifications.OutcomeTransportUnavailable},
 }
