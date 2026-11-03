@@ -268,6 +268,12 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 
 ## Hard rules
 
+- Tests assert on behaviour, never on the text of Go or TypeScript source. A test that reads a source
+  file and matches it with a regexp, `strings.Contains` or `toContain` passes while the behaviour is
+  broken and fails on a harmless refactor. Exercise the code; where the intent is structural, parse
+  it (`go/parser`, a JS parser) and check the syntax tree. Generated files, workflows, Makefiles,
+  JSON and docs are artefacts, not source. `internal/guard_test.go` and
+  `web/scripts/source-text-tests.mjs` enforce this with a shrinking allowlist.
 - Auth changes include the design §19 negatives: member 403s and sessions dying on disable.
 - Retiring a capability adds its identifier to `scripts/check-retired.sh` in the same PR.
 - Adding a setting changes design §15 first.

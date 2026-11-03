@@ -1,9 +1,33 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import * as models from "../generated/model";
+import * as barrel from "./index";
+import * as mswBarrel from "./msw";
+import * as zodBarrel from "./zod";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+const tagsIn = (dir: string) =>
+  readdirSync(join(here, dir), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+
+const load = (path: string): Promise<Record<string, unknown>> => import(/* @vite-ignore */ join(here, path));
+
+// The tags whose generated module exports something missing from (or different in) a flat barrel.
+const missingFromFlat = async (barrelModule: object, tags: string[], pathOf: (tag: string) => string) => {
+  const missing: string[] = [];
+  for (const tag of tags) {
+    const generated = await load(pathOf(tag));
+    const absent = Object.entries(generated).some(
+      ([name, value]) => (barrelModule as Record<string, unknown>)[name] !== value,
+    );
+    if (absent) missing.push(tag);
+  }
+  return missing;
+};
 
 // The barrel is hand-written (one `export * as <tag>Api` per generated tag) because the
 // namespacing is deliberate — orval repeats its fetch-client helper enums in every tag
@@ -13,29 +37,30 @@ const here = dirname(fileURLToPath(import.meta.url));
 // `help` endpoint module that nothing exported, and the failure surfaced as "Module
 // '@loomarr/api' has no exported member 'helpApi'" only when a page finally tried to use
 // it. A generated module nobody can import is indistinguishable from an endpoint that
-// was never built.
+// was never built. Each check loads the generated modules and the barrel and compares what they
+// export at runtime.
 describe("@loomarr/api barrel", () => {
-  it("does not load every generated DTO as a runtime module", () => {
-    const barrel = readFileSync(join(here, "index.ts"), "utf8");
-
-    // Orval emits enum-like DTO fields as runtime objects, so its model index is not type-only by
-    // construction. A plain `export *` pulled every one of those files into Vite's startup graph:
-    // opening the Guide waited for unrelated backup, database and filler DTO modules before auth
-    // could even begin. Types disappear after compilation; the few enum objects used at runtime
-    // are re-exported explicitly below the type star.
-    expect(barrel).toContain('export type * from "../generated/model";');
-    expect(barrel).not.toMatch(/^export \* from "\.\.\/generated\/model";$/m);
+  // Orval emits enum-like DTO fields as runtime objects, so its model index is not type-only by
+  // construction. A plain `export *` pulled every one of those files into Vite's startup graph:
+  // opening the Guide waited for unrelated backup, database and filler DTO modules before auth
+  // could even begin. Types disappear after compilation; the few enum objects used at runtime
+  // are re-exported explicitly.
+  it("does not re-export every generated DTO at runtime", () => {
+    const runtimeModels = Object.keys(models);
+    const onBarrel = runtimeModels.filter((name) => name in barrel);
+    expect(runtimeModels.length).toBeGreaterThan(0);
+    expect(onBarrel.length, "the barrel re-exports the generated model index at runtime").toBeLessThan(
+      runtimeModels.length,
+    );
   });
 
-  it("exports a namespace for every generated endpoint tag", () => {
-    const generated = readdirSync(join(here, "../generated/endpoints"), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-    const barrel = readFileSync(join(here, "index.ts"), "utf8");
-
-    const missing = generated.filter(
-      (tag) => !barrel.includes(`from "../generated/endpoints/${tag}/${tag}"`),
-    );
+  it("exports a namespace for every generated endpoint tag", async () => {
+    const namespaces: unknown[] = Object.values(barrel);
+    const missing: string[] = [];
+    for (const tag of tagsIn("../generated/endpoints")) {
+      const generated = await load(`../generated/endpoints/${tag}/${tag}.ts`);
+      if (!namespaces.includes(generated)) missing.push(tag);
+    }
     expect(missing, `generated but not exported from the barrel: ${missing.join(", ")}`).toEqual([]);
   });
 
@@ -44,16 +69,11 @@ describe("@loomarr/api barrel", () => {
   // directory, not the endpoint one: they are deliberately not the same set — `events` is SSE and
   // has no request/response schemas to generate, so comparing against endpoints would fail forever
   // on a tag that is correct to be absent.
-  it("exports every generated zod tag", () => {
-    const generated = readdirSync(join(here, "../generated/zod"), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-    const barrel = readFileSync(join(here, "zod/index.ts"), "utf8");
-
-    // ⚠ `../../` — the zod barrel is a folder module (`src/zod/index.ts`) per this repo's
-    // folder-per-module rule, so it sits one level deeper than the endpoint barrel above.
-    const missing = generated.filter(
-      (tag) => !barrel.includes(`from "../../generated/zod/${tag}/${tag}.zod"`),
+  it("exports every generated zod tag", async () => {
+    const missing = await missingFromFlat(
+      zodBarrel,
+      tagsIn("../generated/zod"),
+      (tag) => `../generated/zod/${tag}/${tag}.zod.ts`,
     );
     expect(missing, `generated but not exported from the zod barrel: ${missing.join(", ")}`).toEqual([]);
   });
@@ -62,14 +82,11 @@ describe("@loomarr/api barrel", () => {
   // different. MSW handlers exist for every endpoint tag including `events` (it has routes even
   // though it carries no request/response schemas), so the zod list is the odd one out and using
   // it here would let a whole tag's handlers go unexported without anything noticing.
-  it("exports every generated msw tag", () => {
-    const generated = readdirSync(join(here, "../generated/endpoints"), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-    const barrel = readFileSync(join(here, "msw/index.ts"), "utf8");
-
-    const missing = generated.filter(
-      (tag) => !barrel.includes(`from "../../generated/endpoints/${tag}/${tag}.msw"`),
+  it("exports every generated msw tag", async () => {
+    const missing = await missingFromFlat(
+      mswBarrel,
+      tagsIn("../generated/endpoints"),
+      (tag) => `../generated/endpoints/${tag}/${tag}.msw.ts`,
     );
     expect(missing, `generated but not exported from the msw barrel: ${missing.join(", ")}`).toEqual([]);
   });

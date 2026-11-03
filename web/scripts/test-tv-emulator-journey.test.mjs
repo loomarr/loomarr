@@ -10,7 +10,6 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const journey = readFileSync(new URL("test-tv-emulator-journey.sh", import.meta.url), "utf8");
-const server = readFileSync(new URL("tv-emulator-fixture-server.mjs", import.meta.url), "utf8");
 const serverPath = fileURLToPath(new URL("tv-emulator-fixture-server.mjs", import.meta.url));
 
 const listen = (server, port, host) =>
@@ -18,6 +17,42 @@ const listen = (server, port, host) =>
     server.once("error", reject);
     server.listen(port, host, resolve);
   });
+
+// startFixture runs the journey's fixture server on a free port, discovery off, and returns its
+// base URL with a stop function that also removes its media directory.
+const startFixture = async () => {
+  const reservation = createServer();
+  const mediaDirectory = mkdtempSync(join(tmpdir(), "loomarr-tv-fixture-"));
+  await listen(reservation, 0, "127.0.0.1");
+  const { port } = reservation.address();
+  await new Promise((resolve) => reservation.close(resolve));
+  const fixture = spawn(
+    process.execPath,
+    [serverPath, String(port), mediaDirectory, "127.0.0.1", "disabled"],
+    {
+      stdio: "ignore",
+    },
+  );
+  const base = `http://127.0.0.1:${port}`;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const ready = await fetch(`${base}/__journey`).then(
+      (response) => response.ok,
+      () => false,
+    );
+    if (ready) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const stop = async () => {
+    if (fixture.exitCode === null) {
+      fixture.kill("SIGTERM");
+      await once(fixture, "exit");
+    }
+    rmSync(mediaDirectory, { force: true, recursive: true });
+  };
+  return { base, stop };
+};
+
+const journeyState = async (base) => (await fetch(`${base}/__journey`)).json();
 
 const bind = (socket, port, host) =>
   new Promise((resolve, reject) => {
@@ -74,40 +109,50 @@ describe("TV emulator journey", () => {
     assert.match(journey, /key KEYCODE_BACK/);
     assert.match(journey, /key KEYCODE_DPAD_LEFT/);
     assert.equal(journey.match(/key KEYCODE_7/g)?.length, 2);
-    assert.match(server, /Classic Animation", 77/);
     assert.match(journey, /key KEYCODE_HOME/);
   });
 
-  it("asserts rendered UI and authenticated server effects rather than timing alone", () => {
+  it("asserts rendered UI and server effects rather than timing alone", () => {
     assert.match(journey, /uiautomator dump/);
     assert.match(journey, /wait_for_ui/);
     assert.match(journey, /wait_for_state/);
-    assert.match(server, /request\.headers\.authorization === `Bearer \$\{deviceToken\}`/);
-    assert.match(server, /state\.playUrlChannels\.push\(channelId\)/);
-    assert.match(server, /state\.eventDisconnects \+= 1/);
-    assert.match(server, /state\.revocations \+= 1/);
+  });
+
+  // The journey's number entry types 7 7 and waits on the fixture's recorded effects, so the
+  // fixture must serve channel 77 and record each effect only for the paired device's token.
+  it("records the authenticated effects the journey waits on", async () => {
+    const { base, stop } = await startFixture();
+    try {
+      const headers = { authorization: "Bearer journey-device-token" };
+      assert.equal((await fetch(`${base}/v1/channels`)).status, 401);
+      assert.equal((await fetch(`${base}/v1/auth/device`, { method: "DELETE" })).status, 401);
+
+      const { channels } = await (await fetch(`${base}/v1/channels`, { headers })).json();
+      assert.ok(channels.some(({ name, number }) => name === "Classic Animation" && number === 77));
+
+      await fetch(`${base}/v1/channels/classic-animation/play-url`, { method: "POST", headers });
+      const events = new AbortController();
+      const stream = await fetch(`${base}/v1/events`, { headers, signal: events.signal });
+      assert.equal(stream.status, 200);
+      events.abort();
+      assert.equal((await fetch(`${base}/v1/auth/device`, { method: "DELETE", headers })).status, 204);
+
+      let state = await journeyState(base);
+      for (let attempt = 0; attempt < 40 && state.eventDisconnects === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        state = await journeyState(base);
+      }
+      assert.deepEqual(state.playUrlChannels, ["classic-animation"]);
+      assert.equal(state.eventDisconnects, 1);
+      assert.equal(state.revocations, 1);
+    } finally {
+      await stop();
+    }
   });
 
   it("serves the Guide window the app asks for, so paging is observable (#1659 decision N4)", async () => {
-    const reservation = createServer();
-    const mediaDirectory = mkdtempSync(join(tmpdir(), "loomarr-tv-guide-fixture-"));
-    let fixture;
+    const { base, stop } = await startFixture();
     try {
-      await listen(reservation, 0, "127.0.0.1");
-      const { port } = reservation.address();
-      await new Promise((resolve) => reservation.close(resolve));
-      fixture = spawn(process.execPath, [serverPath, String(port), mediaDirectory, "127.0.0.1", "disabled"], {
-        stdio: "ignore",
-      });
-      const base = `http://127.0.0.1:${port}`;
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const ready = await fetch(`${base}/__journey`).then(
-          (response) => response.ok,
-          () => false,
-        );
-        if (ready) break;
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
       const headers = { authorization: "Bearer journey-device-token" };
       const live = await (await fetch(`${base}/v1/guide`, { headers })).json();
       const from = live.toMs;
@@ -121,14 +166,10 @@ describe("TV emulator journey", () => {
         ["later-first", "later-second"],
       );
       assert.deepEqual([science.airings[0].startMs, science.airings[0].stopMs], [from, to]);
-      const state = await (await fetch(`${base}/__journey`)).json();
+      const state = await journeyState(base);
       assert.deepEqual(state.guideWindows.at(-1), { fromMs: from, toMs: to });
     } finally {
-      if (fixture?.exitCode === null) {
-        fixture.kill("SIGTERM");
-        await once(fixture, "exit");
-      }
-      rmSync(mediaDirectory, { force: true, recursive: true });
+      await stop();
     }
   });
 
