@@ -143,14 +143,14 @@ const PreviewPlaybar = ({
                     accessibilityLabel={
                       seek ? `Seek to ${name}` : name.charAt(0).toUpperCase() + name.slice(1)
                     }
-                    accessibilityRole={seek ? "button" : undefined}
                     focusable={seek !== undefined}
                     key={segment.id}
-                    // A labelled preview tile, not a control: a group names it without claiming an action.
-                    role="group"
                     onHoverIn={pointer ? () => hover(segment.id) : undefined}
                     onHoverOut={pointer ? () => hover(undefined) : undefined}
                     onPress={seek}
+                    // A past tile seeks, so it is a button; any other is a labelled preview, a group
+                    // that names it without claiming an action.
+                    role={seek ? "button" : "group"}
                     style={{
                       borderRadius: 6,
                       height: "100%",
