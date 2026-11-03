@@ -311,7 +311,7 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := loadProtectedSettings(ctx, st, reg, protection)
+		rows, err := openProtectedSettings(ctx, st, reg, protection)
 		if err != nil {
 			return nil, err
 		}

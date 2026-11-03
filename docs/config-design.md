@@ -294,12 +294,13 @@ credential-bearing webhook URLs. Provider definitions classify fields; a client-
 map cannot downgrade a secret to plaintext configuration. Sessions, device credentials,
 Invitation grants, and password-recovery grants remain one-way hashes and are not encrypted.
 
-The first encryption-aware startup migrates legacy plaintext setting secrets transactionally after
-the installation key and initial wrapped DEK are valid. A versioned envelope makes the migration
-idempotent. Missing keys, authentication failure, unknown envelope versions, or incomplete
-migration stop readiness without clearing or overwriting durable values. Rewriting rows cannot
-erase plaintext already present in old backups, replicas, SQLite free pages, or WAL history;
-operators whose threat model includes those artifacts rotate the upstream credentials after upgrade.
+Startup does not seal plaintext setting secrets. A protected setting stored as plaintext predates
+encrypted settings (v0.2.0-beta.1); boot fails closed with one error per such key, never printing the
+value, telling the operator to upgrade through a v0.2.x release first or clear that setting and
+re-enter it. Missing keys, authentication failure, or unknown envelope versions likewise stop
+readiness without clearing or overwriting durable values. Sealing a value cannot erase plaintext
+already present in old backups, replicas, SQLite free pages, or WAL history; operators whose threat
+model includes those artifacts rotate the upstream credentials.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
