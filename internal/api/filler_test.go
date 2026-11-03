@@ -347,6 +347,7 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 		Auth:               testAuthorizer{},
 		Log:                slog.New(slog.DiscardHandler),
 		Filler:             ff,
+		SourceProviders:    testSourceProviders(t),
 		Images:             imageService,
 		LiveConfig:         liveConfig,
 		LiveConfigDuration: liveConfigDuration,

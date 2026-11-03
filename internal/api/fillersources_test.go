@@ -15,6 +15,8 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -39,6 +41,8 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []catalogstore.C
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveConfig:   func(k string) string { return cfg[k] },
+
+		SourceProviders: testSourceProviders(t),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -453,6 +457,8 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
 		LiveConfig:   func(k string) string { return cfg[k] },
+
+		SourceProviders: testSourceProviders(t),
 	})
 	readSources := func() sourcesBody {
 		req := httptest.NewRequest(http.MethodGet, "/v1/filler/sources", nil)
@@ -693,5 +699,64 @@ func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
 	}
 	if ff.syncs != 0 {
 		t.Fatalf("catalog synced %d times after acquisition failed, want 0", ff.syncs)
+	}
+}
+
+// testSourceProviders is the registry a server under test publishes: the production providers'
+// shapes, with no network behind them.
+func testSourceProviders(t *testing.T) *sourceprovider.Registry {
+	t.Helper()
+	registry, err := sourceprovider.NewRegistry(
+		archiveprovider.New(archiveprovider.Config{}),
+		youtubeprovider.New(nil),
+		sourceprovider.Folder(),
+		sourceprovider.Library(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+// The web asks the server which providers exist and what each can do, instead of carrying its own
+// list: a provider added to the registry shows up with no client change.
+func TestListFillerProviders_PublishesTheRegistry(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET providers → %d: %s", resp.StatusCode, readBody(t, resp))
+	}
+	var got struct {
+		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(got.Providers))
+	byID := map[string]api.FillerProviderDescriptionDTO{}
+	for i, p := range got.Providers {
+		ids[i] = p.ID
+		byID[p.ID] = p
+	}
+	if strings.Join(ids, ",") != "archive,youtube,folder,library" {
+		t.Fatalf("provider ids = %v, want the registry's order", ids)
+	}
+	archive := byID["archive"]
+	if archive.Label != "Archive.org" || !archive.Fetched || !archive.Listable || !archive.Searchable || !archive.Discoverable || archive.OpenSearchable {
+		t.Errorf("archive = %+v, want fetched, listable, searchable and discoverable", archive)
+	}
+	if youtube := byID["youtube"]; !youtube.Fetched || !youtube.Listable || youtube.Searchable || !youtube.Discoverable {
+		t.Errorf("youtube = %+v, want fetched and discoverable, not searchable in place", youtube)
+	}
+	folder := byID["folder"]
+	if folder.Fetched || folder.Listable || folder.Searchable || folder.Discoverable || !folder.Addable {
+		t.Errorf("folder = %+v, want scanned in place, never fetched, and addable by hand", folder)
+	}
+}
+
+func TestListFillerProviders_IsAdminOnly(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers", memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member GET providers → %d, want 403", resp.StatusCode)
 	}
 }
