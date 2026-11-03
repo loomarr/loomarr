@@ -292,8 +292,9 @@ const createNativePlayerTransport = (
     audioSubscription = undefined;
     activeAttemptId = undefined;
     player = undefined;
-    current.release();
+    // Before the release: a listener lets go of the player while it can still be read.
     for (const listener of playerListeners) listener();
+    current.release();
   };
 
   attachPlayer(initialPlayer);
@@ -468,15 +469,26 @@ const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
  * player picks the rung itself and lets no client choose one. Undefined until a track is known.
  */
 const useNativeVideoHeight = (transport: NativePlayerTransport): number | undefined => {
-  const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
   const [height, setHeight] = useState<number>();
   useEffect(() => {
-    setHeight(player?.videoTrack?.size.height);
-    const subscription = player?.addListener("videoTrackChange", ({ videoTrack }) =>
-      setHeight(videoTrack?.size.height),
-    );
-    return () => subscription?.remove();
-  }, [player]);
+    // The player as it is now, not as it was at render: a launch in the background releases the
+    // first player before this effect runs, and reading a released player throws.
+    let subscription: { remove: () => void } | undefined;
+    const follow = () => {
+      subscription?.remove();
+      const player = transport.getPlayer();
+      setHeight(player?.videoTrack?.size.height);
+      subscription = player?.addListener("videoTrackChange", ({ videoTrack }) =>
+        setHeight(videoTrack?.size.height),
+      );
+    };
+    follow();
+    const unsubscribe = transport.subscribePlayer(follow);
+    return () => {
+      unsubscribe();
+      subscription?.remove();
+    };
+  }, [transport]);
   return height;
 };
 

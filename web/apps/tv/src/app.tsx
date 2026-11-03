@@ -202,9 +202,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   }, [ident, hideControls]);
   // Info, Settings or Playback info over the picture's right edge; the controls stay up under it.
   const [sheet, setSheet] = useState<"info" | "playback-info" | "settings">();
-  // From the rendered sheet, not an updater: Android TV delivers one OK to a Pressable twice (its
-  // press-out and a click), and a second toggle would close what the first opened.
-  const toggleSheet = (next: "info" | "settings") => setSheet(sheet === next ? undefined : next);
+  const toggleSheet = (next: "info" | "settings") => setSheet((open) => (open === next ? undefined : next));
   const channelId = snapshot.channel?.id;
   // A new channel closes the sheet: it described the one left behind.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the channel is the trigger, not an input.
