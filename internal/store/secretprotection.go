@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const secretDataKeyLockName = "loomarr:secret-data-key"
@@ -200,10 +201,7 @@ func (s *sqlStore) ReplaceWrappedDataKeys(
 }
 
 func (s *sqlStore) lockSecretDataKeys(ctx context.Context, tx *sql.Tx) error {
-	if s.dialect != DialectPostgres {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(current_database() || ':' || $1, 0))`, secretDataKeyLockName); err != nil {
+	if err := storedb.XactLock(ctx, s.dialect, tx, `SELECT pg_advisory_xact_lock(hashtextextended(current_database() || ':' || $1, 0))`, secretDataKeyLockName); err != nil {
 		return fmt.Errorf("lock secret data keys: %w", err)
 	}
 	return nil

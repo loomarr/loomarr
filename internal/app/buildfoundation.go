@@ -14,9 +14,9 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -38,7 +38,7 @@ type foundationBuild struct {
 	readGeneratedSecret    func(context.Context, settings.GeneratedSecret) (string, error)
 	eventBus               *events.Bus
 	emitter                *eventEmitter
-	jobs                   *scheduler.Registry
+	jobs                   *jobs.Registry
 	activity               *activity.Recorder
 	diagnostics            *diagnostics.Recorder
 	diagnosticEvents       *diagnostics.EventLog
@@ -211,7 +211,7 @@ func buildFoundation(
 	result.eventBus = events.NewBus()
 	result.emitter = &eventEmitter{bus: result.eventBus}
 	result.startup.SetHealthNotifier(result.emitter.HealthChanged)
-	result.jobs = scheduler.NewRegistry()
+	result.jobs = jobs.NewRegistry()
 	if st != nil {
 		// Dynamic secret redaction wraps the fan-out rather than only stdout. Both durable events
 		// and JSON output therefore receive the same scrubbed record, while the recorder failure

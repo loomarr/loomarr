@@ -5,15 +5,17 @@ package playout
 import (
 	"os"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // probeEncoder is the encoder the live class probe runs on: software by default (every CI host),
 // LOOMARR_PROBE_ENCODER=h264_nvenc or h264_vaapi on a GPU host.
-func probeEncoder() Encoder {
+func probeEncoder() encode.Encoder {
 	if e := os.Getenv("LOOMARR_PROBE_ENCODER"); e != "" {
-		return Encoder(e)
+		return encode.Encoder(e)
 	}
-	return EncoderSoftware
+	return encode.EncoderSoftware
 }
 
 // The probe must MEASURE: a class it reports has a real speed and real CPU, and the HDR clip ran
@@ -42,7 +44,7 @@ func TestLive_ClassProbeMeasuresEveryClassAndSelfChecksTonemap(t *testing.T) {
 			// provable without the class actually keeping up: the probe must have recorded why, via
 			// probeDeadlineReason, not swallowed the failure or blamed something else. A GPU host
 			// clears every class well inside the window, so this stays strict there.
-			if IsSoftwareEncoder(enc) && deadlineKilled(res.Failures, class) {
+			if encode.IsSoftware(enc) && deadlineKilled(res.Failures, class) {
 				t.Logf("%s not measured: its own probe deadline killed it on this software host (acceptable): %v", class, res.Failures)
 				continue
 			}
@@ -73,7 +75,7 @@ func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
 	res := ProbeClassCosts(t.Context(), cfg)
 	c, ok := res.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}]
 	t.Logf("premium: %+v (measured %v); failures: %v", c, ok, res.Failures)
-	if IsSoftwareEncoder(enc) {
+	if encode.IsSoftware(enc) {
 		if ok {
 			t.Fatalf("a software host measured a premium it never airs: %+v", c)
 		}
@@ -92,7 +94,7 @@ func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
 func TestLive_SessionLimitProbe(t *testing.T) {
 	bin := ffmpegBin(t)
 	enc := probeEncoder()
-	if IsSoftwareEncoder(enc) {
+	if encode.IsSoftware(enc) {
 		n, err := ProbeSessionLimit(t.Context(), SessionProbeConfig{FFmpeg: bin, Encoder: enc, Bound: SessionProbeBound, InUse: EncoderSessionsInUse(enc)})
 		if n != 0 || err != nil {
 			t.Fatalf("software host session limit = %d, %v; want 0 (no limit), no probe", n, err)

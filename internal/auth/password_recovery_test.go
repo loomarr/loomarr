@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 const recoveryToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -16,20 +17,20 @@ const recoveryToken = "0123456789abcdef0123456789abcdef0123456789abcdef012345678
 func TestPasswordRecoveryRequest_OnlyEligibleLocalPersonCreatesRecord(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	seedLocal(t, st, "local", "Ada", "original-password", store.RoleMember)
-	seedLocal(t, st, "disabled", "Disabled", "original-password", store.RoleMember)
+	seedLocal(t, st, "local", "Ada", "original-password", identitystore.RoleMember)
+	seedLocal(t, st, "disabled", "Disabled", "original-password", identitystore.RoleMember)
 	disabled, _ := st.GetUser(ctx, "disabled")
 	disabled.Disabled = true
 	if err := st.UpsertUser(ctx, disabled); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertUser(ctx, store.User{
-		ID: "imported", Name: "Imported", Role: store.RoleMember, MediaServerLinked: true,
+	if err := st.UpsertUser(ctx, identitystore.User{
+		ID: "imported", Name: "Imported", Role: identitystore.RoleMember, MediaServerLinked: true,
 		PasswordHash: "$argon2id$offline", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	seedLocal(t, st, "contactless", "Contactless", "original-password", store.RoleMember)
+	seedLocal(t, st, "contactless", "Contactless", "original-password", identitystore.RoleMember)
 	verifyRecoveryContact(t, st, "local", "ada@example.com")
 
 	n := 0
@@ -56,7 +57,7 @@ func TestPasswordRecoveryRequest_OnlyEligibleLocalPersonCreatesRecord(t *testing
 func TestPasswordRecoveryGrant_RedeemsArgon2idAndCannotBeReused(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	seedLocal(t, st, "local", "Ada", "original-password", store.RoleMember)
+	seedLocal(t, st, "local", "Ada", "original-password", identitystore.RoleMember)
 	verifyRecoveryContact(t, st, "local", "ada@example.com")
 	svc := NewPasswordRecoveryService(st, func() string { return "recovery-id" },
 		func() (string, error) { return recoveryToken, nil }, func() time.Time { return now })
@@ -87,7 +88,7 @@ func TestPasswordRecoveryGrant_RedeemsArgon2idAndCannotBeReused(t *testing.T) {
 func TestPasswordRecoveryGrant_WeakPasswordDoesNotConsume(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	seedLocal(t, st, "local", "Ada", "original-password", store.RoleMember)
+	seedLocal(t, st, "local", "Ada", "original-password", identitystore.RoleMember)
 	verifyRecoveryContact(t, st, "local", "ada@example.com")
 	svc := NewPasswordRecoveryService(st, func() string { return "recovery-id" },
 		func() (string, error) { return recoveryToken, nil }, func() time.Time { return now })

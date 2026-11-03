@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -206,10 +207,10 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get imported admin: %v", err)
 	}
-	if member.Role != store.RoleAdmin {
+	if member.Role != identitystore.RoleAdmin {
 		t.Fatalf("media-server admin initial role = %q, want admin", member.Role)
 	}
-	member.Role = store.RoleMember
+	member.Role = identitystore.RoleMember
 	member.Quota = 7
 	member.AutoApprove = true
 	if err := st.UpsertUser(context.Background(), member); err != nil {
@@ -224,7 +225,7 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get re-imported admin: %v", err)
 	}
-	if preserved.Role != store.RoleMember || preserved.Quota != 7 || !preserved.AutoApprove {
+	if preserved.Role != identitystore.RoleMember || preserved.Quota != 7 || !preserved.AutoApprove {
 		t.Errorf("re-import overwrote Loomarr choices: role=%q quota=%d autoApprove=%v",
 			preserved.Role, preserved.Quota, preserved.AutoApprove)
 	}

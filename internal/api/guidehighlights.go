@@ -272,7 +272,7 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 	}
 	// Nothing airs on a paused or removed channel.
 	channels = slices.DeleteFunc(channels, func(ch store.Channel) bool {
-		return ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached
+		return !ch.Status.Reconcilable()
 	})
 	// The same bounded fan-out as the guide: each timeline is CPU-bound schedule arithmetic.
 	airings := make([]channelAirings, len(channels))

@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -29,7 +30,7 @@ func TestPackagerSourceWatermarksProgrammesOnly(t *testing.T) {
 		s := packagerSource{watermark: testWatermarks(t, ch, tc.gatePassed).For}
 		var wm *playout.Watermark
 		if resolve := s.watermarkFor("ch", tc.airing); resolve != nil {
-			wm = resolve(t.Context(), playout.EncoderNVENC, 1920, 1080)
+			wm = resolve(t.Context(), encode.EncoderNVENC, 1920, 1080)
 		}
 		if (wm != nil) != tc.want {
 			t.Errorf("%s: bug = %+v, want one: %v", tc.name, wm, tc.want)
@@ -41,7 +42,7 @@ func TestPackagerSourceWatermarksProgrammesOnly(t *testing.T) {
 // capacity probe measured (ToneCurve), as the retired programme route did; not the default.
 func TestPackagerSourceOutputCarriesTheToneCurve(t *testing.T) {
 	s := packagerSource{res: &playoutResolver{
-		encoder:   func() string { return string(playout.EncoderNVENC) },
+		encoder:   func() string { return string(encode.EncoderNVENC) },
 		tier:      func() string { return "balanced" },
 		toneCurve: func() string { return string(playout.ToneCurveBT2390) },
 	}}

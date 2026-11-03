@@ -29,7 +29,7 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	}
 	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
 		ClipDir: root, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
-		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Recipe: mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine()), Tool: tool,
 		Probe: func(context.Context, string) (Probed, error) {
 			return Probed{DurationMs: 61_000, Height: 480}, nil
 		},

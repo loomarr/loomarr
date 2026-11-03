@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -131,8 +132,10 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// VALUES; we validate + clamp them (off-ladder ceiling dropped, series
 	// intersected with grounded ids) before they become a ChannelPolicy. A
 	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
-	holidays := s.holidays.Current()
+	calendar := s.householdCalendar()
+	holidays := calendar.Vocab()
 	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent, holidays)
+	prop.Policy.Seasonal, prop.SeasonNotKept = seasonKeptIn(prop.Policy.Seasonal, calendar)
 	// The validated date meaning is the only source of a proposal's date scope;
 	// the model's policy carries none.
 	if meaning.DateMeaning().Kind == DateMeaningConstraints {
@@ -362,7 +365,12 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	switch schedule.SeasonalMode(raw.Seasonal.Mode) {
 	case schedule.SeasonalOff, schedule.SeasonalAuto, schedule.SeasonalExclusive:
 		p.Seasonal.Mode = schedule.SeasonalMode(raw.Seasonal.Mode)
-		p.Seasonal.Holidays = raw.Seasonal.Holidays
+		p.Seasonal.Holidays = knownHolidayIDs(raw.Seasonal.Holidays, holidays)
+		// An exclusive channel whose every named holiday was unknown is not exclusive to every
+		// holiday, which is what an empty subset means.
+		if p.Seasonal.Mode == schedule.SeasonalExclusive && len(raw.Seasonal.Holidays) > 0 && len(p.Seasonal.Holidays) == 0 {
+			p.Seasonal = schedule.SeasonalPolicy{}
+		}
 	}
 	if intentPolicy.seasonal.Mode != "" {
 		p.Seasonal = intentPolicy.seasonal
@@ -395,6 +403,20 @@ const (
 // rule's audience STRICTER-ONLY against the channel ceiling (§4 — a rule can never raise it,
 // enforced here AND at §4 enforcement, defense in depth). A series WHAT is intersected with
 // the grounded picks. Returns nil when nothing survives (⇒ base whole-policy behavior).
+// knownHolidayIDs is the model's holiday ids that name a holiday programming can choose, read
+// loosely ("Christmas" is christmas). An id no definition has, or a group's, is dropped.
+func knownHolidayIDs(raw []string, holidays holidayvocab.Vocabulary) []string {
+	var out []string
+	for _, id := range raw {
+		id = strings.ToLower(strings.TrimSpace(id))
+		known := slices.ContainsFunc(holidays.Definitions(), func(d holidayvocab.Definition) bool { return d.ID == id })
+		if known && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
 	if len(raw) == 0 {
 		return nil

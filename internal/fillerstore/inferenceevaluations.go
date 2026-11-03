@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 type InferenceEvaluationState string
@@ -116,10 +117,7 @@ func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, 
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_inference_budget_guards (scope) VALUES (?) ON CONFLICT(scope) DO NOTHING`), scope); err != nil {
 			return InferenceEvaluation{}, fmt.Errorf("create inference budget guard: %w", err)
 		}
-		lockSQL := `SELECT scope FROM filler_inference_budget_guards WHERE scope = ?`
-		if s.dialect == store.DialectPostgres {
-			lockSQL += ` FOR UPDATE`
-		}
+		lockSQL := storedb.LockRows(s.dialect, `SELECT scope FROM filler_inference_budget_guards WHERE scope = ?`)
 		var locked string
 		if err := tx.QueryRowContext(ctx, s.ph(lockSQL), scope).Scan(&locked); err != nil {
 			return InferenceEvaluation{}, fmt.Errorf("lock inference budget guard: %w", err)
@@ -286,10 +284,7 @@ func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx store.Tx, i
 	}
 	var reserved int64
 	var state string
-	q := `SELECT reserved_nano_usd, state FROM filler_inference_evaluations WHERE id = ?`
-	if s.dialect == store.DialectPostgres {
-		q += ` FOR UPDATE`
-	}
+	q := storedb.LockRows(s.dialect, `SELECT reserved_nano_usd, state FROM filler_inference_evaluations WHERE id = ?`)
 	if err := tx.QueryRowContext(ctx, s.ph(q), id).Scan(&reserved, &state); errors.Is(err, sql.ErrNoRows) {
 		return InferenceEvaluation{}, false, store.ErrNotFound
 	} else if err != nil {

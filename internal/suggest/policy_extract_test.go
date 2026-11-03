@@ -1,6 +1,7 @@
 package suggest
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -64,6 +65,69 @@ func TestGroundPolicy_UnknownEnumsDropped(t *testing.T) {
 	}
 	if p.Seasonal.Mode != schedule.SeasonalDefault {
 		t.Errorf("unknown seasonal mode should be dropped, got %q", p.Seasonal.Mode)
+	}
+}
+
+// The model's holiday ids are read loosely and held to the definitions: "Christmas" is christmas,
+// an id no holiday has (or a group, which has no window of its own) is dropped, and an exclusive
+// policy left with none is the default rather than exclusive to every holiday.
+func TestGroundPolicy_ModelHolidayIdsAreHeldToTheDefinitions(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		holidays []string
+		want     schedule.SeasonalPolicy
+	}{
+		{"case and space", []string{" Christmas "}, schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}}},
+		{"an unknown id is dropped", []string{"xmas", "halloween"}, schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"halloween"}}},
+		{"a group is dropped", []string{holidayvocab.GenericHoliday}, schedule.SeasonalPolicy{}},
+		{"none known", []string{"new-year"}, schedule.SeasonalPolicy{}},
+		{"none named is every holiday", nil, schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive}},
+	} {
+		raw := &pickPolicy{}
+		raw.Seasonal.Mode = "exclusive"
+		raw.Seasonal.Holidays = tc.holidays
+		p := groundPolicy(raw, nil, nil, Intent{Description: "cozy festive films"}, shipped)
+		if !reflect.DeepEqual(p.Seasonal, tc.want) {
+			t.Errorf("%s: seasonal = %+v, want %+v", tc.name, p.Seasonal, tc.want)
+		}
+	}
+}
+
+// #2030 decision 38, at the edges: only an exclusive subset is held to the country. "Every
+// holiday" already means every holiday the country keeps; a group is kept where a member is; an
+// undated holiday is kept nowhere.
+func TestSeasonKeptIn(t *testing.T) {
+	undated, err := holidayvocab.New(append(shipped.Holidays(), holidayvocab.Holiday{ID: "harvest", Label: "Harvest"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gb := schedule.Calendar{Country: "GB", Holidays: &undated}
+	for _, tc := range []struct {
+		name    string
+		in      schedule.SeasonalPolicy
+		want    schedule.SeasonalPolicy
+		notKept []string
+	}{
+		{"auto is untouched", schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto, Holidays: []string{"thanksgiving"}},
+			schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto, Holidays: []string{"thanksgiving"}}, nil},
+		{"every holiday is untouched", schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive},
+			schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive}, nil},
+		{"a group a member keeps", schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{holidayvocab.GenericHoliday}},
+			schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{holidayvocab.GenericHoliday}}, nil},
+		{"an undated holiday", schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"harvest"}},
+			schedule.SeasonalPolicy{}, []string{"Harvest"}},
+	} {
+		got, notKept := seasonKeptIn(tc.in, gb)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: seasonal = %+v, want %+v", tc.name, got, tc.want)
+		}
+		var labels []string
+		if notKept != nil {
+			labels = notKept.Holidays
+		}
+		if !reflect.DeepEqual(labels, tc.notKept) {
+			t.Errorf("%s: not kept = %v, want %v", tc.name, labels, tc.notKept)
+		}
 	}
 }
 

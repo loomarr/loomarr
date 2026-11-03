@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // Job is a persisted suggester generation task (§8). The worker pool claims
@@ -240,11 +242,8 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	query := jobSelect + ` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
-		ORDER BY deadline LIMIT ?`
-	if s.dialect == DialectPostgres {
-		query += ` FOR UPDATE SKIP LOCKED`
-	}
+	query := storedb.LockRowsSkipLocked(s.dialect, jobSelect+` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
+		ORDER BY deadline LIMIT ?`)
 	rows, err := tx.QueryContext(ctx, s.ph(query), epoch(now), limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim due jobs: select: %w", err)

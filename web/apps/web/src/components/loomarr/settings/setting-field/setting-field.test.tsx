@@ -130,6 +130,22 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("16777216");
   });
 
+  it("shows a plain number's registry-declared unit beside it and emits the number unchanged", () => {
+    const onChange = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ key: "filler.storage.library_budget_gb", kind: "int", unit: "GiB" })}
+        value="50"
+        onChange={onChange}
+      />,
+    );
+    const amount = screen.getByLabelText("Filler storage library budget gb");
+    expect(amount).toHaveValue(50);
+    expect(screen.getByText("GiB")).toBeInTheDocument();
+    fireEvent.change(amount, { target: { value: "60" } });
+    expect(onChange).toHaveBeenLastCalledWith("60");
+  });
+
   it("emits edits as strings", async () => {
     const onChange = vi.fn();
     render(<SettingField entry={entry()} value="" onChange={onChange} />);

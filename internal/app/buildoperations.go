@@ -15,11 +15,11 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -85,7 +85,7 @@ func buildOperations(
 	tmdbClient *tmdb.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	registry *scheduler.Registry,
+	registry *jobs.Registry,
 	owner *generationLifecycle,
 	playoutResolver *playoutResolver,
 	appliedBackend func(context.Context) (string, error),
@@ -132,12 +132,15 @@ func buildOperations(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
 	providerValidators = append(accountDelivery.validators, providerValidators...)
-	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	jobService, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	if err != nil {
+		return operationsBuild{}, err
+	}
 	triggerHealth := func(ctx context.Context) {
-		if jobs == nil {
+		if jobService == nil {
 			return
 		}
-		if err := jobs.Trigger(ctx, "system-health"); err != nil {
+		if err := jobService.Trigger(ctx, "system-health"); err != nil {
 			log.Warn("current health refresh after settings change could not be queued", "err", err)
 		}
 	}
@@ -155,7 +158,7 @@ func buildOperations(
 		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
 		invitationDelivery:   accountDelivery.invitations,
 		passwordRecovery:     accountDelivery.recovery,
-		jobs:                 jobs,
+		jobs:                 jobService,
 		database:             buildDatabase(st, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
 	}
@@ -265,18 +268,18 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	return residentLLMBuild{probe: probe, reclaim: reclaim}
 }
 
-func buildBackups(st store.Store, set resolved, jobs *scheduler.Registry, log *slog.Logger) api.BackupsService {
+func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) api.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
 		service := &backupsService{
 			w: writer, dir: func() string { return set.str("backup.dir") },
 			retain: func() int { return set.intv("backup.retain") },
 			sched:  func() string { return set.str("backup.schedule") },
 		}
-		jobs.Add(service.Job(log))
+		registry.Add(service.Job(log))
 		return service
 	}
 	if st != nil {
-		jobs.Add(unavailableBackupJob(
+		registry.Add(unavailableBackupJob(
 			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
 	return nil
@@ -412,31 +415,32 @@ func buildScheduler(
 	rootCtx context.Context,
 	st store.Store,
 	set resolved,
-	registry *scheduler.Registry,
+	registry *jobs.Registry,
 	emitter *eventEmitter,
 	owner *generationLifecycle,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) api.JobService {
+) (api.JobService, error) {
 	if st == nil {
-		return nil
+		return nil, nil
 	}
-	service := scheduler.New(st, registry, func(key, fallback string) string {
+	service := jobs.New(st, registry, func(key, fallback string) string {
 		if configured := set.str(key); configured != "" {
 			return configured
 		}
 		return fallback
 	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
-	if pool := store.PoolOf(st); pool != nil {
-		stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
-		if err != nil {
-			log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
-		} else {
-			owner.addStop(stop)
-		}
-	} else {
-		log.Error("scheduler: store exposes no pool — no job will run on its schedule")
+	// River is the only job executor: without it nothing runs on its schedule, so a failure to
+	// start fails the build rather than serving an app with a dead background.
+	pool := store.PoolOf(st)
+	if pool == nil {
+		return nil, errors.New("start River job queue: store exposes no database pool")
 	}
-	return jobsAdapter{s: service}
+	stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
+	if err != nil {
+		return nil, fmt.Errorf("start River job queue: %w", err)
+	}
+	owner.addStop(stop)
+	return jobsAdapter{s: service}, nil
 }

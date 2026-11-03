@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -26,7 +27,6 @@ func TestTranscodePreservesMeasuredGeometryCadenceAspectAndAVSkew(t *testing.T) 
 	}
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source.mkv")
-	output := filepath.Join(dir, "evidence.mp4")
 	command := exec.Command(ffmpeg, "-nostdin", "-v", "error",
 		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30000/1001:duration=3",
 		"-itsoffset", "0.120", "-f", "lavfi", "-i", "sine=frequency=700:sample_rate=48000:duration=2.88",
@@ -40,29 +40,58 @@ func TestTranscodePreservesMeasuredGeometryCadenceAspectAndAVSkew(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	recipe := mediatools.EvidenceDerivativeRecipe()
-	if _, err := mediatools.Transcode(context.Background(), mediatools.TranscodeRequest{
-		In: source, Out: output, DurationMs: input.DurationMs, HadAudio: true,
-		InputProbe: &input, Profile: recipe.Profile(), Probe: probe,
-	}, nil); err != nil {
-		t.Fatal(err)
-	}
-	got, err := probe(context.Background(), output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Width != input.Width || got.Height != input.Height || got.Cadence != input.Cadence ||
-		got.SampleAspect != input.SampleAspect || got.DisplayAspect != input.DisplayAspect {
-		t.Fatalf("input probe = %+v; evidence probe = %+v", input, got)
-	}
-	qc, err := mediatools.VerifyDerivative(context.Background(), ffmpeg, output, got.DurationMs,
-		recipe.KeyframeSeconds, !got.Silent, recipe.TargetLUFS)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !qc.FastStart || !qc.CompleteDecode || !qc.Seekable || !qc.Loudness.Available ||
-		qc.MaxVideoKeyframeGapMs > 1_250 {
-		t.Fatalf("derivative QC = %+v", qc)
+	// Software always; each hardware family where this host can encode on it (#2121).
+	for _, family := range []encode.Family{encode.FamilySoftware, encode.FamilyNVENC, encode.FamilyVAAPI} {
+		t.Run(string(family), func(t *testing.T) {
+			host := encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{})
+			switch family {
+			case encode.FamilyNVENC:
+				host = encode.HostFor(encode.EncoderNVENC, false, encode.GPUFilters{})
+			case encode.FamilyVAAPI:
+				host = encode.HostFor(encode.EncoderVAAPI, false, encode.GPUFilters{})
+			}
+			if family != encode.FamilySoftware {
+				upload := encode.UploadFilter(host.Encoder)
+				if upload == "" {
+					upload = "format=nv12"
+				}
+				if raw, err := exec.Command(ffmpeg, append(append([]string{"-v", "error"}, encode.DeviceInitArgs(host.Encoder)...),
+					"-f", "lavfi", "-i", "testsrc2=size=320x240:duration=0.2", "-vf", upload,
+					"-c:v", string(host.Encoder), "-f", "null", "-")...).CombinedOutput(); err != nil {
+					t.Skipf("%s cannot encode here: %.200s", family, raw)
+				}
+			}
+			profile := mediatools.DefaultMezzanine()
+			profile.Family, profile.Preset = family, ""
+			if family == encode.FamilySoftware {
+				profile = mediatools.DefaultMezzanine()
+			}
+			recipe := mediatools.EvidenceDerivativeRecipe(profile)
+			output := filepath.Join(dir, string(family)+"-evidence.mp4")
+			if _, err := mediatools.Transcode(context.Background(), mediatools.TranscodeRequest{
+				In: source, Out: output, DurationMs: input.DurationMs, HadAudio: true,
+				InputProbe: &input, Profile: recipe.Profile(), Host: host, Probe: probe,
+			}, nil); err != nil {
+				t.Fatal(err)
+			}
+			got, err := probe(context.Background(), output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Width != input.Width || got.Height != input.Height || got.Cadence != input.Cadence ||
+				got.SampleAspect != input.SampleAspect || got.DisplayAspect != input.DisplayAspect {
+				t.Fatalf("input probe = %+v; evidence probe = %+v", input, got)
+			}
+			qc, err := mediatools.VerifyDerivative(context.Background(), ffmpeg, output, got.DurationMs,
+				recipe.KeyframeSeconds, !got.Silent, recipe.TargetLUFS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !qc.FastStart || !qc.CompleteDecode || !qc.Seekable || !qc.Loudness.Available ||
+				qc.MaxVideoKeyframeGapMs > 1_250 {
+				t.Fatalf("derivative QC = %+v", qc)
+			}
+		})
 	}
 }
 
@@ -93,7 +122,7 @@ func TestTranscodeInterlacedFixturePreservesFieldOrderOrFailsClosed(t *testing.T
 		t.Fatalf("interlaced fixture field order = %q, want real interlaced observation", input.FieldOrder)
 	}
 	sourceIdentity := fixtureIdentity(t, source)
-	recipe := mediatools.EvidenceDerivativeRecipe()
+	recipe := mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine())
 	err = transcodeFixture(t, source, output, input, recipe, probe)
 	assertFixtureUnchanged(t, source, sourceIdentity)
 	if err == nil {
@@ -143,7 +172,7 @@ func TestTranscodeVariableFrameRateFixturePreservesFrameTiming(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceIdentity := fixtureIdentity(t, source)
-	recipe := mediatools.EvidenceDerivativeRecipe()
+	recipe := mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine())
 	err = transcodeFixture(t, source, output, input, recipe, probe)
 	assertFixtureUnchanged(t, source, sourceIdentity)
 	if err != nil {

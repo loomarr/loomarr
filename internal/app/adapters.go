@@ -11,12 +11,12 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -80,10 +80,10 @@ func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
 	return r.c.PokeGuideRefresh(ctx)
 }
 
-// jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
+// jobsAdapter adapts *jobs.Scheduler to api.JobService: it maps jobs.JobStatus →
 // api.JobView (so the api package doesn't import scheduler) and the unknown-job error to the
 // api sentinel. Thin, wiring-only.
-type jobsAdapter struct{ s *scheduler.Scheduler }
+type jobsAdapter struct{ s *jobs.Scheduler }
 
 func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	st, err := a.s.List(ctx)
@@ -105,7 +105,7 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 
 func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
 	history, err := a.s.History(ctx, name)
-	if errors.Is(err, scheduler.ErrUnknownJob) {
+	if errors.Is(err, jobs.ErrUnknownJob) {
 		return api.JobHistoryView{}, api.ErrJobNotFound
 	}
 	if err != nil {
@@ -131,9 +131,9 @@ func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryVi
 
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
 	switch err := a.s.SetPaused(ctx, name, paused); {
-	case errors.Is(err, scheduler.ErrUnknownJob):
+	case errors.Is(err, jobs.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case errors.Is(err, scheduler.ErrJobDisabled):
+	case errors.Is(err, jobs.ErrJobDisabled):
 		return api.ErrJobDisabled
 	default:
 		return err
@@ -142,9 +142,9 @@ func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) er
 
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	switch err := a.s.Trigger(ctx, name); {
-	case errors.Is(err, scheduler.ErrUnknownJob):
+	case errors.Is(err, jobs.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case errors.Is(err, scheduler.ErrJobDisabled):
+	case errors.Is(err, jobs.ErrJobDisabled):
 		return api.ErrJobDisabled
 	case err != nil:
 		return err
@@ -390,7 +390,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 // re-listing every collection's members for every entry, which is the N+1 the whole stamping
 // design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
 //
-// Membership is indexed under EVERY key form via reconcile.ScanItemKeys, because a member
+// Membership is indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member
 // carrying both provider ids must be findable under whichever key the lineup entry was born
 // with — the same parity problem the availability scan solves, and the same solution.
 //
@@ -440,7 +440,7 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			continue
 		}
 		for _, m := range members {
-			for _, k := range reconcile.ScanItemKeys(m) {
+			for _, k := range provisionbackstop.ScanItemKeys(m) {
 				idx[k] = append(idx[k], c.ID)
 			}
 		}

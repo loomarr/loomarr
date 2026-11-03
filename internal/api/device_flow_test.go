@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -35,8 +36,8 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		// The real approval gate, so a device's role is proven on approve/deny, not only on /me.
 		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
 

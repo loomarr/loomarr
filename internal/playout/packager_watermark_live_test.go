@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -29,7 +30,7 @@ type livePackager struct {
 	ctx      context.Context
 	bin, src string
 	dir      string
-	host     HostProfile
+	host     encode.HostProfile
 	out      OutputProfile
 	facts    MediaFormat
 }
@@ -38,10 +39,10 @@ type livePackager struct {
 func newLivePackager(t *testing.T) *livePackager {
 	bin := ffmpegBin(t)
 	ctx := context.Background()
-	if c := trialEncodeObserved(ctx, bin, EncoderNVENC, DefaultProfile(), 1, nil); !c.Works {
+	if c := trialEncodeObserved(ctx, bin, encode.EncoderNVENC, DefaultProfile(), 1, nil); !c.Works {
 		t.Skipf("NVENC is not usable here: %s", firstLine(c.Err))
 	}
-	host := HostFor(EncoderNVENC, TonemapperFor(bin)(), GPUFiltersFor(bin)())
+	host := encode.HostFor(encode.EncoderNVENC, TonemapperFor(bin)(), GPUFiltersFor(bin)())
 	out, _ := FormatOutput(FormatBaseline, DefaultProfile())
 	out.Width, out.Height = checkWidth, checkHeight // the 1080p channel baseline the helpers decode
 	dir := t.TempDir()

@@ -15,7 +15,10 @@ package filler
 // WHICH clip plays, not whether the rung can fill a break. Level alone is read off one fresh
 // assembly (#1684), because how far down the ladder a break reaches depends on the fill.
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // Criterion names one of the channel's break settings, for the per-criterion breakdown.
 //
@@ -135,6 +138,30 @@ type ChannelCoverage struct {
 	Report    CoverageReport
 }
 
+// PoolChannel is one channel the pool strip reports on: its display identity and the Selection its
+// breaks resolve to. The caller supplies both (this package must not learn about channels): it
+// decides which channels are airing and derives each selection through the one writer, so the
+// strip describes the pods the channel really gets.
+type PoolChannel struct {
+	ChannelID string
+	Name      string
+	Number    int
+	Selection Selection
+}
+
+// OrderWorstFirst sorts channels so the weakest coverage level leads, ties broken by channel
+// number. The strip's diagnosis line names `Channels[0]` (Weakest), and an unstable list would
+// make that line flicker between equally-bad channels on every poll.
+func OrderWorstFirst(channels []ChannelCoverage) {
+	sort.SliceStable(channels, func(i, j int) bool {
+		li, lj := channels[i].Report.Level, channels[j].Report.Level
+		if li != lj {
+			return LevelWorseThan(li, lj)
+		}
+		return channels[i].Number < channels[j].Number
+	})
+}
+
 // PoolReport is catalog-wide filler health (§10 V35) — the Filler page's pool strip.
 //
 // ⚠ **The per-channel half is not a new computation.** `Channels` is filled by calling the SAME
@@ -213,6 +240,9 @@ func levelRank(l MatchLevel) int {
 func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 	report := PoolReport{Clips: len(catalog)}
 	for _, c := range catalog {
+		if c.IsBumper() {
+			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
+		}
 		if c.EffectivePlacement() != PlacementBreakBody {
 			continue
 		}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // CookieName is the session cookie (§11).
@@ -23,12 +24,12 @@ const CookieName = "loomarr_session"
 // require. Keeping this seam local prevents auth from learning the unrelated
 // acquisition, channel, filler, and scheduler surfaces on store.Store.
 type SessionStore interface {
-	CreateSession(ctx context.Context, sess store.Session) error
-	GetSession(ctx context.Context, tokenHash string, now time.Time) (store.Session, error)
-	GetUser(ctx context.Context, id string) (store.User, error)
-	TouchSession(ctx context.Context, tokenHash string, seen store.SessionSeen) error
+	CreateSession(ctx context.Context, sess identitystore.Session) error
+	GetSession(ctx context.Context, tokenHash string, now time.Time) (identitystore.Session, error)
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
+	TouchSession(ctx context.Context, tokenHash string, seen identitystore.SessionSeen) error
 	RevokeSession(ctx context.Context, tokenHash string) error
-	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]store.Session, error)
+	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]identitystore.Session, error)
 }
 
 // Manager issues, validates, and revokes sessions.
@@ -85,13 +86,13 @@ func (m *Manager) Issue(ctx context.Context, userID string) (token string, expir
 // prepare creates the plaintext/stored halves of a session without persisting
 // either. Invitation redemption uses this to commit the account and session in
 // the same database transaction; ordinary login persists it immediately above.
-func (m *Manager) prepare(userID string) (string, store.Session, error) {
+func (m *Manager) prepare(userID string) (string, identitystore.Session, error) {
 	token, err := newToken()
 	if err != nil {
-		return "", store.Session{}, err
+		return "", identitystore.Session{}, err
 	}
 	now := m.now()
-	return token, store.Session{
+	return token, identitystore.Session{
 		TokenHash: hashToken(token), UserID: userID, CreatedAt: now, ExpiresAt: now.Add(m.ttl),
 	}, nil
 }
@@ -102,23 +103,23 @@ func (m *Manager) prepare(userID string) (string, store.Session, error) {
 // not authenticate — belt-and-suspenders with immediate revocation on disable).
 // clientLabel names the requesting client ("Firefox on macOS", "" if unknown); the
 // session keeps it with the time of this use for "Where you're signed in" (#1667).
-func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (store.User, error) {
+func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (identitystore.User, error) {
 	now := m.now()
 	sess, err := m.store.GetSession(ctx, hashToken(token), now)
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	u, err := m.store.GetUser(ctx, sess.UserID)
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	if u.Disabled {
 		// Defense in depth: even if revocation missed a session, a disabled user
 		// never authenticates.
-		return store.User{}, store.ErrNotFound
+		return identitystore.User{}, store.ErrNotFound
 	}
 	// Slide the expiry (§11 sliding TTL) and record the use.
-	_ = m.store.TouchSession(ctx, hashToken(token), store.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
+	_ = m.store.TouchSession(ctx, hashToken(token), identitystore.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
 	return u, nil
 }
 
@@ -132,7 +133,7 @@ func (m *Manager) Revoke(ctx context.Context, token string) error {
 // to revoke by, and the hash is already that handle. Returning it preserves the schema's
 // guarantee that a read never yields a usable cookie — SHA-256 is preimage-resistant, so
 // the hash cannot be turned back into the cookie it authenticates.
-func (m *Manager) List(ctx context.Context, userID string) ([]store.Session, error) {
+func (m *Manager) List(ctx context.Context, userID string) ([]identitystore.Session, error) {
 	return m.store.ListSessionsForUser(ctx, userID, m.now())
 }
 

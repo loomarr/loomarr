@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -93,7 +94,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if activated.Role != store.RoleAdmin || activated.MediaServerLinked ||
+	if activated.Role != identitystore.RoleAdmin || activated.MediaServerLinked ||
 		!strings.HasPrefix(activated.PasswordHash, "$argon2id$") {
 		t.Fatalf("activated account did not preserve local admin credentials: %+v", activated)
 	}
@@ -123,7 +124,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 	if _, _, _, err := login.Login(ctx, activated.Name, initialPassword, "old-password"); !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatalf("old credential still authenticates after recovery: %v", err)
 	}
-	if _, _, recovered, err := login.Login(ctx, activated.Name, recoveredPassword, "new-password"); err != nil || recovered.Role != store.RoleAdmin {
+	if _, _, recovered, err := login.Login(ctx, activated.Name, recoveredPassword, "new-password"); err != nil || recovered.Role != identitystore.RoleAdmin {
 		t.Fatalf("recovered credential or role = %+v, %v", recovered, err)
 	}
 

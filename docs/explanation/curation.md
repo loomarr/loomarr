@@ -55,6 +55,11 @@ A channel can restrict some content to a window of the year, so Halloween episod
 October. An empty seasonal policy still varies with the calendar — the default is automatic,
 not off.
 
+A channel follows a holiday only where your country keeps it. Ask for a Thanksgiving channel in
+Britain and you still get the Thanksgiving episodes, but the channel plays them all year, since
+that season never comes; the proposal says so before you approve it. The model is offered only
+the holidays your country keeps.
+
 ## When the pool runs dry
 
 A small library plus a tight scope plus a long no-repeat window can leave nothing eligible.

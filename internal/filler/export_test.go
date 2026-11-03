@@ -2,14 +2,11 @@ package filler
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/defects"
 )
 
 // CertifiedShadowFixture exposes the certified two-segment proposal and its policies to the
@@ -112,25 +109,16 @@ func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegmen
 	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
 }
 
-// Assess plans and prepares the windows itself, then runs AssessPrepared. Production's hosted
-// adapter prepares first and calls AssessPrepared directly.
-func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input StructureAssessmentSource) (fillerstructure.Artifact, error) {
-	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.preparer == nil || r.evidence == nil || r.now == nil {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
-	}
-	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime source is invalid")
-	}
-	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
-	}
-	prepared, err := r.preparer.PrepareWindows(ctx, input, plan)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("prepare structure windows: %w", err)
-	}
-	return r.AssessPrepared(ctx, input, prepared)
+// AiringReencodeFixture is a clip on air under the software profile and a transcode stage on an
+// NVENC host that re-encodes it, for the library re-encode's pipeline tests. Each replacement's
+// defect check calls check; switches counts the commits.
+func AiringReencodeFixture(t *testing.T, check func(ctx context.Context) error) (*TranscodeStage, StoreClip, func() int) {
+	t.Helper()
+	_, stage, store, airing := airingFixture(t, func(ctx context.Context, c StoreClip, staged string) (defects.Record, error) {
+		if err := check(ctx); err != nil {
+			return defects.Record{}, err
+		}
+		return passingCheck(nil)(ctx, c, staged)
+	})
+	return stage, airing, func() int { return store.calls }
 }
-
-var _ CompleteTimelineStructureDecisioner = (*StructureWindowAssessmentRuntime)(nil)

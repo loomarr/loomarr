@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Home's New this week (#1663): titles that arrived since a time, with the channels they now play
@@ -35,7 +36,7 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := h.Store.UpsertUser(ctx, store.User{ID: "u-member", Name: "Member One", Role: store.RoleMember}); err != nil {
+	if err := h.Store.UpsertUser(ctx, identitystore.User{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.Store.CreateJob(ctx, store.Job{ID: "job-1", Kind: "suggest", Status: "done", CreatedBy: "u-member"}); err != nil {

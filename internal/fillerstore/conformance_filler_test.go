@@ -21,7 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -991,6 +993,157 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// A Ready clip has been screened, enriched and researched. When its bytes are re-encoded, that
+// history is about the same content and moves with it, including the web-research ledger, whose
+// foreign key to clips(hash) has no ON UPDATE and used to make the re-key fail outright (#2121).
+func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
+
+	old := sampleClip("ready-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old.Held, old.UpdatedAt = true, at
+	if err := s.UpsertClip(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	attempt := fillerresearch.WebAttempt{ClipHash: old.Hash, InputRevision: 2,
+		AdapterVersion: "web-v1:brave", ReservedAt: at}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-11", fillerresearch.WebProviderBrave, 5, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+		ClipHash: old.Hash, Axis: fillerenrichment.AxisKind, Status: fillerenrichment.StatusComplete,
+		Value: fillerenrichment.Value{Text: "commercial"},
+		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
+			Producer: fillerenrichment.DeterministicProducer, ProducerVersion: fillerenrichment.DeterministicProducerVersion,
+			ObservedAt: at},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	pipeline := filler.ClipPipeline{
+		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageScore,
+		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+		EnrolledAt: at, UpdatedAt: at,
+	}
+	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
+		pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	}
+	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
+		t.Fatal(err)
+	}
+	pipeline.Status, pipeline.Disposition = filler.StatusDone, filler.DispositionReady
+	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageScore, Status: filler.StatusDone, At: at})
+	if err := s.CommitFillerReady(ctx, filler.ReadyCommit{Pipeline: pipeline, Event: filler.ReadyEvent{
+		ID: "ready:" + old.Hash, ClipHash: old.Hash, AcquisitionID: pipeline.AcquisitionID,
+		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: pipeline.AcquisitionID},
+		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("b", 64)
+	if err := s.PutSpokenSafetyRun(ctx, fillersafety.LedgerRun{
+		ID: "ready-safety-run", ClipHash: old.Hash, AuthoritySHA256: digest, SourceSHA256: digest,
+		SourceBytes: 4096, DurationMS: 30_000, CertificationSHA256: digest, PolicySHA256: digest, ProposerSHA256: digest,
+		Implementation: "spoken-safety-v1", CreatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutFillerDecision(ctx, fillerdecision.Record{
+		ID: "ready-decision", ClipHash: old.Hash, EvidenceHash: "ready-evidence",
+		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
+		Result: filleradmission.Result{Decision: &filleradmission.Decision{
+			Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
+			EvidenceRefs: []string{"evidence-a"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reencoded := old
+	reencoded.Hash, reencoded.Path = "ready-new-bytes", "re/ad/ready-new-bytes.mp4"
+	reencoded.UpdatedAt = at.Add(time.Hour)
+	if err := s.ReplaceClipIdentity(ctx, old.Hash, reencoded); err != nil {
+		t.Fatalf("re-key a researched Ready clip: %v", err)
+	}
+
+	moved := attempt
+	moved.ClipHash = reencoded.Hash
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-11", fillerresearch.WebProviderBrave, 5, moved); !errors.Is(err, fillerresearch.ErrWebSearchAttempted) {
+		t.Errorf("web-research attempt did not follow the re-key: reserve again = %v, want already attempted", err)
+	}
+	if axes, err := s.ListFillerEnrichment(ctx, reencoded.Hash); err != nil || len(axes) != 1 {
+		t.Errorf("enrichment did not follow the re-key: %+v, %v", axes, err)
+	}
+	if axes, err := s.ListFillerEnrichment(ctx, old.Hash); err != nil || len(axes) != 0 {
+		t.Errorf("enrichment stayed on the retired identity: %+v, %v", axes, err)
+	}
+	if event, found, err := s.GetFillerReadyEvent(ctx, reencoded.Hash); err != nil || !found || event.ID != "ready:"+old.Hash {
+		t.Errorf("ready event did not follow the re-key: %+v, found=%v err=%v", event, found, err)
+	}
+	if run, err := s.GetSpokenSafetyRun(ctx, "ready-safety-run"); err != nil || run.ClipHash != reencoded.Hash {
+		t.Errorf("spoken-safety run did not follow the re-key: %+v, %v", run, err)
+	}
+	if decision, err := s.GetFillerDecision(ctx, "ready-decision"); err != nil || decision.ClipHash != reencoded.Hash {
+		t.Errorf("admission decision did not follow the re-key: %+v, %v", decision, err)
+	}
+}
+
+// #2121: an airing clip switches to its re-encode in one transaction. The re-key drops the record
+// measured on the old bytes and the replacement's takes its place under the new hash; a record
+// the store refuses rolls the whole switch back, so the clip still airs under its old identity.
+func testAiringClipReplacement(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
+	old := sampleClip("airing-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old.UpdatedAt = at
+	if err := s.UpsertClip(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	record := func(blur float64) catalogstore.ClipDefectRecord {
+		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
+		a := defects.Assess(r, old.Era)
+		verdict, reason := defects.Decide(a, nil)
+		return catalogstore.ClipDefectRecord{ClipHash: old.Hash, Readings: r, Era: old.Era, Assessment: a,
+			Verdict: verdict, VerdictReason: reason, MeasuredAt: at}
+	}
+	if err := s.UpsertClipDefects(ctx, record(4)); err != nil {
+		t.Fatal(err)
+	}
+	reencoded := old
+	reencoded.Hash, reencoded.Path = "airing-new-bytes", "ai/ri/airing-new-bytes.mp4"
+	reencoded.UpdatedAt = at.Add(time.Hour)
+
+	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, catalogstore.ClipDefectRecord{}); err == nil {
+		t.Fatal("a switch with no defect verdict committed")
+	}
+	if _, err := s.GetClip(ctx, old.Hash); err != nil {
+		t.Fatalf("a refused switch moved the clip: %v", err)
+	}
+	if _, found, err := s.GetClipDefects(ctx, old.Hash); err != nil || !found {
+		t.Fatalf("a refused switch dropped the airing clip's record: found=%v %v", found, err)
+	}
+
+	replacement := record(3)
+	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, replacement); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := s.GetClipDefects(ctx, old.Hash); err != nil || found {
+		t.Errorf("the old bytes' record outlived the switch: found=%v %v", found, err)
+	}
+	got, found, err := s.GetClipDefects(ctx, reencoded.Hash)
+	if err != nil || !found || got.Readings.BlurMean != 3 || got.Verdict != replacement.Verdict {
+		t.Errorf("new bytes' record = %+v found=%v %v", got, found, err)
+	}
+	if c, err := s.GetClip(ctx, reencoded.Hash); err != nil || c.Path != reencoded.Path {
+		t.Errorf("clip after switch = %+v, %v", c, err)
+	}
+}
+
 // A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
 // The store adopts that exact held row and moves the source-owned graph in one transaction; the
 // same operation then recognizes the target-only post-rekey state after a process restart.
@@ -1700,14 +1853,14 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	record := func(hash string, era int, blur float64, j *defects.Judgement) store.ClipDefectRecord {
+	record := func(hash string, era int, blur float64, j *defects.Judgement) catalogstore.ClipDefectRecord {
 		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 		a := defects.Assess(r, era)
 		verdict, reason := defects.Decide(a, j)
-		return store.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
+		return catalogstore.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
 			Verdict: verdict, VerdictReason: reason, MeasuredAt: now}
 	}
-	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
+	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
 		t.Fatal("a record with no measurement or verdict version was stored")
 	}
 	unjudged := record(one.Hash, 1988, 4, nil)
@@ -1762,8 +1915,8 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	labelTwo := store.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
-	if want := map[string]store.ClipDefectLabel{
+	labelTwo := catalogstore.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
+	if want := map[string]catalogstore.ClipDefectLabel{
 		one.Hash: {Label: defects.LabelFail, Era: 2012, LabelledAt: now}, two.Hash: labelTwo,
 	}; !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels = %+v, want %+v: judging again must keep a label and the era it was given for", labels, want)
@@ -3273,14 +3426,14 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, filler.SourceCheckCompletion{
 		CheckedAt: restartChecked,
-		Checkpoint: filler.SourceScanCheckpoint{
+		Checkpoint: sourceprovider.Checkpoint{
 			Cursor: "video-10", PendingWatermark: "video-1", Watermark: "prior-video",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: filler.SourceCheckSummary{
-			filler.SourceOutcomeQueued:      3,
-			filler.SourceOutcomeTooLong:     12,
-			filler.SourceOutcomeUnavailable: 2,
+		Outcomes: sourceprovider.Outcomes{
+			sourceprovider.OutcomeQueued:      3,
+			sourceprovider.OutcomeTooLong:     12,
+			sourceprovider.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -3293,16 +3446,16 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, filler.SourceCheckCompletion{
 		CheckedAt:  continuedAt,
-		Checkpoint: filler.SourceScanCheckpoint{Watermark: "video-1"},
-		Outcomes:   filler.SourceCheckSummary{filler.SourceOutcomeTooShort: 2},
+		Checkpoint: sourceprovider.Checkpoint{Watermark: "video-1"},
+		Outcomes:   sourceprovider.Outcomes{sourceprovider.OutcomeTooShort: 2},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	restartChecked = continuedAt
 	continuedSource, _ := findSource(t, s, restartSource.ID)
-	if continuedSource.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
-		continuedSource.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
-		continuedSource.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) {
+	if continuedSource.LastCheckSummary[sourceprovider.OutcomeQueued] != 3 ||
+		continuedSource.LastCheckSummary[sourceprovider.OutcomeTooShort] != 2 ||
+		continuedSource.ScanCheckpoint != (sourceprovider.Checkpoint{Watermark: "video-1"}) {
 		t.Fatalf("continued source summary/checkpoint = %+v / %+v", continuedSource.LastCheckSummary, continuedSource.ScanCheckpoint)
 	}
 	failureAt := restartChecked.Add(time.Hour)
@@ -3326,11 +3479,11 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
 		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
 		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() ||
-		restarted.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) ||
-		restarted.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeTooLong] != 12 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeUnavailable] != 2 {
+		restarted.ScanCheckpoint != (sourceprovider.Checkpoint{Watermark: "video-1"}) ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeQueued] != 3 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeTooShort] != 2 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeTooLong] != 12 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeUnavailable] != 2 {
 		_ = reopened.Close()
 		t.Fatalf("source policy/check state after restart = %+v", restarted)
 	}
@@ -3341,15 +3494,15 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("new sweep claim after restart = %v, %v", claimed, err)
 	}
 	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, filler.SourceCheckCompletion{
-		CheckedAt: newSweepAt, Checkpoint: filler.SourceScanCheckpoint{Watermark: "new-video"},
+		CheckedAt: newSweepAt, Checkpoint: sourceprovider.Checkpoint{Watermark: "new-video"},
 		ReplaceOutcomes: true,
-		Outcomes:        filler.SourceCheckSummary{filler.SourceOutcomeLive: 1},
+		Outcomes:        sourceprovider.Outcomes{sourceprovider.OutcomeLive: 1},
 	}); err != nil {
 		_ = reopened.Close()
 		t.Fatal(err)
 	}
 	replaced, _ := findSource(t, reopened, restartSource.ID)
-	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[filler.SourceOutcomeLive] != 1 {
+	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[sourceprovider.OutcomeLive] != 1 {
 		_ = reopened.Close()
 		t.Fatalf("new sweep outcomes = %+v, want only live:1", replaced.LastCheckSummary)
 	}
@@ -6418,7 +6571,7 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	}
 	// The loser's defect record describes bytes that are about to be deleted (#2034).
 	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
-	if err := s.UpsertClipDefects(ctx, store.ClipDefectRecord{
+	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{
 		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988),
 		Verdict: defects.VerdictPass, MeasuredAt: now,
 	}); err != nil {

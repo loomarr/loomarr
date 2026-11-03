@@ -8517,6 +8517,8 @@ components:
           type: array
         scores:
           $ref: "#/components/schemas/Scores"
+        seasonNotKept:
+          $ref: "#/components/schemas/SeasonNotKept"
         trace:
           $ref: "#/components/schemas/DecisionTrace"
       required:
@@ -9884,6 +9886,21 @@ components:
       required:
         - candidates
       type: object
+    SeasonNotKept:
+      additionalProperties: false
+      properties:
+        country:
+          description: ISO 3166-1 alpha-2 code of the calendar the holidays were read against
+          type: string
+        holidays:
+          description: Labels of the holidays that country doesn't keep
+          items:
+            type: string
+          type: array
+      required:
+        - country
+        - holidays
+      type: object
     SeasonalPolicy:
       additionalProperties: false
       properties:
@@ -10265,6 +10282,9 @@ components:
             type: array
           description: "Conditional visibility: show only when a named key's current value is listed (§5)."
           type: object
+        unit:
+          description: What a plain number counts, shown beside its input, e.g. GiB, MiB or %. Empty for a bare count.
+          type: string
         updatedAt:
           description: RFC3339; empty for env/system writes.
           type: string

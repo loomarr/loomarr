@@ -431,7 +431,7 @@ func formatOf(p probed) MediaFormat {
 				videoIndex = s.Index
 				f.VideoCodec = strings.ToLower(s.CodecName)
 				f.Width, f.Height = s.Width, s.Height
-				f.FrameRate = parseRational(s.AvgFrameRate)
+				f.FrameRate = ParseFrameRate(s.AvgFrameRate)
 				f.PixelFormat = strings.ToLower(s.PixFmt)
 				f.ColorTransfer = s.ColorTransfer
 				f.Interlaced = s.FieldOrder != "" && s.FieldOrder != "progressive" && s.FieldOrder != "unknown"
@@ -457,9 +457,10 @@ func formatOf(p probed) MediaFormat {
 	return f
 }
 
-// parseRational turns ffprobe's "24000/1001" framerate into fps. Returns 0 on anything unparseable
-// or a zero denominator (ffprobe emits "0/0" for streams with no framerate).
-func parseRational(s string) float64 {
+// ParseFrameRate turns ffprobe's "24000/1001" framerate into fps. Returns 0 on anything unparseable
+// or a zero denominator (ffprobe emits "0/0" for streams with no framerate). The inventory stores
+// the same string, so playout's format from stored facts parses it with this too.
+func ParseFrameRate(s string) float64 {
 	num, den, ok := strings.Cut(s, "/")
 	if !ok {
 		return parseFloat(s)

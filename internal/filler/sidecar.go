@@ -70,6 +70,9 @@ func sidecarPathFor(mediaPath string) string {
 	return strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 }
 
+// SidecarPathFor is sidecarPathFor for a caller outside this package. It only computes the path.
+func SidecarPathFor(mediaPath string) string { return sidecarPathFor(mediaPath) }
+
 // Loomarr's own keys inside the info-JSON (§10 V38c). Namespaced under `loomarr` so they cannot
 // collide with anything yt-dlp writes now or adds later.
 const (
@@ -362,6 +365,12 @@ func ReadSidecarTagsState(mediaPath string) (SidecarTags, SidecarReadState) {
 	}
 	tags, state, _ := decodeSidecarTags(raw)
 	return tags, state
+}
+
+// DecodeSidecarTags parses the bytes of an info-JSON sidecar that the caller has already read and
+// bounded. It reports the tags, the read state, and whether the file carried any Loomarr keys.
+func DecodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
+	return decodeSidecarTags(raw)
 }
 
 func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {

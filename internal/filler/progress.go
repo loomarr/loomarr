@@ -39,6 +39,11 @@ func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
 	return context.WithValue(ctx, progressKey{}, fn)
 }
 
+// ReportProgress is reportProgress for a stage that lives outside this package.
+func ReportProgress(ctx context.Context, stage StageID, percent int) {
+	reportProgress(ctx, stage, percent)
+}
+
 // reportProgress fires the context's ProgressFunc if one is set.
 func reportProgress(ctx context.Context, stage StageID, percent int) {
 	if fn, ok := ctx.Value(progressKey{}).(ProgressFunc); ok && fn != nil {

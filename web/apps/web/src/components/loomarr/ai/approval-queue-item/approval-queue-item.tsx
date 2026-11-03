@@ -1,4 +1,6 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
+import { Surface, Text } from "@loomarr/design-system";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -20,6 +22,26 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
   if (lo > 0) return `From season ${lo}`;
   return `Through season ${hi}`;
+};
+
+// regionName is a country code's English name ("GB" → "United Kingdom"), or the code itself.
+const regionName = (country: string): string => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(country) ?? country;
+  } catch {
+    return country;
+  }
+};
+
+// seasonNotKeptLabel says which holidays aren't on the household's holiday calendar (#2030 decision
+// 38). It names the calendar, not "your country": a country Loomarr has no holidays for reads the
+// US calendar, and an undated holiday is on no calendar at all.
+const seasonNotKeptLabel = ({ country, holidays }: SeasonNotKept): string => {
+  const names = new Intl.ListFormat("en", { type: "conjunction" }).format(holidays);
+  const one = holidays.length === 1;
+  return `${names} ${one ? "isn't" : "aren't"} on your holiday calendar (${regionName(country)}), so this channel won't follow ${
+    one ? "its season" : "their seasons"
+  }.`;
 };
 
 const PickRow = ({
@@ -65,6 +87,7 @@ const ApprovalQueueItem = ({
   alternates,
   episodeSelectionPreview,
   refused,
+  seasonNotKept,
   edit,
   onEdit,
   renderFeedback,
@@ -193,6 +216,20 @@ const ApprovalQueueItem = ({
             created.
           </p>
         </div>
+      )}
+
+      {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
+          season that was asked for (#2030 decision 38). */}
+      {seasonNotKept && seasonNotKept.holidays.length > 0 && (
+        <Surface
+          backgroundColor="stateWarningSurface"
+          borderColor="stateWarning"
+          borderRadius="control"
+          borderWidth={1}
+          padding={12}
+        >
+          <Text textRole="hint">{seasonNotKeptLabel(seasonNotKept)}</Text>
+        </Surface>
       )}
 
       {outlook?.(() => setOpen(true))}

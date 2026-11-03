@@ -7,6 +7,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/storetest"
 )
 
@@ -16,7 +17,7 @@ func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) 
 	st := opened.(extended).sqlStore
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := store.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Existing",
+	clip := catalogstore.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Existing",
 		Kind: filler.Commercial, Era: 1999, Audience: filler.General, Brand: "Brambly Sauce",
 		GeographicScope: filler.GeographicNational, Country: "GB", Network: "Kestrel One", GeoEvidence: "operator"},
 		UpdatedAt: at, CreatedAt: at}

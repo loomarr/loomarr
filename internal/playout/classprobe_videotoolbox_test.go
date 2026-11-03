@@ -9,15 +9,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
 )
 
 func TestVideoToolboxFallbackProbe_NormalizesEncoderOverride(t *testing.T) {
-	clip, ok := fallbackProbeClip(ClassProbeConfig{Encoder: Encoder("hevc_videotoolbox")}, probeClips[0])
+	clip, ok := fallbackProbeClip(ClassProbeConfig{Encoder: encode.EncoderVTHEVC}, probeClips[0])
 	if !ok || !clip.source().Interlaced {
 		t.Fatal("HEVC VideoToolbox override omitted the CPU-deinterlace measurement")
 	}
-	pipe, err := Build(HostFor(Encoder("hevc_videotoolbox"), true, GPUFilters{}), clip.source(), testOutput)
+	pipe, err := Build(encode.HostFor(encode.EncoderVTHEVC, true, encode.GPUFilters{}), clip.source(), testOutput)
 	if err != nil || !strings.HasPrefix(pipe.VideoFilter, "bwdif=mode=send_frame,scale=") {
 		t.Fatalf("override probe does not exercise the live CPU-deinterlace graph: %+v %v", pipe, err)
 	}
@@ -75,7 +76,7 @@ func probeVideoToolboxSDR(t *testing.T, bin string) ClassProbeResult {
 		t.Fatal(err)
 	}
 	return ProbeClassCosts(t.Context(), ClassProbeConfig{
-		FFmpeg: bin, ClipDir: dir, Encoder: EncoderVideoToolbox,
+		FFmpeg: bin, ClipDir: dir, Encoder: encode.EncoderVideoToolbox,
 		Outputs: []Profile{{Width: 1920, Height: 1080, Framerate: 25}},
 		Classes: []StreamClass{ClassSDR},
 	})

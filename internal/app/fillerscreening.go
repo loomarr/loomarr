@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
 // buildQualificationSegmentScreeningRuntime keeps the rendered-child screening composition out
 // of the already broad pipeline builder. A configured filler root gets one private evidence tree;
 // an installation without filler storage retains the stage's ordinary unavailable hold.
-func buildQualificationSegmentScreeningRuntime(st store.Store, layout filler.Layout) (*filler.SegmentScreeningRuntime, error) {
+func buildQualificationSegmentScreeningRuntime(st store.Store, layout filler.Layout) (*fillerscreening.SegmentScreeningRuntime, error) {
 	if layout.ClipDir() == "" {
 		return nil, nil
 	}
@@ -20,7 +21,7 @@ func buildQualificationSegmentScreeningRuntime(st store.Store, layout filler.Lay
 		return nil, fmt.Errorf("qualification segment screening requires a store")
 	}
 	root := segmentScreeningEvidenceRoot(layout)
-	return filler.NewQualificationSegmentScreeningRuntime(root, time.Now)
+	return fillerscreening.NewQualificationSegmentScreeningRuntime(root, time.Now)
 }
 
 func segmentScreeningEvidenceRoot(layout filler.Layout) string {

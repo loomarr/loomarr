@@ -38,7 +38,7 @@ func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
 
 // NewSeerrDynamicObserved binds operational requests to one application generation.
 func NewSeerrDynamicObserved(conn func() (baseURL, apiKey string), recorder *metrics.Recorder) *Seerr {
-	return &Seerr{conn: conn, http: httpx.NewNamedObserved("seerr", httpx.TimeoutSeerr, recorder)}
+	return &Seerr{conn: conn, http: httpx.NewNamedObserved(httpx.TargetSeerr, httpx.TimeoutSeerr, recorder)}
 }
 
 func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }
@@ -140,7 +140,7 @@ type seerrMediaPage struct {
 	Results []seerrMediaItem `json:"results"`
 }
 
-// QueueStatus implements reconcile.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
+// QueueStatus implements provisionbackstop.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
 // (one /queue fetch + one lookup per title), Seerr answers the whole in-flight set in ONE call:
 // GET /api/v1/media?filter=processing returns every media item Seerr considers in progress. We
 // index those by TMDB id and, for each requested title, map the enum to a coarse QueueItem.
@@ -161,8 +161,8 @@ func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Qu
 		return nil, fmt.Errorf("seerr media: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("seerr media: unexpected status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("seerr media: %w", err)
 	}
 	var page seerrMediaPage
 	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {

@@ -9,17 +9,17 @@ import (
 // step of adding a channel (#1487). A per-pick name/mediaType or a restated dateMeaning is output
 // the server re-derives from the surfaced candidate and the accepted tool call.
 func TestSystemPromptFinalTemplateIsLean(t *testing.T) {
-	i := strings.Index(systemPrompt, "When finished, reply with ONLY this JSON")
+	i := strings.Index(usPrompt, "When finished, reply with ONLY this JSON")
 	if i < 0 {
 		t.Fatal("final template marker missing")
 	}
-	template := systemPrompt[i:]
+	template := usPrompt[i:]
 	for _, wasted := range []string{`"mediaType":"movie|series"`, `"name":"<string>"`, `"dateMeaning":{`} {
 		if strings.Contains(template, wasted) {
 			t.Errorf("final template still asks for %s", wasted)
 		}
 	}
-	if !strings.Contains(systemPrompt, "no catalog_search call") {
+	if !strings.Contains(usPrompt, "no catalog_search call") {
 		t.Error("the prompt must still say a final with no tool call states dateMeaning itself")
 	}
 }

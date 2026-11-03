@@ -1,36 +1,82 @@
 package mediatools
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
+// Every family, decoding on the GPU or not, encodes the picture it decoded: the encode branch only
+// converts the pixel format (on the device that holds the frames), the detectors watch the full
+// picture in a branch that ends in a sink, and the derivative contract's mapping and container
+// flags hold.
 func TestTranscodeArgumentsMakeTheDerivativeContractExplicit(t *testing.T) {
-	recipe := EvidenceDerivativeRecipe()
-	args := transcodeArguments(TranscodeRequest{
-		In: "source.mkv", Out: "evidence.mp4", HadAudio: true, Profile: recipe.Profile(),
-	}, "evidence.tmp.mp4")
-	wants := [][]string{
-		{"-map", "0:v:0"}, {"-map", "0:a:0?"}, {"-map_metadata", "-1"}, {"-map_chapters", "-1"},
-		{"-fps_mode", "passthrough"}, {"-avoid_negative_ts", "make_zero"}, {"-movflags", "+faststart"},
-	}
-	for _, want := range wants {
-		if !containsArgumentPair(args, want[0], want[1]) {
-			t.Errorf("transcode args missing %v: %v", want, args)
+	for _, c := range []struct {
+		family    encode.Family
+		gpuDecode bool
+		encoder   string
+	}{
+		{encode.FamilySoftware, false, "libx264"},
+		{encode.FamilyNVENC, false, "h264_nvenc"},
+		{encode.FamilyNVENC, true, "h264_nvenc"},
+		{encode.FamilyVAAPI, false, "h264_vaapi"},
+		{encode.FamilyVAAPI, true, "h264_vaapi"},
+	} {
+		name := fmt.Sprintf("%s gpuDecode=%v", c.family, c.gpuDecode)
+		profile := EvidenceDerivativeRecipe(DefaultMezzanine()).Profile()
+		if c.family != encode.FamilySoftware {
+			profile.Family, profile.Preset = c.family, ""
 		}
-	}
-	for _, forbidden := range []string{"scale", "crop", "yadif", "bwdif", "hqdn3d", "unsharp", "loudnorm"} {
-		if slices.Contains(args, forbidden) {
-			t.Errorf("evidence args contain undeclared transform %q: %v", forbidden, args)
+		args := transcodeArguments(TranscodeRequest{
+			In: "source.mkv", Out: "evidence.mp4", HadAudio: true, Profile: profile,
+			Host: encode.HostProfile{RenderNode: "/dev/dri/renderD128"},
+		}, "evidence.tmp.mp4", c.gpuDecode)
+		wants := [][]string{
+			{"-c:v", c.encoder}, {"-map", "[v]"}, {"-map", "0:a:0?"}, {"-map_metadata", "-1"}, {"-map_chapters", "-1"},
+			{"-fps_mode", "passthrough"}, {"-avoid_negative_ts", "make_zero"}, {"-movflags", "+faststart"},
 		}
-		for _, arg := range args {
-			if len(arg) >= len(forbidden) && arg[:len(forbidden)] == forbidden {
-				t.Errorf("evidence args contain undeclared transform %q: %v", forbidden, args)
+		for _, want := range wants {
+			if !containsArgumentPair(args, want[0], want[1]) {
+				t.Errorf("%s: args missing %v: %v", name, want, args)
 			}
 		}
+		graph, _ := argumentAfter(args, "-filter_complex")
+		det, enc, ok := strings.Cut(strings.TrimPrefix(graph, "[0:v]split=2[enc][det];[det]"), ";[enc]")
+		if !ok || !strings.HasSuffix(enc, "[v]") {
+			t.Fatalf("%s: graph is not one split into a detector and an encode branch: %q", name, graph)
+		}
+		if !strings.HasSuffix(det, qualityVideoFilters+",nullsink") {
+			t.Errorf("%s: detector branch %q does not end in the detectors and a sink", name, det)
+		}
+		// Neither branch resizes: a downscaled detector copy invents freezes (#2121).
+		for branch, filters := range map[string]string{"encode": enc, "detector": det} {
+			for _, forbidden := range []string{"=w=", ":w=", ":h=", "scale=", "crop", "pad", "yadif", "bwdif", "hqdn3d", "unsharp", "fps", "setsar"} {
+				if strings.Contains(filters, forbidden) {
+					t.Errorf("%s: %s branch %q contains undeclared transform %q", name, branch, filters, forbidden)
+				}
+			}
+		}
+		if slices.Contains(args, "loudnorm") {
+			t.Errorf("%s: evidence args normalise loudness: %v", name, args)
+		}
+		_, hwDecode := argumentAfter(args, "-hwaccel")
+		if hwDecode != c.gpuDecode {
+			t.Errorf("%s: -hwaccel present=%v: %v", name, hwDecode, args)
+		}
 	}
+}
+
+func argumentAfter(args []string, flag string) (string, bool) {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1], true
+		}
+	}
+	return "", false
 }
 
 func TestVerifyPreservedMediaRejectsUndeclaredSignalChanges(t *testing.T) {
@@ -83,9 +129,9 @@ func containsArgumentPair(args []string, first, second string) bool {
 func TestTranscodeArgumentsCapThreads(t *testing.T) {
 	for name, profile := range map[string]MezzanineProfile{
 		"playback": DefaultMezzanine(),
-		"evidence": EvidenceDerivativeRecipe().Profile(),
+		"evidence": EvidenceDerivativeRecipe(DefaultMezzanine()).Profile(),
 	} {
-		args := transcodeArguments(TranscodeRequest{In: "in.mkv", Out: "out.mp4", HadAudio: true, Profile: profile}, "tmp.mp4")
+		args := transcodeArguments(TranscodeRequest{In: "in.mkv", Out: "out.mp4", HadAudio: true, Profile: profile}, "tmp.mp4", false)
 		if !containsArgumentPair(args, "-threads", strconv.Itoa(BackgroundThreads)) {
 			t.Errorf("%s: no -threads %d: %v", name, BackgroundThreads, args)
 		}

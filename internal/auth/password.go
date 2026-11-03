@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Local account management (§11). Two operations the identity model implied but
@@ -49,10 +49,10 @@ const MinPasswordLen = 8
 // PasswordStore is the local-credential mutation surface. It includes session
 // revocation because every successful password change invalidates prior access.
 type PasswordStore interface {
-	GetUser(ctx context.Context, id string) (store.User, error)
-	ListUsers(ctx context.Context) ([]store.User, error)
-	CreateUserUnlessInvited(ctx context.Context, u store.User, now time.Time) error
-	UpsertUser(ctx context.Context, u store.User) error
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
+	ListUsers(ctx context.Context) ([]identitystore.User, error)
+	CreateUserUnlessInvited(ctx context.Context, u identitystore.User, now time.Time) error
+	UpsertUser(ctx context.Context, u identitystore.User) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 }
 
@@ -123,13 +123,13 @@ func (s *PasswordService) ChangePassword(ctx context.Context, userID, current, n
 // This is the same kind of write as `POST /v1/users/import`: both add an allowlist
 // row an admin explicitly asked for. The difference is only which credential path
 // the row carries — local ownership here, media-server linkage for an imported account.
-func (s *PasswordService) CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error) {
+func (s *PasswordService) CreateLocal(ctx context.Context, username, password string, role identitystore.Role, quota int) (identitystore.User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return store.User{}, ErrInvalidBootstrap
+		return identitystore.User{}, ErrInvalidBootstrap
 	}
 	if len(password) < MinPasswordLen {
-		return store.User{}, ErrWeakPassword
+		return identitystore.User{}, ErrWeakPassword
 	}
 	// Reject a name that CASE-INSENSITIVELY collides with an existing one.
 	//
@@ -141,19 +141,19 @@ func (s *PasswordService) CreateLocal(ctx context.Context, username, password st
 	// what already exists.
 	existing, err := s.store.ListUsers(ctx)
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	for _, e := range existing {
 		if strings.EqualFold(strings.TrimSpace(e.Name), username) {
-			return store.User{}, ErrDuplicateUsername
+			return identitystore.User{}, ErrDuplicateUsername
 		}
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
-		return store.User{}, fmt.Errorf("hash password: %w", err)
+		return identitystore.User{}, fmt.Errorf("hash password: %w", err)
 	}
 	now := s.now()
-	u := store.User{
+	u := identitystore.User{
 		ID:           s.newID(),
 		Name:         username,
 		Role:         role,
@@ -163,10 +163,10 @@ func (s *PasswordService) CreateLocal(ctx context.Context, username, password st
 		UpdatedAt:    now,
 	}
 	if err := s.store.CreateUserUnlessInvited(ctx, u, now); err != nil {
-		if errors.Is(err, store.ErrInvitationIdentityConflict) {
-			return store.User{}, ErrDuplicateUsername
+		if errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
+			return identitystore.User{}, ErrDuplicateUsername
 		}
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	return u, nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // #1534: a seeded backend's Proposal Job must be listable through the real
@@ -52,7 +53,7 @@ func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {
 	if err := seedClips(ctx, st); err != nil {
 		t.Fatal(err)
 	}
-	clips, err := st.ListClips(ctx, store.ClipFilter{})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

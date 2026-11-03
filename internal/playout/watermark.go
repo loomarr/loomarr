@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // The channel watermark ("bug"), #1512 phase 1d.
@@ -159,9 +161,9 @@ func (b *builder) overlay() bool {
 	}
 	why := ""
 	switch {
-	case b.host.Family == FamilySoftware || b.host.Family == FamilyGeneric:
+	case b.host.Family == encode.FamilySoftware || b.host.Family == encode.FamilyGeneric:
 		why = "no GPU overlay in the " + string(b.host.Family) + " family; never drawn on the CPU"
-	case b.host.Family == FamilyVideoToolbox:
+	case b.host.Family == encode.FamilyVideoToolbox:
 		// overlay_videotoolbox exists, but the family has never run on a real Mac; its graph comes
 		// with the family's certification rather than untested here.
 		why = "no VideoToolbox overlay until the family is certified on a real Mac"
@@ -174,9 +176,9 @@ func (b *builder) overlay() bool {
 		why = fmt.Sprintf("bad bug size %dx%d", b.wm.Width, b.wm.Height)
 	case !safeGraphPath.MatchString(b.wm.Straight):
 		why = "the bug's path would need escaping in the filter graph"
-	case b.host.Family == FamilyVAAPI && b.wm.Kernel == "":
+	case b.host.Family == encode.FamilyVAAPI && b.wm.Kernel == "":
 		why = "no blend kernel file for the VAAPI overlay"
-	case b.host.Family == FamilyVAAPI && !safeGraphPath.MatchString(b.wm.Kernel):
+	case b.host.Family == encode.FamilyVAAPI && !safeGraphPath.MatchString(b.wm.Kernel):
 		why = "the blend kernel's path would need escaping in the filter graph"
 	}
 	if why != "" {

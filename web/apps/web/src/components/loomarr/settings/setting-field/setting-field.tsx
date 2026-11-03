@@ -3,7 +3,7 @@ import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { FieldHint } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -74,6 +74,16 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
   if (!Number.isFinite(bytes)) return { amount: 0, unit: "MiB" };
   return { amount: Number((bytes / 1024 ** 2).toFixed(2)), unit: "MiB" };
 };
+
+// A number box with its unit beside it: the bytes editor's MiB, or a registry-declared unit.
+const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
+  <div className="flex gap-2">
+    {children}
+    <span className="border-input text-muted-foreground flex h-9 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
+      {unit}
+    </span>
+  </div>
+);
 
 const SettingField = ({
   entry,
@@ -274,7 +284,7 @@ const SettingField = ({
     if (entry.presentation === "bytes") {
       const current = byteParts(value);
       return (
-        <div className="flex gap-2">
+        <WithUnit unit={current.unit}>
           <Input
             id={id}
             type="number"
@@ -289,13 +299,10 @@ const SettingField = ({
               onChange(String(Math.round(Number(e.target.value) * 1024 ** 2)));
             }}
           />
-          <span className="border-input text-muted-foreground flex h-9 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
-            {current.unit}
-          </span>
-        </div>
+        </WithUnit>
       );
     }
-    return (
+    const input = (
       <Input
         id={id}
         type={entry.secret ? "password" : inputTypeFor(entry.kind)}
@@ -309,6 +316,8 @@ const SettingField = ({
         onChange={(e) => onChange(e.target.value)}
       />
     );
+    // The registry declares what a plain number counts; "50" alone does not say GiB.
+    return entry.unit ? <WithUnit unit={entry.unit}>{input}</WithUnit> : input;
   };
 
   // Compact: the control alone. The secret replace-flow is kept — a stored secret must never

@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -27,7 +28,7 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 	t.Cleanup(func() { _ = st.Close() })
 
 	now := time.Now()
-	admin := store.User{ID: "admin-test", Name: "admin", Role: store.RoleAdmin, CreatedAt: now, UpdatedAt: now}
+	admin := identitystore.User{ID: "admin-test", Name: "admin", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now}
 	if err := st.UpsertUser(ctx, admin); err != nil {
 		t.Fatal(err)
 	}

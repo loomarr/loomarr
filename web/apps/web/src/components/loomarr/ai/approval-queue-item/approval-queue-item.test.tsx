@@ -1,3 +1,4 @@
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -110,6 +111,46 @@ describe("ApprovalQueueItem", () => {
   it("renders no refusal notice when nothing was refused", () => {
     render(<ApprovalQueueItem title="80s action heroes" refused={[]} />);
     expect(screen.queryByText(/won't be included/i)).not.toBeInTheDocument();
+  });
+
+  // #2030 decision 38: a holiday the household's country doesn't keep never comes into season, so
+  // the card says the channel won't follow it rather than letting an admin expect a seasonal one.
+  it("says which holidays the household's country doesn't keep", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <ApprovalQueueItem
+          title="A Thanksgiving movie channel"
+          seasonNotKept={{ country: "GB", holidays: ["Thanksgiving"] }}
+        />
+      </LoomarrProvider>,
+    );
+    expect(
+      screen.getByText(
+        "Thanksgiving isn't on your holiday calendar (United Kingdom), so this channel won't follow its season.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("names every holiday left out, and none when all are kept", () => {
+    const { rerender } = render(
+      <LoomarrProvider theme="dark">
+        <ApprovalQueueItem
+          title="X"
+          seasonNotKept={{ country: "CA", holidays: ["Independence Day", "Memorial Day"] }}
+        />
+      </LoomarrProvider>,
+    );
+    expect(
+      screen.getByText(
+        "Independence Day and Memorial Day aren't on your holiday calendar (Canada), so this channel won't follow their seasons.",
+      ),
+    ).toBeInTheDocument();
+    rerender(
+      <LoomarrProvider theme="dark">
+        <ApprovalQueueItem title="X" />
+      </LoomarrProvider>,
+    );
+    expect(screen.queryByText(/holiday calendar/)).not.toBeInTheDocument();
   });
 
   it("mounts the feature-owned feedback control separately from approval", () => {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillersafety"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // RecoverInterruptedSpokenSafetyRuns closes attempts owned by a previous
@@ -62,10 +62,7 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	query := spokenSafetyRunSelect + ` WHERE id = ?`
-	if s.dialect == store.DialectPostgres {
-		query += ` FOR UPDATE`
-	}
+	query := storedb.LockRows(s.dialect, spokenSafetyRunSelect+` WHERE id = ?`)
 	run, err := scanSpokenSafetyRun(tx.QueryRowContext(ctx, s.ph(query), runID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil

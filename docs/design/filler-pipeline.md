@@ -36,6 +36,87 @@ that has been dropped and rebuilt; pipeline state records work already paid for.
 is one JSON document (`stages_json`); `stage`, `status`, `disposition` and `next_run` are columns
 because the work list and Incoming filter on them.
 
+## Derivative encode levels
+
+Offline derivatives encode with constant quality on the host's own hardware family (#2121), using
+`encode.FileVideoArgs`. Each family's level is **measured, not chosen**: `cmd/filler-encode-bench`
+(`make filler-encode-bench`) encodes a corpus of real source masters at candidate levels and scores
+each output against its source with VMAF. The level is the highest whose per-clip VMAF stays at or above **95 for 90% of
+the corpus** (the 10th percentile). `encode.FileLevel` records it. A family with a file mode but no
+measurement encodes in software instead of guessing (`encode.FileFamily`), and so do the generic
+encoders.
+
+Measured on 30 archive commercials (mostly 480p H.264), 2026-10-30. Size and CPU are relative to the
+software evidence recipe these levels replace (libx264 `slow`, CRF 14: VMAF p10 97.2):
+
+| Family | Level | VMAF median / p10 | Size | Encode CPU | Status |
+| --- | --- | --- | --- | --- | --- |
+| NVENC (GeForce RTX 3080 Ti) | `-cq 25` | 96.8 / 95.2 | 54% | 6% (CPU decode in the bench) | measured |
+| Software (libx264 `veryfast`) | `-crf 16` | 96.7 / 95.3 | 83% | 30% | measured |
+| VAAPI (`-rc_mode CQP`) | — | — | — | — | not yet measured on an Arc: encodes in software |
+| VideoToolbox (`-q:v`) | — | — | — | — | unverified: no Mac |
+
+**One graph per derivative.** The host is the channels' own: the operator's pinned
+`playout.encoder`, else the encoder detection published, and software until detection settles. The
+stage reads it once per clip, so the recipes it records always name the encoder that made the bytes.
+Decoded frames split once:
+
+- The **encode branch** only converts the pixel format, on the device that holds the frames. On
+  NVENC and VAAPI the source decodes on the GPU and never leaves it. If GPU decode fails, the
+  encode runs once more with CPU decode before it counts as a failure (the playout ladder's rule).
+- The **detector branch** downloads the full frames and runs `blackdetect` and `freezedetect` on
+  them, exactly as before. A 160-pixel thumbnail was tried and rejected. On 74 real masters it
+  matched `blackdetect`, but it averaged away the motion `freezedetect` measures: it invented
+  freezes in 4 clips and doubled one clip's frozen time, enough to send good adverts to review. The
+  full-size branch matched the CPU detectors exactly on every clip that diverged, and cost about
+  13% more detector CPU with no extra wall time.
+
+**One encode, two roles.** Evidence and playback share one recipe: 1-second keyframes and 256 kbps
+audio. The evidence recipe is derived from the playback recipe, never restated. A top-level clip's
+playback rendition is a byte copy of the evidence file, carrying the evidence encode's detector
+findings, so the evidence picture is exactly the one that airs. A conditioned split child still
+encodes, because its input is the conditioned cut, not the master. Recipes are `filler-*-v2`, and
+the libx264 v1 records written before this change still validate, so no stored clip's lineage
+breaks.
+
+**A tune stops an encode.** The transcode rung runs under the playout budget's background context.
+When a live transcode is admitted, the encode stops at once. The rung yields as a deferral: no
+attempt is spent, and no other encode starts in that pass while playback runs. Transcription and
+splitting only wait before they start. A long recording's transcription interrupted at every tune
+would never finish.
+
+The next level up fails the floor on both measured families (NVENC `-cq 27`: p10 94.1; x264 CRF 18:
+p10 94.2). The worst single frame is lower on NVENC than on the old recipe (78 against 91 at these
+levels). It is a pooled-minimum outlier, not what the floor gates on, and is noted here so a later
+change in the rule starts from it.
+
+## The library re-encode
+
+The clips already on air move onto the current profile once, automatically (#2121). It is the
+one deliberate exception to the rule against backfill.
+
+- **Which clips.** An airing top-level clip whose playback was encoded from its retained source
+  master, under a profile other than the current one. A clip whose playback file is its own
+  download has no original to encode from again, and a split child is cut from its parent, so
+  neither is replaced. A host without a hardware encoder replaces nothing: the re-encode is what
+  moves the library onto the GPU, and on the CPU it would spend the machine for no saving.
+- **Only idle capacity.** A pipeline pass that finds no due conveyor work re-encodes one clip, so
+  a new arrival always goes first. It runs under the playout budget's background context, so a
+  tune stops it as a deferral and the next idle pass goes again.
+- **The old file keeps airing.** The clip is never held. The replacement is encoded from the
+  master into the hidden staging folder and verified there like any derivative. Then the defect
+  floor measures the staged file and the judge rules on a borderline picture, as at admission.
+  Only bytes the floor admits are published, and the switch is one transaction: the re-key, and
+  the floor's record for the new bytes in place of the old one's. The old playback file and
+  evidence copy go after the commit; the master always stays.
+- **A failed replacement changes nothing.** An encode error, a QC or loudness refusal, a defect
+  verdict, a judge that cannot rule, or a failed commit discards the replacement, and its bytes
+  with it, so a scan cannot catalogue it as a second clip. The clip airs on as it was. The pass
+  retries on the pipeline's backoff, three attempts, then not again until a restart.
+- **No content check runs again.** A top-level clip's safety, rights and enrichment verdicts are
+  of its source, which the re-encode does not change, and the re-key carries them to the new
+  bytes. The defect floor runs again because it judges the bytes that air.
+
 ## Budgets are per clip
 
 The scheduler's unit of work is a clip, so **a rung may not spend per segment what the budget allows

@@ -21,7 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // fakeFiller records filler service calls.
@@ -79,9 +81,9 @@ type fakeFiller struct {
 	cleanupResult         filler.StorageCleanupResult
 	pullID                string
 	pullTargets           []filler.AcquisitionTarget
-	sourceSuggestions     []filler.SourceSuggestion
+	sourceSuggestions     []sourceprovider.Suggestion
 	sourceSuggestionErr   error
-	resolvedSource        filler.SourceSuggestion
+	resolvedSource        sourceprovider.Suggestion
 	sourceResolutionErr   error
 	sourceSuggestionCalls []struct {
 		Provider string
@@ -117,7 +119,7 @@ func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResu
 	return f.fetchResult, nil
 }
 
-func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	f.sourceSuggestionCalls = append(f.sourceSuggestionCalls, struct {
 		Provider string
 		Query    string
@@ -129,25 +131,25 @@ func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, l
 	return f.sourceSuggestions, nil
 }
 
-func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (filler.SourceSuggestion, error) {
+func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (sourceprovider.Suggestion, error) {
 	f.sourceResolutionCalls = append(f.sourceResolutionCalls, struct {
 		Provider string
 		Input    string
 	}{provider, input})
 	if f.sourceResolutionErr != nil {
-		return filler.SourceSuggestion{}, f.sourceResolutionErr
+		return sourceprovider.Suggestion{}, f.sourceResolutionErr
 	}
 	if f.resolvedSource.CanonicalID != "" {
 		return f.resolvedSource, nil
 	}
 	if provider == "youtube" {
-		return filler.SourceSuggestion{
-			Provider: provider, TargetType: "playlist", CanonicalID: input,
+		return sourceprovider.Suggestion{
+			Provider: sourceprovider.ID(provider), TargetType: "playlist", CanonicalID: input,
 			CanonicalURL: input, Title: input,
 		}, nil
 	}
-	return filler.SourceSuggestion{
-		Provider: provider, TargetType: "collection", CanonicalID: input,
+	return sourceprovider.Suggestion{
+		Provider: sourceprovider.ID(provider), TargetType: "collection", CanonicalID: input,
 		CanonicalURL: "https://archive.org/details/" + input, Title: input,
 	}, nil
 }
@@ -230,7 +232,7 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error) {
 	if f.unavailable {
 		return "", api.ErrIngestUnavailable
 	}
@@ -379,7 +381,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 	srv, st, _ := newFillerServerWithImages(t, imageService)
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
 	}}); err != nil {
@@ -417,7 +419,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := store.Clip{Clip: filler.Clip{
+	clip := catalogstore.Clip{Clip: filler.Clip{
 		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
 		Kind: filler.Commercial, DurationMs: 30_000, Source: source.ID,
 	}}
@@ -459,7 +461,7 @@ func clearSeededSources(t *testing.T, st fillerstore.Store) {
 
 func seedClip(t *testing.T, st fillerstore.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
-	c := store.Clip{}
+	c := catalogstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
 	// both so assertions stay legible — the store does not care what a hash looks like, and the
 	// 64-hex shape is enforced (and tested) in `filler.ClipPath`.

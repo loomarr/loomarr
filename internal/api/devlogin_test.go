@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -57,9 +57,9 @@ func newDevLoginHarness(t *testing.T, devLogin bool, seed func(fillerstore.Store
 	return newDevAccessHarness(t, devAccessHarnessConfig{DevLogin: devLogin, Seed: seed})
 }
 
-func seedAdmin(t *testing.T, st fillerstore.Store, id, name string, role store.Role) {
+func seedAdmin(t *testing.T, st fillerstore.Store, id, name string, role identitystore.Role) {
 	t.Helper()
-	u := store.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	u := identitystore.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func seedAdmin(t *testing.T, st fillerstore.Store, id, name string, role store.R
 // grows a credential-free admin door.
 func TestDevLoginAbsentByDefault(t *testing.T) {
 	srv := newDevLoginHarness(t, false, func(st fillerstore.Store) {
-		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -94,7 +94,7 @@ func TestDevLoginAbsentByDefault(t *testing.T) {
 // would satisfy it just as well.
 func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
 	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
-		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -147,7 +147,7 @@ func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
 func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
 	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
 		// A member exists, but no admin.
-		seedAdmin(t, st, "u-kid", "kid", store.RoleMember)
+		seedAdmin(t, st, "u-kid", "kid", identitystore.RoleMember)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -168,7 +168,7 @@ func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
 // not become the way around that.
 func TestDevLoginSkipsDisabledAdmin(t *testing.T) {
 	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
-		u := store.User{ID: "u-off", Name: "off", Role: store.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+		u := identitystore.User{ID: "u-off", Name: "off", Role: identitystore.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 		if err := st.UpsertUser(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +194,7 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 	}{{"off", false}, {"on", true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newDevLoginHarness(t, tc.on, func(st fillerstore.Store) {
-				seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+				seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 			}).Server
 			res, err := http.Get(srv.URL + "/v1/setup/state")
 			if err != nil {

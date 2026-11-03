@@ -236,3 +236,24 @@ func TestApply_WithdrawalRetractsOnlyItsOwnProducersEarlierAnswer(t *testing.T) 
 		}
 	}
 }
+
+func TestApply_AnEmptyAnswerNeverErasesAKnownValueWhateverItsConfidence(t *testing.T) {
+	current := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisKind,
+		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "commercial"},
+		Evidence: evidence(fillerenrichment.EvidenceInference, 60)}
+	current.Evidence.Producer = "text-model:fixture"
+	current.Evidence.ProducerVersion = "3"
+	empty := current
+	empty.Value = fillerenrichment.Value{}
+	empty.Evidence.ProducerVersion = "4"
+	empty.Evidence.Confidence = 80
+	got, changed, err := fillerenrichment.Apply(current, empty)
+	if err != nil || changed || got.Value.Text != "commercial" {
+		t.Fatalf("Apply() = %+v, changed %v, err %v; a confident empty answer erased a known value", got, changed, err)
+	}
+	empty.Evidence.ProducerVersion = "3"
+	got, changed, err = fillerenrichment.Apply(current, empty)
+	if err != nil || changed || got.Value.Text != "commercial" {
+		t.Fatalf("same-version Apply() = %+v, changed %v, err %v", got, changed, err)
+	}
+}

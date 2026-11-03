@@ -156,7 +156,12 @@ The properties the channel-icon path already established are carried forward, no
   from the browser. This is the same browser-vs-native split as §9.1's `relativeUrl`/`url` pair.
 - ⚠ **New with this section: SSRF defence.** Adopting a remote image is a new outbound request driven
   by input, which nothing in the product had before. Host allowlist, `https` only, no redirect into
-  private address ranges, a response size cap, and the §6 per-service timeout.
+  a non-public address (`httpx.IsPublicIP`: private, loopback, link-local, CGNAT/Tailscale,
+  reserved and IPv6 forms embedding those), a response size cap, and the §6 per-service timeout.
+  `httpx.IsPublicIP` is the single "is this address public?" predicate; clients fetching
+  stranger-supplied URLs (channel-proposal references, Web Push endpoints) dial through
+  `httpx.PublicDialContext`, which resolves, refuses any non-public answer, and pins the checked
+  address. An architecture guard keeps hand-rolled range checks out of every other package.
 
 ### Durability — what survives a restore, and what does not
 

@@ -11,8 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -122,7 +123,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		},
 	}
 
-	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []filler.DiscoveredRef{{
+	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []sourceprovider.Item{{
 		ID: "retro-toy", URL: "https://youtube.com/watch?v=retro-toy",
 	}})
 	if err != nil {
@@ -133,7 +134,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 	waitForAcquisition(t, st, jobID, now, filler.AcquisitionSuccess)
 
-	held, err := st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
+	held, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}

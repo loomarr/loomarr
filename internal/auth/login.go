@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // ErrRateLimited is returned when login attempts exceed the per-IP+username rate.
@@ -29,10 +30,10 @@ type Limiter interface {
 // LoginStore is the allowlist and session-revocation surface needed by login.
 // Session creation stays behind Manager's separate SessionStore seam.
 type LoginStore interface {
-	GetUser(ctx context.Context, id string) (store.User, error)
-	GetUserByName(ctx context.Context, name string) (store.User, error)
-	ListUsers(ctx context.Context) ([]store.User, error)
-	UpsertUser(ctx context.Context, u store.User) error
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
+	GetUserByName(ctx context.Context, name string) (identitystore.User, error)
+	ListUsers(ctx context.Context) ([]identitystore.User, error)
+	UpsertUser(ctx context.Context, u identitystore.User) error
 	accessRevoker
 }
 
@@ -89,22 +90,22 @@ func NewLoginService(lib Authenticator, st LoginStore, mgr *Manager, limiter Lim
 // Every failure — unknown user, wrong password, not-imported, disabled — returns
 // the same ErrInvalidCredentials, so login never reveals which users exist.
 // rateKey is IP+username. Returns the cookie token, its expiry, and the user.
-func (s *LoginService) Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error) {
+func (s *LoginService) Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error) {
 	if s.limiter != nil && !s.limiter.Allow(rateKey) {
-		return "", time.Time{}, store.User{}, ErrRateLimited
+		return "", time.Time{}, identitystore.User{}, ErrRateLimited
 	}
 
 	u, err = s.authenticate(ctx, username, password)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	if u.Disabled {
-		return "", time.Time{}, store.User{}, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials
 	}
 
 	token, expires, err = s.mgr.Issue(ctx, u.ID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	return token, expires, u, nil
 }
@@ -120,17 +121,17 @@ func (s *LoginService) Login(ctx context.Context, username, password, rateKey st
 // have a row. A disabled admin is skipped exactly as Login would reject it, and an
 // install with no admin gets ErrInvalidCredentials rather than a bootstrapped one —
 // this is a shortcut past the credential CHECK, never past the allowlist.
-func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time.Time, u store.User, err error) {
+func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time.Time, u identitystore.User, err error) {
 	users, err := s.store.ListUsers(ctx)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	// Lowest id wins, so the choice is stable across restarts rather than depending on
 	// store iteration order — a dev login that lands on a different account each time
 	// would be its own confusing bug.
-	var pick store.User
+	var pick identitystore.User
 	for _, candidate := range users {
-		if candidate.Role != store.RoleAdmin || candidate.Disabled {
+		if candidate.Role != identitystore.RoleAdmin || candidate.Disabled {
 			continue
 		}
 		if pick.ID == "" || candidate.ID < pick.ID {
@@ -138,12 +139,12 @@ func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time
 		}
 	}
 	if pick.ID == "" {
-		return "", time.Time{}, store.User{}, ErrInvalidCredentials
+		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials
 	}
 
 	token, expires, err = s.mgr.Issue(ctx, pick.ID)
 	if err != nil {
-		return "", time.Time{}, store.User{}, err
+		return "", time.Time{}, identitystore.User{}, err
 	}
 	return token, expires, pick, nil
 }
@@ -152,13 +153,13 @@ func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time
 // password on the appropriate credential path (§11). Provider linkage is
 // independent from possession of a hash: linked users prefer the provider and
 // use their verifier only when the provider made no authoritative decision.
-func (s *LoginService) authenticate(ctx context.Context, username, password string) (store.User, error) {
+func (s *LoginService) authenticate(ctx context.Context, username, password string) (identitystore.User, error) {
 	existingByName, lookupErr := s.store.GetUserByName(ctx, username)
 	if lookupErr != nil && !errors.Is(lookupErr, store.ErrNotFound) {
-		return store.User{}, lookupErr
+		return identitystore.User{}, lookupErr
 	}
 	if lookupErr == nil && existingByName.Disabled {
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 
 	// Local accounts own their verifier and never delegate to the media server.
@@ -166,12 +167,12 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 		local := existingByName
 		valid, needsUpgrade := verifyStoredLocalPassword(local.PasswordHash, password)
 		if !valid {
-			return store.User{}, ErrInvalidCredentials
+			return identitystore.User{}, ErrInvalidCredentials
 		}
 		if needsUpgrade {
 			hash, err := hashPassword(password)
 			if err != nil {
-				return store.User{}, err
+				return identitystore.User{}, err
 			}
 			return s.refreshOnLogin(ctx, local, local.Name, local.Disabled, hash)
 		}
@@ -184,7 +185,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 		if lookupErr == nil && existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
 			return existingByName, nil
 		}
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 	msUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
@@ -192,34 +193,34 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 			existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
 			return existingByName, nil
 		}
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 	existing, err := s.store.GetUser(ctx, msUser.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		// Valid media-server credentials, but NOT imported → denied (the allowlist).
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	if !existing.MediaServerLinked || existing.Disabled {
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 	if msUser.Disabled {
 		existing.Name = msUser.Name
 		existing.Disabled = true
 		existing.UpdatedAt = s.now()
 		if err := s.store.UpsertUser(ctx, existing); err != nil {
-			return store.User{}, err
+			return identitystore.User{}, err
 		}
 		if err := revokeAccess(ctx, s.store, existing.ID); err != nil {
-			return store.User{}, err
+			return identitystore.User{}, err
 		}
-		return store.User{}, ErrInvalidCredentials
+		return identitystore.User{}, ErrInvalidCredentials
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	// Refresh name + disabled from the source of truth on each login (a
 	// server-side disable takes effect at once); role/quota stay Loomarr-owned.
@@ -228,7 +229,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 
 // refreshOnLogin persists provider identity state and, when supplied, replaces
 // the offline verifier. Role, quota, and grants remain Loomarr-owned.
-func (s *LoginService) refreshOnLogin(ctx context.Context, u store.User, name string, disabled bool, passwordHash string) (store.User, error) {
+func (s *LoginService) refreshOnLogin(ctx context.Context, u identitystore.User, name string, disabled bool, passwordHash string) (identitystore.User, error) {
 	if u.Name == name && u.Disabled == disabled && (passwordHash == "" || u.PasswordHash == passwordHash) {
 		return u, nil // no change — skip the write
 	}
@@ -239,7 +240,7 @@ func (s *LoginService) refreshOnLogin(ctx context.Context, u store.User, name st
 	}
 	u.UpdatedAt = s.now()
 	if err := s.store.UpsertUser(ctx, u); err != nil {
-		return store.User{}, err
+		return identitystore.User{}, err
 	}
 	return u, nil
 }

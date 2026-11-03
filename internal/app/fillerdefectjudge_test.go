@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
 )
@@ -24,10 +24,10 @@ func TestFillerDefectJudgeLedger_HoldsHostedLooksAtTheDailyCeiling(t *testing.T)
 	ledger := fillerDefectJudgeLedger{st: st, set: visionSet(t, map[string]string{
 		"filler.defects.judge_look_cents": "2", "filler.defects.judge_daily_cents": "7",
 	})}
-	hosted := filler.DefectJudgeEndpoint{Provider: "openrouter", Model: "m1"}
-	ownServer := filler.DefectJudgeEndpoint{Provider: "custom", Model: "gemma", SelfHosted: true}
+	hosted := fillerdefectfloor.DefectJudgeEndpoint{Provider: "openrouter", Model: "m1"}
+	ownServer := fillerdefectfloor.DefectJudgeEndpoint{Provider: "custom", Model: "gemma", SelfHosted: true}
 	at := time.Unix(1_800_000_000, 0).UTC()
-	look := func(e filler.DefectJudgeEndpoint, a llm.Attribution, failed bool) bool {
+	look := func(e fillerdefectfloor.DefectJudgeEndpoint, a llm.Attribution, failed bool) bool {
 		t.Helper()
 		id, held, err := ledger.ReserveDefectJudge(ctx, "clip-1", e, at)
 		if err != nil {
@@ -63,11 +63,11 @@ func TestDefectJudgeEndpoint_IsTheVisionModelWhenVisionIsOn(t *testing.T) {
 	off := &hotVisionProvider{set: visionSet(t, map[string]string{
 		"llm.provider": "ollama", "llm.url": "http://localhost:11434", "llm.model": "gemma",
 	})}
-	if _, err := off.defectJudgeEndpoint(); !errors.Is(err, filler.ErrNoDefectJudge) {
+	if _, err := off.defectJudgeEndpoint(); !errors.Is(err, fillerdefectfloor.ErrNoDefectJudge) {
 		t.Fatalf("vision off = %v, want no judge", err)
 	}
 	unreachable := &hotVisionProvider{set: visionSet(t, map[string]string{"filler.vision.enabled": "true"})}
-	if _, err := unreachable.defectJudgeEndpoint(); !errors.Is(err, filler.ErrNoDefectJudge) {
+	if _, err := unreachable.defectJudgeEndpoint(); !errors.Is(err, fillerdefectfloor.ErrNoDefectJudge) {
 		t.Fatalf("vision on with no endpoint = %v, want no judge", err)
 	}
 	on := &hotVisionProvider{set: visionSet(t, map[string]string{

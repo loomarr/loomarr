@@ -16,7 +16,10 @@ import (
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
@@ -262,7 +265,8 @@ func intakeLanguages(st interface {
 func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
-	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
+	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// The language gate (§10 V40). Registered unconditionally: no intake language (no household
 	// language and no channel naming one) makes Run a no-op, so an install that has not opted in
 	// pays nothing and the Tasks row still exists to be seen and paused.
@@ -338,34 +342,39 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now)
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
 		func() bool { return set.boolv("filler.vision.enabled") }, time.Now)
+	transcodeStage := filler.NewTranscodeStage(
+		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		clipDir, mediatools.DefaultMezzanine(),
+		func() string { return set.str("playout.ffmpeg_path") },
+		// The playback target, for the too_quiet floor only: files are never levelled on
+		// disk, playout corrects them at air time (#2032).
+		func() float64 {
+			// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
+			// correction at all", which no numeric kind can express), so it is parsed
+			// here. An unparseable value yields 0, meaning no target and no floor.
+			lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+			if err != nil {
+				return 0
+			}
+			return lufs
+		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
+		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
+		WithEncodeHost(func() encode.HostProfile {
+			return playoutRes.fileEncodeHost(encode.Encoder(set.str("playout.encoder")))
+		}).
+		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
 			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
 			func() int64 { return set.dur("filler.min_duration").Milliseconds() },
 			func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
-		filler.NewTranscodeStage(
-			fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
-			clipDir, mediatools.DefaultMezzanine(),
-			func() string { return set.str("playout.ffmpeg_path") },
-			// The playback target, for the too_quiet floor only: files are never levelled on
-			// disk, playout corrects them at air time (#2032).
-			func() float64 {
-				// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
-				// correction at all", which no numeric kind can express), so it is parsed
-				// here. An unparseable value yields 0, meaning no target and no floor.
-				lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
-				if err != nil {
-					return 0
-				}
-				return lufs
-			}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
-			WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor),
+		transcodeStage,
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
-		filler.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
-		filler.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
+		fillerscreening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		fillerdefectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
@@ -477,7 +486,9 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 			MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
 		},
 		emitter.FillerClipStage, time.Now, log).
-		WithRewind(fillerRewindAdapter{st}, clipDir)
+		WithRewind(fillerRewindAdapter{st}, clipDir).
+		// Idle passes move the airing library onto the current encode profile (#2121).
+		WithLibraryReencode(transcodeStage, fillerAiringClipsAdapter{st})
 	if headroom != nil {
 		// Media rungs yield to live playback instead of competing with it for CPU (#1512 G5).
 		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())

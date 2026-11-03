@@ -9,6 +9,8 @@ import (
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.
@@ -112,10 +114,7 @@ func (s *sqlStore) commitProposalApproval(
 	// Proposal revision and approval serialize on the stable Job row. Generating
 	// a replacement temporarily closes the approval gate; a failed replacement
 	// leaves the old submitted proposal intact and terminal, so it can be approved.
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
@@ -209,13 +208,13 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	if p.CreatedBy != "" {
 		for _, item := range encoded {
-			if err := insertNotificationReferenceRecipient(
+			if err := identitystore.InsertNotificationReferenceRecipient(
 				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
 			); err != nil {
 				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
 			}
 		}
-		if err := insertNotificationReferenceRecipient(
+		if err := identitystore.InsertNotificationReferenceRecipient(
 			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
 		); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
@@ -225,21 +224,6 @@ func (s *sqlStore) commitProposalApproval(
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
-}
-
-func insertNotificationReferenceRecipient(
-	ctx context.Context,
-	tx *sql.Tx,
-	placeholder func(string) string,
-	referenceKind, referenceID, personID string,
-	createdAt int64,
-) error {
-	_, err := tx.ExecContext(ctx, placeholder(`INSERT INTO notification_reference_recipients
-		(reference_kind, reference_id, person_id, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (reference_kind, reference_id, person_id) DO NOTHING`),
-		referenceKind, referenceID, personID, createdAt)
-	return err
 }
 
 func approvalOrderKey(p Proposal) string {
@@ -276,9 +260,7 @@ type proposalApprovalTxReader struct {
 }
 
 func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
-	return scanUser(r.tx.QueryRowContext(ctx, r.s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
-		 FROM users WHERE id = ?`), id))
+	return identitystore.GetUserIn(ctx, r.tx, r.s.ph, id)
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
@@ -294,17 +276,9 @@ func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Ke
 	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
 }
 
-// isConstraintViolation recognizes the portable driver contracts without coupling the
-// store to either concrete error package. Postgres exposes SQLSTATE 23505; modernc SQLite
-// exposes extended result codes whose low byte is SQLITE_CONSTRAINT (19).
-func isConstraintViolation(err error) bool {
-	var state interface{ SQLState() string }
-	if errors.As(err, &state) && state.SQLState() == "23505" {
-		return true
-	}
-	var coded interface{ Code() int }
-	return errors.As(err, &coded) && coded.Code()&0xff == 19
-}
+// isConstraintViolation is storedb.IsConstraintViolation under the name this package's 14 call
+// sites already use.
+func isConstraintViolation(err error) bool { return storedb.IsConstraintViolation(err) }
 
 func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {
@@ -356,10 +330,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {

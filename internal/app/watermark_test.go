@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -35,7 +36,7 @@ func testWatermarksWith(t *testing.T, set resolved, ch store.Channel, gatePassed
 	g := &watermarkGate{}
 	g.works.Store(gatePassed)
 	return &channelWatermarks{dir: t.TempDir(), channels: staticChannelReader{channel: ch}, log: slog.New(slog.DiscardHandler),
-		install: watermarkInstall(set), gates: map[playout.Encoder]*watermarkGate{playout.EncoderNVENC: g}}
+		install: watermarkInstall(set), gates: map[encode.Encoder]*watermarkGate{encode.EncoderNVENC: g}}
 }
 
 // sameBug fails unless the aired PNG at path is exactly the renderer's bug for the callsign in the
@@ -70,14 +71,14 @@ func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
 	call := deriveCallsign(name, number)
 	set := visionSet(t, nil)
 	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: name, Number: number}}, true)
-	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug")
 	}
 	sameBug(t, wm.Straight, call, watermark.StyleText, 0.40)
 
 	set.svc.SetDB(map[string]string{"playout.watermark_look": "plate"})
-	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	again := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if again == nil || again.Straight == wm.Straight {
 		t.Fatalf("a changed look did not re-render the bug: %+v", again)
 	}
@@ -85,7 +86,7 @@ func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
 
 	ch := store.Channel{Channel: schedule.Channel{Name: name, Number: number}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "small-plate"}
-	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	sameBug(t, over.Straight, call, watermark.StyleSmallPlate, 0.40)
 }
 
@@ -141,7 +142,7 @@ func peakWhite(t *testing.T, path string) uint32 {
 func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 	set := visionSet(t, map[string]string{"playout.watermark_opacity_pct": "55"})
 	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
-	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug")
 	}
@@ -149,7 +150,7 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 		t.Errorf("bug peaks at %d/255, want %d (the install setting, 55%%)", got, want)
 	}
 	set.svc.SetDB(map[string]string{"playout.watermark_opacity_pct": "70"})
-	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	again := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if again == nil || again.Straight == wm.Straight {
 		t.Fatalf("a changed setting did not re-render the bug: %+v", again)
 	}
@@ -160,7 +161,7 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 	own := 0.25
 	ch := store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Opacity: &own}
-	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if got, want := peakWhite(t, over.Straight), uint32(64); got < want-1 || got > want+1 { // 0.25 × 255
 		t.Errorf("channel override: bug peaks at %d/255, want %d", got, want)
 	}
@@ -169,7 +170,7 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 // ON BY DEFAULT: a channel with no watermark policy gets the generated bug at the approved placement.
 func TestChannelWatermarks_DefaultBug(t *testing.T) {
 	c := testWatermarks(t, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
-	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	wm := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if wm == nil {
 		t.Fatal("no bug for a channel on the defaults")
 	}
@@ -181,7 +182,7 @@ func TestChannelWatermarks_DefaultBug(t *testing.T) {
 		t.Errorf("default bug peaks at %d/255, want %d (opacity 0.40)", peak, want)
 	}
 	// Cached: the second ask returns the same files without re-rendering.
-	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	again := c.For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if again == nil || again.Straight != wm.Straight {
 		t.Errorf("not cached: %+v vs %+v", again, wm)
 	}
@@ -191,11 +192,11 @@ func TestChannelWatermarks_OffOrUnverifiedMeansNoBug(t *testing.T) {
 	off := false
 	ch := store.Channel{Channel: schedule.Channel{Name: "Kids", Number: 3}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Enabled: &off}
-	if wm := testWatermarks(t, ch, true).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason); wm != nil {
+	if wm := testWatermarks(t, ch, true).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason); wm != nil {
 		t.Error("a channel that turned the bug off got one")
 	}
 	ch.Policy.Watermark = nil
-	if wm := testWatermarks(t, ch, false).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason); wm != nil {
+	if wm := testWatermarks(t, ch, false).For(context.Background(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason); wm != nil {
 		t.Error("a host whose overlay has not passed its self-check got a bug")
 	}
 }
@@ -214,10 +215,10 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	}
 	events := &recordedEvents{}
 	c := &channelWatermarks{dir: t.TempDir(), channels: staticChannelReader{channel: store.Channel{}}, log: slog.New(slog.DiscardHandler),
-		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() playout.GPUFilters { return playout.GPUFilters{} },
+		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
 		events: events, lifetime: t.Context()}
 	g := &watermarkGate{}
-	c.check(playout.EncoderVAAPI, g)
+	c.check(encode.EncoderVAAPI, g)
 
 	if g.works.Load() {
 		t.Fatal("a failed self-check left the watermark on")
@@ -228,7 +229,7 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	e := events.got[0]
 	detail, _ := e.Attributes["detail"].(string)
 	if e.Level != diagnostics.LevelWarn || e.Name != "watermark.disabled" || !strings.Contains(detail, "no such encoder") ||
-		!strings.Contains(e.Message, detail) || e.Attributes["encoder"] != string(playout.EncoderVAAPI) {
+		!strings.Contains(e.Message, detail) || e.Attributes["encoder"] != string(encode.EncoderVAAPI) {
 		t.Errorf("the event does not say why the watermark is off: %+v", e)
 	}
 }
@@ -304,10 +305,10 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	sep30 := time.Date(2026, time.September, 30, 23, 30, 0, 0, time.UTC)
 	oct1 := time.Date(2026, time.October, 1, 0, 30, 0, 0, time.UTC)
 
-	plain := c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, sep30)
+	plain := c.For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, sep30)
 	sameDesign(t, plain.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
 		Colour: watermark.Red, Palette: watermark.EraPalette(1980)})
-	spooky := c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct1)
+	spooky := c.For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct1)
 	h := watermark.HolidayLooks["halloween"]
 	sameDesign(t, spooky.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
 		Colour: h.Colour, Palette: h.Palette, Motif: watermark.MotifGhost})
@@ -315,7 +316,7 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	// A fixed colour gives way to the holiday's too: the holiday version is one design (the mock's holOpts).
 	fixed := ch
 	fixed.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Color: "cyan", Motifs: map[string]string{"halloween": "ghost"}}
-	if wm := colour(testWatermarks(t, fixed, true)).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct1); wm == nil {
+	if wm := colour(testWatermarks(t, fixed, true)).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct1); wm == nil {
 		t.Fatal("no bug")
 	} else {
 		sameDesign(t, wm.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
@@ -324,7 +325,7 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 
 	ignore := ch
 	ignore.Policy.Seasonal = schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}
-	if wm := colour(testWatermarks(t, ignore, true)).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct1); wm == nil {
+	if wm := colour(testWatermarks(t, ignore, true)).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct1); wm == nil {
 		t.Fatal("no bug")
 	} else {
 		sameDesign(t, wm.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
@@ -334,7 +335,7 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	off := false
 	optedOut := ch
 	optedOut.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Color: "cyan", Holiday: &off}
-	if wm := colour(testWatermarks(t, optedOut, true)).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct1); wm == nil {
+	if wm := colour(testWatermarks(t, optedOut, true)).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct1); wm == nil {
 		t.Fatal("no bug")
 	} else {
 		sameDesign(t, wm.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
@@ -367,8 +368,8 @@ func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
 	if got := schedule.ActiveHolidayAt(oct31Night, ch.Policy.Seasonal, cal); got != "halloween" {
 		t.Fatalf("the schedule's holiday at Oct 31 9 pm Eastern = %q, want halloween", got)
 	}
-	sameDesign(t, c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct31Night).Straight, spooky)
-	sameDesign(t, c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, sep30Night).Straight, plain)
+	sameDesign(t, c.For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct31Night).Straight, spooky)
+	sameDesign(t, c.For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, sep30Night).Straight, plain)
 
 	opts, err := c.Options(t.Context(), "ch", oct31Night)
 	if err != nil {
@@ -380,12 +381,12 @@ func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
 
 	// The same instant in UTC is Nov 1: proof the zone, not the instant, decides.
 	utc := colour(testWatermarks(t, ch, true))
-	sameDesign(t, utc.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct31Night).Straight, plain)
+	sameDesign(t, utc.For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, oct31Night).Straight, plain)
 }
 
 // colour marks the test service's encoder as passing the coloured self-check.
 func colour(c *channelWatermarks) *channelWatermarks {
-	c.gates[playout.EncoderNVENC].colour.Store(true)
+	c.gates[encode.EncoderNVENC].colour.Store(true)
 	return c
 }
 
@@ -394,14 +395,14 @@ func colour(c *channelWatermarks) *channelWatermarks {
 func TestChannelWatermarks_ColourFallsBackToWhite(t *testing.T) {
 	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "badge", Color: "pink"}
-	white := testWatermarks(t, ch, true).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	white := testWatermarks(t, ch, true).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if white == nil {
 		t.Fatal("a failed coloured check dropped the logo")
 	}
 	sameDesign(t, white.Straight, watermark.Design{Style: watermark.StyleBadge, Callsign: "SC", Number: 7,
 		Colour: watermark.Pink, Palette: watermark.NoEraPalette, White: true})
 	c := testWatermarks(t, ch, true)
-	coloured := colour(c).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, offSeason)
+	coloured := colour(c).For(t.Context(), "ch", encode.EncoderNVENC, 1920, 1080, offSeason)
 	if filepath.Base(coloured.Straight) == filepath.Base(white.Straight) {
 		t.Error("the white and coloured bugs share a cache key")
 	}

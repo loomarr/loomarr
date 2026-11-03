@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // The image service's store bridge (§22, V52).
@@ -150,7 +151,7 @@ func (a imageStore) TouchImage(ctx context.Context, hash string, at time.Time) e
 }
 
 func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
-	return a.st.PutImageRef(ctx, store.ImageRef{
+	return a.st.PutImageRef(ctx, catalogstore.ImageRef{
 		ImageHash: ref.ImageHash,
 		OwnerKind: ref.OwnerKind,
 		OwnerID:   ref.OwnerID,
@@ -159,7 +160,7 @@ func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
 }
 
 func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) error {
-	return a.st.PutImageDerivative(ctx, store.ImageDerivative{
+	return a.st.PutImageDerivative(ctx, catalogstore.ImageDerivative{
 		ImageHash:  d.ImageHash,
 		Recipe:     d.Recipe,
 		Format:     string(d.Format),
@@ -173,9 +174,9 @@ func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) erro
 }
 
 func (a imageStore) PutDerivatives(ctx context.Context, derivatives []images.Derivative) error {
-	rows := make([]store.ImageDerivative, 0, len(derivatives))
+	rows := make([]catalogstore.ImageDerivative, 0, len(derivatives))
 	for _, d := range derivatives {
-		rows = append(rows, store.ImageDerivative{
+		rows = append(rows, catalogstore.ImageDerivative{
 			ImageHash: d.ImageHash, Recipe: d.Recipe, Format: string(d.Format), Width: d.Width,
 			Bytes: d.Bytes, OutputHash: d.OutputHash, Path: d.Path, Animated: d.Animated,
 			CreatedAt: d.CreatedAt,
@@ -259,7 +260,7 @@ func (a imageStore) RepointRefs(ctx context.Context, from, to string) error {
 	return a.st.RepointImageRefs(ctx, from, to)
 }
 
-func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
+func fromStoreDerivatives(rows []catalogstore.ImageDerivative) []images.Derivative {
 	out := make([]images.Derivative, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, images.Derivative{
@@ -277,7 +278,7 @@ func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
 	return out
 }
 
-func fromStoreImages(rows []store.Image) []images.Image {
+func fromStoreImages(rows []catalogstore.Image) []images.Image {
 	out := make([]images.Image, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, fromStoreImage(r))
@@ -301,8 +302,8 @@ func mapImageErr(err error) error {
 	return err
 }
 
-func toStoreImage(img images.Image) store.Image {
-	return store.Image{
+func toStoreImage(img images.Image) catalogstore.Image {
+	return catalogstore.Image{
 		Hash:            img.Hash,
 		Origin:          string(img.Origin),
 		SourceURL:       img.SourceURL,
@@ -326,7 +327,7 @@ func toStoreImage(img images.Image) store.Image {
 	}
 }
 
-func fromStoreImage(rec store.Image) images.Image {
+func fromStoreImage(rec catalogstore.Image) images.Image {
 	return images.Image{
 		Hash:            rec.Hash,
 		Origin:          images.Origin(rec.Origin),

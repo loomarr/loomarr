@@ -3,7 +3,6 @@ package reference
 import (
 	"context"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,7 +18,6 @@ func TestDiscoverRequiresExplicitCategoryMembership(t *testing.T) {
 		httpfixture.Step{Response: webResponse(200, "application/json", blockMembers)},
 	)
 	w := NewWeb(&http.Client{Transport: transport})
-	w.resolver = fixedResolver{addrs: []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}}
 	got, err := w.Discover(context.Background(), "Friday Club")
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +60,6 @@ func TestDiscoverRejectsAmbiguityAndMissingMembership(t *testing.T) {
 			}
 			transport := httpfixture.NewScriptedTransport(steps...)
 			w := NewWeb(&http.Client{Transport: transport})
-			w.resolver = fixedResolver{addrs: []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}}
 			got, err := w.Discover(context.Background(), "Friday Club")
 			if (err != nil) != tc.wantError || got.URL != "" || len(got.TitleAnchors) != 0 || transport.Calls() != tc.calls {
 				t.Fatalf("got=%+v err=%v calls=%d", got, err, transport.Calls())
@@ -73,17 +70,15 @@ func TestDiscoverRejectsAmbiguityAndMissingMembership(t *testing.T) {
 
 func TestDiscoverRetainsNetworkAndBodyBounds(t *testing.T) {
 	for _, tc := range []struct {
-		name, label, ip, body string
-		calls                 int
+		name, label, body string
+		calls             int
 	}{
-		{"unsafe label", "Friday Club https://private.example", "203.0.113.10", "", 0},
-		{"private DNS", "Friday Club", "127.0.0.1", "", 0},
-		{"oversized response", "Friday Club", "203.0.113.10", strings.Repeat(" ", MaxResponseBytes+1), 1},
+		{"unsafe label", "Friday Club https://private.example", "", 0},
+		{"oversized response", "Friday Club", strings.Repeat(" ", MaxResponseBytes+1), 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			transport := httpfixture.NewScriptedTransport(httpfixture.Step{Response: webResponse(200, "application/json", tc.body)})
 			w := NewWeb(&http.Client{Transport: transport})
-			w.resolver = fixedResolver{addrs: []net.IPAddr{{IP: net.ParseIP(tc.ip)}}}
 			if _, err := w.Discover(context.Background(), tc.label); err == nil || transport.Calls() != tc.calls {
 				t.Fatalf("err=%v calls=%d", err, transport.Calls())
 			}

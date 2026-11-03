@@ -319,7 +319,7 @@ func (b *Binder) channelByIntent(ctx context.Context, intentRef string) (store.C
 // the same number appearing on the Tunarr side — which it always does for a live channel,
 // because Loomarr pushed it there. The parameter answered correctly for the store and wrongly
 // for Tunarr, which is worse than not offering it. Callers must not ask about a number a channel
-// already holds; `updateChannel` only runs this check when the number actually changes.
+// already holds; `channeledit` only runs this check when the number actually changes.
 //
 // ⚠ **This exists because §258 fixed numbering in ONE of the two places that assign a number.**
 // `nextFreeChannelNumber` (the approve path) unions both sources; `api.createChannel` — where an
@@ -485,7 +485,7 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 		return store.Proposal{}, err
 	}
 	// No approved proposal for this intent. Refuse to build — don't let unapproved
-	// content reach a live channel (prime directive #3). createChannel maps this to
+	// content reach a live channel (prime directive #3). An explicit create maps this to
 	// a 422 so the caller sees a clear "approve the proposal first" signal.
 	return store.Proposal{}, fmt.Errorf("no approved proposal for intent %q", jobID)
 }

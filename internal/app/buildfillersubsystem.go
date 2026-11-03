@@ -20,16 +20,17 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -37,7 +38,7 @@ import (
 type fillerBuild struct {
 	service   api.FillerService
 	decisions *fillerdecision.Service
-	defects   *filler.DefectReports
+	defects   *fillerdefectfloor.DefectReports
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
@@ -62,7 +63,7 @@ func buildFillerSubsystem(
 	libraryClient *library.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	jobs *scheduler.Registry,
+	registry *jobs.Registry,
 	playoutResolver *playoutResolver,
 	channelService api.ChannelService,
 	processDiagnostics *diagnostics.ProcessManager,
@@ -86,7 +87,7 @@ func buildFillerSubsystem(
 	} else {
 		result.decisions = decisionService
 	}
-	result.defects = filler.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
+	result.defects = fillerdefectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.
@@ -163,11 +164,26 @@ func buildFillerSubsystem(
 		log.Info("filler pod assembler wired into the scheduler")
 	}
 
-	jobs.Add(fillerSyncJob(syncer))
+	registry.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
+	ffmpegPath := set.str("playout.ffmpeg_path")
+	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
+	defectTools := buildFillerMediaTools(set, metricRecorder)
+	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
+		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
+	defectFloor := fillerdefectfloor.NewDefectFloor(
+		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
+		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
+			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
+		},
+		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
+			return defectTools.Fingerprint(ctx, file, 0, durationMs)
+		}, defectJudge, layout.ClipDir(), time.Now, log,
+	)
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
-		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
+		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
+		defectFloor.CheckReplacement)
 	stations := &stationDirectory{list: st.ListBroadcastStations}
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichment := fillerenrichment.NewRunner(
@@ -200,7 +216,7 @@ func buildFillerSubsystem(
 	var researchRunner *fillerresearch.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
 		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
-		structuredClient := httpx.NewNamedObserved("filler_structured_research", httpx.TimeoutReference, metricRecorder)
+		structuredClient := httpx.NewNamedObserved(httpx.TargetFillerStructuredResearch, httpx.TimeoutReference, metricRecorder)
 		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
@@ -236,7 +252,7 @@ func buildFillerSubsystem(
 					MonthlyLimit: set.intv("filler.research.monthly_limit"),
 				}
 			}, st, fillerresearch.WebOptions{
-				Client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, metricRecorder),
+				Client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, metricRecorder),
 				Now:    time.Now,
 			})
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
@@ -262,7 +278,7 @@ func buildFillerSubsystem(
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner,
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
-	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
+	registry.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)
@@ -276,11 +292,11 @@ func buildFillerSubsystem(
 		_, err := pipeline.EnrolMissing(ctx)
 		return err
 	}
-	jobs.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
+	registry.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	jobs.Add(fillerIdentityJob(filler.NewCreativeIdentity(
+	registry.Add(fillerIdentityJob(filler.NewCreativeIdentity(
 		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no
@@ -292,20 +308,7 @@ func buildFillerSubsystem(
 			return lufs
 		}, time.Now, log,
 	)))
-	ffmpegPath := set.str("playout.ffmpeg_path")
-	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
-	defectTools := buildFillerMediaTools(set, metricRecorder)
-	defectJudge := filler.NewVisionDefectJudge(judgeVision, defectTools,
-		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
-	jobs.Add(fillerDefectsJob(filler.NewDefectFloor(
-		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
-		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
-			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
-		},
-		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
-			return defectTools.Fingerprint(ctx, file, 0, durationMs)
-		}, defectJudge, layout.ClipDir(), time.Now, log,
-	)))
+	registry.Add(fillerDefectsJob(defectFloor))
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
 	// folder there is nothing to download into, and the cache lives in memory only.
 	runtimesPath := ""
@@ -370,7 +373,7 @@ func buildFillerSubsystem(
 		policy: placePolicy, stations: stations, languages: result.intakeLanguages})
 	adapter.autoFetch = autoFetch
 	result.service = adapter
-	jobs.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
+	registry.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
 	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
 		"max_per_run", set.intv("filler.fetch.max_per_run"))
 	return result

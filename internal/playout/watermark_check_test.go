@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // frame is a flat luma frame with an optional square painted in.
@@ -180,7 +182,7 @@ func TestWatermarkCheck_MakesItsScratchDir(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "check-h264_nvenc")
 
-	r := WatermarkCheck(t.Context(), ffmpeg, HostProfile{Family: FamilyNVENC}, dir)
+	r := WatermarkCheck(t.Context(), ffmpeg, encode.HostProfile{Family: encode.FamilyNVENC}, dir)
 	if strings.Contains(r.Detail, "No such file or directory") {
 		t.Fatalf("the check wrote into a dir it never made: %s", r.Detail)
 	}
@@ -190,8 +192,8 @@ func TestWatermarkCheck_MakesItsScratchDir(t *testing.T) {
 }
 
 func TestWatermarkCheck_NoGPUOverlayFamilies(t *testing.T) {
-	for _, f := range []Family{FamilySoftware, FamilyGeneric, FamilyVideoToolbox} {
-		if r := WatermarkCheck(t.Context(), "ffmpeg-not-run", HostProfile{Family: f}, t.TempDir()); r.Works {
+	for _, f := range []encode.Family{encode.FamilySoftware, encode.FamilyGeneric, encode.FamilyVideoToolbox} {
+		if r := WatermarkCheck(t.Context(), "ffmpeg-not-run", encode.HostProfile{Family: f}, t.TempDir()); r.Works {
 			t.Errorf("%s: the watermark passed without a GPU overlay", f)
 		}
 	}

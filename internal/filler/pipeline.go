@@ -220,6 +220,9 @@ type Pipeline struct {
 	// headroom lets media-heavy rungs yield to live playback; nil never waits.
 	headroom PlaybackHeadroom
 	yield    PlaybackYield
+	// reencode re-encodes the airing library onto the current profile on idle passes; nil never
+	// does (WithLibraryReencode).
+	reencode *libraryReencode
 }
 
 // NewPipeline builds a runner over the given stages. Stages absent from the list are treated as
@@ -273,7 +276,9 @@ type PipelineResult struct {
 	// the clip. A number that says "we ran out of time" is the one an operator can act on (raise
 	// the schedule, raise the budget); "failed" sends them looking at the file.
 	Deferred int
-	Overview PipelineOverview
+	// Reencoded counts airing clips switched to a re-encode onto the current profile (#2121).
+	Reencoded int
+	Overview  PipelineOverview
 	// NoAdvanceReason is empty after productive work and otherwise explains who owns the ending
 	// backlog or which clock it is waiting on.
 	NoAdvanceReason string
@@ -363,6 +368,9 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			res.Completed++
 		}
 	}
+	if len(work) == 0 && ctx.Err() == nil && p.reencodeIdle(ctx, &s) {
+		res.Reencoded++
+	}
 	summaryCtx, cancelSummary := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancelSummary()
 	if overview, overviewErr := p.store.PipelineOverview(summaryCtx, p.now().UTC()); overviewErr != nil {
@@ -382,7 +390,7 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		// able to act on.
 		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "requeued", res.Requeued, "advanced", res.Advanced,
 			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
-			"deferred", res.Deferred, "runnable", res.Overview.Runnable,
+			"deferred", res.Deferred, "reencoded", res.Reencoded, "runnable", res.Overview.Runnable,
 			"in_progress", res.Overview.InProgress, "scheduled", res.Overview.Scheduled,
 			"needs_decision", res.Overview.NeedsDecision, "rejected", res.Overview.Rejected,
 			"ready", res.Overview.Ready, "complete", res.Overview.Complete,
@@ -599,7 +607,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		}
 
 		stageCtx := WithProgress(ctx, p.stageProgress(ctx, &row, clip))
-		out, runErr := p.runStage(stageCtx, stage, clip)
+		out, runErr := p.runYielding(stageCtx, s, stage, clip)
 		s.charge(stage.Cost())
 
 		if runErr != nil {

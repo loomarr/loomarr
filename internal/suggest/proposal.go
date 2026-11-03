@@ -267,6 +267,10 @@ type Proposal struct {
 	// ceiling, not to lose the title — and a pick that silently vanished between the model's
 	// answer and the approval screen is indistinguishable from one the model never made.
 	Refused []RefusedPick `json:"refused,omitempty"`
+	// SeasonNotKept names the holidays this request made the channel exclusive to that the
+	// household's country doesn't keep (#2030 decision 38). They were left out of the seasonal
+	// policy, since their season never comes; the approval card says so.
+	SeasonNotKept *SeasonNotKept `json:"seasonNotKept,omitempty"`
 	// Trace is immutable evidence from the original grounded proposal run. It is
 	// never updated by approval edits or later scheduler/channel decisions.
 	Trace DecisionTrace `json:"trace"`
@@ -288,6 +292,13 @@ type Proposal struct {
 type RefusedPick struct {
 	Item   ProposalItem `json:"item"`
 	Reason string       `json:"reason"` // "over_ceiling"
+}
+
+// SeasonNotKept is the holidays, by label, that a channel was asked to be exclusive to but that
+// Country (the calendar's ISO 3166-1 code) doesn't keep.
+type SeasonNotKept struct {
+	Country  string   `json:"country" doc:"ISO 3166-1 alpha-2 code of the calendar the holidays were read against"`
+	Holidays []string `json:"holidays" doc:"Labels of the holidays that country doesn't keep"`
 }
 
 // Scores describes source-backed evidence, not a calibrated probability or ranking.

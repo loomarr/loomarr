@@ -232,7 +232,7 @@ func openRouterMetadataTransport(config OpenRouterSnapshotConfig) (string, *http
 	}
 	client := config.Client
 	if client == nil {
-		client = httpx.NewNamed("filler-openrouter-snapshot", httpx.TimeoutLLM)
+		client = httpx.NewNamed(httpx.TargetFillerOpenRouterSnapshot, httpx.TimeoutLLM)
 	}
 	copy := *client
 	copy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }

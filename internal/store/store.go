@@ -25,23 +25,34 @@ import (
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound reports that a requested durable identity does not exist. Besides Get* reads,
 // commands whose integrity depends on an existing owner (such as channel-scoped feedback) return
 // it before committing any dependent row.
-var ErrNotFound = errors.New("store: not found")
+//
+// It is storedb.ErrNotFound, the same value under a second name, so errors.Is matches an error
+// created in either package.
+var ErrNotFound = storedb.ErrNotFound
 
 // ErrConditionedClipMismatch reports a conditioned clip adoption whose catalog rows are not one
 // of the exact source-only, source-plus-held-reconstruction, or target-only states the owner-bound
 // recovery protocol permits. Callers must hold it for review.
-var ErrConditionedClipMismatch = errors.New("store: conditioned clip does not match the catalog")
+//
+// It is catalogstore.ErrConditionedClipMismatch, the same value under a second name, so errors.Is
+// matches an error created in either package.
+var ErrConditionedClipMismatch = catalogstore.ErrConditionedClipMismatch
 
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
 // slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
 // never retry the same write blindly.
-var ErrTaxonConflict = errors.New("store: taxonomy conflict")
+//
+// It is catalogstore.ErrTaxonConflict, the same value under a second name.
+var ErrTaxonConflict = catalogstore.ErrTaxonConflict
 
 // ErrProposalNotSubmitted reports a terminal proposal decision that lost the
 // submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
@@ -95,11 +106,17 @@ var ErrChannelStale = errors.New("store: stale channel revision")
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.
-var ErrContactAddressConflict = errors.New("store: contact address conflict")
+//
+// It is identitystore.ErrContactAddressConflict, the same value under a second name, so errors.Is
+// matches an error created in either package.
+var ErrContactAddressConflict = identitystore.ErrContactAddressConflict
 
 // ErrInvitationIdentityConflict means an allowlist row or active Invitation already owns the
 // reserved local username or exact Library account id.
-var ErrInvitationIdentityConflict = errors.New("store: invitation identity conflict")
+//
+// It is identitystore.ErrInvitationIdentityConflict, the same value under a second name, so
+// errors.Is matches an error created in either package.
+var ErrInvitationIdentityConflict = identitystore.ErrInvitationIdentityConflict
 
 // TitleStore is the provisioning surface (§3–§4).
 type TitleStore interface {
@@ -349,6 +366,9 @@ type ClipStore interface {
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
+	// ReplaceAiringClip re-keys a clip that stayed on air through its re-encode, and records the
+	// defect verdict its new bytes earned before the switch, in one transaction (#2121).
+	ReplaceAiringClip(ctx context.Context, oldHash string, c Clip, defects ClipDefectRecord) error
 	// AdoptConditionedClip is the exact owner-bound variant used after a conditioned target is
 	// visible. It atomically adopts a held Sync reconstruction, performs an ordinary source-only
 	// re-key, or recognizes the exact target-only post-rekey state (§10 V65). The filler store's
@@ -731,7 +751,7 @@ type InventoryStore interface {
 // interfaces above, which is what the composition root and the conformance suite
 // hold. Callers that need one domain should depend on that domain's interface
 // instead: the narrow role interfaces domain packages already declare for
-// themselves (binder.Store, filler.Store, scheduler.ScheduleStore, …) are the
+// themselves (binder.Store, filler.Store, jobs.ScheduleStore, …) are the
 // pattern, and these groups exist so a consumer has something to name without
 // re-declaring one.
 //

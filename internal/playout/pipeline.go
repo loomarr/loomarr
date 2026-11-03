@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // The transcode pipeline builder (#1512 phase 1a).
@@ -29,103 +31,10 @@ import (
 //
 // Measured on the household Arc (spike #1513): the full-GPU H.264 1080p graph runs at ~0.04 cores
 // per stream and 21x, against ~0.16 cores and 11x for the old CPU-filter chain.
-
-// Family is one hardware pipeline implementation.
-type Family string
-
-const (
-	// FamilyVAAPI is Intel (iGPU/Arc) and AMD on Linux. Certified on the household Arc.
-	FamilyVAAPI Family = "vaapi"
-	// FamilyNVENC is NVIDIA: CUDA decode, CUDA filters, NVENC. Certified on the dev GeForce.
-	FamilyNVENC Family = "nvenc"
-	// FamilySoftware is libx264 on the CPU. Certified on the household host with the GPU hidden.
-	FamilySoftware Family = "software"
-	// FamilyVideoToolbox is Apple Silicon. UNVERIFIED: no real Mac has run it yet.
-	FamilyVideoToolbox Family = "videotoolbox"
-	// FamilyGeneric is every other encoder (QSV, Vulkan, AMF, RKMPP, V4L2M2M): CPU filters, then the
-	// encoder's own upload. UNVERIFIED; it is the designed fallback for hosts outside the matrix.
-	FamilyGeneric Family = "generic"
-)
-
-// Verified reports whether the family has been certified on real hardware.
-func (f Family) Verified() bool {
-	return f == FamilyVAAPI || f == FamilyNVENC || f == FamilySoftware
-}
-
-// HostProfile is what one host can do, as data.
-type HostProfile struct {
-	Family Family `json:"family"`
-	// Encoder is the H.264 encoder of the family (the HEVC variant is derived). Only FamilyGeneric
-	// needs it to pick between its encoders; the others know theirs.
-	Encoder Encoder `json:"encoder"`
-	// RenderNode is the DRM render node VAAPI opens.
-	RenderNode string `json:"renderNode,omitempty"`
-	// DecodeCodecs are the source codecs the GPU decodes, lowercased as ffprobe names them. A codec
-	// outside the set takes the decode fallback. Empty means the GPU decodes nothing.
-	DecodeCodecs []string `json:"decodeCodecs,omitempty"`
-	// VideoToolboxDeinterlace: this ffmpeg build carries yadif_videotoolbox. Without it,
-	// interlaced sources use declared CPU decode/deinterlace before the hardware encoder.
-	VideoToolboxDeinterlace bool `json:"videoToolboxDeinterlace,omitempty"`
-	// TonemapOpenCL: tonemap_opencl works. The first choice on Intel (zero-copy from VAAPI) and
-	// NVIDIA (maintainer decision). There is no tonemap_vaapi: on the household Arc it outputs a
-	// black picture at normal speed with no error (#1516), so it is never emitted. On VAAPI it also
-	// means the VAAPI→OpenCL surface mapping works, which the 10-bit letterbox needs (#1673).
-	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
-	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
-	// has (ToneCurve), otherwise the second GPU choice, and on every GPU family the only correct
-	// SDR→HDR10 conversion (4K HDR premium). Always through system memory.
-	Libplacebo bool `json:"libplacebo,omitempty"`
-	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
-	CPUTonemap bool `json:"cpuTonemap,omitempty"`
-	// Overlay: this host's GPU overlay passed the boot self-check (WatermarkCheck), which asserts the
-	// picture, not the exit code. False keeps every programme bug-free (watermark.go).
-	Overlay bool `json:"overlay,omitempty"`
-}
-
-// GPUFilters is which optional GPU filters this ffmpeg BUILD carries (GPUFiltersFor). Whether the
-// host can run them is a runtime fact: tonemap_opencl needs an OpenCL ICD for the GPU (the image
-// ships Intel's; NVIDIA's comes from the container runtime), libplacebo a Vulkan device.
-type GPUFilters struct {
-	TonemapOpenCL, Libplacebo bool
-	VideoToolboxDeinterlace   bool
-}
-
-// Hardware decode sets per family: the codecs the certified hardware decodes. Anything else takes
-// the decode fallback. AV1 needs Arc/Ampere or newer; older GPUs fault and the ladder's
-// software-decode retry (IsHardwareDecodeFault) covers them.
-var (
-	vaapiDecodes = []string{"h264", "hevc", "mpeg2video", "vp9", "av1"}
-	cudaDecodes  = []string{"h264", "hevc", "mpeg2video", "vc1", "vp9", "av1"}
-	vtDecodes    = []string{"h264", "hevc"}
-	// anyCodec lets ffmpeg decide: the generic family's hardware decode has no output format, so
-	// ffmpeg falls back to the CPU on its own for a codec the GPU cannot decode.
-	anyCodec = []string{"*"}
-)
-
-// HostFor is the host profile for the chosen encoder on this build. A GPU tone-mapper the build
-// carries but the host cannot run (no OpenCL ICD for this GPU, e.g. AMD or a missing runtime; no
-// Vulkan device) fails at device creation, before any output; the live ladder then demotes it and
-// retries with the next one, ending at the CPU tone-map (the packager's itemFaults, demoteTonemapper).
-func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
-	h := HostProfile{Encoder: engineOf(enc), CPUTonemap: cpuTonemap}
-	switch h.Encoder {
-	case EncoderVAAPI:
-		h.Family, h.RenderNode, h.DecodeCodecs = FamilyVAAPI, renderNode(), vaapiDecodes
-		h.TonemapOpenCL, h.Libplacebo = gpu.TonemapOpenCL, gpu.Libplacebo
-	case EncoderNVENC:
-		h.Family, h.DecodeCodecs = FamilyNVENC, cudaDecodes
-		h.TonemapOpenCL, h.Libplacebo = gpu.TonemapOpenCL, gpu.Libplacebo
-	case EncoderVideoToolbox:
-		h.Family, h.DecodeCodecs = FamilyVideoToolbox, vtDecodes
-		h.Libplacebo = gpu.Libplacebo
-		h.VideoToolboxDeinterlace = gpu.VideoToolboxDeinterlace
-	case EncoderSoftware:
-		h.Family = FamilySoftware
-	default:
-		h.Family, h.DecodeCodecs = FamilyGeneric, anyCodec
-	}
-	return h
-}
+//
+// The host vocabulary (encode.HostProfile, encode.Family, HostFor) and each family's encoder flags
+// (encode.VideoArgs) live in internal/encode, shared with the filler pipeline (#2121). The graphs
+// below are playout's own: every one fits the item to the channel's uniform output.
 
 // OutputProfile is the channel's uniform output (maintainer decisions, #1512).
 type OutputProfile struct {
@@ -167,7 +76,7 @@ const (
 func ChannelOutput(p Profile) OutputProfile {
 	return OutputProfile{
 		Width: p.Width, Height: p.Height, FPS: p.Framerate,
-		HEVC:       engineOf(p.Encoder) != p.Encoder,
+		HEVC:       encode.EngineOf(p.Encoder) != p.Encoder,
 		Quality:    outputQuality,
 		TargetKbps: outputRate(outputTargetKbps, outputFloorTargetKbps, p.Width, p.Height),
 		MaxKbps:    outputRate(outputMaxKbps, outputFloorMaxKbps, p.Width, p.Height),
@@ -196,7 +105,7 @@ var ErrRefused = errors.New("playout: host cannot transcode this source in real 
 // Pipeline is the built command for one item, in the pieces the live chain splices around its own
 // input, seek, map and output options.
 type Pipeline struct {
-	Family Family
+	Family encode.Family
 	// PreInput is hardware device setup, hardware decode and probing: global/input options that
 	// must precede -i.
 	PreInput []string
@@ -266,19 +175,19 @@ const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA
 
 // Build returns the pipeline for one source on one host, or ErrRefused. It never draws a watermark:
 // breaks are built with it.
-func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
+func Build(host encode.HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
 	return BuildItem(host, src, out, nil)
 }
 
 // BuildItem is Build for a programme item that carries the channel's bug when wm is non-nil. A host
 // that cannot draw it on the GPU gets the bug-free pipeline with the reason in Fallbacks; the bug
 // never refuses a programme.
-func BuildItem(host HostProfile, src MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
+func BuildItem(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
 	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm}
 	b.p.Family = host.Family
 	if out.premium() {
 		switch {
-		case host.Family == FamilySoftware || host.Family == FamilyGeneric:
+		case host.Family == encode.FamilySoftware || host.Family == encode.FamilyGeneric:
 			return Pipeline{}, fmt.Errorf("%w: a premium format needs a GPU family (%s)", ErrRefused, host.Family)
 		case b.tonemap:
 			// Derivation never pairs a 4K SDR premium with an HDR item; tone-mapping at 4K runs 0.69x
@@ -287,18 +196,18 @@ func BuildItem(host HostProfile, src MediaFormat, out OutputProfile, wm *Waterma
 		}
 	}
 	b.p.AudioEncode = []string{"-c:a", "aac", "-profile:a", "aac_low", "-b:a", strconv.Itoa(out.AudioKbps) + "k", "-ac", "2", "-ar", "48000"}
-	if host.Family != FamilyVAAPI && host.Family != FamilyNVENC {
+	if host.Family != encode.FamilyVAAPI && host.Family != encode.FamilyNVENC {
 		b.overlay() // no GPU overlay graph: declares the disabled bug
 	}
 	var err error
 	switch host.Family {
-	case FamilyVAAPI:
+	case encode.FamilyVAAPI:
 		err = b.vaapi()
-	case FamilyNVENC:
+	case encode.FamilyNVENC:
 		err = b.nvenc()
-	case FamilyVideoToolbox:
+	case encode.FamilyVideoToolbox:
 		err = b.videotoolbox()
-	case FamilySoftware:
+	case encode.FamilySoftware:
 		err = b.software()
 	default:
 		err = b.generic()
@@ -373,7 +282,7 @@ func (p Pipeline) WithGain(gainDB float64) Pipeline {
 }
 
 type builder struct {
-	host HostProfile
+	host encode.HostProfile
 	src  MediaFormat
 	out  OutputProfile
 	// tonemap: an HDR source into an SDR output. convert: an SDR or HLG source into an HDR10 output.
@@ -384,32 +293,14 @@ type builder struct {
 
 func (b *builder) fallback(stage, why string) { b.p.Fallbacks = append(b.p.Fallbacks, stage+": "+why) }
 
-// hardwareDecodes reports whether the GPU decodes this source, recording the decode fallback when not.
-// An unknown codec is treated as undecodable: with -hwaccel_output_format set, a source the GPU
-// cannot decode arrives as CPU frames and the GPU graph fails, where the upload path always works.
+// hardwareDecodes reports whether the GPU decodes this source, recording the decode fallback when
+// not (encode.HostProfile.DecodeRefusal).
 func (b *builder) hardwareDecodes() bool {
-	codec := strings.ToLower(b.src.VideoCodec)
-	switch {
-	case codec == "":
-		b.fallback("decode", "source codec unknown")
-		return false
-	case !contains(b.host.DecodeCodecs, codec):
-		b.fallback("decode", "the GPU does not decode "+codec)
-		return false
-	case !chroma420(b.src.PixelFormat):
-		b.fallback("decode", "the GPU does not decode "+b.src.PixelFormat)
-		return false
-	case codec == "h264" && b.src.TenBit():
-		b.fallback("decode", "the GPU does not decode 10-bit H.264")
+	if why := b.host.DecodeRefusal(b.src.VideoCodec, b.src.PixelFormat, b.src.TenBit()); why != "" {
+		b.fallback("decode", why)
 		return false
 	}
 	return true
-}
-
-// chroma420 reports whether the pixel format is 4:2:0, the only chroma GPUs decode broadly. Unknown
-// pixel formats count as 4:2:0: hardware decode then still depends on a known codec.
-func chroma420(pixfmt string) bool {
-	return pixfmt == "" || strings.Contains(pixfmt, "420") || pixfmt == "nv12" || pixfmt == "p010le"
 }
 
 // cpuPixelFormat is what a CPU-decoded frame is converted to before it is uploaded: 10-bit stays
@@ -528,7 +419,7 @@ func (b *builder) cpuTonemap() (string, error) {
 func (b *builder) vaapi() error {
 	node := b.host.RenderNode
 	if node == "" {
-		node = renderNode()
+		node = encode.RenderNode()
 	}
 	b.p.PreInput = []string{"-init_hw_device", "vaapi=va:" + node, "-filter_hw_device", "va"}
 	var f []string
@@ -841,9 +732,9 @@ const softwareTonemapLines = 720
 // GPU cannot decode), CPU filters, then the encoder's own upload step.
 func (b *builder) generic() error {
 	enc := b.host.Encoder
-	b.p.PreInput = deviceInitArgs(enc)
+	b.p.PreInput = encode.DeviceInitArgs(enc)
 	if len(b.host.DecodeCodecs) > 0 {
-		b.p.PreInput = append(b.p.PreInput, hardwareDecodeArgs(enc)...)
+		b.p.PreInput = append(b.p.PreInput, encode.DecodeArgs(enc)...)
 	}
 	b.fallback("filters", "no GPU graph for "+string(enc))
 	var f []string
@@ -858,7 +749,7 @@ func (b *builder) generic() error {
 		f = append(f, b.cpuChain())
 	}
 	f = append(f, b.tail())
-	if up := hardwareUploadFilter(enc); up != "" {
+	if up := encode.UploadFilter(enc); up != "" {
 		f = append(f, up)
 	} else {
 		f = append(f, "format=yuv420p")
@@ -867,70 +758,14 @@ func (b *builder) generic() error {
 	return nil
 }
 
-// videoEncoder maps the uniform output onto each family's encoder. Rate control, per family:
-//
-//	VAAPI         QVBR: -rc_mode QVBR -global_quality Q, target and cap (exact).
-//	NVENC         VBR with a constant-quality target: -rc vbr -cq Q, target and cap.
-//	software      capped CRF: -crf Q with the cap (x264 has no average target alongside CRF).
-//	VideoToolbox  average bitrate with the cap (-q:v would drop the bitrate limits).
-//	generic       average bitrate with the cap.
-//
-// Every family: H.264 High (HEVC Main), no B-frames, one closed GOP per segment, IDR at every
-// keyframe, no scene-cut keyframes. HEVC is tagged hvc1: Apple's HLS authoring spec requires it
-// for fMP4 (ffmpeg's mp4 muxer writes hev1 otherwise); an MPEG-TS output ignores the tag.
-func videoEncoder(host HostProfile, out OutputProfile) []string {
-	args := videoEncoderArgs(host, out)
-	if out.HEVC {
-		args = append(args, "-tag:v", "hvc1")
-	}
-	return args
-}
-
-// videoEncoderArgs is one family's encoder and rate control (videoEncoder).
-func videoEncoderArgs(host HostProfile, out OutputProfile) []string {
-	g := strconv.Itoa(out.gop())
-	target, maxrate := strconv.Itoa(out.TargetKbps)+"k", strconv.Itoa(out.MaxKbps)+"k"
-	q := strconv.Itoa(out.Quality)
-	profile := "high"
-	switch {
-	case out.HDR:
-		profile = "main10"
-	case out.HEVC:
-		profile = "main"
-	}
-	enc := func(h264 Encoder) string {
-		if out.HEVC {
-			return string(hevcVariant(h264))
-		}
-		return string(h264)
-	}
-	switch host.Family {
-	case FamilyVAAPI:
-		return []string{"-c:v", enc(EncoderVAAPI), "-profile:v", profile,
-			"-rc_mode", "QVBR", "-global_quality", q, "-b:v", target, "-maxrate", maxrate,
-			"-g", g, "-bf", "0", "-sei", "0"}
-	case FamilyNVENC:
-		return []string{"-c:v", enc(EncoderNVENC), "-preset", "p4", "-tune", "ll", "-profile:v", profile,
-			"-rc", "vbr", "-cq", q, "-b:v", target, "-maxrate", maxrate, "-bufsize", maxrate,
-			"-g", g, "-bf", "0", "-forced-idr", "1", "-strict_gop", "1", "-no-scenecut", "1"}
-	case FamilySoftware:
-		if out.HEVC {
-			return []string{"-c:v", enc(EncoderSoftware), "-preset", "veryfast", "-profile:v", profile,
-				"-crf", q, "-maxrate", maxrate, "-bufsize", maxrate, "-g", g, "-keyint_min", g, "-bf", "0",
-				"-x265-params", "open-gop=0:scenecut=0:repeat-headers=1"}
-		}
-		return []string{"-c:v", enc(EncoderSoftware), "-preset", "veryfast", "-profile:v", profile,
-			"-crf", q, "-maxrate", maxrate, "-bufsize", maxrate, "-g", g, "-keyint_min", g, "-sc_threshold", "0",
-			"-bf", "0", "-x264-params", "open-gop=0"}
-	case FamilyVideoToolbox:
-		// The packager paces delivery. The camera-capture realtime hint limits unpaced
-		// throughput on Apple Silicon, reducing the lead available at item boundaries.
-		return []string{"-c:v", enc(EncoderVideoToolbox), "-profile:v", profile, "-allow_sw", "0", "-realtime", "0",
-			"-b:v", target, "-maxrate", maxrate, "-bufsize", maxrate, "-g", g, "-bf", "0"}
-	default:
-		return []string{"-c:v", enc(engineOf(host.Encoder)), "-b:v", target, "-maxrate", maxrate, "-bufsize", maxrate,
-			"-g", g, "-bf", "0"}
-	}
+// videoEncoder maps the uniform output onto the family's encoder and rate control
+// (encode.VideoArgs): the maintainer's quality target and caps, one closed GOP per segment.
+func videoEncoder(host encode.HostProfile, out OutputProfile) []string {
+	return encode.VideoArgs(host, encode.Video{
+		HEVC: out.HEVC, HDR: out.HDR,
+		Quality: out.Quality, TargetKbps: out.TargetKbps, MaxKbps: out.MaxKbps,
+		GOPFrames: out.gop(),
+	})
 }
 
 // missingFacts lists the stream facts minimal probing depends on that the source does not supply.
@@ -971,12 +806,3 @@ func fitSize(srcW, srcH, w, h int) (int, int, bool) {
 }
 
 func even(n int) int { return n &^ 1 }
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}

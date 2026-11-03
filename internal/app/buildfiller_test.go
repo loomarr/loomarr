@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -106,9 +107,9 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
 }
 
-type enumeratorFunc func(context.Context, filler.FetchSource, int) ([]filler.DiscoveredRef, int, error)
+type enumeratorFunc func(context.Context, filler.FetchSource, int) ([]sourceprovider.Item, int, error)
 
-func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]sourceprovider.Item, int, error) {
 	return f(ctx, source, limit)
 }
 
@@ -171,7 +172,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 			fetchEvery: func() time.Duration { return 6 * time.Hour },
 			home:       func() filler.Geography { return filler.Geography{Country: "US"} },
 		},
-		enumeratorFunc(func(_ context.Context, source filler.FetchSource, _ int) ([]filler.DiscoveredRef, int, error) {
+		enumeratorFunc(func(_ context.Context, source filler.FetchSource, _ int) ([]sourceprovider.Item, int, error) {
 			enumerated = append(enumerated, source.ID)
 			return nil, 0, nil
 		}),

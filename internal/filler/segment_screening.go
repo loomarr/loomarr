@@ -1,7 +1,6 @@
 package filler
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,19 +24,18 @@ var segmentScreeningAxisOrder = []SegmentScreeningAxis{
 	ScreenPlayback,
 }
 
-func validateSegmentScreeningAxis(axis SegmentScreeningAxis) error {
+// SegmentScreeningAxes returns the four screening axes in canonical order. The caller owns the
+// returned slice.
+func SegmentScreeningAxes() []SegmentScreeningAxis {
+	return slices.Clone(segmentScreeningAxisOrder)
+}
+
+// ValidateSegmentScreeningAxis reports whether axis is one of the four screening axes.
+func ValidateSegmentScreeningAxis(axis SegmentScreeningAxis) error {
 	if !slices.Contains(segmentScreeningAxisOrder, axis) {
 		return fmt.Errorf("segment screening axis is invalid")
 	}
 	return nil
-}
-
-// SegmentScreeningEvidenceRepository stores provider-neutral axis evidence and its four-axis
-// aggregate. Concrete evaluators own their private raw-evidence settlement.
-type SegmentScreeningEvidenceRepository interface {
-	PutSegmentScreeningSubject(context.Context, SegmentScreeningSubject) error
-	PutSegmentScreeningAxisEvidence(context.Context, RecordedSegmentScreeningAxisEvidence) error
-	PutSegmentScreeningEvidence(context.Context, SegmentScreeningEvidence) error
 }
 
 type SegmentScreeningAxis string
@@ -117,7 +115,7 @@ func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 		return fmt.Errorf("segment screening must contain four ordered axis results")
 	}
 	for _, result := range evidence.Results {
-		if _, ok := want[result.Axis]; !ok || validateSegmentScreeningResult(result) != nil {
+		if _, ok := want[result.Axis]; !ok || ValidateSegmentScreeningResult(result) != nil {
 			return fmt.Errorf("segment screening contains an invalid axis result")
 		}
 		delete(want, result.Axis)
@@ -128,14 +126,15 @@ func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 	return nil
 }
 
-func validateSegmentScreeningResult(result SegmentScreeningResult) error {
+// ValidateSegmentScreeningResult checks one axis result's closed vocabulary and authority identity.
+func ValidateSegmentScreeningResult(result SegmentScreeningResult) error {
 	if result.Axis != ScreenVisualSafety && result.Axis != ScreenSpokenSafety && result.Axis != ScreenWrittenSafety && result.Axis != ScreenPlayback {
 		return fmt.Errorf("segment screening axis is invalid")
 	}
 	if result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold {
 		return fmt.Errorf("segment screening outcome is invalid")
 	}
-	if !isContentHash(result.AuthoritySHA256) || !validScreeningReasonCode(result.ReasonCode) {
+	if !isContentHash(result.AuthoritySHA256) || !ValidScreeningReasonCode(result.ReasonCode) {
 		return fmt.Errorf("segment screening authority is invalid")
 	}
 	return nil
@@ -163,7 +162,14 @@ func SegmentScreeningEvidenceSHA256(evidence SegmentScreeningEvidence) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func validScreeningReasonCode(value string) bool {
+// ScreeningBytesSHA256 is the lowercase hex SHA-256 every screening identity is built from.
+func ScreeningBytesSHA256(raw []byte) string {
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
+// ValidScreeningReasonCode reports whether value is a closed, opaque screening reason code.
+func ValidScreeningReasonCode(value string) bool {
 	if len(value) < 1 || len(value) > 96 || value != strings.TrimSpace(value) {
 		return false
 	}

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 var ladderSources = []string{"hevc-4k-hdr-dv", "h264-1080p-sdr-25", "hevc10-1080p", "mpeg2-480i"}
@@ -112,10 +114,10 @@ func TestBuild_SoftwareNeverRefusesHDRForSpeed(t *testing.T) {
 	for _, rung := range SoftwareRungs {
 		out := testOutput
 		out.SoftwareRung = rung
-		if _, err := Build(HostProfile{Family: FamilySoftware, CPUTonemap: true}, src, out); err != nil {
+		if _, err := Build(encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}, src, out); err != nil {
 			t.Errorf("%s: a software host must not refuse HDR for speed: %v", rung, err)
 		}
-		if _, err := Build(HostProfile{Family: FamilySoftware}, src, out); !errors.Is(err, ErrRefused) {
+		if _, err := Build(encode.HostProfile{Family: encode.FamilySoftware}, src, out); !errors.Is(err, ErrRefused) {
 			t.Errorf("%s: a build without a tone-mapper must refuse HDR, got %v", rung, err)
 		}
 	}
@@ -124,7 +126,7 @@ func TestBuild_SoftwareNeverRefusesHDRForSpeed(t *testing.T) {
 // TestBuild_RungIsSoftwareOnly: the ladder is the CPU's; a GPU family's argv ignores it.
 func TestBuild_RungIsSoftwareOnly(t *testing.T) {
 	for hostName, host := range testHosts() {
-		if host.Family == FamilySoftware {
+		if host.Family == encode.FamilySoftware {
 			continue
 		}
 		for srcName, src := range testSources() {

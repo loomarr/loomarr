@@ -14,8 +14,10 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/invitation"
@@ -25,7 +27,10 @@ import (
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/viewing"
 )
@@ -100,10 +105,10 @@ type Server struct {
 	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerResearch  FillerResearchService
-	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
-	fillerDefects   *filler.DefectReports   // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy        TaxonomyEditor          // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	fillerDecisions *fillerdecision.Service          // durable V63 admission audit and projections
+	fillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods            PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy        TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
@@ -249,7 +254,7 @@ type Server struct {
 	// source transcodes untone-mapped rather than emitting a filter the build would reject at
 	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
 	playoutTonemap    func() bool
-	playoutGPUTonemap func() playout.GPUFilters
+	playoutGPUTonemap func() encode.GPUFilters
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -367,6 +372,7 @@ type SettingEntry struct {
 	Kind         string              `json:"kind"`
 	Apply        string              `json:"apply" enum:"live,restart" doc:"When a saved value becomes active: live on the next owning operation, or restart in the next app generation."`
 	Presentation string              `json:"presentation,omitempty" doc:"Human editor semantics beyond kind, e.g. bytes, path, or language."`
+	Unit         string              `json:"unit,omitempty" doc:"What a plain number counts, shown beside its input, e.g. GiB, MiB or %. Empty for a bare count."`
 	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
 	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
 	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
@@ -410,8 +416,8 @@ type FillerService interface {
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
 	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
-	SuggestSources(ctx context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error)
-	ResolveSource(ctx context.Context, provider, input string) (filler.SourceSuggestion, error)
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
 	// a job id immediately (§10). Downloads take minutes to hours, so this is
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
@@ -423,7 +429,7 @@ type FillerService interface {
 	// IngestSourceItems queues exact candidates discovered inside one registered source. The
 	// source identity and provider kind are server-owned policy; RemoteID preserves provider
 	// deduplication and this path never registers an item as another source.
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (jobID string, err error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
@@ -487,12 +493,12 @@ type FillerResearchService interface {
 // atomic graph transaction; this seam adds an authoritative preview and post-commit channel
 // convergence without making HTTP handlers understand either implementation.
 type TaxonomyEditor interface {
-	Preview(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
-	Apply(ctx context.Context, edit store.TaxonomyEdit) (TaxonomyImpact, error)
+	Preview(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
+	Apply(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
 }
 
 type TaxonomyImpact struct {
-	Store    store.TaxonomyEditImpact
+	Store    catalogstore.TaxonomyEditImpact
 	Channels []TaxonomyChannelImpact
 }
 
@@ -931,7 +937,7 @@ type UserSyncer interface {
 // Implemented by auth.Provisioner.
 type Provisioner interface {
 	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
-	Bootstrap(ctx context.Context, username, password string) (store.User, error)
+	Bootstrap(ctx context.Context, username, password string) (identitystore.User, error)
 	// Import allowlists the named media-server user ids (admin-only).
 	Import(ctx context.Context, ids []string) (int, error)
 	// Candidates lists media-server accounts available to import, each flagged with
@@ -944,11 +950,11 @@ type Provisioner interface {
 
 // LoginService verifies credentials and issues a session (Phase 9, §11).
 type LoginService interface {
-	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error)
+	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error)
 	// DevLogin issues a session for an existing admin with no credential (§11).
 	// Only ever called when the server was started with LOOMARR_DEV_LOGIN=1 — the
 	// route is not registered otherwise.
-	DevLogin(ctx context.Context) (token string, expires time.Time, u store.User, err error)
+	DevLogin(ctx context.Context) (token string, expires time.Time, u identitystore.User, err error)
 	Disable(ctx context.Context, userID string) error
 }
 
@@ -963,7 +969,7 @@ type PasswordService interface {
 	ChangePassword(ctx context.Context, userID, current, next string) error
 	// CreateLocal mints a local account — an allowlist row carrying an Argon2id hash.
 	// Admin-only at the route layer; the same kind of explicit write as Import.
-	CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error)
+	CreateLocal(ctx context.Context, username, password string, role identitystore.Role, quota int) (identitystore.User, error)
 	// ResetPassword is the ADMIN path: no current password (that's the point), so it
 	// relies entirely on the caller's role. Deliberately not the same call as
 	// ChangePassword — sharing one would make the "prove you know it" check optional.
@@ -992,8 +998,8 @@ type InvitationDeliveryService interface {
 // accepted only in request bodies and never enter a route, query, or durable DTO.
 type InvitationRedemptionService interface {
 	Preview(context.Context, string) (invitation.Invitation, error)
-	RedeemLocal(context.Context, string, string) (string, time.Time, store.User, error)
-	RedeemLibrary(context.Context, string, string, string) (string, time.Time, store.User, error)
+	RedeemLocal(context.Context, string, string) (string, time.Time, identitystore.User, error)
+	RedeemLibrary(context.Context, string, string, string) (string, time.Time, identitystore.User, error)
 }
 
 // PasswordRecoveryService is the public, enumeration-safe local credential recovery seam.
@@ -1007,7 +1013,7 @@ type PasswordRecoveryService interface {
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
-	List(ctx context.Context, userID string) ([]store.Session, error)
+	List(ctx context.Context, userID string) ([]identitystore.Session, error)
 	RevokeHash(ctx context.Context, tokenHash string) error
 }
 
@@ -1064,14 +1070,14 @@ type Options struct {
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
 	Images          ImageService
-	Events          EventSource             // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Shutdown        <-chan struct{}         // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	FillerResearch  FillerResearchService   // optional structured-first web-search status and validation
-	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
-	FillerDefects   *filler.DefectReports   // /v1/filler/defects* (#2034); nil ⇒ 501
-	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        TaxonomyEditor          // taxonomy impact + committed channel convergence
+	Events          EventSource                      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown        <-chan struct{}                  // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
+	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
+	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout
@@ -1157,7 +1163,7 @@ type Options struct {
 	PlayoutTonemap func() bool
 	// PlayoutGPUTonemap reports which GPU tone-mappers the build carries (playout.GPUFiltersFor).
 	// Nil ⇒ none: HDR then tone-maps on the CPU after the GPU downscale.
-	PlayoutGPUTonemap func() playout.GPUFilters
+	PlayoutGPUTonemap func() encode.GPUFilters
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

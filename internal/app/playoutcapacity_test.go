@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -23,7 +24,7 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	for key, value := range map[string]string{
 		"playout.backend":    "internal",
-		"playout.encoder":    string(playout.EncoderSoftware),
+		"playout.encoder":    string(encode.EncoderSoftware),
 		"playout.tone_curve": "bt2390",
 		// The channel packager is the status endpoint's playout observer; it needs a writable root.
 		"playout.hls_dir": t.TempDir(),
@@ -49,7 +50,7 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 
 	// Install the table the class probe would publish, with distinct Hable and BT.2390 HDR cells.
 	top := playout.LadderHeights(playout.TierFor(""))[0]
-	r.measuredCosts.Store(&playout.MeasuredCosts{Encoder: playout.EncoderSoftware, Costs: map[playout.CostKey]playout.ClassCost{
+	r.measuredCosts.Store(&playout.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[playout.CostKey]playout.ClassCost{
 		{Class: playout.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
 		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveHable):  {Speed: 4, CPUCores: 1},
 		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveBT2390): {Speed: 3, CPUCores: 2},

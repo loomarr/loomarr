@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // Premium sources: a native 4K SDR film (HEVC Main10 BT.709, like the spike's S4) and an HLG
@@ -173,7 +175,7 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 			if out.HDR {
 				wantEnd, wantProfile = ",fps=25,"+conformSAR+","+stripSideData+","+conformHDR10, "main10"
 			}
-			var encode []string
+			var encoderArgs []string
 			built := 0
 			for srcName, src := range premiumSources() {
 				label := hostName + "/" + string(class) + "/" + srcName
@@ -185,10 +187,10 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 					t.Fatalf("%s: %v", label, err)
 				}
 				built++
-				if encode == nil {
-					encode = p.VideoEncode
-				} else if !slices.Equal(encode, p.VideoEncode) {
-					t.Errorf("%s: encoder args differ between sources: %q vs %q", label, p.VideoEncode, encode)
+				if encoderArgs == nil {
+					encoderArgs = p.VideoEncode
+				} else if !slices.Equal(encoderArgs, p.VideoEncode) {
+					t.Errorf("%s: encoder args differ between sources: %q vs %q", label, p.VideoEncode, encoderArgs)
 				}
 				if i := slices.Index(p.VideoEncode, "-profile:v"); i < 0 || p.VideoEncode[i+1] != wantProfile {
 					t.Errorf("%s: want HEVC profile %s: %q", label, wantProfile, p.VideoEncode)
@@ -199,7 +201,7 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 				if !strings.Contains(p.VideoFilter, "3840") {
 					t.Errorf("%s: graph never pads to 3840x2160: %q", label, p.VideoFilter)
 				}
-				if host.Family != FamilyVideoToolbox {
+				if host.Family != encode.FamilyVideoToolbox {
 					checkGPUResidency(t, label, p)
 				}
 			}

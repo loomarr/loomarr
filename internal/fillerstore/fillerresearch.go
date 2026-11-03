@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // ErrFillerResearchStale reports a report researched against an input revision the clip has since
@@ -220,12 +221,13 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 	if limit <= 0 {
 		return 0, nil
 	}
-	countryPredicate := `COALESCE(json_extract(report_json, '$.suggestion.countryCode'), '') <> ''
-		AND COALESCE(json_extract(report_json, '$.suggestion.confidence'), 0) >= ?`
-	if s.dialect == store.DialectPostgres {
-		countryPredicate = `COALESCE(report_json::jsonb #>> '{suggestion,countryCode}', '') <> ''
-			AND COALESCE((report_json::jsonb #>> '{suggestion,confidence}')::integer, 0) >= ?`
-	}
+	// The dialects differ in syntax here: SQLite reads JSON with json_extract; Postgres holds the
+	// report as text, so it casts to jsonb, extracts by path, and casts the confidence to integer.
+	countryPredicate := storedb.ByDialect(s.dialect,
+		`COALESCE(json_extract(report_json, '$.suggestion.countryCode'), '') <> ''
+		AND COALESCE(json_extract(report_json, '$.suggestion.confidence'), 0) >= ?`,
+		`COALESCE(report_json::jsonb #>> '{suggestion,countryCode}', '') <> ''
+			AND COALESCE((report_json::jsonb #>> '{suggestion,confidence}')::integer, 0) >= ?`)
 	query := `SELECT report_json FROM (
 		SELECT r.report_json, r.completed_at,
 			ROW_NUMBER() OVER (PARTITION BY r.clip_hash ORDER BY r.completed_at DESC, r.producer_version DESC) AS row_number

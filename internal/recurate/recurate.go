@@ -22,7 +22,6 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -91,7 +90,7 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// A paused/detached channel is not being managed — don't grow it unattended. Every other
 	// state (live/building/DRIFTED) is managed and curatable — drifted is a transient reconcile
 	// state, not a hands-off one (mirrors runner.eligible's deny-list).
-	if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
+	if !ch.Status.Reconcilable() {
 		return suggest.Decision{Reason: "channel paused or detached"}, nil
 	}
 

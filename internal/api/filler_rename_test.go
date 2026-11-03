@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // renameFixture is a drop-folder holding one filename-named clip, catalogued as the scan would
@@ -43,7 +43,7 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 
 func seedFilenameNamedClip(t *testing.T, st fillerstore.Store) {
 	t.Helper()
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: "h-widgetmax", Path: "Widgetmax Ad 1991.mp4", Name: "Widgetmax Ad 1991",
 		NameSource: clipcatalog.NameFromFilename, Kind: filler.Commercial, DurationMs: 30_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {

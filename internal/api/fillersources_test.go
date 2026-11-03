@@ -14,12 +14,13 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // serverWithClips builds a server over a real SQLite store seeded with clips, so the
 // per-source counts are counted rather than stubbed — the read-model's whole job.
-func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *httptest.Server {
+func serverWithClips(t *testing.T, cfg map[string]string, clips []catalogstore.Clip) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -44,8 +45,8 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *h
 	return srv
 }
 
-func clip(path, source string) store.Clip {
-	var c store.Clip
+func clip(path, source string) catalogstore.Clip {
+	var c catalogstore.Clip
 	// Hash AND Path — identity is the hash since V38c; a Path-only clip has an empty id, and the
 	// store keys on it, so every row would collide on "".
 	c.Hash = path
@@ -74,7 +75,7 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 	)); err != nil {
 		t.Fatal(err)
 	}
-	ff.sourceSuggestions = []filler.SourceSuggestion{{
+	ff.sourceSuggestions = []sourceprovider.Suggestion{{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials", ItemCount: 8362,
 	}}
@@ -104,10 +105,10 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 
 func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
-		PreviewItems: []filler.SourcePreviewItem{
+		PreviewItems: []sourceprovider.PreviewItem{
 			{Title: "First ad", URL: "https://archive.org/details/ad_one", DurationMS: 31500},
 			{Title: "Second ad", URL: "https://archive.org/details/ad_two"},
 		},
@@ -132,7 +133,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 
 func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
 	}
@@ -168,7 +169,7 @@ func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 
 func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: "UC-vault",
 		CanonicalURL: "https://www.youtube.com/channel/UC-vault/videos", Title: "Broadcast Vault",
 	}
@@ -287,13 +288,13 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	}
 	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
 		CheckedAt: checkedAt,
-		Checkpoint: filler.SourceScanCheckpoint{
+		Checkpoint: sourceprovider.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: filler.SourceCheckSummary{
-			filler.SourceOutcomeQueued: 3, filler.SourceOutcomeTooLong: 12,
-			filler.SourceOutcomeUnavailable: 2,
+		Outcomes: sourceprovider.Outcomes{
+			sourceprovider.OutcomeQueued: 3, sourceprovider.OutcomeTooLong: 12,
+			sourceprovider.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -314,7 +315,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("b.mp4", "filler-dir"),
 		clip("c.mp4", "library"),
@@ -342,7 +343,7 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 	held := clip("incoming.mp4", "filler-dir")
 	held.Held = true
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{held})
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{held})
 	body := getSources(t, srv)
 
 	folder := sourceOfKind(t, body, "folder")
@@ -391,7 +392,7 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 // ⚠ Total is sent rather than summed client-side: a clip whose `source` matches no known row
 // still belongs to the catalog, and a client adding up the rows would under-report it.
 func TestFillerSources_TotalIncludesUnrecognizedProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("weird.mp4", "hand-copied-by-an-operator"),
 	})
@@ -594,8 +595,8 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult.Outcomes = filler.SourceCheckSummary{
-		filler.SourceOutcomeQueued: 2, filler.SourceOutcomeTooLong: 4,
+	ff.fetchResult.Outcomes = sourceprovider.Outcomes{
+		sourceprovider.OutcomeQueued: 2, sourceprovider.OutcomeTooLong: 4,
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {

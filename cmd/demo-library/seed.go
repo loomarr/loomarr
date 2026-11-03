@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -147,13 +148,13 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 }
 
 // ensureAdmin returns the store's admin, bootstrapping the demo admin on an empty store.
-func ensureAdmin(ctx context.Context, st store.Store) (store.User, bool, error) {
+func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool, error) {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
-		return store.User{}, false, err
+		return identitystore.User{}, false, err
 	}
 	for _, u := range users {
-		if u.Role == store.RoleAdmin {
+		if u.Role == identitystore.RoleAdmin {
 			return u, false, nil
 		}
 	}

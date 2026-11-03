@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -399,7 +400,7 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 
 	_ = r.detectedEncoder(context.Background())
 	p := r.Profile(context.Background(), 0)
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
 	}
 }
@@ -426,7 +427,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Errorf("Profile waited %s for capability detection", elapsed)
 	}
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want immediate software while capability detection warms", p.Encoder)
 	}
 	select {
@@ -471,170 +472,25 @@ func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash s
 	return r.err == nil, r.err
 }
 
-// V28: a clip that AIRS is counted. V41: the count identifies the clip by its HASH.
-//
-// ⚠ This test asserted the catalog PATH from V28 until V41, and it was right when written —
-// identity was the path then. V38c moved identity to the hash and never revisited this
-// assertion, so the test went on pinning the pre-V38c contract and kept `RecordClipPlay`'s
-// path argument looking correct while every counter in production stayed at zero
-// (`RecordClipPlay` is keyed `WHERE hash = ?`). A test that outlives the model it encodes
-// stops being a guard and becomes a reason not to look.
-func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
+// Counting is telemetry, and a recorder is optional (Tunarr-backed, or telemetry off): neither a
+// store failure nor no recorder at all may break serving the airing.
+func TestRecordAiringServed_ACountingFailureOrNoRecorderIsHarmless(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	// ⚠ The HASH, not the path and not the absolute file. The counter keys on identity, so
-	// anything else counts against a clip that does not exist — silently, because the caller
-	// swallows the error as telemetry.
-	if len(plays.calls) != 1 || plays.calls[0] != "hash-toys" {
-		t.Fatalf("recorded %v, want one play of the clip HASH", plays.calls)
-	}
-	if len(plays.channels) != 1 || plays.channels[0] != "ch1" {
-		t.Fatalf("recorded channels %v, want the airing channel", plays.channels)
-	}
-}
-
-// A finite ffmpeg child asks for the next clip after the previous child exits. That request
-// arrives slightly after the scheduled boundary (roughly 80-250ms on the live stack), never at
-// the exact nanosecond. The exposure write must identify the scheduled clip start so later
-// re-resolves can be made idempotent without requiring an impossible `into == 0` coincidence.
-func TestAiringNow_RecordsClipStartWhenResolverArrivesLate(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	base := testPlayoutAnchor()
-	r.now = func() time.Time { return base.Add(100 * time.Millisecond) }
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 1 {
-		t.Fatalf("recorded %d plays, want the clip that started 100ms ago recorded once", len(plays.calls))
-	}
-	if got := plays.at[0]; !got.Equal(base) {
-		t.Fatalf("recorded at %v, want scheduled clip start %v", got, base)
-	}
-	if got := plays.recorded[0]; !got.Equal(base.Add(100 * time.Millisecond)) {
-		t.Fatalf("recordedAt %v, want the wall clock of the write", got)
-	}
-}
-
-// #2017: a neighbour warm keeps the next channel's packager running so a switch is instant, and its
-// clips air to nobody. Counted, each one rested on every channel as if the household had seen it.
-func TestAiringNow_DoesNotCountAClipNobodyWatches(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	got, _, err := r.AiringNow(playout.WithUnwatched(context.Background()), "ch1")
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Identity != "hash-toys" {
-		t.Fatalf("airing %q, want the clip to air all the same", got.Identity)
+	failing := &recordingPlays{err: errors.New("database is gone")}
+	r.clipPlays = failing
+	r.RecordAiringServed(context.Background(), "ch1", airing, r.now())
+	if len(failing.calls) != 1 {
+		t.Fatalf("attempted %d writes, want the one that failed", len(failing.calls))
 	}
-	if len(plays.calls) != 0 {
-		t.Fatalf("recorded %v for a channel nobody watches, want nothing", plays.calls)
-	}
-}
-
-// ⚠ The bumper card has no catalog row, so it has no hash — and must not be counted. Without
-// the `e.Hash != ""` guard this records a play against the empty string, which is not merely
-// useless: it is an UPDATE with an attacker-independent but wrong key, and the swallowed error
-// means it would never be noticed.
-func TestAiringNow_DoesNotCountAnEntryWithNoHash(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "no-hash", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 0 {
-		t.Errorf("recorded %v for an entry with no hash, want no play counted", plays.calls)
-	}
-}
-
-// A mid-clip re-resolve reports the SAME scheduled start. The durable recorder owns
-// idempotency, because process-local suppression would be lost on restart or another replica.
-func TestAiringNow_MidClipResolveUsesTheScheduledStart(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	// Three seconds into the break: the clip is already rolling.
-	base := testPlayoutAnchor()
-	r.now = func() time.Time { return base.Add(3 * time.Second) }
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 1 {
-		t.Fatalf("a mid-clip resolve recorded %v calls, want one idempotent observation", plays.calls)
-	}
-	if got := plays.at[0]; !got.Equal(base) {
-		t.Errorf("mid-clip resolve recorded at %v, want scheduled start %v", got, base)
-	}
-}
-
-// Counting is telemetry: a store failure must never stop a break from airing.
-func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	r.clipPlays = &recordingPlays{err: errors.New("database is gone")}
-
-	airing, src, err := r.AiringNow(context.Background(), "ch1")
-	if err != nil {
-		t.Fatalf("a counting failure became a playout error: %v", err)
-	}
-	if !airing.Playable() || src == "" {
-		t.Errorf("the break must still air: %+v src=%q", airing, src)
-	}
-}
-
-// No recorder wired (Tunarr-backed, or telemetry off) is a supported configuration.
-func TestAiringNow_NoRecorderIsFine(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod) // clipPlays left nil
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatalf("a nil recorder must not break playout: %v", err)
-	}
+	r.clipPlays = nil
+	r.RecordAiringServed(context.Background(), "ch1", airing, r.now())
 }

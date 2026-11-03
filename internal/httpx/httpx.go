@@ -5,12 +5,22 @@
 // jittered-backoff retries for idempotent GETs only. Writes never client-retry —
 // write recovery is owned by the idempotent reconcile loops and periodic sweeps
 // (§6). A down dependency degrades one feature; it never wedges the process.
+//
+// Callers name the remote service with a Target, which labels the outbound metrics.
+// A non-2xx answer becomes a *StatusError (CheckStatus), and Classify tells a caller
+// whether the failure is transient, an auth rejection, not found or permanent; the
+// retry transport uses the same classification.
+//
+// Every transport bounds its dial (and TLS setup) and honours the environment proxy
+// (HTTP_PROXY, HTTPS_PROXY, NO_PROXY; loopback is never proxied). Services on a LAN or
+// tailnet are reached directly by listing them in NO_PROXY. The one deliberate
+// exception is NewPublicNamedObserved: it pins each connection to a resolved public
+// address (PublicDialContext), and a proxy would resolve the name itself and defeat
+// that pin, so it never uses a proxy.
 package httpx
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -36,23 +46,19 @@ const (
 	TimeoutTunarrBulk = 120 * time.Second
 	TimeoutLLM        = 120 * time.Second
 	TimeoutProbe      = 5 * time.Second // quick LLM-host probes (version/tags, §8.1)
-
-	// dialBudget bounds connect + TLS for streaming clients that intentionally
-	// carry no whole-request budget (NewStreaming).
-	dialBudget = 10 * time.Second
 )
 
 // New returns an *http.Client with the given hard timeout. The timeout is a
 // whole-request budget (connect + headers + body), which is what we want for a
 // homelab service that may hang rather than refuse.
 func New(timeout time.Duration) *http.Client {
-	return newClient(timeout, newTransport(), nil)
+	return newClient(timeout, baseTransport(), nil)
 }
 
 // NewNamed retains the standalone/test constructor without process-global metrics.
 // Application composition uses NewNamedObserved with its generation Recorder.
-func NewNamed(_ string, timeout time.Duration) *http.Client {
-	return newClient(timeout, newTransport(), nil)
+func NewNamed(_ Target, timeout time.Duration) *http.Client {
+	return newClient(timeout, baseTransport(), nil)
 }
 
 // NewLLM returns the client for OpenAI-compatible chat calls. It carries NO whole-request
@@ -61,25 +67,25 @@ func NewNamed(_ string, timeout time.Duration) *http.Client {
 // call with a first-token budget, an inter-chunk idle budget and an overall cap instead, all
 // cancelling through the request context. recorder may be nil (standalone tools and tests).
 func NewLLM(recorder *metrics.Recorder) *http.Client {
-	return NewLLMNamed("llm", 0, recorder)
+	return NewLLMNamed(TargetLLM, 0, recorder)
 }
 
 // NewNamedObserved is NewNamed bound to one application generation's Recorder.
 // Production composition uses this form; NewNamed remains for standalone tools
 // and tests that do not own an application generation.
-func NewNamedObserved(target string, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
+func NewNamedObserved(target Target, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
 	if recorder == nil {
 		return NewNamed(target, timeout)
 	}
-	return newNamedObservedClient(target, timeout, newTransport(), recorder)
+	return newNamedObservedClient(target, timeout, baseTransport(), recorder)
 }
 
 // NewPublicNamedObserved builds the client for operator-supplied public URLs.
 // Its dialer resolves and pins a public address for the actual connection, so a
 // DNS change between validation and dial cannot turn a reference fetch into an
-// internal-network request.
-func NewPublicNamedObserved(target string, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
-	transport := newPublicTransport(net.DefaultResolver, (&net.Dialer{Timeout: dialBudget}).DialContext)
+// internal-network request. It never uses an environment proxy (see the package doc).
+func NewPublicNamedObserved(target Target, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
+	transport := newPublicTransport(net.DefaultResolver, boundedDial)
 	client := newNamedObservedClient(target, timeout, transport, recorder)
 	client.CheckRedirect = publicGetRedirects
 	return client
@@ -93,72 +99,17 @@ func NewPublicNamedObserved(target string, timeout time.Duration, recorder *metr
 // are still bounded, so a dead host fails fast rather than hanging forever. Use
 // New (not this) for request/response RPCs — this is for streams only (§8.1 pull).
 func NewStreaming() *http.Client {
-	return newStreamingClient(&http.Transport{
-		DialContext:           (&net.Dialer{Timeout: dialBudget}).DialContext,
-		TLSHandshakeTimeout:   dialBudget,
-		ResponseHeaderTimeout: 30 * time.Second,
-		MaxIdleConns:          20,
-		MaxIdleConnsPerHost:   4,
-		IdleConnTimeout:       90 * time.Second,
-	})
+	transport := baseTransport()
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	return newStreamingClient(transport)
 }
 
-func newTransport() http.RoundTripper {
-	return &http.Transport{
-		// Conservative pooled defaults; a homelab has few upstreams.
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 4,
-		IdleConnTimeout:     90 * time.Second,
-	}
-}
-
-type ipLookup interface {
-	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
-}
-
-type dialContextFunc func(context.Context, string, string) (net.Conn, error)
-
-func newPublicTransport(resolver ipLookup, dial dialContextFunc) *http.Transport {
-	return &http.Transport{
-		DialContext:           publicDialContext(resolver, dial),
-		TLSHandshakeTimeout:   dialBudget,
-		ResponseHeaderTimeout: 30 * time.Second,
-		MaxIdleConns:          20,
-		MaxIdleConnsPerHost:   4,
-		IdleConnTimeout:       90 * time.Second,
-	}
-}
-
-func publicDialContext(resolver ipLookup, dial dialContextFunc) dialContextFunc {
-	return func(ctx context.Context, network, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, fmt.Errorf("public HTTP dial address: %w", err)
-		}
-		var addrs []net.IPAddr
-		if ip := net.ParseIP(host); ip != nil {
-			addrs = []net.IPAddr{{IP: ip}}
-		} else {
-			addrs, err = resolver.LookupIPAddr(ctx, host)
-			if err != nil {
-				return nil, fmt.Errorf("public HTTP resolve %q: %w", host, err)
-			}
-			if len(addrs) == 0 {
-				return nil, fmt.Errorf("public HTTP resolve %q returned no addresses", host)
-			}
-		}
-		for _, addr := range addrs {
-			if unsafePublicIP(addr.IP) {
-				return nil, fmt.Errorf("public HTTP refuses private address for %q", host)
-			}
-		}
-		return dial(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
-	}
-}
-
-func unsafePublicIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+func newPublicTransport(resolver IPLookup, dial DialContextFunc) *http.Transport {
+	transport := baseTransport()
+	transport.Proxy = nil // a proxy would resolve the name itself and bypass the address pin
+	transport.DialContext = PublicDialContext(resolver, dial)
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	return transport
 }
 
 func newClient(
@@ -174,15 +125,16 @@ func newClient(
 }
 
 func newNamedObservedClient(
-	target string,
+	target Target,
 	timeout time.Duration,
 	next http.RoundTripper,
 	recorder *metrics.Recorder,
 ) *http.Client {
+	label := target.Label()
 	c := newClient(timeout, next, func(reason metrics.OutboundRetryReason) {
-		recorder.OutboundRetried(target, reason)
+		recorder.OutboundRetried(label, reason)
 	})
-	c.Transport = recorder.InstrumentTransport(target, c.Transport)
+	c.Transport = recorder.InstrumentTransport(label, c.Transport)
 	return c
 }
 

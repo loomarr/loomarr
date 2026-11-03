@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -30,13 +31,13 @@ import (
 // premiumHost is the host profile this build and GPU give for LOOMARR_PREMIUM_ENCODER: "nvenc"
 // (the default) or "vaapi" (Intel/AMD; the render node is PLAYOUT_RENDER_NODE, as in production),
 // or a skip when that encoder cannot produce HEVC Main10 here.
-func premiumHost(t *testing.T, bin string) HostProfile {
+func premiumHost(t *testing.T, bin string) encode.HostProfile {
 	t.Helper()
-	enc := EncoderNVENC
+	enc := encode.EncoderNVENC
 	probeArgs := []string{"-pix_fmt", "p010le", "-c:v", "hevc_nvenc", "-profile:v", "main10"}
 	if os.Getenv("LOOMARR_PREMIUM_ENCODER") == "vaapi" {
-		enc = EncoderVAAPI
-		probeArgs = []string{"-init_hw_device", "vaapi=va:" + renderNode(), "-filter_hw_device", "va",
+		enc = encode.EncoderVAAPI
+		probeArgs = []string{"-init_hw_device", "vaapi=va:" + encode.RenderNode(), "-filter_hw_device", "va",
 			"-vf", "format=p010le,hwupload", "-c:v", "hevc_vaapi", "-profile:v", "main10"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -45,7 +46,7 @@ func premiumHost(t *testing.T, bin string) HostProfile {
 	if out, err := exec.CommandContext(ctx, bin, append(args, "-f", "null", "-")...).CombinedOutput(); err != nil {
 		t.Skipf("no working HEVC Main10 %s encoder on this host: %v\n%s", enc, err, out)
 	}
-	host := HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
+	host := encode.HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
 	if !host.Libplacebo {
 		t.Skip("this ffmpeg build has no libplacebo: a 4K HDR premium is not producible here")
 	}
@@ -111,12 +112,12 @@ type encodeStats struct {
 }
 
 // encodeItem runs one item's Build argv for seconds of content into an MPEG-TS file.
-func encodeItem(t *testing.T, bin string, host HostProfile, it premiumItem, out OutputProfile, seconds int) (string, encodeStats) {
+func encodeItem(t *testing.T, bin string, host encode.HostProfile, it premiumItem, out OutputProfile, seconds int) (string, encodeStats) {
 	t.Helper()
 	return encodeItemAt(t, bin, host, it, out, 0, seconds)
 }
 
-func encodeItemAt(t *testing.T, bin string, host HostProfile, it premiumItem, out OutputProfile, seek time.Duration, seconds int) (string, encodeStats) {
+func encodeItemAt(t *testing.T, bin string, host encode.HostProfile, it premiumItem, out OutputProfile, seek time.Duration, seconds int) (string, encodeStats) {
 	t.Helper()
 	p, err := Build(host, it.facts, out)
 	if err != nil {
@@ -413,7 +414,7 @@ func TestLivePremium_Measure(t *testing.T) {
 	host := premiumHost(t, bin)
 	probeFormat := FFprobeFormatNextTo(bin)
 	for _, class := range []FormatClass{Format4KHDR, Format4KSDR} {
-		base := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 24, AudioBitrate: 192, Encoder: EncoderNVENC})
+		base := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 24, AudioBitrate: 192, Encoder: encode.EncoderNVENC})
 		out, _ := PremiumOutput(class, base)
 		var first [][]byte
 		for _, input := range []string{hdrSrc, sdrSrc} {
@@ -457,7 +458,7 @@ func TestLivePremium_Measure(t *testing.T) {
 // ~2 s device start left the converted item late after a 6 s first airing.
 type premiumChannelSource struct {
 	epoch *atomic.Int64 // unix nanos: the schedule's origin, reset so a tune lands on an item start
-	host  HostProfile
+	host  encode.HostProfile
 	items []premiumItem
 }
 
@@ -472,7 +473,7 @@ func (s premiumChannelSource) ItemAt(_ context.Context, _ string, at time.Time) 
 
 func (premiumChannelSource) Premium(context.Context, string) FormatClass { return Format4KHDR }
 
-func (s premiumChannelSource) Output(_ context.Context, _ string, class FormatClass, _ int) (HostProfile, OutputProfile) {
+func (s premiumChannelSource) Output(_ context.Context, _ string, class FormatClass, _ int) (encode.HostProfile, OutputProfile) {
 	base := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000, GOPSeconds: 1, AudioKbps: 192}
 	if class == FormatBaseline {
 		return s.host, base

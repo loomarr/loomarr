@@ -1,26 +1,22 @@
 package store
 
 import (
-	"context"
-	"database/sql"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
-// Querier runs statements, on the pool or inside one transaction. *sql.DB and *sql.Tx both
-// satisfy it, so a helper written against it runs either way.
-type Querier interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-// Tx is one transaction begun through Handle.Begin. Rollback after Commit is a no-op, so callers
-// defer it straight after Begin.
-type Tx interface {
-	Querier
-	Commit() error
-	Rollback() error
-}
+// Querier, Tx and Scannable are the storedb kernel's types, re-exported so importers of this
+// package keep one import. They are aliases: the same types, not copies.
+type (
+	// Querier runs statements, on the pool or inside one transaction (storedb.Querier).
+	Querier = storedb.Querier
+	// Tx is one transaction begun through Handle.Begin (storedb.Tx).
+	Tx = storedb.Tx
+	// Scannable is the one method *sql.Row and *sql.Rows share (storedb.Scannable).
+	Scannable = storedb.Scannable
+)
 
 // Handle is the core store's database handle, lent to the stores that extend it
 // (internal/fillerstore). Those stores keep their own tables but run on this handle, and Begin
@@ -29,15 +25,12 @@ type Tx interface {
 //
 // ⚠ For extension stores only, and deliberately NOT on the Store interface, for PoolOf's reason:
 // everything else goes through Store's methods, which own the tables' invariants.
+//
+// Handle is storedb.Handle (pool, Begin, Dialect, Rebind, advisory lock: everything a store package
+// needs to run on its own) plus Clips, the one thing that still ties it to this package. A store
+// that needs no clip writes takes the narrower storedb.Handle, and a store.Handle is one.
 type Handle interface {
-	// Querier runs a statement on the pool, outside any transaction.
-	Querier
-	// Begin starts the one kind of transaction both halves use.
-	Begin(ctx context.Context) (Tx, error)
-	// Dialect names the backend, for the few statements that differ.
-	Dialect() Dialect
-	// Rebind rewrites a query written with ? markers into the backend's placeholder style.
-	Rebind(query string) string
+	storedb.Handle
 	// Clips writes clip columns and tags inside tx, which Begin started. Extension stores write
 	// the clips table only through it.
 	Clips(tx Tx) ClipTx
@@ -49,7 +42,7 @@ func HandleOf(st Store) Handle {
 	if !ok {
 		return nil
 	}
-	return sqlHandle{s}
+	return sqlHandle{DB: s.kernel(), s: s}
 }
 
 // adapterOf returns the SQL adapter behind st, looking through a store that extends it (the
@@ -62,34 +55,23 @@ func adapterOf(st Store) (*sqlStore, bool) {
 	return s, ok
 }
 
-type sqlHandle struct{ s *sqlStore }
-
-func (h sqlHandle) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return h.s.db.ExecContext(ctx, query, args...)
+// sqlHandle is the kernel handle plus Clips. Everything but Clips is promoted from the embedded
+// storedb.DB, so the pool, Begin, dialect, rebinding and advisory lock have one implementation
+// shared with every cluster store that takes a storedb.Handle.
+type sqlHandle struct {
+	storedb.DB
+	s *sqlStore
 }
 
-func (h sqlHandle) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return h.s.db.QueryContext(ctx, query, args...)
-}
+func (h sqlHandle) Clips(tx Tx) ClipTx { return catalogstore.ClipsOn(h.s.catalogCluster, tx) }
 
-func (h sqlHandle) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return h.s.db.QueryRowContext(ctx, query, args...)
-}
-
-func (h sqlHandle) Begin(ctx context.Context) (Tx, error) { return h.s.db.BeginTx(ctx, nil) }
-
-func (h sqlHandle) Dialect() Dialect { return h.s.dialect }
-
-func (h sqlHandle) Rebind(query string) string { return h.s.ph(query) }
-
-func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.clipsIn(tx) }
-
-// Scannable is the one method *sql.Row and *sql.Rows share, so one scan function reads either.
-type Scannable = scannable
+// kernel is this store's pool, dialect and placeholder style as a storedb.Handle, for the store
+// packages that run on the kernel and for this package's own keyed locks.
+func (s *sqlStore) kernel() storedb.DB { return storedb.NewDB(s.db, s.dialect, s.ph) }
 
 // Epoch and FromEpoch are the store's Unix-seconds time-column codec, exported so extension stores
 // encode time exactly as the core does.
-func Epoch(t time.Time) int64 { return epoch(t) }
+func Epoch(t time.Time) int64 { return storedb.Epoch(t) }
 
 // FromEpoch decodes Epoch.
-func FromEpoch(n int64) time.Time { return fromEpoch(n) }
+func FromEpoch(n int64) time.Time { return storedb.FromEpoch(n) }

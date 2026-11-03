@@ -2,6 +2,7 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { RefusedPick } from "@loomarr/api/models/refusedPick";
+import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
 import type { ReactNode } from "react";
 
 type ApprovalStatus = "pending" | "approving" | "denied";
@@ -28,6 +29,10 @@ interface ApprovalQueueItemProps {
   // detail you open when you want them; a refusal changes what approving MEANS — before this,
   // an admin approved seven titles and got five, with nothing on the card saying so.
   refused?: RefusedPick[];
+  // Holidays this request asked the channel to be exclusive to that the household's country doesn't
+  // keep (#2030 decision 38). Their season never comes, so the channel doesn't follow it; shown
+  // beside `refused` for the same reason.
+  seasonNotKept?: SeasonNotKept;
   // Edit-before-approve (V25b). When supplied, the "Show picks" disclosure becomes the EDIT
   // surface — drop a title, add one via search, leave the requester a note — and this fires with
   // the resulting delta, or `undefined` when nothing has been modified. Omit it and the

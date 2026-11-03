@@ -44,6 +44,17 @@ const (
 	PresentationFillerDownloadSchedule Presentation = "filler_download_schedule"
 )
 
+// Unit names what a plain number setting counts, shown beside its input. The key's suffix says it
+// too (`_gb`, `_mb`, `_pct`), but a person reads the label and the box, never the key.
+type Unit string
+
+const (
+	UnitNone    Unit = ""
+	UnitGiB     Unit = "GiB"
+	UnitMiB     Unit = "MiB"
+	UnitPercent Unit = "%"
+)
+
 // ApplyTiming says when a persisted setting becomes the running value. The zero
 // value is deliberately live: declarations have always hot-applied unless they
 // explicitly opt into the much rarer generation boundary.
@@ -169,6 +180,7 @@ type Setting struct {
 	Owner        Owner // one stable editing task; frontend presentation and paths stay out of the registry
 	Kind         Kind
 	Presentation Presentation // optional richer editor semantics beyond Kind
+	Unit         Unit         // a KindInt's unit, shown beside its input; empty for a bare count
 	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
 	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
 	// DataSubdir, for a storage directory, derives the default as <data dir>/<DataSubdir>: the

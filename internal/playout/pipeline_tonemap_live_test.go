@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // AN HDR PROGRAM MUST COME OUT AS A PICTURE on every tone-mapper the host can run (#1516).
@@ -37,7 +39,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 	// Software: the CPU chain, which is also every GPU family's last resort after the GPU downscale.
 	t.Run("software/cpu", func(t *testing.T) {
 		out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128}
-		pipe, err := Build(HostProfile{Family: FamilySoftware, CPUTonemap: true}, facts, out)
+		pipe, err := Build(encode.HostProfile{Family: encode.FamilySoftware, CPUTonemap: true}, facts, out)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,12 +51,12 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 		ran["software/cpu"] = !t.Failed()
 	})
 
-	for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
+	for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
 		if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
 			t.Logf("%s: not usable on this host, skipped (%s)", enc, firstLine(c.Err))
 			continue
 		}
-		host := HostFor(enc, true, GPUFiltersFor(bin)())
+		host := encode.HostFor(enc, true, GPUFiltersFor(bin)())
 		for _, curve := range ToneCurves {
 			out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128, ToneCurve: curve}
 			// The packager's retry ladder (itemFaults): a tone-mapper that fails before any output is
@@ -121,11 +123,11 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 			t.Errorf("%d: not a probed HDR source (%v, %q)", i, err, facts.ColorTransfer)
 			continue
 		}
-		for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
+		for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
 			if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
 				continue
 			}
-			host := HostFor(enc, true, GPUFiltersFor(bin)())
+			host := encode.HostFor(enc, true, GPUFiltersFor(bin)())
 			for _, curve := range curves {
 				out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc})
 				out.ToneCurve = curve
@@ -137,7 +139,7 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 
 // airRealFile airs one real title through the ladder: the first tone-mapper that produces output,
 // its luma, speed and CPU per stream, and one PNG into PLAYOUT_TEST_FRAME_DIR when set.
-func airRealFile(t *testing.T, bin string, title int, host HostProfile, facts MediaFormat, profile OutputProfile, input string) {
+func airRealFile(t *testing.T, bin string, title int, host encode.HostProfile, facts MediaFormat, profile OutputProfile, input string) {
 	t.Helper()
 	faults := &itemFaults{by: map[string]itemFault{}}
 	for {
@@ -166,7 +168,7 @@ func airRealFile(t *testing.T, bin string, title int, host HostProfile, facts Me
 			return
 		}
 		t.Logf("title %d %s did not start (demoting): %s", title, what, firstLine(string(b)))
-		if !faults.record(input, pipe, IsHardwareDecodeFault(string(b))) {
+		if !faults.record(input, pipe, encode.IsHardwareDecodeFault(string(b))) {
 			t.Errorf("title %d: no tone-mapper produced output for %s", title, what)
 			return
 		}

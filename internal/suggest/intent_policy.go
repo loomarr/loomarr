@@ -350,6 +350,45 @@ func seasonalPolicyForIntent(intent Intent, v holidayvocab.Vocabulary) schedule.
 	return schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: holidays}
 }
 
+// seasonKeptIn holds an exclusive channel to the holidays the household's country keeps (#2030
+// decision 38). A holiday kept elsewhere never comes into season here, so a channel exclusive to
+// it alone would never air its season: it plays all year instead. The holidays left out are
+// reported by label for the approval card. Episode selection still honours them; only the
+// season is the country's.
+func seasonKeptIn(seasonal schedule.SeasonalPolicy, cal schedule.Calendar) (schedule.SeasonalPolicy, *SeasonNotKept) {
+	if seasonal.Mode != schedule.SeasonalExclusive || len(seasonal.Holidays) == 0 {
+		return seasonal, nil
+	}
+	v := cal.Vocab()
+	var kept, dropped []string
+	for _, id := range seasonal.Holidays {
+		if v.KeptIn(id, cal.Country) {
+			kept = append(kept, id)
+		} else {
+			dropped = append(dropped, holidayLabel(v, id))
+		}
+	}
+	if len(dropped) == 0 {
+		return seasonal, nil
+	}
+	notKept := &SeasonNotKept{Country: v.CalendarCountry(cal.Country), Holidays: dropped}
+	if len(kept) == 0 {
+		return schedule.SeasonalPolicy{}, notKept
+	}
+	seasonal.Holidays = kept
+	return seasonal, notKept
+}
+
+// holidayLabel is id's display label, or id itself for a holiday the definitions don't name.
+func holidayLabel(v holidayvocab.Vocabulary, id string) string {
+	for _, h := range v.Holidays() {
+		if h.ID == id {
+			return h.Label
+		}
+	}
+	return id
+}
+
 // kidsIntentCues are the substrings that mark a kids/teen intent (§4/§8). Lowercased.
 // Kept explicit and conservative — each is a phrase a user would only write for a
 // child/family audience. "teen"/"teenager" count (a teen ceiling is TV-14, still a

@@ -1,6 +1,10 @@
 package playout
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/loomarr/loomarr/internal/encode"
+)
 
 // Channel formats (#1512 G10). Every channel airs a 1080p SDR H.264 baseline. When its lineup
 // warrants it, it also airs ONE premium HEVC format, so a channel costs at most two encodes, and a
@@ -97,7 +101,7 @@ func Is4K(f MediaFormat) bool {
 
 // OnHost is the formats this host can actually produce, and why the premium was dropped (empty
 // when it was kept or there was none). The baseline is never dropped.
-func (c ChannelFormats) OnHost(h HostProfile) (ChannelFormats, string) {
+func (c ChannelFormats) OnHost(h encode.HostProfile) (ChannelFormats, string) {
 	if c.Premium == "" {
 		return c, ""
 	}
@@ -105,9 +109,9 @@ func (c ChannelFormats) OnHost(h HostProfile) (ChannelFormats, string) {
 		return ChannelFormats{Baseline: c.Baseline}, why
 	}
 	switch h.Family {
-	case FamilySoftware:
+	case encode.FamilySoftware:
 		return drop("software-only hosts never produce a premium format")
-	case FamilyVAAPI, FamilyNVENC, FamilyVideoToolbox:
+	case encode.FamilyVAAPI, encode.FamilyNVENC, encode.FamilyVideoToolbox:
 	default:
 		return drop("no GPU graph for " + string(h.Encoder) + ": a 4K premium on CPU filters would not keep up")
 	}

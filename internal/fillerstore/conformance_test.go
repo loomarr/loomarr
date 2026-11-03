@@ -27,6 +27,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipExposureRotation", func(t *testing.T) { testClipExposureRotation(t, newStore) })
 		t.Run("ClipKeyIsHashNotPath", func(t *testing.T) { testClipKeyIsHashNotPath(t, newStore) })
 		t.Run("ClipIdentityReplacement", func(t *testing.T) { testClipIdentityReplacement(t, newStore) })
+		t.Run("ReadyClipIdentityReplacement", func(t *testing.T) { testReadyClipIdentityReplacement(t, newStore) })
+		t.Run("AiringClipReplacement", func(t *testing.T) { testAiringClipReplacement(t, newStore) })
 		t.Run("ConditioningPublicationCommit", func(t *testing.T) { testConditioningPublicationCommit(t, newStore) })
 		t.Run("ConditioningPublicationFailsClosed", func(t *testing.T) {
 			testConditioningPublicationFailsClosed(t, newStore)

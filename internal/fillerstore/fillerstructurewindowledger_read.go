@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const structureWindowCallLedgerSelect = `SELECT request_sha256, evaluation_id, source_sha256,
@@ -59,8 +60,8 @@ func (s *sqlStore) getStructureWindowCallLedgerRow(ctx context.Context, queryer 
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, requestSHA256 string, lock bool) (structureWindowCallLedgerRow, error) {
 	query := structureWindowCallLedgerSelect + ` WHERE request_sha256 = ?`
-	if lock && s.dialect == store.DialectPostgres {
-		query += ` FOR UPDATE`
+	if lock {
+		query = storedb.LockRows(s.dialect, query)
 	}
 	row, err := scanStructureWindowCallLedgerRow(queryer.QueryRowContext(ctx, s.ph(query), requestSHA256))
 	if errors.Is(err, sql.ErrNoRows) {

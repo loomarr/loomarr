@@ -542,7 +542,7 @@ func declared() []Setting {
 			// maintainer chose 40% from a real 1080p preview. Read per programme item, and the
 			// rendered-bug cache is keyed by opacity, so a change re-renders the bugs.
 			Key: "playout.watermark_opacity_pct", Label: "On-screen logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
-			Kind: KindInt, Default: "40", Validate: watermarkOpacityRange,
+			Kind: KindInt, Unit: UnitPercent, Default: "40", Validate: watermarkOpacityRange,
 			Doc: "How solid the on-screen logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
@@ -610,12 +610,12 @@ func declared() []Setting {
 			// encoder's device context and pipeline hold ~0.5–1 GiB of host RAM. Hot-applied because
 			// the ResourceBudget re-reads it on every admission.
 			Key: "playout.memory_reserve_mb", Label: "Host memory reserve for encodes", EnvVar: "PLAYOUT_MEMORY_RESERVE_MB", Group: GroupPlayout,
-			Kind: KindInt, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc: "Host memory, in MiB, that hardware encoding must leave available. Loomarr does not start a hardware transcode that would take free memory below this. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
 		},
 		{
 			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
-			Kind: KindInt, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
 		},
 		{
@@ -699,7 +699,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "images.cache_budget_mb", Label: "Resized-image cache", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
-			Kind: KindInt, Default: "2048", Advanced: true,
+			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true,
 			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
 		},
 
@@ -788,7 +788,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "recurate.min_score_pct", Label: "Auto-curation request threshold", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
-			Kind: KindInt, Default: 60, Advanced: true,
+			Kind: KindInt, Unit: UnitPercent, Default: 60, Advanced: true,
 			Doc: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
 		},
 		{
@@ -1111,7 +1111,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.storage.library_budget_gb", Label: "Filler storage allowance", EnvVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB", Group: GroupFiller,
-			Kind: KindInt, Default: 0, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitGiB, Default: 0, Validate: nonNegativeWholeNumber,
 			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
 		},
 		{
@@ -1578,7 +1578,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "diagnostics.max_storage_mb", EnvVar: "DIAGNOSTICS_MAX_STORAGE_MB", Group: GroupAdvanced,
-			Kind: KindInt, Default: 512, Validate: positiveWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: 512, Validate: positiveWholeNumber,
 			Doc: "Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected.",
 		},
 		{

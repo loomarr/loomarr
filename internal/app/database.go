@@ -82,7 +82,7 @@ func (d *databaseService) statusLocked() api.DatabaseStatus {
 		// Only SQLite installs are offered a migration: Postgres→SQLite is not a
 		// direction anyone migrates, and offering a disabled control would raise the
 		// question rather than answer it.
-		CanMigrate: backend == string(store.DialectSQLite),
+		CanMigrate: store.CanMigrateToPostgres(store.DialectOf(d.src)),
 		Phase:      d.phase,
 		Tables:     d.tables,
 		Parity:     d.parity,
@@ -92,7 +92,7 @@ func (d *databaseService) statusLocked() api.DatabaseStatus {
 }
 
 func (d *databaseService) Preflight(ctx context.Context, dsn string) ([]api.DatabaseCheck, error) {
-	if store.DialectOf(d.src) != store.DialectSQLite {
+	if !store.CanMigrateToPostgres(store.DialectOf(d.src)) {
 		return nil, api.ErrNotSQLite
 	}
 	checks, err := store.Preflight(ctx, dsn)
@@ -138,7 +138,7 @@ func (d *databaseService) Migrate(_ context.Context, dsn string) error {
 	// The complete gate runs before the process-level request is queued.
 	d.mu.Lock()
 	switch {
-	case store.DialectOf(d.src) != store.DialectSQLite:
+	case !store.CanMigrateToPostgres(store.DialectOf(d.src)):
 		d.mu.Unlock()
 		return api.ErrNotSQLite
 	case d.running:

@@ -108,5 +108,6 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0043](decisions/0043-devices-act-with-their-approvers-role.md) | 2026-10-03 | A paired device acts with its approver's role |
 | [0044](decisions/0044-apple-tv-permanent-app-identity.md) | 2026-10-13 | The Apple TV app is its own App Store Connect app, selected only by its release build |
 | [0045](decisions/0045-loomarr-recommends-curated-youtube-channels.md) | 2026-10-27 | Loomarr recommends curated filler sources, YouTube channels included |
+| [0046](decisions/0046-loomarr-scans-its-own-media-files.md) | 2026-11-03 | Loomarr scans its own media files; the media server keeps only sign-in and Live TV |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.

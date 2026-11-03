@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -116,7 +117,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	// A compilation to split.
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash,
 		Path: compPath, Name: "1987.mp4", Kind: filler.Commercial, DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
@@ -149,7 +150,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 
 func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	if err := st.UpsertClip(t.Context(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(t.Context(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "1987.mp4", DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
@@ -259,7 +260,7 @@ func TestConfirmSplit_FilesParentAfterOperatorAcceptsTheProposal(t *testing.T) {
 	if parentClip.Held {
 		t.Fatal("confirmed composite is still held, so its catalog group is invisible")
 	}
-	topLevel, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, TopLevelOnly: true})
+	topLevel, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, TopLevelOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +438,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "1987.mp4",
 		Kind: filler.Commercial, DurationMs: 61_000, Source: "archive",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
@@ -478,12 +479,12 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 		t.Fatalf("ConfirmSplit: %v — this is the failure that made split review a dead end", err)
 	}
 
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var segments []store.Clip
-	var parent *store.Clip
+	var segments []catalogstore.Clip
+	var parent *catalogstore.Clip
 	for i, c := range clips {
 		if c.Hash == compHash {
 			parent = &clips[i]
@@ -565,7 +566,7 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_902_000_000, 0).UTC()
-	parent := store.Clip{Clip: filler.Clip{
+	parent := catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "reel", Kind: filler.Commercial,
 		DurationMs: 30_000, Held: true,
 	}, UpdatedAt: now}

@@ -138,6 +138,11 @@ func hashSection(h io.Writer, r io.ReaderAt, offset, n, size int64) error {
 	return err
 }
 
+// ExactFileBytesEqual is exactFileBytesEqual for packages above filler. It only reads both files.
+func ExactFileBytesEqual(ctx context.Context, leftPath, rightPath string, maxBytes int64) (bool, error) {
+	return exactFileBytesEqual(ctx, leftPath, rightPath, maxBytes)
+}
+
 // exactFileBytesEqual compares two ownership-boundary artifacts without changing ClipID's sparse
 // catalog contract. Both objects stay open for the complete bounded comparison, and cancellation
 // is observed between every read.

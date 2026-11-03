@@ -441,6 +441,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		Kind:         string(e.Setting.Kind),
 		Apply:        apply,
 		Presentation: string(e.Setting.Presentation),
+		Unit:         string(e.Setting.Unit),
 		Provenance:   string(e.Provenance),
 		Caution:      e.Caution,
 		Advanced:     e.Setting.Advanced,

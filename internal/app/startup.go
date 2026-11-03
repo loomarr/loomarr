@@ -12,7 +12,7 @@ import (
 	"github.com/adhocore/gronx"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -262,9 +262,9 @@ func (r *currentHealthRunner) Refresh(ctx context.Context) (diagnostics.HealthRe
 	return r.health.Health(), err
 }
 
-func (r *currentHealthRunner) Job() scheduler.Job {
-	return scheduler.Job{
-		Name: "system-health", Group: scheduler.GroupSystem, Title: "Check app health",
+func (r *currentHealthRunner) Job() jobs.Job {
+	return jobs.Job{
+		Name: "system-health", Group: jobs.GroupSystem, Title: "Check app health",
 		Description: "Checks Loomarr's database and configured connections and refreshes Current Health.",
 		DefaultCron: systemHealthDefaultCron, ScheduleKey: "job.system_health.schedule",
 		Timeout: 10 * time.Second, Run: r.Run,

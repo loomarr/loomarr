@@ -192,6 +192,20 @@ func (v Vocabulary) Dated(id string) bool {
 	return len(h.Kept) > 0
 }
 
+// KeptIn reports whether holiday id has a season in country's calendar: its own dates there, or,
+// for a group, a member's. A holiday kept elsewhere never comes into season here (#2030 decision 38).
+func (v Vocabulary) KeptIn(id, country string) bool {
+	h, ok := v.lookup(id)
+	if !ok {
+		return false
+	}
+	if len(h.Members) > 0 {
+		return slices.ContainsFunc(h.Members, func(m string) bool { return v.KeptIn(m, country) })
+	}
+	_, ok = h.keptIn(v.CalendarCountry(country))
+	return ok
+}
+
 // spans reports whether r's season contains t's calendar date: last year's season (one that wraps
 // into January), this year's, or next year's (one that opens in the December before its date).
 func spans(r Rule, t time.Time) bool {

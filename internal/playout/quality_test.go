@@ -3,6 +3,8 @@ package playout
 import (
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // Resolve is the profile at the rung the ResourceBudget admitted; the rung choice itself is
@@ -11,13 +13,13 @@ func TestResolve_RungIndexesTheLadder(t *testing.T) {
 	for _, tier := range []Tier{TierEfficient, TierBalanced, TierQuality} {
 		l := ladders[tier]
 		for i, want := range l {
-			got := Resolve(tier, EncoderNVENC, i)
+			got := Resolve(tier, encode.EncoderNVENC, i)
 			if got.Width != want.width || got.Height != want.height || got.VideoBitrate != want.videoBitrate {
 				t.Errorf("%s rung %d = %dx%d @%dk, want %dx%d @%dk", tier, i,
 					got.Width, got.Height, got.VideoBitrate, want.width, want.height, want.videoBitrate)
 			}
 		}
-		if got, bottom := Resolve(tier, EncoderNVENC, 99), l[len(l)-1]; got.VideoBitrate != bottom.videoBitrate {
+		if got, bottom := Resolve(tier, encode.EncoderNVENC, 99), l[len(l)-1]; got.VideoBitrate != bottom.videoBitrate {
 			t.Errorf("%s: rung past the bottom = %dk, want the bottom rung", tier, got.VideoBitrate)
 		}
 		if heights := LadderHeights(tier); len(heights) != len(l) || heights[0] != l[0].height {
@@ -79,8 +81,8 @@ func TestTierFor_UnknownDegradesToDefault(t *testing.T) {
 // The resolved profile must carry the chosen encoder through — a ladder that silently reset
 // it to software would undo the whole detection step.
 func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
-	got := Resolve(TierBalanced, EncoderVulkan, 0)
-	if got.Encoder != EncoderVulkan {
+	got := Resolve(TierBalanced, encode.EncoderVulkan, 0)
+	if got.Encoder != encode.EncoderVulkan {
 		t.Errorf("Resolve dropped the encoder: %q", got.Encoder)
 	}
 }

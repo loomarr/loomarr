@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // The watermark self-check (#1512 phase 1d): does THIS host's GPU overlay draw the bug AND keep
@@ -91,8 +93,8 @@ func overlaySpeed(off, on time.Duration, frames int) error {
 }
 
 // WatermarkCheck runs the self-check for host's family in dir (scratch space it may fill).
-func WatermarkCheck(ctx context.Context, ffmpeg string, host HostProfile, dir string) WatermarkCheckResult {
-	if host.Family != FamilyVAAPI && host.Family != FamilyNVENC {
+func WatermarkCheck(ctx context.Context, ffmpeg string, host encode.HostProfile, dir string) WatermarkCheckResult {
+	if host.Family != encode.FamilyVAAPI && host.Family != encode.FamilyNVENC {
 		return WatermarkCheckResult{Detail: "no GPU overlay in the " + string(host.Family) + " family"}
 	}
 	fail := func(format string, a ...any) WatermarkCheckResult {
@@ -153,7 +155,7 @@ type checkSource struct {
 // checkClasses are the programme classes the host airs: SDR H.264 always; HDR10 HEVC when the host
 // tone-maps (its graph differs: 10-bit decode, tone-map, then the overlay). The HDR fixture needs
 // libx265; a build without it checks SDR only and says so.
-func checkClasses(host HostProfile) []checkSource {
+func checkClasses(host encode.HostProfile) []checkSource {
 	classes := []checkSource{{
 		name: "sdr",
 		facts: MediaFormat{VideoCodec: "h264", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
@@ -193,7 +195,7 @@ func synthWatermarkClip(ctx context.Context, ffmpeg, out string, args ...string)
 }
 
 // checkClass encodes src bug-off and bug-on through the production graph and compares them.
-func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts MediaFormat, src string, wm *Watermark, target checkTarget, prefix string) (string, error) {
+func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, facts MediaFormat, src string, wm *Watermark, target checkTarget, prefix string) (string, error) {
 	out := OutputProfile{Width: checkWidth, Height: checkHeight, FPS: checkFPS, Quality: outputQuality,
 		TargetKbps: outputTargetKbps, MaxKbps: outputMaxKbps, GOPSeconds: outputGOPSeconds, AudioKbps: 128}
 	// encode runs the graph over checkFrames and returns its wall time, which overlaySpeed compares.

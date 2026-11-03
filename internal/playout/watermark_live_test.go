@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // decodeLuma decodes frame n of an H.264 elementary stream to its CODED 8-bit luma: the Y plane of
@@ -36,8 +38,8 @@ func TestLive_WatermarkCheck(t *testing.T) {
 	bin := ffmpegBin(t)
 	want := parseWatermarkWant(t, os.Getenv("PLAYOUT_TEST_WATERMARK"))
 	gpu := GPUFiltersFor(bin)()
-	for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
-		host := HostFor(enc, TonemapperFor(bin)(), gpu)
+	for _, enc := range []encode.Encoder{encode.EncoderVAAPI, encode.EncoderNVENC} {
+		host := encode.HostFor(enc, TonemapperFor(bin)(), gpu)
 		w := want[host.Family]
 		if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
 			t.Logf("%s: not usable on this host (%s)", host.Family, firstLine(c.Err))
@@ -92,9 +94,9 @@ func TestDecodeLuma_ReadsCodedLimitedRangeLuma(t *testing.T) {
 // parseWatermarkWant reads "family=verdict,..." and refuses what the test could never match: a
 // key that named the encoder ("h264_vaapi") instead of the family once made every expectation a
 // silent no-op on the Arc.
-func parseWatermarkWant(t *testing.T, s string) map[Family]string {
+func parseWatermarkWant(t *testing.T, s string) map[encode.Family]string {
 	t.Helper()
-	want := map[Family]string{}
+	want := map[encode.Family]string{}
 	for _, kv := range strings.Split(s, ",") {
 		if strings.TrimSpace(kv) == "" {
 			continue
@@ -103,12 +105,12 @@ func parseWatermarkWant(t *testing.T, s string) map[Family]string {
 		switch {
 		case !ok:
 			t.Fatalf("PLAYOUT_TEST_WATERMARK: %q is not family=verdict", kv)
-		case Family(k) != FamilyVAAPI && Family(k) != FamilyNVENC:
-			t.Fatalf("PLAYOUT_TEST_WATERMARK: unknown family %q (want %s or %s)", k, FamilyVAAPI, FamilyNVENC)
+		case encode.Family(k) != encode.FamilyVAAPI && encode.Family(k) != encode.FamilyNVENC:
+			t.Fatalf("PLAYOUT_TEST_WATERMARK: unknown family %q (want %s or %s)", k, encode.FamilyVAAPI, encode.FamilyNVENC)
 		case v != "works" && v != "disabled":
 			t.Fatalf("PLAYOUT_TEST_WATERMARK: unknown verdict %q for %s (want works or disabled)", v, k)
 		}
-		want[Family(k)] = v
+		want[encode.Family(k)] = v
 	}
 	return want
 }

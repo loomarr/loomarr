@@ -4,12 +4,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 func TestBuildVideoToolbox_UnavailableDeinterlacer(t *testing.T) {
 	src := testSources()["h264-1080p-sdr-29.97"]
 	src.Interlaced = true
-	p, err := Build(HostFor(EncoderVideoToolbox, true, GPUFilters{}), src, testOutput)
+	p, err := Build(encode.HostFor(encode.EncoderVideoToolbox, true, encode.GPUFilters{}), src, testOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +44,7 @@ func TestBuildVideoToolbox_DownloadTenBitBeforeSDRConversion(t *testing.T) {
 func TestBuildVideoToolbox_AvailableDeinterlacer(t *testing.T) {
 	src := testSources()["h264-1080p-sdr-29.97"]
 	src.Interlaced = true
-	host := HostFor(EncoderVideoToolbox, true, GPUFilters{VideoToolboxDeinterlace: true})
+	host := encode.HostFor(encode.EncoderVideoToolbox, true, encode.GPUFilters{VideoToolboxDeinterlace: true})
 	p, err := Build(host, src, testOutput)
 	if err != nil {
 		t.Fatal(err)

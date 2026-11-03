@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
@@ -195,7 +195,7 @@ type playoutResolver struct {
 	detectReady    atomic.Bool
 	detectedMu     sync.RWMutex
 	detectContext  context.Context
-	detected       playout.Encoder
+	detected       encode.Encoder
 	maxChannels    atomic.Int64
 	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
 	encodeHostBytes atomic.Int64
@@ -246,43 +246,6 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return airing, "", nil
 	}
 
-	// Record that this programme aired (§5, programming-design §3.1) — the memory the
-	// scheduler lacked, and the input recency-aware placement ranks on.
-	//
-	// ⚠ Stamped with the programme's START (`now - Offset`), not with `now`, and written on
-	// EVERY resolve rather than only at the start.
-	//
-	// The filler counter next door guards on `into == 0` because it is a COUNTER — counting a
-	// mid-clip re-resolve would inflate it. This is not a counter: the row is an upsert holding
-	// the last airing, so re-writing it is idempotent. Guarding on `Offset == 0` here was a
-	// real bug (caught only by tuning in live): a viewer arrives mid-programme, so Offset is
-	// however far the wall clock happens to be into the film — measured at 2075s on the first
-	// real tune-in. The guard would have fired only within ~1ms of a programme boundary, so
-	// history stayed empty and the whole recency signal silently did nothing.
-	//
-	// Using the START also makes the value mean what §3.1 needs: "when did this programme
-	// begin airing", which is stable no matter when anyone tuned in or how often ffmpeg
-	// re-requested the segment.
-	//
-	// The row is also stamped with when it was observed, because placement reads history as of
-	// a window's start (#1674). Never earlier than the programme's own start: the packager
-	// resolves up to its run-ahead early, and a programme that opens a window must not count
-	// toward that window's arrangement.
-	//
-	// ⚠ Telemetry, never correctness. A failed write is logged and the programme still airs —
-	// the same posture as RecordClipPlay, for the same reason: a channel must never go dark
-	// because a history table was unavailable.
-	if r.airings != nil && airing.Key != "" {
-		startedAt := now.Add(-airing.Offset)
-		recordedAt := r.now()
-		if startedAt.After(recordedAt) {
-			recordedAt = startedAt
-		}
-		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); aerr != nil && r.log != nil {
-			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", aerr)
-		}
-	}
-
 	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
 	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
 	// direct play begins — reading the file lets the encoder `-c copy` it (playout.PlanCopy).
@@ -299,6 +262,56 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, src.URL, nil
+}
+
+// RecordAiringServed records that a viewer received segments of an airing AiringAt resolved at
+// `resolvedAt`. It is the ONLY writer of airing history and of a filler clip's play count: every
+// resolve is a read (the admin Info page's /tracks, the packager's lookups for a neighbour warm),
+// and recording on a read rested ads on channels nobody watched.
+//
+// A programme is recorded under its provisioning key (§5, programming-design §3.1), the input
+// recency-aware placement ranks on. It is stamped with its START (`resolvedAt - Offset`), not with
+// the serve time, so the value means "when did this programme begin airing" however late anyone
+// tuned in. The row is an upsert holding the last airing, so the packager re-resolving after an
+// encoder restart is idempotent. It is also stamped with when it was observed, never earlier than
+// the start, because placement reads history as of a window's start (#1674): the packager resolves
+// up to its run-ahead early, and a programme that opens a window must not count toward that
+// window's arrangement.
+//
+// A filler clip is counted by HASH (`RecordClipPlay` is `WHERE hash = ?`; keyed by path every
+// counter stayed at zero) at its SCHEDULED start, which the store makes idempotent; an entry with
+// no hash, the generated bumper card, is not counted. Internal playout only: a Tunarr-backed
+// channel airs its filler through Tunarr, which never reports back, so those clips read "not
+// counted here", not "never played".
+//
+// Telemetry, never correctness: a failed write is logged and the airing carries on.
+func (r *playoutResolver) RecordAiringServed(ctx context.Context, channelID string, airing playout.Airing, resolvedAt time.Time) {
+	switch {
+	case airing.Kind == schedule.SlotFiller:
+		if airing.Identity == "" || r.clipPlays == nil {
+			return
+		}
+		recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, airing.Identity, airing.StartedAt, r.now())
+		if err != nil {
+			if r.log != nil {
+				// Debug: a pruned clip is an ordinary race.
+				r.log.Debug("playout: clip play not recorded", "channel", channelID, "clip", airing.Identity, "err", err)
+			}
+			return
+		}
+		if recorded && r.metrics != nil {
+			r.metrics.FillerRotationAired(airing.RecentRepeat, airing.RecentRepeat && !airing.RotationPinned, airing.RotationPinned)
+		}
+	case r.airings != nil && airing.Key != "":
+		startedAt := resolvedAt.Add(-airing.Offset)
+		recordedAt := r.now()
+		if startedAt.After(recordedAt) {
+			recordedAt = startedAt
+		}
+		if err := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); err != nil && r.log != nil {
+			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
+		}
+	}
 }
 
 // StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
@@ -1092,41 +1105,10 @@ func (r *playoutResolver) airingFiller(
 			if perr != nil {
 				return gap, "", nil
 			}
-			// Count the airing (V28). THIS is the honest write point, and the two
-			// tempting alternatives are both wrong:
-			//   - pod ASSEMBLY re-runs on every 10m reconcile sweep, so it counts what was
-			//     scheduled, over and over, not what aired;
-			//   - counting every resolve as a new play would count viewer reconnects and child
-			//     retries rather than airings.
-			// Here the resolver passes the clip's SCHEDULED start on every resolve. The store
-			// makes that stable identity idempotent. Requiring `into == 0` instead lost every
-			// real transition: a finite encoder child asks for its successor milliseconds after
-			// the boundary, not at the exact nanosecond.
-			//
-			// ⚠ Internal playout only. A Tunarr-backed channel airs its filler through Tunarr,
-			// which never reports back, so those clips stay at zero — "not counted here", not
-			// "never played". The DTO says which.
-			//
-			// ⚠ Keyed by Hash, not Path. `RecordClipPlay` is `WHERE hash = ?`; this passed
-			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
-			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
-			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
-			//
-			// ⚠ Watched airings only (#2017). A neighbour warm keeps the next channel's packager
-			// running for a fast switch; its clips air to nobody. Counted, they rested on every
-			// channel as if the household had seen them. A viewer who switches to a warm channel
-			// mid-clip misses that one clip's count, the cheaper error.
-			if e.Hash != "" && r.clipPlays != nil && playout.Watched(ctx) {
-				startedAt := now.Add(-into)
-				recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, startedAt, r.now())
-				if err != nil {
-					// Telemetry, never correctness: a failed count must not stop a break from
-					// airing. Logged at debug because a pruned clip is an ordinary race.
-					_ = err
-				} else if recorded && r.metrics != nil {
-					r.metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
-				}
-			}
+			// Resolving a clip does not count it: pod ASSEMBLY re-runs on every 10m reconcile
+			// sweep and any read of the channel resolves the airing, so counting here would count
+			// what was scheduled or looked at, not what aired. RecordAiringServed counts it when
+			// a viewer receives its segments.
 			remaining := d - into
 			if gap.Remaining > 0 && gap.Remaining < remaining {
 				remaining = gap.Remaining
@@ -1147,6 +1129,8 @@ func (r *playoutResolver) airingFiller(
 				Source:           full,
 				MeasuredLUFS:     measured,
 				MeasuredTruePeak: truePeak,
+				RecentRepeat:     e.RecentRepeat,
+				RotationPinned:   e.RotationPinned,
 				Title:            e.Name,
 				Offset:           into,
 				Remaining:        remaining,
@@ -1334,24 +1318,7 @@ func (r *playoutResolver) recordSourceMeasurement(
 	if err != nil || !ok {
 		return
 	}
-	facts := inventoryFactsOf(observed)
-	audioCoverage := inventory.CoverageEmpty
-	for _, stream := range facts.Streams {
-		if stream.Kind == inventory.StreamAudio {
-			audioCoverage = inventory.CoveragePresent
-			break
-		}
-	}
-	measurement := inventory.Measurement{
-		SourceID: source.ID, Revision: source.Revision,
-		Observation: inventory.Observation[inventory.SourceFacts]{
-			SchemaVersion: 1, ObservedAt: r.inventoryNow(),
-			Coverage: map[string]inventory.Coverage{
-				"streams": inventory.CoveragePresent, "audioStreams": audioCoverage,
-			},
-			Facts: facts,
-		},
-	}
+	measurement := inventory.NewFactsMeasurement(source.ID, source.Revision, r.inventoryNow(), inventoryFactsOf(observed))
 	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
 		r.log.Debug("playout: measured audio observation not persisted", "err", err)
 	}
@@ -1487,7 +1454,7 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 			format.VideoCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
 			format.Width = stream.Width
 			format.Height = stream.Height
-			format.FrameRate = parseInventoryRational(stream.FrameRate)
+			format.FrameRate = playout.ParseFrameRate(stream.FrameRate)
 			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
 			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
 			format.Interlaced = stream.Interlaced
@@ -1501,20 +1468,6 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 		}
 	}
 	return format
-}
-
-func parseInventoryRational(value string) float64 {
-	numerator, denominator, found := strings.Cut(strings.TrimSpace(value), "/")
-	if !found {
-		parsed, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		return parsed
-	}
-	n, numeratorErr := strconv.ParseFloat(strings.TrimSpace(numerator), 64)
-	d, denominatorErr := strconv.ParseFloat(strings.TrimSpace(denominator), 64)
-	if numeratorErr != nil || denominatorErr != nil || d == 0 {
-		return 0
-	}
-	return n / d
 }
 
 func (r *playoutResolver) inventoryNow() time.Time {
@@ -1620,7 +1573,7 @@ func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offs
 }
 
 func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {
-	enc := playout.Encoder(r.encoder())
+	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		// A matching persisted result is available to this first tune after only its host fingerprint
 		// matches. Its real encoder validation runs asynchronously; a miss likewise starts the full
@@ -1634,7 +1587,7 @@ func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
 		r.reuseEncoderEvidence(ctx)
-		enc = playout.EncoderSoftware
+		enc = encode.EncoderSoftware
 		if r.detectReady.Load() {
 			enc = r.publishedEncoder()
 		}
@@ -1687,7 +1640,7 @@ func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
 // everything after completion reads the result. A matching persisted hardware result substitutes
 // one short real TS encode, while an FFmpeg/GPU/profile mismatch or failed validation performs the
 // complete measurement and atomically replaces that evidence.
-func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
+func (r *playoutResolver) detectedEncoder(ctx context.Context) encode.Encoder {
 	r.detectOnce.Do(func() {
 		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
@@ -1739,10 +1692,24 @@ func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused b
 	r.detectReady.Store(true)
 }
 
-func (r *playoutResolver) publishedEncoder() playout.Encoder {
+func (r *playoutResolver) publishedEncoder() encode.Encoder {
 	r.detectedMu.RLock()
 	defer r.detectedMu.RUnlock()
 	return r.detected
+}
+
+// fileEncodeHost is the hardware filler derivatives encode on (#2121), the channels' own: the
+// operator's pinned encoder, else the one detection published, and software until detection
+// settles. encode.FileFamily then keeps a family without a measured level in software.
+func (r *playoutResolver) fileEncodeHost(pinned encode.Encoder) encode.HostProfile {
+	enc := pinned
+	if enc == "" && r != nil && r.detectReady.Load() {
+		enc = r.publishedEncoder()
+	}
+	if enc == "" {
+		enc = encode.EncoderSoftware
+	}
+	return encode.HostFor(enc, false, encode.GPUFilters{})
 }
 
 // PublishedCapability returns only the encoder result already published by the asynchronous

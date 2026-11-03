@@ -84,21 +84,7 @@ func (m *Measurer) MeasureFacts(ctx context.Context, ref SourceRef) (inventory.S
 	if err != nil {
 		return inventory.SourceFacts{}, fmt.Errorf("measure stream facts: %w", err)
 	}
-	audio := inventory.CoverageEmpty
-	for _, s := range facts.Streams {
-		if s.Kind == inventory.StreamAudio {
-			audio = inventory.CoveragePresent
-			break
-		}
-	}
-	err = m.deps.Sink.RecordMeasurement(ctx, inventory.Measurement{
-		SourceID: ref.ID, Revision: ref.Revision,
-		Observation: inventory.Observation[inventory.SourceFacts]{
-			SchemaVersion: 1, ObservedAt: m.deps.Now(),
-			Coverage: map[string]inventory.Coverage{"streams": inventory.CoveragePresent, "audioStreams": audio},
-			Facts:    facts,
-		},
-	})
+	err = m.deps.Sink.RecordMeasurement(ctx, inventory.NewFactsMeasurement(ref.ID, ref.Revision, m.deps.Now(), facts))
 	if err != nil && !errors.Is(err, inventory.ErrSourceRevisionGone) {
 		m.log("stream facts measured but not stored", err)
 	}

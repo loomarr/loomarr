@@ -66,6 +66,16 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
 - **A file changed outside Loomarr is a new clip.** A transform Loomarr performs inside the
   pipeline files the new bytes at their own hash and atomically re-keys the row, tags, pipeline
   state and lineage. The old hash never names bytes it no longer identifies.
+- **A re-key accounts for every column that names a clip** (#2121). Each one is listed with what
+  the re-key does to it. Screening verdicts, enrichment, research, cost ledgers and the Ready
+  event judge the content, so they move: a Ready clip re-encoded from its master keeps its
+  history. Fingerprints and the defect record measured the old bytes, so they are dropped and
+  measured again. A clip re-encoded while it airs brings a record measured on its new bytes into
+  the same transaction ([the library re-encode](filler-pipeline.md#the-library-re-encode)). The
+  identities of a copy that lost a merge stay, so intake keeps skipping them. A schema test fails
+  on a `clip_hash` column the list does not name. The web-research attempts are the one reference
+  with a real foreign key, which has no `ON UPDATE`, so they step out of the table while the row
+  is re-keyed and come back under the new hash in the same transaction.
 - **Legacy hash-named files repair themselves at sync.** A file whose stem is an old
   machine-generated hash but whose bytes hash differently is refiled at its canonical path without
   overwriting, and a hash-shaped display name is replaced from the durable catalog name, then from
@@ -477,6 +487,12 @@ reservations and the operator-facing decision.
   512 MiB cap.
 - Reservations group by filesystem, not path. The hard reserve aggregates every domain on the
   device; soft budgets stay per domain. A cross-filesystem move reserves the full copy first.
+- **Managed usage is a running total, never walked under the lock.** Each filesystem and domain
+  is walked once on first use; leases then add the bytes they report written, and a background
+  re-walk every 10 minutes replaces the total to correct drift from writes the governor never saw
+  (a released lease's abandoned staging stays counted until then). Reservations and snapshots read
+  only the in-memory total and the live capacity probe, so a large library does not slow them.
+  Repointing a live managed root discards its total and walks the new tree.
 - Restart forgets leases but not bytes. Automatic cleanup removes only cancelled or incomplete
   private staging, superseded temporary output and unreferenced generated artifacts under a
   retention contract; never admitted clips, pinned media, review evidence, source masters, symlinks

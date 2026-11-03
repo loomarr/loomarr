@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reconcile"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
 // ideaLibraryTTL is how long one library listing serves channel ideas (#1665). Listing is one
@@ -43,7 +43,7 @@ func (a *libraryIdeaItems) IdeaItems(ctx context.Context) ([]ideas.Item, error) 
 	}
 	items := make([]ideas.Item, 0, len(results))
 	for _, r := range results {
-		keys := reconcile.ScanItemKeys(r)
+		keys := provisionbackstop.ScanItemKeys(r)
 		if len(keys) == 0 {
 			continue // no provider id: nothing a lineup could name
 		}

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee
@@ -128,15 +128,25 @@ type Suggester struct {
 	// collection members rather than only title-prefix search hits.
 	collections MovieCollectionResolver
 	maxAcq      int // default SUGGEST_MAX_ACQUISITIONS cap
-	// holidays are the holiday definitions a request's named holiday is read against (#2030).
-	holidays holidayvocab.Source
+	// calendar is the household's holiday calendar (#2030): the definitions a request's named
+	// holiday is read against, and the country that decides which of them come into season.
+	calendar func() schedule.Calendar
 }
 
-// WithHolidays reads named holidays against the household's definitions rather than the shipped
-// ones, so a holiday added there can be asked for by name.
-func (s *Suggester) WithHolidays(source holidayvocab.Source) *Suggester {
-	s.holidays = source
+// WithCalendar reads named holidays against the household's calendar rather than the shipped US
+// one, so a holiday added there can be asked for by name, and the planner is offered only the
+// holidays the household's country keeps (#2030 decisions 38–39).
+func (s *Suggester) WithCalendar(calendar func() schedule.Calendar) *Suggester {
+	s.calendar = calendar
 	return s
+}
+
+// householdCalendar is the calendar now; unwired, the shipped definitions on the US calendar.
+func (s *Suggester) householdCalendar() schedule.Calendar {
+	if s.calendar == nil {
+		return schedule.Calendar{}
+	}
+	return s.calendar()
 }
 
 // WithMovieCollections wires TMDB collection rosters for named-franchise examples.
@@ -253,7 +263,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	}
 	sources := newSourceGroundingState(intent)
 	messages := []llm.Message{
-		{Role: llm.System, Content: systemPrompt},
+		{Role: llm.System, Content: systemPrompt(s.householdCalendar())},
 		{Role: llm.User, Content: userPrompt(intent)},
 	}
 	tools := []llm.ToolSchema{catalogToolForIntent(intent)}

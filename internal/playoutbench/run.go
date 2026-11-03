@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
@@ -48,8 +49,8 @@ var streamLadder = []int{1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32}
 // run is one bench run's state.
 type run struct {
 	Options
-	host   playout.HostProfile
-	enc    playout.Encoder
+	host   encode.HostProfile
+	enc    encode.Encoder
 	out    playout.OutputProfile
 	prober playout.FormatProber
 	rep    *Report
@@ -71,7 +72,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 	o.Dir = CorpusDir(o.Dir)
 	r := &run{Options: o}
 	r.enc = r.chooseEncoder(ctx)
-	r.host = playout.HostFor(r.enc, playout.TonemapperFor(o.FFmpeg)(), playout.GPUFiltersFor(o.FFmpeg)())
+	r.host = encode.HostFor(r.enc, playout.TonemapperFor(o.FFmpeg)(), playout.GPUFiltersFor(o.FFmpeg)())
 	profile := playout.Profile{Width: o.Height * 16 / 9, Height: o.Height, Framerate: 25, Encoder: r.enc, AudioBitrate: 128}
 	r.out = playout.ChannelOutput(profile)
 	r.prober = playout.FFprobeFormatNextTo(o.FFmpeg)
@@ -153,18 +154,18 @@ func (r *run) skipClass(c Clip, why string) {
 }
 
 // chooseEncoder honours a forced family and otherwise runs the app's own boot detection.
-func (r *run) chooseEncoder(ctx context.Context) playout.Encoder {
+func (r *run) chooseEncoder(ctx context.Context) encode.Encoder {
 	switch r.Family {
 	case "software":
-		return playout.EncoderSoftware
+		return encode.EncoderSoftware
 	case "vaapi":
-		return playout.EncoderVAAPI
+		return encode.EncoderVAAPI
 	case "nvenc":
-		return playout.EncoderNVENC
+		return encode.EncoderNVENC
 	case "videotoolbox":
-		return playout.EncoderVideoToolbox
+		return encode.EncoderVideoToolbox
 	}
-	probe := playout.Profile{Width: r.Height * 16 / 9, Height: r.Height, Framerate: 25, VideoBitrate: 4000, Encoder: playout.EncoderSoftware, AudioBitrate: 128}
+	probe := playout.Profile{Width: r.Height * 16 / 9, Height: r.Height, Framerate: 25, VideoBitrate: 4000, Encoder: encode.EncoderSoftware, AudioBitrate: 128}
 	return playout.DetectObserved(ctx, r.FFmpeg, probe, "", nil).Chosen
 }
 

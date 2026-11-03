@@ -7,7 +7,7 @@ research-verify: ## compile the archived filler research module against its pinn
 	$(GO) -C research vet -tags '$(CUSTOM_TAGS)' ./...
 
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
-	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/ ./internal/recommend/ ./cmd/channel-recommend-cert/ ./cmd/channel-recommend-compare/ ./cmd/channel-recommend-diagnostic/
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./internal/recommend/ ./cmd/eval/
 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
@@ -92,23 +92,23 @@ eval-query-expansion-diagnostic: ## run the authorized ten-case Gemini query dia
 	    $(GO) test -count=1 -tags=eval -run '^TestQueryExpansionOpenRouterDiagnostic$$' -v -timeout 20m ./internal/eval/
 
 planner-tool-diagnostic: ## probe the exact post-catalog-result model turn; explicit, inference-spending, non-CI
-	$(GO) run ./cmd/planner-tool-diagnostic
+	$(GO) run ./cmd/eval planner-tool-diagnostic
 
 channel-recommend-cert: ## certify inert channel concepts on the frozen recommendation corpus; explicit, inference-spending, non-CI
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_RECOMMEND_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-certification.json}"; \
 	  summary="$${LOOMARR_RECOMMEND_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-certification.md}"; \
-	  $(GO) run ./cmd/channel-recommend-cert \
+	  $(GO) run ./cmd/eval recommend-cert \
 	    --out "$$report" --summary "$$summary"
 
 channel-recommend-cert-dry-run: ## emit the provider-free recommendation certification contract; no inference
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/channel-recommend-cert --dry-run
+	  $(GO) run ./cmd/eval recommend-cert --dry-run
 
 channel-recommend-diagnostic: ## diagnose recommendation JSON transport on the disjoint development corpus; explicit, inference-spending, non-CI
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_RECOMMEND_DIAGNOSTIC_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-diagnostic.json}"; \
-	  $(GO) run ./cmd/channel-recommend-diagnostic --out "$$report"
+	  $(GO) run ./cmd/eval recommend-diagnostic --out "$$report"
 
 channel-recommend-compare: ## compare channel-recommendation scorecards without inference
 	@test -n "$$LOOMARR_RECOMMEND_SCORECARDS" || { echo "channel-recommend-compare: LOOMARR_RECOMMEND_SCORECARDS is required" >&2; exit 2; }; \
@@ -117,7 +117,7 @@ channel-recommend-compare: ## compare channel-recommendation scorecards without 
 	  report="$${LOOMARR_RECOMMEND_COMPARISON_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-comparison.json}"; \
 	  summary="$${LOOMARR_RECOMMEND_COMPARISON_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/channel-recommendation-comparison.md}"; \
 	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
-	  $(GO) run ./cmd/channel-recommend-compare --out "$$report" --summary "$$summary" \
+	  $(GO) run ./cmd/eval recommend-compare --out "$$report" --summary "$$summary" \
 	    --shared-profile "$$LOOMARR_RECOMMEND_SHARED_PROFILE" $$LOOMARR_RECOMMEND_SCORECARDS
 
 eval-planner-compare: ## compare two or more frozen planner scorecards without inference
@@ -126,14 +126,14 @@ eval-planner-compare: ## compare two or more frozen planner scorecards without i
 	  report="$${LOOMARR_EVAL_COMPARISON_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-comparison.json}"; \
 	  summary="$${LOOMARR_EVAL_COMPARISON_SUMMARY_OUT:-$$LOOMARR_ARTIFACT_DIR/planner-comparison.md}"; \
 	  mkdir -p "$$(dirname "$$report")" "$$(dirname "$$summary")"; \
-	  $(GO) run -tags=eval ./cmd/planner-cert-compare --out "$$report" --summary "$$summary" $$LOOMARR_EVAL_SCORECARDS
+	  $(GO) run -tags=eval ./cmd/eval planner-compare --out "$$report" --summary "$$summary" $$LOOMARR_EVAL_SCORECARDS
 
 planner-reference-host: ## bind one planner scorecard to exact local artifact and reference-host evidence; no inference
 	@for name in SCORECARD CAPTURE EVIDENCE_DIR GENERATED_AT OUT; do \
 	  value="$$(printenv "LOOMARR_PLANNER_REFERENCE_$$name" 2>/dev/null || true)"; \
 	  test -n "$$value" || { echo "planner-reference-host: LOOMARR_PLANNER_REFERENCE_$$name is required" >&2; exit 2; }; \
 	done; \
-	$(GO) run ./cmd/planner-reference-host \
+	$(GO) run ./cmd/eval planner-reference-host \
 	  --scorecard "$$LOOMARR_PLANNER_REFERENCE_SCORECARD" \
 	  --capture "$$LOOMARR_PLANNER_REFERENCE_CAPTURE" \
 	  --evidence-dir "$$LOOMARR_PLANNER_REFERENCE_EVIDENCE_DIR" \

@@ -5,7 +5,7 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
-import { BrandLaunch, LoomarrProvider, Surface, Text } from "@loomarr/design-system";
+import { BrandLaunch, LoomarrProvider, Surface, Text, ViewportStage } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   createLastChannelStore,
@@ -499,24 +499,26 @@ const TvClient = () => {
   }, []);
   return (
     <LoomarrProvider insets={insets} theme="dark">
-      <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
-        <PairingShell
-          allowServerEntry
-          density="tv"
-          discovery={discovery}
-          discoveryForeground={appForeground}
-          initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-          renderPaired={(credential) => (
-            <TvShell credential={credential} key={credential.token} session={session} />
+      <ViewportStage>
+        <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
+          <PairingShell
+            allowServerEntry
+            density="tv"
+            discovery={discovery}
+            discoveryForeground={appForeground}
+            initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
+            renderPaired={(credential) => (
+              <TvShell credential={credential} key={credential.token} session={session} />
+            )}
+            session={session}
+          />
+          {launchAnimationFinished && launchMinimumElapsed ? null : (
+            <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
+              <BrandLaunch density="tv" onFinished={() => setLaunchAnimationFinished(true)} />
+            </View>
           )}
-          session={session}
-        />
-        {launchAnimationFinished && launchMinimumElapsed ? null : (
-          <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>
-            <BrandLaunch density="tv" onFinished={() => setLaunchAnimationFinished(true)} />
-          </View>
-        )}
-      </View>
+        </View>
+      </ViewportStage>
       <StatusBar hidden />
     </LoomarrProvider>
   );

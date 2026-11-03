@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Local account management (§11). Three routes, and the split between them IS the
@@ -102,9 +103,9 @@ func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) 
 	}
 	// Default to member: minting an admin should be a deliberate choice, not what
 	// happens when a field is omitted (§11 — roles gate real spending).
-	role := store.RoleMember
-	if in.Body.Role == string(store.RoleAdmin) {
-		role = store.RoleAdmin
+	role := identitystore.RoleMember
+	if in.Body.Role == string(identitystore.RoleAdmin) {
+		role = identitystore.RoleAdmin
 	}
 	u, err := s.passwords.CreateLocal(ctx, in.Body.Username, in.Body.Password, role, in.Body.Quota)
 	switch {

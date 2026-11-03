@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // ErrAtCapacity reports that a new channel packager would exceed the admission budget.
@@ -128,7 +130,7 @@ func (m *PackagerHLS) Stats(now time.Time) []SessionStat {
 	for _, r := range rows {
 		s := SessionStat{
 			ChannelID: r.key.channel, Target: string(r.key.format), Viewers: r.n,
-			Encoder: string(r.c.host.Encoder), Hardware: r.c.host.Encoder != EncoderSoftware,
+			Encoder: string(r.c.host.Encoder), Hardware: r.c.host.Encoder != encode.EncoderSoftware,
 			BufferedMS: r.c.p.Lead(now).Milliseconds(), UptimeMS: now.Sub(r.c.started).Milliseconds(),
 			TranscodeCost: 1,
 		}

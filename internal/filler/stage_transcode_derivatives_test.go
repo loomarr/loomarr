@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -76,7 +77,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	evidenceBytes := []byte("the exact evidence rendition used to detect and cut")
 	evidence, err := buildMediaDerivative(context.Background(), mediaDerivativeRequest{
 		ClipDir: dir, Source: master, Input: Probed{DurationMs: 61_000, Height: 480},
-		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Recipe: mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine()), Tool: tool,
 		Probe: func(context.Context, string) (Probed, error) {
 			return Probed{DurationMs: 61_000, Height: 480}, nil
 		},
@@ -147,7 +148,9 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	return out, measurements, stored, childHash, err
 }
 
-func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *testing.T) {
+// #2121: one encode from the master serves both roles. The playback rendition is the evidence
+// bytes, never a second encode, and both lineages stay bound to the master they came from.
+func TestTranscodeStage_OneEncodeFromMasterServesEvidenceAndPlayback(t *testing.T) {
 	dir := t.TempDir()
 	oldHash := writeContentAddressedClip(t, dir, []byte("authoritative source master"), ".mkv")
 	oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
@@ -161,21 +164,19 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	var evidenceInput, playbackInput string
+	var evidenceInput string
 	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		evidenceInput = request.In
-		if request.Profile.CRF != 14 || request.TargetLUFS != 0 {
-			t.Fatalf("evidence recipe leaked playback policy: %+v", request)
+		// #2032: no derivative is levelled on disk; playout corrects it at air time.
+		if request.Profile.KeyframeSeconds != 1 || request.TargetLUFS != 0 {
+			t.Fatalf("evidence recipe = %+v", request)
 		}
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("evidence derivative"), 0o600)
+		return MediaQuality{DurationMs: 30_000, Black: []mediatools.Interval{{StartMs: 0, EndMs: 120}}},
+			os.WriteFile(request.Out, []byte("the one derivative encode"), 0o600)
 	}
-	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
-		playbackInput = request.In
-		// #2032: the playback file is never levelled on disk; playout corrects it at air time.
-		if request.Profile.CRF != 20 || request.TargetLUFS != 0 {
-			t.Fatalf("playback recipe = %+v", request)
-		}
-		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback derivative"), 0o600)
+	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+		t.Fatal("a top-level clip's playback rendition was encoded a second time")
+		return MediaQuality{}, nil
 	}
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
@@ -187,8 +188,14 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 		t.Fatalf("media asset manifest = %+v state=%v", tags.MediaAssets, state)
 	}
 	masterPath := filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.SourceMaster.Path))
-	if evidenceInput != masterPath || playbackInput != masterPath {
-		t.Fatalf("derivative inputs = evidence %q playback %q, want master %q", evidenceInput, playbackInput, masterPath)
+	if evidenceInput != masterPath {
+		t.Fatalf("evidence input %q, want master %q", evidenceInput, masterPath)
+	}
+	if tags.MediaAssets.Playback.Asset.SHA256 != tags.MediaAssets.Evidence.Asset.SHA256 {
+		t.Fatalf("playback %s is not the evidence bytes %s", tags.MediaAssets.Playback.Asset.SHA256, tags.MediaAssets.Evidence.Asset.SHA256)
+	}
+	if got := tags.MediaAssets.Playback.Quality.Black; len(got) != 1 {
+		t.Fatalf("playback quality %+v does not carry the evidence encode's detector findings", tags.MediaAssets.Playback.Quality)
 	}
 	if tags.MediaAssets.Evidence.InputSHA256 != tags.MediaAssets.SourceMaster.SHA256 ||
 		tags.MediaAssets.Playback.InputSHA256 != tags.MediaAssets.SourceMaster.SHA256 {
@@ -199,6 +206,54 @@ func TestTranscodeStage_BuildsEvidenceAndPlaybackIndependentlyFromMaster(t *test
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(tags.MediaAssets.Evidence.Asset.Path))); err != nil {
 		t.Fatalf("evidence derivative is unavailable: %v", err)
+	}
+}
+
+// #2121: with a host wired, the derivative encodes on its measured family, read once for the clip,
+// and both roles' recipes and the profile mark name that encoder rather than the fixed profile's.
+func TestTranscodeStage_EncodesBothDerivativesOnTheHostFamily(t *testing.T) {
+	dir := t.TempDir()
+	oldHash := writeContentAddressedClip(t, dir, []byte("hardware host master"), ".mkv")
+	oldRel := filepath.ToSlash(ClipRelPath(oldHash, ".mkv"))
+	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
+	reads := 0
+	host := encode.HostProfile{Family: encode.FamilyNVENC, Encoder: encode.EncoderNVENC}
+	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).
+		WithMediaDerivatives().
+		WithEncodeHost(func() encode.HostProfile { reads++; return host })
+	tool := mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("a", 64)}
+	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) { return tool, nil }
+	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
+	}
+	onHost := func(role string) func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+		return func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			if request.Profile.Family != encode.FamilyNVENC || request.Host.Family != encode.FamilyNVENC {
+				t.Fatalf("%s encode is not on the host family: %+v", role, request)
+			}
+			return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(role+" derivative"), 0o600)
+		}
+	}
+	stage.evidenceTranscode, stage.transcode = onHost("evidence"), onHost("playback")
+
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 1 {
+		t.Errorf("host read %d times for one clip, want once", reads)
+	}
+	tags, _ := ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+	if tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
+		t.Fatalf("media asset manifest = %+v", tags.MediaAssets)
+	}
+	for role, recipe := range map[string]mediatools.DerivativeRecipe{"evidence": tags.MediaAssets.Evidence.Recipe, "playback": tags.MediaAssets.Playback.Recipe} {
+		if recipe.VideoEncoder != "h264_nvenc" || recipe.Preset != "" {
+			t.Errorf("%s recipe names %s preset %q, want the host's h264_nvenc", role, recipe.VideoEncoder, recipe.Preset)
+		}
+	}
+	if want := mediatools.FileMezzanine(host).ID(); tags.Mezzanine != want {
+		t.Errorf("profile mark %q, want %q", tags.Mezzanine, want)
 	}
 }
 
@@ -356,8 +411,8 @@ func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			clip = out.Clip
-			if counts.evidence != 1 || counts.playback != 1 {
-				t.Fatalf("initial derivative builds = %+v, want one per role", counts)
+			if counts.evidence != 1 || counts.playback != 0 {
+				t.Fatalf("initial derivative builds = %+v, want one encode serving both roles", counts)
 			}
 
 			full := derivativeAssetPath(t, dir, clip, role)
@@ -433,7 +488,7 @@ func TestTranscodeStage_CompletedReuseRejectsDriftedSourceMaster(t *testing.T) {
 	if _, err := stage.Run(context.Background(), clip); err == nil {
 		t.Fatalf("drifted source master Run error = %v", err)
 	}
-	if counts.evidence != 1 || counts.playback != 1 {
+	if counts.evidence != 1 || counts.playback != 0 {
 		t.Fatalf("drifted source master built or reused unverified derivatives: %+v", counts)
 	}
 	if got, err := os.ReadFile(evidencePath); err != nil || !bytes.Equal(got, evidenceBytes) {
@@ -465,7 +520,7 @@ func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testi
 				!strings.Contains(err.Error(), string(role)+" derivative bytes do not match the manifest") {
 				t.Fatalf("drifted %s Run error = %v, want exact-byte rejection", role, err)
 			}
-			if counts.evidence != 1 || counts.playback != 1 {
+			if counts.evidence != 1 || counts.playback != 0 {
 				t.Fatalf("drifted direct Run built or reused unverified derivatives: %+v", counts)
 			}
 		})
@@ -486,7 +541,7 @@ func TestTranscodeStage_UnchangedDerivativeRetryReusesCompletedQuality(t *testin
 	if _, err := stage.Run(context.Background(), clip); err != nil {
 		t.Fatal(err)
 	}
-	if counts.evidence != 1 || counts.playback != 1 {
+	if counts.evidence != 1 || counts.playback != 0 {
 		t.Fatalf("unchanged retry rebuilt derivatives: %+v", counts)
 	}
 }

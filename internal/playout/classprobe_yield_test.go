@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // fakeProbeFFmpeg writes an executable that stands in for ffmpeg: it records its pid and reports
@@ -77,9 +79,9 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := NewResourceBudget(nvencFacts)
-	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}
+	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
-		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: EncoderSoftware,
+		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: encode.EncoderSoftware,
 		Outputs: []Profile{out}, Classes: []StreamClass{clip.class}, Foreground: budget,
 	}
 	done := make(chan ClassProbeResult, 1)
@@ -144,9 +146,9 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}
+	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
-		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: EncoderSoftware,
+		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: encode.EncoderSoftware,
 		Outputs: []Profile{out}, Classes: []StreamClass{clip.class},
 	}
 
@@ -206,7 +208,7 @@ func TestProbeSessionLimit_SettlesAndCountsSessionsInUse(t *testing.T) {
 		return readings[min(i, len(readings)-1)], true
 	}
 	limit, err := ProbeSessionLimit(t.Context(), SessionProbeConfig{
-		FFmpeg: fakeSessionFFmpeg(t, dir, slots, 4), Encoder: EncoderNVENC, Bound: SessionProbeBound, InUse: inUse,
+		FFmpeg: fakeSessionFFmpeg(t, dir, slots, 4), Encoder: encode.EncoderNVENC, Bound: SessionProbeBound, InUse: inUse,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -260,8 +262,8 @@ func TestProbeClassCosts_TonemapSelfCheckRejectsABlackPicture(t *testing.T) {
 				t.Fatal(err)
 			}
 			res := ProbeClassCosts(t.Context(), ClassProbeConfig{
-				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: EncoderSoftware, CPUTonemap: true,
-				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}},
+				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
+				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 				Classes: []StreamClass{ClassHDR4K},
 			})
 			check := res.Tonemap
@@ -311,8 +313,8 @@ func TestProbeClassCosts_KeysHDRByTheLiveToneCurve(t *testing.T) {
 	}
 	const curve ToneCurve = "bt2390"
 	res := ProbeClassCosts(t.Context(), ClassProbeConfig{
-		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: EncoderSoftware, CPUTonemap: true,
-		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}},
+		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
+		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 		Classes: []StreamClass{ClassHDR4K}, Curve: curve,
 	})
 	if _, ok := res.Costs[HDRKey(ClassHDR4K, 720, curve)]; !ok {

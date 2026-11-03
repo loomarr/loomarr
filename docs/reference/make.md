@@ -154,6 +154,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
 | `make playout-bench-corpus` |  | generate the playout-bench corpus cache (keyed by recipe hash); run OUTSIDE any shared lock, then make playout-bench |
 | `make playout-bench` | ✅ | run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/contributing/playout-bench.md) |
+| `make filler-encode-bench` |  | VMAF-measure filler derivative encode levels for one hardware family; FILLER_ENCODE_BENCH_MASTERS/LEVELS required, optional FAMILY/LIMIT/FFMPEG/VMAF_THREADS (docs/design/filler-pipeline.md) |
 | `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make observability-dev` |  | seed SQLite if needed, then start isolated local Prometheus + Grafana |

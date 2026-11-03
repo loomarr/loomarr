@@ -395,6 +395,17 @@ RETIRED=(
   'DupHashThreshold|retired: creative.Compare decides a copy'
   'meanHamming(|retired: creative.Compare aligns over an edge-trim window instead of from frame 0'
   'dHashAlgorithm|retired: creative.Algorithm keys the fingerprint cache'
+  # The on-demand evaluation tools are subcommands of one cmd/eval binary.
+  'cmd/channel-recommend-cert|use go run ./cmd/eval recommend-cert (make channel-recommend-cert)'
+  'cmd/channel-recommend-compare|use go run ./cmd/eval recommend-compare (make channel-recommend-compare)'
+  'cmd/channel-recommend-diagnostic|use go run ./cmd/eval recommend-diagnostic (make channel-recommend-diagnostic)'
+  'cmd/planner-cert-compare|use go run -tags=eval ./cmd/eval planner-compare (make eval-planner-compare)'
+  'cmd/planner-reference-host|use go run ./cmd/eval planner-reference-host (make planner-reference-host)'
+  'cmd/planner-tool-diagnostic|use go run ./cmd/eval planner-tool-diagnostic (make planner-tool-diagnostic)'
+  # The blinded mood-review runner produced the frozen v1/v2 submissions once; CompileMoodReviewAuthority
+  # still verifies those artifacts, but no new review is run.
+  'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
+  'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

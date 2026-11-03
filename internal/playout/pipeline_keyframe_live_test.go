@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
 )
 
 // THE FIRST FRAME OF EVERY SLOT IS AN IDR, AND THE CADENCE HOLDS (#1561). The retired chain forced
@@ -38,9 +40,9 @@ func TestLive_FragmentStartsOnAnIDRAndHoldsTheGOP(t *testing.T) {
 	}
 	out := OutputProfile{Width: 640, Height: 360, FPS: 30, Quality: 23, TargetKbps: 1500, MaxKbps: 2000, GOPSeconds: 1, AudioKbps: 128}
 	const frames = 120
-	for _, enc := range []Encoder{EncoderSoftware, EncoderNVENC, EncoderVAAPI} {
+	for _, enc := range []encode.Encoder{encode.EncoderSoftware, encode.EncoderNVENC, encode.EncoderVAAPI} {
 		t.Run(string(enc), func(t *testing.T) {
-			pipe, err := Build(HostFor(enc, false, GPUFilters{}), facts, out)
+			pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), facts, out)
 			if err != nil {
 				t.Fatalf("build: %v", err)
 			}
@@ -50,7 +52,7 @@ func TestLive_FragmentStartsOnAnIDRAndHoldsTheGOP(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if err := cmd.Run(); err != nil {
-				if enc == EncoderSoftware {
+				if enc == encode.EncoderSoftware {
 					t.Fatalf("software fragment: %v\n%s", err, stderr.String())
 				}
 				t.Skipf("%s does not encode on this host: %v\n%s", enc, err, stderr.String())

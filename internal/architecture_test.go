@@ -3,6 +3,7 @@ package internal_test
 import (
 	"go/build"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -184,6 +185,116 @@ func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 					"values in internal/clipcatalog, so dependencies point filler → core (#1747)", path, imported)
 			}
 		}
+	}
+}
+
+// internal/store/storedb is the persistence kernel every store package builds on (Querier, Tx,
+// Dialect, the epoch codec, the advisory lock, ErrNotFound). It stays a leaf: the moment it imports
+// a Loomarr package, a cluster package that needs the kernel can no longer be imported by that
+// package without a cycle, and the split of internal/store stops being possible. Test files are
+// exempt, as in the gate above; only the production import set counts.
+func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/store/storedb",
+		"storedb is the dependency-free kernel of the store split; code that needs a Loomarr type "+
+			"belongs in a store package, not in the kernel")
+}
+
+// internal/sourceprovider is the contract every filler source provider implements. filler,
+// fillerstore, api and the provider packages all name it; the moment it imports one of them, the
+// others can no longer import it without a cycle. Test files are exempt; only the production import
+// set counts.
+func TestSourceProviderImportsNoLoomarrPackage(t *testing.T) {
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/sourceprovider",
+		"sourceprovider is the provider contract filler, api and every provider share; a type it "+
+			"needs from Loomarr moves into it, or the contract is drawn in the wrong place")
+}
+
+// requireLeafPackage fails if path's production code imports any Loomarr package.
+func requireLeafPackage(t *testing.T, pkgs map[string]*build.Package, path, why string) {
+	t.Helper()
+	pkg, ok := pkgs[path]
+	if !ok {
+		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", path)
+	}
+	if len(pkg.GoFiles) == 0 {
+		t.Fatalf("%s has no production files", path)
+	}
+	for _, imported := range pkg.Imports {
+		if strings.HasPrefix(imported, modulePath+"/") {
+			t.Errorf("%s imports %s — %s", path, imported, why)
+		}
+	}
+}
+
+// internal/store/identitystore is the identity cluster extracted from internal/store (users,
+// sessions, devices, invitations, contact addresses, password recovery, notifications). It builds
+// on the storedb kernel and must never import internal/store: store embeds it and re-exports its
+// types, so an edge back would be an import cycle, and the cluster would stop being a package that
+// can be read, tested and owned without the aggregate. Test files are exempt, as above; only the
+// production import set counts.
+func TestIdentityStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/store/identitystore")
+}
+
+// internal/store/catalogstore is the clip-catalog cluster (clips and their tags, the taxonomy,
+// holidays, images, broadcast stations, and the defect, fingerprint and creative-identity tables).
+// The same direction as identitystore, and for the same reason: store embeds it and re-exports its
+// types. The one table it must touch that it does not own, channels, it reaches through the
+// ChannelPolicies interface that store implements, so there is no import edge back.
+func TestCatalogStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/store/catalogstore")
+}
+
+// requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
+// source tree, has production files, imports the storedb kernel, and imports neither internal/store
+// nor the filler store. It reads the import set from source (loomarrPackages), not from the
+// compiler, so a forbidden import fails here even where it would also be an import cycle.
+func requireClusterOnKernelNotAggregate(t *testing.T, pkgs map[string]*build.Package, path string) {
+	t.Helper()
+	pkg, ok := pkgs[path]
+	if !ok {
+		t.Fatalf("%s is not in the import graph — a gate over a missing package would pass vacuously", path)
+	}
+	if len(pkg.GoFiles) == 0 {
+		t.Fatalf("%s has no production files", path)
+	}
+	if !slices.Contains(pkg.Imports, modulePath+"/internal/store/storedb") {
+		t.Errorf("%s does not import internal/store/storedb — the cluster must run on the kernel handle", path)
+	}
+	for _, imported := range aggregateStoreImports(pkg) {
+		t.Errorf("%s imports %s — a cluster builds on storedb and is imported BY the aggregate; "+
+			"a type it needs from internal/store belongs in the cluster or the kernel", path, imported)
+	}
+}
+
+// aggregateStoreImports names the imports of pkg that are the aggregate store, internal/store
+// itself or the filler store that embeds it. Exact paths: a prefix match would also catch the
+// storedb kernel and the cluster packages, which are the allowed direction.
+func aggregateStoreImports(pkg *build.Package) []string {
+	var found []string
+	for _, imported := range pkg.Imports {
+		if aggregateStorePackages[imported] {
+			found = append(found, imported)
+		}
+	}
+	return found
+}
+
+// The gate above only means something if aggregateStoreImports sees an edge when there is one, and
+// does not mistake the kernel or a sibling cluster for the aggregate.
+func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
+	store := modulePath + "/internal/store"
+	filler := modulePath + "/internal/fillerstore"
+	kernel := modulePath + "/internal/store/storedb"
+	sibling := modulePath + "/internal/store/identitystore"
+	catalog := modulePath + "/internal/store/catalogstore"
+	pkg := &build.Package{Imports: []string{kernel, sibling, catalog, "database/sql", filler, store}}
+	if got, want := aggregateStoreImports(pkg), []string{filler, store}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("aggregate imports = %v, want %v", got, want)
+	}
+	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/invitation"}}
+	if got := aggregateStoreImports(clean); len(got) != 0 {
+		t.Fatalf("kernel and cluster imports flagged as the aggregate: %v", got)
 	}
 }
 

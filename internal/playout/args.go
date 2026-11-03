@@ -3,6 +3,7 @@ package playout
 import (
 	"strconv"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/loudness"
 )
 
@@ -18,127 +19,9 @@ import (
 // and a filter before its input is a parse error.
 //
 //	global → per-input (opts then -i) → filter → per-output → output target
-
-// Encoder is a video encoder ffmpeg can use. Not an exhaustive list of what ffmpeg
-// supports — only what playout offers, which is H.264 in software or via one of the
-// eight hardware families below (§15 `playout.encoder`).
-type Encoder string
-
-// The families ErsatzTV maintains pipelines for, which is the breadth real deployments
-// need: NVIDIA, Intel, AMD on both OSes, Apple Silicon, and ARM SBCs. Availability is never
-// assumed from this list — `Detect` asks the local ffmpeg build and then tries each one.
-const (
-	EncoderSoftware     Encoder = "libx264"           // always available
-	EncoderNVENC        Encoder = "h264_nvenc"        // NVIDIA
-	EncoderQSV          Encoder = "h264_qsv"          // Intel Quick Sync
-	EncoderVAAPI        Encoder = "h264_vaapi"        // Intel AND AMD on Linux
-	EncoderAMF          Encoder = "h264_amf"          // AMD on Windows
-	EncoderVideoToolbox Encoder = "h264_videotoolbox" // Apple Silicon / Intel Macs
-	EncoderRKMPP        Encoder = "h264_rkmpp"        // Rockchip SBCs
-	EncoderV4L2M2M      Encoder = "h264_v4l2m2m"      // Raspberry Pi, V4L2 stateful encoders
-	EncoderVulkan       Encoder = "h264_vulkan"       // cross-vendor, newer
-)
-
-// HEVC encoder variants (§9.1 V49). When an HEVC-capable client's session (EncodePlan hevc8/10)
-// must TRANSCODE a non-HEVC program (a VP9/h264/mpeg2 commercial), it transcodes to HEVC — not h264 —
-// so the fMP4 stream the browser plays stays uniformly one codec. (fMP4/MSE binds ONE decoder from
-// its init segment and cannot survive a mid-stream codec change; mixing h264 into an HEVC fMP4 is a
-// black frame.) Each is the hevc sibling of the h264 encoder above, on the same hardware engine, so
-// it shares that family's preset vocabulary — see hevcVariant and the family-keyed videoEncodeArgs.
-// ⚠ TYPED `Encoder`, not bare strings. They were untyped constants until 2026-08-09, and that is
-// the mechanical reason nine encoders silently skipped every `switch enc Encoder` in capability.go:
-// an untyped constant satisfies `Encoder` where one is expected, so nothing ever failed to compile
-// — it just never matched a case either. Typing them does not by itself fix a missing case, but it
-// makes the omission the kind of thing a reader and a linter can see.
-const (
-	EncoderSoftwareHEVC Encoder = "libx265"
-	EncoderNVENCHEVC    Encoder = "hevc_nvenc"
-	EncoderQSVHEVC      Encoder = "hevc_qsv"
-	EncoderVAAPIHEVC    Encoder = "hevc_vaapi"
-	EncoderAMFHEVC      Encoder = "hevc_amf"
-	EncoderVTHEVC       Encoder = "hevc_videotoolbox"
-	EncoderRKMPPHEVC    Encoder = "hevc_rkmpp"
-	EncoderV4L2M2MHEVC  Encoder = "hevc_v4l2m2m"
-	EncoderVulkanHEVC   Encoder = "hevc_vulkan"
-)
-
-// h264Engines is every encoder that NAMES a hardware engine — the canonical member of each
-// engine's h264/HEVC pair. It is the iteration source for engineOf below and, deliberately, the
-// same list encoderPreference draws from.
-var h264Engines = []Encoder{
-	EncoderSoftware, EncoderNVENC, EncoderQSV, EncoderVAAPI, EncoderAMF,
-	EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M, EncoderVulkan,
-}
-
-// engineOf normalizes an encoder to the h264 constant naming its HARDWARE ENGINE, so a switch over
-// engines matches an HEVC variant exactly as it matches its h264 sibling.
 //
-// ⚠ **Why this exists, and why it is DERIVED rather than written out.** Three functions in
-// capability.go — deviceInitArgs, hardwareUploadFilter, hardwareDecodeArgs — key on the raw encoder
-// value, and each listed only the h264 constants. So every hevc_* encoder fell to `default` and got
-// `deviceInit=[] hwdec=[] upload=""`: no `-vaapi_device`, no `-init_hw_device` for QSV/Vulkan, no
-// `-hwaccel cuda` for NVENC. The consequence was not a clean failure but a WORSE one — the
-// hardware encode produced nothing, the ladder fell through to libx264, and for an HEVC fMP4
-// session that mid-stream codec change is the black frame the plan exists to prevent.
-//
-// familyOf is NOT the right tool here and the distinction matters: it collapses VAAPI, Vulkan,
-// VideoToolbox, RKMPP and V4L2M2M into `familyOther` because they share a *preset vocabulary*.
-// These three functions need them kept APART, because they differ in exactly the thing being
-// selected — the device, the upload filter, the decode flag.
-//
-// The map is built from hevcVariant rather than hand-written, so the pair list has one home. A
-// tenth engine added there is normalized here with no second edit — which is the property the
-// original three switches lacked.
-var engineByEncoder = func() map[Encoder]Encoder {
-	m := make(map[Encoder]Encoder, len(h264Engines)*2)
-	for _, h := range h264Engines {
-		m[h] = h
-		m[hevcVariant(h)] = h
-	}
-	return m
-}()
-
-func engineOf(e Encoder) Encoder {
-	if base, ok := engineByEncoder[e]; ok {
-		return base
-	}
-	return e
-}
-
-// hevcVariant maps an h264 encoder to its HEVC sibling on the same hardware engine (§9.1 V49). The
-// caller uses this when an hevc-plan session must transcode a non-HEVC program to keep the fMP4
-// stream uniform. Returns the input unchanged if it has no known HEVC sibling — a safe degrade to
-// h264 (the program still plays; only the fMP4-uniformity optimisation is lost for that encoder).
-// IsSoftwareEncoder reports whether enc is either supported software codec. Treating libx265 as a
-// hardware encoder would incorrectly acquire a GPU slot and attempt VRAM reclamation.
-func IsSoftwareEncoder(enc Encoder) bool {
-	return enc == EncoderSoftware || enc == EncoderSoftwareHEVC
-}
-
-func hevcVariant(h264 Encoder) Encoder {
-	switch h264 {
-	case EncoderSoftware:
-		return EncoderSoftwareHEVC
-	case EncoderNVENC:
-		return EncoderNVENCHEVC
-	case EncoderQSV:
-		return EncoderQSVHEVC
-	case EncoderVAAPI:
-		return EncoderVAAPIHEVC
-	case EncoderAMF:
-		return EncoderAMFHEVC
-	case EncoderVideoToolbox:
-		return EncoderVTHEVC
-	case EncoderRKMPP:
-		return EncoderRKMPPHEVC
-	case EncoderV4L2M2M:
-		return EncoderV4L2M2MHEVC
-	case EncoderVulkan:
-		return EncoderVulkanHEVC
-	default:
-		return h264
-	}
-}
+// The encoder vocabulary (encode.Encoder, its engines and HEVC siblings) lives in internal/encode,
+// shared with the filler pipeline (#2121).
 
 // Profile is the operator-facing output target: a ladder rung's size, frame rate and bitrates on
 // one encoder. ChannelOutput turns it into the OutputProfile the live pipeline (Build) encodes to.
@@ -148,7 +31,7 @@ type Profile struct {
 	Framerate int
 	// VideoBitrate in kbit/s. 0 = let the encoder choose (CRF-ish for software).
 	VideoBitrate int
-	Encoder      Encoder
+	Encoder      encode.Encoder
 	// AudioBitrate in kbit/s; audio is always AAC stereo 48kHz. Fixed deliberately:
 	// a varying audio layout across programs breaks `-c copy` exactly like video does,
 	// and ErsatzTV's comment about ac3 downmix reinit failures is the warning
@@ -162,7 +45,7 @@ type Profile struct {
 func DefaultProfile() Profile {
 	return Profile{
 		Width: 1280, Height: 720, Framerate: 25,
-		VideoBitrate: 4000, Encoder: EncoderSoftware, AudioBitrate: 128,
+		VideoBitrate: 4000, Encoder: encode.EncoderSoftware, AudioBitrate: 128,
 	}
 }
 

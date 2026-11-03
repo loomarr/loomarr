@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // The fetch and rehydrate jobs (§22, §18.1 — V52 phase 3b).
@@ -396,7 +398,7 @@ func (f *Fetcher) checkURL(raw string) error {
 // ⚠ A redirect is attacker-influenced in a way the first URL is not: an allowlisted host can be
 // made to answer with a Location pointing anywhere, which is the classic route from "we only talk
 // to TMDB" to "we just read your metadata service". So each hop must stay https and must not
-// resolve into a private, loopback or link-local range.
+// resolve into a non-public range (httpx.IsPublicIP).
 func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= maxFetchRedirects {
 		return fmt.Errorf("images: too many redirects (%d)", len(via))
@@ -406,8 +408,8 @@ func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
 	}
 	host := req.URL.Hostname()
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateIP(ip) {
-			return fmt.Errorf("images: refusing a redirect into a private address (%s)", host)
+		if !httpx.IsPublicIP(ip) {
+			return fmt.Errorf("images: refusing a redirect into a non-public address (%s)", host)
 		}
 		return nil
 	}
@@ -416,17 +418,11 @@ func (f *Fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("images: cannot resolve redirect target %q: %w", host, err)
 	}
 	for _, a := range addrs {
-		if isPrivateIP(a.IP) {
-			return fmt.Errorf("images: refusing a redirect into a private address (%s -> %s)", host, a.IP)
+		if !httpx.IsPublicIP(a.IP) {
+			return fmt.Errorf("images: refusing a redirect into a non-public address (%s -> %s)", host, a.IP)
 		}
 	}
 	return nil
-}
-
-// isPrivateIP covers the ranges an image host has no business being in.
-func isPrivateIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
 // hostAllowed matches a host against the allowlist, case-insensitively.

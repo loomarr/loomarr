@@ -119,7 +119,7 @@ func (e *eventEmitter) ChannelChanged(channelID, previousStatus, status string) 
 
 // JobChanged publishes a `job` frame whenever a scheduled job's state changes (running →
 // ok/error, Run-now) so the Settings → Tasks page updates live (§18.1). Satisfies
-// scheduler.Notifier. The page refetches GET /v1/jobs on this frame — the BE stays the single
+// jobs.Notifier. The page refetches GET /v1/jobs on this frame — the BE stays the single
 // source of timing truth. Best-effort like the other frames.
 func (e *eventEmitter) JobChanged(name string) {
 	e.bus.Publish(events.Event{Type: "job", Payload: api.JobEvent{Name: name}})

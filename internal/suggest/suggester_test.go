@@ -557,6 +557,89 @@ func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) 
 	}
 }
 
+// #2030 decision 38: a British household asking for a Thanksgiving channel gets one that plays all
+// year, not one exclusive to a season Britain never reaches, and the proposal says why.
+func TestSuggest_AHolidayTheCountryDoesNotKeepIsNotExclusive(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddKeywordMovie(90002402, "Gravy Boat", 2019, []int{35},
+		"A family survives the long weekend.", "Thanksgiving")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"keywords": []any{"Thanksgiving"}, "media_type": "movie"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002402","name":"Gravy Boat","confidence":0.9}],
+			"policy":{"seasonal":{"mode":"exclusive","holidays":["thanksgiving"]}}}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).
+		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "A Thanksgiving movie channel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Seasonal.Mode != schedule.SeasonalDefault || len(prop.Policy.Seasonal.Holidays) != 0 {
+		t.Fatalf("seasonal = %+v, want the year-round default", prop.Policy.Seasonal)
+	}
+	want := &suggest.SeasonNotKept{Country: "GB", Holidays: []string{"Thanksgiving"}}
+	if !reflect.DeepEqual(prop.SeasonNotKept, want) {
+		t.Fatalf("seasonNotKept = %+v, want %+v", prop.SeasonNotKept, want)
+	}
+}
+
+// A request naming one kept and one unkept holiday stays exclusive to the kept one.
+func TestSuggest_AnExclusiveChannelKeepsTheHolidaysTheCountryKeeps(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddKeywordMovie(90002403, "Snow and Gravy", 2018, []int{35},
+		"Two holidays, one kitchen.", "Christmas")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"keywords": []any{"Christmas"}, "media_type": "movie"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002403","name":"Snow and Gravy","confidence":0.9}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).
+		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "A Thanksgiving and Christmas movie channel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Seasonal.Mode != schedule.SeasonalExclusive || !slices.Equal(prop.Policy.Seasonal.Holidays, []string{"christmas"}) {
+		t.Fatalf("seasonal = %+v, want exclusive to christmas", prop.Policy.Seasonal)
+	}
+	if prop.SeasonNotKept == nil || !slices.Equal(prop.SeasonNotKept.Holidays, []string{"Thanksgiving"}) {
+		t.Fatalf("seasonNotKept = %+v, want Thanksgiving", prop.SeasonNotKept)
+	}
+}
+
+// #2030 decision 39: the planner is offered the holidays the household's country keeps, from the
+// loaded definitions, not a fixed five.
+func TestSuggest_PromptListsTheHolidaysTheCountryKeeps(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddKeywordMovie(90002404, "Sparks Over Lewes", 2015, []int{18}, "A town lights up.", "Bonfire")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"keywords": []any{"Bonfire"}, "media_type": "movie"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002404","name":"Sparks Over Lewes","confidence":0.9}]}`),
+	)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).
+		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
+	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "fireworks films"}); err != nil {
+		t.Fatal(err)
+	}
+	system := llmMock.LastMessages[0].Content
+	if !strings.Contains(system, "bonfire-night") || !strings.Contains(system, "mothers-day") {
+		t.Errorf("the prompt does not offer Britain's holidays:\n%s", system)
+	}
+	if strings.Contains(system, "thanksgiving") || strings.Contains(system, "independence-day") {
+		t.Errorf("the prompt offers holidays Britain does not keep:\n%s", system)
+	}
+}
+
 // An explicit rating limit is an audience request even when it is not phrased as
 // kids/family programming. The grounded policy must retain the user's PG-13 cap
 // and refuse a surfaced R-rated title rather than letting a model omission or the
@@ -775,6 +858,59 @@ func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
 	selection := prop.Lineup[0].EpisodeSelection
 	if selection.Mode != schedule.EpisodeHoliday || len(selection.Holidays) != 1 || selection.Holidays[0] != "christmas" {
 		t.Fatalf("holiday episode selection = %+v, want Christmas", selection)
+	}
+}
+
+// #2030 decision 38: in Britain a Thanksgiving request still picks the series' Thanksgiving
+// episodes; only the season is Britain's, so the channel plays them all year.
+func TestSuggest_AnUnkeptHolidayStillSelectsItsEpisodes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
+	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "Thanksgiving Kettle Kids episodes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := prop.Lineup[0].EpisodeSelection
+	if selection.Mode != schedule.EpisodeHoliday || !slices.Equal(selection.Holidays, []string{"thanksgiving"}) {
+		t.Fatalf("holiday episode selection = %+v, want Thanksgiving", selection)
+	}
+	if prop.Policy.Seasonal.Mode != schedule.SeasonalDefault || prop.SeasonNotKept == nil {
+		t.Fatalf("seasonal = %+v, not kept = %+v; want year-round with Thanksgiving named", prop.Policy.Seasonal, prop.SeasonNotKept)
+	}
+}
+
+// The model's own exclusive policy, with no holiday named in the request, is held to the country
+// too.
+func TestSuggest_TheModelsExclusivePolicyIsHeldToTheCountry(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.AddKeywordMovie(90002405, "Long Weekend Pie", 2017, []int{35}, "A family dinner goes sideways.", "Family")
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"keywords": []any{"Family"}, "media_type": "movie"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002405","name":"Long Weekend Pie","confidence":0.9}],
+			"policy":{"seasonal":{"mode":"exclusive","holidays":["Thanksgiving"]}}}`),
+	), catalog.New(lib, tm), tm, 10).
+		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "cozy family dinner films"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Policy.Seasonal.Mode != schedule.SeasonalDefault {
+		t.Fatalf("seasonal = %+v, want the year-round default", prop.Policy.Seasonal)
+	}
+	want := &suggest.SeasonNotKept{Country: "GB", Holidays: []string{"Thanksgiving"}}
+	if !reflect.DeepEqual(prop.SeasonNotKept, want) {
+		t.Fatalf("seasonNotKept = %+v, want %+v", prop.SeasonNotKept, want)
 	}
 }
 

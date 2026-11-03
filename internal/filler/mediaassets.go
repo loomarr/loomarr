@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 const (
@@ -59,6 +60,9 @@ type MediaDerivativeLineage struct {
 	InputProbe   Probed                       `json:"inputProbe"`
 	OutputProbe  Probed                       `json:"outputProbe"`
 }
+
+// Validate reports whether the manifest is internally consistent and uses the supported version.
+func (m MediaAssetManifest) Validate() error { return m.validate() }
 
 func (m MediaAssetManifest) validate() error {
 	if m.Version != mediaAssetManifestVersion {
@@ -205,7 +209,7 @@ func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, t
 // preserveSourceMasterWithStorage snapshots the exact transcode input before any derivative is
 // built. The returned hidden pathname is the stable input for all later recipes, so a concurrent
 // mutation of the visible name cannot mix bytes between evidence and playback.
-func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storageWriteTracker) (MediaAssetIdentity, error) {
+func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storagegovernor.WriteTracker) (MediaAssetIdentity, error) {
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err
 	}
@@ -293,7 +297,7 @@ func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, c
 	return asset, nil
 }
 
-func retainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storageWriteTracker) (MediaAssetIdentity, error) {
+func retainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storagegovernor.WriteTracker) (MediaAssetIdentity, error) {
 	if tags.MediaAssets == nil {
 		return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, storage)
 	}

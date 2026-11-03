@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -39,19 +40,24 @@ type PackagerItem struct {
 	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
 	// sized for the packager's output, resolved per item because one item airs in every format.
 	Watermark WatermarkFor
+	// RecordAiringServed, if set, records that the item aired: it is called once when a viewer first
+	// receives a segment of it, never by the lookup that resolved it, so a neighbour warm's encode
+	// or a read of the schedule airs nothing. The packager resolves an airing again after an encoder
+	// restart, so the recorder is idempotent per airing.
+	RecordAiringServed func(ctx context.Context)
 }
 
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
 // channel turned it off or this host's GPU overlay failed its self-check (WatermarkCheck); the item
 // then airs bug-free.
-type WatermarkFor func(ctx context.Context, enc Encoder, width, height int) *Watermark
+type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *Watermark
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
 // lease's).
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, class FormatClass, rung int) (HostProfile, OutputProfile)
+	Output(ctx context.Context, channelID string, class FormatClass, rung int) (encode.HostProfile, OutputProfile)
 	// Premium is the premium format the channel airs on this host (its lineup's, after
 	// ChannelFormats.OnHost); empty when none.
 	Premium(ctx context.Context, channelID string) FormatClass
@@ -103,7 +109,7 @@ type PackagerHLS struct {
 
 type packagedChannel struct {
 	p       *packager.Packager
-	host    HostProfile
+	host    encode.HostProfile
 	out     OutputProfile
 	started time.Time
 	dir     string
@@ -120,36 +126,6 @@ type packagedChannel struct {
 	// warmHeld is set while the last acquire was a neighbour warm's, not a viewer's: the packager is
 	// adjacent to where a viewer is. A premium keeps the baseline's grace while it is (#1037).
 	warmHeld bool
-	// seen is whether a viewer holds this packager, shared with its schedule (#2017).
-	seen *viewership
-}
-
-// viewership is whether anyone is watching a packager: a viewer's lease is held now, or the last one
-// was released less than watchedWithin ago. A browser player holds a lease only while a playlist
-// request is in flight, so between its polls it holds none; a tuner holds one for its whole session.
-// Neighbour warms never count. warmHeld cannot say it: it stays false through the grace after the
-// last viewer leaves. The schedule reads it on the packager's own goroutine as it looks up each
-// item, so it is atomic rather than under the origin's lock.
-type viewership struct {
-	holders atomic.Int64
-	left    atomic.Int64 // unix nanos when a viewer's lease was last released
-}
-
-func (v *viewership) join() { v.holders.Add(1) }
-
-// leave stamps the release before dropping the count, so a reader that sees no holder sees when the
-// last one left.
-func (v *viewership) leave(t time.Time) {
-	v.left.Store(t.UnixNano())
-	v.holders.Add(-1)
-}
-
-func (v *viewership) watched(t time.Time) bool {
-	if v.holders.Load() > 0 {
-		return true
-	}
-	left := v.left.Load()
-	return left != 0 && t.Sub(time.Unix(0, left)) < watchedWithin
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -465,19 +441,13 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 	c.warmHeld = speculative
 	if !speculative {
 		c.speculative = false
-		c.seen.join()
 	}
 	if c.idle != nil {
 		c.idle.Stop()
 		c.idle = nil
 	}
 	m.mu.Unlock()
-	return c, onceRelease(func() {
-		if !speculative {
-			c.seen.leave(time.Now())
-		}
-		m.release(key, c)
-	}), nil
+	return c, onceRelease(func() { m.release(key, c) }), nil
 }
 
 func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel, error) {
@@ -489,14 +459,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
 	// A premium packager is priced by its own class instead (premiumAdmission).
 	resolvedAt := time.Now()
-	seen := &viewership{}
-	firstCtx := ctx
-	if speculative {
-		firstCtx = WithUnwatched(ctx)
-	} else {
-		seen.left.Store(resolvedAt.UnixNano()) // the viewer starting it joins once it is registered
-	}
-	first, ferr := m.source.ItemAt(firstCtx, key.channel, resolvedAt)
+	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
 	req := AdmitRequest{Class: ClassSDR}
 	if key.format.isPremium() {
 		req = premiumAdmission
@@ -534,7 +497,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	if out.HDR {
 		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
 	}
-	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, seen, log), slate)
+	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
@@ -542,7 +505,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 		return nil, err
 	}
 	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{}),
-		lease: lease, speculative: speculative, seen: seen}
+		lease: lease, speculative: speculative}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
@@ -565,9 +528,9 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 // schedule adapts the application's items to the packager: each Open builds the item's command
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
-// made while no viewer has fetched the channel recently is marked unwatched (WithUnwatched).
+// only reads the schedule: an item airs when a viewer receives its segments (PackagerItem.RecordAiringServed).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, seen *viewership, log *slog.Logger,
+	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
@@ -575,12 +538,8 @@ func (m *PackagerHLS) schedule(
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
-			lookup := ctx
-			if !seen.watched(time.Now()) {
-				lookup = WithUnwatched(ctx)
-			}
 			var err error
-			if it, err = m.source.ItemAt(lookup, key.channel, at); err != nil {
+			if it, err = m.source.ItemAt(ctx, key.channel, at); err != nil {
 				return packager.Item{}, err
 			}
 		}
@@ -595,6 +554,9 @@ func (m *PackagerHLS) schedule(
 		item := packager.Item{Label: it.Label, Duration: it.Remaining}
 		if it.Input == "" {
 			return item, nil
+		}
+		if record := it.RecordAiringServed; record != nil {
+			item.Served = func() { record(ctx) }
 		}
 		// A CPU too slow for the source degrades the picture instead of refusing it (#1517): the
 		// ledger picks the item's software rung (GPU families ignore it); with no ledger, the
@@ -624,7 +586,7 @@ func (m *PackagerHLS) schedule(
 		}
 		var monitor *RungMonitor
 		switch {
-		case host.Family != FamilySoftware:
+		case host.Family != encode.FamilySoftware:
 			ladder.begin("", nil)
 		case resumed:
 			monitor = ladder.current()
@@ -813,7 +775,7 @@ type itemFault struct {
 	noOpenCL, noLibplacebo bool
 }
 
-func (f itemFault) apply(h HostProfile) HostProfile {
+func (f itemFault) apply(h encode.HostProfile) encode.HostProfile {
 	if f.cpuDecode {
 		h.DecodeCodecs = nil
 	}
@@ -825,7 +787,7 @@ func (f itemFault) apply(h HostProfile) HostProfile {
 // leftTheGPU reports a demotion that moved a stage onto the CPU, the live hardware→software fallback
 // the metrics count: the decode, or the tone-map once no GPU tone-mapper is left on this host.
 // OpenCL → libplacebo stays on the GPU and is not one.
-func leftTheGPU(before, after itemFault, host HostProfile) bool {
+func leftTheGPU(before, after itemFault, host encode.HostProfile) bool {
 	if after.cpuDecode && !before.cpuDecode {
 		return true
 	}
@@ -869,7 +831,7 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
 // the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
 // a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
 	h := fault.apply(host)
 	h.Overlay = wm != nil
 	pl, err := BuildItem(h, it.Format, out, wm)
@@ -932,6 +894,9 @@ func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (str
 	if c == nil {
 		return "", false
 	}
+	if file != packager.InitName {
+		c.p.SegmentServed(file) // a viewer is receiving it: the item airs
+	}
 	return filepath.Join(c.dir, file), true
 }
 
@@ -966,7 +931,7 @@ const slateEncodeTimeout = time.Minute
 // slate returns the house slate for an encode as a SlateSource: the packager waits on it only when a
 // slot needs slate (#1512 G2: never on the tune path; the first manifest waits for a real item
 // anyway). The encode starts on that first need or, when prewarmed, once the channel is on air.
-func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateSource {
+func (m *PackagerHLS) slate(host encode.HostProfile, out OutputProfile) packager.SlateSource {
 	return func(ctx context.Context) (*packager.Slate, error) {
 		e := m.slateEncodeFor(host, out)
 		select {
@@ -981,7 +946,7 @@ func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateS
 // slateEncodeFor returns the (host, output) slate encode, starting it in the background if none is
 // running or done. Encodes are shared across channels and sessions; a failed one is forgotten, so
 // the next need encodes it again.
-func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slateEncode {
+func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile) *slateEncode {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
 	e := m.slates[key]
@@ -1012,7 +977,7 @@ func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slate
 
 // encodeSlate encodes a house slate: a black, silent source run through the same builder and
 // encoder as the items, so its sample descriptions match theirs.
-func (m *PackagerHLS) encodeSlate(ctx context.Context, host HostProfile, out OutputProfile) (*packager.Slate, error) {
+func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, out OutputProfile) (*packager.Slate, error) {
 	src := filepath.Join(m.root, fmt.Sprintf("slate-%dx%d-%d.mkv", out.Width, out.Height, out.FPS))
 	if _, err := os.Stat(src); err != nil {
 		// Two hosts with one output size may make the source at once: each writes its own temp.
@@ -1282,7 +1247,7 @@ type limitedWriter struct {
 }
 
 func (l *limitedWriter) Write(b []byte) (int, error) {
-	if !l.decodeFault && IsHardwareDecodeFault(string(b)) {
+	if !l.decodeFault && encode.IsHardwareDecodeFault(string(b)) {
 		l.decodeFault = true
 	}
 	if l.n > 0 {

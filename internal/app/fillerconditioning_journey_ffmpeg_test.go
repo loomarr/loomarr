@@ -17,12 +17,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -51,7 +52,7 @@ type conditionedJourney struct {
 	ffmpeg      string
 	ffprobe     string
 	fixtures    testkit.FillerConditioningFixtures
-	conditioned store.Clip
+	conditioned catalogstore.Clip
 	mezzanine   string
 	tags        filler.SidecarTags
 }
@@ -85,7 +86,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
@@ -144,11 +145,11 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if !productive {
 		t.Fatalf("pipeline passes were not productive: %+v", passes)
 	}
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var conditioned store.Clip
+	var conditioned catalogstore.Clip
 	for _, candidate := range clips {
 		if candidate.ParentHash == parentHash && candidate.Hash != childHash {
 			conditioned = candidate
@@ -273,7 +274,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	// the production pipeline (Build, FragmentArgs) and the packager joins them into one fMP4
 	// timeline. After them the schedule has a card, whose slate this fixture cannot load, so the
 	// packager stops there with everything aired on disk.
-	host := playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{})
 	out := playout.OutputProfile{Width: 320, Height: 180, FPS: 30, Quality: 23, TargetKbps: 600, MaxKbps: 900, GOPSeconds: 1, AudioKbps: 128}
 	formatOf := playout.FFprobeFormatNextTo(ffmpeg)
 	airDir := t.TempDir()

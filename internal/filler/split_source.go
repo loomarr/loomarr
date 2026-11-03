@@ -26,6 +26,11 @@ type SplitSourceAsset struct {
 	DurationMs int64           `json:"durationMs"`
 }
 
+// Validate reports whether the source carries a complete, tree-correct retained identity.
+func (s SplitSourceAsset) Validate() error {
+	return s.validate()
+}
+
 func (s SplitSourceAsset) empty() bool {
 	return s == (SplitSourceAsset{})
 }

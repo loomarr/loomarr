@@ -1043,3 +1043,88 @@ func TestCodecsAttrNamesAnHEVCInit(t *testing.T) {
 		t.Fatalf("CodecsAttr(HDR10 init) = %q, want the raw init's %q", got, CodecsAttr(init))
 	}
 }
+
+// A viewer receiving a segment is what airs its item (Item.Served): the first segment fetched
+// fires the item's callback once however often it is fetched, an item no viewer fetched never
+// fires, and a slate segment, which has no item, is ignored.
+func TestSegmentServedFiresItsItemsCallbackOnce(t *testing.T) {
+	var fired sync.Map // label -> *atomic.Int32
+	count := func(label string) int32 {
+		v, ok := fired.Load(label)
+		if !ok {
+			return 0
+		}
+		return v.(*atomic.Int32).Load()
+	}
+	plans := []plan{
+		{"first", time.Second, synth{label: "first"}},
+		{"second", time.Second, synth{label: "second"}},
+	}
+	var i atomic.Int32
+	finished := make(chan struct{})
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		n := int(i.Add(1)) - 1
+		if n >= len(plans) {
+			close(finished)
+			<-ctx.Done()
+			return Item{}, ctx.Err()
+		}
+		pl := plans[n]
+		n32 := &atomic.Int32{}
+		fired.Store(pl.label, n32)
+		return Item{Label: pl.label, Duration: pl.dur,
+			Open:   func(ictx context.Context, slot Slot) (io.ReadCloser, error) { return pl.enc.encode(t, ictx, slot), nil },
+			Served: func() { n32.Add(1) },
+		}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start(t, p)
+	select {
+	case <-finished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("plans did not finish airing")
+	}
+
+	if count("first") != 0 || count("second") != 0 {
+		t.Fatal("an item fired before any viewer received a segment of it")
+	}
+	first := segmentName(0)
+	p.SegmentServed("init.mp4")
+	p.SegmentServed("seg99999999.m4s")
+	if count("first") != 0 || count("second") != 0 {
+		t.Fatal("a name that is no segment of the window fired an item")
+	}
+	p.SegmentServed(first)
+	p.SegmentServed(first)
+	if got := count("first"); got != 1 {
+		t.Fatalf("first item fired %d times across two fetches of its segment, want once", got)
+	}
+	if got := count("second"); got != 0 {
+		t.Fatalf("second item fired %d times though none of its segments was fetched", got)
+	}
+	// The first item's last segment is the same item: still once.
+	for seq := uint32(0); ; seq++ {
+		p.mu.Lock()
+		var seg segment
+		var ok bool
+		for _, s := range p.window.segs {
+			if s.seq == seq {
+				seg, ok = s, true
+			}
+		}
+		p.mu.Unlock()
+		if !ok {
+			t.Fatal("the second item produced no segment")
+		}
+		p.SegmentServed(seg.name)
+		if count("second") == 1 {
+			break
+		}
+	}
+	if count("first") != 1 || count("second") != 1 {
+		t.Fatalf("fired first=%d second=%d, want once each", count("first"), count("second"))
+	}
+}
