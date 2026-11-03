@@ -383,11 +383,14 @@ describe("PlayerPortrait", () => {
 
     expect(host.textContent).toContain("Coming up");
     expect(host.textContent).toContain("NOW");
-    act(() => button(host, "Seek to Sitcom, 0m")?.click());
-    act(() => button(host, "Back to the start of the last 15 minutes")?.click());
+    act(() => button(host, "Seek to NOW, 22m, Sitcom")?.click());
+    act(() => button(host, "−15m, back to the start of the last 15 minutes")?.click());
     expect(onSeek.mock.calls).toEqual([[0], [-5 * MIN]]);
-    expect(button(host, "Seek to the break at 22m, 3 min")).toBeUndefined();
-    expect(button(host, "Seek to Late Movie, 25m")).toBeUndefined();
+    // What's to come is named, but not as a button.
+    for (const name of ["22m, Break · 3 min, 1 spots · Station ID", "25m, 95m, Late Movie"]) {
+      expect(host.querySelector(`[aria-label="${name}"]`), name).not.toBeNull();
+      expect(button(host, `Seek to ${name}`), name).toBeUndefined();
+    }
   });
 
   it("names the star by what pressing it does", () => {

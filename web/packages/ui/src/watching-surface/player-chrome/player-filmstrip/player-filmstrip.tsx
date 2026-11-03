@@ -47,8 +47,10 @@ const Badge = ({
       top: 6,
     }}
   >
-    <Text density={density} strong textRole="guideMeta" tone={now ? "inverse" : "primary"}>
-      {label}
+    <Text density={density} numberOfLines={1} strong textRole="guideMeta" tone={now ? "inverse" : "primary"}>
+      {/* The space keeps the badge a word of its own on the web, where a tile's texts are inline
+          spans its name must contain; one line drops it from the pill, as the end of a line. */}
+      {`${label} `}
     </Text>
   </View>
 );
@@ -71,9 +73,13 @@ const ProgrammeTile = ({
   const touch = density === "touch";
   const width = now ? (touch ? 192 : 240) : touch ? 144 : 176;
   const progress = (playheadMs - segment.startMs) / (segment.stopMs - segment.startMs);
+  const badge = now ? "NOW" : formatTime(segment.startMs);
+  const length = `${minutes(segment.stopMs - segment.startMs)}m`;
+  // The name reads the tile's text in order: a seekable tile's name must contain what it shows.
+  const shown = [badge, length, segment.name, segment.line].filter(Boolean).join(", ");
   return (
     <Pressable
-      accessibilityLabel={`${onPress ? "Seek to " : ""}${segment.name}, ${formatTime(segment.startMs)}`}
+      accessibilityLabel={onPress ? `Seek to ${shown}` : shown}
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       focusable={onPress !== undefined}
@@ -93,12 +99,7 @@ const ProgrammeTile = ({
           style={{ height: "100%", position: "absolute", width: "100%" }}
           uri={segment.stillUri}
         />
-        <Badge
-          density={density}
-          label={now ? "NOW" : formatTime(segment.startMs)}
-          now={now}
-          tint={playerChrome.live}
-        />
+        <Badge density={density} label={badge} now={now} tint={playerChrome.live} />
         <View
           style={{
             backgroundColor: playerChrome.tooltip,
@@ -109,8 +110,8 @@ const ProgrammeTile = ({
             right: 6,
           }}
         >
-          <Text density={density} textRole="guideMeta" tone="primary">
-            {`${minutes(segment.stopMs - segment.startMs)}m`}
+          <Text density={density} numberOfLines={1} textRole="guideMeta" tone="primary">
+            {`${length} `}
           </Text>
         </View>
         {now ? (
@@ -144,7 +145,7 @@ const ProgrammeTile = ({
           textRole="cardMeta"
           tone="primary"
         >
-          {segment.name}
+          {`${segment.name} `}
         </Text>
         {segment.line ? (
           <Text
@@ -177,9 +178,14 @@ const BreakTile = ({
 }) => {
   const touch = density === "touch";
   const length = `${minutes(segment.stopMs - segment.startMs)} min`;
+  const badge = airing ? "NOW" : formatTime(segment.startMs);
+  const title = `Break · ${length}`;
+  const pod = `${segment.spots.length} spots · ${segment.spots.map((spot) => spot.name).join(", ")}`;
+  // As a programme tile's, the name reads the tile's text in order.
+  const shown = `${badge}, ${title}, ${pod}`;
   return (
     <Pressable
-      accessibilityLabel={`${onPress ? "Seek to the" : "The"} break at ${formatTime(segment.startMs)}, ${length}`}
+      accessibilityLabel={onPress ? `Seek to ${shown}` : shown}
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       focusable={onPress !== undefined}
@@ -205,12 +211,7 @@ const BreakTile = ({
         {segment.spots.slice(0, 6).map((spot) => (
           <PlaybarStill key={spot.id} style={{ height: "49.5%", width: "33%" }} uri={spot.stillUri} />
         ))}
-        <Badge
-          density={density}
-          label={airing ? "NOW" : formatTime(segment.startMs)}
-          now={airing}
-          tint={playerChrome.breakAccent}
-        />
+        <Badge density={density} label={badge} now={airing} tint={playerChrome.breakAccent} />
       </View>
       <View>
         <Text
@@ -221,7 +222,7 @@ const BreakTile = ({
           textRole="cardMeta"
           tone="info"
         >
-          {`Break · ${length}`}
+          {`${title} `}
         </Text>
         <Text
           density={density}
@@ -230,7 +231,7 @@ const BreakTile = ({
           textRole="guideMeta"
           tone="secondary"
         >
-          {`${segment.spots.length} spots · ${segment.spots.map((spot) => spot.name).join(", ")}`}
+          {pod}
         </Text>
       </View>
     </Pressable>
@@ -270,7 +271,8 @@ const PlayerFilmstrip = ({
         {/* The fifteen minutes the stream still holds, as one tile back to their start: held in
             place beside the row, as the mock draws it, however far the row is scrolled. */}
         <Pressable
-          accessibilityLabel="Back to the start of the last 15 minutes"
+          // It opens on what it shows, so a voice user can say "−15m".
+          accessibilityLabel="−15m, back to the start of the last 15 minutes"
           accessibilityRole={onSeek ? "button" : undefined}
           disabled={!onSeek}
           onPress={onSeek ? () => onSeek(window.startMs) : undefined}
