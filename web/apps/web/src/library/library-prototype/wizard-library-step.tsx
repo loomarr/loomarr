@@ -1,16 +1,29 @@
 // PROTOTYPE — throwaway (#2151 step 2). The setup wizard's Library step (decision 30), full-screen
 // without the app shell. Frame copied from WizardShell (rail of steps + one step card + Back/Next)
 // but drawn with design-system primitives. The step never blocks on the import itself.
-import { Action, Badge, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, BrandMark, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { wizardSteps } from "@/wizard/steps";
 import { type Root, scanStatus } from "./prototype-data";
 import type { Device, ScanState } from "./prototype-state";
 import { ScanHealth } from "./scan-health";
-import { Line, MOUNT_HINT, RootFacts, Stack } from "./scan-health-parts";
+import { FolderCard, Line, MOUNT_HINT, Stack } from "./scan-health-parts";
 
 const STEPS = wizardSteps("tunarr");
 const CURRENT = "library";
+
+// Narrow screens: the rail collapses to one line, "Step 5 of 7 · Library", over the brand bar.
+const CompactRail = () => {
+  const at = STEPS.findIndex((s) => s.id === CURRENT);
+  return (
+    <Stack gap="inline" paddingHorizontal="section" paddingTop="section">
+      <BrandMark contained={false} decorative size={4} width={56} />
+      <Text textRole="label" tone="secondary">
+        {`Step ${at + 1} of ${STEPS.length} · ${STEPS[at]?.title ?? ""}`}
+      </Text>
+    </Stack>
+  );
+};
 
 const Rail = () => {
   const at = STEPS.findIndex((s) => s.id === CURRENT);
@@ -30,7 +43,7 @@ const Rail = () => {
         </Text>
         <Text textRole="label">Let's get you on the air</Text>
         <Text textRole="metadata" tone="muted">
-          First-run setup · saved as you go
+          Saved as you go
         </Text>
       </Stack>
       <Stack role="list" gap="inline" aria-label="Setup steps">
@@ -70,6 +83,13 @@ const Rail = () => {
   );
 };
 
+// The brand chroma bar (as in the logo mark): short, left-aligned, every segment lit.
+const ChromaBars = () => (
+  <Stack alignItems="flex-start">
+    <BrandMark contained={false} decorative size={6} width={84} />
+  </Stack>
+);
+
 const RootChoice = ({
   root,
   confirmed,
@@ -79,30 +99,18 @@ const RootChoice = ({
   confirmed: boolean;
   onConfirm: () => void;
 }) => (
-  <Surface
-    padding="control"
-    gap="inline"
-    borderRadius="control"
-    borderColor={confirmed ? "borderDecorative" : "stateWarning"}
-  >
-    <Line gap="control">
-      <Text textRole="data">{root.path}</Text>
-      {confirmed ? <Badge tone="success">confirmed</Badge> : null}
-      {confirmed ? null : (
-        <Stack marginLeft="auto">
-          <Action onPress={onConfirm} tone="primary">
-            Confirm
-          </Action>
-        </Stack>
-      )}
-    </Line>
-    <RootFacts root={confirmed ? root : { ...root, walked: "not yet" }} />
-    {root.readable ? null : (
-      <Text textRole="metadata" tone="danger">
-        {MOUNT_HINT}
-      </Text>
-    )}
-  </Surface>
+  <FolderCard
+    root={root}
+    using={confirmed}
+    checked={confirmed && root.walked !== "not yet" ? root.walked : "Not checked yet"}
+    actions={
+      confirmed ? null : (
+        <Action onPress={onConfirm} variant="secondary" disabled={!root.readable}>
+          Use this folder
+        </Action>
+      )
+    }
+  />
 );
 
 const Body = ({ scan }: { scan: ScanState }) => {
@@ -119,13 +127,16 @@ const Body = ({ scan }: { scan: ScanState }) => {
   return (
     <Stack flex={1} minWidth={0} alignItems="center" padding="section">
       <Stack width="100%" maxWidth={672} gap="section" paddingVertical="section">
-        <Stack gap="inline">
+        <Stack gap="control">
+          <div className="hidden md:block">
+            <ChromaBars />
+          </div>
           <Text as="h1" textRole="title">
-            Where is your media?
+            Where's your media?
           </Text>
           <Text textRole="body" tone="secondary">
-            Loomarr found these folders from your media server and Sonarr/Radarr. Confirm the ones that hold
-            your library.
+            So Loomarr can put your shows and movies on the air. We found these through Emby, Sonarr and
+            Radarr — pick the ones that hold your library.
           </Text>
         </Stack>
 
@@ -140,7 +151,7 @@ const Body = ({ scan }: { scan: ScanState }) => {
           ))}
           <Line gap="control">
             <Action variant="outline" onPress={() => setRechecks((n) => n + 1)}>
-              Re-check
+              Check again
             </Action>
             {rechecks > 0 ? (
               <Text textRole="metadata" tone="secondary">
@@ -151,30 +162,26 @@ const Body = ({ scan }: { scan: ScanState }) => {
 
           {importing ? (
             <>
-              <ScanHealth status={status} density="full" />
+              <ScanHealth status={status} density="full" inFlow />
               <Text textRole="body" tone="secondary">
-                You can continue — titles become schedulable as their files are read.
+                You can carry on — titles appear as they're ready.
               </Text>
             </>
           ) : null}
         </Surface>
 
+        {hasReadableConfirmed ? null : (
+          <Text textRole="body" tone="secondary">
+            {MOUNT_HINT}
+          </Text>
+        )}
         <Line gap="control">
           <Action variant="ghost">Back</Action>
-          <Stack
-            marginLeft="auto"
-            flexDirection="row"
-            alignItems="center"
-            gap="control"
-            flexWrap="wrap"
-            justifyContent="flex-end"
-          >
-            {hasReadableConfirmed ? null : (
-              <Text textRole="metadata" tone="warning">
-                {MOUNT_HINT}
-              </Text>
-            )}
-            <Action variant="secondary" disabled={!hasReadableConfirmed}>
+          <Stack marginLeft="auto">
+            <Action
+              {...(hasReadableConfirmed ? { tone: "primary" as const } : { variant: "secondary" as const })}
+              disabled={!hasReadableConfirmed}
+            >
               Continue
             </Action>
           </Stack>
@@ -185,8 +192,19 @@ const Body = ({ scan }: { scan: ScanState }) => {
 };
 
 const WizardLibraryStep = ({ scan }: { scan: ScanState; device: Device }) => (
-  <Stack flexDirection="row" flexWrap="wrap" minHeight="100vh" backgroundColor="surfaceCanvas">
-    <Rail />
+  <Stack
+    flexDirection="row"
+    flexWrap="wrap"
+    alignContent="flex-start"
+    minHeight="100vh"
+    backgroundColor="surfaceCanvas"
+  >
+    <div className="hidden md:flex">
+      <Rail />
+    </div>
+    <div className="w-full md:hidden">
+      <CompactRail />
+    </div>
     <Body key={scan} scan={scan} />
   </Stack>
 );

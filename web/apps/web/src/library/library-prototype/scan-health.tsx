@@ -1,191 +1,158 @@
-// PROTOTYPE — throwaway (#2151 step 2). The shared scan-health strip + stage stepper (decision 34).
-// "full" is the Settings → Library / wizard health block; "compact" is the one line that sits at
-// the top of a Library page. The bar exists only while a scan is running; idle shows none.
-import { Action, ProgressTrack, StatusDot, Surface, Text } from "@loomarr/design-system";
+// PROTOTYPE — throwaway (#2151 step 2). The shared scan-health block, in plain words.
+// "full" is the Settings → Library / wizard block; "compact" is the one calm sentence at the top
+// of a Library page. The bar exists only while media is being added.
+import { Action, Icon, icons, StatusDot, Surface, Text } from "@loomarr/design-system";
 import type { ScanStatus } from "./prototype-data";
-import { Callout, dotFor, fmt, Line, pct, Stack, StageStepper } from "./scan-health-parts";
+import { Callout, dotFor, Line, LitBar, pct, ReadyChips, Stack } from "./scan-health-parts";
 
 interface ScanHealthProps {
   status: ScanStatus;
-  // "full": Settings → Library and the wizard (stepper + bar + live signals).
-  // "compact": one line at the top of a Library page (headline + bar while running + action).
+  // "full": Settings → Library and the wizard (sentence + bar + what keeps it up to date).
+  // "compact": one sentence at the top of a Library page (plus a slim bar and one action).
   density: "full" | "compact";
   onOpenSettings?: () => void;
+  // Inside the wizard the step owns "Check again" and the one primary (Continue), so the offline
+  // callout states the fact without an action of its own.
+  inFlow?: boolean;
 }
 
 const isFresh = (status: ScanStatus) => status.roots.every((r) => !r.confirmed);
 const offlineRoots = (status: ScanStatus) => status.roots.filter((r) => !r.readable);
 
 const Compact = ({ status, onOpenSettings }: Omit<ScanHealthProps, "density">) => {
-  const { progress, held, paused } = status;
+  const { progress, held } = status;
   const offline = offlineRoots(status)[0];
   const fresh = isFresh(status);
-  const headline =
-    status.tone === "ok" ? `${status.headline} · last change ${status.lastChange}` : status.headline;
   return (
-    <Surface
+    <Stack
       flexDirection="row"
       alignItems="center"
       flexWrap="wrap"
       columnGap="control"
       rowGap="inline"
-      paddingHorizontal="control"
       paddingVertical="inline"
-      borderRadius="control"
-      borderColor={held || fresh ? "stateWarning" : offline ? "stateDanger" : "borderDecorative"}
     >
       <Line>
-        <StatusDot tone={dotFor(status.tone)} label={`Library scan: ${status.headline}`} />
-        <Text textRole="label">{headline}</Text>
+        <StatusDot
+          tone={fresh ? "off" : held || offline ? "warn" : dotFor(status.tone)}
+          label={status.headline}
+        />
+        <Text textRole="label">{status.headline}</Text>
       </Line>
       {progress ? (
-        <Line gap="control" flexGrow={1} minWidth={200}>
-          <Stack flexGrow={1} flexBasis={120} minWidth={96}>
-            <ProgressTrack
-              width="100%"
-              percent={pct(progress)}
-              label={`Library scan ${pct(progress)} percent`}
-            />
-          </Stack>
-          <Text textRole="metadata" tone="secondary">
-            {fmt(progress.done)} / {fmt(progress.total)} · {progress.eta}
-          </Text>
-        </Line>
+        <Stack flexGrow={1} flexBasis={120} minWidth={96}>
+          <LitBar
+            percent={pct(progress)}
+            label={`Adding your media, ${pct(progress)} percent`}
+            paused={!!status.paused}
+          />
+        </Stack>
       ) : null}
-      {paused ? (
-        <Text textRole="metadata" tone="secondary">
-          {paused}
-        </Text>
-      ) : null}
-      {held ? (
-        <Line gap="control">
-          <Text textRole="metadata" tone="warning">
-            Nothing removed yet
-          </Text>
-          <Action tone="danger">Confirm removal</Action>
-        </Line>
-      ) : null}
-      {offline ? (
-        <Line gap="control">
-          <Text textRole="metadata" tone="danger">
-            Nothing marked missing
-          </Text>
-          <Action variant="outline">Re-check</Action>
-        </Line>
-      ) : null}
-      {fresh ? (
-        <Action onPress={onOpenSettings} tone="primary">
-          Confirm roots
-        </Action>
-      ) : null}
+      {held || offline ? <Action tone="primary">Check again</Action> : null}
       <Stack marginLeft="auto">
-        <Action variant="link" onPress={onOpenSettings}>
-          Settings
+        <Action variant="ghost" onPress={onOpenSettings}>
+          Library settings
         </Action>
       </Stack>
-    </Surface>
+    </Stack>
   );
 };
 
-const Full = ({ status }: Pick<ScanHealthProps, "status">) => {
-  const { held, paused } = status;
+const Full = ({ status, inFlow }: Pick<ScanHealthProps, "status" | "inFlow">) => {
+  const { held, paused, progress } = status;
   const offline = offlineRoots(status);
   const fresh = isFresh(status);
+  // In the wizard the folder cards already say what's wrong; only progress belongs here.
+  if (inFlow && !progress) return null;
+  const showHeadline = inFlow ? !!progress : !held && offline.length === 0 && !fresh;
   return (
-    <Surface padding="section" gap="control" aria-label="Library scan health" role="region">
-      <Line gap="control">
-        <StatusDot tone={dotFor(status.tone)} label={`Library scan: ${status.headline}`} />
-        <Text textRole="headline">{status.headline}</Text>
-      </Line>
+    <Surface padding="section" gap="section" aria-label="Library status" role="region">
+      {showHeadline ? (
+        <Line gap="control">
+          <StatusDot tone={dotFor(status.tone)} label={status.headline} />
+          <Text textRole="headline">{status.headline}</Text>
+        </Line>
+      ) : null}
 
-      {held ? (
+      {held && !inFlow ? (
         <Callout
           tone="warn"
-          title={`${fmt(held.wouldRemove)} movies in ${held.root} look removed — nothing has been removed yet`}
+          title={`${held.wouldRemove.toLocaleString("en-US")} movies seem to be gone from your Movies folder`}
           actions={
             <>
-              <Action tone="danger">Confirm removal</Action>
-              <Action variant="outline">Rescan</Action>
+              <Action tone="primary">Check again</Action>
+              <Action tone="danger">They're gone, remove them</Action>
             </>
           }
         >
-          A walk finished {held.since} and found none of the {fmt(held.of)} titles under {held.root}. If the
-          share is just empty or half-mounted, rescan after fixing it; if you really moved them, confirm.
+          We haven't removed anything — if a drive is unplugged, plug it back in.
         </Callout>
       ) : null}
 
-      {offline.map((root) => (
-        <Callout
-          key={root.path}
-          tone="bad"
-          title={`${root.path} is offline — nothing is marked missing; channels skip its items until it returns`}
-          actions={<Action variant="outline">Re-check</Action>}
-        >
-          Loomarr will pick the files up again as soon as the folder is readable.
-        </Callout>
-      ))}
-
-      {fresh ? (
-        <Callout tone="warn" title="Confirm where your media is">
-          Loomarr found these folders. Nothing is imported until you confirm them in the scan roots below.
-        </Callout>
-      ) : null}
-
-      <StageStepper status={status} />
-
-      {paused ? (
-        <Text textRole="body" tone="secondary">
-          Paused {paused}
-        </Text>
-      ) : null}
-
-      <Line columnGap="section" rowGap="inline">
-        <Text textRole="metadata" tone="secondary">
-          {fmt(status.totalFiles)} files
-        </Text>
-        <Text textRole="metadata" tone="secondary">
-          {fmt(status.totalTitles)} titles
-        </Text>
-        <Text textRole="metadata" tone="secondary">
-          last walk {status.lastWalk}
-        </Text>
-        <Text textRole="metadata" tone="secondary">
-          last change {status.lastChange}
-        </Text>
-        <Action variant="link">{`unmatched ${status.unmatched} →`}</Action>
-      </Line>
-
-      <Stack gap="inline">
-        <Text textRole="section" shout tone="muted">
-          Live changes
-        </Text>
-        <Line columnGap="section" rowGap="inline">
-          {status.live.map((signal) => (
-            <Line key={signal.label}>
-              <StatusDot
-                tone={signal.ok ? "ok" : "error"}
-                label={signal.ok ? "working" : "not working"}
-                size="compact"
-              />
-              <Text textRole="metadata">
-                {signal.label} {signal.ok ? "✓" : "✗"}
-              </Text>
-              <Text textRole="metadata" tone="muted">
-                {signal.detail}
-              </Text>
-            </Line>
+      {inFlow
+        ? null
+        : offline.map((root) => (
+            <Callout
+              key={root.path}
+              tone="warn"
+              title="Can't reach your Movies folder"
+              actions={<Action tone="primary">Check again</Action>}
+            >
+              Nothing has been removed. Channels skip those movies until it's back.
+            </Callout>
           ))}
-        </Line>
-      </Stack>
+
+      {fresh && !inFlow ? (
+        <Callout tone="warn" title="Tell Loomarr where your media is">
+          Loomarr found these folders. Choose the ones that hold your library and it will start adding your
+          media.
+        </Callout>
+      ) : null}
+
+      {progress ? (
+        <Stack gap="control">
+          <LitBar
+            percent={pct(progress)}
+            label={`Adding your media, ${pct(progress)} percent`}
+            paused={!!paused}
+          />
+          <Text textRole="body" tone="secondary">
+            {paused ? "Picks up again when Saturday Morning is done." : "Titles appear as they're ready."}
+          </Text>
+          {paused ? null : <ReadyChips />}
+        </Stack>
+      ) : null}
+
+      {fresh || inFlow ? null : (
+        <Stack gap="control">
+          <Text textRole="label" tone="secondary">
+            Keeping up to date
+          </Text>
+          <Stack gap="inline">
+            {status.live.map((signal) => (
+              <Line key={signal.label} gap="inline" flexWrap="nowrap" alignItems="flex-start">
+                {signal.ok ? (
+                  <Icon decorative glyph={icons.success} size="compact" tone="success" />
+                ) : (
+                  <StatusDot tone="warn" label="Waiting" size="compact" />
+                )}
+                <Text textRole="body">
+                  {signal.ok ? `${signal.label}` : `${signal.label} — waiting for Movies`}
+                </Text>
+              </Line>
+            ))}
+          </Stack>
+        </Stack>
+      )}
     </Surface>
   );
 };
 
-const ScanHealth = ({ status, density, onOpenSettings }: ScanHealthProps) =>
+const ScanHealth = ({ status, density, onOpenSettings, inFlow }: ScanHealthProps) =>
   density === "compact" ? (
     <Compact status={status} onOpenSettings={onOpenSettings} />
   ) : (
-    <Full status={status} />
+    <Full status={status} inFlow={inFlow} />
   );
 
 export type { ScanHealthProps };

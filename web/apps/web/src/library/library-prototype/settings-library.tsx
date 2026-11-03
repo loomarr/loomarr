@@ -2,12 +2,12 @@
 // identity sources, metadata. Framed like the real Settings leaves (context nav + page header).
 import {
   Action,
-  Badge,
   Disclosure,
   Field,
   FieldHint,
+  Icon,
+  icons,
   SelectControl,
-  StatusDot,
   Surface,
   Text,
   Toggle,
@@ -18,7 +18,7 @@ import { SettingsContextNav } from "@/settings/settings-context-nav";
 import { IDENTITY_SOURCES, METADATA, PATH_MAP, type Root, scanStatus } from "./prototype-data";
 import type { Device, ScanState } from "./prototype-state";
 import { ScanHealth } from "./scan-health";
-import { Line, MOUNT_HINT, RootFacts, Stack } from "./scan-health-parts";
+import { FolderCard, Line, Stack } from "./scan-health-parts";
 
 const Section = ({
   title,
@@ -64,37 +64,29 @@ const RootRow = ({
   onConfirm: () => void;
   onRemove: () => void;
 }) => (
-  <Surface
-    padding="control"
-    gap="inline"
-    borderRadius="control"
-    borderColor={confirmed ? "borderDecorative" : "stateWarning"}
-  >
-    <Line gap="control">
-      <Text textRole="data">{root.path}</Text>
-      {confirmed ? null : <Badge tone="warning">unconfirmed</Badge>}
-      <Stack marginLeft="auto" flexDirection="row" gap="inline">
+  <FolderCard
+    root={root}
+    using={confirmed}
+    checked={confirmed && root.walked !== "not yet" ? root.walked : "Not checked yet"}
+    actions={
+      <>
         {confirmed ? (
           root.readable ? null : (
-            <Action variant="outline">Re-check</Action>
+            <Action variant="secondary">Check again</Action>
           )
         ) : (
-          <Action onPress={onConfirm} tone="primary">
-            Confirm
+          <Action onPress={onConfirm} variant="secondary">
+            Use this folder
           </Action>
         )}
-        <Action variant="ghost" onPress={onRemove}>
-          Remove
-        </Action>
-      </Stack>
-    </Line>
-    <RootFacts root={confirmed ? root : { ...root, walked: "not yet" }} />
-    {root.readable ? null : (
-      <Text textRole="metadata" tone="danger">
-        {MOUNT_HINT}
-      </Text>
-    )}
-  </Surface>
+        {confirmed ? (
+          <Action variant="ghost" onPress={onRemove}>
+            Stop using
+          </Action>
+        ) : null}
+      </>
+    }
+  />
 );
 
 const Body = ({ scan }: { scan: ScanState }) => {
@@ -129,11 +121,13 @@ const Body = ({ scan }: { scan: ScanState }) => {
       width="100%"
       alignSelf="center"
     >
-      <ScanHealth status={view} density="full" />
+      <Section title="Status">
+        <ScanHealth status={view} density="full" />
+      </Section>
 
       <Section
-        title="Scan roots"
-        description="Loomarr reads your media files directly from these folders. Each was found in your media server or Sonarr/Radarr."
+        title="Media folders"
+        description="Loomarr looks for your shows and movies in these folders. It found them through Emby, Sonarr and Radarr."
       >
         <Stack gap="control">
           {roots.map((root) => (
@@ -148,10 +142,15 @@ const Body = ({ scan }: { scan: ScanState }) => {
           {adding ? (
             <Line gap="control" alignItems="flex-end">
               <Stack flexGrow={1} flexBasis={240}>
-                <Field label="Folder path" value={draft} onChangeText={setDraft} placeholder="/media/…" />
+                <Field
+                  label="Where is the folder?"
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder="/media/…"
+                />
               </Stack>
               <Action
-                variant="secondary"
+                tone="primary"
                 disabled={draft.trim() === ""}
                 onPress={() => {
                   setAdded((prev) => [
@@ -169,7 +168,7 @@ const Body = ({ scan }: { scan: ScanState }) => {
                   setAdding(false);
                 }}
               >
-                Add
+                Add folder
               </Action>
               <Action variant="ghost" onPress={() => setAdding(false)}>
                 Cancel
@@ -178,20 +177,20 @@ const Body = ({ scan }: { scan: ScanState }) => {
           ) : (
             <Line>
               <Action variant="outline" icon="plus" onPress={() => setAdding(true)}>
-                Add root
+                Add a folder
               </Action>
             </Line>
           )}
         </Stack>
         <Disclosure
-          label="Advanced: path mappings (derived)"
+          label="Folders have different names in other apps"
           expanded={mapOpen}
           onExpandedChange={setMapOpen}
         >
           <Stack gap="control" paddingTop="inline">
             <Text textRole="body" tone="secondary">
-              Derived from your media server and Sonarr/Radarr, so each one's paths resolve to the folders
-              above. Edit only if a mapping is wrong.
+              Emby, Sonarr and Radarr each call these folders something different. This matches them up. Only
+              change it if something looks wrong.
             </Text>
             {mapRows.map((row, i) => (
               <Line key={`${row.authority}-${row.from}`} gap="control" alignItems="flex-end">
@@ -225,49 +224,60 @@ const Body = ({ scan }: { scan: ScanState }) => {
         </Disclosure>
       </Section>
 
-      <Section title="Identity sources" description="Which tools tell Loomarr what each file is.">
+      <Section
+        title="Sonarr and Radarr"
+        description="They know your shows and movies by name. Let them tell Loomarr what's what."
+      >
         <Stack gap="control">
           {IDENTITY_SOURCES.map((source, i) => (
-            <Surface key={source.name} padding="control" gap="inline" borderRadius="control">
-              <Toggle
-                kind="switch"
-                label={`Use ${source.name} as library source`}
-                checked={sources[i] ?? false}
-                onCheckedChange={(on) => setSources((prev) => prev.map((v, j) => (j === i ? on : v)))}
-              />
+            <Surface key={source.name} padding="section" gap="control" borderRadius="control">
               <Line gap="control">
-                <StatusDot
-                  tone={source.ok ? "ok" : "error"}
-                  label={source.ok ? "webhook working" : "webhook failing"}
-                  size="compact"
+                <Toggle
+                  kind="switch"
+                  labelHidden
+                  label={source.name === "Sonarr" ? "Let Sonarr name my shows" : "Let Radarr name my movies"}
+                  checked={sources[i] ?? false}
+                  onCheckedChange={(on) => setSources((prev) => prev.map((v, j) => (j === i ? on : v)))}
                 />
-                <Text textRole="metadata" tone="secondary">
-                  {source.name} webhook {source.webhook}
+                <Text textRole="body" strong>
+                  {source.name === "Sonarr" ? "Let Sonarr name my shows" : "Let Radarr name my movies"}
                 </Text>
+              </Line>
+              <Line gap="control">
+                <Line gap="inline">
+                  <Icon
+                    decorative
+                    glyph={icons.success}
+                    size="compact"
+                    tone={source.ok ? "success" : "warning"}
+                  />
+                  <Text textRole="body">{source.name} tells Loomarr about new downloads</Text>
+                  <Text textRole="body" tone="muted">
+                    · {source.webhook}
+                  </Text>
+                </Line>
                 <Action variant="outline" onPress={() => setTested((prev) => new Set(prev).add(source.name))}>
-                  Test
+                  Send a test
                 </Action>
                 {tested.has(source.name) ? (
                   <Text textRole="metadata" tone="success">
-                    Test event received ✓
+                    Test message received ✓
                   </Text>
                 ) : null}
               </Line>
             </Surface>
           ))}
-          <FieldHint>
-            Sonarr and Radarr connection details (URL, API key) live in Settings → Connections.
-          </FieldHint>
+          <FieldHint>Where Sonarr and Radarr live is set up in Settings → Connections.</FieldHint>
         </Stack>
       </Section>
 
-      <Section title="Metadata">
+      <Section title="Details" description="Descriptions, posters and ratings for your titles.">
         <Line gap="section" alignItems="flex-start">
           <Stack gap="inline" flexBasis={220} flexGrow={1}>
-            <Text textRole="label">Language</Text>
+            <Text textRole="label">Details language</Text>
             <SelectControl
               appearance="field"
-              label="Language"
+              label="Details language"
               options={LANGUAGES}
               value={language}
               open={openSelect === "language"}
@@ -277,10 +287,10 @@ const Body = ({ scan }: { scan: ScanState }) => {
             <FieldHint>{METADATA.languageFrom}</FieldHint>
           </Stack>
           <Stack gap="inline" flexBasis={220} flexGrow={1}>
-            <Text textRole="label">Country</Text>
+            <Text textRole="label">Ratings country</Text>
             <SelectControl
               appearance="field"
-              label="Country"
+              label="Ratings country"
               options={COUNTRIES}
               value={country}
               open={openSelect === "country"}
@@ -292,11 +302,11 @@ const Body = ({ scan }: { scan: ScanState }) => {
         </Line>
         <Line gap="control">
           <Action variant="outline" onPress={() => setRefreshed(true)}>
-            Refresh all metadata
+            Update all details
           </Action>
           {refreshed ? (
             <Text textRole="metadata" tone="secondary">
-              Queued — metadata refreshes in the background.
+              On it — details update in the background.
             </Text>
           ) : null}
         </Line>
@@ -308,10 +318,7 @@ const Body = ({ scan }: { scan: ScanState }) => {
 const SettingsLibrary = ({ scan }: { scan: ScanState; device: Device }) => (
   <div className="flex h-full flex-col">
     <SettingsContextNav section="Library" />
-    <PageHeader
-      title="Library"
-      description="Where Loomarr reads your media, who identifies it, and how it is described."
-    />
+    <PageHeader title="Library" description="Where your media lives and how Loomarr keeps up with it." />
     <div className="flex-1 overflow-auto">
       <Body key={scan} scan={scan} />
     </div>

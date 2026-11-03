@@ -22,12 +22,15 @@ import { SettingsLibrary } from "@/library/library-prototype/settings-library";
 import { VariantA } from "@/library/library-prototype/variant-a";
 import { VariantB } from "@/library/library-prototype/variant-b";
 import { VariantC } from "@/library/library-prototype/variant-c";
+import { VariantD } from "@/library/library-prototype/variant-d";
+import { needsYouCount } from "@/library/library-prototype/variant-d-needs";
 import { WizardLibraryStep } from "@/library/library-prototype/wizard-library-step";
 
 const VARIANTS = [
   { key: "A", name: "Table + side sheet", Component: VariantA },
   { key: "B", name: "Split view", Component: VariantB },
   { key: "C", name: "Pages + review mode", Component: VariantC },
+  { key: "D", name: "Appliance, plain words", Component: VariantD },
 ] as const;
 
 interface PrototypeSearch {
@@ -97,7 +100,10 @@ const PrototypeLibrary = () => {
         <AppShell
           isAdmin
           userName="Adela Hale"
-          badges={{ "/prototype/library": status.unmatched, "/requests": 2 }}
+          badges={{
+            "/prototype/library": current.key === "D" ? needsYouCount(search.scan) : status.unmatched,
+            "/requests": 2,
+          }}
           progress={
             running && status.progress
               ? { "/prototype/library": status.progress.done / status.progress.total }
@@ -123,7 +129,7 @@ const PrototypeLibrary = () => {
 
 const Route = createFileRoute("/prototype/library")({
   validateSearch: (raw: Record<string, unknown>): PrototypeSearch => ({
-    variant: typeof raw.variant === "string" ? raw.variant : "A",
+    variant: typeof raw.variant === "string" ? raw.variant : "D",
     screen: SCREENS.includes(raw.screen as Screen) ? (raw.screen as Screen) : "items",
     scan: SCAN_STATES.includes(raw.scan as ScanState) ? (raw.scan as ScanState) : "idle",
     device: DEVICES.includes(raw.device as Device) ? (raw.device as Device) : "desktop",

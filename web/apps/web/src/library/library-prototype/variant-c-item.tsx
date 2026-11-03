@@ -187,7 +187,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
   const item = screen === "item-movie" ? FARGO : WEST_WING;
   const series = item.kind === "Series";
   const [section, setSection] = useState<Section>("overview");
-  const [popOpen, setPopOpen] = useState<string | null>(screen === "provenance" ? "Certification" : null);
+  const [popOpen, setPopOpen] = useState<string | null>(screen === "provenance" ? "Rating" : null);
 
   const sections: { label: string; value: Section }[] = [
     { label: "Overview", value: "overview" },
@@ -230,9 +230,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
             <Text textRole="data" tone="secondary">
               {item.year}
             </Text>
-            <Badge tone="neutral">
-              {item.fields.find((f) => f.label === "Certification")?.value ?? "NR"}
-            </Badge>
+            <Badge tone="neutral">{item.fields.find((f) => f.label === "Rating")?.value ?? "NR"}</Badge>
             {item.status ? <Badge tone="info">{item.status}</Badge> : null}
             <SourceChip source={item.identity} />
             <Text textRole="metadata" tone="secondary">

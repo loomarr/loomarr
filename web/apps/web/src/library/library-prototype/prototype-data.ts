@@ -46,7 +46,7 @@ const ROOTS: Root[] = [
     readable: true,
     confirmed: true,
     videos: 30729,
-    walked: "12m ago",
+    walked: "12 minutes ago",
   },
   {
     path: "/media/movies",
@@ -54,23 +54,27 @@ const ROOTS: Root[] = [
     readable: true,
     confirmed: true,
     videos: 2406,
-    walked: "12m ago",
+    walked: "12 minutes ago",
   },
 ];
 
 const LIVE_OK: LiveSignal[] = [
-  { label: "Change notify", ok: true, detail: "2 shares watched · last event 3m ago" },
-  { label: "Sonarr webhook", ok: true, detail: "registered · last event 2h ago" },
-  { label: "Radarr webhook", ok: true, detail: "registered · last event 1d ago" },
+  {
+    label: "Loomarr notices new and deleted files on its own",
+    ok: true,
+    detail: "last change 3 minutes ago",
+  },
+  { label: "Sonarr tells Loomarr about new downloads", ok: true, detail: "last heard from 2 hours ago" },
+  { label: "Radarr tells Loomarr about new downloads", ok: true, detail: "last heard from yesterday" },
 ];
 
 const STAGES = (running: StageKey | null, doneUpTo: number): Stage[] =>
   (
     [
-      ["walk", "Finding files"],
-      ["identify", "Identifying"],
-      ["headers", "Reading file headers"],
-      ["metadata", "Metadata"],
+      ["walk", "Finding your files"],
+      ["identify", "Working out what each one is"],
+      ["headers", "Checking they play"],
+      ["metadata", "Getting descriptions"],
     ] as const
   ).map(([key, label], i) => ({
     key,
@@ -80,8 +84,8 @@ const STAGES = (running: StageKey | null, doneUpTo: number): Stage[] =>
 
 const scanStatus = (scan: ScanState): ScanStatus => {
   const base = {
-    lastWalk: "12m ago",
-    lastChange: "3m ago",
+    lastWalk: "12 minutes ago",
+    lastChange: "3 minutes ago",
     unmatched: 3,
     totalFiles: 33135,
     totalTitles: 2812,
@@ -90,49 +94,58 @@ const scanStatus = (scan: ScanState): ScanStatus => {
   };
   switch (scan) {
     case "idle":
-      return { ...base, headline: "Up to date", tone: "ok", stages: STAGES(null, 4) };
+      return {
+        ...base,
+        headline: "All caught up — every title's ready to air",
+        tone: "ok",
+        stages: STAGES(null, 4),
+      };
     case "importing":
       return {
         ...base,
-        headline: "Importing your library",
+        headline: "Adding your media — about 8 minutes left",
         tone: "busy",
         stages: STAGES("headers", 2),
-        progress: { done: 12400, total: 33135, eta: "~8 min", rate: "41 files/s" },
+        progress: { done: 12400, total: 33135, eta: "about 8 minutes left", rate: "" },
         lastChange: "just now",
       };
     case "paused":
       return {
         ...base,
-        headline: "Import paused",
+        headline: "Paused so Saturday Morning plays smoothly",
         tone: "busy",
         stages: STAGES("headers", 2),
-        progress: { done: 12400, total: 33135, eta: "resumes when the channel stops", rate: "0 files/s" },
-        paused: "while CH 4 Saturday Morning plays",
+        progress: { done: 12400, total: 33135, eta: "picks up when it's done", rate: "" },
+        paused: "Picks up again when Saturday Morning is done.",
       };
     case "offline-root":
       return {
         ...base,
-        headline: "/media/movies is offline",
+        headline: "Can't reach your Movies folder",
         tone: "bad",
         stages: STAGES(null, 4),
-        roots: [ROOTS[0] as Root, { ...(ROOTS[1] as Root), readable: false, walked: "failed 2m ago" }],
+        roots: [ROOTS[0] as Root, { ...(ROOTS[1] as Root), readable: false, walked: "2 minutes ago" }],
         live: [
-          { label: "Change notify", ok: false, detail: "movies share unreachable" },
+          {
+            label: "Loomarr notices new and deleted files on its own",
+            ok: false,
+            detail: "can't reach Movies",
+          },
           ...LIVE_OK.slice(1),
         ],
       };
     case "held-removal":
       return {
         ...base,
-        headline: "2,406 movies look removed",
+        headline: "2,406 movies seem to be gone from your Movies folder",
         tone: "warn",
         stages: STAGES(null, 4),
-        held: { root: "/media/movies", wouldRemove: 2406, of: 2406, since: "4m ago" },
+        held: { root: "/media/movies", wouldRemove: 2406, of: 2406, since: "4 minutes ago" },
       };
     case "fresh":
       return {
         ...base,
-        headline: "Confirm where your media is",
+        headline: "Tell Loomarr where your media is",
         tone: "warn",
         stages: STAGES(null, 0),
         unmatched: 0,
@@ -192,7 +205,7 @@ const ITEMS: ItemRow[] = [
     identity: "Radarr",
     certification: "R",
     facts: "read",
-    problems: ["stray copy · 8.1 GB"],
+    problems: ["An extra copy is taking 8.1 GB — it never plays"],
     hue: 196,
   },
   {
@@ -204,7 +217,7 @@ const ITEMS: ItemRow[] = [
     certification: "TV-14",
     facts: "failed",
     factsDetail: "120/121 read",
-    problems: ["1 file unreadable"],
+    problems: ["1 episode can't be played — the file may be damaged"],
     hue: 150,
   },
   {
@@ -257,7 +270,7 @@ const ITEMS: ItemRow[] = [
     identity: "Embedded id",
     certification: "R",
     facts: "read",
-    problems: ["stray copy · 31 GB"],
+    problems: ["An extra copy is taking 31 GB — it never plays"],
     hue: 12,
   },
   {
@@ -501,22 +514,22 @@ const WEST_WING: ItemDetail = {
           value: "This Emmy Award-winning drama series reveals the inner workings of the White House…",
         },
       ],
-      rule: "Series text: TMDB wins, then Sonarr, then NFO",
+      rule: "Description: TMDB first, then Sonarr, then the details saved with the files",
     },
     { label: "Genres", value: "Drama, Political", source: "TMDB" },
     {
-      label: "Certification",
+      label: "Rating",
       value: "TV-14",
       source: "TMDB",
       candidates: [
         { source: "TMDB", value: "TV-14" },
         { source: "Sonarr", value: "TV-PG" },
       ],
-      rule: "Certification: the strictest grounded value wins",
+      rule: "Rating: when sources disagree, the strictest one is used",
     },
     { label: "Status", value: "Ended", source: "TMDB" },
     { label: "Network", value: "NBC", source: "TMDB" },
-    { label: "Episode text", value: "From Sonarr (TVDB numbering)", source: "Sonarr" },
+    { label: "Episode names", value: "From Sonarr", source: "Sonarr" },
   ],
   seasons: [1, 2, 3, 4, 5, 6, 7].map((n) => ({ number: n, label: `Season ${n}`, episodes: 22, read: 22 })),
   openSeason: [
@@ -655,7 +668,7 @@ const FARGO: ItemDetail = {
       source: "TMDB",
     },
     { label: "Genres", value: "Crime, Thriller", source: "TMDB" },
-    { label: "Certification", value: "R", source: "TMDB" },
+    { label: "Rating", value: "R", source: "TMDB" },
     { label: "Collection", value: "—", source: "TMDB" },
     {
       label: "Runtime",
@@ -666,7 +679,7 @@ const FARGO: ItemDetail = {
         { source: "Radarr", value: "1:38" },
         { source: "TMDB", value: "98 min" },
       ],
-      rule: "Technical facts: measured, then header, then the arr summary",
+      rule: "Length: from the file itself first, then Radarr, then TMDB",
     },
   ],
   files: [
@@ -834,10 +847,14 @@ const COLLECTION_EDIT = {
 
 // ── Settings → Library extras (#2151 decision 29) ─────────────────────────────────────────────
 const IDENTITY_SOURCES = [
-  { name: "Sonarr", useAsLibrarySource: true, webhook: "registered · last event 2h ago", ok: true },
-  { name: "Radarr", useAsLibrarySource: true, webhook: "registered · last event 1d ago", ok: true },
+  { name: "Sonarr", useAsLibrarySource: true, webhook: "last heard from 2 hours ago", ok: true },
+  { name: "Radarr", useAsLibrarySource: true, webhook: "last heard from yesterday", ok: true },
 ];
-const METADATA = { language: "English (US)", country: "United States", languageFrom: "taken from Emby" };
+const METADATA = {
+  language: "English (US)",
+  country: "United States",
+  languageFrom: "Brought over from Emby",
+};
 const PATH_MAP = [
   { authority: "Emby", from: "/mnt/media/tv", to: "/media/tv" },
   { authority: "Emby", from: "/mnt/media/movies", to: "/media/movies" },

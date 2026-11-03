@@ -48,7 +48,7 @@ const seed = (screen: Screen, items: ItemRow[]) => ({
   groupId: UNMATCHED[0]?.id ?? null,
   collectionId: screen === "collection-edit" ? "hitchcock" : (COLLECTIONS[0]?.id ?? null),
   editing: screen === "collection-edit",
-  openField: screen === "provenance" ? "Certification" : null,
+  openField: screen === "provenance" ? "Rating" : null,
   // phone: item views and the editor open on the detail; the three lists open on the list
   detail:
     screen === "item-series" ||

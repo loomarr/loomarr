@@ -138,12 +138,12 @@ interface ItemViewProps {
 }
 
 const ItemView = ({ item, provenanceOpen }: ItemViewProps) => {
-  const [openField, setOpenField] = useState<string | null>(provenanceOpen ? "Certification" : null);
+  const [openField, setOpenField] = useState<string | null>(provenanceOpen ? "Rating" : null);
   const [seasonOpen, setSeasonOpen] = useState(true);
   const [fixOpen, setFixOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const arr = item.identity === "Sonarr" || item.identity === "Radarr";
-  const cert = item.fields.find((f) => f.label === "Certification")?.value;
+  const cert = item.fields.find((f) => f.label === "Rating")?.value;
 
   return (
     <Surface backgroundColor="transparent" borderWidth={0} gap="section" padding="control">
