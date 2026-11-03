@@ -31,6 +31,13 @@ the v2 files it **is** authoritative for structure as well as look, because the 
 state by state. Its rules are `docs/frontend-design.md` §9. It supersedes the v2 desktop mock's Watch
 card and theater overlay.
 
+## Library (2026-11-02 — ratified)
+
+[`library/`](library/README.md) is the mock of record for the Library nav item, Settings → Library
+and the wizard's Library step (#2151): 21 desktop and 8 phone screens rendered from the step-2
+prototype. Like the watch player it is authoritative for structure as well as look, and it amends
+#2151's decisions 23–28 and 34 (plain words, artwork first, technical facts behind one disclosure).
+
 ## v2 prototypes (imported 2026-07-24 — research inputs, not yet ratified)
 
 | File | Viewport | Screens |
