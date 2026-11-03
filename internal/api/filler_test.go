@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -80,9 +81,9 @@ type fakeFiller struct {
 	cleanupResult         filler.StorageCleanupResult
 	pullID                string
 	pullTargets           []filler.AcquisitionTarget
-	sourceSuggestions     []filler.SourceSuggestion
+	sourceSuggestions     []sourceprovider.Suggestion
 	sourceSuggestionErr   error
-	resolvedSource        filler.SourceSuggestion
+	resolvedSource        sourceprovider.Suggestion
 	sourceResolutionErr   error
 	sourceSuggestionCalls []struct {
 		Provider string
@@ -118,7 +119,7 @@ func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResu
 	return f.fetchResult, nil
 }
 
-func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	f.sourceSuggestionCalls = append(f.sourceSuggestionCalls, struct {
 		Provider string
 		Query    string
@@ -130,25 +131,25 @@ func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, l
 	return f.sourceSuggestions, nil
 }
 
-func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (filler.SourceSuggestion, error) {
+func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (sourceprovider.Suggestion, error) {
 	f.sourceResolutionCalls = append(f.sourceResolutionCalls, struct {
 		Provider string
 		Input    string
 	}{provider, input})
 	if f.sourceResolutionErr != nil {
-		return filler.SourceSuggestion{}, f.sourceResolutionErr
+		return sourceprovider.Suggestion{}, f.sourceResolutionErr
 	}
 	if f.resolvedSource.CanonicalID != "" {
 		return f.resolvedSource, nil
 	}
 	if provider == "youtube" {
-		return filler.SourceSuggestion{
-			Provider: provider, TargetType: "playlist", CanonicalID: input,
+		return sourceprovider.Suggestion{
+			Provider: sourceprovider.ID(provider), TargetType: "playlist", CanonicalID: input,
 			CanonicalURL: input, Title: input,
 		}, nil
 	}
-	return filler.SourceSuggestion{
-		Provider: provider, TargetType: "collection", CanonicalID: input,
+	return sourceprovider.Suggestion{
+		Provider: sourceprovider.ID(provider), TargetType: "collection", CanonicalID: input,
 		CanonicalURL: "https://archive.org/details/" + input, Title: input,
 	}, nil
 }
@@ -231,7 +232,7 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error) {
 	if f.unavailable {
 		return "", api.ErrIngestUnavailable
 	}

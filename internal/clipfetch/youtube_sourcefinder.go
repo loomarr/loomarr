@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 )
 
 const youtubeSourceFinderTimeout = 8 * time.Second
@@ -63,7 +64,7 @@ type ytDlpSourceListing struct {
 	Entries []ytDlpSourceMetadata `json:"entries"`
 }
 
-func (f *YouTubeSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *YouTubeSourceFinder) Suggest(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	query = strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
 	if len(query) < 3 || len(query) > 120 {
 		return nil, fmt.Errorf("%w: YouTube channel search must be between 3 and 120 characters", filler.ErrInvalidSourceReference)
@@ -73,17 +74,17 @@ func (f *YouTubeSourceFinder) Suggest(ctx context.Context, query string, limit i
 		if err != nil {
 			return nil, err
 		}
-		return []filler.SourceSuggestion{resolved}, nil
+		return []sourceprovider.Suggestion{resolved}, nil
 	}
 	if limit <= 0 || limit > maxYouTubeSourceSuggestions {
 		limit = maxYouTubeSourceSuggestions
 	}
-	return f.cached(ctx, "suggest:"+strings.ToLower(query)+":"+strconv.Itoa(limit), func() ([]filler.SourceSuggestion, error) {
+	return f.cached(ctx, "suggest:"+strings.ToLower(query)+":"+strconv.Itoa(limit), func() ([]sourceprovider.Suggestion, error) {
 		return f.suggestUncached(ctx, query, limit)
 	})
 }
 
-func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string, limit int) ([]filler.SourceSuggestion, error) {
+func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
 	select {
 	case f.searchGate <- struct{}{}:
 		defer func() { <-f.searchGate }()
@@ -104,7 +105,7 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 	if err := json.Unmarshal(data, &listing); err != nil {
 		return nil, fmt.Errorf("%w: decode YouTube search results: %v", filler.ErrSourceProvider, err)
 	}
-	results := make([]filler.SourceSuggestion, 0, limit)
+	results := make([]sourceprovider.Suggestion, 0, limit)
 	seen := make(map[string]struct{}, limit)
 	for _, item := range listing.Entries {
 		id, canonicalURL := youtubeChannelIdentity(item)
@@ -127,7 +128,7 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 		if description != "" {
 			description = "Found from “" + description + "”"
 		}
-		results = append(results, filler.SourceSuggestion{
+		results = append(results, sourceprovider.Suggestion{
 			Provider: "youtube", TargetType: "channel", CanonicalID: id,
 			CanonicalURL: canonicalURL, Title: title, Description: description,
 		})
@@ -141,35 +142,35 @@ func (f *YouTubeSourceFinder) suggestUncached(ctx context.Context, query string,
 	return results, nil
 }
 
-func (f *YouTubeSourceFinder) Resolve(ctx context.Context, input string) (filler.SourceSuggestion, error) {
+func (f *YouTubeSourceFinder) Resolve(ctx context.Context, input string) (sourceprovider.Suggestion, error) {
 	normalized, inputType, ok := youtubeSourceInput(input)
 	if !ok {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: enter a YouTube channel, playlist, or video URL", filler.ErrInvalidSourceReference)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: enter a YouTube channel, playlist, or video URL", filler.ErrInvalidSourceReference)
 	}
-	results, err := f.cached(ctx, "resolve:"+strings.ToLower(normalized), func() ([]filler.SourceSuggestion, error) {
+	results, err := f.cached(ctx, "resolve:"+strings.ToLower(normalized), func() ([]sourceprovider.Suggestion, error) {
 		resolved, resolveErr := f.resolveUncached(ctx, normalized, inputType)
 		if resolveErr != nil {
 			return nil, resolveErr
 		}
-		return []filler.SourceSuggestion{resolved}, nil
+		return []sourceprovider.Suggestion{resolved}, nil
 	})
 	if err != nil {
-		return filler.SourceSuggestion{}, err
+		return sourceprovider.Suggestion{}, err
 	}
 	return results[0], nil
 }
 
-func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputType string) (filler.SourceSuggestion, error) {
+func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputType string) (sourceprovider.Suggestion, error) {
 	data, err := f.run(ctx,
 		"--no-config", "--flat-playlist", "--skip-download", "--dump-single-json", "--no-warnings",
 		"--playlist-end", strconv.Itoa(maxSourcePreviewItems), input,
 	)
 	if err != nil {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: check YouTube source: %w", filler.ErrSourceProvider, err)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: check YouTube source: %w", filler.ErrSourceProvider, err)
 	}
 	var metadata ytDlpSourceMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: decode YouTube source: %v", filler.ErrSourceProvider, err)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: decode YouTube source: %v", filler.ErrSourceProvider, err)
 	}
 	if inputType == "channel" && metadata.ChannelID == "" && strings.HasPrefix(strings.TrimSpace(metadata.ID), "UC") {
 		metadata.ChannelID = strings.TrimSpace(metadata.ID)
@@ -181,13 +182,13 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 			id = strings.TrimSpace(metadata.ID)
 		}
 		if id == "" {
-			return filler.SourceSuggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a playlist", filler.ErrInvalidSourceReference)
+			return sourceprovider.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a playlist", filler.ErrInvalidSourceReference)
 		}
 		title := strings.TrimSpace(metadata.Title)
 		if title == "" {
 			title = id
 		}
-		return filler.SourceSuggestion{
+		return sourceprovider.Suggestion{
 			Provider: "youtube", TargetType: "playlist", CanonicalID: id,
 			CanonicalURL: "https://www.youtube.com/playlist?list=" + url.QueryEscape(id),
 			Title:        title, Description: strings.TrimSpace(metadata.Description), ItemCount: metadata.PlaylistCount,
@@ -197,7 +198,7 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 
 	id, canonicalURL := youtubeChannelIdentity(metadata)
 	if id == "" || canonicalURL == "" {
-		return filler.SourceSuggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a channel", filler.ErrInvalidSourceReference)
+		return sourceprovider.Suggestion{}, fmt.Errorf("%w: that YouTube URL did not resolve to a channel", filler.ErrInvalidSourceReference)
 	}
 	title := strings.TrimSpace(metadata.Channel)
 	if title == "" {
@@ -209,15 +210,15 @@ func (f *YouTubeSourceFinder) resolveUncached(ctx context.Context, input, inputT
 	if title == "" {
 		title = id
 	}
-	return filler.SourceSuggestion{
+	return sourceprovider.Suggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: id,
 		CanonicalURL: canonicalURL, Title: title, Description: strings.TrimSpace(metadata.Description),
 		ItemCount: metadata.PlaylistCount, PreviewItems: youtubePreviewItems(metadata.Entries),
 	}, nil
 }
 
-func youtubePreviewItems(entries []ytDlpSourceMetadata) []filler.SourcePreviewItem {
-	items := make([]filler.SourcePreviewItem, 0, min(len(entries), maxSourcePreviewItems))
+func youtubePreviewItems(entries []ytDlpSourceMetadata) []sourceprovider.PreviewItem {
+	items := make([]sourceprovider.PreviewItem, 0, min(len(entries), maxSourcePreviewItems))
 	for _, entry := range entries {
 		id := strings.TrimSpace(entry.ID)
 		if !validYouTubeSlug(id) {
@@ -231,7 +232,7 @@ func youtubePreviewItems(entries []ytDlpSourceMetadata) []filler.SourcePreviewIt
 		if entry.Duration > 0 {
 			durationMS = int64(entry.Duration * 1000)
 		}
-		items = append(items, filler.SourcePreviewItem{
+		items = append(items, sourceprovider.PreviewItem{
 			Title: title, URL: "https://www.youtube.com/watch?v=" + url.QueryEscape(id), DurationMS: durationMS,
 		})
 		if len(items) == maxSourcePreviewItems {
@@ -382,13 +383,13 @@ func (f *YouTubeSourceFinder) run(ctx context.Context, args ...string) ([]byte, 
 	return append([]byte(nil), stdout.data.Bytes()...), nil
 }
 
-func (f *YouTubeSourceFinder) cached(ctx context.Context, key string, load func() ([]filler.SourceSuggestion, error)) ([]filler.SourceSuggestion, error) {
+func (f *YouTubeSourceFinder) cached(ctx context.Context, key string, load func() ([]sourceprovider.Suggestion, error)) ([]sourceprovider.Suggestion, error) {
 	now := f.now()
 	f.mu.Lock()
 	if entry, ok := f.cache[key]; ok && now.Sub(entry.usedAt) < f.ttl {
 		entry.usedAt = now
 		f.cache[key] = entry
-		results := append([]filler.SourceSuggestion(nil), entry.results...)
+		results := append([]sourceprovider.Suggestion(nil), entry.results...)
 		f.mu.Unlock()
 		return results, nil
 	}
@@ -399,7 +400,7 @@ func (f *YouTubeSourceFinder) cached(ctx context.Context, key string, load func(
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-done:
-			return append([]filler.SourceSuggestion(nil), call.results...), call.err
+			return append([]sourceprovider.Suggestion(nil), call.results...), call.err
 		}
 	}
 	call := &sourceFinderCall{done: make(chan struct{})}
@@ -408,9 +409,9 @@ func (f *YouTubeSourceFinder) cached(ctx context.Context, key string, load func(
 
 	results, err := load()
 	f.mu.Lock()
-	call.results, call.err = append([]filler.SourceSuggestion(nil), results...), err
+	call.results, call.err = append([]sourceprovider.Suggestion(nil), results...), err
 	if err == nil {
-		f.cache[key] = sourceFinderCacheEntry{results: append([]filler.SourceSuggestion(nil), results...), usedAt: now}
+		f.cache[key] = sourceFinderCacheEntry{results: append([]sourceprovider.Suggestion(nil), results...), usedAt: now}
 		for len(f.cache) > f.maxCache {
 			var oldestKey string
 			var oldest time.Time

@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -3425,14 +3426,14 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, filler.SourceCheckCompletion{
 		CheckedAt: restartChecked,
-		Checkpoint: filler.SourceScanCheckpoint{
+		Checkpoint: sourceprovider.Checkpoint{
 			Cursor: "video-10", PendingWatermark: "video-1", Watermark: "prior-video",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: filler.SourceCheckSummary{
-			filler.SourceOutcomeQueued:      3,
-			filler.SourceOutcomeTooLong:     12,
-			filler.SourceOutcomeUnavailable: 2,
+		Outcomes: sourceprovider.Outcomes{
+			sourceprovider.OutcomeQueued:      3,
+			sourceprovider.OutcomeTooLong:     12,
+			sourceprovider.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -3445,16 +3446,16 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, filler.SourceCheckCompletion{
 		CheckedAt:  continuedAt,
-		Checkpoint: filler.SourceScanCheckpoint{Watermark: "video-1"},
-		Outcomes:   filler.SourceCheckSummary{filler.SourceOutcomeTooShort: 2},
+		Checkpoint: sourceprovider.Checkpoint{Watermark: "video-1"},
+		Outcomes:   sourceprovider.Outcomes{sourceprovider.OutcomeTooShort: 2},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	restartChecked = continuedAt
 	continuedSource, _ := findSource(t, s, restartSource.ID)
-	if continuedSource.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
-		continuedSource.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
-		continuedSource.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) {
+	if continuedSource.LastCheckSummary[sourceprovider.OutcomeQueued] != 3 ||
+		continuedSource.LastCheckSummary[sourceprovider.OutcomeTooShort] != 2 ||
+		continuedSource.ScanCheckpoint != (sourceprovider.Checkpoint{Watermark: "video-1"}) {
 		t.Fatalf("continued source summary/checkpoint = %+v / %+v", continuedSource.LastCheckSummary, continuedSource.ScanCheckpoint)
 	}
 	failureAt := restartChecked.Add(time.Hour)
@@ -3478,11 +3479,11 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
 		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
 		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() ||
-		restarted.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) ||
-		restarted.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeTooLong] != 12 ||
-		restarted.LastCheckSummary[filler.SourceOutcomeUnavailable] != 2 {
+		restarted.ScanCheckpoint != (sourceprovider.Checkpoint{Watermark: "video-1"}) ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeQueued] != 3 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeTooShort] != 2 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeTooLong] != 12 ||
+		restarted.LastCheckSummary[sourceprovider.OutcomeUnavailable] != 2 {
 		_ = reopened.Close()
 		t.Fatalf("source policy/check state after restart = %+v", restarted)
 	}
@@ -3493,15 +3494,15 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("new sweep claim after restart = %v, %v", claimed, err)
 	}
 	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, filler.SourceCheckCompletion{
-		CheckedAt: newSweepAt, Checkpoint: filler.SourceScanCheckpoint{Watermark: "new-video"},
+		CheckedAt: newSweepAt, Checkpoint: sourceprovider.Checkpoint{Watermark: "new-video"},
 		ReplaceOutcomes: true,
-		Outcomes:        filler.SourceCheckSummary{filler.SourceOutcomeLive: 1},
+		Outcomes:        sourceprovider.Outcomes{sourceprovider.OutcomeLive: 1},
 	}); err != nil {
 		_ = reopened.Close()
 		t.Fatal(err)
 	}
 	replaced, _ := findSource(t, reopened, restartSource.ID)
-	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[filler.SourceOutcomeLive] != 1 {
+	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[sourceprovider.OutcomeLive] != 1 {
 		_ = reopened.Close()
 		t.Fatalf("new sweep outcomes = %+v, want only live:1", replaced.LastCheckSummary)
 	}

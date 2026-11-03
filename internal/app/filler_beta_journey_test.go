@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -122,7 +123,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		},
 	}
 
-	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []filler.DiscoveredRef{{
+	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []sourceprovider.Item{{
 		ID: "retro-toy", URL: "https://youtube.com/watch?v=retro-toy",
 	}})
 	if err != nil {
