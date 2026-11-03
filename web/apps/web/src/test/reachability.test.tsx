@@ -11,6 +11,7 @@ import {
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
   getImportCandidatesMockHandler,
+  getLibraryStatusMockHandler,
   getListChannelsMockHandler,
   getListDiagnosticEventsMockHandler,
   getListDiscoveryFeedbackMockHandler,
@@ -19,6 +20,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
@@ -287,6 +289,22 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
+    // Settings → Library: one folder in use, so the page renders its folder card rather than
+    // auto-running a discovery pass.
+    getListLibraryRootsMockHandler({
+      roots: [
+        {
+          path: "/media/movies",
+          inUse: true,
+          readable: true,
+          addedByHand: false,
+          checkedAt: "2026-07-25T19:55:00Z",
+          foundIn: [{ authority: "radarr", path: "/media/movies" }],
+        },
+      ],
+      pathMap: [],
+    }),
+    getLibraryStatusMockHandler({ health: "ok", inUse: 1, offline: 0, toConfirm: 0 }),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },
