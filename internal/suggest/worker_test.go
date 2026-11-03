@@ -49,33 +49,39 @@ func marigoldMediaServer(t *testing.T) *testkit.MediaServer {
 	return ms
 }
 
-func buildService(t *testing.T, st suggest.ProposalStore, llmMock llm.Provider) *suggest.Service {
+func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
+	return buildServiceWith(t, st, proposalworkflow.New(st, idGen(), time.Now), llmMock)
+}
+
+// buildServiceWith is buildService over a caller-chosen durable workflow.
+func buildServiceWith(t *testing.T, st suggest.ProposalStore, workflow suggest.DurableWorkflow, llmMock llm.Provider) *suggest.Service {
 	ms := marigoldMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
 	sug := suggest.New(llmMock, cat, tm, 10)
-	return suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
-		idGen(), time.Now, testkit.Logger())
+	return suggest.NewService(st, workflow, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
+		time.Now, testkit.Logger())
 }
 
-type claimSignalStore struct {
-	suggest.ProposalStore
+// claimSignalWorkflow reports every Claim and hands out no work.
+type claimSignalWorkflow struct {
+	suggest.DurableWorkflow
 	claimed chan struct{}
 }
 
-func (s *claimSignalStore) ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error) {
+func (w *claimSignalWorkflow) Claim(context.Context, time.Time, time.Duration, int) ([]suggest.WorkflowWork, error) {
 	select {
-	case s.claimed <- struct{}{}:
+	case w.claimed <- struct{}{}:
 	default:
 	}
 	return nil, nil
 }
 
 func TestWorkerClaimsImmediatelyOnStartup(t *testing.T) {
-	st := &claimSignalStore{claimed: make(chan struct{}, 1)}
-	svc := suggest.NewService(st, nil, suggest.Config{Workers: 1}, idGen(), time.Now, testkit.Logger())
+	st := &claimSignalWorkflow{claimed: make(chan struct{}, 1)}
+	svc := suggest.NewService(nil, st, nil, suggest.Config{Workers: 1}, time.Now, testkit.Logger())
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go svc.Run(ctx)
@@ -348,16 +354,249 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	}
 }
 
+type submittedNotifier struct{ submitted chan store.Proposal }
+
+func (n submittedNotifier) ProposalSubmitted(_ context.Context, p store.Proposal)  { n.submitted <- p }
+func (submittedNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
+func (submittedNotifier) ProposalDeclined(context.Context, store.Proposal)         {}
+
+// A generated proposal reaching the approval queue tells the approvers a request is waiting,
+// exactly as a built one does.
+func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
+	st := newStore(t)
+	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	svc := buildService(t, st, testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)).WithProposalNotifier(notifier)
+	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "sci-fi"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	select {
+	case p := <-notifier.submitted:
+		if p.JobID != jobID || p.CreatedBy != "alice" || p.Status != "submitted" {
+			t.Fatalf("notified proposal = %+v, want alice's submitted proposal for job %s", p, jobID)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("approvers were never told a generated proposal is waiting")
+	}
+}
+
+// A cache hit is a fresh request waiting for approval like any other, so it tells the approvers too.
+func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier)
+	intent := suggest.Intent{Description: "90s action"}
+
+	source, err := svc.Submit(ctx, intent, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := st.GetJob(ctx, source)
+	j.Status = "done"
+	if err := st.UpdateJob(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateProposal(ctx, store.Proposal{
+		ID: "source-proposal", JobID: source, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
+		ProposalJSON: `{"lineup":[{"name":"Quiet Engines"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := svc.Submit(ctx, intent, "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p := <-notifier.submitted:
+		if p.JobID != cached || p.CreatedBy != "carol" {
+			t.Fatalf("notified proposal = %+v, want carol's cached proposal for job %s", p, cached)
+		}
+	default:
+		t.Fatal("approvers were never told a cached request is waiting")
+	}
+}
+
+// Approvers hear "a request is waiting" only when a person still has to act: a proposal an
+// automatic grant already approved never sends it, so nobody gets a waiting notice followed by an
+// approval notice for the same proposal.
+func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
+	const onePick = `{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`
+	grace := identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}
+	tests := []struct {
+		name       string
+		user       identitystore.User
+		picks      string
+		curator    *recordingCurator
+		planError  error
+		start      func(ctx context.Context, svc *suggest.Service, st store.Store) error
+		wantNotice bool
+	}{
+		{
+			name: "auto-curated recurate that is approved", user: grace, picks: onePick,
+			curator: &recordingCurator{decision: suggest.Decision{Approved: true}},
+			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
+				if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+					ID: "channel-recurate", Number: 72, Name: "Recurate Channel", Status: schedule.StatusLive, IntentRef: "job-origin",
+				}}); err != nil {
+					return err
+				}
+				_, err := svc.Recurate(ctx, "channel-recurate", suggest.Intent{Description: "sci-fi"})
+				return err
+			},
+		},
+		{
+			name: "auto-approved within quota", user: grace, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+		},
+		{
+			// Two earlier approved acquisitions already spend the cap of one.
+			name: "requester over quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
+				now := time.Now().UTC()
+				if err := st.CreateJob(ctx, store.Job{
+					ID: "job-spent", Kind: "suggest", Status: "done", CreatedBy: "grace", IntentJSON: `{"description":"earlier"}`,
+					Deadline: now, CreatedAt: now, UpdatedAt: now,
+				}); err != nil {
+					return err
+				}
+				if err := st.CreateProposal(ctx, store.Proposal{
+					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
+					ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":90091001,"name":"A"},{"mediaType":"movie","tmdbId":90091002,"name":"B"}]}`,
+					CreatedAt:    now, UpdatedAt: now,
+				}); err != nil {
+					return err
+				}
+				for _, id := range []int{90091001, 90091002} {
+					key, err := provision.Title{MediaType: provision.Movie, TMDBID: id}.Key()
+					if err != nil {
+						return err
+					}
+					if err := st.UpsertTitle(ctx, provision.Record{Key: key, State: provision.Wanted}); err != nil {
+						return err
+					}
+				}
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+		{
+			name: "refine is always admin-reviewed", user: grace, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Refine(ctx, "channel-1", suggest.Intent{Description: "sci-fi", RefineText: "more"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+		{
+			name: "auto-approve errors and the proposal stays submitted", user: grace, picks: onePick,
+			planError: fmt.Errorf("cannot build local channel"),
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			if err := st.UpsertUser(ctx, tt.user); err != nil {
+				t.Fatal(err)
+			}
+			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			done := newDoneEmitter()
+			curator := tt.curator
+			if curator == nil {
+				curator = &recordingCurator{}
+			}
+			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
+			svc := buildService(t, st, testkit.NewLLM(
+				catalogSearchResponse(map[string]any{"query": "marigold"}),
+				finalResponseWithNone(tt.picks),
+			)).WithProposalNotifier(notifier).
+				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+				WithAutoCurate(curator).
+				WithProgressEmitter(done)
+			if err := tt.start(ctx, svc, st); err != nil {
+				t.Fatal(err)
+			}
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go svc.Run(runCtx)
+			// done is emitted after the notice and the automatic decision both settle.
+			waitForDoneEvent(t, done)
+
+			got := len(notifier.submitted)
+			if tt.wantNotice && got != 1 || !tt.wantNotice && got != 0 {
+				t.Fatalf("submitted notices = %d, want notice=%v", got, tt.wantNotice)
+			}
+		})
+	}
+}
+
+// A built proposal follows the same rule as a generated one.
+func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		user       identitystore.User
+		wantNotice bool
+	}{
+		{name: "auto-approved within quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}},
+		{name: "no auto-approve grant", user: identitystore.User{ID: "grace"}, wantNotice: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			if err := st.UpsertUser(ctx, tt.user); err != nil {
+				t.Fatal(err)
+			}
+			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
+			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
+				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
+			built := suggest.Proposal{
+				ChannelName: "Marigold",
+				Lineup:      []suggest.ProposalItem{{MediaType: "movie", Name: "Marigold Protocol", Year: 1999, TMDBID: 90000603, InLibrary: true}},
+			}
+			if _, err := svc.SubmitBuilt(ctx, suggest.Intent{Description: "Marigold"}, built, "grace"); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(notifier.submitted); got != btoi(tt.wantNotice) {
+				t.Fatalf("submitted notices = %d, want notice=%v", got, tt.wantNotice)
+			}
+		})
+	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
 	workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
 	// The first empty, no-tool answer receives the bounded grounding retry; a second
 	// explicit empty answer proves the retry exhausted and preserves the typed failure.
-	svc := buildService(t, st, testkit.NewLLM(
+	svc := buildServiceWith(t, st, workflow, testkit.NewLLM(
 		finalResponseWithNone(`{"picks":[]}`),
 		finalResponseWithNone(`{"picks":[]}`),
-	)).
-		WithDurableWorkflow(workflow)
+	))
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 	if err != nil {
 		t.Fatal(err)
@@ -434,11 +673,9 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := newStore(t)
-			workflow := proposalworkflow.New(st, idGen(), time.Now)
 			recorder := &testkit.QualityRecorder{}
 			terminal := newDoneEmitter()
 			svc := buildService(t, st, tt.model).
-				WithDurableWorkflow(workflow).
 				WithProgressEmitter(terminal).
 				WithQualityRecorder(recorder)
 			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
@@ -484,13 +721,12 @@ func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 
 func TestWorker_QualityRecordingFailureDoesNotFailCommittedProposal(t *testing.T) {
 	st := newStore(t)
-	workflow := proposalworkflow.New(st, idGen(), time.Now)
 	recorder := &testkit.QualityRecorder{Err: errors.New("ledger unavailable")}
 	terminal := newDoneEmitter()
 	svc := buildService(t, st, testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "marigold"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
-	)).WithDurableWorkflow(workflow).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
+	)).WithProgressEmitter(terminal).WithQualityRecorder(recorder)
 	jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
 	if err != nil {
 		t.Fatal(err)
@@ -520,9 +756,8 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
 				WithFeedback(failingFeedbackSource{err: cause})
 			terminal := newDoneEmitter()
-			svc := suggest.NewService(st, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
-				idGen(), time.Now, testkit.Logger()).
-				WithDurableWorkflow(workflow).
+			svc := suggest.NewService(st, workflow, sug, suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
+				time.Now, testkit.Logger()).
 				WithProgressEmitter(terminal)
 
 			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "marigold"}, "alice")
@@ -572,9 +807,9 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	suggester := suggest.New(llmMock,
 		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
 		WithFeedback(feedback)
-	svc := suggest.NewService(st, suggester,
+	svc := suggest.NewService(st, workflow, suggester,
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
-		idGen(), time.Now, testkit.Logger()).WithDurableWorkflow(workflow)
+		time.Now, testkit.Logger())
 
 	jobID, err := svc.Recurate(ctx, "channel-a", suggest.Intent{Description: "marigold"})
 	if err != nil {
@@ -688,10 +923,9 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 				WithFeedback(feedback)
 			workflow := proposalworkflow.New(base, idGen(), time.Now)
 			terminal := newDoneEmitter()
-			svc := suggest.NewService(serviceStore, suggester,
+			svc := suggest.NewService(serviceStore, workflow, suggester,
 				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
-				idGen(), time.Now, testkit.Logger()).
-				WithDurableWorkflow(workflow).
+				time.Now, testkit.Logger()).
 				WithProgressEmitter(terminal)
 
 			runCtx, cancel := context.WithCancel(ctx)
@@ -760,10 +994,9 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 				WithFeedback(feedback)
 			workflow := proposalworkflow.New(st, func() string { return "job-fresh" }, time.Now)
 			terminal := newDoneEmitter()
-			svc := suggest.NewService(st, suggester,
+			svc := suggest.NewService(st, workflow, suggester,
 				suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
-				idGen(), time.Now, testkit.Logger()).
-				WithDurableWorkflow(workflow).
+				time.Now, testkit.Logger()).
 				WithProgressEmitter(terminal)
 
 			jobID, err := tt.start(ctx, svc, st)
@@ -817,8 +1050,9 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	cat := catalog.New(lib, tm)
 	sug := suggest.New(slow, cat, tm, 10)
 	terminal := newDoneEmitter()
-	svc := suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: 200 * time.Millisecond, CacheTTL: time.Hour},
-		idGen(), time.Now, testkit.Logger()).WithProgressEmitter(terminal)
+	svc := suggest.NewService(st, proposalworkflow.New(st, idGen(), time.Now), sug,
+		suggest.Config{Workers: 2, Timeout: 200 * time.Millisecond, CacheTTL: time.Hour},
+		time.Now, testkit.Logger()).WithProgressEmitter(terminal)
 
 	hungID, _ := svc.Submit(context.Background(), suggest.Intent{Description: "hangs"}, "alice")
 
@@ -899,15 +1133,15 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	base := newStore(t)
 	st := newLifecycleErrorStore(base)
 	st.failureErr = errors.New("write unavailable")
-	llmMock := testkit.NewLLM()
+	llmMock := testkit.NewLLM(
+		finalResponseWithNone(`{"picks":[]}`),
+		finalResponseWithNone(`{"picks":[]}`),
+	)
 	svc := buildService(t, st, llmMock)
 	terminal := newDoneEmitter()
 	svc.WithProgressEmitter(terminal)
-	now := time.Now()
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "bad-intent", Kind: "suggest", Status: "queued", IntentJSON: "{", IntentHash: "bad",
-		CreatedBy: "alice", Deadline: now, CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
+	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -919,7 +1153,7 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker never attempted to persist the failure")
 	}
-	job, err := base.GetJob(ctx, "bad-intent")
+	job, err := base.GetJob(ctx, jobID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,9 +1164,6 @@ func TestWorker_UndurableFailureEmitsNoTerminalEvent(t *testing.T) {
 	case <-terminal.failed:
 		t.Fatal("worker emitted failed without a durable failed transition")
 	default:
-	}
-	if llmMock.Calls != 0 {
-		t.Fatalf("malformed intent reached the model %d times", llmMock.Calls)
 	}
 }
 
@@ -964,7 +1195,7 @@ func TestWorker_StaleSuccessDoesNotFailReplacement(t *testing.T) {
 	select {
 	case <-st.failureCalled:
 		t.Fatal("lost success CAS was incorrectly routed through failure persistence")
-	default:
+	case <-time.After(300 * time.Millisecond):
 	}
 	select {
 	case <-terminal.done:
@@ -1022,26 +1253,12 @@ func TestIntentHash_DistinguishesRefine(t *testing.T) {
 	}
 }
 
-// A channel job needs the durable workflow that owns job creation; the service never writes one
-// around it.
-func TestChannelJobsRequireTheDurableWorkflow(t *testing.T) {
-	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
-	if _, err := svc.Refine(context.Background(), "ch-1", suggest.Intent{}, "admin"); err == nil {
-		t.Error("refine without the durable workflow should error")
-	}
-	if _, err := svc.Recurate(context.Background(), "ch-1", suggest.Intent{}); err == nil {
-		t.Error("recurate without the durable workflow should error")
-	}
-}
-
 // Refine and recurate each submit a NEW job that names the channel. The request the channel was
 // made from is never touched: it stays done, keeps its intent, and stays in its requester's list.
 func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM()).
-		WithDurableWorkflow(proposalworkflow.New(st, idGen(), time.Now))
+	svc := buildService(t, st, testkit.NewLLM())
 
 	if err := st.CreateJob(ctx, store.Job{
 		ID: "job-orig", Kind: "suggest", Status: "done",
@@ -1367,7 +1584,6 @@ func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
 	approver := suggest.NewApprover(st, channels, time.Now)
 	done := newDoneEmitter()
 	svc := buildService(t, st, llmMock).
-		WithDurableWorkflow(proposalworkflow.New(st, idGen(), time.Now)).
 		WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithProgressEmitter(done)
 	if _, err := svc.Refine(ctx, "channel-1", suggest.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
