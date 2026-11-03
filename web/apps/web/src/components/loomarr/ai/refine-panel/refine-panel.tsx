@@ -38,11 +38,18 @@ const RefinePanel = ({
   const elapsed = useElapsed(refine.isRunning);
 
   useEffect(() => {
+    // A refused request (422 no stored intent, 409 already running) never starts a job, so
+    // `refine.channelId` is never set and nothing below can fire: the request error alone
+    // returns a submitted form to "open", where the error shows and Suggest changes retries.
+    if (refine.error != null) {
+      setState((s) => (s === "running" ? "open" : s));
+      return;
+    }
     if (refine.channelId !== channelId) return;
     if (refine.proposal) setState("landed");
     else if (refine.isRunning) setState("running");
     else if (refine.phase === "failed") setState("open");
-  }, [channelId, refine.channelId, refine.isRunning, refine.phase, refine.proposal]);
+  }, [channelId, refine.channelId, refine.error, refine.isRunning, refine.phase, refine.proposal]);
 
   const close = () => {
     setState("idle");
