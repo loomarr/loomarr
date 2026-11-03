@@ -87,7 +87,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	config.Deployment.Families = slices.Clone(config.Deployment.Families)
 	client := config.Client
 	if client == nil {
-		client = httpx.NewNamed("filler-structure-window-openrouter", httpx.TimeoutLLM)
+		client = httpx.NewNamed(httpx.TargetFillerStructureWindow, httpx.TimeoutLLM)
 	}
 	preparer, err := fillerstructureassessment.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath, media)
 	if err != nil {

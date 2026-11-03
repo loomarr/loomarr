@@ -31,6 +31,9 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -216,7 +219,7 @@ func buildFillerSubsystem(
 	var researchRunner *fillerresearch.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
 		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
-		structuredClient := httpx.NewNamedObserved("filler_structured_research", httpx.TimeoutReference, metricRecorder)
+		structuredClient := httpx.NewNamedObserved(httpx.TargetFillerStructuredResearch, httpx.TimeoutReference, metricRecorder)
 		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
@@ -252,7 +255,7 @@ func buildFillerSubsystem(
 					MonthlyLimit: set.intv("filler.research.monthly_limit"),
 				}
 			}, st, fillerresearch.WebOptions{
-				Client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, metricRecorder),
+				Client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, metricRecorder),
 				Now:    time.Now,
 			})
 			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
@@ -315,19 +318,17 @@ func buildFillerSubsystem(
 	if dir := layout.ClipDir(); dir != "" {
 		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
 	}
-	sourceEnumerator := registeredSourceEnumerator{
-		youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath),
-		archive: cachedArchiveCatalog{archiveCatalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+	providers := fillerSourceProviders(ytDlpPath,
+		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
 		// The compilation gate can only hold back a runtime it knows (#1773).
-		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
-	}
+		func() bool { return !set.boolv("filler.acquisition.compilations") }, log)
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
 			fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") },
 			home:       set.homeGeography,
 		},
-		sourceEnumerator, adapter,
+		providers, adapter,
 		filler.FetchLimits{
 			MaxPerRun:         func() int { return set.intv("filler.fetch.max_per_run") },
 			MaxProviderPerRun: func() int { return 50 },
@@ -377,6 +378,25 @@ func buildFillerSubsystem(
 	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
 		"max_per_run", set.intv("filler.fetch.max_per_run"))
 	return result
+}
+
+// fillerSourceProviders is every provider a filler source can name. YouTube and archive.org are
+// fetched; the folder and the media library are scanned where they are. A source whose provider is
+// missing here is inert, so adding a provider is its package plus one line below.
+func fillerSourceProviders(
+	ytDlpPath string, archiveCatalog archiveprovider.Catalog, archiveRuntimes func() bool, log *slog.Logger,
+) *sourceprovider.Registry {
+	providers, err := sourceprovider.NewRegistry(
+		youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath))),
+		archiveprovider.New(archiveprovider.Config{Catalog: archiveCatalog, Runtimes: archiveRuntimes, Log: log}),
+		sourceprovider.Scanned("folder", "Folder", ""),
+		sourceprovider.Scanned("library", "Media library", ""),
+	)
+	if err != nil {
+		// The IDs are fixed above, so this is a programming error, never an installation's.
+		panic(err)
+	}
+	return providers
 }
 
 func fillerResearchRunLimit(enabled, structuredEnabled bool, webProvider string, pipelineLimit int) int {

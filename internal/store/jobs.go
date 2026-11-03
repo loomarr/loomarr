@@ -15,12 +15,16 @@ import (
 // carry the suggest.Intent / suggest.Proposal so the store stays domain-neutral
 // (like titles.title_json). IntentHash is the cache key.
 type Job struct {
-	ID               string
-	Kind             string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
-	Status           string // queued | running | done | failed
-	IntentJSON       string
-	IntentHash       string
-	CreatedBy        string
+	ID         string
+	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
+	Status     string // queued | running | done | failed
+	IntentJSON string
+	IntentHash string
+	CreatedBy  string
+	// ChannelID names the channel a refine or re-curation job re-curates; its approval changes
+	// that channel instead of creating one. Empty for a job that originates a channel, which the
+	// channel's `intent_ref` binds.
+	ChannelID        string
 	LastError        string
 	FailureCode      string
 	FailureTraceJSON string
@@ -88,11 +92,11 @@ type Proposal struct {
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
-		epoch(j.CreatedAt), epoch(j.UpdatedAt), j.FailureTraceJSON)
+		epoch(j.CreatedAt), epoch(j.UpdatedAt), j.FailureTraceJSON, j.ChannelID)
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -100,7 +104,7 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 }
 
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json FROM jobs`
+	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id FROM jobs`
 
 func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
@@ -155,6 +159,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	row := tx.QueryRowContext(ctx, s.ph(
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
 		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
+		        j.channel_id,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
@@ -181,6 +186,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
 		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
 		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt, &out.Job.FailureTraceJSON,
+		&out.Job.ChannelID,
 		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
@@ -206,10 +212,10 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := scanChannel(tx.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), id))
+	channel, channelErr := channelForJob(ctx, tx, s.ph, id)
 	if channelErr == nil {
 		out.Channel = &channel
-	} else if !errors.Is(channelErr, ErrNotFound) {
+	} else if !errors.Is(channelErr, ErrNotFound) && !errors.Is(channelErr, ErrJobChannelGone) {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s Channel: %w", id, channelErr)
 	}
 	if err := tx.Commit(); err != nil {
@@ -364,7 +370,7 @@ func scanJob(sc scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON, &j.ChannelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}

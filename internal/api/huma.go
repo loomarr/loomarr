@@ -674,10 +674,10 @@ type SuggestService interface {
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
 	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
-	// Refine re-runs an existing suggestion job (the channel's IntentRef) with a
-	// refine-flavored intent, so the new proposal binds back to the same channel
-	// (§7 POST /v1/channels/{id}/refine). Returns the job id to poll.
-	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+	// Refine submits a new job for the channel with a refine-flavored intent, so its
+	// proposal binds back to the same channel (§7 POST /v1/channels/{id}/refine) and is
+	// listed as the refining admin's own request. Returns the job id to poll.
+	Refine(ctx context.Context, channelID string, intent suggest.Intent, requestedBy string) (string, error)
 	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
 	// as the requester's own request, and returns its job id. The model never runs.
 	SubmitBuilt(ctx context.Context, intent suggest.Intent, proposal suggest.Proposal, createdBy string) (jobID string, err error)
@@ -918,6 +918,7 @@ type ProposalDecisionQuality interface {
 type ChannelBinder interface {
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
+	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
 	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
 	// number gets the same answer the server gives itself when it picks one. Best-effort:

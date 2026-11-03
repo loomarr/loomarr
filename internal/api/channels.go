@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -434,9 +433,9 @@ type refineChannelOutput struct {
 }
 
 // refineChannel re-runs the channel's suggestion with a plain-language change (§7). It
-// seeds a refine intent from the channel's CURRENT lineup + the original description + the
-// change, and re-queues the channel's OWN suggestion job (its IntentRef) so the refined
-// proposal binds back to this channel — approving it patches in place, no duplicate.
+// seeds a refine intent from the channel's CURRENT lineup + the intent the channel owns + the
+// change, and submits a new job that names the channel so the refined proposal binds back to
+// it — approving it patches in place, no duplicate.
 // Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
 // grounded.
 func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
@@ -452,29 +451,36 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 	} else if err != nil {
 		return nil, err
 	}
-	// Refine only makes sense for an LLM-created channel: it re-runs that channel's own
-	// suggestion job. A hand-made channel (no IntentRef) has no job to re-run.
+	// Refine only makes sense for an LLM-created channel: it is seeded from the request the
+	// channel owns. A hand-made channel (no IntentRef) has no request to refine.
 	if ch.IntentRef == "" {
 		return nil, errUnprocessable("Can't refine this channel",
 			"This channel was made by hand, not from an AI suggestion, so there's nothing to refine.")
 	}
 
-	// Seed the refine intent from the channel's original intent (for description/constraints)
-	// plus the current lineup as context and the requested change.
-	intent := suggest.Intent{Description: ch.Name}
-	if job, jerr := s.store.GetJob(ctx, ch.IntentRef); jerr == nil {
-		var orig suggest.Intent
-		if json.Unmarshal([]byte(job.IntentJSON), &orig) == nil {
-			intent = orig // keep the original description + era/tone/constraints
-		}
+	// Seed the refine intent from the channel's own approved intent (description, era, tone,
+	// constraints) plus the current lineup as context and the requested change. A channel whose
+	// request is gone is never refined from a guess: the admin describes it again.
+	intent, err := suggest.IntentOfChannel(ch)
+	if errors.Is(err, suggest.ErrChannelIntentUnavailable) {
+		return nil, errUnprocessable("Can't refine this channel yet",
+			"Loomarr no longer has the original request for this channel. Describe the channel again to get a new proposal.")
+	} else if err != nil {
+		return nil, err
 	}
 	intent.RefineText = strings.TrimSpace(in.Body.Change)
 	intent.CurrentLineup = lineupContext(ch.Lineup)
-	// A name fixed when the channel was requested belongs to that request; the channel may have
-	// been renamed since, so a refine names its proposal as any refine does.
-	intent.ChannelName = ""
 
-	jobID, err := s.suggest.Refine(ctx, ch.IntentRef, intent)
+	// One channel job at a time: a second refine, or one during a re-curation, would race the
+	// first to replace the same lineup.
+	if busy, err := s.store.ChannelHasUnfinishedJob(ctx, ch.ID); err != nil {
+		return nil, err
+	} else if busy {
+		return nil, errConflict("A refine of this channel is already in progress",
+			"This channel already has a change being generated or waiting for review. Finish or dismiss it before asking for another.")
+	}
+
+	jobID, err := s.suggest.Refine(ctx, ch.ID, intent, userIDFromHuma(ctx))
 	if err != nil {
 		return nil, err
 	}

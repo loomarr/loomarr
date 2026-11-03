@@ -122,7 +122,7 @@ func retryReason(
 	if err != nil {
 		return metrics.OutboundRetryTransport, true
 	}
-	if resp == nil {
+	if resp == nil || ClassifyStatus(resp.StatusCode) != ClassTransient {
 		return 0, false
 	}
 	switch resp.StatusCode {

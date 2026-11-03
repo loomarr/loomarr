@@ -54,7 +54,7 @@ func separationRepair(programs []Slot, rp ResolvedPolicy) []Slot {
 	// A pool the rules provably cannot satisfy skips the search: it would spend its whole budget
 	// (backtrackBudget steps, each an O(n) candidate scan) only to land on the greedy order below.
 	if !separationUnsatisfiable(programs, rp) {
-		if solved, ok := backtrackArrange(programs, rp); ok {
+		if solved, ok := searchArrange(programs, rp); ok {
 			return solved
 		}
 	}
@@ -110,6 +110,10 @@ func separationUnsatisfiable(programs []Slot, rp ResolvedPolicy) bool {
 	}
 	return false
 }
+
+// searchArrange is the search separationRepair runs; always backtrackArrange in production. It is
+// a variable so a test can observe whether the search ran at all.
+var searchArrange = backtrackArrange
 
 // backtrackBudget bounds the number of placement attempts so a pathological pool
 // can't make the search exponential. Envelope-scale cycles (tens of slots) resolve

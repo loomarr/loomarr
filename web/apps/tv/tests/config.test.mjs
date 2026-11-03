@@ -27,6 +27,8 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   // A server under a local DNS name may be plain HTTP on Apple TV too, as it already is on Android TV.
   assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
+  // Apple TV lays out at Android TV's 960-wide scale and draws it sharp at the screen's (#2141).
+  assert.ok(config.expo.plugins.includes("../../scripts/with-tvos-render-scale.cjs"));
   assert.equal(config.expo.name, "Loomarr TV Prototype");
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);

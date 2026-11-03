@@ -22,7 +22,7 @@ type fillerResearchSettingsAdapter struct {
 
 func newFillerResearchSettingsAdapter(st fillerstore.FillerResearchStore, set resolved, recorder *metrics.Recorder) *fillerResearchSettingsAdapter {
 	return &fillerResearchSettingsAdapter{store: st, set: set,
-		client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, recorder), now: time.Now}
+		client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, recorder), now: time.Now}
 }
 
 func (a *fillerResearchSettingsAdapter) currentConfig() fillerresearch.WebConfig {

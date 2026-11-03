@@ -161,16 +161,23 @@ func (s *sqlStore) commitProposalApproval(
 	// The transaction rolls this status change back when a superseder exists.
 	// Compare against the candidate row's persisted job/time, not caller fields. Epoch
 	// seconds cannot order a tie, so equal timestamps fail closed instead of guessing.
+	//
+	// Supersession is per CHANNEL: a refine and a re-curation are different jobs for one channel,
+	// so a newer approved proposal of any job that names or originated the planned channel
+	// supersedes an older candidate, or the older replace-lineup bind would drop the newer
+	// additions.
 	var supersedingID string
 	err = tx.QueryRowContext(ctx, s.ph(
 		`SELECT newer.id
 		   FROM proposals newer
 		   JOIN proposals candidate ON candidate.id = ?
-		  WHERE newer.job_id = candidate.job_id
-		    AND newer.status = 'approved'
+		  WHERE newer.status = 'approved'
 		    AND newer.id <> candidate.id
 		    AND newer.created_at >= candidate.created_at
-		  LIMIT 1`), p.ID).Scan(&supersedingID)
+		    AND (newer.job_id = candidate.job_id
+		         OR newer.job_id IN (SELECT id FROM jobs WHERE channel_id = ?)
+		         OR newer.job_id = (SELECT NULLIF(intent_ref, '') FROM channels WHERE id = ?))
+		  LIMIT 1`), p.ID, commit.Channel.ID, commit.Channel.ID).Scan(&supersedingID)
 	if err == nil {
 		return 0, fmt.Errorf("%w: proposal %s is preceded by approved proposal %s",
 			ErrProposalSuperseded, p.ID, supersedingID)
@@ -199,6 +206,9 @@ func (s *sqlStore) commitProposalApproval(
 		if inserted == 1 && r.State == provision.Wanted {
 			enqueued++
 		}
+	}
+	if err := validateApprovalBinding(ctx, tx, s.ph, p, commit.Channel); err != nil {
+		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
 	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
@@ -290,10 +300,30 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if ch.IntentRef == "" {
 		return fmt.Errorf("channel %s has no intent ref", ch.ID)
 	}
-	if ch.IntentRef != p.JobID {
-		return fmt.Errorf("channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
-	}
 	return nil
+}
+
+// validateApprovalBinding checks, inside the approval transaction, that the planned channel is
+// the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
+// channel the job originated. A job with no channel yet may only create one it originates.
+func validateApprovalBinding(ctx context.Context, q channelDB, ph placeholder, p Proposal, ch Channel) error {
+	bound, err := channelForJob(ctx, q, ph, p.JobID)
+	switch {
+	case err == nil:
+		if bound.ID != ch.ID {
+			// The plan predates a competing approval that bound the job first. The caller
+			// reloads and replans, exactly as for a lost uniqueness race.
+			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
+		}
+		return nil
+	case errors.Is(err, ErrNotFound):
+		if ch.IntentRef != p.JobID {
+			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		return nil
+	default:
+		return err
+	}
 }
 
 func validateApprovalTitle(rec provision.Record) error {

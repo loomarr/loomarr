@@ -51,6 +51,9 @@ type Store interface {
 type Binder interface {
 	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
 	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
+	// RequestFromIntent answers what the approved suggestion asked for and who asked, which the
+	// channel then owns.
+	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse asks Loomarr's store AND Tunarr (design §2: a number must be free in Tunarr too).
 	NumberInUse(ctx context.Context, number int) (bool, error)
 }
@@ -130,6 +133,10 @@ func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, err
 			return store.Channel{}, fmt.Errorf("%w: %w", ErrPolicyUnresolved, err)
 		}
 		ch.Lineup, ch.Policy = lineup, policy
+		ch.IntentJSON, ch.RequestedBy, err = s.Binder.RequestFromIntent(ctx, ch.IntentRef)
+		if err != nil {
+			return store.Channel{}, fmt.Errorf("%w: %w", ErrPolicyUnresolved, err)
+		}
 	}
 	if ch.IntentRef == "" && in.Series != nil {
 		if !in.Series.Key.IsSeries() {

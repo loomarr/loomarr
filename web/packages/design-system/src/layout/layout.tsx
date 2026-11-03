@@ -5,12 +5,14 @@ import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
 import { Text } from "../primitives";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
+import { useViewportScale } from "../viewport";
 
 type AdaptiveDirection = "column" | "row";
 
-// The window's width in points. A component outside the design system reads it here, not from
+// The window's width in layout units: points, except on Apple TV, where the viewport stage lays
+// the app out at TV width. A component outside the design system reads it here, not from
 // react-native, so Storybook's docgen never has to parse the native package's Flow source.
-const useWindowWidth = () => useWindowDimensions().width;
+const useWindowWidth = () => useWindowDimensions().width / useViewportScale();
 
 const adaptiveBreakpoints: Record<Density, number> = {
   pointer: 900,
@@ -45,7 +47,7 @@ const AdaptiveSplit = ({
   secondaryWidth,
   ...props
 }: AdaptiveSplitProps) => {
-  const { width } = useWindowDimensions();
+  const width = useWindowWidth();
   const direction = resolveAdaptiveDirection(width, density, breakpoint);
   const isWide = direction === "row";
   const resolvedSecondaryWidth = secondaryWidth ?? (density === "tv" ? 520 : 360);

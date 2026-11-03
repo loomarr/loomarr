@@ -12,7 +12,10 @@
 // can all name it without importing each other.
 package sourceprovider
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ID names a provider. It is stable: it is persisted on every source row and published on the
 // wire, so a provider never changes its ID.
@@ -71,6 +74,9 @@ type Item struct {
 	// Gap is the channel coverage gap the pass selected this item for (EraGapKey, #749). Set only
 	// on the way to ingest, where it is recorded on the downloaded artifact.
 	Gap string
+	// Station is the call sign whose search inside the source found this item. A provider sets it
+	// on the hits of the station searches it ran for a ListRequest.
+	Station string
 }
 
 // Outcome is a durable, user-explainable result of considering one listed item. The set is closed
@@ -91,6 +97,61 @@ const (
 
 // Outcomes counts items by outcome, for the current or most recently completed sweep.
 type Outcomes map[Outcome]int
+
+// Lister reads what one registered source currently offers, without downloading media. A provider
+// that implements it is fetched: filler checks its sources on a schedule and asks it for each
+// listing.
+//
+// The provider owns how the listing is read: how much of the source it walks, where it resumes
+// from, which of its items its own metadata rules out, and which of the rest are worth offering
+// first. The caller owns what is shared: the budget, the lease on the source, the rejections every
+// provider is held to, the dedupe against what is already known, and the selection.
+type Lister interface {
+	List(ctx context.Context, source Source, req ListRequest) (Listing, error)
+}
+
+// ListRequest is one check's terms, set by the caller.
+type ListRequest struct {
+	// Take is the most items the caller will select from this listing.
+	Take int
+	// List is Take before the pool's shortfall cut it. A provider that over-lists sizes its read
+	// from List, because a short read of a source whose newest items are all known would report
+	// nothing new while the pool stays short.
+	List int
+	// Now is the check's time, for a provider that rotates its work by the hour.
+	Now time.Time
+	// Stations are the call signs a provider that can search inside a source looks for. Empty
+	// when the pass is not looking for any.
+	Stations []string
+	// MinDuration and MaxDuration are the clip envelope a provider whose listing carries an honest
+	// duration screens against. Zero is unbounded.
+	MinDuration, MaxDuration time.Duration
+	// Reject is the rejection every provider is held to. It is asked first of each item the
+	// provider reads, and reports the outcome that rules the item out. A provider counts the
+	// outcome in Listing.Outcomes and drops the item.
+	Reject func(Item) (Outcome, bool)
+	// Known reports whether the caller already has the item: acquired, queued or declined. A
+	// provider that resumes a listing counts it against Take only when it is not known, so a page
+	// of known items does not use up the check. A provider that does not resume need not ask: the
+	// caller's selection drops a known item.
+	Known func(Item) bool
+}
+
+// Listing is what one check of a source found.
+type Listing struct {
+	// Items are the items to offer the caller's selection, in the provider's order. They have been
+	// through Reject and the provider's own screens.
+	Items []Item
+	// Checkpoint is where this check stopped, to be stored once the check completes. A provider
+	// that does not resume returns the one it was given.
+	Checkpoint Checkpoint
+	// ReplaceOutcomes begins a new sweep: the caller replaces the source's outcome summary with
+	// this check's. Otherwise the outcomes extend the summary an in-progress cursor retained.
+	ReplaceOutcomes bool
+	// Outcomes counts the items the provider read and did not offer, by why. A known item is
+	// counted OutcomeAlreadyKnown.
+	Outcomes Outcomes
+}
 
 // Searcher searches inside one registered source, such as a station's call sign within an
 // archive.org collection.

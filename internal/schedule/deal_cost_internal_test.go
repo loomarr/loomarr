@@ -104,28 +104,29 @@ func TestSeparationUnsatisfiable_NeverRulesOutASolvablePool(t *testing.T) {
 }
 
 // A pool the rules cannot satisfy must reach the greedy order without spending the search budget.
-// The budget is mostly rejected attempts, which allocate nothing, so it is measured as time, but
-// against the greedy pass over the same pool rather than a fixed bound: skipping the search makes
-// the repair cost the greedy pass (ratio ~1), spending it ~4x; the bound is 2.5x, whatever the machine.
+// The search is observed through searchArrange, not timed: a call to it on an unsatisfiable pool
+// is the budget (backtrackBudget attempts) spent for nothing, whatever the machine's speed.
 func TestSeparationRepair_UnsatisfiablePoolSkipsTheSearch(t *testing.T) {
 	skipSerialUnderRace(t)
+	var searches int
+	was := searchArrange
+	searchArrange = func(programs []Slot, rp ResolvedPolicy) ([]Slot, bool) {
+		searches++
+		return was(programs, rp)
+	}
+	t.Cleanup(func() { searchArrange = was })
+
 	pool := multiPool(4, 60, 22*time.Minute)
 	rp := sepPolicy(2, 2*time.Hour)
 	if !slices.Equal(separationRepair(pool, rp), greedyArrange(pool, rp)) {
 		t.Fatal("an unsatisfiable pool must come out in the greedy order")
 	}
-	best := func(f func()) time.Duration {
-		fastest := time.Hour
-		for range 15 {
-			start := time.Now()
-			f()
-			fastest = min(fastest, time.Since(start))
-		}
-		return fastest
+	if searches != 0 {
+		t.Fatalf("separationRepair ran the search %d time(s) on a pool it cannot solve (%d attempts each)", searches, backtrackBudget)
 	}
-	repair := best(func() { separationRepair(pool, rp) })
-	greedy := best(func() { greedyArrange(pool, rp) })
-	if repair > 5*greedy/2 {
-		t.Fatalf("repair took %v against %v for the greedy pass: the search ran its budget (%d attempts) on a pool it cannot solve", repair, greedy, backtrackBudget)
+
+	// The probe sees the search when it does run, so a zero above is not a dead counter.
+	if separationRepair(multiPool(8, 30, 22*time.Minute), sepPolicy(2, 2*time.Hour)); searches != 1 {
+		t.Fatalf("a satisfiable pool ran the search %d time(s), want 1", searches)
 	}
 }

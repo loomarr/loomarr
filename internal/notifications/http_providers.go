@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ type HTTPProviderAdapter struct {
 
 func NewHTTPProviderAdapters(client HTTPDoer, publicURL func() string) ([]Adapter, []DestinationValidator) {
 	if client == nil {
-		client = httpx.NewNamed("notification-provider", httpx.TimeoutNotifications)
+		client = httpx.NewNamed(httpx.TargetNotifications, httpx.TimeoutNotifications)
 	}
 	means := []Means{
 		MeansWebhook, MeansDiscord, MeansNtfy, MeansGotify, MeansApprise, MeansPushover,
@@ -449,12 +450,18 @@ func pushoverRequest(credentials map[string]string, message ProviderMessage) (pr
 	return spec, nil
 }
 
+// telegramBotToken is the documented bot token shape: a numeric bot ID, a colon, then URL-safe characters.
+var telegramBotToken = regexp.MustCompile(`^[0-9]+:[A-Za-z0-9_-]+$`)
+
 func telegramRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
 	token := credentials["botToken"]
-	if token == "" || strings.ContainsAny(token, "/?#") {
+	if !telegramBotToken.MatchString(token) {
 		return providerRequest{}, fmt.Errorf("telegram requires a valid bot token")
 	}
-	target, _ := url.Parse("https://api.telegram.org/bot" + token + "/sendMessage")
+	target, err := url.Parse("https://api.telegram.org/bot" + token + "/sendMessage")
+	if err != nil {
+		return providerRequest{}, fmt.Errorf("telegram bot token does not form a valid URL: %w", err)
+	}
 	payload := map[string]any{
 		"chat_id": credentials["chatId"], "text": truncate(joinBodyLink(message), 4096),
 		"link_preview_options": map[string]bool{"is_disabled": true},
