@@ -97,11 +97,7 @@ type channelPolicies struct{ s *sqlStore }
 // LockChannelPolicies reads every channel's policy, locking the rows on Postgres so a concurrent
 // channel CAS cannot commit between the read and SetChannelPolicy.
 func (c channelPolicies) LockChannelPolicies(ctx context.Context, q storedb.Querier) (*sql.Rows, error) {
-	query := `SELECT id, policy_json FROM channels`
-	if c.s.dialect == DialectPostgres {
-		query += ` FOR UPDATE`
-	}
-	return q.QueryContext(ctx, query)
+	return q.QueryContext(ctx, storedb.LockRows(c.s.dialect, `SELECT id, policy_json FROM channels`))
 }
 
 // SetChannelPolicy replaces one channel's policy and bumps its revision.

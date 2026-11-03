@@ -136,11 +136,7 @@ func (s *Store) RevokeDevicePairingsForUser(ctx context.Context, userID string) 
 // disable could commit after the delete's snapshot and leave a credential behind. FOR SHARE makes it
 // wait on the disabling UPDATE's row lock and re-read the flag.
 func (s *Store) enabledUserSQL() string {
-	q := `SELECT 1 FROM users WHERE id = ? AND disabled = ?`
-	if s.h.Dialect() == storedb.DialectPostgres {
-		q += ` FOR SHARE`
-	}
-	return q
+	return storedb.LockRowsShared(s.h.Dialect(), `SELECT 1 FROM users WHERE id = ? AND disabled = ?`)
 }
 
 // --- device tokens ---

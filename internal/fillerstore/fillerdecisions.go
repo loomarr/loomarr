@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 const fillerDecisionSelect = `SELECT id, clip_hash, evidence_hash, evidence_version,
@@ -279,9 +280,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 		AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
 			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
-	if s.dialect == store.DialectPostgres {
-		lock += ` FOR UPDATE`
-	}
+	lock = storedb.LockRows(s.dialect, lock)
 	if err := tx.QueryRowContext(ctx, s.ph(lock), action.DecisionID).Scan(&outcome, &verdict, &applicationMode, &clipHash); errors.Is(err, sql.ErrNoRows) {
 		var exists int
 		if countErr := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_admission_decisions WHERE id = ?`), action.DecisionID).Scan(&exists); countErr != nil {
@@ -382,9 +381,7 @@ func (s *sqlStore) CommitFillerDiagnosticRecovery(ctx context.Context, request f
 		WHERE d.id = ? AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
 			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
-	if s.dialect == store.DialectPostgres {
-		current += ` FOR UPDATE`
-	}
+	current = storedb.LockRows(s.dialect, current)
 	var outcome, holdCode string
 	var retryable int
 	if err := tx.QueryRowContext(ctx, s.ph(current), request.DecisionID).Scan(&outcome, &holdCode, &retryable); errors.Is(err, sql.ErrNoRows) {

@@ -191,7 +191,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		startup.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupFailed,
 			"no store configured", "/settings/system/database", "")
 	}
-	if databaseMigration.fallbackSQLiteURL != "" && store.DialectOf(st) != store.DialectPostgres {
+	if databaseMigration.fallbackSQLiteURL != "" && !store.IsMigrationTarget(store.DialectOf(st)) {
 		databaseMigration.lastError = "database migration verified, but bootstrap did not select PostgreSQL; still running on SQLite"
 		databaseMigration.fallbackSQLiteURL = ""
 	}

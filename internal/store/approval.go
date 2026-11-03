@@ -114,10 +114,7 @@ func (s *sqlStore) commitProposalApproval(
 	// Proposal revision and approval serialize on the stable Job row. Generating
 	// a replacement temporarily closes the approval gate; a failed replacement
 	// leaves the old submitted proposal intact and terminal, so it can be approved.
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
@@ -333,10 +330,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {

@@ -312,7 +312,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
 		return durableInternalTransportPlayable(ctx, st, backendView, channelID)
 	}
-	if store.DialectOf(st) == store.DialectPostgres {
+	if store.PublishesInvalidations(store.DialectOf(st)) {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
 	// Live playout is the channel packager (#1512 phase 2): one encoder per scheduled item,

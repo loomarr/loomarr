@@ -63,10 +63,8 @@ func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []bro
 	defer func() { _ = tx.Rollback() }()
 	// Two Postgres replicas can boot together. The lock serialises them and the second re-reads the
 	// marker, finding the first's revision applied; SQLite already admits one writer at a time.
-	if s.h.Dialect() == storedb.DialectPostgres {
-		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-broadcast-stations'))`); err != nil {
-			return fmt.Errorf("converge broadcast station seed: lock: %w", err)
-		}
+	if err := storedb.XactLock(ctx, s.h.Dialect(), tx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-broadcast-stations'))`); err != nil {
+		return fmt.Errorf("converge broadcast station seed: lock: %w", err)
 	}
 	if err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT COUNT(*) FROM broadcast_station_seed_revisions WHERE version >= ?`), latest.Version).Scan(&applied); err != nil {
 		return fmt.Errorf("converge broadcast station seed: re-read marker: %w", err)

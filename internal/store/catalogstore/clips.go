@@ -444,9 +444,7 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 	}
 	query := `SELECT hash, path, parent_hash, held, removed_at, is_composite
 		FROM clips WHERE hash IN (?, ?)`
-	if s.h.Dialect() == storedb.DialectPostgres {
-		query += ` FOR UPDATE`
-	}
+	query = storedb.LockRows(s.h.Dialect(), query)
 	rows, err := tx.QueryContext(ctx, s.h.Rebind(query), sourceHash, target.Hash)
 	if err != nil {
 		return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
@@ -1726,10 +1724,8 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 		return fmt.Errorf("apply clip vision: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if s.h.Dialect() == storedb.DialectPostgres {
-		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
-			return fmt.Errorf("apply clip vision: lock: %w", err)
-		}
+	if err := storedb.XactLock(ctx, s.h.Dialect(), tx, taxonomySharedLockSQL); err != nil {
+		return fmt.Errorf("apply clip vision: lock: %w", err)
 	}
 	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET

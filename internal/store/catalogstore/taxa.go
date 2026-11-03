@@ -201,14 +201,18 @@ func (s *Store) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at tim
 	return tx.Commit()
 }
 
+// The taxonomy lock domain: a graph writer takes it exclusively, and a writer that only reads the
+// graph (clip tagging) takes it shared, so tag writes run together but never overlap a graph edit.
+const (
+	taxonomyLockSQL       = `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`
+	taxonomySharedLockSQL = `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`
+)
+
 // lockTaxonomyTx serialises a graph writer — an operator edit or a boot seed — against every other
 // on Postgres, whose READ COMMITTED transactions would otherwise validate different snapshots.
 // SQLite already admits one writer at a time.
 func (s *Store) lockTaxonomyTx(ctx context.Context, tx storedb.Tx) error {
-	if s.h.Dialect() != storedb.DialectPostgres {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
+	if err := storedb.XactLock(ctx, s.h.Dialect(), tx, taxonomyLockSQL); err != nil {
 		return fmt.Errorf("lock taxonomy: %w", err)
 	}
 	return nil
@@ -482,10 +486,8 @@ func (s *Store) SetClipTags(ctx context.Context, clipHash string, leaves []strin
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if s.h.Dialect() == storedb.DialectPostgres {
-		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
-			return fmt.Errorf("set clip tags: lock: %w", err)
-		}
+	if err := storedb.XactLock(ctx, s.h.Dialect(), tx, taxonomySharedLockSQL); err != nil {
+		return fmt.Errorf("set clip tags: lock: %w", err)
 	}
 	if err := s.setClipTagsTx(ctx, tx, clipHash, leaves); err != nil {
 		return err
@@ -583,10 +585,8 @@ func RebuildTaxonomyDerived(ctx context.Context, s *Store, forest *taxonomy.Fore
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if s.h.Dialect() == storedb.DialectPostgres {
-		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('loomarr-taxonomy'))`); err != nil {
-			return fmt.Errorf("rebuild taxonomy: lock: %w", err)
-		}
+	if err := storedb.XactLock(ctx, s.h.Dialect(), tx, taxonomyLockSQL); err != nil {
+		return fmt.Errorf("rebuild taxonomy: lock: %w", err)
 	}
 	if err := s.rebuildClosureTx(ctx, tx, forest); err != nil {
 		return err
