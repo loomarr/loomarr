@@ -7,6 +7,7 @@ import {
   Text,
   useReducedMotionPreference,
   useResolvedViewportInsets,
+  ViewportStage,
 } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, View } from "react-native";
@@ -125,35 +126,38 @@ const ModalOverlay = ({
       transparent
       visible={visible}
     >
-      <Surface
-        alignItems="center"
-        backgroundColor="transparent"
-        borderRadius={0}
-        borderWidth={0}
-        flex={1}
-        justifyContent="center"
-        padding="section"
-      >
-        <View
-          accessibilityElementsHidden
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          onResponderRelease={dismissible ? onDismiss : undefined}
-          onStartShouldSetResponder={() => dismissible}
-          style={{
-            bottom: 0,
-            left: 0,
-            position: "absolute",
-            right: 0,
-            top: 0,
-          }}
+      {/* A native modal is a root of its own, outside the app's viewport stage. */}
+      <ViewportStage>
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderRadius={0}
+          borderWidth={0}
+          flex={1}
+          justifyContent="center"
+          padding="section"
         >
-          <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
-        </View>
-        <ModalLayer visible={visible}>
-          <OverlayPanel {...content} modal />
-        </ModalLayer>
-      </Surface>
+          <View
+            accessibilityElementsHidden
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            onResponderRelease={dismissible ? onDismiss : undefined}
+            onStartShouldSetResponder={() => dismissible}
+            style={{
+              bottom: 0,
+              left: 0,
+              position: "absolute",
+              right: 0,
+              top: 0,
+            }}
+          >
+            <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
+          </View>
+          <ModalLayer visible={visible}>
+            <OverlayPanel {...content} modal />
+          </ModalLayer>
+        </Surface>
+      </ViewportStage>
     </Modal>
   );
 };
