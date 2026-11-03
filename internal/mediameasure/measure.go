@@ -16,6 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/mediaheader"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -157,10 +158,7 @@ func (t Tools) Keyframes(ctx context.Context, path string) ([]inventory.Keyframe
 		_ = f.Close()
 		return nil, fmt.Errorf("keyframe index: %w", err)
 	}
-	frames, ok, err := matroskaKeyframes(f, info.Size())
-	if !ok && err == nil {
-		frames, ok, err = mp4Keyframes(f, info.Size())
-	}
+	frames, ok, err := mediaheader.Keyframes(f, info.Size())
 	_ = f.Close()
 	if err != nil {
 		return nil, err

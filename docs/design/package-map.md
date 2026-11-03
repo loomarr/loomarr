@@ -32,7 +32,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
 | `httpx` | 10 | `metrics` |
-| `inventory` | 5 | — |
+| `inventory` | 6 | — |
 | `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
@@ -90,7 +90,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`installationlocation`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`inventory`** · 5 importers
+- **`inventory`** · 6 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
@@ -161,6 +161,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`invitation`** · 7 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
+- **`mediaheader`** · 1 importer · → `inventory`
+  Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`quality`** · 7 importers · → `provision`
@@ -213,7 +215,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
+- **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 - **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
