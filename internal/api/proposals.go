@@ -392,6 +392,13 @@ type approveOutput struct {
 	}
 }
 
+// errProposalTooOld is the answer for a proposal whose job was purged before the proposal was
+// decided: its channel cannot be created, but nothing is wrong with the server.
+func errProposalTooOld() huma.StatusError {
+	return errUnprocessable("This request is too old to approve",
+		"Loomarr no longer has the details this request needs to create a channel. Deny it and ask again.")
+}
+
 // approveProposal is the approval gate (§8/§11/§19): ADMIN ONLY. It flips the
 // proposal to approved and enqueues each acquisition as a `wanted` title — the
 // only path from a proposal to /v1/titles. Members cannot reach this (403), so
@@ -423,6 +430,9 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	}
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
+	}
+	if errors.Is(err, suggest.ErrProposalJobGone) {
+		return nil, errProposalTooOld()
 	}
 	if errors.Is(err, suggest.ErrRevisionActive) {
 		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
@@ -622,6 +632,9 @@ func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*str
 		return nil, errFeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
 	}
 	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
+	if errors.Is(err, suggest.ErrProposalJobGone) {
+		return nil, errProposalTooOld()
+	}
 	if err != nil {
 		return nil, err
 	}

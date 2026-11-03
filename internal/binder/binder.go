@@ -179,7 +179,8 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		// one here would duplicate that channel. This is a plain error for the approver to
 		// surface, not a "no channel yet" answer that replans.
 		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
-			return store.Channel{}, fmt.Errorf("proposal %s: job %s no longer exists, so no channel can be created from it", p.ID, intentRef)
+			return store.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
+				suggest.ErrProposalJobGone, p.ID, intentRef)
 		} else if jerr != nil {
 			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
 		}

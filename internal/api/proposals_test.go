@@ -1607,3 +1607,34 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 		t.Fatal(err)
 	}
 }
+
+// Housekeeping used to purge a done job while its proposal was still submitted, so a database may
+// hold proposals whose job is gone. Approving one cannot create its channel; that is a refusal the
+// admin can act on (deny it, ask again), never a 500.
+func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
+	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	// No job row: written straight to the store, as a purge left it.
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-old", JobID: "job-purged", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-old/approve", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("approve with a purged job → %d, want 422", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if problem.Title != "This request is too old to approve" || !strings.Contains(problem.Detail, "Deny it") {
+		t.Errorf("problem = %+v, want the too-old title and a detail telling the admin to deny it", problem)
+	}
+	if p, _ := st.GetProposal(context.Background(), "p-old"); p.Status != "submitted" {
+		t.Errorf("proposal status = %q after a refused approval, want it left submitted so it can be denied", p.Status)
+	}
+	if chans, _ := st.ListChannels(context.Background()); len(chans) != 0 {
+		t.Errorf("a refused approval created %d channels", len(chans))
+	}
+}
