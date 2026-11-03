@@ -472,12 +472,12 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 				}
 				if err := st.CreateProposal(ctx, store.Proposal{
 					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
-					ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":91001,"name":"A"},{"mediaType":"movie","tmdbId":91002,"name":"B"}]}`,
+					ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":90091001,"name":"A"},{"mediaType":"movie","tmdbId":90091002,"name":"B"}]}`,
 					CreatedAt:    now, UpdatedAt: now,
 				}); err != nil {
 					return err
 				}
-				for _, id := range []int{91001, 91002} {
+				for _, id := range []int{90091001, 90091002} {
 					key, err := provision.Title{MediaType: provision.Movie, TMDBID: id}.Key()
 					if err != nil {
 						return err
