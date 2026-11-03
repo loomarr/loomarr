@@ -2,6 +2,7 @@ package schedule_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -136,5 +137,53 @@ func TestApplyLineup_Heal(t *testing.T) {
 	}
 	if len(schedule.ApplyLineup(current, nil, schedule.LineupHeal, schedule.ApplyOpts{})) != 2 {
 		t.Fatalf("nil Enrich must be a no-op")
+	}
+}
+
+// A re-pick re-scores the kept entry: the fresh pass's fit replaces the stored one, while the
+// entry keeps the time it was first added. A re-pick that carries no score leaves the stored
+// fit alone rather than resetting it to unscored.
+func TestApplyLineup_AdditiveRescoresRepickedEntries(t *testing.T) {
+	added := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	existing := []schedule.LineupEntry{
+		{Key: "movie:tmdb:90000001", Title: "Rescored", Fit: 0.4, AddedAt: added},
+		{Key: "movie:tmdb:90000002", Title: "Unscored repick", Fit: 0.7, AddedAt: added},
+	}
+	fresh := []schedule.LineupEntry{
+		{Key: "movie:tmdb:90000001", Title: "Rescored", Fit: 0.9, AddedAt: added.Add(time.Hour * 24 * 30)},
+		{Key: "movie:tmdb:90000002", Title: "Unscored repick"},
+	}
+	got := schedule.ApplyLineup(existing, fresh, schedule.LineupAdditive, schedule.ApplyOpts{})
+	if got[0].Fit != 0.9 || !got[0].AddedAt.Equal(added) {
+		t.Errorf("re-scored entry = fit %v added %v, want fit 0.9 and the original AddedAt", got[0].Fit, got[0].AddedAt)
+	}
+	if got[1].Fit != 0.7 {
+		t.Errorf("an unscored re-pick reset the stored fit to %v, want 0.7", got[1].Fit)
+	}
+}
+
+// The PATCH path builds entries from a DTO that carries neither fit nor AddedAt, so
+// PreserveByKey must carry both forward or every manual edit would erase them.
+func TestApplyLineup_ReplacePreserveCarriesFitAndAddedAt(t *testing.T) {
+	added := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	current := []schedule.LineupEntry{{Key: "movie:tmdb:90000001", Title: "A", Fit: 0.8, AddedAt: added}}
+	incoming := []schedule.LineupEntry{{Key: "movie:tmdb:90000001", Title: "A renamed"}}
+	got := schedule.ApplyLineup(current, incoming, schedule.LineupReplace, schedule.ApplyOpts{PreserveByKey: true})
+	if got[0].Fit != 0.8 || !got[0].AddedAt.Equal(added) {
+		t.Errorf("got fit %v added %v, want 0.8 and %v carried forward", got[0].Fit, got[0].AddedAt, added)
+	}
+}
+
+func TestLineupEntryEffectiveFitAndStampFit(t *testing.T) {
+	if got := (schedule.LineupEntry{}).EffectiveFit(); got != schedule.UnscoredFit {
+		t.Errorf("unscored fit = %v, want %v", got, schedule.UnscoredFit)
+	}
+	if got := (schedule.LineupEntry{Fit: 0.3}).EffectiveFit(); got != 0.3 {
+		t.Errorf("scored fit = %v, want 0.3", got)
+	}
+	for in, want := range map[float64]float64{0: 0, -1: 0, 0.0001: schedule.MinFit, 0.6: 0.6, 1: 1, 7: 1} {
+		if got := schedule.StampFit(in); got != want {
+			t.Errorf("StampFit(%v) = %v, want %v", in, got, want)
+		}
 	}
 }

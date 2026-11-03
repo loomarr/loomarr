@@ -106,6 +106,14 @@ func mergePreserve(cur, in LineupEntry) LineupEntry {
 	if out.EpisodeSelection.Mode == "" {
 		out.EpisodeSelection = cur.EpisodeSelection
 	}
+	// Fit and AddedAt are internal: an edit built from the API shape carries neither, and must
+	// not erase what retirement ranks on.
+	if out.Fit == 0 {
+		out.Fit = cur.Fit
+	}
+	if out.AddedAt.IsZero() {
+		out.AddedAt = cur.AddedAt
+	}
 	return out
 }
 
@@ -113,15 +121,19 @@ func mergePreserve(cur, in LineupEntry) LineupEntry {
 // (a) not re-picked by `fresh` AND (b) reported droppable, then append the genuinely-new
 // picks. Order: existing-kept first (preserve the channel's shape), then new.
 func applyAdditive(existing, fresh []LineupEntry, drop func(LineupEntry) bool) []LineupEntry {
-	freshByKey := make(map[provision.Key]struct{}, len(fresh))
+	freshByKey := make(map[provision.Key]LineupEntry, len(fresh))
 	for _, e := range fresh {
-		freshByKey[e.Key] = struct{}{}
+		freshByKey[e.Key] = e
 	}
 	out := make([]LineupEntry, 0, len(existing)+len(fresh))
 	kept := make(map[provision.Key]struct{}, len(existing))
 	for _, e := range existing {
-		if _, repicked := freshByKey[e.Key]; !repicked && drop != nil && drop(e) {
+		pick, repicked := freshByKey[e.Key]
+		if !repicked && drop != nil && drop(e) {
 			continue // not re-picked AND clearly off-intent → drop
+		}
+		if repicked && pick.Fit > 0 {
+			e.Fit = pick.Fit // a re-pick re-scores the entry; AddedAt stays the first add
 		}
 		out = append(out, e)
 		kept[e.Key] = struct{}{}

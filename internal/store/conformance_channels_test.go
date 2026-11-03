@@ -653,6 +653,24 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	if len(none) != 0 {
 		t.Errorf("unknown channel returned %d entries, want 0", len(none))
 	}
+
+	// BY KEY: the latest airing of any unit of a key, scoped to the channel.
+	base := time.Now().Truncate(time.Second)
+	epA, epB := provision.Key("series:tvdb:90071700"), provision.Key("movie:tmdb:90000700")
+	record("ch-bykey", epA, "ep-1", base.Add(-48*time.Hour), base.Add(-48*time.Hour))
+	record("ch-bykey", epA, "ep-2", base.Add(-24*time.Hour), base.Add(-24*time.Hour))
+	record("ch-bykey", epB, "lib-90000700", base.Add(-72*time.Hour), base.Add(-72*time.Hour))
+	record("ch-bykey-other", epB, "lib-90000700", base, base)
+	keyed, kerr := st.LastAiredByKey(ctx, "ch-bykey")
+	if kerr != nil {
+		t.Fatalf("LastAiredByKey: %v", kerr)
+	}
+	if len(keyed) != 2 || !keyed[epA].Equal(base.Add(-24*time.Hour)) || !keyed[epB].Equal(base.Add(-72*time.Hour)) {
+		t.Errorf("LastAiredByKey = %v, want the newest unit per key and no other channel's rows", keyed)
+	}
+	if empty, eerr := st.LastAiredByKey(ctx, "ch-never"); eerr != nil || len(empty) != 0 {
+		t.Errorf("unknown channel = %v, %v, want an empty map", empty, eerr)
+	}
 }
 
 // testLibraryItemPaths pins the path-cache contract (#1456): the server path round-trips, a

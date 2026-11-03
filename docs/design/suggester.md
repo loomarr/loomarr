@@ -212,6 +212,25 @@ Feedback is explicit household editorial state, never inferred from viewing.
   and `surprise` enables a diversity pass inside each unchanged relevance band without boosting the
   marked title. Feedback affects only later proposals, never current playout.
 
+## Re-curation retirement
+
+An auto-curate pass trades titles once the lineup reaches three quarters of `recurate.max_titles`
+(the rotation target, which is also the floor: below it nothing retires, and each retirement is
+paired with an admission, so retirement never shrinks the lineup past it). A title that is airing,
+protected by `keep` feedback, or on a channel with no known schedule is never retired.
+
+- **Fit.** Every lineup entry stores `Fit`, the confidence of the pick that added it. A later pass
+  that re-picks the entry re-scores it; a pick with no confidence leaves the stored fit alone. An
+  entry with no stored fit (a manual add, or one with no score yet) reads as the neutral 0.5.
+  `Fit` and `AddedAt` live in the lineup blob and are not on the wire.
+- **Order.** The turnstile retires the lowest `fit × recency` first. `recency` is `1 / (1 + idle /
+  8 days)`, where `idle` is the time since the entry last aired on the channel, else since the
+  binder added it, else 8 days (the airing history's retention) when neither is known. The title
+  that fits worst and has gone longest without airing goes first; names never break a tie unless
+  the scores are exactly equal.
+- **Admission.** A candidate displaces a title only when its confidence is strictly above that
+  title's fit, however long the title has been idle.
+
 ## Evaluation
 
 Behaviour is evaluated by the Go harness in `internal/eval` against frozen, digest-pinned corpora.
