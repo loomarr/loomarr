@@ -23,7 +23,7 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
+	// DataDir is the boot-configured data directory (config.Config.DataDir): where the generated
 	// installation key lives and what the storage-directory settings default beneath.
 	DataDir string
 	// Startup is the process-owned report for this application generation. nil creates a minimal

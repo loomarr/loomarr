@@ -9,7 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/loomarr/loomarr/internal/config"
 )
 
 const (
@@ -40,7 +41,7 @@ type InstallationKeyOptions struct {
 // atomically replace an installation key. It never generates one.
 func LoadPreviousInstallationKey(lookup func(string) (string, bool)) (InstallationKey, bool, error) {
 	if lookup == nil {
-		lookup = os.LookupEnv
+		lookup = config.LookupEnv
 	}
 	raw, hasRaw := nonemptyEnv(lookup, previousKeyEnv)
 	path, hasPath := nonemptyEnv(lookup, previousKeyFileEnv)
@@ -69,7 +70,7 @@ type LoadedInstallationKey struct {
 func LoadInstallationKey(options InstallationKeyOptions) (LoadedInstallationKey, error) {
 	lookup := options.LookupEnv
 	if lookup == nil {
-		lookup = os.LookupEnv
+		lookup = config.LookupEnv
 	}
 	random := options.Random
 	if random == nil {
@@ -123,11 +124,11 @@ func nonemptyEnv(lookup func(string) (string, bool), name string) (string, bool)
 }
 
 func readInstallationKeyFile(path string) (InstallationKey, error) {
-	raw, err := os.ReadFile(path)
+	encoded, err := config.ReadSecret(path)
 	if err != nil {
 		return InstallationKey{}, fmt.Errorf("secret protection: read installation key file: %w", err)
 	}
-	return decodeInstallationKey(strings.TrimSpace(string(raw)))
+	return decodeInstallationKey(encoded)
 }
 
 func decodeInstallationKey(encoded string) (InstallationKey, error) {
