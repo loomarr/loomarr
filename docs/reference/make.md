@@ -232,7 +232,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make fe-install` | ✅ | install the web workspace (pnpm) |
-| `make fe-tokens` |  | regenerate design-token artifacts from packages/tokens (CI diff must be empty) |
+| `make fe-tokens` |  | regenerate the web theme stylesheet from the design-system tokens (CI diff must be empty) |
 | `make fe-tokens-verify` | ✅ | regenerated token artifacts must match committed <br>*runs:* `fe-tokens` |
 | `make brand-assets` |  | regenerate favicon, launcher, TV, and store artwork from the shared brand contract |
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |

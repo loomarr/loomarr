@@ -10,7 +10,7 @@ target/
 
 # Generated frontend artifacts are reproducible from their checked-in sources.
 web/packages/api/generated/
-web/packages/tokens/generated/
+web/packages/design-system/generated/
 web/apps/web/src/routeTree.gen.ts
 internal/web/dist/
 

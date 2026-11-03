@@ -212,7 +212,7 @@ Air run at pinned versions from the harness.
 - `docs/reference/settings.md` → `make config-docs`
 - `docs/reference/make.md` → `make dev-docs`
 - `docs/design/package-map.md` → `make arch-docs`
-- `web/packages/tokens/generated/` → `make fe-tokens`
+- `web/packages/design-system/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
   gitignored and absent from a fresh worktree
 - applied migrations in `internal/store/migrations/` are immutable; add the next migration

@@ -492,20 +492,16 @@
       "legacyUi": 1
     },
     "src/design/palette/palette.tsx": {
-      "tailwindClasses": 111,
-      "legacyTokens": 1
+      "tailwindClasses": 111
     },
     "src/design/spacing/spacing.tsx": {
-      "tailwindClasses": 118,
-      "legacyTokens": 1
+      "tailwindClasses": 118
     },
     "src/design/tokens/tokens.tsx": {
-      "tailwindClasses": 48,
-      "legacyTokens": 1
+      "tailwindClasses": 46
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 108,
-      "legacyTokens": 1
+      "tailwindClasses": 108
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 267,
@@ -848,9 +844,6 @@
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 164,
       "legacyUi": 2
-    },
-    "src/styles.css": {
-      "legacyTokens": 1
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
       "tailwindClasses": 3

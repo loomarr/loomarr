@@ -15,7 +15,7 @@ committed, a `*-verify` target that fails CI on drift.
 | `docs/reference/make.md` | the Makefile + CI workflows | `make dev-docs` | `make dev-docs-verify` |
 | `docs/design.md` §2 map | package doc comments + imports | `make arch-docs` | `make arch-docs-verify` |
 | `docs/diagrams/generated/*.svg` | D2 sources | `make diagrams` | `make diagrams-verify` |
-| `web/packages/tokens/generated/` | `packages/tokens` | `make fe-tokens` | `make fe-tokens-verify` |
+| `web/packages/design-system/generated/` | `packages/design-system/src/tokens` | `make fe-tokens` | `make fe-tokens-verify` |
 | Visual baselines | Playwright, pinned image | [Visual baselines workflow](testing.md#updating-visual-baselines) | `make fe-visual` |
 | e2e snapshots | Playwright, pinned image | `make e2e-update` | `make e2e` |
 

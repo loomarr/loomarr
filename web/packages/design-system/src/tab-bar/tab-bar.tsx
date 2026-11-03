@@ -6,6 +6,7 @@ import { Icon } from "../icon";
 import { type IconName, icons } from "../icons";
 import { lineHeightPx } from "../primitives";
 import { TamaguiText } from "../text-base";
+import { brandChroma } from "../tokens";
 import { useViewportInsets } from "../viewport";
 
 type TabBarIdiom = "ios" | "material";
@@ -134,9 +135,9 @@ const TabBar = <Value extends string>({
           ) : item.badge === true ? (
             <View
               aria-hidden
-              // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
+              // The brand's suggest magenta (`--color-suggest`): the same one the web rail's
               // numeral badge already uses for "needs you" counts.
-              backgroundColor="#D6409F"
+              backgroundColor={brandChroma[4]}
               borderRadius="round"
               height={7}
               position="absolute"

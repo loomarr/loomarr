@@ -1,8 +1,7 @@
 // The Web legacy-usage ledger (#970 step 5). It counts, per production file under apps/web/src,
 // the legacy presentation stack that the Web migration retires: Tailwind utility classes,
-// class-name helpers (tailwind-merge, clsx), CVA, Base UI, the copied shadcn components in
-// src/components/ui, and the legacy token package @loomarr/tokens. Tests, stories and test helpers
-// are not production code and are not counted.
+// class-name helpers (tailwind-merge, clsx), CVA, Base UI, and the copied shadcn components in
+// src/components/ui. Tests, stories and test helpers are not production code and are not counted.
 //
 // The committed ledger (apps/web/legacy-usage.json) is a ratchet:
 //   - the check fails when any count rises or a file with legacy usage is not in the ledger;
@@ -21,7 +20,7 @@ const legacyUiRoot = join(sourceRoot, "components", "ui");
 const ledgerPath = join(appRoot, "legacy-usage.json");
 
 // Every measure, in report order. A file's entry lists only its non-zero measures.
-const MEASURES = ["tailwindClasses", "tailwindMerge", "clsx", "cva", "baseUi", "legacyUi", "legacyTokens"];
+const MEASURES = ["tailwindClasses", "tailwindMerge", "clsx", "cva", "baseUi", "legacyUi"];
 
 const isToolingFile = (path) =>
   path.includes(`${sep}test${sep}`) ||
@@ -55,7 +54,6 @@ const importCategory = (specifier, file) => {
   if (under("clsx")) return "clsx";
   if (under("class-variance-authority")) return "cva";
   if (under("@base-ui/react")) return "baseUi";
-  if (under("@loomarr/tokens")) return "legacyTokens";
   let target = null;
   if (under("@/components/ui")) target = join(sourceRoot, specifier.slice(2));
   else if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
