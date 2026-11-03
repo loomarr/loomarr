@@ -992,6 +992,104 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// A Ready clip has been screened, enriched and researched. When its bytes are re-encoded, that
+// history is about the same content and moves with it, including the web-research ledger, whose
+// foreign key to clips(hash) has no ON UPDATE and used to make the re-key fail outright (#2121).
+func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
+
+	old := sampleClip("ready-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old.Held, old.UpdatedAt = true, at
+	if err := s.UpsertClip(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	attempt := fillerresearch.WebAttempt{ClipHash: old.Hash, InputRevision: 2,
+		AdapterVersion: "web-v1:brave", ReservedAt: at}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-11", fillerresearch.WebProviderBrave, 5, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+		ClipHash: old.Hash, Axis: fillerenrichment.AxisKind, Status: fillerenrichment.StatusComplete,
+		Value: fillerenrichment.Value{Text: "commercial"},
+		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
+			Producer: fillerenrichment.DeterministicProducer, ProducerVersion: fillerenrichment.DeterministicProducerVersion,
+			ObservedAt: at},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	pipeline := filler.ClipPipeline{
+		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageScore,
+		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+		EnrolledAt: at, UpdatedAt: at,
+	}
+	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
+		pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	}
+	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
+		t.Fatal(err)
+	}
+	pipeline.Status, pipeline.Disposition = filler.StatusDone, filler.DispositionReady
+	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageScore, Status: filler.StatusDone, At: at})
+	if err := s.CommitFillerReady(ctx, filler.ReadyCommit{Pipeline: pipeline, Event: filler.ReadyEvent{
+		ID: "ready:" + old.Hash, ClipHash: old.Hash, AcquisitionID: pipeline.AcquisitionID,
+		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: pipeline.AcquisitionID},
+		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("b", 64)
+	if err := s.PutSpokenSafetyRun(ctx, fillersafety.LedgerRun{
+		ID: "ready-safety-run", ClipHash: old.Hash, AuthoritySHA256: digest, SourceSHA256: digest,
+		SourceBytes: 4096, DurationMS: 30_000, CertificationSHA256: digest, PolicySHA256: digest, ProposerSHA256: digest,
+		Implementation: "spoken-safety-v1", CreatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutFillerDecision(ctx, fillerdecision.Record{
+		ID: "ready-decision", ClipHash: old.Hash, EvidenceHash: "ready-evidence",
+		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
+		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
+		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
+		Result: filleradmission.Result{Decision: &filleradmission.Decision{
+			Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
+			EvidenceRefs: []string{"evidence-a"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reencoded := old
+	reencoded.Hash, reencoded.Path = "ready-new-bytes", "re/ad/ready-new-bytes.mp4"
+	reencoded.UpdatedAt = at.Add(time.Hour)
+	if err := s.ReplaceClipIdentity(ctx, old.Hash, reencoded); err != nil {
+		t.Fatalf("re-key a researched Ready clip: %v", err)
+	}
+
+	moved := attempt
+	moved.ClipHash = reencoded.Hash
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-11", fillerresearch.WebProviderBrave, 5, moved); !errors.Is(err, fillerresearch.ErrWebSearchAttempted) {
+		t.Errorf("web-research attempt did not follow the re-key: reserve again = %v, want already attempted", err)
+	}
+	if axes, err := s.ListFillerEnrichment(ctx, reencoded.Hash); err != nil || len(axes) != 1 {
+		t.Errorf("enrichment did not follow the re-key: %+v, %v", axes, err)
+	}
+	if axes, err := s.ListFillerEnrichment(ctx, old.Hash); err != nil || len(axes) != 0 {
+		t.Errorf("enrichment stayed on the retired identity: %+v, %v", axes, err)
+	}
+	if event, found, err := s.GetFillerReadyEvent(ctx, reencoded.Hash); err != nil || !found || event.ID != "ready:"+old.Hash {
+		t.Errorf("ready event did not follow the re-key: %+v, found=%v err=%v", event, found, err)
+	}
+	if run, err := s.GetSpokenSafetyRun(ctx, "ready-safety-run"); err != nil || run.ClipHash != reencoded.Hash {
+		t.Errorf("spoken-safety run did not follow the re-key: %+v, %v", run, err)
+	}
+	if decision, err := s.GetFillerDecision(ctx, "ready-decision"); err != nil || decision.ClipHash != reencoded.Hash {
+		t.Errorf("admission decision did not follow the re-key: %+v, %v", decision, err)
+	}
+}
+
 // A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
 // The store adopts that exact held row and moves the source-owned graph in one transaction; the
 // same operation then recognizes the target-only post-rekey state after a process restart.
