@@ -26,17 +26,17 @@ describe("LocalSourceForm", () => {
   it("starts on the registry's first typed-address provider and switches the field copy with the kind", async () => {
     renderForm();
 
-    expect(await screen.findByRole("textbox", { name: "Folder path" })).toHaveAttribute(
+    expect(await screen.findByRole("textbox", { name: "Library name" })).toHaveAttribute(
       "placeholder",
-      expect.stringContaining("a full path"),
+      expect.stringContaining("Commercials"),
     );
 
     await userEvent.click(screen.getByRole("combobox", { name: "Kind of source to add" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Media library" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Folder" }));
 
-    expect(screen.getByRole("textbox", { name: "Library name" })).toHaveAttribute(
+    expect(screen.getByRole("textbox", { name: "Folder path" })).toHaveAttribute(
       "placeholder",
-      expect.stringContaining("Commercials"),
+      expect.stringContaining("a full path"),
     );
   });
 
@@ -90,10 +90,10 @@ describe("LocalSourceForm", () => {
     const add = await screen.findByRole("button", { name: "+ Add source" });
     expect(add).toBeDisabled();
 
-    await userEvent.type(screen.getByRole("textbox", { name: "Folder path" }), "  /mnt/extra-ads  ");
+    await userEvent.type(screen.getByRole("textbox", { name: "Library name" }), "  Extra Ads  ");
     await userEvent.click(add);
 
-    await waitFor(() => expect(adds).toEqual([{ kind: "folder", uri: "/mnt/extra-ads" }]));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Folder path" })).toHaveValue(""));
+    await waitFor(() => expect(adds).toEqual([{ kind: "library", uri: "Extra Ads" }]));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Library name" })).toHaveValue(""));
   });
 });
