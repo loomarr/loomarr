@@ -55,6 +55,14 @@ export type {
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
+  LibraryAuthority,
+  LibraryFolder,
+  LibraryHealth,
+  LibraryPathMapping,
+  LibrarySettingsProps,
+} from "./src/library";
+export { LibrarySettings } from "./src/library";
+export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,
   OnScreenLogoPreviewRequest,

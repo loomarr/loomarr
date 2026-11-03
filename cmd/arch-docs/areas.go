@@ -32,7 +32,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
+			"library", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
 			"provision", "provisionbackstop", "requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",

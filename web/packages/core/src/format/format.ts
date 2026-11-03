@@ -170,6 +170,18 @@ const formatRelative = (t: Instant, now: number = Date.now()): string => {
   return `${Math.round(hrs / 24)}d ago`;
 };
 
+// formatRelative in whole words, for household-facing copy: "just now" · "12 minutes ago" ·
+// "1 hour ago" · "5 days ago".
+const formatAgo = (t: Instant, now: number = Date.now()): string => {
+  const secs = Math.max(0, Math.round((now - msOf(t)) / 1000));
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${pluralize(mins, "minute")} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${pluralize(hrs, "hour")} ago`;
+  return `${pluralize(Math.round(hrs / 24), "day")} ago`;
+};
+
 // The forward-looking twin: "in 20m" · "in 3h" · "in 5d" · "expired". Used for session
 // expiry, where "expires in 6d" is the number an admin judges a stale session by.
 // Deliberately coarse, matching formatRelative — these read as an at-a-glance sense of
@@ -236,6 +248,7 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
 export type { Instant };
 export {
   channelNumber,
+  formatAgo,
   formatBytes,
   formatClipDuration,
   formatCompactCount,

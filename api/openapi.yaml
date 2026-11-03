@@ -230,6 +230,24 @@ components:
         - kind
         - uri
       type: object
+    AddLibraryRootInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/AddLibraryRootInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The folder's absolute path on this machine
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+      type: object
     AdjacentContext:
       additionalProperties: false
       properties:
@@ -6456,6 +6474,164 @@ components:
         - id
         - name
       type: object
+    LibraryFolderNameDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          description: The app that reported the folder
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        path:
+          description: The folder as that app names it
+          type: string
+      required:
+        - authority
+        - path
+      type: object
+    LibraryPathMappingDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        authorityPath:
+          description: The folder as the app names it
+          type: string
+        byHand:
+          description: Set by the maintainer; discovery leaves it alone
+          type: boolean
+        localPath:
+          description: The folder on this machine; empty when none was found
+          type: string
+      required:
+        - authority
+        - authorityPath
+        - localPath
+        - byHand
+      type: object
+    LibraryRootDTO:
+      additionalProperties: false
+      properties:
+        addedByHand:
+          type: boolean
+        checkedAt:
+          description: The last check; absent when never checked
+          format: date-time
+          type: string
+        foundIn:
+          description: Every app that names this folder, and what it calls it
+          items:
+            $ref: "#/components/schemas/LibraryFolderNameDTO"
+          type: array
+        inUse:
+          description: The maintainer confirmed it for scanning
+          type: boolean
+        path:
+          description: The folder on this machine
+          type: string
+        readable:
+          description: Loomarr opened it at the last check
+          type: boolean
+      required:
+        - path
+        - inUse
+        - readable
+        - addedByHand
+        - foundIn
+      type: object
+    LibraryRootsBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryRootsBody.json
+          format: uri
+          readOnly: true
+          type: string
+        pathMap:
+          items:
+            $ref: "#/components/schemas/LibraryPathMappingDTO"
+          type: array
+        roots:
+          items:
+            $ref: "#/components/schemas/LibraryRootDTO"
+          type: array
+        sources:
+          description: How each app answered; only on a discovery pass
+          items:
+            $ref: "#/components/schemas/LibrarySourceDTO"
+          type: array
+      required:
+        - roots
+        - pathMap
+      type: object
+    LibrarySourceDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        error:
+          type: string
+        state:
+          description: "skipped: not set up"
+          enum:
+            - ok
+            - skipped
+            - failed
+          type: string
+      required:
+        - authority
+        - state
+      type: object
+    LibraryStatusOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryStatusOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        health:
+          description: "needs_folders: none in use; folder_offline: one in use didn't open"
+          enum:
+            - needs_folders
+            - folder_offline
+            - ok
+          type: string
+        inUse:
+          description: Folders in use
+          format: int64
+          type: integer
+        offline:
+          description: Folders in use that didn't open at their last check
+          format: int64
+          type: integer
+        toConfirm:
+          description: Readable folders found but not yet in use
+          format: int64
+          type: integer
+      required:
+        - health
+        - inUse
+        - offline
+        - toConfirm
+      type: object
     LineupContext:
       additionalProperties: false
       properties:
@@ -10051,6 +10227,56 @@ components:
       required:
         - id
         - enabled
+      type: object
+    SetLibraryPathMappingInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetLibraryPathMappingInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        authorityPath:
+          maxLength: 4096
+          minLength: 1
+          type: string
+        localPath:
+          description: Empty hands the row back to discovery
+          maxLength: 4096
+          type: string
+      required:
+        - authority
+        - authorityPath
+        - localPath
+      type: object
+    SetLibraryRootInUseInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetLibraryRootInUseInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        inUse:
+          type: boolean
+        path:
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+        - inUse
       type: object
     SettingEntry:
       additionalProperties: false
@@ -16820,6 +17046,143 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List media-server collections
+      tags:
+        - library
+  /v1/library/path-map:
+    put:
+      description: Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. An empty localPath hands the row back to discovery.
+      operationId: setLibraryPathMapping
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLibraryPathMappingInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Map another app's folder to a folder here
+      tags:
+        - library
+  /v1/library/roots:
+    get:
+      description: The folders Loomarr reads media from, where each was found, its last readability check, and the path map.
+      operationId: listLibraryRoots
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List media folders
+      tags:
+        - library
+    post:
+      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.
+      operationId: addLibraryRoot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddLibraryRootInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a media folder by hand
+      tags:
+        - library
+  /v1/library/roots/discover:
+    post:
+      description: Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder can be opened. A source that fails keeps the folders it reported last time.
+      operationId: discoverLibraryRoots
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Look for media folders again
+      tags:
+        - library
+  /v1/library/roots/in-use:
+    put:
+      description: Confirms a folder for scanning, or releases it. Releasing a folder added by hand removes it.
+      operationId: setLibraryRootInUse
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLibraryRootInUseInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Use or stop using a media folder
+      tags:
+        - library
+  /v1/library/status:
+    get:
+      description: "The status strip: whether any folder is in use, and whether every folder in use opened at its last check."
+      operationId: libraryStatus
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Library status
       tags:
         - library
   /v1/locations:

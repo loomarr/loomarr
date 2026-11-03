@@ -1,0 +1,257 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/library/scan"
+	"github.com/loomarr/loomarr/internal/store"
+)
+
+// Settings → Library (#2151 decisions 6 and 29): the folders Loomarr reads media from, the path
+// map that names them for each authority, and the status strip. Admin-only: folder paths describe
+// the household's storage, which members never need.
+
+// LibraryRootService discovers, checks and records scan roots (scan.Roots).
+type LibraryRootService interface {
+	List(ctx context.Context) (store.LibraryRoots, error)
+	Discover(ctx context.Context) (store.LibraryRoots, []scan.SourceResult, error)
+	Add(ctx context.Context, path string) error
+	SetInUse(ctx context.Context, path string, inUse bool) error
+	SetMapping(ctx context.Context, authority, authorityPath, local string) error
+}
+
+func (s *Server) registerLibrary(api huma.API) {
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "listLibraryRoots", Method: http.MethodGet, Path: "/v1/library/roots",
+		Summary:     "List media folders",
+		Description: "The folders Loomarr reads media from, where each was found, its last readability check, and the path map.",
+		Tags:        []string{"library"},
+	}, RoleAdmin), s.listLibraryRoots)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "discoverLibraryRoots", Method: http.MethodPost, Path: "/v1/library/roots/discover",
+		Summary: "Look for media folders again",
+		Description: "Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder " +
+			"can be opened. A source that fails keeps the folders it reported last time.",
+		Tags: []string{"library"},
+	}, RoleAdmin), s.discoverLibraryRoots)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "addLibraryRoot", Method: http.MethodPost, Path: "/v1/library/roots",
+		Summary:     "Add a media folder by hand",
+		Description: "Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.",
+		Tags:        []string{"library"},
+	}, RoleAdmin), s.addLibraryRoot)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "setLibraryRootInUse", Method: http.MethodPut, Path: "/v1/library/roots/in-use",
+		Summary:     "Use or stop using a media folder",
+		Description: "Confirms a folder for scanning, or releases it. Releasing a folder added by hand removes it.",
+		Tags:        []string{"library"},
+	}, RoleAdmin), s.setLibraryRootInUse)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "setLibraryPathMapping", Method: http.MethodPut, Path: "/v1/library/path-map",
+		Summary: "Map another app's folder to a folder here",
+		Description: "Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. " +
+			"An empty localPath hands the row back to discovery.",
+		Tags: []string{"library"},
+	}, RoleAdmin), s.setLibraryPathMapping)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "libraryStatus", Method: http.MethodGet, Path: "/v1/library/status",
+		Summary:     "Library status",
+		Description: "The status strip: whether any folder is in use, and whether every folder in use opened at its last check.",
+		Tags:        []string{"library"},
+	}, RoleAdmin), s.libraryStatus)
+}
+
+type libraryFolderNameDTO struct {
+	Authority string `json:"authority" enum:"emby,jellyfin,sonarr,radarr" doc:"The app that reported the folder"`
+	Path      string `json:"path" doc:"The folder as that app names it"`
+}
+
+type libraryRootDTO struct {
+	Path        string                 `json:"path" doc:"The folder on this machine"`
+	InUse       bool                   `json:"inUse" doc:"The maintainer confirmed it for scanning"`
+	Readable    bool                   `json:"readable" doc:"Loomarr opened it at the last check"`
+	CheckedAt   *time.Time             `json:"checkedAt,omitempty" doc:"The last check; absent when never checked"`
+	AddedByHand bool                   `json:"addedByHand"`
+	FoundIn     []libraryFolderNameDTO `json:"foundIn" doc:"Every app that names this folder, and what it calls it"`
+}
+
+type libraryPathMappingDTO struct {
+	Authority     string `json:"authority" enum:"emby,jellyfin,sonarr,radarr"`
+	AuthorityPath string `json:"authorityPath" doc:"The folder as the app names it"`
+	LocalPath     string `json:"localPath" doc:"The folder on this machine; empty when none was found"`
+	ByHand        bool   `json:"byHand" doc:"Set by the maintainer; discovery leaves it alone"`
+}
+
+type librarySourceDTO struct {
+	Authority string `json:"authority" enum:"emby,jellyfin,sonarr,radarr"`
+	State     string `json:"state" enum:"ok,skipped,failed" doc:"skipped: not set up"`
+	Error     string `json:"error,omitempty"`
+}
+
+type libraryRootsBody struct {
+	Roots   []libraryRootDTO        `json:"roots"`
+	PathMap []libraryPathMappingDTO `json:"pathMap"`
+	// Sources is set only by a discovery pass.
+	Sources []librarySourceDTO `json:"sources,omitempty" doc:"How each app answered; only on a discovery pass"`
+}
+
+type libraryRootsOutput struct {
+	Body libraryRootsBody
+}
+
+func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libraryRootsOutput {
+	out := &libraryRootsOutput{Body: libraryRootsBody{
+		Roots: make([]libraryRootDTO, 0, len(all.Roots)), PathMap: make([]libraryPathMappingDTO, 0, len(all.Paths)),
+	}}
+	names := map[string][]libraryFolderNameDTO{}
+	for _, p := range all.Paths {
+		out.Body.PathMap = append(out.Body.PathMap, libraryPathMappingDTO{
+			Authority: p.Authority, AuthorityPath: p.AuthorityPath, LocalPath: p.RootPath, ByHand: p.ByHand,
+		})
+		if p.RootPath != "" {
+			names[p.RootPath] = append(names[p.RootPath], libraryFolderNameDTO{Authority: p.Authority, Path: p.AuthorityPath})
+		}
+	}
+	for _, r := range all.Roots {
+		dto := libraryRootDTO{Path: r.Path, InUse: r.InUse, Readable: r.Readable, AddedByHand: r.ByHand, FoundIn: names[r.Path]}
+		if dto.FoundIn == nil {
+			dto.FoundIn = []libraryFolderNameDTO{}
+		}
+		if !r.CheckedAt.IsZero() {
+			checked := r.CheckedAt
+			dto.CheckedAt = &checked
+		}
+		out.Body.Roots = append(out.Body.Roots, dto)
+	}
+	for _, res := range results {
+		out.Body.Sources = append(out.Body.Sources, librarySourceDTO{Authority: res.Authority, State: res.State, Error: res.Error})
+	}
+	return out
+}
+
+func (s *Server) libraryRootsService() (LibraryRootService, error) {
+	if s.libraryRoots == nil {
+		return nil, errFeatureNotConfigured("Media folders unavailable", "The library scanner is not set up on this server.")
+	}
+	return s.libraryRoots, nil
+}
+
+func (s *Server) listLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	all, err := svc.List(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read media folders", "Try again in a moment.", err)
+	}
+	return libraryRootsView(all, nil), nil
+}
+
+func (s *Server) discoverLibraryRoots(ctx context.Context, _ *struct{}) (*libraryRootsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	all, results, err := svc.Discover(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't look for media folders", "Try again in a moment.", err)
+	}
+	return libraryRootsView(all, results), nil
+}
+
+type addLibraryRootInput struct {
+	Body struct {
+		Path string `json:"path" minLength:"1" maxLength:"4096" doc:"The folder's absolute path on this machine"`
+	}
+}
+
+func (s *Server) addLibraryRoot(ctx context.Context, in *addLibraryRootInput) (*libraryRootsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	switch err := svc.Add(ctx, in.Body.Path); {
+	case errors.Is(err, scan.ErrNotAbsolute):
+		return nil, errUnprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
+	case errors.Is(err, scan.ErrUnreadable):
+		return nil, errUnprocessable("Loomarr can't open that folder", "Check the folder exists here and Loomarr is allowed to read it.")
+	case err != nil:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't add the folder", "Try again in a moment.", err)
+	}
+	return s.listLibraryRoots(ctx, nil)
+}
+
+type setLibraryRootInUseInput struct {
+	Body struct {
+		Path  string `json:"path" minLength:"1" maxLength:"4096"`
+		InUse bool   `json:"inUse"`
+	}
+}
+
+func (s *Server) setLibraryRootInUse(ctx context.Context, in *setLibraryRootInUseInput) (*libraryRootsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	switch err := svc.SetInUse(ctx, in.Body.Path, in.Body.InUse); {
+	case errors.Is(err, store.ErrNotFound):
+		return nil, errNotFound("No such folder", "Loomarr doesn't know that folder. Look for folders again.")
+	case err != nil:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't change the folder", "Try again in a moment.", err)
+	}
+	return s.listLibraryRoots(ctx, nil)
+}
+
+type setLibraryPathMappingInput struct {
+	Body struct {
+		Authority     string `json:"authority" enum:"emby,jellyfin,sonarr,radarr"`
+		AuthorityPath string `json:"authorityPath" minLength:"1" maxLength:"4096"`
+		LocalPath     string `json:"localPath" maxLength:"4096" doc:"Empty hands the row back to discovery"`
+	}
+}
+
+func (s *Server) setLibraryPathMapping(ctx context.Context, in *setLibraryPathMappingInput) (*libraryRootsOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	switch err := svc.SetMapping(ctx, in.Body.Authority, in.Body.AuthorityPath, in.Body.LocalPath); {
+	case errors.Is(err, scan.ErrNotAbsolute):
+		return nil, errUnprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
+	case errors.Is(err, store.ErrNotFound):
+		return nil, errNotFound("No such folder", "That app hasn't reported this folder. Look for folders again.")
+	case err != nil:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't change the folder map", "Try again in a moment.", err)
+	}
+	return s.listLibraryRoots(ctx, nil)
+}
+
+type libraryStatusOutput struct {
+	Body struct {
+		Health    string `json:"health" enum:"needs_folders,folder_offline,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open"`
+		InUse     int    `json:"inUse" doc:"Folders in use"`
+		Offline   int    `json:"offline" doc:"Folders in use that didn't open at their last check"`
+		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
+	}
+}
+
+func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	all, err := svc.List(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
+	st := scan.StatusOf(all)
+	out := &libraryStatusOutput{}
+	out.Body.Health, out.Body.InUse, out.Body.Offline, out.Body.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
+	return out, nil
+}

@@ -59,7 +59,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store`** · 16 importers · → `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`store`** · 17 importers · → `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`store/catalogstore`** · 4 importers · → `creative`, `defects`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `schedule`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
