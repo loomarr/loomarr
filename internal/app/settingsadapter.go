@@ -194,7 +194,7 @@ func isHealthSetting(key string) bool {
 			return true
 		}
 	}
-	return key == "job.system_health.schedule"
+	return key == settings.JobSystemHealthSchedule.Key()
 }
 
 func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
@@ -285,7 +285,7 @@ func connectionTests(
 			return true, ""
 		},
 		"tunarr": func(ctx context.Context) (bool, string) {
-			if set.str("tunarr.url") == "" {
+			if settings.TunarrURL.Get(set) == "" {
 				return false, "set the Tunarr URL"
 			}
 			prog := tunarr.NewDynamic(set.tunarrConfig())
@@ -310,8 +310,8 @@ func connectionTests(
 		// target) — guide the user to Seerr when only that pair is set.
 		"requester": func(ctx context.Context) (bool, string) {
 			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
-			if set.str("requester.provider") == "arr" {
-				if set.str("sonarr.url") == "" && set.str("radarr.url") == "" {
+			if settings.RequesterProvider.Get(set) == "arr" {
+				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
 					return false, "set a Sonarr and/or Radarr URL"
 				}
 				if err := requester.NewArr(set.arrConns()).Reachable(ctx); err != nil {
@@ -319,7 +319,7 @@ func connectionTests(
 				}
 				return true, ""
 			}
-			if set.str("seerr.url") == "" {
+			if settings.SeerrURL.Get(set) == "" {
 				return false, "set the Seerr URL"
 			}
 			if err := requester.NewSeerrDynamic(set.seerrConn()).Reachable(ctx); err != nil {
@@ -365,7 +365,7 @@ func connectionTests(
 		// tmdb (§7.2): validate the key with a cheap lookup of a stable known id
 		// (The Matrix, tmdb 603). A rejected key surfaces as a non-2xx error.
 		"tmdb": func(ctx context.Context) (bool, string) {
-			if set.str("tmdb.api_key") == "" || tmdbClient == nil {
+			if settings.TMDBAPIKey.Get(set) == "" || tmdbClient == nil {
 				return false, "set your TMDB API key"
 			}
 			if _, err := tmdbClient.Exists(ctx, provision.Movie, 603); err != nil {
@@ -377,11 +377,11 @@ func connectionTests(
 		// verifies the catalog root can be listed and written, then checks the effective drop folder
 		// (including the derived <root>/_watch default). A non-empty configured path is not health.
 		"filler": func(_ context.Context) (bool, string) {
-			root := set.str("filler.dir")
+			root := settings.FillerDir.Get(set)
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			layout, err := filler.NewLayout(root, set.str("filler.watch_dir"))
+			layout, err := filler.NewLayout(root, settings.FillerWatchDir.Get(set))
 			if err != nil {
 				return false, "filler storage layout is unsafe: " + err.Error()
 			}

@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/reference"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -112,20 +113,20 @@ func buildSuggestions(
 	if overrides.LLM != nil {
 		provider = overrides.LLM
 	}
-	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
+	suggester := suggest.New(provider, catalogService, tmdbClient, settings.SuggestMaxAcquisitions.Get(set))
 	suggester.WithRatings(tmdbClient).
 		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
 		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
 	service := suggest.NewService(st, result.durableWorkflow, suggester, suggest.Config{
-		Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
+		Workers: settings.JobWorkers.Get(set), Timeout: settings.JobTimeout.Get(set), CacheTTL: 24 * time.Hour,
 	}, time.Now, log).
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
 		WithQualityRecorder(st)
 	service = service.WithAutoApprove(suggest.NewAutoApprover(
-		st, approver, func(context.Context) int { return set.intv("suggest.max_acquisitions") }, log,
+		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))
 	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
@@ -134,7 +135,7 @@ func buildSuggestions(
 	result.progress = service
 	result.systemLLM = systemLLM
 	owner.goRun(func(ctx context.Context) { service.Run(ctx) })
-	log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"),
-		"tmdb_configured", set.str("tmdb.api_key") != "")
+	log.Info("suggester started", "provider", provider.Name(), "workers", settings.JobWorkers.Get(set),
+		"tmdb_configured", settings.TMDBAPIKey.Get(set) != "")
 	return result, nil
 }

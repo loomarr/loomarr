@@ -445,12 +445,8 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 }
 
 func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	})
+	// The fetch cadence is unanswered, so it reads the declared default of 6h.
+	srv, st, _ := newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.home_country": "US"}, nil)
 	ctx := t.Context()
 	src := fillerstore.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {

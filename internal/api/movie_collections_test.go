@@ -32,7 +32,7 @@ func TestMovieCollections_ResolvesVisibleMoviesAsOneMemberReadableRequest(t *tes
 		Auth:             testAuthorizer{},
 		Log:              log,
 		MovieCollections: resolver,
-		LiveConfig:       func(key string) string { return map[string]string{"tmdb.api_key": "key"}[key] },
+		LiveSettings:     mapSettings{"tmdb.api_key": "key"},
 	})
 
 	req := httptest.NewRequest(http.MethodGet,
@@ -70,7 +70,7 @@ func TestMovieCollections_RejectsMissingOrInvalidMovieKeysBeforeCallingService(t
 		Auth:             testAuthorizer{},
 		Log:              log,
 		MovieCollections: resolver,
-		LiveConfig:       func(string) string { return "key" },
+		LiveSettings:     mapSettings{"tmdb.api_key": "key"},
 	})
 
 	for _, target := range []string{
@@ -97,15 +97,15 @@ func TestMovieCollections_DistinguishesUnavailableConfigurationAndUpstreamFailur
 	for _, tc := range []struct {
 		name       string
 		service    api.MovieCollectionService
-		liveConfig func(string) string
+		live       mapSettings
 		wantStatus int
 	}{
-		{name: "service not wired", liveConfig: func(string) string { return "key" }, wantStatus: http.StatusNotImplemented},
-		{name: "tmdb not configured", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}, liveConfig: func(string) string { return "" }, wantStatus: http.StatusNotImplemented},
-		{name: "tmdb failed", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{Err: errors.New("tmdb down")}, liveConfig: func(string) string { return "key" }, wantStatus: http.StatusBadGateway},
+		{name: "service not wired", live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusNotImplemented},
+		{name: "tmdb not configured", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{}, live: mapSettings{}, wantStatus: http.StatusNotImplemented},
+		{name: "tmdb failed", service: &testkit.MovieCollectionService[api.MovieCollectionRequest, api.MovieCollectionResolution]{Err: errors.New("tmdb down")}, live: mapSettings{"tmdb.api_key": "key"}, wantStatus: http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, MovieCollections: tc.service, LiveConfig: tc.liveConfig})
+			handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, MovieCollections: tc.service, LiveSettings: tc.live})
 			req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)
 			req.Header.Set("Authorization", "Bearer "+memberToken)
 			resp := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func TestMovieCollections_NormalizesEmptyCollectionsToJSONArray(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
-		LiveConfig: func(string) string { return "key" },
+		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000550", nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
@@ -148,7 +148,7 @@ func TestMovieCollections_BoundsVisibleKeys(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
-		LiveConfig: func(string) string { return "key" },
+		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	target := "/v1/movie-collections?"
 	for i := 1; i <= 25; i++ {
@@ -174,7 +174,7 @@ func TestMovieCollections_RequiresAuthentication(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
 		Auth: testAuthorizer{}, Log: log, MovieCollections: resolver,
-		LiveConfig: func(string) string { return "key" },
+		LiveSettings: mapSettings{"tmdb.api_key": "key"},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/v1/movie-collections?key=movie:tmdb:90000671", nil)
 	resp := httptest.NewRecorder()

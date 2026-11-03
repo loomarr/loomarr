@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -133,8 +134,8 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 		at = s.now().UTC()
 	}
 	readyWindow := defaultRecentlyReadyWindow
-	if s.liveConfigDuration != nil {
-		readyWindow = s.liveConfigDuration("filler.incoming.ready_window")
+	if s.liveSettings != nil {
+		readyWindow = settings.FillerIncomingReadyWindow.Get(s.liveSettings)
 	}
 	out := &fillerIncomingOutput{}
 	out.Body.ReadyWindowSeconds = int64(readyWindow / time.Second)

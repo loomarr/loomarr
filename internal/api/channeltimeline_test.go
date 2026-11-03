@@ -61,7 +61,7 @@ func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.Ti
 		PlayoutGuide:   g,
 		TimelineThumbs: thumbs,
 		Images:         imageService,
-		LiveConfig:     func(k string) string { return cfg[k] },
+		LiveSettings:   stringSettings(func(k string) string { return cfg[k] }),
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st

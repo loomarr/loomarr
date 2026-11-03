@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 type fillerResearchSettingsAdapter struct {
@@ -27,10 +28,10 @@ func newFillerResearchSettingsAdapter(st fillerstore.FillerResearchStore, set re
 
 func (a *fillerResearchSettingsAdapter) currentConfig() fillerresearch.WebConfig {
 	return fillerresearch.WebConfig{
-		Provider:     fillerresearch.WebProvider(a.set.str("filler.research.web_provider")),
-		BraveAPIKey:  a.set.str("filler.research.brave_api_key"),
-		SearXNGURL:   a.set.str("filler.research.searxng_url"),
-		MonthlyLimit: a.set.intv("filler.research.monthly_limit"),
+		Provider:     fillerresearch.WebProvider(settings.FillerResearchWebProvider.Get(a.set)),
+		BraveAPIKey:  settings.FillerResearchBraveAPIKey.Get(a.set),
+		SearXNGURL:   settings.FillerResearchSearxngURL.Get(a.set),
+		MonthlyLimit: settings.FillerResearchMonthlyLimit.Get(a.set),
 	}
 }
 
@@ -41,7 +42,7 @@ func (a *fillerResearchSettingsAdapter) Status(ctx context.Context) (fillerresea
 	if err != nil {
 		return fillerresearch.WebStatus{}, err
 	}
-	return fillerresearch.Status(a.set.boolOn("filler.research.enabled"), config, usage, now), nil
+	return fillerresearch.Status(settings.FillerResearchEnabled.Get(a.set), config, usage, now), nil
 }
 
 func (a *fillerResearchSettingsAdapter) Test(ctx context.Context, proposed fillerresearch.WebConfig) (fillerresearch.WebStatus, bool, string, error) {
@@ -54,7 +55,7 @@ func (a *fillerResearchSettingsAdapter) Test(ctx context.Context, proposed fille
 			proposed.SearXNGURL = current.SearXNGURL
 		}
 	}
-	proposed.MonthlyLimit = a.set.intv("filler.research.monthly_limit")
+	proposed.MonthlyLimit = settings.FillerResearchMonthlyLimit.Get(a.set)
 	if err := proposed.Validate(); err != nil {
 		return fillerresearch.WebStatus{}, false, "Enter the provider details, then try again.", nil
 	}
@@ -86,5 +87,5 @@ func (a *fillerResearchSettingsAdapter) statusFor(ctx context.Context, config fi
 	if err != nil {
 		return fillerresearch.WebStatus{}, err
 	}
-	return fillerresearch.Status(a.set.boolOn("filler.research.enabled"), config, usage, now), nil
+	return fillerresearch.Status(settings.FillerResearchEnabled.Get(a.set), config, usage, now), nil
 }

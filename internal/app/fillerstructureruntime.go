@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindowopenrouter"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 type productionStructureWindowLedger struct {
@@ -73,7 +74,7 @@ func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, la
 	return fillerstructurewindowopenrouter.NewCertifiedRuntime(fillerstructurewindowopenrouter.CertifiedRuntimeConfig{
 		Authority: *authority, Deployment: *deployment, APIKey: apiKey,
 		SourceRoot: layout.ClipDir(), MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
-		FFmpegPath: resolveTool(set.str("playout.ffmpeg_path"), "ffmpeg"), CutFamily: cutFamily,
+		FFmpegPath: resolveTool(settings.PlayoutFFmpegPath.Get(set), "ffmpeg"), CutFamily: cutFamily,
 		Ledger: productionStructureWindowLedger{store: st, budget: fillerstore.InferenceBudget{
 			PerClipNanoUSD: deployment.PerSourceBudgetNanoUSD, PerDayNanoUSD: deployment.PerDayBudgetNanoUSD,
 		}},
@@ -81,7 +82,7 @@ func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, la
 }
 
 func openRouterStructureAPIKey(set resolved) string {
-	if value, err := set.svc.LoadRaw(setLLMAPIKey + ".openrouter"); err == nil && value != "" {
+	if value, err := set.svc.LoadRaw(settings.LLMAPIKey.Key() + ".openrouter"); err == nil && value != "" {
 		return value
 	}
 	selection := resolveSelection(set)

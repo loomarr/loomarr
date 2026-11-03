@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/recovery"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // Windows are the configured retention periods, read per run.
@@ -247,7 +248,7 @@ func (s *Service) Job() jobs.Job {
 	return jobs.Job{
 		Name: "housekeeping", Group: jobs.GroupSystem, Title: "Clean up old data",
 		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
-		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
+		DefaultCron: "0 30 4 * * *", ScheduleKey: settings.JobHousekeepingSchedule.Key(),
 		Timeout: housekeepingTimeout,
 		Run:     s.Housekeeping,
 	}

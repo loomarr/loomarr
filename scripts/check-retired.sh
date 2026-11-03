@@ -400,6 +400,18 @@ RETIRED=(
   'GrayFrames(|retired: MediaTools.Fingerprint measures the creative'
   'DupHashThreshold|retired: creative.Compare decides a copy'
   'meanHamming(|retired: creative.Compare aligns over an edge-trim window instead of from frame 0'
+  # #2147 — settings are read through generated typed handles (`settings.X.Get(reader)`), not
+  # string-keyed accessors. The method names are specific enough to ban; the bare `.str(`/`.dur(`
+  # are too common elsewhere to grep for.
+  'LiveConfigBoolOn|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigInt|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigDuration|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'Options.LiveConfig|#2147: api.Options.LiveSettings (a settings.Reader) replaced the string-keyed LiveConfig func'
+  '.boolOn(|#2147: resolved.boolOn was deleted; read settings.X.Get(set), which answers the declared default when unanswerable'
+  '.boolv(|#2147: resolved.boolv was deleted; read settings.X.Get(set)'
+  '.intv(|#2147: resolved.intv was deleted; read settings.X.Get(set)'
+  'set.str(|#2147: resolved.str was deleted; read settings.X.Get(set) or .Joined(set) for a list'
+  'set.dur(|#2147: resolved.dur was deleted; read settings.X.Get(set)'
   'dHashAlgorithm|retired: creative.Algorithm keys the fingerprint cache'
   # The on-demand evaluation tools are subcommands of one cmd/eval binary.
   'cmd/channel-recommend-cert|use go run ./cmd/eval recommend-cert (make channel-recommend-cert)'

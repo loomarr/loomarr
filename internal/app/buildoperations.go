@@ -44,7 +44,7 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 	if st == nil {
 		return nil
 	}
-	return newDatabaseService(st, func() string { return set.str("backup.dir") }, eventBus).
+	return newDatabaseService(st, func() string { return settings.BackupDir.Get(set) }, eventBus).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
 }
@@ -66,7 +66,7 @@ type operationsBuild struct {
 	productNotifications     *productNotificationCoordinator
 	invitationDelivery       api.InvitationDeliveryService
 	passwordRecovery         api.PasswordRecoveryService
-	liveConfig               func(string) string
+	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService
 	database                 api.DatabaseService
@@ -115,16 +115,16 @@ func buildOperations(
 		providerHTTP = httpx.NewNamedObserved(httpx.TargetNotifications, httpx.TimeoutNotifications, metricRecorder)
 	}
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
-		providerHTTP, func() string { return set.str("access.public_url") },
+		providerHTTP, func() string { return settings.AccessPublicURL.Get(set) },
 	)
-	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
+	mqttAdapter := notifications.NewMQTTAdapter(func() string { return settings.AccessPublicURL.Get(set) })
 	providerAdapters = append(providerAdapters, mqttAdapter)
 	providerValidators = append(providerValidators, mqttAdapter)
 	if secrets != nil {
 		identity := secrets.WebPushIdentity()
 		webPushAdapter := notifications.NewWebPushAdapter(notifications.WebPushIdentity{
 			PublicKey: identity.PublicKey, PrivateKey: identity.PrivateKey,
-		}, overrides.NotificationHTTP, func() string { return set.str("access.public_url") })
+		}, overrides.NotificationHTTP, func() string { return settings.AccessPublicURL.Get(set) })
 		providerAdapters = append(providerAdapters, webPushAdapter)
 		providerValidators = append(providerValidators, webPushAdapter)
 	}
@@ -166,7 +166,7 @@ func buildOperations(
 		result.webPushPublicKey = secrets.WebPushIdentity().PublicKey
 	}
 	if st != nil {
-		result.liveConfig = set.str
+		result.liveSettings = set
 		result.libraryConfigured = set.libraryConfigured
 	}
 	return result, nil
@@ -234,10 +234,10 @@ func buildNotificationDestinations(
 
 func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	probe := func(ctx context.Context) (float64, string) {
-		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
 			return 0, ""
 		}
-		resident, err := llm.NewOllama(set.str("llm.url"), set.str("llm.model")).ListResident(ctx)
+		resident, err := llm.NewOllama(settings.LLMURL.Get(set), settings.LLMModel.Get(set)).ListResident(ctx)
 		if err != nil {
 			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
 			return 0, ""
@@ -253,10 +253,10 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 		return total, largest.Name
 	}
 	reclaim := func(ctx context.Context) {
-		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
 			return
 		}
-		provider := llm.NewProvider("ollama", set.str("llm.url"), set.str("llm.model"), "")
+		provider := llm.NewProvider("ollama", settings.LLMURL.Get(set), settings.LLMModel.Get(set), "")
 		evictor, ok := provider.(llm.Evictor)
 		if !ok {
 			return
@@ -271,9 +271,9 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) api.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
 		service := &backupsService{
-			w: writer, dir: func() string { return set.str("backup.dir") },
-			retain: func() int { return set.intv("backup.retain") },
-			sched:  func() string { return set.str("backup.schedule") },
+			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
+			retain: func() int { return settings.BackupRetain.Get(set) },
+			sched:  func() string { return settings.BackupSchedule.Get(set) },
 		}
 		registry.Add(service.Job(log))
 		return service
@@ -325,20 +325,20 @@ func buildAuth(
 		return result
 	}
 
-	manager := auth.NewManager(st, set.dur("session.ttl"), time.Now)
+	manager := auth.NewManager(st, settings.SessionTTL.Get(set), time.Now)
 	loginLimiter := auth.NewRateLimiter(0.2, 5)
 	result.login = auth.NewLoginService(libraryClient, st, manager, loginLimiter, time.Now)
 	result.userSync = auth.NewUserSync(libraryClient, st, time.Now)
 	result.provision = auth.NewProvisioner(st, libraryClient, newID, time.Now)
 	result.sso = auth.NewSSOService(func() auth.SSOConfig {
-		base := strings.TrimRight(set.str("server.public_url"), "/")
+		base := strings.TrimRight(settings.ServerPublicURL.Get(set), "/")
 		redirect := ""
 		if base != "" {
 			redirect = base + "/v1/auth/sso/callback"
 		}
 		return auth.SSOConfig{
-			Enabled: set.boolv("auth.sso.enabled"), Issuer: set.str("auth.sso.issuer"),
-			ClientID: set.str("auth.sso.client_id"), ClientSecret: set.str("auth.sso.client_secret"),
+			Enabled: settings.AuthSSOEnabled.Get(set), Issuer: settings.AuthSSOIssuer.Get(set),
+			ClientID: settings.AuthSSOClientID.Get(set), ClientSecret: settings.AuthSSOClientSecret.Get(set),
 			RedirectURL: redirect,
 		}
 	}, st, manager, time.Now, log)
@@ -426,7 +426,9 @@ func buildScheduler(
 		return nil, nil
 	}
 	service := jobs.New(st, registry, func(key, fallback string) string {
-		if configured := set.str(key); configured != "" {
+		// Job schedule keys arrive from the jobs registry, so the key is dynamic; the answer
+		// is a string setting or the caller's fallback.
+		if configured, _ := set.Value(key).(string); configured != "" {
 			return configured
 		}
 		return fallback
