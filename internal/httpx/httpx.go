@@ -8,9 +8,7 @@
 package httpx
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -112,53 +110,15 @@ func newTransport() http.RoundTripper {
 	}
 }
 
-type ipLookup interface {
-	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
-}
-
-type dialContextFunc func(context.Context, string, string) (net.Conn, error)
-
-func newPublicTransport(resolver ipLookup, dial dialContextFunc) *http.Transport {
+func newPublicTransport(resolver IPLookup, dial DialContextFunc) *http.Transport {
 	return &http.Transport{
-		DialContext:           publicDialContext(resolver, dial),
+		DialContext:           PublicDialContext(resolver, dial),
 		TLSHandshakeTimeout:   dialBudget,
 		ResponseHeaderTimeout: 30 * time.Second,
 		MaxIdleConns:          20,
 		MaxIdleConnsPerHost:   4,
 		IdleConnTimeout:       90 * time.Second,
 	}
-}
-
-func publicDialContext(resolver ipLookup, dial dialContextFunc) dialContextFunc {
-	return func(ctx context.Context, network, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, fmt.Errorf("public HTTP dial address: %w", err)
-		}
-		var addrs []net.IPAddr
-		if ip := net.ParseIP(host); ip != nil {
-			addrs = []net.IPAddr{{IP: ip}}
-		} else {
-			addrs, err = resolver.LookupIPAddr(ctx, host)
-			if err != nil {
-				return nil, fmt.Errorf("public HTTP resolve %q: %w", host, err)
-			}
-			if len(addrs) == 0 {
-				return nil, fmt.Errorf("public HTTP resolve %q returned no addresses", host)
-			}
-		}
-		for _, addr := range addrs {
-			if unsafePublicIP(addr.IP) {
-				return nil, fmt.Errorf("public HTTP refuses private address for %q", host)
-			}
-		}
-		return dial(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
-	}
-}
-
-func unsafePublicIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
 }
 
 func newClient(

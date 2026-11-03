@@ -158,7 +158,7 @@ func TestRedirectPolicy(t *testing.T) {
 
 func TestPublicDialPinsResolvedPublicAddressAndRejectsAnyPrivateAnswer(t *testing.T) {
 	called := false
-	dial := publicDialContext(fixedIPLookup{addrs: []net.IPAddr{
+	dial := PublicDialContext(fixedIPLookup{addrs: []net.IPAddr{
 		{IP: net.ParseIP("203.0.113.10")},
 		{IP: net.ParseIP("192.168.1.20")},
 	}}, func(context.Context, string, string) (net.Conn, error) {
@@ -173,7 +173,7 @@ func TestPublicDialPinsResolvedPublicAddressAndRejectsAnyPrivateAnswer(t *testin
 	}
 
 	var address string
-	dial = publicDialContext(fixedIPLookup{addrs: []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}},
+	dial = PublicDialContext(fixedIPLookup{addrs: []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}},
 		func(_ context.Context, _, got string) (net.Conn, error) {
 			address = got
 			return nil, errors.New("dial stopped by test")

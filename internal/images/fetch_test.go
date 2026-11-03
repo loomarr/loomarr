@@ -371,6 +371,20 @@ func TestRedirectIntoAPrivateAddressIsRefused(t *testing.T) {
 	}
 }
 
+// A redirect into a tailnet (CGNAT) or NAT64-embedded private address is as internal as RFC 1918.
+func TestRedirectIntoNonPublicLiteralsIsRefused(t *testing.T) {
+	for _, host := range []string{"100.100.100.100", "[::ffff:100.64.0.1]", "[64:ff9b::a00:1]", "10.0.0.4"} {
+		req := httptest.NewRequest(http.MethodGet, "https://"+host+"/poster.png", nil)
+		if err := (&Fetcher{}).checkRedirect(req, nil); err == nil {
+			t.Errorf("redirect to %s accepted", host)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://8.8.8.8/poster.png", nil)
+	if err := (&Fetcher{}).checkRedirect(req, nil); err != nil {
+		t.Errorf("redirect to a public literal refused: %v", err)
+	}
+}
+
 // A disabled install makes no outbound requests at all — the setting's whole purpose.
 func TestRemoteFetchDisabledMakesNoRequests(t *testing.T) {
 	var hits int

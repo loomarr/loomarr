@@ -10,7 +10,6 @@ import (
 	"html"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -49,19 +48,17 @@ type Resolver interface {
 	Lookup(context.Context, Lookup) (Evidence, error)
 }
 
-type ipResolver interface {
-	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
-}
-
-// Web resolves any bounded, publicly routed HTTP(S) text or HTML page. The
-// caller supplies Loomarr's shared timeout/retry client.
+// Web resolves any bounded, publicly routed HTTP(S) text or HTML page. URL
+// syntax and port are checked here; routability is not. The caller supplies
+// Loomarr's shared timeout/retry client, which must dial through
+// httpx.PublicDialContext (httpx.NewPublicNamedObserved) so every connection,
+// including each redirect hop, is checked at dial time.
 type Web struct {
-	client   *http.Client
-	resolver ipResolver
+	client *http.Client
 }
 
 func NewWeb(client *http.Client) *Web {
-	return &Web{client: client, resolver: net.DefaultResolver}
+	return &Web{client: client}
 }
 
 func (w *Web) Lookup(ctx context.Context, lookup Lookup) (Evidence, error) {
@@ -69,7 +66,7 @@ func (w *Web) Lookup(ctx context.Context, lookup Lookup) (Evidence, error) {
 	if rawURL == "" {
 		return Evidence{}, errors.New("reference: provide a URL")
 	}
-	if w == nil || w.client == nil || w.resolver == nil {
+	if w == nil || w.client == nil {
 		return Evidence{}, errors.New("reference: HTTP client is unavailable")
 	}
 	if len(rawURL) > maxLookupText {
@@ -104,10 +101,10 @@ func (w *Web) Lookup(ctx context.Context, lookup Lookup) (Evidence, error) {
 
 // read shares public routing, redirect and byte limits across page and discovery requests.
 func (w *Web) read(ctx context.Context, u *url.URL, accept string, originOnly bool) ([]byte, string, error) {
-	if w == nil || w.client == nil || w.resolver == nil {
+	if w == nil || w.client == nil {
 		return nil, "", errors.New("reference: HTTP client is unavailable")
 	}
-	if err := w.checkPublicURL(ctx, u); err != nil {
+	if err := checkWebURL(u); err != nil {
 		return nil, "", err
 	}
 
@@ -120,7 +117,7 @@ func (w *Web) read(ctx context.Context, u *url.URL, accept string, originOnly bo
 		if len(via) >= maxRedirects {
 			return fmt.Errorf("reference: too many redirects")
 		}
-		if err := w.checkPublicURL(req.Context(), req.URL); err != nil {
+		if err := checkWebURL(req.URL); err != nil {
 			return err
 		}
 		if priorRedirect != nil {
@@ -159,38 +156,15 @@ func (w *Web) read(ctx context.Context, u *url.URL, accept string, originOnly bo
 	return body, mediaType, nil
 }
 
-func (w *Web) checkPublicURL(ctx context.Context, u *url.URL) error {
+// checkWebURL checks syntax and port only; the client's dial-time check owns routability.
+func checkWebURL(u *url.URL) error {
 	if u == nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil {
 		return errors.New("reference: URL must be public HTTP(S) without credentials")
 	}
 	if port := u.Port(); port != "" && (u.Scheme != "https" || port != "443") && (u.Scheme != "http" || port != "80") {
 		return errors.New("reference: URL must use a standard web port")
 	}
-	host := u.Hostname()
-	if ip := net.ParseIP(host); ip != nil {
-		if unsafeIP(ip) {
-			return fmt.Errorf("reference: refusing private address %q", host)
-		}
-		return nil
-	}
-	addrs, err := w.resolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return fmt.Errorf("reference: cannot resolve public host %q: %w", host, err)
-	}
-	if len(addrs) == 0 {
-		return fmt.Errorf("reference: public host %q has no addresses", host)
-	}
-	for _, addr := range addrs {
-		if unsafeIP(addr.IP) {
-			return fmt.Errorf("reference: refusing private address for host %q", host)
-		}
-	}
 	return nil
-}
-
-func unsafeIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
 }
 
 var publicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)

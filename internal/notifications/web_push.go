@@ -15,6 +15,8 @@ import (
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 type WebPushIdentity struct {
@@ -45,7 +47,7 @@ func (a *WebPushAdapter) ValidateDestination(_ map[string]string, credentials ma
 	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
 		return fmt.Errorf("browser push requires an HTTPS subscription endpoint")
 	}
-	if address := net.ParseIP(endpoint.Hostname()); address != nil && !publicWebPushAddress(address) {
+	if address := net.ParseIP(endpoint.Hostname()); address != nil && !httpx.IsPublicIP(address) {
 		return fmt.Errorf("browser push endpoint must use a public push service")
 	}
 	publicKey, err := decodeWebPushValue(credentials["p256dh"])
@@ -66,31 +68,11 @@ func safeWebPushHTTPClient() *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
 		ForceAttemptHTTP2: true, TLSHandshakeTimeout: 10 * time.Second,
-		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(address)
-			if err != nil {
-				return nil, fmt.Errorf("resolve Web Push service")
-			}
-			addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-			if err != nil || len(addresses) == 0 {
-				return nil, fmt.Errorf("resolve Web Push service")
-			}
-			for _, candidate := range addresses {
-				if !publicWebPushAddress(candidate.IP) {
-					return nil, fmt.Errorf("web push service resolved to a non-public address")
-				}
-			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(addresses[0].IP.String(), port))
-		},
+		DialContext: httpx.PublicDialContext(net.DefaultResolver, dialer.DialContext),
 	}
 	return &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-}
-
-func publicWebPushAddress(address net.IP) bool {
-	return address.IsGlobalUnicast() && !address.IsPrivate() && !address.IsLoopback() &&
-		!address.IsLinkLocalUnicast() && !address.IsLinkLocalMulticast()
 }
 
 func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
