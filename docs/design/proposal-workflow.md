@@ -46,7 +46,9 @@ separately. An impossible combination fails the read closed and is recorded for 
   (`FOR UPDATE SKIP LOCKED` on PostgreSQL). A crash causes bounded re-execution, never a stranded row.
 - Completion and failure compare-and-swap on `(job_id, attempt)`, so a stale worker cannot publish.
   Success inserts the Proposal and marks Attempt and Job terminal in one transaction; a failed
-  execution materialises neither a Proposal nor a Channel.
+  execution materialises neither a Proposal nor a Channel. The suggest worker has no other job
+  lifecycle: `suggest.NewService` requires the workflow, a stale Attempt's result is dropped
+  without a failure write, and a committed Proposal notifies the approvers once.
 - Retrying a failed first request creates a fresh Job. Refine and re-curate also create a fresh Job,
   seeded from the intent the Channel owns (`channels.intent_json`); the Job names the Channel
   (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or

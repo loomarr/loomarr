@@ -2,8 +2,14 @@ package suggest
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+// ErrStaleAttempt is what the workflow returns when an Attempt's terminal write lost its
+// compare-and-swap because a newer Attempt owns the Job. The worker drops that result: the
+// replacement execution, not this one, decides the Job's outcome.
+var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")
 
 // WorkflowWork is the activity input issued by the durable proposal workflow.
 // Version plus Attempt form the compare-and-swap token for terminal writes.
