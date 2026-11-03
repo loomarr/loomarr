@@ -1,0 +1,131 @@
+[
+  {
+    "title": "The Lantern Office",
+    "alternateTitles": [],
+    "sortTitle": "lantern office",
+    "status": "continuing",
+    "ended": false,
+    "overview": "A night clerk at a seaside lighthouse registry keeps the lamps of a town that no longer has ships.",
+    "network": "Harbor Light Network",
+    "airTime": "21:00",
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/1/poster.jpg?lastWrite=638600000000000000",
+        "remoteUrl": "https://artwork.example/series/90000101/poster.jpg"
+      },
+      {
+        "coverType": "fanart",
+        "url": "/MediaCover/1/fanart.jpg?lastWrite=638600000000000000",
+        "remoteUrl": "https://artwork.example/series/90000101/fanart.jpg"
+      },
+      {
+        "coverType": "banner",
+        "url": "/MediaCover/1/banner.jpg?lastWrite=638600000000000000"
+      }
+    ],
+    "originalLanguage": {
+      "id": 1,
+      "name": "English"
+    },
+    "seasons": [
+      {
+        "seasonNumber": 0,
+        "monitored": false
+      },
+      {
+        "seasonNumber": 1,
+        "monitored": true
+      }
+    ],
+    "year": 2019,
+    "path": "/data/tv/The Lantern Office",
+    "qualityProfileId": 1,
+    "seasonFolder": true,
+    "monitored": true,
+    "monitorNewItems": "all",
+    "useSceneNumbering": false,
+    "runtime": 44,
+    "tvdbId": 90000101,
+    "tvRageId": 0,
+    "tvMazeId": 0,
+    "tmdbId": 90000201,
+    "firstAired": "2019-09-12T00:00:00Z",
+    "lastAired": "2021-11-04T00:00:00Z",
+    "seriesType": "standard",
+    "cleanTitle": "lanternoffice",
+    "imdbId": "tt90000301",
+    "titleSlug": "the-lantern-office",
+    "rootFolderPath": "/data/tv/",
+    "certification": "TV-14",
+    "genres": [
+      "Drama",
+      "Mystery"
+    ],
+    "tags": [],
+    "added": "2024-01-02T03:04:05Z",
+    "ratings": {
+      "votes": 120,
+      "value": 7.9
+    },
+    "statistics": {
+      "seasonCount": 1,
+      "episodeFileCount": 3,
+      "episodeCount": 4,
+      "totalEpisodeCount": 5,
+      "sizeOnDisk": 4831838208,
+      "releaseGroups": [],
+      "percentOfEpisodes": 75.0
+    },
+    "languageProfileId": 1,
+    "id": 1
+  },
+  {
+    "title": "Quillfeather Junction",
+    "alternateTitles": [],
+    "sortTitle": "quillfeather junction",
+    "status": "ended",
+    "ended": true,
+    "overview": "Three siblings run the last switching yard on a prairie line.",
+    "network": "Plainsong TV",
+    "airTime": "20:00",
+    "images": [],
+    "originalLanguage": {
+      "id": 1,
+      "name": "English"
+    },
+    "seasons": [
+      {
+        "seasonNumber": 1,
+        "monitored": true
+      }
+    ],
+    "year": 1994,
+    "path": "/data/tv/Quillfeather Junction",
+    "qualityProfileId": 1,
+    "seasonFolder": true,
+    "monitored": true,
+    "useSceneNumbering": false,
+    "runtime": 22,
+    "tvdbId": 90000102,
+    "tvRageId": 0,
+    "tvMazeId": 0,
+    "tmdbId": 0,
+    "firstAired": "1994-03-01T00:00:00Z",
+    "seriesType": "standard",
+    "cleanTitle": "quillfeatherjunction",
+    "titleSlug": "quillfeather-junction",
+    "rootFolderPath": "/data/tv/",
+    "genres": [
+      "Comedy"
+    ],
+    "tags": [],
+    "added": "2024-01-02T03:04:05Z",
+    "ratings": {
+      "votes": 0,
+      "value": 0.0
+    },
+    "languageProfileId": 1,
+    "id": 2
+  }
+]
