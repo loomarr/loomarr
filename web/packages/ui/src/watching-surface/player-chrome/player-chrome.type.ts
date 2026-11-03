@@ -166,6 +166,8 @@ interface PlayerSheetProps {
   /** Drawn in the portrait panel's place under the picture, rather than over the picture's right edge. */
   inline?: boolean;
   onClose: () => void;
+  /** A TV's remote lands in the body as the sheet opens (Settings' current choice), not on Close. */
+  remoteLandsInBody?: boolean;
   title: string;
 }
 

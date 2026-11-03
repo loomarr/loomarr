@@ -120,6 +120,18 @@ describe("TvWatching", () => {
     expect(output).not.toContain('aria-label="Show the controls"');
   });
 
+  // #2088 decision 5: the player plays no text track, so Watching draws the chosen track's lines.
+  it("captions the picture, but not under the station-ID card or a cover", () => {
+    const lines = ["Where are we going?"];
+    expect(render(playing, { captionLines: lines })).toContain("Where are we going?");
+    expect(render(playing, { captionLines: lines, chrome: { ...chrome, ident: true } })).not.toContain(
+      "Where are we going?",
+    );
+    expect(
+      render({ ...playing, error: "The stream stopped.", status: "failed" }, { captionLines: lines }),
+    ).not.toContain("Where are we going?");
+  });
+
   it("holds the controls back while a tune is still starting", () => {
     expect(render({ ...playing, status: "tuning" }, { controlsShown: true })).not.toContain(
       'aria-label="Pause"',

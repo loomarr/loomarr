@@ -95,6 +95,8 @@ interface ToolButtonProps {
   label: string;
   onPress: () => void;
   pointer: boolean;
+  /** A TV's remote lands here as it mounts. */
+  preferredFocus?: boolean;
   tipAlign?: TipAlign;
 }
 
@@ -108,6 +110,7 @@ const ToolButton = ({
   label,
   onPress,
   pointer,
+  preferredFocus = false,
   tipAlign = "center",
 }: ToolButtonProps) => {
   const [hovered, setHovered] = useState(false);
@@ -122,6 +125,7 @@ const ToolButton = ({
       accessibilityRole="button"
       accessibilityState={{ disabled, expanded: active || undefined }}
       disabled={disabled}
+      hasTVPreferredFocus={tv && preferredFocus}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onHoverIn={() => setHovered(true)}

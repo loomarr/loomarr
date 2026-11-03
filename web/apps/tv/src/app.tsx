@@ -13,10 +13,14 @@ import { createNativeApp, NativeAppRoot, useCrashReportUpload } from "@loomarr/n
 import {
   createLastChannelStore,
   createPlaybackMarks,
+  type NativePlayerTransport,
   NativePlayerView,
   PairedNativeImage,
   pairedNativeImageSource,
+  streamRows,
+  useNativePlayerChoices,
   usePairedClient,
+  useSampledPlaybackFacts,
   useStationIdent,
 } from "@loomarr/player/native";
 import type { ClientDestination, TvWatchingProps } from "@loomarr/ui";
@@ -25,6 +29,10 @@ import {
   GuideJourney,
   PairingShell,
   PlaybarStillSourceProvider,
+  PlayerInfo,
+  PlayerPlaybackInfo,
+  PlayerSettings,
+  PlayerSheet,
   pairingBackAvailable,
   playbarFromTimeline,
   SurfJourney,
@@ -131,6 +139,22 @@ const useTvMenuKey = (enabled: boolean) => {
   }, [enabled]);
 };
 
+/** The viewer's audio and subtitles, remembered in the TV's secure store. */
+const preferenceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
+
+// PLAYBACK INFO (#2088 decision 13): the Stream rows, read from the player each second while open.
+// The platform picks the rung itself, so the quality is always Auto.
+const PlaybackInfo = ({
+  lagSeconds,
+  transport,
+}: {
+  lagSeconds: number;
+  transport: NativePlayerTransport;
+}) => {
+  const facts = useSampledPlaybackFacts(transport.playbackFacts);
+  return <PlayerPlaybackInfo density="tv" stream={streamRows({ auto: true, facts, lagSeconds })} />;
+};
+
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
   const lastKeyAtMs = useRef<number | undefined>(undefined);
@@ -144,7 +168,9 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     refresh,
     serverVersion,
     snapshot,
+    subtitlesSource,
     timeline,
+    tracks,
     transport,
   } = usePairedClient({
     credential,
@@ -168,11 +194,26 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   });
   // The §9 controls show and hide as on every player, and clear at once for the station-ID card.
   const playing = snapshot.status === "playing";
-  const { controlsShown, dismissControls, hideControls, revealControls } = useAutoHideControls(playing);
+  const { controlsShown, dismissControls, hideControls, holdControls, revealControls } =
+    useAutoHideControls(playing);
   const ident = useStationIdent(snapshot);
   useEffect(() => {
     if (ident) hideControls();
   }, [ident, hideControls]);
+  // Info, Settings or Playback info over the picture's right edge; the controls stay up under it.
+  const [sheet, setSheet] = useState<"info" | "playback-info" | "settings">();
+  // From the rendered sheet, not an updater: Android TV delivers one OK to a Pressable twice (its
+  // press-out and a click), and a second toggle would close what the first opened.
+  const toggleSheet = (next: "info" | "settings") => setSheet(sheet === next ? undefined : next);
+  const channelId = snapshot.channel?.id;
+  // A new channel closes the sheet: it described the one left behind.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the channel is the trigger, not an input.
+  useEffect(() => setSheet(undefined), [channelId]);
+  useEffect(() => {
+    if (!sheet) return;
+    holdControls.hold(true);
+    return () => holdControls.hold(false);
+  }, [sheet, holdControls]);
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
@@ -251,7 +292,12 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   );
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      // Back hides the controls first; over a bare picture it leaves Watching, the app's root.
+      // Back closes an open sheet, then hides the controls; over a bare picture it leaves Watching,
+      // the app's root.
+      if (active === "watching" && sheet) {
+        setSheet(sheet === "playback-info" ? "settings" : undefined);
+        return true;
+      }
       if (active === "watching" && dispatchRemoteEvent({ key: "back" })) return true;
       const destination = clientBackDestination(active);
       if (!destination) return false;
@@ -259,7 +305,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       return true;
     });
     return () => subscription.remove();
-  }, [active, dispatchRemoteEvent]);
+  }, [active, dispatchRemoteEvent, sheet]);
   useTvMenuKey(clientBackDestination(active) !== null || (active === "watching" && controlsShown));
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
@@ -365,12 +411,56 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       })
     : undefined;
   const timeZone = guideSnapshot.layout?.timezone;
+  const formatTime = (ms: number) => formatGuideTime(ms, timeZone);
   const seekBy = (ms: number) => controller.seek(live.viewerTimeMs + ms);
   const startOverMs = chromeData?.startOverMs;
+  const info = chromeData?.info;
+  // Settings' quality, audio and subtitles, and the caption's lines at the playhead.
+  const choices = useNativePlayerChoices({
+    client: { subtitlesSource, tracks, transport },
+    playingChannelId: playing ? channelId : undefined,
+    storage: preferenceStorage,
+    viewerTimeMs: live.viewerTimeMs,
+  });
+  const channelLabel = channel ? `CH ${channel.number} · ${channel.name}` : "";
+  const closeSheet = () => setSheet(undefined);
+  const openSheet =
+    sheet === "info" && info ? (
+      <PlayerSheet channelLabel={channelLabel} density="tv" icon="info" onClose={closeSheet} title="Info">
+        <PlayerInfo density="tv" formatTime={formatTime} info={info} />
+      </PlayerSheet>
+    ) : sheet === "settings" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density="tv"
+        icon="settings"
+        onClose={closeSheet}
+        remoteLandsInBody
+        title="Settings"
+      >
+        <PlayerSettings
+          audio={choices.audio}
+          density="tv"
+          onPlaybackInfo={() => setSheet("playback-info")}
+          quality={choices.quality}
+          subtitles={choices.subtitles}
+        />
+      </PlayerSheet>
+    ) : sheet === "playback-info" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density="tv"
+        icon="info"
+        onClose={closeSheet}
+        title="Playback info"
+      >
+        <PlaybackInfo lagSeconds={live.lagSeconds} transport={transport} />
+      </PlayerSheet>
+    ) : undefined;
   const chrome: TvWatchingProps["chrome"] = chromeData
     ? {
         band: chromeData.band,
-        formatTime: (ms) => formatGuideTime(ms, timeZone),
+        formatTime,
         ident,
         playbar: timeline
           ? {
@@ -380,22 +470,29 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               window: chromeData.window,
             }
           : undefined,
+        sheet: openSheet,
         transport: {
           density: "tv",
+          infoOpen: sheet === "info",
           live,
           // The TV's own remote owns the volume; a TV transport draws none.
           muted: false,
           onChannels: () => setActive("surf"),
           onGoLive: () => void controller.goLive(),
           onGuide: () => setActive("guide"),
+          onInfo: info ? () => toggleSheet("info") : undefined,
           onSeekBack: () => seekBy(-SEEK_STEP_MS),
           onSeekForward: () => seekBy(SEEK_STEP_MS),
+          onSettings: () => toggleSheet("settings"),
           onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
+          onSubtitles: choices.nextSubtitles,
           onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
           onToggleMute: () => undefined,
           onVolume: () => undefined,
           playing,
           pointer: false,
+          settingsOpen: sheet === "settings" || sheet === "playback-info",
+          subtitlesOn: choices.subtitlesOn,
           volume: 1,
         },
       }
@@ -404,6 +501,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     <View style={{ flex: 1 }}>
       <PlaybarStillSourceProvider value={stillSource}>
         <TvWatching
+          captionLines={choices.captionLines}
           chrome={chrome}
           chromeVisible={active === "watching"}
           controlsShown={controlsShown}

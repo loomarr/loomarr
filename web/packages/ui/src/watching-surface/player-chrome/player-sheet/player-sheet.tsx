@@ -16,6 +16,7 @@ const PlayerSheet = ({
   icon,
   inline = false,
   onClose,
+  remoteLandsInBody = false,
   title,
 }: PlayerSheetProps) => (
   <View
@@ -72,7 +73,14 @@ const PlayerSheet = ({
           {channelLabel}
         </Text>
       </View>
-      <ToolButton density={density} icon="close" label={`Close ${title}`} onPress={onClose} pointer={false} />
+      <ToolButton
+        density={density}
+        icon="close"
+        label={`Close ${title}`}
+        onPress={onClose}
+        pointer={false}
+        preferredFocus={!remoteLandsInBody}
+      />
     </View>
     <ScrollView contentContainerStyle={{ padding: 16 }} style={{ flex: 1 }}>
       {children}

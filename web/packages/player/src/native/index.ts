@@ -1,6 +1,7 @@
 export * from "../live-subtitles";
 export * from "../native-event-stream";
 export * from "../native-playback-diagnostics";
+export * from "../native-player-choices";
 export * from "../native-player-lifecycle";
 export * from "../paired-account";
 export * from "../paired-client";
@@ -8,6 +9,7 @@ export * from "../paired-requests";
 export * from "../paired-subtitles";
 export * from "../playback-info";
 export * from "../playback-marks";
+export * from "../player-preferences";
 export * from "../shell-pause";
 export * from "../station-ident";
 export * from "./native";

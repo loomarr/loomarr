@@ -5,6 +5,7 @@ import { Pressable, View } from "react-native";
 
 import { ChannelSwitchOverlay } from "../../channel-switch-overlay";
 import { StatePanel } from "../../state-panel";
+import { PlayerCaption } from "../player-chrome/player-caption";
 import { PlayerChrome } from "../player-chrome/player-chrome";
 import { PlayerCover } from "../player-chrome/player-cover";
 import type { ChannelNumberEntry, TvWatchingProps } from "./tv-watching.type";
@@ -83,6 +84,7 @@ const NumberEntry = ({ numberEntry }: { numberEntry?: ChannelNumberEntry }) => {
 const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as const;
 
 const TvWatching = ({
+  captionLines = [],
   chrome,
   chromeVisible,
   controlsShown,
@@ -173,6 +175,8 @@ const TvWatching = ({
               style={fill}
             />
           )}
+          {/* The subtitles, under the chrome; the station-ID card has the picture to itself. */}
+          {covered || chrome?.ident ? null : <PlayerCaption density="tv" lines={captionLines} />}
           {body}
           <NumberEntry numberEntry={numberEntry} />
         </>

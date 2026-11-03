@@ -2,6 +2,8 @@ import { type Density, Icon, icons, playerChrome, Text, Toggle } from "@loomarr/
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
+import { focusRing } from "../glass";
+
 // The Settings sheet's body (§9, mock "settings"). Quality first: Auto (`Auto · 1080p`, naming the
 // rung on air) and the channel's own rungs, the viewer's to choose (#2088 decision 7). Then audio:
 // the channel's default language and, when the programme carries a second one, that alternate, the
@@ -37,16 +39,21 @@ interface PlayerSettingsProps {
 }
 
 // One row: a check beside the selected option. A choice is a radio; a read-only list item otherwise.
+// On a TV, focus lights a row as hover does, and the sheet opens on the first choice's current option.
 const OptionRow = ({
   density,
   onSelect,
   option,
+  preferredFocus = false,
 }: {
   density: Density;
   onSelect?: (value: string) => void;
   option: SettingsOption;
+  preferredFocus?: boolean;
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const tv = density === "tv";
   const body = (
     <>
       <View style={{ alignItems: "center", width: 16 }}>
@@ -73,10 +80,17 @@ const OptionRow = ({
       aria-checked={option.selected}
       aria-label={option.label}
       role="radio"
+      hasTVPreferredFocus={tv && preferredFocus}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={() => onSelect(option.value)}
-      style={{ ...row, backgroundColor: hovered ? playerChrome.glassTop : "transparent" }}
+      style={{
+        ...row,
+        backgroundColor: hovered || (tv && focused) ? playerChrome.glassTop : "transparent",
+        ...(tv ? focusRing(focused, density) : {}),
+      }}
     >
       {body}
     </Pressable>
@@ -94,24 +108,40 @@ const SectionLabel = ({ density, label }: { density: Density; label: string }) =
 );
 
 // The way on to another sheet: icon, label, and a chevron, behind a rule.
-const NavRow = ({ density, label, onPress }: { density: Density; label: string; onPress: () => void }) => {
+const NavRow = ({
+  density,
+  label,
+  onPress,
+  preferredFocus = false,
+}: {
+  density: Density;
+  label: string;
+  onPress: () => void;
+  preferredFocus?: boolean;
+}) => {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const tv = density === "tv";
   return (
     <View style={{ borderTopColor: playerChrome.glassRing, borderTopWidth: 1, paddingTop: 8 }}>
       <Pressable
         aria-label={label}
+        hasTVPreferredFocus={tv && preferredFocus}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
         onPress={onPress}
         role="button"
         style={{
           alignItems: "center",
-          backgroundColor: hovered ? playerChrome.glassTop : "transparent",
+          backgroundColor: hovered || (tv && focused) ? playerChrome.glassTop : "transparent",
           borderRadius: 6,
           flexDirection: "row",
           gap: 12,
           paddingHorizontal: 12,
           paddingVertical: 10,
+          ...(tv ? focusRing(focused, density) : {}),
         }}
       >
         <Icon color={playerChrome.textSecondary} decorative glyph={icons.info} size="compact" />
@@ -132,77 +162,113 @@ const PlayerSettings = ({
   quality,
   subtitles,
   switchSound,
-}: PlayerSettingsProps) => (
-  <View style={{ gap: 20 }}>
-    {quality?.onSelect ? (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Quality" />
-        <View aria-label="Quality" role="radiogroup">
-          {quality.options.map((option) => (
-            <OptionRow density={density} key={option.value} onSelect={quality.onSelect} option={option} />
-          ))}
+}: PlayerSettingsProps) => {
+  const audioChoice = audio.onSelect && audio.options.length > 1;
+  // Where a remote lands as the sheet opens: the first choice's current option, else Playback info.
+  const first = quality?.onSelect
+    ? "quality"
+    : audioChoice
+      ? "audio"
+      : subtitles
+        ? "subtitles"
+        : "playback-info";
+  return (
+    <View style={{ gap: 20 }}>
+      {quality?.onSelect ? (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Quality" />
+          <View aria-label="Quality" role="radiogroup">
+            {quality.options.map((option) => (
+              <OptionRow
+                density={density}
+                key={option.value}
+                onSelect={quality.onSelect}
+                option={option}
+                preferredFocus={first === "quality" && option.selected}
+              />
+            ))}
+          </View>
         </View>
-      </View>
-    ) : quality ? (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Quality" />
-        <View aria-label="Quality" role="list">
-          {quality.options.map((option) => (
-            <OptionRow density={density} key={option.value} option={option} />
-          ))}
+      ) : quality ? (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Quality" />
+          <View aria-label="Quality" role="list">
+            {quality.options.map((option) => (
+              <OptionRow density={density} key={option.value} option={option} />
+            ))}
+          </View>
+          <Text density={density} textRole="hint" tone="muted">
+            This device picks the quality itself, as the connection allows.
+          </Text>
         </View>
-        <Text density={density} textRole="hint" tone="muted">
-          This device picks the quality itself, as the connection allows.
-        </Text>
-      </View>
-    ) : null}
-    {audio.onSelect && audio.options.length > 1 ? (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Audio" />
-        <View aria-label="Audio" role="radiogroup">
-          {audio.options.map((option) => (
-            <OptionRow density={density} key={option.value} onSelect={audio.onSelect} option={option} />
-          ))}
+      ) : null}
+      {audioChoice ? (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Audio" />
+          <View aria-label="Audio" role="radiogroup">
+            {audio.options.map((option) => (
+              <OptionRow
+                density={density}
+                key={option.value}
+                onSelect={audio.onSelect}
+                option={option}
+                preferredFocus={first === "audio" && option.selected}
+              />
+            ))}
+          </View>
         </View>
-      </View>
-    ) : (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Audio" />
-        <View aria-label="Audio language" role="list">
-          {audio.options.map((option) => (
-            <OptionRow density={density} key={option.value} option={option} />
-          ))}
+      ) : (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Audio" />
+          <View aria-label="Audio language" role="list">
+            {audio.options.map((option) => (
+              <OptionRow density={density} key={option.value} option={option} />
+            ))}
+          </View>
+          <Text density={density} textRole="hint" tone="muted">
+            The channel’s language. An admin sets it on the channel’s page.
+          </Text>
         </View>
-        <Text density={density} textRole="hint" tone="muted">
-          The channel’s language. An admin sets it on the channel’s page.
-        </Text>
-      </View>
-    )}
-    {subtitles ? (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Subtitles" />
-        <View aria-label="Subtitles" role="radiogroup">
-          {subtitles.options.map((option) => (
-            <OptionRow density={density} key={option.value} onSelect={subtitles.onSelect} option={option} />
-          ))}
+      )}
+      {subtitles ? (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Subtitles" />
+          <View aria-label="Subtitles" role="radiogroup">
+            {subtitles.options.map((option) => (
+              <OptionRow
+                density={density}
+                key={option.value}
+                onSelect={subtitles.onSelect}
+                option={option}
+                preferredFocus={first === "subtitles" && option.selected}
+              />
+            ))}
+          </View>
         </View>
-      </View>
-    ) : null}
-    {onSwitchSound ? (
-      <View style={{ gap: 6 }}>
-        <SectionLabel density={density} label="Sound" />
-        <Toggle
-          checked={switchSound ?? false}
+      ) : null}
+      {onSwitchSound ? (
+        <View style={{ gap: 6 }}>
+          <SectionLabel density={density} label="Sound" />
+          <Toggle
+            checked={switchSound ?? false}
+            density={density}
+            kind="switch"
+            label="Channel-change sound"
+            onCheckedChange={onSwitchSound}
+          />
+        </View>
+      ) : null}
+      {onPlaybackInfo ? (
+        <NavRow
           density={density}
-          kind="switch"
-          label="Channel-change sound"
-          onCheckedChange={onSwitchSound}
+          label="Playback info"
+          onPress={onPlaybackInfo}
+          preferredFocus={first === "playback-info"}
         />
-      </View>
-    ) : null}
-    {onPlaybackInfo ? <NavRow density={density} label="Playback info" onPress={onPlaybackInfo} /> : null}
-  </View>
-);
+      ) : null}
+    </View>
+  );
+};
 
 export type { PlayerSettingsProps };
 export { PlayerSettings };

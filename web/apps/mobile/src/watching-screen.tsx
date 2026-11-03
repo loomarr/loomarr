@@ -1,21 +1,15 @@
-import { audioChoice } from "@loomarr/core/audio-choice";
 import { serverNowOf } from "@loomarr/core/channel-timeline";
 import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import { Screen } from "@loomarr/design-system";
 import { useHaptic } from "@loomarr/design-system/haptics";
 import {
-  cueLinesAt,
   type NativePlayerTransport,
   NativePlayerView,
-  nextSubtitles,
   type PairedClient,
   pairedNativeImageSource,
-  rungLabel,
   streamRows,
-  subtitleLabel,
-  useNativeVideoHeight,
-  usePairedSubtitles,
+  useNativePlayerChoices,
   useSampledPlaybackFacts,
   useStationIdent,
 } from "@loomarr/player/native";
@@ -37,11 +31,11 @@ import {
   useFrameTap,
 } from "@loomarr/ui";
 import { lockAsync, OrientationLock, unlockAsync } from "expo-screen-orientation";
+import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAudioPreference, useSubtitlesPreference } from "./player-preferences";
 
 // Watching (#2127, the §9 chrome's portrait form): the picture edge to edge, and under it the panel
 // the web phone draws — the way out and the live state, the lower third and the transport, the
@@ -51,6 +45,9 @@ import { useAudioPreference, useSubtitlesPreference } from "./player-preferences
 
 /** ±10 s, as on every player (#2088 decision 2). */
 const SEEK_STEP_MS = 10_000;
+
+/** The viewer's audio and subtitles, remembered in the phone's keychain. */
+const preferenceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
 
 // PLAYBACK INFO (#2088 decision 13): the Stream rows, read from the player each second while open.
 // The platform picks the rung itself, so the quality is always Auto.
@@ -74,27 +71,12 @@ interface WatchingScreenProps {
 }
 
 const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenProps) => {
-  const {
-    catalogState,
-    controller,
-    myChannels,
-    myChannelsSnapshot,
-    refresh,
-    snapshot,
-    timeline,
-    tracks,
-    transport,
-  } = client;
+  const { catalogState, controller, myChannels, myChannelsSnapshot, refresh, snapshot, timeline, transport } =
+    client;
   const haptic = useHaptic();
   const [sheet, setSheet] = useState<"info" | "playback-info" | "settings">();
   const toggleSheet = (next: "info" | "settings") => setSheet((open) => (open === next ? undefined : next));
 
-  // Settings' audio: the programme's languages at the playhead, the viewer's remembered choice
-  // between them, and the player playing it.
-  const [audioPreference, setAudioPreference] = useAudioPreference();
-  const audio = audioChoice(tracks, audioPreference);
-  useEffect(() => transport.setAlternateAudio(audio.alternate), [audio.alternate, transport]);
-  const videoHeight = useNativeVideoHeight(transport);
   const channel = snapshot.channel;
   const channelId = channel?.id;
   const playing = snapshot.status === "playing";
@@ -135,16 +117,14 @@ const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenP
     noticeRevision: 0,
     viewerTimeMs: Date.now(),
   };
-  // The subtitles at the playhead (#2088 decision 5): the sidecar's tracks for Settings, and the
-  // chosen track's lines drawn over the picture (expo-video takes no sidecar text track).
-  const [subtitlesChoice, setSubtitles] = useSubtitlesPreference();
-  const subtitles = usePairedSubtitles(
-    client.subtitlesSource,
-    playing ? channelId : undefined,
-    live.viewerTimeMs,
-    subtitlesChoice,
-  );
-  const captionLines = cueLinesAt(subtitles.cues, live.viewerTimeMs);
+  // Settings' quality, audio and subtitles, and the caption's lines at the playhead.
+  const choices = useNativePlayerChoices({
+    client,
+    playingChannelId: playing ? channelId : undefined,
+    storage: preferenceStorage,
+    viewerTimeMs: live.viewerTimeMs,
+  });
+  const { captionLines } = choices;
 
   const nowMs = timeline ? serverNowOf(timeline) : Date.now();
   const chrome = channel
@@ -198,38 +178,11 @@ const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenP
         title="Settings"
       >
         <PlayerSettings
-          audio={
-            audio.options.length > 1
-              ? { onSelect: setAudioPreference, options: audio.options }
-              : { options: audio.options }
-          }
+          audio={choices.audio}
           density="touch"
           onPlaybackInfo={() => setSheet("playback-info")}
-          subtitles={
-            subtitles.tracks.length > 0
-              ? {
-                  onSelect: (value) =>
-                    setSubtitles(value === "off" ? "off" : (subtitles.tracks[Number(value)] ?? "off")),
-                  options: [
-                    { label: "Off", selected: subtitles.active < 0, value: "off" },
-                    ...subtitles.tracks.map((track, i) => ({
-                      label: subtitleLabel(track),
-                      selected: i === subtitles.active,
-                      value: String(i),
-                    })),
-                  ],
-                }
-              : undefined
-          }
-          quality={{
-            options: [
-              {
-                label: videoHeight ? `Auto · ${rungLabel(videoHeight)}` : "Auto",
-                selected: true,
-                value: "auto",
-              },
-            ],
-          }}
+          quality={choices.quality}
+          subtitles={choices.subtitles}
         />
       </PlayerSheet>
     ) : sheet === "playback-info" ? (
@@ -267,17 +220,14 @@ const WatchingScreen = ({ client, credential, footer, onLeave }: WatchingScreenP
     onSeekForward: () => seekBy(SEEK_STEP_MS),
     onSettings: () => toggleSheet("settings"),
     onStartOver: startOverMs === undefined ? undefined : () => controller.seek(startOverMs),
-    onSubtitles:
-      subtitles.tracks.length > 0
-        ? () => setSubtitles(nextSubtitles(subtitles.tracks, subtitlesChoice))
-        : undefined,
+    onSubtitles: choices.nextSubtitles,
     onTogglePlay: () => (playing ? controller.pause() : void controller.play()),
     onToggleMute: () => undefined,
     onVolume: () => undefined,
     playing,
     pointer: false,
     settingsOpen: sheet === "settings" || sheet === "playback-info",
-    subtitlesOn: subtitles.active >= 0,
+    subtitlesOn: choices.subtitlesOn,
     volume: 1,
   };
 

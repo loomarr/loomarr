@@ -14,6 +14,8 @@ interface ChannelNumberEntry {
 }
 
 interface TvWatchingProps {
+  /** The subtitle lines on screen now (#2088 decision 5): the player plays no text track of its own. */
+  captionLines?: readonly string[];
   /** The §9 chrome's content, from the tuned channel's timeline; omitted until a channel is tuned. */
   chrome?: Pick<PlayerChromeProps, "band" | "formatTime" | "ident" | "playbar" | "sheet" | "transport">;
   /** False while another journey (Guide, Surf) is drawn over the still-mounted player. */
