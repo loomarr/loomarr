@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -23,7 +23,7 @@ import (
 // envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
 // tokens (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
 // never existed as a generated secret, and the arm webhook it named was deleted.
-var envLookup = os.LookupEnv
+var envLookup = config.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root
 // reads settings the way it used to read cfg.X. Reads resolve env > db > default

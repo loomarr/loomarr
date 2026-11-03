@@ -57,10 +57,14 @@ type bootstrapFile struct {
 var bootstrapKeys = map[string]bool{
 	"LISTEN_ADDR":  true,
 	"LOG_LEVEL":    true,
-	"TZ":           true,
 	"DATABASE_URL": true,
 	"AUTO_MIGRATE": true,
+	dataDirKey:     true,
 }
+
+// dataDirKey is the one file-only key: the data directory decided on first boot (see
+// Config.DataDir). It has no env var, so only the file can carry it.
+const dataDirKey = "DATA_DIR"
 
 // LoadBootstrapFile reads the bootstrap file from dir, returning its values. A missing
 // file is not an error — it is the normal state for an env-configured or first-run
@@ -181,17 +185,17 @@ func BootstrapDirsFor(databaseURL string) []string {
 // still fails the boot (LoadBootstrapFile's contract) rather than falling through to the
 // next directory — a file that exists and is wrong is an operator error to surface, not
 // a reason to quietly use a different one.
-func loadBootstrapSearch(dirs []string) (map[string]string, error) {
+func loadBootstrapSearch(dirs []string) (values map[string]string, foundIn string, err error) {
 	for _, dir := range dirs {
 		values, err := LoadBootstrapFile(dir)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		if values != nil {
-			return values, nil
+			return values, dir, nil
 		}
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
 // PinnedByEnv reports whether an env var is set in the process environment. The wizard

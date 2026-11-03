@@ -1,8 +1,9 @@
 package encode
 
 import (
-	"os"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/config"
 )
 
 // Family is one hardware pipeline implementation.
@@ -137,7 +138,7 @@ const (
 
 // RenderNode is the DRM render node VAAPI and QSV open.
 func RenderNode() string {
-	if d := os.Getenv(RenderNodeEnv); d != "" {
+	if d, _ := config.LookupEnv(RenderNodeEnv); d != "" {
 		return d
 	}
 	return "/dev/dri/renderD128"
