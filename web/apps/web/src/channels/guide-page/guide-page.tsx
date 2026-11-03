@@ -9,6 +9,7 @@ import {
   guideSelectionForChannel,
   layoutGuide,
   moveGuideSelection,
+  useGuideWindow,
 } from "@loomarr/core/guide";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +26,6 @@ import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useLoomarrEventListener } from "@/events/events-provider";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
@@ -71,11 +71,10 @@ const WINDOW_CHOICES = [
 const RETENTION_DAYS = 1;
 const FORWARD_DAYS = 6;
 
-// The now-line advances CLIENT-SIDE from the block timestamps. The browser already knows the
+// The now-line advances CLIENT-SIDE (`useGuideWindow`'s `nowMs`). The browser already knows the
 // wall clock, so pushing "time passed" over SSE would be pure waste — a frame per second per
 // viewer to transmit something every client can compute. SSE is reserved for the genuine
-// invalidation (a lineup changed), below.
-const NOW_TICK_MS = 30_000;
+// invalidation (a lineup changed).
 
 // The hours the START picker offers. Every third hour is enough to land anywhere in the day
 // in one click; a 24-entry list is a scroll, not a choice.
@@ -131,7 +130,6 @@ const GuidePage = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   // Selection owns the grid's roving Tab stop; actual hover/focus owns its preview.
   const [selection, setSelection] = useState<GuideSelection>();
   const [dayOffset, setDayOffset] = useState<number>(0);
@@ -141,6 +139,10 @@ const GuidePage = ({
   const [windowMinutes, setWindowMinutes] = useState<number>(() =>
     phoneWidth ? Number(WINDOW_CHOICES[0].value) : DEFAULT_WINDOW_MINUTES,
   );
+  // `nowMs` drives the now-line and moves on its own timer. `anchorMs` pins TODAY's window so the
+  // grid does not slide under the reader while they look at it: it advances only when the clock
+  // nears the window's end (see `useGuideWindow`). The now-line moves; the axis stays put.
+  const { nowMs, anchorMs } = useGuideWindow(windowMinutes);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
@@ -205,22 +207,13 @@ const GuidePage = ({
     void navigate({ to: "/channels/$id", params: { id } });
   };
 
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  // `mountedAt` pins TODAY's window so the grid does not slide under the reader every thirty
-  // seconds while they are looking at it. The now-line moves; the axis stays put.
-  const [mountedAt] = useState<number>(() => Date.now());
-
   // The window lives in guide-window.ts, shared with the route's prefetch loader: TODAY's start
   // is quantised to a minute so a hover-prefetch and the click that follows address the SAME
   // react-query key. An unquantised window recomputes `from` between the two and warms an entry
   // the page never reads — a prefetch that costs a request and saves nothing.
   const { from, to } = useMemo(
-    () => guideWindow({ at: mountedAt, dayOffset, windowMinutes, hourShift, startHour }),
-    [dayOffset, windowMinutes, mountedAt, hourShift, startHour],
+    () => guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
+    [dayOffset, windowMinutes, anchorMs, hourShift, startHour],
   );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
@@ -250,22 +243,16 @@ const GuidePage = ({
       ...(dayOffset < FORWARD_DAYS ? [{ hourShift, dayOffset: dayOffset + 1 }] : []),
     ];
     for (const n of neighbours) {
-      const w = guideWindow({ at: mountedAt, windowMinutes, startHour, ...n });
+      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, ...n });
       void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
     }
-  }, [settled, queryClient, mountedAt, dayOffset, hourShift, windowMinutes, startHour]);
+  }, [settled, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
 
-  // Live update: a `channel` frame means a lineup actually changed (a reconcile completed),
-  // which is the ONE thing the client cannot derive on its own. Refetching on that keeps the
-  // grid honest without polling.
-  //
-  // Deliberately not `onTitle`: a title becoming available fires BEFORE the backfill that
-  // places it, so refetching there would race and often return the pre-backfill lineup.
-  useLoomarrEventListener({
-    onChannel: () => {
-      void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelGuideQueryKey({ from, to }) });
-    },
-  });
+  // Live update needs no listener here: a `channel` frame means a lineup actually changed (a
+  // reconcile completed), and the SSE bus invalidates every cached `/v1/guide` window —
+  // the one on screen and the prefetched neighbours alike. Deliberately not `title`: a title
+  // becoming available fires BEFORE the backfill that places it, so refetching there would race
+  // and often return the pre-backfill lineup.
 
   const body = unwrap(guide.data);
   const channels = useMemo(() => body?.channels ?? [], [body]);
@@ -429,7 +416,7 @@ const GuidePage = ({
                 <SelectContent>
                   {dayChoices.map((d) => (
                     <SelectItem key={d} value={String(d)} className="font-mono text-xs">
-                      {dayLabel(d, mountedAt)}
+                      {dayLabel(d, anchorMs)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,101 +1,158 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import {
+  EVENT_INVALIDATIONS,
+  EVENT_TYPES,
+  type EventHandlers,
+  type EventType,
+  eventHandlerName,
+} from "@loomarr/core/events";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { FakeEventSource } from "@/test/fake-event-source";
+import { LoomarrEventsProvider, useLoomarrEventListener } from "./events-provider";
 
-// THE PROVIDER MUST FAN OUT EVERY FRAME THE CORE HOOK SUBSCRIBES TO.
+// THE STREAM MUST DELIVER EVERY FRAME TYPE THE SPEC DECLARES.
 //
-// This exists because the omission is invisible to TypeScript. `EventHandlers` marks every
-// handler optional — correctly, since a consumer subscribes to the one frame it cares about —
-// so a provider that implements four of six type-checks perfectly.
-//
-// That is exactly what happened: `onFillerIngest` was subscribed by the core hook and dropped
-// by this provider. The ingest panel was the frame's only consumer (retired-ok, V38b) and its
-// callback could never fire, so "Download clips" sat at "starting" forever. A whole feature
-// dead, with a green build, green types and green tests. A doc-drift audit found it by reading,
-// not by running.
-//
-// Parsing the SOURCE rather than importing and probing is deliberate: the handlers are wired
-// inside a `useMemo` in a React component, so there is nothing to enumerate at runtime without
-// rendering, and rendering would only prove the keys that were remembered.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CORE_EVENTS = join(
-  HERE,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-  "packages",
-  "core",
-  "src",
-  "events",
-  "events.ts",
-);
-const PROVIDER = join(HERE, "events-provider.tsx");
+// The omission this guards is invisible to TypeScript at the handler level: every `EventHandlers`
+// key is optional, so a hand-written subscribe list that forgets one frame type-checks. That is how
+// `database` went dead (no listener ever fired, so the migration page's progress never moved) and
+// how `filler_ingest` was dropped before it. The type list now comes from the generated spec, so
+// this test drives the real stream — a fake EventSource emitting one frame of EVERY type — rather
+// than reading source, and fails if any type reaches no listener or invalidates the wrong queries.
 
-// Every `handlers.onX` the core stream reads — the authoritative list, because that file is
-// what decides which SSE frame names are subscribed at all.
-const coreHandlerNames = (): string[] => {
-  const src = readFileSync(CORE_EVENTS, "utf8");
-  return [...new Set([...src.matchAll(/handlers\.(on[A-Z][A-Za-z]*)/g)].map((m) => m[1] ?? ""))]
-    .filter(Boolean)
-    .sort();
+// Payloads for the two frames whose invalidation is conditional on the payload; every other frame
+// invalidates unconditionally, so any object serves.
+const PAYLOADS: Partial<Record<EventType, unknown>> = {
+  filler_ingest: { status: "success" },
+  filler_clip: { disposition: "filed" },
+};
+const payloadFor = (type: EventType): unknown => PAYLOADS[type] ?? { frame: type };
+
+const Listener = ({ handlers }: { handlers: EventHandlers }) => {
+  useLoomarrEventListener(handlers);
+  return null;
 };
 
-// ⚠ **There are TWO handler objects in that file, and BOTH have to be complete.** A frame reaches
-// a component through both in series: `fanOut` (what the provider subscribes to the stream) and
-// the re-dispatch inside `useLoomarrEventListener` (what forwards to each listener's callbacks). A
-// key missing from either end kills the frame just as dead.
-//
-// ⚠ This guard used to regex the WHOLE FILE in one pass and compare core against the UNION of the
-// two objects — so a key present in only one satisfied it. It was green while
-// `useLoomarrEventListener` was missing `onPlayout` and `onDatabase`, which meant
-// `settings/system/database.tsx`'s `onDatabase` subscription could never fire and the migration
-// page's live progress was dead. A guard against drift that ORs its two sources cannot see drift
-// between them.
-//
-// So: slice first, assert each half separately.
-const providerSections = (): { fanOut: string; listener: string } => {
-  const src = readFileSync(PROVIDER, "utf8");
-  const fanOutAt = src.indexOf("const fanOut = useMemo<EventHandlers>(");
-  const listenerAt = src.indexOf("return subscribe({");
-  // ⚠ Throw rather than fall back. If either anchor is renamed, silently returning the whole file
-  // (or an empty slice) makes this test pass vacuously — which is the precise failure mode it was
-  // just fixed for.
-  if (fanOutAt < 0 || listenerAt < 0 || listenerAt <= fanOutAt) {
-    throw new Error(
-      "events-provider.tsx no longer contains the two handler objects this guard parses — " +
-        "update the anchors, do not delete the check",
-    );
-  }
-  return { fanOut: src.slice(fanOutAt, listenerAt), listener: src.slice(listenerAt) };
+const mount = (children: ReactNode) => {
+  const queryClient = new QueryClient();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>,
+  );
+  const stream = FakeEventSource.instances[0];
+  if (!stream) throw new Error("the provider did not open an event stream");
+  return { queryClient, stream };
 };
-
-const handlerNamesIn = (src: string): string[] =>
-  [...new Set([...src.matchAll(/^\s+(on[A-Z][A-Za-z]*):/gm)].map((m) => m[1] ?? ""))].filter(Boolean).sort();
 
 describe("LoomarrEventsProvider", () => {
-  it("reads a non-empty handler list from every source", () => {
-    // Guards the regexes themselves: if any stops matching, the comparisons below would
-    // pass vacuously and this test would silently stop watching anything.
-    const { fanOut, listener } = providerSections();
-    expect(coreHandlerNames().length).toBeGreaterThanOrEqual(5);
-    expect(handlerNamesIn(fanOut).length).toBeGreaterThanOrEqual(5);
-    expect(handlerNamesIn(listener).length).toBeGreaterThanOrEqual(5);
+  it("opens one stream and subscribes to every frame type the spec declares", () => {
+    const { stream } = mount(null);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    // The type list and the invalidation table are one source: nothing can be listed in one
+    // and left out of the other.
+    expect(EVENT_TYPES).toEqual(Object.keys(EVENT_INVALIDATIONS));
+    expect(EVENT_TYPES).toContain("database");
+    expect(stream.subscribedTypes().sort()).toEqual([...EVENT_TYPES].sort());
   });
 
-  it.each([
-    ["fanOut", (s: ReturnType<typeof providerSections>) => s.fanOut],
-    ["useLoomarrEventListener", (s: ReturnType<typeof providerSections>) => s.listener],
-  ])("%s forwards every frame the core hook subscribes to", (which, pick) => {
-    const names = handlerNamesIn(pick(providerSections()));
-    const missing = coreHandlerNames().filter((n) => !names.includes(n));
-    expect(
-      missing,
-      `${which} does not forward ${missing.join(", ")} — any component listening for that ` +
-        `frame will never be called, and TypeScript cannot tell you because every ` +
-        `EventHandlers key is optional`,
-    ).toEqual([]);
+  it.each(EVENT_TYPES)("fires a component's handler for a %s frame", (type) => {
+    const handler = vi.fn();
+    const handlers: EventHandlers = { [eventHandlerName(type)]: handler };
+    const { stream } = mount(<Listener handlers={handlers} />);
+
+    stream.emit(type, payloadFor(type));
+
+    expect(handler).toHaveBeenCalledExactlyOnceWith(payloadFor(type));
+  });
+
+  it("delivers a frame to every mounted listener and only the matching handler", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const other = vi.fn();
+    const { stream } = mount(
+      <>
+        <Listener handlers={{ onDatabase: first }} />
+        <Listener handlers={{ onDatabase: second, onJob: other }} />
+      </>,
+    );
+
+    stream.emit("database", { frame: "database" });
+
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it("stops delivering to a listener once it unmounts", () => {
+    const handler = vi.fn();
+    const queryClient = new QueryClient();
+    const tree = (withListener: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <LoomarrEventsProvider>
+          {withListener && <Listener handlers={{ onJob: handler }} />}
+        </LoomarrEventsProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree(true));
+    const stream = FakeEventSource.instances[0];
+    view.rerender(tree(false));
+
+    stream?.emit("job", { frame: "job" });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each(EVENT_TYPES)("invalidates the %s table prefixes and nothing else", async (type) => {
+    const { queryClient, stream } = mount(null);
+    const { prefixes } = EVENT_INVALIDATIONS[type];
+    const unrelated = ["/v1/unrelated"] as const;
+    for (const prefix of prefixes) queryClient.setQueryData([`${prefix}/seed`], "seed");
+    queryClient.setQueryData([...unrelated], "seed");
+
+    stream.emit(type, payloadFor(type));
+
+    for (const prefix of prefixes) {
+      expect(queryClient.getQueryState([`${prefix}/seed`])?.isInvalidated, `${type} → ${prefix}`).toBe(true);
+    }
+    expect(queryClient.getQueryState([...unrelated])?.isInvalidated).toBe(false);
+  });
+
+  it("invalidates the channel and guide prefixes on a channel frame", () => {
+    const { queryClient, stream } = mount(null);
+    // A prefetched neighbour window and a per-channel read both live under these prefixes.
+    queryClient.setQueryData(["/v1/guide", { from: 1, to: 2 }], "guide");
+    queryClient.setQueryData(["/v1/guide", { from: 3, to: 4 }], "neighbour");
+    for (const suffix of ["now-next", "c1", "c1/pods", "c1/upcoming", "c1/cycle"]) {
+      queryClient.setQueryData([`/v1/channels/${suffix}`], suffix);
+    }
+
+    stream.emit("channel", { channelId: "c1" });
+
+    for (const q of queryClient.getQueryCache().getAll()) {
+      expect(q.state.isInvalidated, JSON.stringify(q.queryKey)).toBe(true);
+    }
+  });
+
+  it("invalidates the LLM prefix on an llm_pull frame", () => {
+    const { queryClient, stream } = mount(null);
+    queryClient.setQueryData(["/v1/system/llm/models"], "models");
+
+    stream.emit("llm_pull", { jobId: "j" });
+
+    expect(queryClient.getQueryState(["/v1/system/llm/models"])?.isInvalidated).toBe(true);
+  });
+
+  it("holds back the conditional frames until their terminal state", () => {
+    const { queryClient, stream } = mount(null);
+    queryClient.setQueryData(["/v1/filler/incoming"], "incoming");
+
+    stream.emit("filler_ingest", { status: "running" });
+    stream.emit("filler_clip", { disposition: "running" });
+    expect(queryClient.getQueryState(["/v1/filler/incoming"])?.isInvalidated).toBe(false);
+
+    stream.emit("filler_clip", { disposition: "filed" });
+    expect(queryClient.getQueryState(["/v1/filler/incoming"])?.isInvalidated).toBe(true);
   });
 });
