@@ -1,10 +1,8 @@
 // Package jobs runs Loomarr's recurring background work as named, tunable,
 // on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as
-// System → Tasks. One heartbeat loop replaces the previous scattering of bespoke
-// time.Ticker goroutines: a code-defined registry of jobs, each with a default
-// interval overridable via a settings key, all claimable through the same
-// lease as titles/channels so a job never double-runs across replicas, and all
-// triggerable on demand ("Run now").
+// System → Tasks. A code-defined registry of jobs, each with a default cron
+// overridable via a settings key, all scheduled and executed by River so a job
+// never double-runs across replicas, and all triggerable on demand ("Run now").
 package jobs
 
 import (
@@ -168,7 +166,6 @@ type ScheduleStore interface {
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	GetScheduledJob(ctx context.Context, name string) (store.ScheduledJob, error)
 	ListScheduledJobs(ctx context.Context) ([]store.ScheduledJob, error)
-	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]store.ScheduledJob, error)
 }
 
 // Notifier receives a job-changed signal after each run, for the SSE bus (optional).
@@ -186,26 +183,13 @@ type Observer interface {
 // to def when unset (so a schedule is edited in the settings registry, hot-applied).
 type ScheduleFn func(key, def string) string
 
-const (
-	// heartbeat is how often the loop checks for due jobs. Short + fixed: jobs are due on
-	// their own intervals, not this cadence. Mirrors the suggest worker pool's 2s poll.
-	heartbeat = 5 * time.Second
-	// leaseHorizon must comfortably exceed the longest job runtime so a still-running job
-	// isn't re-claimed by the next tick before it reschedules itself.
-	leaseHorizon = 30 * time.Minute
+// LongJobTimeout is the ceiling for a job that runs real media work — ffmpeg, whisper,
+// yt-dlp, an image encode.
+const LongJobTimeout = 30 * time.Minute
 
-	// LongJobTimeout is the ceiling for a job that runs real media work — ffmpeg, whisper,
-	// yt-dlp, an image encode.
-	//
-	// ⚠ Deliberately EQUAL to `leaseHorizon`, so the two ceilings cannot disagree. A job allowed
-	// to outlive its own claim would keep working after the row it holds became re-claimable,
-	// and a second worker could start the same job beside it. Tying them means "you may run
-	// until your claim would expire, and not one second further" is stated once.
-	LongJobTimeout = leaseHorizon
-)
-
-// Scheduler ticks a heartbeat, claims due jobs, runs them in bounded goroutines, records
-// state, and services on-demand triggers.
+// Scheduler is the job registry's read model and execution wrapper: it lists jobs with their
+// state, records each run's outcome, and enqueues "Run now" requests. River owns scheduling
+// and execution.
 type Scheduler struct {
 	store    ScheduleStore
 	jobs     map[string]Job
@@ -216,12 +200,9 @@ type Scheduler struct {
 	log      *slog.Logger
 	notifier Notifier
 	observer Observer
-	// river is the execution engine once StartRiver has run (§14, §18.1). Nil until then —
-	// and nil in unit tests, which drive tick()/execute() directly rather than standing up a
-	// queue, so the scheduler's own behaviour stays testable without a database.
+	// river is the only execution engine (§14, §18.1). Nil until StartRiver has run, and nil
+	// in unit tests that exercise execute() and the read model without a database.
 	river *river.Client[*sql.Tx]
-
-	wake chan struct{} // buffered signal to run a tick now (Trigger, startup)
 
 	mu      sync.Mutex
 	running map[string]bool // jobs currently executing
@@ -242,7 +223,7 @@ func New(st ScheduleStore, reg *Registry, schedule ScheduleFn, now func() time.T
 	}
 	return &Scheduler{
 		store: st, jobs: jobs, order: order, schedule: schedule, cron: gronx.New(),
-		now: now, log: log, wake: make(chan struct{}, 1), running: map[string]bool{},
+		now: now, log: log, running: map[string]bool{},
 	}
 }
 
@@ -286,31 +267,6 @@ func (s *Scheduler) nextRun(j Job, from time.Time) time.Time {
 	return next
 }
 
-// Run reconciles the state table against the registry, then loops on the heartbeat (and
-// on-demand wakes) until ctx is cancelled. Registered jobs missing a state row are created
-// due-now so a fresh install runs each once on startup (matching the old run-once-on-start
-// behavior); unknown-in-code rows are left untouched.
-func (s *Scheduler) Run(ctx context.Context) {
-	s.reconcileRegistry(ctx)
-	s.log.Info("scheduler started", "jobs", len(s.jobs))
-
-	ticker := time.NewTicker(heartbeat)
-	defer ticker.Stop()
-	// Kick an immediate tick so due-on-start jobs run without waiting a heartbeat.
-	s.signal()
-	for {
-		select {
-		case <-ctx.Done():
-			s.log.Info("scheduler stopped")
-			return
-		case <-ticker.C:
-			s.tick(ctx)
-		case <-s.wake:
-			s.tick(ctx)
-		}
-	}
-}
-
 // SeedRegistry ensures every code-defined job has a state row, so the Tasks page can list it
 // before it has ever run. Rows for jobs no longer in code are ignored, not deleted — a renamed
 // job's history is not something to silently destroy on boot.
@@ -321,7 +277,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) SeedRegistry(ctx context.Context) { s.reconcileRegistry(ctx) }
 
 // reconcileRegistry ensures every code-defined job has a state row (created due-now on first
-// sight), so the loop will run it. Rows for jobs no longer in code are ignored, not deleted.
+// sight). Rows for jobs no longer in code are ignored, not deleted.
 func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 	existing := map[string]bool{}
 	if rows, err := s.store.ListScheduledJobs(ctx); err == nil {
@@ -334,10 +290,9 @@ func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 		if existing[name] {
 			continue
 		}
-		// A disabled job gets no state row, so it can never become due and the claim query
-		// never sees it. Enforcing it here as well as in tick() is deliberate: this is the
+		// A disabled job gets no state row, so the Tasks page never shows it as due. This is the
 		// only point that would otherwise write a due-now row, and a job that is disabled
-		// today may have been seeded by an earlier boot that was not.
+		// today may have been seeded by an earlier boot that was not (the worker re-checks).
 		if s.jobs[name].Disabled() {
 			continue
 		}
@@ -347,33 +302,8 @@ func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 	}
 }
 
-// tick claims all due jobs and runs each in a bounded goroutine. A job whose Run panics or
-// errors records last_result=error but never wedges the loop or the other jobs.
-func (s *Scheduler) tick(ctx context.Context) {
-	due, err := s.store.ClaimDueScheduledJobs(ctx, s.now(), leaseHorizon)
-	if err != nil {
-		s.log.Error("scheduler: claim due jobs", "err", err)
-		return
-	}
-	for _, row := range due {
-		j, ok := s.jobs[row.Name]
-		if !ok {
-			continue // a state row with no code job (e.g. renamed) — skip; it won't be reclaimed until we reschedule, which we don't, so it stays leased far out. Acceptable: stale rows are inert.
-		}
-		// ⚠ Load-bearing, not belt-and-braces. reconcileRegistry declines to SEED a
-		// disabled job, but a row can already exist from a boot where the job was enabled
-		// — precisely what a SQLite → Postgres migration (§18, V11) produces: the same
-		// install, the same `backup` row, a backend that can no longer run it. Without
-		// this the first tick after that migration would claim the row and run a job whose
-		// writer does not exist.
-		if j.Disabled() {
-			continue
-		}
-		go s.execute(ctx, j, false)
-	}
-}
-
-// execute runs one job and persists the outcome + next run.
+// execute runs one job and persists the outcome + next run. A job whose Run panics or errors
+// records last_result=error and never takes the worker down.
 func (s *Scheduler) execute(ctx context.Context, j Job, manual bool) jobExecutionOutput {
 	s.setRunning(j.Name, true)
 	defer s.setRunning(j.Name, false)
@@ -445,8 +375,8 @@ func (s *Scheduler) safeRun(ctx context.Context, j Job) (err error) {
 	return j.Run(ctx)
 }
 
-// Trigger forces a job to run off-cycle ("Run now"): mark it due, then wake the loop.
-// Returns ErrUnknownJob if the name isn't registered.
+// Trigger forces a job to run off-cycle ("Run now") by enqueuing it on River. Returns
+// ErrUnknownJob if the name isn't registered.
 func (s *Scheduler) Trigger(ctx context.Context, name string) error {
 	j, ok := s.jobs[name]
 	if !ok {
@@ -458,24 +388,10 @@ func (s *Scheduler) Trigger(ctx context.Context, name string) error {
 	if j.Disabled() {
 		return ErrJobDisabled
 	}
-	now := s.now()
-	cur, err := s.store.GetScheduledJob(ctx, name)
-	if err != nil {
-		cur = store.ScheduledJob{Name: name}
-	}
 	// ⚠ Run-now goes through RIVER, so the manual path and the scheduled path execute via the
 	// same worker. A separate "just call Run" shortcut is how the two come to differ — one
 	// records state, the other forgets to; one honours pause, the other does not.
-	if s.river != nil {
-		return s.TriggerRiver(ctx, name)
-	}
-	// No queue (unit tests drive tick() directly): fall back to marking it due.
-	cur.Name, cur.NextRun, cur.UpdatedAt = name, now, now
-	if err := s.store.UpsertScheduledJob(ctx, cur); err != nil {
-		return err
-	}
-	s.signal()
-	return nil
+	return s.TriggerRiver(ctx, name)
 }
 
 // SetPaused pauses or resumes a job (§18.1). A paused job keeps its schedule and stays listed,
@@ -497,15 +413,7 @@ func (s *Scheduler) SetPaused(ctx context.Context, name string, paused bool) err
 	if j.Disabled() {
 		return ErrJobDisabled
 	}
-	if err := s.store.SetScheduledJobPaused(ctx, name, paused); err != nil {
-		return err
-	}
-	// Resuming wakes the loop so a job already past its next_run runs promptly rather than
-	// waiting out a heartbeat it spent paused.
-	if !paused {
-		s.signal()
-	}
-	return nil
+	return s.store.SetScheduledJobPaused(ctx, name, paused)
 }
 
 // List returns the current status of every registered job (registration order), joining the
@@ -532,7 +440,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 			DisabledReason: j.DisabledReason,
 		}
 		// ⚠ A PAUSED job has no next run either, for the same reason a disabled one does not:
-		// the claim query skips it, so any next_run in the row is a time that will not fire.
+		// the worker skips its scheduled runs, so any next_run in the row is a time that will not fire.
 		// Rendering it would have the page promise a run that never comes — the more
 		// misleading half of the two, since a paused job looks otherwise healthy.
 		if st.Paused {
@@ -541,7 +449,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		// A disabled job has no next run — it is never claimed. Any NextRun in the state
 		// row is a leftover from a boot where it WAS enabled (the SQLite → Postgres case),
 		// and rendering it would promise a run that will never happen. Zeroing it here
-		// means the read model cannot disagree with what the loop actually does.
+		// means the read model cannot disagree with what the worker actually does.
 		if j.Disabled() {
 			status.NextRun = time.Time{}
 		}
@@ -553,13 +461,6 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		out = append(out, status)
 	}
 	return out, nil
-}
-
-func (s *Scheduler) signal() {
-	select {
-	case s.wake <- struct{}{}:
-	default: // a wake is already pending; one tick will pick up all due jobs
-	}
 }
 
 func (s *Scheduler) setRunning(name string, v bool) {
