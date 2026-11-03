@@ -444,7 +444,12 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
   rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
   a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the
-  library are registered as scanned providers, never fetched.
+  library are registered as scanned providers, never fetched. The registry also answers what the
+  API and the Sources page need to know about a kind: its label and address hint, how an operator's
+  address is read (`Addresser`), how sources are suggested and verified (`Finder`), whether a
+  source can be searched in place (`Searcher`), and what is shown under its rows.
+  `GET /v1/filler/providers` publishes each registered provider with its capabilities, so a
+  provider added to the registry reaches the client without a client change.
   URL inference is kept only for a URL an admin typed. Both share the same bounds, governor,
   acquisition record, held lifecycle, sidecar and admission authority.
 - **Look for new clips** runs one bounded fetch pass for the selected source and then scans local

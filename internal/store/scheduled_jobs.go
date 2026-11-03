@@ -82,18 +82,6 @@ func (s *sqlStore) GetScheduledJob(ctx context.Context, name string) (ScheduledJ
 	return scanScheduledJob(s.db.QueryRowContext(ctx, s.ph(scheduledJobSelect+` WHERE name = ?`), name))
 }
 
-// ClaimDueScheduledJobs leases every job whose next_run is due (§18.1), advancing next_run to
-// now+lease so a concurrent tick/replica won't re-run it before this run reschedules it. The
-// caller runs each returned job then Upserts its real next_run (now + effective interval).
-func (s *sqlStore) ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]ScheduledJob, error) {
-	rows, err := s.db.QueryContext(ctx, s.scheduledJobClaimSQL, epoch(now.Add(lease)), epoch(now))
-	if err != nil {
-		return nil, fmt.Errorf("claim due scheduled jobs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	return scanScheduledJobs(rows)
-}
-
 func scanScheduledJob(sc scannable) (ScheduledJob, error) {
 	var (
 		j                           ScheduledJob

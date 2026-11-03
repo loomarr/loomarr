@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -326,7 +327,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" }, now: func() time.Time { return fixed },
 		start: testInteractiveOperationLauncher,
 	}
@@ -466,6 +467,43 @@ func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T)
 	}
 }
 
+// testFillerProviders is the production registry with no network behind it.
+func testFillerProviders() *sourceprovider.Registry {
+	return fillerSourceProviders("", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler))
+}
+
+// clipfetch cannot import the provider packages (they import it), so it names the two downloaded
+// providers itself; the downloaders are registered under the providers' own IDs.
+func TestClipfetchKindsAreTheProviderIDs(t *testing.T) {
+	if clipfetch.YouTube != youtubeprovider.ID || clipfetch.Archive != archiveprovider.ID {
+		t.Fatalf("clipfetch kinds %q and %q are not the provider IDs %q and %q",
+			clipfetch.YouTube, clipfetch.Archive, youtubeprovider.ID, archiveprovider.ID)
+	}
+}
+
+// Suggesting and verifying a source go to the provider that owns the kind: a provider that cannot
+// find sources, or none at all, is refused, and YouTube without yt-dlp fails with the sentinel the
+// API turns into advice.
+func TestFillerServiceAdapter_FindsSourcesThroughTheRegisteredProvider(t *testing.T) {
+	adapter := fillerServiceAdapter{
+		providers: fillerSourceProviders("", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler)),
+	}
+	for _, kind := range []string{"folder", "vimeo"} {
+		if _, err := adapter.SuggestSources(t.Context(), kind, "retro", 3); err == nil {
+			t.Errorf("SuggestSources(%q) succeeded, want a refusal: that provider cannot suggest sources", kind)
+		}
+		if _, err := adapter.ResolveSource(t.Context(), kind, "x"); err == nil {
+			t.Errorf("ResolveSource(%q) succeeded, want a refusal", kind)
+		}
+	}
+	if _, err := adapter.SuggestSources(t.Context(), "youtube", "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("SuggestSources(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	}
+	if _, err := adapter.ResolveSource(t.Context(), "youtube", "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("ResolveSource(youtube) without yt-dlp = %v, want filler.ErrSourceProvider", err)
+	}
+}
+
 // fakeArchiveCatalog lists items without runtimes, as Archive.org's one-request search does, and
 // fills them in only when asked for per-item metadata.
 type fakeArchiveCatalog struct {
@@ -601,7 +639,7 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 }
 
 func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
-	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }}
+	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }, providers: testFillerProviders()}
 	if _, err := a.Ingest(t.Context(), nil); err == nil {
 		t.Fatal("empty ingest created a successful-looking job")
 	}
@@ -611,7 +649,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" },
 		start: testInteractiveOperationLauncher,
 	}
@@ -648,7 +686,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)}, providers: testFillerProviders(),
 		newID: func() string { return "acq-18" },
 		start: testInteractiveOperationLauncher,
 	}

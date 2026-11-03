@@ -45,16 +45,10 @@ type jobArgs struct {
 	Manual bool   `json:"manual,omitempty"`
 }
 
-const legacyJobKind = "loomarr_job"
-
 // Kind gives each named task its own River kind, making one task's history directly queryable
-// without scanning executions from every other task. The empty-name kind remains registered so
-// jobs queued by an older Loomarr build can drain after an upgrade.
+// without scanning executions from every other task.
 func (a jobArgs) Kind() string {
-	if a.Name == "" {
-		return legacyJobKind
-	}
-	return legacyJobKind + ":" + a.Name
+	return "loomarr_job:" + a.Name
 }
 
 type jobExecutionOutput struct {
@@ -176,8 +170,6 @@ func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *s
 
 	workers := river.NewWorkers()
 	worker := &riverWorker{s: s}
-	// Keep the old shared kind registered only to drain rows queued before named kinds shipped.
-	river.AddWorker(workers, worker)
 	for _, name := range s.order {
 		river.AddWorkerArgs(workers, jobArgs{Name: name}, worker)
 	}
