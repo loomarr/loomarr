@@ -353,11 +353,16 @@ func (h *harness) patchSettings(admin *http.Cookie, edits map[string]string) int
 
 // ---- pipeline helpers ---------------------------------------------------------
 
+// workerWait bounds how long a test polls for a River worker's result. Polls return as soon as the
+// result lands, so the bound only matters on failure; it is wide because the race-enabled CI
+// runner can take several seconds to schedule a job.
+const workerWait = 30 * time.Second
+
 // awaitProposal polls the submitted queue until the job's proposal appears (the
 // worker ran) or the deadline passes; a worker failure surfaces the job's error.
 func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, suggest.Proposal) {
 	h.t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var list struct {
 			Proposals []struct {
