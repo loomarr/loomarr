@@ -62,7 +62,7 @@ const ReviewPage = () => {
     setFilesOpen(false);
   };
 
-  // Keyboard hints are real: C confirm · S search · N not a title · arrows move.
+  // Keyboard hints are real: C confirm · S search · N not a title. Arrow keys belong to the prototype switcher.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -71,8 +71,6 @@ const ReviewPage = () => {
       if (k === "c") decide("confirmed");
       else if (k === "s") decide("search");
       else if (k === "n") decide("not-a-title");
-      else if (e.key === "ArrowRight") step(1);
-      else if (e.key === "ArrowLeft") step(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -94,7 +92,7 @@ const ReviewPage = () => {
       </div>
       <ProgressTrack label="Review progress" percent={Math.round((decided / total) * 100)} />
 
-      <Surface gap="$4" padding="$5">
+      <Surface gap="section" padding="section">
         <div className="flex flex-col gap-1">
           <SectionLabel>Folder</SectionLabel>
           <Text textRole="data">{group.folder}</Text>
@@ -124,11 +122,11 @@ const ReviewPage = () => {
         <div className="flex flex-col gap-2">
           <SectionLabel>Best candidate</SectionLabel>
           {group.best ? (
-            <Surface level="elevated" padding="$4">
+            <Surface level="elevated" padding="control">
               <CandidateCard big c={group.best} />
             </Surface>
           ) : (
-            <Surface level="elevated" padding="$4">
+            <Surface level="elevated" padding="control">
               <Text textRole="body" tone="secondary">
                 No candidate. Nothing recognisable in the name, so search by hand or mark it as not a title.
               </Text>
@@ -170,7 +168,7 @@ const ReviewPage = () => {
           Previous
         </Action>
         <Text textRole="metadata" tone="muted">
-          C confirm · S search · N not a title · ← → move
+          C confirm · S search · N not a title{" "}
         </Text>
         <Action disabled={index === total - 1} onPress={() => step(1)} variant="ghost">
           Next

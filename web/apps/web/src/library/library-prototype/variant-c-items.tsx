@@ -66,7 +66,7 @@ const ItemsPage = ({ scan, go }: { scan: ScanState; go: (s: Screen) => void }) =
 
   if (scan === "fresh") {
     return (
-      <Surface gap="$3" padding="$5">
+      <Surface gap="control" padding="section">
         <Text textRole="headline">Nothing imported yet</Text>
         <Text textRole="body" tone="secondary">
           Loomarr found media folders but you have not confirmed them, so there is nothing to list. Confirm

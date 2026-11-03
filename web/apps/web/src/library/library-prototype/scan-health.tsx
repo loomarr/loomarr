@@ -62,7 +62,7 @@ const Compact = ({ status, onOpenSettings }: Omit<ScanHealthProps, "density">) =
           <Text textRole="metadata" tone="warning">
             Nothing removed yet
           </Text>
-          <Action variant="suggest">Confirm removal</Action>
+          <Action tone="danger">Confirm removal</Action>
         </Line>
       ) : null}
       {offline ? (
@@ -74,7 +74,7 @@ const Compact = ({ status, onOpenSettings }: Omit<ScanHealthProps, "density">) =
         </Line>
       ) : null}
       {fresh ? (
-        <Action variant="suggest" onPress={onOpenSettings}>
+        <Action onPress={onOpenSettings} tone="primary">
           Confirm roots
         </Action>
       ) : null}
@@ -104,7 +104,7 @@ const Full = ({ status }: Pick<ScanHealthProps, "status">) => {
           title={`${fmt(held.wouldRemove)} movies in ${held.root} look removed — nothing has been removed yet`}
           actions={
             <>
-              <Action variant="suggest">Confirm removal</Action>
+              <Action tone="danger">Confirm removal</Action>
               <Action variant="outline">Rescan</Action>
             </>
           }

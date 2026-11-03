@@ -8,7 +8,7 @@ import { Art, Crumbs, SectionLabel } from "./variant-c-parts";
 const Card = ({ c, onEdit }: { c: CollectionRow; onEdit: () => void }) => {
   const tmdb = c.kind === "TMDB";
   return (
-    <Surface gap="$3" padding="$4">
+    <Surface gap="control" padding="control">
       <div className="flex items-start gap-3">
         <Art hue={c.hue} title={c.name} width={44} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -94,11 +94,11 @@ const CollectionEditPage = ({ go }: { go: (s: Screen) => void }) => {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <Crumbs onBack={() => go("collections")} trail={["Collections", name]} />
-      <Surface gap="$3" padding="$4">
+      <Surface gap="control" padding="control">
         <Field label="Name" onChangeText={setName} value={name} />
         <Field label="Description" onChangeText={setDesc} value={desc} />
       </Surface>
-      <Surface gap="$2" padding="$4">
+      <Surface gap="inline" padding="control">
         <SectionLabel>Members · in order</SectionLabel>
         {e.members.map((m, i) => (
           <div className="border-border flex items-center gap-3 border-b py-2" key={m.title}>

@@ -41,11 +41,11 @@ const MineRow = ({ c, onEdit }: { c: CollectionRow; onEdit: () => void }) => (
       paddingHorizontal="control"
     >
       <Art hue={c.hue} width={28} />
-      <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={160}>
-        <Text numberOfLines={1} textRole="label" tone="primary">
+      <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} flex={1} minWidth={160}>
+        <Text numberOfLines={1} textAlign="left" textRole="label" tone="primary">
           {c.name}
         </Text>
-        <Text textRole="metadata">
+        <Text textAlign="left" textRole="metadata">
           {c.usedBy?.length ? `used by ${c.usedBy.join(", ")}` : "not used by a channel"}
         </Text>
       </Surface>

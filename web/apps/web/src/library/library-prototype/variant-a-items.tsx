@@ -162,8 +162,12 @@ const ItemsTable = ({ items, selectedId, phone, fresh, onOpen, onOpenSettings }:
             <Surface
               alignItems="center"
               backgroundColor={selected ? "surfaceElevated" : "surfaceRaised"}
-              borderColor={selected ? "actionFocus" : "borderDecorative"}
-              borderRadius={10}
+              borderBottomWidth={1}
+              borderColor="borderDecorative"
+              borderLeftWidth={0}
+              borderRadius={0}
+              borderRightWidth={0}
+              borderTopWidth={0}
               flexDirection="row"
               gap="control"
               opacity={r.offline ? 0.6 : 1}
@@ -173,22 +177,29 @@ const ItemsTable = ({ items, selectedId, phone, fresh, onOpen, onOpenSettings }:
               <Cell width={COLS.art}>
                 <Art hue={r.hue} width={28} />
               </Cell>
-              <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
-                <Text numberOfLines={1} textRole="label" tone="primary">
+              <Surface
+                alignItems="flex-start"
+                backgroundColor="transparent"
+                borderWidth={0}
+                flex={1}
+                gap={2}
+                minWidth={0}
+              >
+                <Text numberOfLines={1} textAlign="left" textRole="label" tone="primary">
                   {r.title}
                 </Text>
                 {phone ? (
-                  <Text numberOfLines={1} textRole="metadata">
+                  <Text numberOfLines={1} textAlign="left" textRole="metadata">
                     {`${r.year} · ${r.kind} · ${r.certification} · ${r.identity}`}
                   </Text>
                 ) : null}
                 {problem ? (
-                  <Text numberOfLines={1} textRole="metadata" tone="warning">
+                  <Text numberOfLines={1} textAlign="left" textRole="metadata" tone="warning">
                     {problem}
                   </Text>
                 ) : null}
                 {r.offline ? (
-                  <Text numberOfLines={1} textRole="metadata" tone="danger">
+                  <Text numberOfLines={1} textAlign="left" textRole="metadata" tone="danger">
                     offline — /media/movies unreadable
                   </Text>
                 ) : null}

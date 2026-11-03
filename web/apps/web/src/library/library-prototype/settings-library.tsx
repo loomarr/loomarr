@@ -79,7 +79,7 @@ const RootRow = ({
             <Action variant="outline">Re-check</Action>
           )
         ) : (
-          <Action variant="suggest" onPress={onConfirm}>
+          <Action onPress={onConfirm} tone="primary">
             Confirm
           </Action>
         )}

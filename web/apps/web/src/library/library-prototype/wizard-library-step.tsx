@@ -90,7 +90,7 @@ const RootChoice = ({
       {confirmed ? <Badge tone="success">confirmed</Badge> : null}
       {confirmed ? null : (
         <Stack marginLeft="auto">
-          <Action variant="suggest" onPress={onConfirm}>
+          <Action onPress={onConfirm} tone="primary">
             Confirm
           </Action>
         </Stack>

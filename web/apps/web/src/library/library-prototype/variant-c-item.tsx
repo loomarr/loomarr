@@ -58,7 +58,7 @@ const FieldRow = ({
 );
 
 const FileCard = ({ file }: { file: SourceFile }) => (
-  <Surface gap="$2" padding="$3" style={file.stray ? { opacity: 0.8 } : undefined}>
+  <Surface gap="inline" padding="control" style={file.stray ? { opacity: 0.8 } : undefined}>
     <div className="flex flex-wrap items-center gap-2">
       <Badge tone={file.stray ? "caution" : "success"}>{file.stray ? "stray copy" : "current file"}</Badge>
       {file.stray ? (
@@ -106,7 +106,7 @@ const FixMatch = ({ item }: { item: ItemDetail }) => {
         Fix match
       </Action>
       {open ? (
-        <Surface gap="$2" padding="$3">
+        <Surface gap="inline" padding="control">
           {arr ? (
             <>
               <Text textRole="compact">
@@ -208,7 +208,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
     <div className="flex flex-col gap-2">
       <SectionLabel>Used by channels</SectionLabel>
       {item.usedBy.map((u) => (
-        <Surface gap="$1" key={u.channel} padding="$3">
+        <Surface gap="inline" key={u.channel} padding="control">
           <Text textRole="label">{u.channel}</Text>
           <Text textRole="metadata" tone="secondary">
             {u.how}
@@ -251,7 +251,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
 
       {section === "overview" ? (
         <div className="flex flex-col gap-4">
-          <Surface gap="$3" padding="$4">
+          <Surface gap="control" padding="control">
             <SectionLabel>Metadata · each field shows where it came from</SectionLabel>
             {item.fields.map((f) => (
               <FieldRow
@@ -262,7 +262,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
               />
             ))}
           </Surface>
-          <Surface gap="$3" padding="$4">
+          <Surface gap="control" padding="control">
             <div className="flex items-center justify-between gap-2">
               <SectionLabel>Files</SectionLabel>
               <Action onPress={() => setSection("files")} variant="link">
@@ -284,7 +284,7 @@ const ItemPage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) =
               <SeasonList item={item} />
             </div>
           ) : null}
-          <Surface gap="$2" padding="$4">
+          <Surface gap="inline" padding="control">
             <SectionLabel>Artwork</SectionLabel>
             {item.artwork.map((a) => (
               <div className="flex items-center gap-2" key={a.role}>
