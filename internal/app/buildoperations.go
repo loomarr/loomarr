@@ -112,7 +112,7 @@ func buildOperations(
 	}
 	providerHTTP := overrides.NotificationHTTP
 	if providerHTTP == nil {
-		providerHTTP = httpx.NewNamedObserved("notification-provider", httpx.TimeoutNotifications, metricRecorder)
+		providerHTTP = httpx.NewNamedObserved(httpx.TargetNotifications, httpx.TimeoutNotifications, metricRecorder)
 	}
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
 		providerHTTP, func() string { return set.str("access.public_url") },

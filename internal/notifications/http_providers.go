@@ -141,22 +141,30 @@ func (a *HTTPProviderAdapter) Deliver(ctx context.Context, delivery Delivery) Re
 		}
 		return Result{Status: StatusDelivered, ProviderMessageID: truncate(providerID, 200)}
 	}
+	// Apprise may fan out before reporting that one downstream target failed. Retrying a 5xx
+	// could therefore duplicate already accepted messages, so its server failures are ambiguous.
+	if a.means == MeansApprise && response.StatusCode >= 500 {
+		return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+	}
+	return failureForStatus(response)
+}
+
+// failureForStatus maps a non-2xx provider answer to the delivery outcome. httpx says what a
+// rejected credential and a missing destination are; whether a busy service is worth another
+// delivery attempt is this package's own policy, and it is wider than httpx's idempotent-GET
+// retry set: a webhook's 425 and every 5xx (a CDN's 52x for a briefly-down origin) are retried.
+func failureForStatus(response *http.Response) Result {
+	switch httpx.ClassifyStatus(response.StatusCode) {
+	case httpx.ClassNotFound:
+		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
+	case httpx.ClassAuth:
+		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeRecipientRejected}
+	}
 	if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
 		response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
-		// Apprise may fan out before reporting that one downstream target failed. Retrying a 5xx
-		// could therefore duplicate already accepted messages, so its server failures are ambiguous.
-		if a.means == MeansApprise && response.StatusCode >= 500 {
-			return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
-		}
 		result := providerTransientFailure()
 		result.RetryAfter = providerRetryAfter(response.Header.Get("Retry-After"), time.Now())
 		return result
-	}
-	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
-	}
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeRecipientRejected}
 	}
 	return providerConfigurationFailure()
 }
