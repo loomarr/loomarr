@@ -43,6 +43,23 @@ func (m *filesystemMeter) Measure(_ context.Context, path string) (Measurement, 
 	return platformMeasurement(path)
 }
 
+// UsageScope names the roots currently managed for a domain, so the governor discards a running
+// total the moment a live setting repoints the domain. Overlapping roots fail closed here too.
+func (m *filesystemMeter) UsageScope(domain Domain) (string, error) {
+	roots, err := m.roots()
+	if err != nil {
+		return "", err
+	}
+	var scope strings.Builder
+	for _, root := range roots {
+		if root.Domain == domain {
+			scope.WriteString(root.Path)
+			scope.WriteByte(0)
+		}
+	}
+	return scope.String(), nil
+}
+
 func (m *filesystemMeter) ManagedBytes(ctx context.Context, filesystemID string, domain Domain) (int64, error) {
 	if filesystemID == "" {
 		return 0, errors.New("filesystem identity is empty")

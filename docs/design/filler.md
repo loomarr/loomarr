@@ -485,6 +485,12 @@ reservations and the operator-facing decision.
   512 MiB cap.
 - Reservations group by filesystem, not path. The hard reserve aggregates every domain on the
   device; soft budgets stay per domain. A cross-filesystem move reserves the full copy first.
+- **Managed usage is a running total, never walked under the lock.** Each filesystem and domain
+  is walked once on first use; leases then add the bytes they report written, and a background
+  re-walk every 10 minutes replaces the total to correct drift from writes the governor never saw
+  (a released lease's abandoned staging stays counted until then). Reservations and snapshots read
+  only the in-memory total and the live capacity probe, so a large library does not slow them.
+  Repointing a live managed root discards its total and walks the new tree.
 - Restart forgets leases but not bytes. Automatic cleanup removes only cancelled or incomplete
   private staging, superseded temporary output and unreferenced generated artifacts under a
   retention contract; never admitted clips, pinned media, review evidence, source masters, symlinks
