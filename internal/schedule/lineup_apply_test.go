@@ -174,6 +174,31 @@ func TestApplyLineup_ReplacePreserveCarriesFitAndAddedAt(t *testing.T) {
 	}
 }
 
+// A human (re-)approval replaces the lineup wholesale with entries stamped at approval time. A
+// title that stays keeps its first AddedAt, and a re-scored fit wins; a title new to the lineup
+// keeps its own stamp, and one with none (a manual add) takes opts.Now.
+func TestApplyLineup_ReplaceKeepsFirstAddedAtAndStampsNewEntries(t *testing.T) {
+	added := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	approved := added.Add(30 * 24 * time.Hour)
+	now := approved.Add(time.Hour)
+	current := []schedule.LineupEntry{{Key: "movie:tmdb:90000001", Title: "Stays", Fit: 0.4, AddedAt: added}}
+	incoming := []schedule.LineupEntry{
+		{Key: "movie:tmdb:90000001", Title: "Stays", Fit: 0.9, AddedAt: approved},
+		{Key: "movie:tmdb:90000002", Title: "Approved new", Fit: 0.6, AddedAt: approved},
+		{Key: "movie:tmdb:90000003", Title: "Manual add"},
+	}
+	got := schedule.ApplyLineup(current, incoming, schedule.LineupReplace, schedule.ApplyOpts{Now: now})
+	if got[0].Fit != 0.9 || !got[0].AddedAt.Equal(added) {
+		t.Errorf("kept entry = fit %v added %v, want fit 0.9 and the first AddedAt %v", got[0].Fit, got[0].AddedAt, added)
+	}
+	if !got[1].AddedAt.Equal(approved) {
+		t.Errorf("new approved entry added %v, want its own stamp %v", got[1].AddedAt, approved)
+	}
+	if !got[2].AddedAt.Equal(now) {
+		t.Errorf("manual add added %v, want opts.Now %v", got[2].AddedAt, now)
+	}
+}
+
 func TestLineupEntryEffectiveFitAndStampFit(t *testing.T) {
 	if got := (schedule.LineupEntry{}).EffectiveFit(); got != schedule.UnscoredFit {
 		t.Errorf("unscored fit = %v, want %v", got, schedule.UnscoredFit)

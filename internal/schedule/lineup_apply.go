@@ -1,6 +1,10 @@
 package schedule
 
-import "github.com/loomarr/loomarr/internal/provision"
+import (
+	"time"
+
+	"github.com/loomarr/loomarr/internal/provision"
+)
 
 // Lineup application (programming-design §9). Every write to a channel's approved lineup
 // goes through ApplyLineup, so "what changes the lineup" has ONE implementation with an
@@ -46,6 +50,9 @@ type ApplyOpts struct {
 	// Enrich (LineupHeal only): fills empty metadata on an entry in place (injected rating/
 	// collection lookups). Nil ⇒ no-op.
 	Enrich func(*LineupEntry)
+	// Now (LineupReplace only): the AddedAt stamped on an entry new to the lineup that carries
+	// none (a manual add through the API). Injected so this function stays pure.
+	Now time.Time
 }
 
 // ApplyLineup is the single entry point for every lineup write (§9). It never touches the
@@ -57,28 +64,42 @@ func ApplyLineup(current, incoming []LineupEntry, mode LineupMode, opts ApplyOpt
 	case LineupHeal:
 		return applyHeal(current, opts.Enrich)
 	default: // LineupReplace
-		if opts.PreserveByKey {
-			return applyReplacePreserve(current, incoming)
-		}
-		return incoming
+		return applyReplace(current, incoming, opts.PreserveByKey, opts.Now)
 	}
 }
 
-// applyReplacePreserve replaces with `incoming` but carries each entry's rich scheduling
-// metadata forward from the current entry of the same key (the lossy-DTO guard). Display
+// applyReplace replaces with `incoming`. With preserve, each entry's rich scheduling metadata
+// is carried forward from the current entry of the same key (the lossy-DTO guard): display
 // fields (Title/Year/Genres) always come from `incoming`; a season window or episode selector
 // comes from `incoming` when it sets one, else from the current entry.
-func applyReplacePreserve(current, incoming []LineupEntry) []LineupEntry {
+//
+// Either way an entry that stays in the lineup keeps its first AddedAt and, when the incoming
+// entry is unscored, its Fit; an entry new to the lineup without an AddedAt is stamped `now`.
+// Retirement ranks on both, so a reorder, a manual add or a re-approval must not reset them.
+func applyReplace(current, incoming []LineupEntry, preserve bool, now time.Time) []LineupEntry {
 	byKey := make(map[provision.Key]LineupEntry, len(current))
 	for _, e := range current {
 		byKey[e.Key] = e
 	}
 	out := make([]LineupEntry, len(incoming))
 	for i, in := range incoming {
-		if cur, ok := byKey[in.Key]; ok {
+		cur, ok := byKey[in.Key]
+		switch {
+		case ok && preserve:
 			out[i] = mergePreserve(cur, in)
-		} else {
+		default:
 			out[i] = in
+		}
+		if ok {
+			if !cur.AddedAt.IsZero() {
+				out[i].AddedAt = cur.AddedAt
+			}
+			if out[i].Fit == 0 {
+				out[i].Fit = cur.Fit
+			}
+		}
+		if out[i].AddedAt.IsZero() {
+			out[i].AddedAt = now
 		}
 	}
 	return out
@@ -105,14 +126,6 @@ func mergePreserve(cur, in LineupEntry) LineupEntry {
 	}
 	if out.EpisodeSelection.Mode == "" {
 		out.EpisodeSelection = cur.EpisodeSelection
-	}
-	// Fit and AddedAt are internal: an edit built from the API shape carries neither, and must
-	// not erase what retirement ranks on.
-	if out.Fit == 0 {
-		out.Fit = cur.Fit
-	}
-	if out.AddedAt.IsZero() {
-		out.AddedAt = cur.AddedAt
 	}
 	return out
 }

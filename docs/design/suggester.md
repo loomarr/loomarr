@@ -222,10 +222,12 @@ protected by `keep` feedback, or on a channel with no known schedule is never re
 - **Fit.** Every lineup entry stores `Fit`, the confidence of the pick that added it. A later pass
   that re-picks the entry re-scores it; a pick with no confidence leaves the stored fit alone. An
   entry with no stored fit (a manual add, or one with no score yet) reads as the neutral 0.5.
-  `Fit` and `AddedAt` live in the lineup blob and are not on the wire.
+  `Fit` and `AddedAt` live in the lineup blob and are not on the wire. Every lineup write keeps a
+  staying title's first `AddedAt` and its fit when the write carries none (an operator edit, a
+  re-approval); a title new to the lineup without one (a manual add) is stamped at write time.
 - **Order.** The turnstile retires the lowest `fit × recency` first. `recency` is `1 / (1 + idle /
-  8 days)`, where `idle` is the time since the entry last aired on the channel, else since the
-  binder added it, else 8 days (the airing history's retention) when neither is known. The title
+  8 days)`, where `idle` is the time since the entry last aired on the channel, else since it
+  was added, else 8 days (the airing history's retention) when neither is known. The title
   that fits worst and has gone longest without airing goes first; names never break a tie unless
   the scores are exactly equal.
 - **Admission.** A candidate displaces a title only when its confidence is strictly above that
