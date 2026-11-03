@@ -212,7 +212,9 @@ const PreviewPlaybar = ({
                           }}
                         >
                           <Text density={density} numberOfLines={1} strong textRole="cardMeta" tone="primary">
-                            {segment.name}
+                            {/* The space keeps the name and the time two words on the web, where both
+                                are inline spans: a seekable tile's name must contain its text. */}
+                            {`${segment.name} `}
                           </Text>
                           {pointer ? (
                             <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
