@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<!-- Kodi tvshow NFO; every title and id is invented. -->
+<tvshow>
+    <title>The Lantern Office</title>
+    <showtitle>The Lantern Office</showtitle>
+    <plot>A night clerk at a seaside lighthouse registry keeps the lamps of a town that no longer has ships.</plot>
+    <mpaa>TV-PG</mpaa>
+    <uniqueid type="tvdb" default="true">90000101</uniqueid>
+    <uniqueid type="tmdb">90000201</uniqueid>
+    <genre>Drama</genre>
+    <premiered>2019-09-12</premiered>
+    <status>Continuing</status>
+    <studio>Harbor Light Network</studio>
+    <namedseason number="1">Season of Lamps</namedseason>
+</tvshow>
+https://www.invented-scraper.example/series/90000101?lang=en&format=nfo

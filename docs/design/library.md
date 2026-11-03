@@ -90,6 +90,45 @@ plus the keyframe index from Matroska Cues or the MP4 sample tables, which `medi
   summary trusts a partial Matroska `Colour` element over the HEVC parameter set and can call a PQ
   file SDR, which the header reader does not.
 
+## Metadata providers
+
+`internal/metadataprovider` is the registry of systems that already know what a media file is
+(#2151, decision [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It imports nothing from
+Loomarr. A provider declares capabilities: the item kinds it describes, the `(kind, namespace)` pairs it
+fetches by, the field families it supplies (technical, identity and numbering, descriptive,
+certification, artwork), its **basis** (the kind of evidence it is: manager, sidecar, catalog …), the
+catalog its text comes from, and rate hints. It fetches one item by id and may also list everything
+(`Lister`) or report changes since a cursor (`ChangeFeed`). Provider ids are a closed set (`sonarr`,
+`radarr`, `nfo`), and a guard test fails on any code that compares them.
+
+- **Sonarr and Radarr** (`metadataprovider/arr`) are managers. Sonarr returns a series by TVDB id with
+  every episode: the episode's own TVDB id, its numbering including the air-order position of specials,
+  its current file and the arr's media summary. Radarr returns a movie by TMDB id. Ratings from Radarr
+  carry its configured certification country. The connection is read once per operation.
+- **NFO** (`metadataprovider/nfo`) is a sidecar, resolved by the media path: `<file>.nfo`, `movie.nfo`
+  when the folder holds only that video, or `tvshow.nfo` in a series folder. It reads typed `uniqueid`
+  elements, guide text, `mpaa` and numbering. The default `uniqueid` names its catalog. Reads are capped
+  at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop malformed
+  ids.
+- **Arr requests never follow a redirect**, so the API key cannot reach another host.
+
+**Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
+providers. A field takes the highest-ranked source that has a value for it. Numbering and the file list
+move whole.
+
+| Family | Order |
+| --- | --- |
+| Technical | measured, header, manager |
+| Identity and numbering | manager, id in a name, sidecar, confirmed link |
+| Descriptive | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
+| Certification | the strictest grounded rating on the US ladder |
+| Artwork | sidecar, catalog, manager, per artwork kind |
+
+Certification uses the audience ladder that enforcement uses. Ratings in another country's system and
+unrated values ground nothing, and a resolver for a country other than the US is refused. An episode
+that no grounded source rates inherits its series' strictest rating. One that a source rates keeps
+that rating, whether it is stricter or not.
+
 ## Cached series episodes
 
 Expanding a series into episodes costs one media-server call per show, which used to dominate guide

@@ -44,7 +44,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 22 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 23 | `holidayvocab`, `inventory`, `provision` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
 | `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
@@ -103,6 +103,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
+- **`metadataprovider`** · 4 importers
+  Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 2 importers
@@ -166,6 +168,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns administrator admission decisions and their bearer grants (§11).
 - **`mediaheader`** · 1 importer · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
+- **`metadataprovider/arr`** · → `metadataprovider`
+  Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
+- **`metadataprovider/nfo`** · → `metadataprovider`
+  Kodi NFO sidecars as a metadata provider (#2151 decision 2).
+- **`metadataprovider/providertest`** · → `metadataprovider`
+  Conformance suite every metadata provider runs.
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`quality`** · 7 importers · → `provision`
@@ -181,13 +189,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 22 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 23 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
 
 - **`llm`** · 9 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`metadataprovider/precedence`** · → `metadataprovider`, `schedule`
+  Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`notifications`** · 6 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
