@@ -117,7 +117,7 @@ providers. A field takes the highest-ranked source that has a value for it. Numb
 move whole.
 
 | Family | Order |
-|---|---|
+| --- | --- |
 | Technical | measured, header, manager |
 | Identity and numbering | manager, id in a name, sidecar, confirmed link |
 | Descriptive | text from the TMDB catalog for movies and series, from TVDB for episodes; then catalog, manager, sidecar |
