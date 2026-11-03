@@ -13,11 +13,16 @@
 package suggest
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Intent is a channel request: an NL description plus optional constraints (§8).
@@ -83,6 +88,36 @@ type Intent struct {
 	// DiscoveryScopeID is internal execution context for channel-specific explicit
 	// feedback during re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`
+}
+
+// ErrChannelIntentUnavailable reports a channel that carries no readable original request: its
+// job was purged before channels owned their intent, or it was made by hand. A refine or a
+// re-curation has nothing to seed from, and must say so rather than guess.
+var ErrChannelIntentUnavailable = errors.New("suggest: the channel's original request is unavailable")
+
+// ChannelIntent is what a channel was asked to be: the request without the inputs that belong to
+// one run (the refine note, the lineup it started from, adjacency offers) and without a name the
+// requester fixed, which belongs to the request that created the channel. It is what a channel
+// stores as its approved intent and what a refine or re-curation is seeded from.
+func (i Intent) ChannelIntent() Intent {
+	i.RefineText = ""
+	i.CurrentLineup = nil
+	i.Adjacent = nil
+	i.ChannelName = ""
+	return i
+}
+
+// IntentOfChannel reads the approved intent a channel stores, ready to seed a refine or a
+// re-curation. It returns ErrChannelIntentUnavailable when the channel has none.
+func IntentOfChannel(ch store.Channel) (Intent, error) {
+	if ch.IntentJSON == "" {
+		return Intent{}, ErrChannelIntentUnavailable
+	}
+	var intent Intent
+	if err := json.Unmarshal([]byte(ch.IntentJSON), &intent); err != nil {
+		return Intent{}, fmt.Errorf("%w: %v", ErrChannelIntentUnavailable, err)
+	}
+	return intent.ChannelIntent(), nil
 }
 
 // LineupContext is a lightweight "what's on this channel now" entry fed to the refiner —

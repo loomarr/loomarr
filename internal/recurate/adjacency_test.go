@@ -33,6 +33,7 @@ func seedChannelWithLineup(t *testing.T, st store.Store, id, jobID string, lineu
 	ch := store.Channel{}
 	ch.ID = id
 	ch.IntentRef = jobID
+	ch.IntentJSON = ownIntent(t, st, jobID)
 	ch.Name = "Ch " + id
 	ch.Number = 41
 	ch.Strategy = schedule.Sequential
@@ -74,7 +75,7 @@ func TestRunner_SeedsAdjacencyFromTheChannelsLineup(t *testing.T) {
 	if !adj.exclude[provision.Key("movie:tmdb:90000562")] {
 		t.Error("the channel's existing titles must be excluded from the walk")
 	}
-	got := ref.intents["job-1"].Adjacent
+	got := ref.intents["ch-1"].Adjacent
 	if len(got) != 1 || got[0].Name != "Iron Lullaby" {
 		t.Fatalf("adjacency did not reach the refine intent: %+v", got)
 	}
@@ -106,7 +107,7 @@ func TestRunner_AdjacencyFailureStillRefines(t *testing.T) {
 	if kicked != 1 {
 		t.Fatalf("kicked = %d, want 1 (the refine still runs)", kicked)
 	}
-	if len(ref.intents["job-1"].Adjacent) != 0 {
+	if len(ref.intents["ch-1"].Adjacent) != 0 {
 		t.Error("a failed walk must contribute no candidates")
 	}
 }
@@ -129,7 +130,7 @@ func TestRunner_NoAdjacencyCorpusIsUnchangedBehaviour(t *testing.T) {
 	if kicked != 1 {
 		t.Fatalf("kicked = %d, want 1", kicked)
 	}
-	if len(ref.intents["job-1"].Adjacent) != 0 {
+	if len(ref.intents["ch-1"].Adjacent) != 0 {
 		t.Error("no corpus must contribute no candidates")
 	}
 }

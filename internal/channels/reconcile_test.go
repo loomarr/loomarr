@@ -1,8 +1,10 @@
 package channels_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -1497,5 +1499,40 @@ func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	}
 	if ch.Status != schedule.StatusEmpty {
 		t.Fatalf("status = %s, want %s", ch.Status, schedule.StatusEmpty)
+	}
+}
+
+// A channel older than jobs.retention has lost the job it was made from. That is not a failure to
+// read the first-live milestone: the channel is simply not eligible for the observation, and
+// reconciling it must not log a warning every time.
+func TestReconcilePurgedOriginJobIsSilentlyNotEligibleForFirstLive(t *testing.T) {
+	st := newStore(t)
+	seedChannel(t, st, "old-channel", 5, entry("movie:tmdb:90000001", "A"))
+	ch, err := st.GetChannel(t.Context(), "old-channel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.IntentRef = "purged-origin-job"
+	if _, err := st.SaveChannel(t.Context(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	sink := &testkit.QualityRecorder{}
+	engine := channels.New(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, channels.Config{
+		ReconcileTTL: 10 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, slog.New(slog.NewTextHandler(&logs, nil))).
+		WithQualityRecorder(quality.NewSchedulingRecorder(sink, testkit.Logger()))
+	if err := engine.Reconcile(t.Context(), "old-channel"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logs.String(), "scheduling milestone") {
+		t.Errorf("a purged origin job logged a warning:\n%s", logs.String())
+	}
+	if got := sink.Observations(); len(got) != 0 {
+		t.Errorf("a channel with no origin job recorded observations: %+v", got)
 	}
 }

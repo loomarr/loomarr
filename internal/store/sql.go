@@ -57,7 +57,6 @@ type sqlStore struct {
 	ph                   placeholder // rebinds ? -> the dialect's placeholder
 	claimSQL             string      // dialect-specific ClaimDueTitles statement (already rebound)
 	channelClaimSQL      string      // dialect-specific ClaimDueChannels statement (already rebound)
-	jobClaimSQL          string      // dialect-specific ClaimDueJobs statement (already rebound)
 	scheduledJobClaimSQL string      // dialect-specific ClaimDueScheduledJobs statement (already rebound)
 }
 

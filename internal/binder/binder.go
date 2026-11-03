@@ -33,10 +33,11 @@ import (
 // doesn't have to satisfy the entire store.
 type Store interface {
 	// ListChannels backs nextFreeChannelNumber ONLY — that genuinely needs every number in
-	// use. Looking a channel up BY something is GetChannelByIntentRef below.
+	// use. Looking a channel up BY something is GetChannelForJob below.
 	ListChannels(ctx context.Context) ([]store.Channel, error)
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetJob(ctx context.Context, id string) (store.Job, error)
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
@@ -166,16 +167,31 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
 	}
 
-	existing, err := b.channelByIntent(ctx, intentRef)
+	existing, err := b.channelForJob(ctx, intentRef)
 	if err != nil {
 		return store.Channel{}, err
 	}
 
 	ch := existing
 	if ch.ID == "" { // first approval of this intent → a new channel
+		// A first approval always has its job. A job that is gone (purged, or never existed)
+		// may have been a refine or re-curation that lost its link to a channel, and creating
+		// one here would duplicate that channel. This is a plain error for the approver to
+		// surface, not a "no channel yet" answer that replans.
+		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
+			return store.Channel{}, fmt.Errorf("%w: proposal %s, job %s, so no channel can be created from it",
+				suggest.ErrProposalJobGone, p.ID, intentRef)
+		} else if jerr != nil {
+			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
+		}
 		identity := sha256.Sum256([]byte(intentRef))
 		ch.ID = "ch_" + hex.EncodeToString(identity[:8])
+		// The job that creates a channel is its origin and stays its intent_ref for life; a later
+		// refine or re-curation is a different job that names the channel instead.
 		ch.IntentRef = intentRef
+		// Whoever asked is recorded once. A refine or re-curation never changes it, so the
+		// requester stays the person who made the request after housekeeping purges the job.
+		ch.RequestedBy = p.CreatedBy
 		// Sequential is the channel Strategy that decides ordering ONLY when the grounded
 		// policy leaves Ordering == OrderInherit — i.e. a single-series channel, where
 		// episodes-in-order is correct. A multi-series channel's grounded policy carries
@@ -222,6 +238,12 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 	// documented live scope inheritance in channels.SelectionFrom.
 	if ch.Policy.Filler == nil {
 		ch.Policy.Filler = schedule.SeedFillerSelection(ch.Policy.ProposalPolicy)
+	}
+	// The channel keeps the approved request itself, so a refine or a re-curation can be seeded
+	// from it long after the job that produced it is purged.
+	ch.IntentJSON, err = channelIntentJSON(proposal)
+	if err != nil {
+		return store.Channel{}, fmt.Errorf("proposal %s: %w", p.ID, err)
 	}
 	ch.Status = schedule.StatusBuilding
 	// ⚠ **Due NOW, so the sweep owns this channel from the moment it exists** (§9 V54). The
@@ -280,15 +302,15 @@ func (b *Binder) AfterApprovalCommitted(ctx context.Context, channelID string) {
 	}
 }
 
-// channelByIntent finds the channel already bound to this intent, if any. Returns a
-// zero Channel when none exists — the caller distinguishes "rebind an existing channel" from
-// "create a new one" on `ch.ID == ""`, so not-found is an ordinary answer here, not an error.
+// channelForJob finds the channel this job's proposal changes: the channel a refine or
+// re-curation job names, or else the channel the job originated. Returns a zero Channel when
+// none exists yet — the caller distinguishes "rebind an existing channel" from "create a new
+// one" on `ch.ID == ""`, so not-found is an ordinary answer here, not an error.
 //
-// ⚠ An INDEXED lookup since V41 (00037). This was `ListChannels` plus a linear walk, duplicated
-// byte-for-byte in `recurate.channelForJob` — two packages reading the whole channel table to
-// find one row, which is what a missing store method leaves behind.
-func (b *Binder) channelByIntent(ctx context.Context, intentRef string) (store.Channel, error) {
-	ch, err := b.store.GetChannelByIntentRef(ctx, intentRef)
+// ⚠ A job that names a channel which was removed is an ERROR, never "create a new one": approving
+// a refine of a deleted channel must not resurrect it as a second, differently numbered channel.
+func (b *Binder) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
+	ch, err := b.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Channel{}, nil
 	}
@@ -431,6 +453,38 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
 	return lineupEntries(p)
+}
+
+// RequestFromIntent resolves who asked for the approved proposal identified by intentRef and what
+// they asked for, so a channel made by the explicit create path owns its request exactly as one
+// made by approval does. Returns empty values for a hand-made channel (empty intentRef).
+func (b *Binder) RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error) {
+	if intentRef == "" {
+		return "", "", nil
+	}
+	prop, err := b.ApprovedProposalForJob(ctx, intentRef)
+	if err != nil {
+		return "", "", err
+	}
+	var p suggest.Proposal
+	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
+		return "", "", fmt.Errorf("decode proposal %s: %w", prop.ID, err)
+	}
+	intentJSON, err = channelIntentJSON(p)
+	if err != nil {
+		return "", "", fmt.Errorf("proposal %s: %w", prop.ID, err)
+	}
+	return intentJSON, prop.CreatedBy, nil
+}
+
+// channelIntentJSON is the approved intent a channel stores: the proposal's request without the
+// inputs that belong to the one run that produced it.
+func channelIntentJSON(p suggest.Proposal) (string, error) {
+	blob, err := json.Marshal(p.Intent.ChannelIntent())
+	if err != nil {
+		return "", fmt.Errorf("marshal intent: %w", err)
+	}
+	return string(blob), nil
 }
 
 // PolicyFromIntent resolves the approved proposal's grounded ChannelPolicy

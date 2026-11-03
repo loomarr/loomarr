@@ -18,7 +18,7 @@ channel reconciliation. Any ordering or quota-read failure leaves the Proposal `
 
 A **Proposal Job** is the caller-owned durable execution of an Intent. `internal/proposalworkflow`
 owns its lifecycle, attempt recovery, caller visibility and the First-channel **Journey** projection.
-Its interface is small: submit or re-run an Intent, claim bounded work, complete or fail one claimed
+Its interface is small: submit an Intent (fresh, or for an existing Channel), claim bounded work, complete or fail one claimed
 Attempt, and read or list Journeys. The Store and the model runner are private ports; API, worker
 and frontend never rebuild lifecycle rules from raw rows.
 
@@ -47,8 +47,21 @@ separately. An impossible combination fails the read closed and is recorded for 
 - Completion and failure compare-and-swap on `(job_id, attempt)`, so a stale worker cannot publish.
   Success inserts the Proposal and marks Attempt and Job terminal in one transaction; a failed
   execution materialises neither a Proposal nor a Channel.
-- Retrying a failed first request creates a fresh Job. Refine and re-curate keep the Channel's intent
-  reference and add an Attempt. A cache hit (hash of normalised Intent and constraints, 24 h TTL)
+- Retrying a failed first request creates a fresh Job. Refine and re-curate also create a fresh Job,
+  seeded from the intent the Channel owns (`channels.intent_json`); the Job names the Channel
+  (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or
+  edits the Job the Channel was made from, and it never reads the cache. A refine is the refining
+  admin's own request; a re-curation is ownerless system work (`kind=recurate`, empty owner) and is
+  in nobody's request list. A refine never takes the requester auto-approve grant (an admin reviews
+  it in the refine panel; its acquisitions are charged to the refining admin on approval), and a
+  first approval refuses to create a Channel when its Job row is gone. A Channel has one unfinished channel Job at a time (queued, running,
+  or done with a Proposal still awaiting a decision): refine answers 409 and the re-curation run
+  skips it with an Info line. The Channel's `intent_ref` stays the Job that created it. A Channel
+  also keeps its `requested_by`, set once at approval and never changed by a refine or
+  re-curation, so housekeeping can purge Jobs without taking the intent or the requester with
+  them. A Channel with no stored intent (its Job was purged before this existed) is neither refined
+  nor re-curated from a guess: refine asks the admin to describe it again and re-curation skips
+  it with a logged reason. A cache hit (hash of normalised Intent and constraints, 24 h TTL)
   copies grounded content into a fresh caller-owned Job and Proposal; it never shares another
   caller's ids, approval or history. Only a successful job is cached, and zero grounded titles fails
   the job rather than persisting an empty Proposal.

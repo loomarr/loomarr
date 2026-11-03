@@ -70,6 +70,16 @@ func TestPostgresClipNameSourceMigration(t *testing.T) {
 	testClipNameSourceMigration(t, s, "migrations/postgres")
 }
 
+func TestPostgresChannelOwnsIntentMigration(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	testChannelOwnsIntentMigration(t, s, "migrations/postgres")
+}
+
 func TestPostgresFillerReadyDispositionsMigration(t *testing.T) {
 	ctx := context.Background()
 	s, err := openPostgres(ctx, startPostgres(t))

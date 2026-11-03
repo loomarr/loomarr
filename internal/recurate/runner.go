@@ -2,7 +2,6 @@ package recurate
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -12,11 +11,11 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-// Refiner triggers a re-run of a channel's own suggestion job against a refreshed intent
-// (the §7 refine mechanism). Satisfied by *suggest.Service. The runner declares the interface
-// so recurate doesn't depend on the concrete worker beyond the one method it calls.
+// Refiner submits a re-curation job for a channel against a refreshed intent (the §7 refine
+// mechanism). Satisfied by *suggest.Service. The runner declares the interface so recurate
+// doesn't depend on the concrete worker beyond the one method it calls.
 type Refiner interface {
-	Recurate(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+	Recurate(ctx context.Context, channelID string, intent suggest.Intent) (string, error)
 }
 
 // Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
@@ -29,7 +28,7 @@ type Adjacencer interface {
 // RunnerStore is the slice of the store the runner needs.
 type RunnerStore interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetJob(ctx context.Context, id string) (store.Job, error)
+	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 }
 
 // Runner is the `channel-recurate` scheduler job (§8.2): on each tick it finds the channels
@@ -72,11 +71,22 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 		if !eligible(ch) {
 			continue
 		}
+		busy, berr := r.store.ChannelHasUnfinishedJob(ctx, ch.ID)
+		if berr != nil {
+			r.log.Warn("re-curation: could not check the channel's unfinished jobs; skipping",
+				"channel", ch.ID, "err", berr)
+			continue
+		}
+		if busy {
+			r.log.Info("re-curation: the channel has an unfinished refine or re-curation; skipping",
+				"channel", ch.ID)
+			continue
+		}
 		intent, ok := r.refreshIntent(ctx, ch)
 		if !ok {
-			continue // no readable source job → can't refine; skip (logged in refreshIntent)
+			continue // no readable original request → can't re-curate; skip (logged in refreshIntent)
 		}
-		if _, rerr := r.refiner.Recurate(ctx, ch.IntentRef, intent); rerr != nil {
+		if _, rerr := r.refiner.Recurate(ctx, ch.ID, intent); rerr != nil {
 			r.log.Warn("re-curation refine failed for a channel; skipping",
 				"channel", ch.ID, "err", rerr)
 			continue
@@ -90,7 +100,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 }
 
 // eligible reports whether a channel participates in scheduled re-curation (§8.2): it must be
-// intent-backed (has a suggestion job to re-run), opted into auto-curate, and actively managed.
+// intent-backed (made from a suggestion, not by hand), opted into auto-curate, and actively managed.
 // "Actively managed" is a DENY-LIST of the two hands-off states — paused (the operator
 // deliberately took it off the sweep) and detached (soft-deleted) — so every managed state
 // qualifies: live, building, AND drifted. drifted is a TRANSIENT reconcile state ("the guide is
@@ -103,27 +113,20 @@ func eligible(ch store.Channel) bool {
 	return ch.Status.Reconcilable()
 }
 
-// refreshIntent builds the intent for a re-curation refine: the channel's ORIGINAL intent
-// (description + era/tone/constraints, from its source job) plus the current lineup as context,
-// and NO RefineText — the "change" is simply "re-evaluate against the library as it is now".
-// Returns ok=false when the source job can't be read (nothing to re-run).
+// refreshIntent builds the intent for a re-curation refine: the channel's OWN approved intent
+// (description + era/tone/constraints) plus the current lineup as context, and NO RefineText —
+// the "change" is simply "re-evaluate against the library as it is now". Returns ok=false when
+// the channel has no readable original request (nothing to re-run).
 func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (suggest.Intent, bool) {
-	job, err := r.store.GetJob(ctx, ch.IntentRef)
+	intent, err := suggest.IntentOfChannel(ch)
 	if err != nil {
-		r.log.Warn("re-curation: source job unreadable; skipping channel",
-			"channel", ch.ID, "job", ch.IntentRef, "err", err)
-		return suggest.Intent{}, false
-	}
-	var intent suggest.Intent
-	if uerr := json.Unmarshal([]byte(job.IntentJSON), &intent); uerr != nil {
-		r.log.Warn("re-curation: source intent malformed; skipping channel",
-			"channel", ch.ID, "err", uerr)
+		r.log.Warn("re-curation: the channel's original request is unavailable; skipping channel",
+			"channel", ch.ID, "err", err)
 		return suggest.Intent{}, false
 	}
 	// No operator RefineText — a scheduled refresh, not a human-requested change. Seed the
 	// current lineup so the suggester reasons from what's already on the channel (and can
 	// prefer keeping it). CurrentLineup drives the refine framing in the prompt (§7).
-	intent.RefineText = ""
 	intent.CurrentLineup = lineupContext(ch.Lineup)
 	intent.Adjacent = r.adjacentFor(ctx, ch)
 	return intent, true

@@ -360,7 +360,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
+func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
@@ -381,20 +381,20 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 1, "suggest", `{"description":"first refine"}`,
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1, `{"description":"first refine"}`,
 		"hash-refine-a", now, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 1, "suggest", `{"description":"stale refine"}`,
-		"hash-refine-b", now, now); !errors.Is(err, ErrJobNotTerminal) {
-		t.Fatalf("stale concurrent requeue = %v, want ErrJobNotTerminal", err)
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1, `{"description":"stale refine"}`,
+		"hash-refine-b", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		t.Fatalf("stale concurrent revision = %v, want ErrProposalNotRevisable", err)
 	}
 	queued, err := s.GetJob(ctx, job.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if queued.Status != "queued" || queued.Attempts != 1 || queued.IntentHash != "hash-refine-a" {
-		t.Fatalf("stale requeue overwrote winner: %+v", queued)
+		t.Fatalf("stale revision overwrote winner: %+v", queued)
 	}
 
 	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
@@ -404,8 +404,8 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	if claimed[0].Attempts != 2 || claimed[0].Status != "running" {
 		t.Fatalf("refined execution token = %+v", claimed[0])
 	}
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 2, "suggest", `{}`, "active-overwrite", now, now); !errors.Is(err, ErrJobNotTerminal) {
-		t.Fatalf("active requeue = %v, want ErrJobNotTerminal", err)
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 2, `{}`, "active-overwrite", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		t.Fatalf("active revision = %v, want ErrProposalNotRevisable", err)
 	}
 
 	second := Proposal{

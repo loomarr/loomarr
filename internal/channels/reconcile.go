@@ -172,7 +172,10 @@ func (e *Engine) reconcileOnce(
 		run.qualityJobID = ""
 		if ch.IntentRef != "" {
 			job, qualityErr := e.store.GetJob(ctx, ch.IntentRef)
-			if qualityErr != nil {
+			if errors.Is(qualityErr, store.ErrNotFound) {
+				// Housekeeping purged the job this channel was made from: the first-live
+				// observation is simply not owed, and that is not worth a line per reconcile.
+			} else if qualityErr != nil {
 				if e.log != nil {
 					e.log.Warn("read Proposal Job scheduling milestone", "err", qualityErr)
 				}

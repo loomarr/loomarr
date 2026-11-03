@@ -122,14 +122,14 @@ type scopeLookupStore struct {
 	err      error
 }
 
-func (s *scopeLookupStore) GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error) {
+func (s *scopeLookupStore) GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error) {
 	if s.err != nil {
 		return store.Channel{}, s.err
 	}
 	if s.override {
 		return s.channel, nil
 	}
-	return s.Store.GetChannelByIntentRef(ctx, intentRef)
+	return s.Store.GetChannelForJob(ctx, jobID)
 }
 
 // Submit caches generated CONTENT from a successful job, never its request
@@ -552,16 +552,8 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	now := time.Now().UTC()
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "job-channel-a", Kind: "suggest", Status: "done", CreatedBy: "admin",
-		IntentJSON: `{"description":"marigold"}`, IntentHash: "marigold", WorkflowVersion: proposalworkflow.WorkflowVersion1,
-		CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
-		ID: "channel-a", Number: 71, Name: "Channel A", Status: schedule.StatusLive, IntentRef: "job-channel-a",
+		ID: "channel-a", Number: 71, Name: "Channel A", Status: schedule.StatusLive, IntentRef: "job-origin-a",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -584,10 +576,11 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger()).WithDurableWorkflow(workflow)
 
-	if _, err := svc.Recurate(ctx, "job-channel-a", suggest.Intent{Description: "marigold"}); err != nil {
+	jobID, err := svc.Recurate(ctx, "channel-a", suggest.Intent{Description: "marigold"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	requeued, err := st.GetJob(ctx, "job-channel-a")
+	requeued, err := st.GetJob(ctx, jobID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +593,7 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	go svc.Run(runCtx)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		job, getErr := st.GetJob(ctx, "job-channel-a")
+		job, getErr := st.GetJob(ctx, jobID)
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
@@ -633,9 +626,8 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			st.override = true
 			st.channel = store.Channel{Channel: schedule.Channel{ID: " ", IntentRef: "job-recurate"}}
 		}},
-		{name: "mismatched intent ref", configure: func(st *scopeLookupStore) {
-			st.override = true
-			st.channel = store.Channel{Channel: schedule.Channel{ID: "channel-a", IntentRef: "different-job"}}
+		{name: "removed channel", configure: func(st *scopeLookupStore) {
+			st.err = fmt.Errorf("%w: job names channel-gone", store.ErrJobChannelGone)
 		}},
 		{name: "detached channel", configure: func(st *scopeLookupStore) {
 			st.override = true
@@ -745,15 +737,7 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 			return svc.Submit(ctx, suggest.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"}, "admin")
 		}},
 		{name: "refine", start: func(ctx context.Context, svc *suggest.Service, st store.Store) (string, error) {
-			now := time.Now().UTC()
-			if err := st.CreateJob(ctx, store.Job{
-				ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "admin",
-				IntentJSON: `{"description":"marigold"}`, IntentHash: "source",
-				WorkflowVersion: proposalworkflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
-			}); err != nil {
-				return "", err
-			}
-			return svc.Refine(ctx, "job-refine", suggest.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"})
+			return svc.Refine(ctx, "channel-a", suggest.Intent{Description: "marigold", DiscoveryScopeID: "channel-a"}, "admin")
 		}},
 	}
 	for _, tt := range tests {
@@ -1038,15 +1022,27 @@ func TestIntentHash_DistinguishesRefine(t *testing.T) {
 	}
 }
 
-// Refine re-queues an EXISTING job in place (the channel's IntentRef) — same id, new
-// intent, status back to queued so the worker re-runs it. This is what lets the refined
-// proposal bind back to the same channel.
-func TestRefine_ReQueuesExistingJob(t *testing.T) {
-	ctx := context.Background()
+// A channel job needs the durable workflow that owns job creation; the service never writes one
+// around it.
+func TestChannelJobsRequireTheDurableWorkflow(t *testing.T) {
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM())
+	if _, err := svc.Refine(context.Background(), "ch-1", suggest.Intent{}, "admin"); err == nil {
+		t.Error("refine without the durable workflow should error")
+	}
+	if _, err := svc.Recurate(context.Background(), "ch-1", suggest.Intent{}); err == nil {
+		t.Error("recurate without the durable workflow should error")
+	}
+}
 
-	// A completed original suggestion job.
+// Refine and recurate each submit a NEW job that names the channel. The request the channel was
+// made from is never touched: it stays done, keeps its intent, and stays in its requester's list.
+func TestRefineAndRecurate_SubmitNewChannelJobs(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM()).
+		WithDurableWorkflow(proposalworkflow.New(st, idGen(), time.Now))
+
 	if err := st.CreateJob(ctx, store.Job{
 		ID: "job-orig", Kind: "suggest", Status: "done",
 		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
@@ -1054,55 +1050,62 @@ func TestRefine_ReQueuesExistingJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	refine := suggest.Intent{Description: "90s action", RefineText: "add more Ansel Brightwater"}
-	got, err := svc.Refine(ctx, "job-orig", refine)
+	refineID, err := svc.Refine(ctx, "ch-1", suggest.Intent{Description: "90s action", RefineText: "add more Ansel Brightwater"}, "admin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "job-orig" {
-		t.Errorf("Refine returned %q, want the same job id job-orig", got)
-	}
-	// The SAME job is now re-queued with the refine intent (not a new job).
-	j, _ := st.GetJob(ctx, "job-orig")
-	if j.Status != "queued" {
-		t.Errorf("refined job status = %q, want queued (re-run)", j.Status)
-	}
-	if j.Kind != "suggest" {
-		t.Errorf("manual refine kind = %q, want suggest", j.Kind)
-	}
-	if !strings.Contains(j.IntentJSON, "add more Ansel Brightwater") {
-		t.Errorf("refined job intent = %q, want the refine text swapped in", j.IntentJSON)
-	}
-}
-
-func TestRecurate_ReQueuesWithServerOwnedOrigin(t *testing.T) {
-	ctx := context.Background()
-	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "job-orig", Kind: "suggest", Status: "done", IntentJSON: `{"description":"90s action"}`,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Recurate(ctx, "job-orig", suggest.Intent{Description: "90s action", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000603"}}}); err != nil {
-		t.Fatal(err)
-	}
-	j, err := st.GetJob(ctx, "job-orig")
+	recurateID, err := svc.Recurate(ctx, "ch-1", suggest.Intent{Description: "90s action", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000603"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.Kind != "recurate" || j.Status != "queued" {
-		t.Fatalf("recurated job = kind %q status %q", j.Kind, j.Status)
+	if refineID == "job-orig" || recurateID == "job-orig" || refineID == recurateID {
+		t.Fatalf("channel jobs reused an id: refine %q recurate %q", refineID, recurateID)
 	}
-}
 
-// Refine on a missing job errors (the caller — refineChannel — guards IntentRef, but the
-// service must be honest if handed a bad id).
-func TestRefine_MissingJob(t *testing.T) {
-	st := newStore(t)
-	svc := buildService(t, st, testkit.NewLLM())
-	if _, err := svc.Refine(context.Background(), "nope", suggest.Intent{}); err == nil {
-		t.Error("refine on a missing job should error")
+	refine, err := st.GetJob(ctx, refineID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refine.Kind != "suggest" || refine.Status != "queued" || refine.ChannelID != "ch-1" || refine.CreatedBy != "admin" {
+		t.Errorf("refine job = kind %q status %q channel %q owner %q", refine.Kind, refine.Status, refine.ChannelID, refine.CreatedBy)
+	}
+	if !strings.Contains(refine.IntentJSON, "add more Ansel Brightwater") {
+		t.Errorf("refine job intent = %q, want the refine text", refine.IntentJSON)
+	}
+	recurate, err := st.GetJob(ctx, recurateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recurate.Kind != "recurate" || recurate.Status != "queued" || recurate.ChannelID != "ch-1" || recurate.CreatedBy != "" {
+		t.Errorf("recurate job = kind %q status %q channel %q owner %q; want system work with no requester",
+			recurate.Kind, recurate.Status, recurate.ChannelID, recurate.CreatedBy)
+	}
+
+	orig, err := st.GetJob(ctx, "job-orig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orig.Status != "done" || orig.Kind != "suggest" || orig.IntentJSON != `{"description":"90s action"}` || orig.CreatedBy != "alex" {
+		t.Errorf("the channel's original request was modified: %+v", orig)
+	}
+	// Request lists: the requester still sees their own request, the admin sees their refine,
+	// and the system's re-curation is in nobody's list.
+	alex, err := st.ListProposalJobIDsByCreator(ctx, "alex", 10)
+	if err != nil || len(alex) != 1 || alex[0] != "job-orig" {
+		t.Errorf("requester's list = %v, %v; want [job-orig]", alex, err)
+	}
+	admin, err := st.ListProposalJobIDsByCreator(ctx, "admin", 10)
+	if err != nil || len(admin) != 1 || admin[0] != refineID {
+		t.Errorf("admin's list = %v, %v; want [%s]", admin, err, refineID)
+	}
+	all, err := st.ListProposalJobIDs(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range all {
+		if id == recurateID {
+			t.Errorf("re-curation job %s appears in the request list %v", recurateID, all)
+		}
 	}
 }
 
@@ -1243,16 +1246,20 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "job-recurate", Kind: "suggest", Status: "done", CreatedBy: "grace",
-		IntentJSON: `{"description":"sci-fi"}`,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
 		ID: "channel-recurate", Number: 72, Name: "Recurate Channel",
-		Status: schedule.StatusLive, IntentRef: "job-recurate",
+		Status: schedule.StatusLive, IntentRef: "job-origin",
 	}}); err != nil {
+		t.Fatal(err)
+	}
+	// Even a re-curation job that somehow carries a requester with a grant stays out of that
+	// grant: the durable kind, not the owner, is the authorization discriminator.
+	now := time.Now().UTC()
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-recurate", Kind: "recurate", Status: "queued", CreatedBy: "grace", ChannelID: "channel-recurate",
+		IntentJSON: `{"description":"sci-fi","currentLineup":[{"key":"movie:tmdb:90000603"}]}`,
+		Deadline:   now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	llmMock := testkit.NewLLM(
@@ -1268,11 +1275,6 @@ func TestWorker_RecurateSkipsRequesterAutoApprove(t *testing.T) {
 		st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
 		WithAutoCurate(curator).
 		WithProgressEmitter(done)
-	if _, err := svc.Recurate(ctx, "job-recurate", suggest.Intent{
-		Description: "sci-fi", CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000603"}},
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1345,5 +1347,44 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	}
 	if all, _ := st.ListChannels(ctx); len(all) != 0 {
 		t.Fatalf("plan failure created %d channels, want 0", len(all))
+	}
+}
+
+// A refine of a channel is reviewed by an admin in the refine panel. The refining person's
+// auto-approve grant never applies to it, even when they hold one: the grant is for a member's own
+// requests, and approving a lineup change unattended is the channel's auto-curate grant's job.
+func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)
+	channels := &testkit.ApprovalChannels{}
+	approver := suggest.NewApprover(st, channels, time.Now)
+	done := newDoneEmitter()
+	svc := buildService(t, st, llmMock).
+		WithDurableWorkflow(proposalworkflow.New(st, idGen(), time.Now)).
+		WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithProgressEmitter(done)
+	if _, err := svc.Refine(ctx, "channel-1", suggest.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	waitForDoneEvent(t, done)
+	if approved, _ := st.ListProposalsByStatus(ctx, "approved"); len(approved) != 0 {
+		t.Fatalf("a refine went through the requester's auto-approve grant: %+v", approved)
+	}
+	if submitted, _ := st.ListProposalsByStatus(ctx, "submitted"); len(submitted) != 1 {
+		t.Fatalf("submitted proposals = %d, want 1 left for the refine panel", len(submitted))
+	}
+	if len(channels.Plans) != 0 {
+		t.Fatalf("auto-approver planned %d channels for a refine", len(channels.Plans))
 	}
 }
