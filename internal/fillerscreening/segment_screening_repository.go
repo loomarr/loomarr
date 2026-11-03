@@ -26,7 +26,7 @@ type SegmentScreeningEvidenceRepository interface {
 }
 
 // FileSegmentScreeningEvidenceRepository stores rendered-child aggregates separately from
-// complete-timeline assessment records while reusing the same private immutable-file discipline.
+// structure-window assessment records while reusing the same private immutable-file discipline.
 type FileSegmentScreeningEvidenceRepository struct {
 	files *fillerstructureassessment.FileStructureAssessmentEvidenceRepository
 }

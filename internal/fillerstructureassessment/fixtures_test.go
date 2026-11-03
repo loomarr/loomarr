@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
@@ -15,24 +14,6 @@ import (
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests and
 // unexported helpers of internal/filler, which an external package cannot import; production code
 // exports nothing for them.
-
-// structureSource is the retained source asset every evidence test hangs a decision on.
-func structureSource(durationMs int64) filler.SplitSourceAsset {
-	return filler.SplitSourceAsset{
-		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 1024,
-		ClipHash: strings.Repeat("b", 64), Path: "aa/bb/source.mp4", DurationMs: durationMs,
-	}
-}
-
-// pathContains reports whether child is parent itself or lies beneath it (filler's unexported
-// helper of the same name).
-func pathContains(parent, child string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil || filepath.IsAbs(rel) {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
 
 // Assess plans and prepares the windows itself, then runs AssessPrepared. Production's hosted
 // adapter prepares first and calls AssessPrepared directly, so nothing in a binary reaches this.

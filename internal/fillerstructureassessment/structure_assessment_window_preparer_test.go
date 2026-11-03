@@ -124,26 +124,64 @@ func TestStructureAssessmentWindowPreparerRejectsPlanAndRetainedReuseDrift(t *te
 	}
 }
 
-func TestStructureAssessmentMediaPreparersRejectIncompleteDecode(t *testing.T) {
-	t.Run("complete video", func(t *testing.T) {
-		root, input := structureAssessmentPreparerSource(t)
-		preparer := structureAssessmentPreparerFixture(root, structureAssessmentToolFixture(), func(_ context.Context, _ string, arguments []string) error {
-			return os.WriteFile(arguments[len(arguments)-1], []byte("normalized"), 0o600)
-		})
-		preparer.decode = func(context.Context, string, string) error { return errors.New("corrupt") }
-		if _, err := preparer.Prepare(context.Background(), input); err == nil {
-			t.Fatal("incompletely decoded full-video media was accepted")
-		}
-	})
+func TestStructureAssessmentWindowPreparerRejectsIncompleteDecode(t *testing.T) {
+	root, input, plan := structureAssessmentWindowSource(t)
+	preparer, _ := structureAssessmentWindowPreparerFixture(t, root, plan)
+	preparer.decode = func(context.Context, string, string) error { return errors.New("corrupt") }
+	if _, err := preparer.PrepareWindows(context.Background(), input, plan); err == nil {
+		t.Fatal("incompletely decoded window media was accepted")
+	}
+}
 
-	t.Run("window", func(t *testing.T) {
-		root, input, plan := structureAssessmentWindowSource(t)
-		preparer, _ := structureAssessmentWindowPreparerFixture(t, root, plan)
-		preparer.decode = func(context.Context, string, string) error { return errors.New("corrupt") }
-		if _, err := preparer.PrepareWindows(context.Background(), input, plan); err == nil {
-			t.Fatal("incompletely decoded window media was accepted")
+func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*testing.T, *filler.StructureAssessmentSource)
+	}{
+		{name: "bytes", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+			t.Helper()
+			if err := os.WriteFile(input.FullPath, []byte("changed source"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "symlink", mutate: func(t *testing.T, input *filler.StructureAssessmentSource) {
+			t.Helper()
+			target := filepath.Join(filepath.Dir(input.FullPath), "target.mp4")
+			if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(input.FullPath); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, input.FullPath); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "path", mutate: func(_ *testing.T, input *filler.StructureAssessmentSource) { input.FullPath += ".other" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root, input, plan := structureAssessmentWindowSource(t)
+			preparer, calls := structureAssessmentWindowPreparerFixture(t, root, plan)
+			test.mutate(t, &input)
+			if _, err := preparer.PrepareWindows(context.Background(), input, plan); err == nil || calls.renders != 0 {
+				t.Fatalf("error=%v renders=%d", err, calls.renders)
+			}
+		})
+	}
+}
+
+func structureAssessmentToolFixture() mediatools.MediaToolIdentity {
+	return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg fixture", ExecutableSHA256: strings.Repeat("a", 64)}
+}
+
+func argumentAfter(arguments []string, name string) string {
+	for index := 0; index+1 < len(arguments); index++ {
+		if arguments[index] == name {
+			return arguments[index+1]
 		}
-	})
+	}
+	return ""
 }
 
 func TestStructureAssessmentWindowOutputRejectsPerWindowByteOverrun(t *testing.T) {
