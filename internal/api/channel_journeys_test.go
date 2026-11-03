@@ -74,7 +74,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{
+	if err := createProposalWithJob(st, ctx, store.Proposal{
 		ID: "reference", JobID: "reference-job", Status: "submitted",
 		ProposalJSON: string(body), CreatedBy: "alice",
 	}); err != nil {
@@ -160,7 +160,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := st.CreateProposal(ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", ProposalJSON: string(raw)}); err != nil {
+			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", ProposalJSON: string(raw)}); err != nil {
 				t.Fatal(err)
 			}
 			resp := do(t, srv, http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")

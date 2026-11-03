@@ -402,7 +402,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		s.log.Error("marshal committed Proposal for automatic approval", "job", work.JobID, "err", err)
 	} else {
 		s.considerAutomaticApproval(ctx, store.Job{
-			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, Attempts: work.Attempt,
+			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
 		}, store.Proposal{
 			ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
 			ProposalJSON: string(blob), CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
@@ -515,7 +515,11 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
-	if job.Kind != jobKindRecurate && s.auto != nil {
+	//
+	// A refine of a channel (a suggest job that names its channel) never takes it: an admin
+	// reviews it in the refine panel, and its acquisitions are charged to the refining admin when
+	// they approve. Unattended lineup changes belong to the channel's auto-curate grant.
+	if job.Kind != jobKindRecurate && job.ChannelID == "" && s.auto != nil {
 		if d, aerr := s.auto.Consider(ctx, p); aerr != nil {
 			// A failed auto-approval must not fail the JOB: the proposal exists and an
 			// admin can still act on it. Log and move on.

@@ -41,6 +41,9 @@ func TestPlan_NewChannelOwnsItsIntentAndRequester(t *testing.T) {
 		ChannelName: "Fixed Name", RefineText: "one-run note",
 		CurrentLineup: []suggest.LineupContext{{Key: "movie:tmdb:90000001"}},
 	})
+	if err := st.CreateJob(context.Background(), store.Job{ID: "job-new", Kind: "suggest", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
 
 	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(context.Background(), p)
 	if err != nil {
@@ -121,5 +124,23 @@ func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	_, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
 	if !errors.Is(err, store.ErrJobChannelGone) {
 		t.Fatalf("plan for a removed channel = %v, want ErrJobChannelGone", err)
+	}
+}
+
+// A first approval always has its job. A proposal whose job row is gone (purged, or never
+// existed) must not become a channel: it may be a refine or re-curation that lost the link to its
+// channel, and creating one would duplicate that channel.
+func TestPlan_RefusesToCreateAChannelForAProposalWithNoJob(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	putAvailable(t, st, 1, "Exact")
+	p := proposalFor(t, "p-nojob", "job-missing", "u-member", suggest.Intent{Description: "90s action"})
+
+	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(context.Background(), p)
+	if err == nil {
+		t.Fatalf("planned a channel %q for a proposal whose job does not exist", ch.ID)
+	}
+	if errors.Is(err, store.ErrJobChannelGone) || errors.Is(err, store.ErrNotFound) {
+		t.Errorf("error %v must not read as 'no channel yet' (which replans) or 'channel gone'", err)
 	}
 }

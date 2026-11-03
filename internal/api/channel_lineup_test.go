@@ -20,7 +20,7 @@ func seedApprovedProposal(t *testing.T, st store.Store, jobID, propID string) {
 		],
 		"acquisitions": null
 	}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
 		ID: propID, JobID: jobID, Status: "approved", ProposalJSON: proposalJSON,
 	}); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestCreateChannelRejectsUnapprovedIntent(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	// A proposal exists but is still "submitted" (not approved).
-	if err := st.CreateProposal(context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
 		ID: "prop-x", JobID: "job-unapproved", Status: "submitted",
 		ProposalJSON: `{"intent":{"description":"x"},"lineup":[]}`,
 	}); err != nil {
@@ -123,7 +123,7 @@ func seedApprovedProposalWithAcquisition(t *testing.T, st store.Store, jobID, pr
 			{"mediaType":"movie","tmdbId":90000604,"name":"Marigold Protocol II","year":2003,"inLibrary":false}
 		]
 	}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
 		ID: propID, JobID: jobID, Status: "approved", ProposalJSON: proposalJSON,
 	}); err != nil {
 		t.Fatal(err)

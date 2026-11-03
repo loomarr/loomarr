@@ -122,7 +122,7 @@ func (r *storeRepository) ClaimAttempts(
 		}
 		works = append(works, Work{
 			Version: job.WorkflowVersion, JobID: job.ID, Attempt: job.Attempts,
-			Kind: job.Kind, CreatedBy: job.CreatedBy, Intent: intent,
+			Kind: job.Kind, CreatedBy: job.CreatedBy, ChannelID: job.ChannelID, Intent: intent,
 		})
 	}
 	return works, nil

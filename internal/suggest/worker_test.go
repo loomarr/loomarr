@@ -1349,3 +1349,42 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 		t.Fatalf("plan failure created %d channels, want 0", len(all))
 	}
 }
+
+// A refine of a channel is reviewed by an admin in the refine panel. The refining person's
+// auto-approve grant never applies to it, even when they hold one: the grant is for a member's own
+// requests, and approving a lineup change unattended is the channel's auto-curate grant's job.
+func TestWorker_ChannelRefineSkipsRequesterAutoApprove(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "marigold"}),
+		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
+	)
+	channels := &testkit.ApprovalChannels{}
+	approver := suggest.NewApprover(st, channels, time.Now)
+	done := newDoneEmitter()
+	svc := buildService(t, st, llmMock).
+		WithDurableWorkflow(proposalworkflow.New(st, idGen(), time.Now)).
+		WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+		WithProgressEmitter(done)
+	if _, err := svc.Refine(ctx, "channel-1", suggest.Intent{Description: "sci-fi", RefineText: "more"}, "grace"); err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	waitForDoneEvent(t, done)
+	if approved, _ := st.ListProposalsByStatus(ctx, "approved"); len(approved) != 0 {
+		t.Fatalf("a refine went through the requester's auto-approve grant: %+v", approved)
+	}
+	if submitted, _ := st.ListProposalsByStatus(ctx, "submitted"); len(submitted) != 1 {
+		t.Fatalf("submitted proposals = %d, want 1 left for the refine panel", len(submitted))
+	}
+	if len(channels.Plans) != 0 {
+		t.Fatalf("auto-approver planned %d channels for a refine", len(channels.Plans))
+	}
+}

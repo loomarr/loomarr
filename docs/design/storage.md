@@ -49,7 +49,8 @@ approve, deny or retry has exactly one winner. A failed approval changes nothing
 `intent_ref` is unique in the database, so concurrent materialization cannot create two channels for one
 intent; uniqueness races roll back and replan. A refine or re-curation job names its channel
 (`jobs.channel_id`) instead, and approval checks, in the same transaction, that the planned channel is
-the one the job belongs to. A channel carries its own approved intent (`intent_json`) and requester
+the one the job belongs to, and a newer approved proposal of any job of that channel supersedes an
+older candidate (supersession is per channel). A channel carries its own approved intent (`intent_json`) and requester
 (`requested_by`), so retention never removes what a refine or re-curation needs. Codec derivation and the first Tunarr reconcile run after
 commit and are best-effort: the periodic channel sweep is the durable retry. A denial can never
 overwrite an approval.
@@ -64,7 +65,7 @@ The daily `housekeeping` job enforces retention:
 | Activity feed | purged after `activity.retention` (30 days) |
 | Notifications | terminal intents and their attempts purged after 30 days; queued and sending work never |
 | Diagnostics | purged after `diagnostics.retention` (7 days), then trimmed oldest-first to `diagnostics.max_storage_mb` (512 MiB); an active process run is never removed, and each run has a fixed output cap that keeps its start and failure tail |
-| Jobs | `done` and `failed` purged after `JOBS_RETENTION` (30 days); `queued` and `running` never, because age is not evidence that work finished; no channel depends on a purged job |
+| Jobs | `done` and `failed` purged after `JOBS_RETENTION` (30 days); `queued` and `running` never, because age is not evidence that work finished; a done job whose proposal is still `submitted` is kept until the proposal is decided; no channel depends on a purged job |
 | Proposals | `denied` purged after `PROPOSALS_RETENTION` (90 days); `approved` (the audit trail) and `submitted` (a member still waiting) are kept |
 
 Proposals are purged before jobs, because `proposals.job_id` has no foreign key. Filler catalog sync

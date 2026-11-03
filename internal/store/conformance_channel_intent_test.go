@@ -183,3 +183,100 @@ func testChannelHasUnfinishedJob(t *testing.T, newStore NewStoreFunc) {
 	job("running", "suggest", "running", "ch-d")
 	busy("ch-d")
 }
+
+// A done job whose proposal is still waiting for a decision is not finished work: purging it
+// would leave a refine or re-curation proposal that can no longer find its channel. Approving it
+// later would then create a second channel. Once the proposal is decided the job is ordinary.
+func testPurgeKeepsJobsAwaitingADecision(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	old := time.Now().Add(-100 * 24 * time.Hour)
+	for _, j := range []Job{
+		{ID: "j-waiting", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
+		{ID: "j-approved", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
+		{ID: "j-denied", Kind: "suggest", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
+		{ID: "j-bare", Kind: "recurate", Status: "done", ChannelID: "ch-1", UpdatedAt: old},
+	} {
+		if err := s.CreateJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []Proposal{
+		{ID: "p-waiting", JobID: "j-waiting", Status: "submitted", UpdatedAt: old},
+		{ID: "p-approved", JobID: "j-approved", Status: "approved", UpdatedAt: old},
+		{ID: "p-denied", JobID: "j-denied", Status: "denied", UpdatedAt: old},
+	} {
+		if err := s.CreateProposal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := s.PurgeFinishedJobs(ctx, time.Now().Add(-30*24*time.Hour))
+	if err != nil || n != 3 {
+		t.Fatalf("purged %d jobs, %v; want 3 (every job except the one awaiting a decision)", n, err)
+	}
+	if _, err := s.GetJob(ctx, "j-waiting"); err != nil {
+		t.Errorf("a job whose proposal is still submitted was purged: %v", err)
+	}
+	for _, id := range []string{"j-approved", "j-denied", "j-bare"} {
+		if _, err := s.GetJob(ctx, id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("job %s survived the purge: %v", id, err)
+		}
+	}
+}
+
+// Supersession is per channel, not per job: with one job per refine, an older proposal for a
+// channel must not be approvable after a newer one for the same channel was approved, or its
+// replace-lineup bind would drop what the newer approval added.
+func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	ch := sampleChannel("ch-super", 1, time.Time{})
+	ch.IntentRef = "job-origin"
+	saved := mustSaveChannel(t, s, ch)
+	other := sampleChannel("ch-elsewhere", 2, time.Time{})
+	other.IntentRef = "job-elsewhere"
+	otherSaved := mustSaveChannel(t, s, other)
+
+	for _, j := range []Job{
+		{ID: "job-refine", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-super"},
+		{ID: "job-recurate", Kind: "recurate", Status: "done", ChannelID: "ch-super"},
+		{ID: "job-refine-other", Kind: "suggest", Status: "done", CreatedBy: "u-admin", ChannelID: "ch-elsewhere"},
+	} {
+		if err := s.CreateJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	older := Proposal{ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
+		ProposalJSON: `{}`, CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour)}
+	newer := Proposal{ID: "p-recurate", JobID: "job-recurate", Status: "submitted",
+		ProposalJSON: `{}`, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	unrelated := Proposal{ID: "p-other", JobID: "job-refine-other", Status: "submitted", CreatedBy: "u-admin",
+		ProposalJSON: `{}`, CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now.Add(-3 * time.Hour)}
+	for _, p := range []Proposal{older, newer, unrelated} {
+		if err := s.CreateProposal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approve := func(p Proposal, ch Channel) error {
+		p.Status, p.ApprovedBy, p.ApprovedAt, p.UpdatedAt = "approved", "admin", now, now
+		_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Channel: ch})
+		return err
+	}
+
+	if err := approve(newer, saved); err != nil {
+		t.Fatalf("approve the newer proposal: %v", err)
+	}
+	fresh, err := s.GetChannel(ctx, "ch-super")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := approve(older, fresh); !errors.Is(err, ErrProposalSuperseded) {
+		t.Fatalf("approve the older proposal of the same channel = %v, want ErrProposalSuperseded", err)
+	}
+	// A newer approval for another channel supersedes nothing here.
+	if err := approve(unrelated, otherSaved); err != nil {
+		t.Fatalf("approve a proposal of another channel: %v", err)
+	}
+}

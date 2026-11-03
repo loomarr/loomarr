@@ -161,16 +161,23 @@ func (s *sqlStore) commitProposalApproval(
 	// The transaction rolls this status change back when a superseder exists.
 	// Compare against the candidate row's persisted job/time, not caller fields. Epoch
 	// seconds cannot order a tie, so equal timestamps fail closed instead of guessing.
+	//
+	// Supersession is per CHANNEL: a refine and a re-curation are different jobs for one channel,
+	// so a newer approved proposal of any job that names or originated the planned channel
+	// supersedes an older candidate, or the older replace-lineup bind would drop the newer
+	// additions.
 	var supersedingID string
 	err = tx.QueryRowContext(ctx, s.ph(
 		`SELECT newer.id
 		   FROM proposals newer
 		   JOIN proposals candidate ON candidate.id = ?
-		  WHERE newer.job_id = candidate.job_id
-		    AND newer.status = 'approved'
+		  WHERE newer.status = 'approved'
 		    AND newer.id <> candidate.id
 		    AND newer.created_at >= candidate.created_at
-		  LIMIT 1`), p.ID).Scan(&supersedingID)
+		    AND (newer.job_id = candidate.job_id
+		         OR newer.job_id IN (SELECT id FROM jobs WHERE channel_id = ?)
+		         OR newer.job_id = (SELECT NULLIF(intent_ref, '') FROM channels WHERE id = ?))
+		  LIMIT 1`), p.ID, commit.Channel.ID, commit.Channel.ID).Scan(&supersedingID)
 	if err == nil {
 		return 0, fmt.Errorf("%w: proposal %s is preceded by approved proposal %s",
 			ErrProposalSuperseded, p.ID, supersedingID)

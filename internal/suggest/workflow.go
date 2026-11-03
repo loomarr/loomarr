@@ -13,6 +13,8 @@ type WorkflowWork struct {
 	Attempt   int
 	Kind      string
 	CreatedBy string
+	// ChannelID names the channel a refine or re-curation job re-curates; empty for a request.
+	ChannelID string
 	Intent    Intent
 }
 

@@ -52,7 +52,9 @@ separately. An impossible combination fails the read closed and is recorded for 
   (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or
   edits the Job the Channel was made from, and it never reads the cache. A refine is the refining
   admin's own request; a re-curation is ownerless system work (`kind=recurate`, empty owner) and is
-  in nobody's request list. A Channel has one unfinished channel Job at a time (queued, running,
+  in nobody's request list. A refine never takes the requester auto-approve grant (an admin reviews
+  it in the refine panel; its acquisitions are charged to the refining admin on approval), and a
+  first approval refuses to create a Channel when its Job row is gone. A Channel has one unfinished channel Job at a time (queued, running,
   or done with a Proposal still awaiting a decision): refine answers 409 and the re-curation run
   skips it with an Info line. The Channel's `intent_ref` stays the Job that created it. A Channel
   also keeps its `requested_by`, set once at approval and never changed by a refine or

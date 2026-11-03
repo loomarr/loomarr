@@ -37,6 +37,7 @@ type Store interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
 	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	GetJob(ctx context.Context, id string) (store.Job, error)
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
@@ -173,6 +174,15 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 
 	ch := existing
 	if ch.ID == "" { // first approval of this intent → a new channel
+		// A first approval always has its job. A job that is gone (purged, or never existed)
+		// may have been a refine or re-curation that lost its link to a channel, and creating
+		// one here would duplicate that channel. This is a plain error for the approver to
+		// surface, not a "no channel yet" answer that replans.
+		if _, jerr := b.store.GetJob(ctx, intentRef); errors.Is(jerr, store.ErrNotFound) {
+			return store.Channel{}, fmt.Errorf("proposal %s: job %s no longer exists, so no channel can be created from it", p.ID, intentRef)
+		} else if jerr != nil {
+			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
+		}
 		identity := sha256.Sum256([]byte(intentRef))
 		ch.ID = "ch_" + hex.EncodeToString(identity[:8])
 		// The job that creates a channel is its origin and stays its intent_ref for life; a later
