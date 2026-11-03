@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 )
 
 // #749: acquisition steers toward the eras of channels that cannot fill their breaks from their
@@ -175,7 +176,7 @@ func TestCoverageReportsTheEraTargetItRead(t *testing.T) {
 func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-		offers: []filler.DiscoveredRef{
+		offers: []sourceprovider.Item{
 			{ID: "modern-hd", URL: "https://archive.org/details/modern-hd", Height: 1080, ObservedYear: 2015},
 			{ID: "nineties", URL: "https://archive.org/details/nineties", Height: 480, ObservedYear: 1996},
 		},
@@ -197,11 +198,11 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 // searchingStub also searches inside a source, as the archive enumerator does.
 type searchingStub struct {
 	*fetchStub
-	hits     map[string][]filler.DiscoveredRef
+	hits     map[string][]sourceprovider.Item
 	searched []string
 }
 
-func (s *searchingStub) Search(_ context.Context, source filler.FetchSource, query string, _ int) ([]filler.DiscoveredRef, error) {
+func (s *searchingStub) Search(_ context.Context, source filler.FetchSource, query string, _ int) ([]sourceprovider.Item, error) {
 	s.searched = append(s.searched, source.URI+"?"+query)
 	return s.hits[query], nil
 }
@@ -212,9 +213,9 @@ func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 	stub := &searchingStub{
 		fetchStub: &fetchStub{
 			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-			offers:  []filler.DiscoveredRef{{ID: "listed-hd", URL: "https://archive.org/details/listed-hd", Height: 1080}},
+			offers:  []sourceprovider.Item{{ID: "listed-hd", URL: "https://archive.org/details/listed-hd", Height: 1080}},
 		},
-		hits: map[string][]filler.DiscoveredRef{
+		hits: map[string][]sourceprovider.Item{
 			"WAAA": {{ID: "waaa-news", URL: "https://archive.org/details/waaa-news", Title: "WAAA news update 1991", Height: 360}},
 		},
 	}
@@ -244,11 +245,11 @@ func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
 }
 
 type openSearchStub struct {
-	hits     map[string][]filler.DiscoveredRef
+	hits     map[string][]sourceprovider.Item
 	searched []string
 }
 
-func (o *openSearchStub) OpenSearch(_ context.Context, query string, _ int) ([]filler.DiscoveredRef, error) {
+func (o *openSearchStub) OpenSearch(_ context.Context, query string, _ int) ([]sourceprovider.Item, error) {
 	o.searched = append(o.searched, query)
 	return o.hits[query], nil
 }
@@ -265,7 +266,7 @@ func (o *openSearchStub) Gate(context.Context) (filler.ListingGate, error) {
 // Open search (#2059 decisions 10 and 11) asks the whole provider only once the sources have left
 // the pass short, and downloads only the hits its listing gate admits, under no registered source.
 func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
-	open := &openSearchStub{hits: map[string][]filler.DiscoveredRef{"WAAA": {
+	open := &openSearchStub{hits: map[string][]sourceprovider.Item{"WAAA": {
 		{ID: "waaa-1984", URL: "https://archive.org/details/waaa-1984", Title: "WAAA-TV station ID 1984"},
 		{ID: "waaa-undated", URL: "https://archive.org/details/waaa-undated", Title: "WAAA-TV station ID"},
 		{ID: "wzzz-1984", URL: "https://archive.org/details/wzzz-1984", Title: "WZZZ-TV station ID 1984"},
@@ -288,7 +289,7 @@ func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
 	}
 
 	for name, c := range map[string]struct {
-		offers []filler.DiscoveredRef
+		offers []sourceprovider.Item
 		gaps   filler.CoverageGaps
 	}{
 		"the sources fill the shortfall": {refs("a", "b"), filler.CoverageGaps{Eras: gaps.Eras, Short: 2, Stations: gaps.Stations}},

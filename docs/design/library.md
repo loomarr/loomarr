@@ -69,6 +69,27 @@ type Service interface {
 - `ResolveSource` returns identity, revision, safe observations and a protected locator. Inventory
   owns what a source is, not the credentials for opening it.
 
+## Header facts
+
+`internal/mediaheader` is the only code that parses container bytes (decision
+[0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It reads a file's duration, streams
+(codec, size, frame rate, pixel format, colour and HDR, field order, languages, default and forced
+flags, channels, sample rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`,
+plus the keyframe index from Matroska Cues or the MP4 sample tables, which `mediameasure` uses.
+
+- **Reads are few and random.** Most Matroska files take one 64 KiB read; the SeekHead points to
+  anything past it. An MP4's `moov` is found by box headers, never by reading `mdat`. Files are
+  opened with `POSIX_FADV_RANDOM`, since each read on a NAS is one disk seek.
+- **Native or nothing.** `Read` answers only when every fact playout's copy decision uses is fixed
+  by the header; otherwise it declines and `Probe` asks the shared ffprobe observation. It declines
+  for AVI and MPEG-TS, a header that does not parse, an MP4 QuickTime chapter track, ≥10-bit video
+  whose colour neither container nor parameter set signals, bitstream field coding, and VP9 or
+  MPEG-2 in Matroska without a codec configuration.
+- **Values are ffprobe's spellings** (`hevc`, `matroska,webm`, `yuv420p10le`, `24000/1001`), held
+  to ffprobe by a parity test. Colour is compared with the first decoded frame: ffprobe's stream
+  summary trusts a partial Matroska `Colour` element over the HEVC parameter set and can call a PQ
+  file SDR, which the header reader does not.
+
 ## Cached series episodes
 
 Expanding a series into episodes costs one media-server call per show, which used to dominate guide

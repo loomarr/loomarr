@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -74,7 +75,7 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 	)); err != nil {
 		t.Fatal(err)
 	}
-	ff.sourceSuggestions = []filler.SourceSuggestion{{
+	ff.sourceSuggestions = []sourceprovider.Suggestion{{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials", ItemCount: 8362,
 	}}
@@ -104,10 +105,10 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 
 func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
-		PreviewItems: []filler.SourcePreviewItem{
+		PreviewItems: []sourceprovider.PreviewItem{
 			{Title: "First ad", URL: "https://archive.org/details/ad_one", DurationMS: 31500},
 			{Title: "Second ad", URL: "https://archive.org/details/ad_two"},
 		},
@@ -132,7 +133,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 
 func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
 	}
@@ -168,7 +169,7 @@ func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 
 func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = sourceprovider.Suggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: "UC-vault",
 		CanonicalURL: "https://www.youtube.com/channel/UC-vault/videos", Title: "Broadcast Vault",
 	}
@@ -287,13 +288,13 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	}
 	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
 		CheckedAt: checkedAt,
-		Checkpoint: filler.SourceScanCheckpoint{
+		Checkpoint: sourceprovider.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: filler.SourceCheckSummary{
-			filler.SourceOutcomeQueued: 3, filler.SourceOutcomeTooLong: 12,
-			filler.SourceOutcomeUnavailable: 2,
+		Outcomes: sourceprovider.Outcomes{
+			sourceprovider.OutcomeQueued: 3, sourceprovider.OutcomeTooLong: 12,
+			sourceprovider.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -594,8 +595,8 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult.Outcomes = filler.SourceCheckSummary{
-		filler.SourceOutcomeQueued: 2, filler.SourceOutcomeTooLong: 4,
+	ff.fetchResult.Outcomes = sourceprovider.Outcomes{
+		sourceprovider.OutcomeQueued: 2, sourceprovider.OutcomeTooLong: 4,
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {

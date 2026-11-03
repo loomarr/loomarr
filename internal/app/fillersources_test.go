@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -510,7 +511,7 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.Disco
 func TestRegisteredSourceEnumerator_ArchiveRuntimesAreReadOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
 	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
-	enumerate := func() map[string]filler.DiscoveredRef {
+	enumerate := func() map[string]sourceprovider.Item {
 		t.Helper()
 		// A fresh cache over the same file each time: what a restarted server would see.
 		catalog := cachedArchiveCatalog{archiveCatalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
@@ -519,7 +520,7 @@ func TestRegisteredSourceEnumerator_ArchiveRuntimesAreReadOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := map[string]filler.DiscoveredRef{}
+		got := map[string]sourceprovider.Item{}
 		for _, item := range items {
 			got[item.ID] = item
 		}
@@ -684,7 +685,7 @@ func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 		newID: func() string { return "acq-18" },
 		start: testInteractiveOperationLauncher,
 	}
-	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []filler.DiscoveredRef{
+	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []sourceprovider.Item{
 		{ID: "ad-1", URL: "https://archive.org/details/ad-1", DurationMS: 30_000, Height: 480, Gap: "era:1990-1999"},
 	}); err != nil {
 		t.Fatal(err)

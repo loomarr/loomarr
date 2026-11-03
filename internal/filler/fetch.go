@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode"
+
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 )
 
 // Auto-fetch (§10 V38b): a registered, enabled source is polled on a schedule and new items
@@ -83,43 +85,15 @@ type FetchSource struct {
 	MaxPerRun int
 	// ScanCheckpoint is durable progress through one bounded newest-first YouTube sweep.
 	// Archive ignores it because its collection enumeration keeps the existing tolerant path.
-	ScanCheckpoint SourceScanCheckpoint
+	ScanCheckpoint sourceprovider.Checkpoint
 }
-
-// SourceScanCheckpoint resumes a bounded provider listing by stable item identity. Cursor is the
-// last item examined in the in-progress sweep; PendingWatermark is the newest item seen when that
-// sweep began; Watermark is the newest item committed by the prior completed sweep.
-type SourceScanCheckpoint struct {
-	Cursor           string
-	Watermark        string
-	PendingWatermark string
-}
-
-// SourceOutcome is a durable, user-explainable result of considering one discovered source item.
-// Keep this set closed with migration 00117; extractor-specific errors belong in diagnostics.
-type SourceOutcome string
-
-const (
-	SourceOutcomeQueued             SourceOutcome = "queued"
-	SourceOutcomeAlreadyKnown       SourceOutcome = "already_known"
-	SourceOutcomeTooShort           SourceOutcome = "too_short"
-	SourceOutcomeTooLong            SourceOutcome = "too_long"
-	SourceOutcomeLive               SourceOutcome = "live"
-	SourceOutcomeUpcoming           SourceOutcome = "upcoming"
-	SourceOutcomePrivate            SourceOutcome = "private"
-	SourceOutcomeUnavailable        SourceOutcome = "unavailable"
-	SourceOutcomeMetadataIncomplete SourceOutcome = "metadata_incomplete"
-)
-
-// SourceCheckSummary aggregates item outcomes for the current or most recently completed sweep.
-type SourceCheckSummary map[SourceOutcome]int
 
 // SourceCheckCompletion is committed atomically with lease release. ReplaceOutcomes begins a new
 // sweep; otherwise Outcomes extend the summary retained by an in-progress cursor.
 type SourceCheckCompletion struct {
 	CheckedAt       time.Time
-	Checkpoint      SourceScanCheckpoint
-	Outcomes        SourceCheckSummary
+	Checkpoint      sourceprovider.Checkpoint
+	Outcomes        sourceprovider.Outcomes
 	ReplaceOutcomes bool
 }
 
@@ -201,40 +175,20 @@ type FetchStore interface {
 // peer lanes, and inferring a provider from an enumerated item's URL would let listing disagree
 // with the registered source policy.
 type SourceEnumerator interface {
-	Enumerate(ctx context.Context, source FetchSource, limit int) ([]DiscoveredRef, int, error)
+	Enumerate(ctx context.Context, source FetchSource, limit int) ([]sourceprovider.Item, int, error)
 }
 
 // SourceSearcher is an enumerator that can also search inside one source, for the station
 // searches of a short pass (#2059 decision 9). Optional: an enumerator without it lists only.
 // A source kind it cannot search returns no items and no error.
 type SourceSearcher interface {
-	Search(ctx context.Context, source FetchSource, query string, limit int) ([]DiscoveredRef, error)
+	Search(ctx context.Context, source FetchSource, query string, limit int) ([]sourceprovider.Item, error)
 }
 
 // StationSearchesPerSource bounds the station searches one source gets in one pass. The call signs
 // rotate by the hour, so a long list is worked through across passes instead of in one burst
 // against the provider.
 const StationSearchesPerSource = 4
-
-// DiscoveredRef is one item a source offers — an id stable enough to dedupe on, and the URL to
-// hand the ingest path.
-type DiscoveredRef struct {
-	ID      string
-	URL     string
-	Title   string
-	License string
-	// ObservedYear is provider metadata used only to rank acquisition. It is not grounded clip era.
-	ObservedYear  int
-	PublishedAt   string
-	DurationMS    int
-	DurationKnown bool
-	Height        int
-	Availability  string
-	LiveStatus    string
-	// Gap is the channel coverage gap the pass selected this item for (EraGapKey, #749). Set only
-	// on the way to ingest, where it is recorded on the downloaded artifact.
-	Gap string
-}
 
 // FetchIngestor hands URLs to the ordinary ingest path.
 //
@@ -247,7 +201,7 @@ type FetchIngestor interface {
 // IdentifiedFetchIngestor is the V66 production seam: scheduled selection retains provider item
 // identity into the durable manifest. The URL-only interface remains for narrow older embeddings.
 type IdentifiedFetchIngestor interface {
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []DiscoveredRef) (string, error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error)
 }
 
 // Fetcher polls registered sources.
@@ -308,7 +262,7 @@ type FetchResult struct {
 	// Skipped counts items already in the catalog.
 	Skipped int
 	// Outcomes is the closed explanation of the items considered by this pass.
-	Outcomes SourceCheckSummary
+	Outcomes sourceprovider.Outcomes
 	// MaxPerCheck is the selected source's effective cap on a manual run.
 	MaxPerCheck int
 	// StoppedBy names the limit that ended the pass early ("catalog", "provider", "target" for a
@@ -600,7 +554,7 @@ func (p *fetchPass) checkSource(ctx context.Context, src FetchSource) (done bool
 	checkAt := p.f.now()
 	c := &sourceCheck{
 		pass: p, src: src, leaseUntil: checkAt.Add(SourceCheckLease),
-		checkpoint: src.ScanCheckpoint, outcomes: SourceCheckSummary{}, replaceOutcomes: true,
+		checkpoint: src.ScanCheckpoint, outcomes: sourceprovider.Outcomes{}, replaceOutcomes: true,
 	}
 	claimed, err := p.f.store.ClaimCheck(ctx, src.ID, src.LastCheckedAt, checkAt, c.leaseUntil)
 	if err != nil {
@@ -622,8 +576,8 @@ type sourceCheck struct {
 	pass            *fetchPass
 	src             FetchSource
 	leaseUntil      time.Time
-	checkpoint      SourceScanCheckpoint
-	outcomes        SourceCheckSummary
+	checkpoint      sourceprovider.Checkpoint
+	outcomes        sourceprovider.Outcomes
 	replaceOutcomes bool
 }
 
@@ -664,7 +618,7 @@ func (c *sourceCheck) run(ctx context.Context, b sourceBudget) error {
 		switch decision.Disposition {
 		case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
 			p.res.Skipped++
-			c.outcomes[SourceOutcomeAlreadyKnown]++
+			c.outcomes[sourceprovider.OutcomeAlreadyKnown]++
 		}
 	}
 	if len(selection.Selected) == 0 {
@@ -676,7 +630,7 @@ func (c *sourceCheck) run(ctx context.Context, b sourceBudget) error {
 // candidates are the listing items this check offers the selector, in listing order. A YouTube
 // listing is read through the scan checkpoint, which this advances, and stops at take; of a
 // campaign's duration cuts there, only the preferred one is offered.
-func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]string, take int) []AcquisitionCandidate {
+func (c *sourceCheck) candidates(items []sourceprovider.Item, stationHits map[string]string, take int) []AcquisitionCandidate {
 	p, src := c.pass, c.src
 	preferred := p.f.preferredCampaignCuts(src, items)
 	consider := items
@@ -700,14 +654,14 @@ func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]s
 		if campaign := sourceCampaignKey(item.Title); src.Kind == "youtube" && campaign != "" {
 			if cut := preferred[campaign]; cut.Identity.RemoteID != item.ID {
 				p.res.Skipped++
-				c.outcomes[SourceOutcomeAlreadyKnown]++
+				c.outcomes[sourceprovider.OutcomeAlreadyKnown]++
 				continue
 			}
 		}
 		identity := RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID}
 		if src.Kind == "youtube" && p.inPass[identity.Key()] != "" {
 			p.res.Skipped++
-			c.outcomes[SourceOutcomeAlreadyKnown]++
+			c.outcomes[sourceprovider.OutcomeAlreadyKnown]++
 			continue
 		}
 		candidates = append(candidates, AcquisitionCandidate{
@@ -740,7 +694,7 @@ func (c *sourceCheck) candidates(items []DiscoveredRef, stationHits map[string]s
 // The cursor can split one provider listing across several checks. Choose the best explicit
 // duration variant from the whole bounded listing before applying that cursor, otherwise a :15
 // cut in one check and a :30 cut in the next both reach the catalog.
-func (f *Fetcher) preferredCampaignCuts(src FetchSource, items []DiscoveredRef) map[string]AcquisitionCandidate {
+func (f *Fetcher) preferredCampaignCuts(src FetchSource, items []sourceprovider.Item) map[string]AcquisitionCandidate {
 	preferred := map[string]AcquisitionCandidate{}
 	if src.Kind != "youtube" {
 		return preferred
@@ -768,11 +722,11 @@ func (f *Fetcher) preferredCampaignCuts(src FetchSource, items []DiscoveredRef) 
 
 // youtubeWindow is the part of a YouTube listing this check reads: from just past the
 // checkpoint's cursor, or all of it when a sweep starts or its cursor item is gone.
-func (c *sourceCheck) youtubeWindow(items []DiscoveredRef) []DiscoveredRef {
+func (c *sourceCheck) youtubeWindow(items []sourceprovider.Item) []sourceprovider.Item {
 	start := 0
 	c.replaceOutcomes = c.checkpoint.Cursor == ""
 	if c.checkpoint.Cursor != "" {
-		if i := slices.IndexFunc(items, func(item DiscoveredRef) bool { return item.ID == c.checkpoint.Cursor }); i >= 0 {
+		if i := slices.IndexFunc(items, func(item sourceprovider.Item) bool { return item.ID == c.checkpoint.Cursor }); i >= 0 {
 			start = i + 1
 		} else {
 			// Provider lists can shift or remove an item. Restart the bounded sweep and rely
@@ -793,10 +747,10 @@ func (c *sourceCheck) youtubeWindow(items []DiscoveredRef) []DiscoveredRef {
 func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision, b sourceBudget) error {
 	p, f, src := c.pass, c.pass.f, c.src
 	urls := make([]string, 0, len(selected))
-	items := make([]DiscoveredRef, 0, len(selected))
+	items := make([]sourceprovider.Item, 0, len(selected))
 	for _, decision := range selected {
 		urls = append(urls, decision.Candidate.URL)
-		items = append(items, DiscoveredRef{
+		items = append(items, sourceprovider.Item{
 			ID: decision.Candidate.Identity.RemoteID, URL: decision.Candidate.URL,
 			Title: decision.Candidate.Title, License: decision.Candidate.License,
 			ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
@@ -813,7 +767,7 @@ func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision,
 	if err != nil {
 		return c.fail(ctx, "queue", "queue", "filler auto-fetch: queueing failed", err)
 	}
-	c.outcomes[SourceOutcomeQueued] += len(urls)
+	c.outcomes[sourceprovider.OutcomeQueued] += len(urls)
 	// Only a successful queue becomes in-pass state. A failed queue must leave an exact
 	// identity eligible for a healthy retry later in this pass.
 	for _, decision := range selected {
@@ -851,7 +805,7 @@ func (c *sourceCheck) complete(ctx context.Context) error {
 		return fmt.Errorf("complete source %q check: %w", c.src.ID, err)
 	}
 	if len(c.outcomes) > 0 && res.Outcomes == nil {
-		res.Outcomes = SourceCheckSummary{}
+		res.Outcomes = sourceprovider.Outcomes{}
 	}
 	for outcome, count := range c.outcomes {
 		res.Outcomes[outcome] += count
@@ -975,39 +929,39 @@ func sourceVariantBetter(candidate, current AcquisitionCandidate) bool {
 	return candidate.Identity.Key() < current.Identity.Key()
 }
 
-func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (SourceOutcome, bool) {
+func (f *Fetcher) automaticRejection(source FetchSource, item sourceprovider.Item) (sourceprovider.Outcome, bool) {
 	// Every provider: a compilation reel waits for certified splitting (#1773).
 	if f.limits.Compilations.Defers(source.Kind, int64(item.DurationMS)) {
-		return SourceOutcomeTooLong, true
+		return sourceprovider.OutcomeTooLong, true
 	}
 	if source.Kind != "youtube" {
 		return "", false
 	}
 	if item.ID == "" || item.URL == "" {
-		return SourceOutcomeMetadataIncomplete, true
+		return sourceprovider.OutcomeMetadataIncomplete, true
 	}
 	switch item.Availability {
 	case "private":
-		return SourceOutcomePrivate, true
+		return sourceprovider.OutcomePrivate, true
 	case "needs_auth", "premium_only", "subscriber_only", "unavailable":
-		return SourceOutcomeUnavailable, true
+		return sourceprovider.OutcomeUnavailable, true
 	}
 	switch item.LiveStatus {
 	case "is_live", "post_live":
-		return SourceOutcomeLive, true
+		return sourceprovider.OutcomeLive, true
 	case "is_upcoming":
-		return SourceOutcomeUpcoming, true
+		return sourceprovider.OutcomeUpcoming, true
 	}
 	if !item.DurationKnown {
-		return SourceOutcomeMetadataIncomplete, true
+		return sourceprovider.OutcomeMetadataIncomplete, true
 	}
 	if f.limits.MinDuration != nil && time.Duration(item.DurationMS)*time.Millisecond < f.limits.MinDuration() {
-		return SourceOutcomeTooShort, true
+		return sourceprovider.OutcomeTooShort, true
 	}
 	if f.limits.MaxDuration != nil {
 		max := f.limits.MaxDuration()
 		if max > 0 && time.Duration(item.DurationMS)*time.Millisecond > max {
-			return SourceOutcomeTooLong, true
+			return sourceprovider.OutcomeTooLong, true
 		}
 	}
 	return "", false
@@ -1016,7 +970,7 @@ func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (So
 // withStationHits searches the source for up to StationSearchesPerSource of the pass's call signs
 // and puts the hits ahead of its listing, returning which call sign found each hit. A search that
 // fails costs only its hits: the listing still runs the pass.
-func (f *Fetcher) withStationHits(ctx context.Context, src FetchSource, items []DiscoveredRef, callSigns []string, limit int) ([]DiscoveredRef, map[string]string) {
+func (f *Fetcher) withStationHits(ctx context.Context, src FetchSource, items []sourceprovider.Item, callSigns []string, limit int) ([]sourceprovider.Item, map[string]string) {
 	searcher, ok := f.enum.(SourceSearcher)
 	if !ok || len(callSigns) == 0 {
 		return items, nil
@@ -1024,7 +978,7 @@ func (f *Fetcher) withStationHits(ctx context.Context, src FetchSource, items []
 	n := min(StationSearchesPerSource, len(callSigns))
 	start := int(f.now().Unix()/3600) % len(callSigns)
 	found := map[string]string{}
-	var hits []DiscoveredRef
+	var hits []sourceprovider.Item
 	for i := range n {
 		sign := callSigns[(start+i)%len(callSigns)]
 		refs, err := searcher.Search(ctx, src, sign, limit)
@@ -1106,12 +1060,12 @@ func (f *Fetcher) openSearch(ctx context.Context, gaps CoverageGaps, inPass map[
 		f.log.Warn("filler auto-fetch: open-search hits could not be selected", "err", err)
 		return 0, nil
 	}
-	items := make([]DiscoveredRef, 0, len(selection.Selected))
+	items := make([]sourceprovider.Item, 0, len(selection.Selected))
 	urls := make([]string, 0, len(selection.Selected))
 	for _, decision := range selection.Selected {
 		c := decision.Candidate
 		urls = append(urls, c.URL)
-		items = append(items, DiscoveredRef{ID: c.Identity.RemoteID, URL: c.URL, Title: c.Title,
+		items = append(items, sourceprovider.Item{ID: c.Identity.RemoteID, URL: c.URL, Title: c.Title,
 			License: c.License, ObservedYear: c.ObservedYear, PublishedAt: c.PublishedAt,
 			DurationMS: c.DurationMS, Height: c.Height, Gap: decision.Gap})
 	}

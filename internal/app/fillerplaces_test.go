@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -69,7 +70,7 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 		"WZZZ-TV station ID 1984": "",
 		"Fizzwell Cola ad, 1984":  "",
 	} {
-		if got, _ := gate.Admit(filler.DiscoveredRef{Title: title}, eras); got != want {
+		if got, _ := gate.Admit(sourceprovider.Item{Title: title}, eras); got != want {
 			t.Errorf("%q admitted by %q, want %q", title, got, want)
 		}
 	}
