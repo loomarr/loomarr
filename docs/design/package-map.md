@@ -22,11 +22,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `bgexec` | 5 | — |
 | `broadcaststation` | 5 | — |
 | `catalog` | 7 | `library`, `provision` |
+| `config` | 5 | — |
 | `contact` | 6 | — |
 | `creative` | 6 | — |
 | `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `encode` | 8 | — |
+| `encode` | 8 | `config` |
 | `filler` | 11 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
@@ -40,11 +41,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
-| `playout` | 6 | `diagnostics`, `encode`, `provision`, `schedule` |
+| `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 22 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 23 | `holidayvocab`, `inventory`, `provision` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
 | `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
@@ -61,7 +62,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Carries the version stamped into the binary at build time.
 - **`clipcatalog`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`config`** · 2 importers
+- **`config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
@@ -71,8 +72,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`encode`** · 8 importers
-  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
@@ -103,6 +102,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
+- **`metadataprovider`** · 4 importers
+  Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 2 importers
@@ -119,8 +120,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
-- **`secretprotection`** · 3 importers
-  Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`sourceprovider`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
 - **`storagegovernor`** · 6 importers
@@ -158,6 +157,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
+- **`encode`** · 8 importers · → `config`
+  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 8 importers · → `textmatch`
@@ -166,10 +167,18 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns administrator admission decisions and their bearer grants (§11).
 - **`mediaheader`** · 1 importer · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
+- **`metadataprovider/arr`** · → `metadataprovider`
+  Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
+- **`metadataprovider/nfo`** · → `metadataprovider`
+  Kodi NFO sidecars as a metadata provider (#2151 decision 2).
+- **`metadataprovider/providertest`** · → `metadataprovider`
+  Conformance suite every metadata provider runs.
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
+- **`secretprotection`** · 3 importers · → `config`
+  Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
 
@@ -181,18 +190,20 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 22 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 23 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
 
 - **`llm`** · 9 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`metadataprovider/precedence`** · → `metadataprovider`, `schedule`
+  Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`notifications`** · 6 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`playout`** · 6 importers · → `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `config`, `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.

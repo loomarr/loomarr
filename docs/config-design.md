@@ -17,7 +17,7 @@ Loomarr's model is the *arr convention with one addition:
 
 **The storage-tier rule (so future keys self-classify):** a setting is **bootstrap** iff it is
 needed before the database opens or shapes the process envelope that must exist before the app
-graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`, and the
+graph can be built — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, and the
 installation encryption key that must be available before any secret-bearing row is decoded. Everything
 else is app-managed and env-pinnable. That answers **where a value is stored**, not **when a saved
 value is safe to apply**: app-managed settings still classify into the runtime lifecycles in §3.
@@ -31,6 +31,8 @@ value is safe to apply**: app-managed settings still classify into the runtime l
 - **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
 - `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
+  - **The data directory is decided once and recorded.** The first boot derives it (the SQLite file's directory, else `/data`) and `PersistDataDir` writes it into the file as `DATA_DIR` (a file-only key with no env var); every later boot reads it back, so a database cutover cannot move the directory holding the installation key. A file written before this key existed gets it on its next boot.
+  - **Environment is read in one place.** `config.LoadEnv` parses an explicit environment map (`config.Load` passes the process environment), the process environment is never mutated, `config.ReadSecret` is the single reader behind every `<VAR>_FILE`, and `internal/envaccess_architecture_test.go` fails any `os.Getenv`/`os.LookupEnv`/`os.Setenv` outside `internal/config` that is not allowlisted with a reason.
   - ⚠ **The file is SEARCHED across two directories, and that is load-bearing** (V11). `DataDirFor` is scheme-dependent — the SQLite file's own directory for `sqlite://`, the conventional `/data` for `postgres://` — so a SQLite→PostgreSQL migration *moved where the next boot looked for the file*. With the database anywhere other than `/data`, the file recording the switch was written beside the SQLite database and then never read again: the app booted back onto SQLite, having apparently migrated successfully. The switch silently undid itself. Reads now try the database's own directory first (an operator who pinned a SQLite path meant that one), then `/data`; writes are unchanged, so an existing install's file keeps being found and nothing has to move. A malformed file still fails the boot rather than falling through to the next directory — a file that exists and is wrong is an operator error to surface, not a reason to quietly use a different one.
 
 **The installation-key tier is separate from `bootstrap.json`.** `LOOMARR_ENCRYPTION_KEY` or
@@ -145,7 +147,7 @@ rides §16 backups like any other durable state, and survives restarts and redep
   stored override so a key falls back to env/default; on a pinned key that is a contradiction.
   On an *unlocked* key it succeeds and the key reverts to the env value — which is the correct
   meaning of "clear my override" once the operator has taken the key back.
-- **Bootstrap keys are never unlockable.** `DATABASE_URL`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`,
+- **Bootstrap keys are never unlockable.** `DATABASE_URL`, `LISTEN_ADDR`, `LOG_LEVEL`,
   `AUTO_MIGRATE` are read *before the database opens* (§2's classification rule), so a flag
   stored in that database cannot affect them. Offering the control would be a lie; the API
   rejects it rather than accepting a write that does nothing.

@@ -153,6 +153,14 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
 		return false, err
 	}
+	// The data directory is decided on the first boot and recorded; every later boot reads it back.
+	if err := cfg.PersistDataDir(); err != nil {
+		startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupFailed,
+			"data directory cannot be recorded", "", "")
+		startup.CompletePending(diagnostics.StartupSkipped, "configuration unavailable")
+		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
+		return false, err
+	}
 	startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupPassed, "valid", "", "")
 	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
 	// boot (an invalid enum fails there, config-design §3) — no separate check here.
@@ -244,14 +252,15 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		// container, the database's own directory on a bare-metal or dev install). A fixed
 		// /data here made every non-container install fail to boot: `mkdir /data: permission
 		// denied` before the server ever listened.
-		DataDir:                config.DataDirFor(cfg.DatabaseURL),
-		DevLogin:               cfg.DevLogin,
-		Pprof:                  cfg.Pprof,
-		CapacityProbe:          true,
-		MetricsToken:           cfg.MetricsToken,
-		Restart:                lifecycle.RequestRestart,
-		DatabaseMigration:      lifecycle.RequestMigration,
-		DatabaseMigrationError: databaseMigration.lastError,
+		DataDir:                 cfg.DataDir,
+		DevLogin:                cfg.DevLogin,
+		TunerPublishingDisabled: cfg.TunerPublishingDisabled(),
+		Pprof:                   cfg.Pprof,
+		CapacityProbe:           true,
+		MetricsToken:            cfg.MetricsToken,
+		Restart:                 lifecycle.RequestRestart,
+		DatabaseMigration:       lifecycle.RequestMigration,
+		DatabaseMigrationError:  databaseMigration.lastError,
 	})
 	if err != nil {
 		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")

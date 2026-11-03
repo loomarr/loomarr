@@ -28,7 +28,6 @@ const AiSettings = () => {
             <AiModelSettings
               provider={liveValue("llm.provider")}
               baseUrl={liveValue("llm.url")}
-              onBaseUrlChange={(value) => setEdit("llm.url", value)}
               visionProvider={liveValue("filler.vision.provider")}
               visionModel={liveValue("filler.vision.model")}
               onRoleSettingChange={setEdit}

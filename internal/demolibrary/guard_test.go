@@ -494,6 +494,41 @@ func fixtureFiles(t *testing.T, root string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return append(files, inventedGoFixtureFiles(t, root)...)
+}
+
+// inventedGoFixtures are Go test fixtures written as invented data from the start: each entry is
+// a directory (every file under it) or one file. radarr/import_webhook.json is a retained capture
+// for the webhook parity test and is not listed. Keep in step with the matching case in
+// scripts/ci-impact.sh.
+var inventedGoFixtures = []string{
+	"internal/testkit/fixtures/sonarr/",
+	"internal/testkit/fixtures/radarr/movie.json",
+	"internal/testkit/fixtures/radarr/config_metadata.json",
+	"internal/metadataprovider/nfo/testdata/",
+}
+
+// inventedGoFixtureFiles lists inventedGoFixtures' files, repo-relative. A missing entry fails, so
+// a moved fixture cannot leave the guard reading nothing.
+func inventedGoFixtureFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	for _, entry := range inventedGoFixtures {
+		before := len(files)
+		err := filepath.WalkDir(filepath.Join(root, entry), func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() {
+				rel, _ := filepath.Rel(root, p)
+				files = append(files, filepath.ToSlash(rel))
+			}
+			return nil
+		})
+		if err != nil || len(files) == before {
+			t.Fatalf("inventedGoFixtures lists %s, which holds no file (%v)", entry, err)
+		}
+	}
 	return files
 }
 

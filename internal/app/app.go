@@ -23,7 +23,7 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
+	// DataDir is the boot-configured data directory (config.Config.DataDir): where the generated
 	// installation key lives and what the storage-directory settings default beneath.
 	DataDir string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
@@ -72,6 +72,11 @@ type Overrides struct {
 	// ImageWorkerExecutable selects the required Rust image worker in tests and embedded builds.
 	// Empty resolves LOOMARR_IMAGE_WORKER, then the sibling/local/PATH-installed release binary.
 	ImageWorkerExecutable string
+	// TunerPublishingDisabled is config.Config.TunerPublishingDisabled: the env-only agent-lane
+	// flag (#1555) that stops this process adding or retiring a Live TV tuner on the media
+	// server its library.* settings point at. It rides Overrides, not a setting, so nothing
+	// the Settings UI saves can turn it off.
+	TunerPublishingDisabled bool
 }
 
 // Build wires every subsystem from the already-open store + logger and returns one
