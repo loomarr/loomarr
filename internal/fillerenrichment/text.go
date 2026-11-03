@@ -421,10 +421,9 @@ Each item keys: id, kind, audience, brand, product, format, seasonal, audienceCu
 
 func statesFromTextOutput(forest *taxonomy.Forest, requested map[Axis]bool, signals Signals,
 	output textOutput, producer, producerVersion, taxonomyVersion string) []State {
-	confidence := int(output.Confidence)
-	if confidence <= 0 || confidence > 80 {
-		confidence = 80
-	}
+	// A model answer is capped at 80; a missing or non-positive score is the lowest (0), so an
+	// unscored answer never outranks a scored one.
+	confidence := min(max(int(output.Confidence), 0), 80)
 	evidence := func(reference string, kind EvidenceKind) Evidence {
 		return Evidence{Kind: kind, Reference: reference, Confidence: confidence, Producer: producer,
 			ProducerVersion: producerVersion, TaxonomyVersion: taxonomyVersion, ObservedAt: signals.ObservedAt}
