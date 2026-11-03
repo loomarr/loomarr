@@ -40,8 +40,8 @@ because the work list and Incoming filter on them.
 
 Offline derivatives encode with constant quality on the host's own hardware family (#2121), using
 `encode.FileVideoArgs`. Each family's level is **measured, not chosen**: `cmd/filler-encode-bench`
-encodes a corpus of real source masters at candidate levels and scores each output against its
-source with VMAF. The level is the highest whose per-clip VMAF stays at or above **95 for 90% of
+(`make filler-encode-bench`) encodes a corpus of real source masters at candidate levels and scores
+each output against its source with VMAF. The level is the highest whose per-clip VMAF stays at or above **95 for 90% of
 the corpus** (the 10th percentile). `encode.FileLevel` records it. A family with a file mode but no
 measurement encodes in software instead of guessing (`encode.FileFamily`), and so do the generic
 encoders.

@@ -10,20 +10,20 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-func TestRunRequiresExplicitEndpointAndModel(t *testing.T) {
+func TestPlannerToolDiagnosticRequiresExplicitEndpointAndModel(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), func(string) string { return "" }, &stdout, &stderr, nil)
+	code := runPlannerToolDiagnostic(context.Background(), func(string) string { return "" }, &stdout, &stderr, nil)
 	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "LLM_URL and LLM_MODEL") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
 
-func TestRunEmitsContentSafeJSONReport(t *testing.T) {
+func TestPlannerToolDiagnosticEmitsContentSafeJSONReport(t *testing.T) {
 	env := map[string]string{
 		"LLM_PROVIDER": "ollama", "LLM_URL": "http://127.0.0.1:11434", "LLM_MODEL": "fixture",
 	}
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), func(key string) string { return env[key] }, &stdout, &stderr,
+	code := runPlannerToolDiagnostic(context.Background(), func(key string) string { return env[key] }, &stdout, &stderr,
 		func(_ context.Context, provider llm.Provider, model string) (suggest.ToolFinalizationDiagnostic, error) {
 			if provider.Name() != "ollama" || model != "fixture" {
 				t.Fatalf("provider/model = %q/%q", provider.Name(), model)

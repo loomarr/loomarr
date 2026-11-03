@@ -1,6 +1,6 @@
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus filler-encode-bench
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -48,6 +48,17 @@ playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BEN
 	  --baseline-dir "$${PLAYOUT_BENCH_BASELINE_DIR:-docs/engineering/playout-bench}" \
 	  --tolerance "$${PLAYOUT_BENCH_TOLERANCE:-0.15}" \
 	  $${PLAYOUT_BENCH_ACCEPT:+--accept}
+
+filler-encode-bench: ## VMAF-measure filler derivative encode levels for one hardware family; FILLER_ENCODE_BENCH_MASTERS/LEVELS required, optional FAMILY/LIMIT/FFMPEG/VMAF_THREADS (docs/design/filler-pipeline.md)
+	@test -n "$${FILLER_ENCODE_BENCH_MASTERS:-}" || { echo "filler-encode-bench: FILLER_ENCODE_BENCH_MASTERS is required" >&2; exit 2; }; \
+	  test -n "$${FILLER_ENCODE_BENCH_LEVELS:-}" || { echo "filler-encode-bench: FILLER_ENCODE_BENCH_LEVELS is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-encode-bench \
+	    -ffmpeg "$${FILLER_ENCODE_BENCH_FFMPEG:-ffmpeg}" \
+	    -masters "$$FILLER_ENCODE_BENCH_MASTERS" \
+	    -levels "$$FILLER_ENCODE_BENCH_LEVELS" \
+	    -family "$${FILLER_ENCODE_BENCH_FAMILY:-nvenc}" \
+	    -limit "$${FILLER_ENCODE_BENCH_LIMIT:-30}" \
+	    -vmaf-threads "$${FILLER_ENCODE_BENCH_VMAF_THREADS:-4}"
 
 image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
 	@eval "$$(./scripts/dev-env.sh export)"; \

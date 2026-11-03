@@ -17,14 +17,14 @@ type commandProvider struct {
 	options []llm.ChatOptions
 }
 
-func TestCommandDryRunWritesFrozenContractWithoutProviderConstruction(t *testing.T) {
+func TestRecommendCertDryRunWritesFrozenContractWithoutProviderConstruction(t *testing.T) {
 	constructed := false
 	stdout := &bytes.Buffer{}
 	args := []string{
 		"--dry-run", "--model", "fixture:1b", "--profile", "local-fixture", "--artifact-digest", "0123456789ab",
 		"--max-calls", "8", "--max-tokens", "10000", "--max-spend-nanousd", "1",
 	}
-	code := run(context.Background(), args, func(string) string { return "" },
+	code := runRecommendCert(context.Background(), args, func(string) string { return "" },
 		stdout, &bytes.Buffer{}, func(providerConfig) (llm.Provider, error) {
 			constructed = true
 			return &commandProvider{}, nil
@@ -59,9 +59,9 @@ func (p *commandProvider) Chat(_ context.Context, _ []llm.Message, options llm.C
 	}}, nil
 }
 
-func TestCommandRejectsMissingExplicitResourceCeilingsBeforeProviderConstruction(t *testing.T) {
+func TestRecommendCertRejectsMissingExplicitResourceCeilingsBeforeProviderConstruction(t *testing.T) {
 	constructed := false
-	code := run(context.Background(), []string{"--model", "fixture:1b", "--profile", "local"}, func(string) string { return "" },
+	code := runRecommendCert(context.Background(), []string{"--model", "fixture:1b", "--profile", "local"}, func(string) string { return "" },
 		&bytes.Buffer{}, &bytes.Buffer{}, func(providerConfig) (llm.Provider, error) {
 			constructed = true
 			return &commandProvider{}, nil
@@ -71,7 +71,7 @@ func TestCommandRejectsMissingExplicitResourceCeilingsBeforeProviderConstruction
 	}
 }
 
-func TestCommandWritesBothScorecardsEvenWhenModelDoesNotCertify(t *testing.T) {
+func TestRecommendCertWritesBothScorecardsEvenWhenModelDoesNotCertify(t *testing.T) {
 	dir := t.TempDir()
 	jsonPath := filepath.Join(dir, "result.json")
 	markdownPath := filepath.Join(dir, "result.md")
@@ -87,7 +87,7 @@ func TestCommandWritesBothScorecardsEvenWhenModelDoesNotCertify(t *testing.T) {
 		}
 		return ""
 	}
-	code := run(context.Background(), args, getenv,
+	code := runRecommendCert(context.Background(), args, getenv,
 		&bytes.Buffer{}, &bytes.Buffer{}, func(providerConfig) (llm.Provider, error) { return provider, nil })
 	if code != 1 || provider.calls != 8 {
 		t.Fatalf("exit = %d, calls = %d", code, provider.calls)
@@ -108,7 +108,7 @@ func TestCommandWritesBothScorecardsEvenWhenModelDoesNotCertify(t *testing.T) {
 	}
 }
 
-func TestCommandRejectsOutputCeilingDriftBeforeProviderConstruction(t *testing.T) {
+func TestRecommendCertRejectsOutputCeilingDriftBeforeProviderConstruction(t *testing.T) {
 	dir := t.TempDir()
 	constructed := false
 	args := []string{
@@ -116,7 +116,7 @@ func TestCommandRejectsOutputCeilingDriftBeforeProviderConstruction(t *testing.T
 		"--max-calls", "8", "--max-tokens", "1000", "--max-spend-nanousd", "1", "--max-output-tokens", "512",
 		"--out", filepath.Join(dir, "result.json"), "--summary", filepath.Join(dir, "result.md"),
 	}
-	code := run(context.Background(), args, func(string) string { return "" },
+	code := runRecommendCert(context.Background(), args, func(string) string { return "" },
 		&bytes.Buffer{}, &bytes.Buffer{}, func(providerConfig) (llm.Provider, error) {
 			constructed = true
 			return &commandProvider{}, nil

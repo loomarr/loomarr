@@ -12,15 +12,23 @@ import (
 	"github.com/loomarr/loomarr/internal/plannerreference"
 )
 
+// planner-reference-host publishes a bounded, provider-free planner reference-host manifest from
+// exact captured evidence. It never executes host commands, loads a model, starts inference, or
+// contacts a provider.
+const plannerReferenceHostName = "eval planner-reference-host"
+
 const (
 	maxInputFileBytes = 16 << 20
 	maxEvidenceFiles  = 16
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func init() {
+	register("planner-reference-host", "bind one planner scorecard to exact artifact and reference-host evidence; no inference",
+		func(args []string) int { return runPlannerReferenceHost(args, os.Stdout, os.Stderr) })
+}
 
-func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("planner-reference-host", flag.ContinueOnError)
+func runPlannerReferenceHost(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet(plannerReferenceHostName, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	scorecardPath := flags.String("scorecard", "", "exact planner scorecard JSON")
 	capturePath := flags.String("capture", "", "normalized reference-host capture JSON")
@@ -32,41 +40,41 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() != 0 || *scorecardPath == "" || *capturePath == "" || *evidenceDir == "" ||
 		*generatedAtRaw == "" || *outPath == "" {
-		_, _ = fmt.Fprintln(stderr, "planner-reference-host: --scorecard, --capture, --evidence-dir, --generated-at, and --out are required")
+		report(stderr, "%s: --scorecard, --capture, --evidence-dir, --generated-at, and --out are required\n", plannerReferenceHostName)
 		return 2
 	}
 	generatedAt, err := time.Parse(time.RFC3339Nano, *generatedAtRaw)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: parse generated-at: %v\n", err)
+		report(stderr, "%s: parse generated-at: %v\n", plannerReferenceHostName, err)
 		return 2
 	}
 	scorecard, err := readBoundedFile(*scorecardPath, maxInputFileBytes)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: read scorecard: %v\n", err)
+		report(stderr, "%s: read scorecard: %v\n", plannerReferenceHostName, err)
 		return 1
 	}
 	capture, err := readBoundedFile(*capturePath, maxInputFileBytes)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: read capture: %v\n", err)
+		report(stderr, "%s: read capture: %v\n", plannerReferenceHostName, err)
 		return 1
 	}
 	evidence, err := readEvidenceDirectory(*evidenceDir)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: read evidence: %v\n", err)
+		report(stderr, "%s: read evidence: %v\n", plannerReferenceHostName, err)
 		return 1
 	}
 	artifact, err := plannerreference.BuildManifest(plannerreference.RawInputs{
 		Scorecard: scorecard, Capture: capture, Evidence: evidence, GeneratedAt: generatedAt,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: build manifest: %v\n", err)
+		report(stderr, "%s: build manifest: %v\n", plannerReferenceHostName, err)
 		return 1
 	}
 	if err := publishImmutable(*outPath, artifact.JSON); err != nil {
-		_, _ = fmt.Fprintf(stderr, "planner-reference-host: publish: %v\n", err)
+		report(stderr, "%s: publish: %v\n", plannerReferenceHostName, err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "planner-reference-host: wrote %s sha256=%s\n", *outPath, artifact.SHA256)
+	report(stdout, "%s: wrote %s sha256=%s\n", plannerReferenceHostName, *outPath, artifact.SHA256)
 	return 0
 }
 

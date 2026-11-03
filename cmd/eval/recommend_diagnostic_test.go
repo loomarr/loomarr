@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/recommend"
 )
 
-func TestRunWritesContentFreeDevelopmentArtifact(t *testing.T) {
+func TestRecommendDiagnosticWritesContentFreeDevelopmentArtifact(t *testing.T) {
 	temp := t.TempDir()
 	outPath := filepath.Join(temp, "diagnostic.json")
 	provider := &fixtureProvider{}
@@ -31,7 +31,7 @@ func TestRunWritesContentFreeDevelopmentArtifact(t *testing.T) {
 		return provider, nil
 	}
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{
+	code := runRecommendDiagnostic(context.Background(), []string{
 		"--provider", "ollama", "--model", "fixture:1b", "--profile", "fixture-development",
 		"--artifact-digest", "0123456789ab", "--protocol", "json-mode-v1",
 		"--max-calls", "5", "--max-tokens", "1000", "--max-spend-nanousd", "1",
@@ -56,14 +56,14 @@ func TestRunWritesContentFreeDevelopmentArtifact(t *testing.T) {
 	}
 }
 
-func TestRunRejectsMissingCeilingBeforeProviderConstruction(t *testing.T) {
+func TestRecommendDiagnosticRejectsMissingCeilingBeforeProviderConstruction(t *testing.T) {
 	factoryCalls := 0
 	factory := func(providerConfig) (llm.Provider, error) {
 		factoryCalls++
 		return &fixtureProvider{}, nil
 	}
 	var stderr bytes.Buffer
-	code := run(context.Background(), []string{
+	code := runRecommendDiagnostic(context.Background(), []string{
 		"--provider", "ollama", "--model", "fixture:1b", "--profile", "fixture-development",
 		"--artifact-digest", "0123456789ab", "--protocol", "json-mode-v1",
 		"--max-calls", "5", "--max-tokens", "1000", "--out", filepath.Join(t.TempDir(), "out.json"),
