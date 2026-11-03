@@ -440,6 +440,11 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   too long, live, upcoming, private, unavailable, incomplete).
 - **Archive.org and YouTube are peers.** Each registered remote is enumerated by its stored `kind`
   (Archive's bounded collection API; yt-dlp flat-playlist listing) through enumeration and download.
+  Listing belongs to the provider (`internal/sourceprovider`: its window, cursor, duration-cut
+  choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
+  rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
+  a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the
+  library are registered as scanned providers, never fetched.
   URL inference is kept only for a URL an admin typed. Both share the same bounds, governor,
   acquisition record, held lifecycle, sidecar and admission authority.
 - **Look for new clips** runs one bounded fetch pass for the selected source and then scans local
