@@ -178,7 +178,7 @@ func (r *rig) getJSON(t *testing.T, path string, v any) {
 // last error, so a broken suggester surfaces clearly rather than as a timeout.
 func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposal) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var list struct {
 			Proposals []struct {

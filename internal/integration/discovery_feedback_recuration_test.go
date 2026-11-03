@@ -155,7 +155,7 @@ func (r *toolOrderRecorder) all() [][]provision.Key {
 func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, previous int) (suggest.Proposal, int) {
 	t.Helper()
 	ctx := context.Background()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var found []store.Proposal
 		for _, status := range []string{"submitted", "approved"} {
