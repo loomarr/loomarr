@@ -67,7 +67,7 @@ func (b *builder) identify(file File) identity {
 	if len(m.records) > 0 {
 		id.kind = m.records[0].Kind
 		if id.kind == mp.KindEpisode && seriesDir == "" {
-			id.seriesDir = topFolder(file.Rel)
+			id.seriesDir = seriesFolder(file.Rel)
 		}
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
@@ -100,8 +100,33 @@ func (b *builder) identify(file File) identity {
 	return id
 }
 
+// markWritten records that the pass writes the file, so its series is written too. It runs before
+// any header read: snapshot is read-only on the builder, and header reads build snapshots
+// concurrently.
+func (b *builder) markWritten(id identity) {
+	if id.kind == mp.KindEpisode {
+		b.series[id.seriesDir].write = true
+	}
+}
+
+// cheapIDs are the ids the cheap sources give a file, and its series' or parent's: enough to put a
+// wanted file's header read first without building its item.
+func (id identity) cheapIDs() []inventory.ExternalID {
+	var ids []mp.ExternalID
+	for _, r := range id.managed.records {
+		ids = append(ids, r.IDs...)
+	}
+	if id.managed.series != nil {
+		ids = append(ids, id.managed.series.IDs...)
+	}
+	ids = append(ids, id.embedded.IDs...)
+	ids = append(ids, id.embedded.Parent...)
+	return append(toInventory(ids), id.parent...)
+}
+
 // snapshot is the file's inventory item without its header facts. It reads the file's NFO
-// sidecar, so it runs only for a file that is written or waits for its header.
+// sidecar, so it runs only for a file that is written or whose header is read. It does not change
+// the builder.
 func (b *builder) snapshot(ctx context.Context, file File, id identity, now time.Time) inventory.Snapshot {
 	snapshot := inventory.Snapshot{
 		Origin: fileOrigin(b.root, file.Rel),
@@ -133,15 +158,15 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		records = []mp.Record{first}
 	}
 	records = append(records, id.embedded)
-	if rec, ok := b.sidecar(ctx, id.kind, file.Path); ok {
-		records = append(records, rec)
+	if len(file.Sidecars) > 0 {
+		if rec, ok := b.sidecar(ctx, id.kind, file.Path); ok {
+			records = append(records, rec)
+		}
 	}
 
 	var series []mp.Record
 	if id.kind == mp.KindEpisode {
-		s := b.series[id.seriesDir]
-		s.write = true
-		if s.managed != nil {
+		if s := b.series[id.seriesDir]; s.managed != nil {
 			series = append(series, *s.managed)
 		}
 	}
@@ -235,13 +260,6 @@ func toInventory(ids []mp.ExternalID) []inventory.ExternalID {
 		out = append(out, inventory.ExternalID{Namespace: string(id.Namespace), Value: id.Value})
 	}
 	return out
-}
-
-func topFolder(rel string) string {
-	if i := strings.Index(rel, "/"); i > 0 {
-		return rel[:i]
-	}
-	return ""
 }
 
 // mainFolder is the folder of the item an extra belongs to: its own folder, or the one above an

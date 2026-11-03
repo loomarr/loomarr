@@ -180,16 +180,44 @@ func embeddedRecord(file File) (mp.Record, string) {
 	src := mp.Source{Basis: mp.BasisEmbeddedID}
 	if n, ok := numberingIn(name); ok && !file.Extra {
 		rec := mp.Record{Source: src, Kind: mp.KindEpisode, Numbering: &n}
-		seriesDir := ""
-		if len(segments) > 1 {
-			seriesDir = segments[0]
-			rec.Parent = idsIn(segments[0])
+		seriesDir := seriesFolder(file.Rel)
+		if seriesDir != "" {
+			rec.Parent = idsIn(path.Base(seriesDir))
 		}
 		return rec, seriesDir
 	}
+	// A movie is named by its file or its own folder. A folder further up is a collection or a
+	// series, and a tvdb id never names a movie.
 	rec := mp.Record{Source: src, Kind: mp.KindMovie}
-	for i := len(segments) - 1; i >= 0 && len(rec.IDs) == 0; i-- {
-		rec.IDs = idsIn(segments[i])
+	for i := len(segments) - 1; i >= 0 && i >= len(segments)-2 && len(rec.IDs) == 0; i-- {
+		for _, id := range idsIn(segments[i]) {
+			if id.Namespace != mp.NamespaceTVDB {
+				rec.IDs = append(rec.IDs, id)
+			}
+		}
 	}
 	return rec, ""
+}
+
+// seasonFolder matches a season folder's name: "Season 1", "Season 01", "S01", "Specials".
+var seasonFolder = regexp.MustCompile(`(?i)^(season[ ._-]*\d+|s\d+|specials)$`)
+
+// seriesFolder is an episode's series folder relative to the root: the folder above its season
+// folder, else the nearest folder whose name carries an id, else its own folder. "" is the root.
+func seriesFolder(rel string) string {
+	dir := path.Dir(rel)
+	if dir == "." {
+		return ""
+	}
+	if seasonFolder.MatchString(path.Base(dir)) {
+		if parent := path.Dir(dir); parent != "." {
+			return parent
+		}
+	}
+	for d := dir; d != "."; d = path.Dir(d) {
+		if len(idsIn(path.Base(d))) > 0 {
+			return d
+		}
+	}
+	return dir
 }

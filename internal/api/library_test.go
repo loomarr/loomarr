@@ -252,7 +252,12 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 		t.Fatalf("held %+v", st.Held)
 	}
 
-	st = scanStatus(t, h.Do(http.MethodPost, "/v1/library/roots/confirm-removal", adminToken, `{"path":"`+movies+`"}`), http.StatusAccepted)
+	// The confirmation is recorded at once and applied by the next pass, which it asks for.
+	_ = scanStatus(t, h.Do(http.MethodPost, "/v1/library/roots/confirm-removal", adminToken, `{"path":"`+movies+`"}`), http.StatusAccepted)
+	if err := lib.Scanner.Importer.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	st = scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
 	if len(st.Held) != 0 || st.Files != 3 {
 		t.Fatalf("after confirm %+v", st)
 	}

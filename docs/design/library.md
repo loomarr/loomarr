@@ -179,23 +179,30 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is an origin keyed by its path within the root. Files that carry the same ids join one item, as
   the media server's origin of the same title does. A series is an origin keyed by its folder.
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
-  path translated by the path map), ids in the file's and its folders' names (`{tmdb-1234}`), the
-  name's `S01E02`, and the NFO beside it. A file nothing grounds is still written, with no ids.
-  Extras (trailers, `extras/` folders and the like) are their own items, related to the movie
-  beside them.
+  path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
+  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
+  file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
+  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  still written, with no ids. Extras (trailers, `extras/` folders and the like) are their own
+  items, related to the movie beside them. An origin whose ids later name another item of its kind
+  moves to it, when it is its item's only origin.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
-  either changed, and reads its header only when its bytes changed. An arr that fails to list
-  defers identity rewrites rather than demoting files.
+  either changed, and reads its header only when its bytes changed. While an arr fails to list,
+  new and changed files wait and nothing is marked missing, rather than writing what the arr's
+  absence would leave.
 - **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
-  and wait while any playout session is live.
+  and wait while any playout session is live. A file whose header does not parse is marked failed
+  until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
-  status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` applies it.
-  Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` runs one at start, hourly, and on `POST /v1/library/scan`;
-  `library.scanner.enabled` stops them, and the status reports the scanner off. Walks skip `trickplay/`, `extrafanart/`, `.actors/`, `@eaDir/` and folders holding an
-  `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
+  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
+- **Passes.** `scan.Scanner` makes one at start, hourly, and on `POST /v1/library/scan`, and
+  `library.scanner.enabled` stops them. The app does not start it yet: that wiring lands with the
+  setting. A root inside another in-use root is walked as part of it. Walks skip `trickplay/`,
+  `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
+  an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
 
 ## Cached series episodes
 

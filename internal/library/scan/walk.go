@@ -6,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
-// Problems a walk records for a path it does not import.
+// Problems a pass records for a path it does not import.
 const (
 	ProblemDiscImage        = "disc_image"
 	ProblemIdentityConflict = "identity_conflict"
+	// ProblemInvalid is a file whose facts the inventory refused.
+	ProblemInvalid = "invalid_facts"
 )
 
 // videoExtensions are the containers the scanner imports.
@@ -20,8 +23,12 @@ var videoExtensions = map[string]bool{
 	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
 }
 
-// skippedDirs hold media-server and NAS by-products, never media.
-var skippedDirs = map[string]bool{"trickplay": true, "extrafanart": true, ".actors": true, "@eadir": true}
+// skippedDirs hold media-server and NAS by-products and recycle bins, never media. A ".trash-<uid>"
+// folder is skipped by its prefix.
+var skippedDirs = map[string]bool{
+	"trickplay": true, "extrafanart": true, ".actors": true, "@eadir": true,
+	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true,
+}
 
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
@@ -51,8 +58,8 @@ type File struct {
 	Stat Stat
 	// Extra marks a trailer, featurette or other extra of the item beside it.
 	Extra bool
-	// Sidecars are the NFO files in the file's folder and its parent, by path, so a changed
-	// sidecar changes the file's identity digest without being read.
+	// Sidecars are the file's own NFO files, by path, so a changed sidecar changes the file's
+	// identity digest without being read.
 	Sidecars map[string]Stat
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
@@ -63,6 +70,8 @@ type Walk struct {
 	Files []File
 	// Complete is false when any folder could not be read, so a missing file proves nothing.
 	Complete bool
+	// Skipped are paths the walk could not keep because their names are not UTF-8.
+	Skipped []string
 }
 
 // walkRoot lists the media under root. It skips media-server by-products and folders holding an
@@ -79,6 +88,7 @@ func walkRoot(ctx context.Context, root string) (Walk, error) {
 	if err := w.dir(ctx, w.root, false); err != nil {
 		return Walk{}, err
 	}
+	w.out.Skipped = w.skipped
 	return w.out, nil
 }
 
@@ -89,6 +99,8 @@ type walker struct {
 	// nfo is each folder's NFO files, kept while the walk is under it.
 	nfo map[string]map[string]Stat
 	out Walk
+	// skipped are paths whose names are not UTF-8.
+	skipped []string
 }
 
 func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
@@ -126,6 +138,11 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
+		if !utf8.ValidString(e.Name()) {
+			// The store keeps paths as text; a name that is not UTF-8 cannot be one.
+			w.skipped = append(w.skipped, path)
+			continue
+		}
 		lower := strings.ToLower(e.Name())
 		isDir := e.IsDir()
 		if e.Type()&fs.ModeSymlink != 0 {
@@ -140,7 +157,7 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 			isDir = info.IsDir()
 		}
 		switch {
-		case isDir && skippedDirs[lower]:
+		case isDir && (skippedDirs[lower] || strings.HasPrefix(lower, ".trash-")):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
 		case isDir:
@@ -158,7 +175,7 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st, Extra: extras || extraName(lower),
-				Sidecars: w.sidecars(dir),
+				Sidecars: w.sidecars(dir, e.Name()),
 			})
 		}
 	}
@@ -201,11 +218,14 @@ func (w *walker) rel(path string) string {
 	return filepath.ToSlash(rel)
 }
 
-// sidecars is the NFO files of dir and its parent.
-func (w *walker) sidecars(dir string) map[string]Stat {
+// sidecars is the NFO files that describe the media file named name in dir: its own
+// <stem>.nfo, and a movie folder's movie.nfo. A sibling's NFO says nothing about it.
+func (w *walker) sidecars(dir, name string) map[string]Stat {
 	out := map[string]Stat{}
-	for _, d := range []string{dir, filepath.Dir(dir)} {
-		for path, st := range w.nfo[d] {
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	for path, st := range w.nfo[dir] {
+		base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		if strings.EqualFold(base, stem) || strings.EqualFold(base, "movie") {
 			out[path] = st
 		}
 	}

@@ -95,13 +95,13 @@ func (l *Library) Rescan() error {
 	return nil
 }
 
-// ConfirmRemovals applies a root's held removal ("They're gone, remove them"), then asks for the
-// pass that marks the files unseen.
+// ConfirmRemovals records the maintainer's word on a root's held removal ("They're gone, remove
+// them") and asks for the pass that applies it.
 func (l *Library) ConfirmRemovals(ctx context.Context, root string) error {
 	if !l.Enabled() {
 		return ErrScannerOff
 	}
-	if err := l.Scanner.Importer.releaseHeld(ctx, root); err != nil {
+	if err := l.Scanner.Importer.ConfirmRemovals(ctx, root); err != nil {
 		return err
 	}
 	l.Scanner.Trigger()

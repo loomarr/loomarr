@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -355,6 +357,154 @@ func TestImportReleasedRootIsForgotten(t *testing.T) {
 	}
 	if roots, err := h.st.LibraryFileRoots(context.Background()); err != nil || len(roots) != 0 {
 		t.Errorf("file roots = %v, %v", roots, err)
+	}
+}
+
+// While an arr is down a new file waits rather than being written without the arr's ids, and
+// nothing is marked missing; once the arr answers, both happen.
+func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
+	radarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
+	ctx := context.Background()
+	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
+		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 11 {
+		h.file(fmt.Sprintf("Filler %02d/Filler %02d.mkv", i, i), 5)
+	}
+	gone := h.file("Delta (1999)/Delta.mkv", 10)
+	h.run()
+
+	radarr.err = errors.New("radarr is down")
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Echo (2003)/Echo.mkv", 10)
+	h.run()
+	echo := fileOrigin(h.root, "Echo (2003)/Echo.mkv")
+	if _, ok, err := h.inv.Item(ctx, inventory.ItemRef{Origin: &echo}); err != nil || ok {
+		t.Fatalf("a new file was written while the arr was down: ok=%v err=%v", ok, err)
+	}
+	delta := fileOrigin(h.root, "Delta (1999)/Delta.mkv")
+	if o := h.origin(h.item(delta), delta); !o.MissingAt.IsZero() {
+		t.Fatal("a file was marked missing while the arr was down")
+	}
+
+	radarr.err = nil
+	radarr.records = []mp.Record{{
+		Source: mp.Source{Provider: mp.IDRadarr, Basis: mp.BasisManager}, Kind: mp.KindMovie,
+		IDs:   []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000613"}},
+		Files: []mp.FileRef{{Path: "/movies/Echo (2003)/Echo.mkv"}},
+	}}
+	h.run()
+	if item := h.item(echo); !hasID(item.ExternalIDs, "tmdb", "90000613") {
+		t.Errorf("echo after recovery = %+v", item.ExternalIDs)
+	}
+	if o := h.origin(h.item(delta), delta); o.MissingAt.IsZero() {
+		t.Error("the removal was not applied once the arr answered")
+	}
+}
+
+// A file first written with no ids follows them to the item they name once an arr gives them,
+// rather than becoming an identity conflict for good.
+func TestImportOriginFollowsLaterIDs(t *testing.T) {
+	radarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "radarr", Lister: radarr})
+	ctx := context.Background()
+	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
+		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Papa/Papa.mkv", 10)
+	h.run()
+	other, err := h.inv.ApplySnapshot(ctx, inventory.Snapshot{
+		Origin: inventory.OriginKey{Authority: "test", ExternalItemID: "papa"}, Kind: kindMovie,
+		Observation: inventory.Observation[inventory.ItemFacts]{SchemaVersion: 1, ObservedAt: time.Now(),
+			Facts: inventory.ItemFacts{Name: "Papa"}},
+		ExternalIDs: []inventory.ExternalID{{Namespace: "tmdb", Value: "90000614"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	radarr.records = []mp.Record{{
+		Source: mp.Source{Provider: mp.IDRadarr, Basis: mp.BasisManager}, Kind: mp.KindMovie,
+		IDs:   []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000614"}},
+		Files: []mp.FileRef{{Path: "/movies/Papa/Papa.mkv"}},
+	}}
+	h.run()
+	papa := fileOrigin(h.root, "Papa/Papa.mkv")
+	if item := h.item(papa); item.ID != other {
+		t.Errorf("file's item = %v, want the item its ids name, %v", item.ID, other)
+	}
+	if counts, err := h.st.LibraryFileCounts(ctx); err != nil || counts.Problems != 0 {
+		t.Errorf("counts = %+v, %v", counts, err)
+	}
+}
+
+// A root inside another in-use root is walked once, as part of the outer one.
+func TestImportNestedRootIsWalkedOnce(t *testing.T) {
+	h := newHarness(t)
+	inner := filepath.Join(h.root, "Kids")
+	h.file("Kids/Quebec/Quebec.mkv", 10)
+	if err := h.st.AddLibraryRoot(context.Background(), store.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	h.item(fileOrigin(h.root, "Kids/Quebec/Quebec.mkv"))
+	nested := fileOrigin(inner, "Quebec/Quebec.mkv")
+	if _, ok, err := h.inv.Item(context.Background(), inventory.ItemRef{Origin: &nested}); err != nil || ok {
+		t.Errorf("the nested root wrote its own origin: ok=%v err=%v", ok, err)
+	}
+	states := map[string]RootState{}
+	for _, r := range h.im.Progress().Roots {
+		states[r.Root] = r.State
+	}
+	if states[h.root] != RootScanned || states[inner] != RootNested {
+		t.Errorf("roots = %v", states)
+	}
+}
+
+// A header the share could not give back leaves the file pending for the next pass, rather than
+// marking it failed for good.
+func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
+	h := newHarness(t)
+	h.file("Romeo/Romeo.mkv", 10)
+	read := h.im.Header
+	h.im.Header = func(context.Context, string) (mediaheader.Header, error) {
+		return mediaheader.Header{}, &fs.PathError{Op: "read", Path: "Romeo.mkv", Err: syscall.EIO}
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != 1 || rows[0].Header != store.LibraryHeaderPending {
+		t.Fatalf("rows = %+v, %v", rows, err)
+	}
+	h.im.Header = read
+	h.run()
+	if h.reads.Load() != 1 {
+		t.Errorf("reads after the share recovered = %d, want 1", h.reads.Load())
+	}
+}
+
+// A disc image that is gone stops being listed as a problem.
+func TestImportGoneDiscImageIsNoLongerAProblem(t *testing.T) {
+	h := newHarness(t)
+	h.file("Sierra/Sierra.mkv", 10)
+	iso := h.file("Tango/Tango.iso", 10)
+	h.run()
+	ctx := context.Background()
+	if counts, err := h.st.LibraryFileCounts(ctx); err != nil || counts.Problems != 1 {
+		t.Fatalf("counts = %+v, %v", counts, err)
+	}
+	if err := os.Remove(iso); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if counts, err := h.st.LibraryFileCounts(ctx); err != nil || counts.Problems != 0 || len(counts.Held) != 0 {
+		t.Errorf("counts after removal = %+v, %v", counts, err)
 	}
 }
 

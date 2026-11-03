@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +63,8 @@ type Importer struct {
 	run      sync.Mutex
 	mu       sync.Mutex
 	progress Progress
+	// confirmed are roots whose held removal the maintainer confirmed, applied by their next pass.
+	confirmed map[string]bool
 }
 
 // Stage is what a pass is doing.
@@ -80,6 +84,8 @@ const (
 	RootUnreadable RootState = "unreadable"
 	RootIncomplete RootState = "incomplete"
 	RootHeld       RootState = "held"
+	// RootNested is a root inside another in-use root, walked as part of that one.
+	RootNested RootState = "nested"
 )
 
 // RootResult is one root's last pass.
@@ -122,11 +128,13 @@ func (im *Importer) setProgress(update func(*Progress)) {
 	update(&im.progress)
 }
 
-// pending is a file waiting for its header: the snapshot to write once it is read.
+// pending is a file waiting for its header. Its item is built when the header is read, so a file
+// that waits pass after pass has its sidecar read once, by the read that writes it.
 type pending struct {
-	row      store.LibraryFile
-	file     File
-	snapshot inventory.Snapshot
+	row  store.LibraryFile
+	file File
+	id   identity
+	b    *builder
 }
 
 // Run makes one pass. Passes never overlap: a second caller waits for the first.
@@ -155,7 +163,8 @@ func (im *Importer) Run(ctx context.Context) error {
 		im.log().Warn("library scan: an arr did not list", "err", err)
 	}
 	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
-	if err := im.forgetReleased(ctx, all.Roots); err != nil {
+	roots := scannedRoots(all.Roots)
+	if err := im.forgetReleased(ctx, roots); err != nil {
 		return err
 	}
 
@@ -163,6 +172,11 @@ func (im *Importer) Run(ctx context.Context) error {
 	var results []RootResult
 	for _, root := range all.Roots {
 		if !root.InUse {
+			continue
+		}
+		if outer, ok := within(root.Path, roots); ok && outer != root.Path {
+			// The root's files are the outer root's: one walk, one origin per file.
+			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
 		result, waiting, err := im.scanRoot(ctx, root.Path, idx)
@@ -180,15 +194,60 @@ func (im *Importer) Run(ctx context.Context) error {
 	return nil
 }
 
-// forgetReleased marks every file of a root no longer in use unseen and forgets its rows: releasing
-// a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
-func (im *Importer) forgetReleased(ctx context.Context, roots []store.LibraryRoot) error {
-	inUse := map[string]bool{}
-	for _, r := range roots {
-		if r.InUse {
-			inUse[r.Path] = true
+// scannedRoots is the in-use roots a pass walks: each one not inside another in-use root, by real
+// path. A folder inside another is walked as part of it.
+func scannedRoots(all []store.LibraryRoot) map[string]bool {
+	real := map[string]string{}
+	for _, r := range all {
+		if !r.InUse {
+			continue
+		}
+		p, err := filepath.EvalSymlinks(r.Path)
+		if err != nil {
+			p = r.Path
+		}
+		real[r.Path] = p
+	}
+	out := map[string]bool{}
+	for path, p := range real {
+		nested := false
+		for other, q := range real {
+			if other != path && (p == q && other < path || strings.HasPrefix(p, q+string(filepath.Separator))) {
+				nested = true
+				break
+			}
+		}
+		if !nested {
+			out[path] = true
 		}
 	}
+	return out
+}
+
+// within reports the walked root that contains root, root itself when it is walked.
+func within(root string, walked map[string]bool) (string, bool) {
+	if walked[root] {
+		return root, true
+	}
+	p, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		p = root
+	}
+	for outer := range walked {
+		q, err := filepath.EvalSymlinks(outer)
+		if err != nil {
+			q = outer
+		}
+		if p == q || strings.HasPrefix(p, q+string(filepath.Separator)) {
+			return outer, true
+		}
+	}
+	return "", false
+}
+
+// forgetReleased marks every file of a root no longer walked unseen and forgets its rows: releasing
+// a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
+func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) error {
 	scanned, err := im.Store.LibraryFileRoots(ctx)
 	if err != nil {
 		return err
@@ -225,6 +284,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 	if !walk.Complete {
 		result.State = RootIncomplete
 	}
+	for _, path := range walk.Skipped {
+		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
+	}
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {
 		return result, nil, err
@@ -241,16 +303,13 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 	found := map[string]bool{}
 	for _, file := range walk.Files {
 		found[file.Path] = true
-		// A held file the walk finds again is back; a row written below for it supersedes this.
-		if r, ok := prev[file.Path]; ok && r.Held {
-			r.Held = false
-			save = append(save, r)
-		}
 	}
 	for _, file := range b.order(walk.Files) {
 		old, known := prev[file.Path]
+		// A held file the walk finds again is back.
+		old.Held = false
 		if file.Problem != "" {
-			if !known || old.Problem != file.Problem || old.MissingAt != (time.Time{}) || old.Held {
+			if !known || old.Problem != file.Problem || !old.MissingAt.IsZero() || prev[file.Path].Held {
 				save = append(save, store.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size,
 					ModifiedNs: file.Stat.ModifiedNs, Header: store.LibraryHeaderFailed, Problem: file.Problem, SeenAt: now})
 			}
@@ -266,14 +325,22 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 		switch {
 		case sameBytes && old.Identity == id.digest:
 			// Unchanged: never written, never opened again.
+			if prev[file.Path].Held {
+				save = append(save, old)
+			}
 			if old.Header == store.LibraryHeaderPending && old.Problem == "" {
-				queue = append(queue, pending{row: old, file: file, snapshot: b.snapshot(ctx, file, id, now)})
+				queue = append(queue, pending{row: old, file: file, id: id, b: b})
 			}
 			continue
-		case sameBytes && !idx.complete:
-			// An arr is down: a changed identity may be only its absence. Keep the last one.
+		case !idx.complete:
+			// An arr is down: what it would say about a new, changed or re-identified file is
+			// unknown, and writing without it would only have to be undone. The file waits.
+			if prev[file.Path].Held {
+				save = append(save, old)
+			}
 			continue
 		}
+		b.markWritten(id)
 		snapshot := b.snapshot(ctx, file, id, now)
 		var header *inventory.SourceFacts
 		if sameBytes && old.Header == store.LibraryHeaderRead {
@@ -282,19 +349,18 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 				row.Header = store.LibraryHeaderPending
 			}
 		}
-		withHeader := snapshot
-		withHeader.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
-		if err := im.apply(ctx, withHeader); err != nil {
-			if !errors.Is(err, inventory.ErrIdentityConflict) {
-				return result, nil, err
-			}
-			row.Problem = ProblemIdentityConflict
+		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
+		if problem, err := im.applyFile(ctx, snapshot); err != nil {
+			return result, nil, err
+		} else if problem != "" {
+			// No digest: a file that could not be written is tried again on the next pass.
+			row.Problem, row.Identity = problem, ""
 			save = append(save, row)
 			continue
 		}
 		save = append(save, row)
 		if row.Header == store.LibraryHeaderPending {
-			queue = append(queue, pending{row: row, file: file, snapshot: snapshot})
+			queue = append(queue, pending{row: row, file: file, id: id, b: b})
 		}
 	}
 	if err := b.writeSeries(ctx, now); err != nil {
@@ -303,9 +369,13 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 
 	removed, present := removals(prev, found)
 	if walk.Complete {
-		held := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
+		// A confirmation is spent by the first complete walk after it, held or not: it answers the
+		// removal the maintainer saw, never a later one.
+		confirmed := im.takeConfirmed(root)
+		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
+		held := over && !confirmed
 		for _, r := range removed {
-			if held {
+			if held && r.Problem == "" {
 				if !r.Held {
 					r.Held = true
 					save = append(save, r)
@@ -322,7 +392,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
 		return result, nil, err
 	}
-	if walk.Complete && result.State != RootHeld {
+	// Origins are marked unseen only after a complete walk, with no removal held and every arr
+	// answering: a file that waited for an arr was not written, and its series not seen.
+	if walk.Complete && result.State != RootHeld && idx.complete {
 		if err := im.markUnseen(ctx, root, b.seen, now); err != nil {
 			return result, nil, err
 		}
@@ -333,15 +405,35 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 	return result, queue, nil
 }
 
-// removals is every present, importable file a walk did not find, and how many were present.
+// applyFile writes one file's item. A snapshot the inventory refuses is a problem on that file,
+// not a failed pass.
+func (im *Importer) applyFile(ctx context.Context, snapshot inventory.Snapshot) (string, error) {
+	err := im.apply(ctx, snapshot)
+	switch {
+	case err == nil:
+		return "", nil
+	case errors.Is(err, inventory.ErrIdentityConflict):
+		return ProblemIdentityConflict, nil
+	case errors.Is(err, inventory.ErrInvalid):
+		im.log().Warn("library scan: a file's facts were refused", "err", err)
+		return ProblemInvalid, nil
+	default:
+		return "", err
+	}
+}
+
+// removals is every present file a walk did not find, and how many importable files were present.
+// A problem file that is gone is a removal too, but never counts toward a hold.
 func removals(prev map[string]store.LibraryFile, found map[string]bool) ([]store.LibraryFile, int) {
 	var removed []store.LibraryFile
 	present := 0
 	for path, r := range prev {
-		if !r.MissingAt.IsZero() || r.Problem == ProblemDiscImage {
+		if !r.MissingAt.IsZero() {
 			continue
 		}
-		present++
+		if r.Problem == "" {
+			present++
+		}
 		if !found[path] {
 			removed = append(removed, r)
 		}
@@ -349,28 +441,34 @@ func removals(prev map[string]store.LibraryFile, found map[string]bool) ([]store
 	return removed, present
 }
 
-// releaseHeld applies a root's held removal to the file table: the held files are recorded
-// missing. The next pass marks their origins unseen: with them already missing, its walk no longer
-// counts them as removals, so nothing holds it.
-func (im *Importer) releaseHeld(ctx context.Context, root string) error {
-	im.run.Lock()
-	defer im.run.Unlock()
+// ConfirmRemovals records the maintainer's confirmation of a root's held removal. The next pass
+// of that root applies its removal however large. It never waits for a running pass.
+func (im *Importer) ConfirmRemovals(ctx context.Context, root string) error {
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {
 		return err
 	}
-	now := im.now()
-	var save []store.LibraryFile
 	for _, r := range rows {
 		if r.Held {
-			r.Held, r.MissingAt = false, now
-			save = append(save, r)
+			im.mu.Lock()
+			if im.confirmed == nil {
+				im.confirmed = map[string]bool{}
+			}
+			im.confirmed[root] = true
+			im.mu.Unlock()
+			return nil
 		}
 	}
-	if len(save) == 0 {
-		return ErrNothingHeld
-	}
-	return im.Store.SaveLibraryFiles(ctx, save)
+	return ErrNothingHeld
+}
+
+// takeConfirmed reports and clears a root's pending confirmation.
+func (im *Importer) takeConfirmed(root string) bool {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	ok := im.confirmed[root]
+	delete(im.confirmed, root)
+	return ok
 }
 
 // ErrNothingHeld is a confirmation for a root with no held removal.
