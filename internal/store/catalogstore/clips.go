@@ -360,6 +360,10 @@ func (s *Store) ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip)
 }
 
 func (s *Store) replaceClipIdentityTx(ctx context.Context, tx storedb.Tx, oldHash string, c Clip) error {
+	restoreResearch, err := s.liftResearchAttemptsTx(ctx, tx, oldHash)
+	if err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips
 		SET hash = ?, path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 		WHERE hash = ?`), c.Hash, c.Path, c.DurationMs, c.Quality, epoch(c.UpdatedAt), oldHash)
@@ -374,33 +378,137 @@ func (s *Store) replaceClipIdentityTx(ctx context.Context, tx storedb.Tx, oldHas
 		return ErrNotFound
 	}
 
-	return s.rekeyClipReferencesTx(ctx, tx, oldHash, c.Hash)
+	if err := s.rekeyClipReferencesTx(ctx, tx, oldHash, c.Hash); err != nil {
+		return err
+	}
+	return restoreResearch(c.Hash)
+}
+
+// liftResearchAttemptsTx takes a clip's web-research attempts out of the table so its row can be
+// re-keyed in place: their foreign key to clips(hash) has no ON UPDATE, so the UPDATE fails while
+// they point at it. The returned func puts them back under the new hash, in the same transaction.
+func (s *Store) liftResearchAttemptsTx(ctx context.Context, tx storedb.Tx, hash string) (func(newHash string) error, error) {
+	type attempt struct {
+		inputRevision        int64
+		adapterVersion, kind string
+		reservedAt           int64
+	}
+	rows, err := tx.QueryContext(ctx, s.h.Rebind(`SELECT input_revision, adapter_version, provider, reserved_at
+		FROM filler_research_web_attempts WHERE clip_hash = ?`), hash)
+	if err != nil {
+		return nil, fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+	}
+	var lifted []attempt
+	for rows.Next() {
+		var a attempt
+		if err := rows.Scan(&a.inputRevision, &a.adapterVersion, &a.kind, &a.reservedAt); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+		}
+		lifted = append(lifted, a)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM filler_research_web_attempts WHERE clip_hash = ?`), hash); err != nil {
+		return nil, fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+	}
+	return func(newHash string) error {
+		for _, a := range lifted {
+			if _, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO filler_research_web_attempts
+				(clip_hash, input_revision, adapter_version, provider, reserved_at) VALUES (?, ?, ?, ?, ?)`),
+				newHash, a.inputRevision, a.adapterVersion, a.kind, a.reservedAt); err != nil {
+				return fmt.Errorf("replace clip identity %s research attempts: %w", hash, err)
+			}
+		}
+		return nil
+	}, nil
+}
+
+// clipRekey is what re-keying a clip does to one column that names it by hash.
+type clipRekey int
+
+const (
+	// rekeyMove points the row at the new identity. It records the clip's content or history,
+	// which a byte transform does not change.
+	rekeyMove clipRekey = iota
+	// rekeyDrop deletes the row. It measured the old bytes; the next pass measures the new ones.
+	rekeyDrop
+	// rekeyByCode is moved by its own step in rekeyClipReferencesTx, because a plain UPDATE would
+	// be wrong for it.
+	rekeyByCode
+	// rekeyKeep stays on the old hash on purpose.
+	rekeyKeep
+)
+
+type clipReference struct {
+	table, column string
+	rekey         clipRekey
+}
+
+// clipReferences is every column that names a clip by its hash, outside clips.hash itself, and
+// what a re-key does with it. A schema test fails when a migration adds a clip_hash column this
+// list does not name, so a new table cannot silently stay behind on a retired identity.
+var clipReferences = []clipReference{
+	{"clip_tags", "clip_hash", rekeyMove},
+	{"clips", "parent_hash", rekeyMove},
+	{"filler_clip_pipeline", "clip_hash", rekeyMove},
+	{"filler_split_proposals", "clip_hash", rekeyMove},
+	// The manifest keeps the downloaded source bytes in media_sha256/media_path, but clip_hash is
+	// its binding to the current catalog identity. If that binding stays on the retired intake
+	// hash, the detail surface loses the exact public source URL after normalization.
+	{"filler_acquisition_artifacts", "clip_hash", rekeyMove},
+	// Screening verdicts, enrichment, research and their cost ledgers judge the content. A Ready
+	// clip re-encoded from its master keeps them; its new evidence is screened again on its own.
+	{"filler_admission_decisions", "clip_hash", rekeyMove},
+	{"filler_spoken_safety_runs", "clip_hash", rekeyMove},
+	{"filler_split_shadow_decisions", "clip_hash", rekeyMove},
+	{"filler_enrichment_axes", "clip_hash", rekeyMove},
+	{"filler_enrichment_passes", "clip_hash", rekeyMove},
+	{"filler_context_reports", "clip_hash", rekeyMove},
+	{"filler_inference_evaluations", "clip_hash", rekeyMove},
+	{"filler_ready_events", "clip_hash", rekeyMove},
+	// Its foreign key to clips(hash) has no ON UPDATE, so replaceClipIdentityTx lifts these rows
+	// out before it re-keys the clip row in place.
+	{"filler_research_web_attempts", "clip_hash", rekeyMove},
+	// Fingerprints describe the OLD bytes. Never re-key derived evidence onto the new content
+	// identity; the first de-dup pass that sees the replacement computes it again.
+	{"filler_clip_fingerprints", "clip_hash", rekeyDrop},
+	// So does the defect record (#2034): the new bytes are measured on the next pass.
+	{"filler_clip_defects", "clip_hash", rekeyDrop},
+	{"image_refs", "owner_id", rekeyByCode},
+	{"filler_airings", "clip_hash", rekeyByCode},
+	{"filler_clip_variants", "a_hash", rekeyByCode},
+	{"filler_clip_variants", "b_hash", rekeyByCode},
+	{"filler_inferior_copies", "survivor_hash", rekeyByCode},
+	// The identities of a copy that lost a merge. Intake skips them so those bytes never return.
+	{"filler_inferior_copies", "clip_hash", rekeyKeep},
+	{"filler_inferior_copies", "source_hash", rekeyKeep},
 }
 
 func (s *Store) rekeyClipReferencesTx(ctx context.Context, tx storedb.Tx, oldHash, newHash string) error {
-	refs := []struct {
-		query string
-		args  []any
-	}{
-		// Fingerprints describe the OLD bytes. Never re-key derived evidence onto the new content
-		// identity; the first de-dup pass that sees the replacement computes it again.
-		{`DELETE FROM filler_clip_fingerprints WHERE clip_hash = ?`, []any{oldHash}},
-		// So does the defect record (#2034): the new bytes are measured on the next pass.
-		{`DELETE FROM filler_clip_defects WHERE clip_hash = ?`, []any{oldHash}},
-		{`UPDATE clip_tags SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
-		{`UPDATE filler_clip_pipeline SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
-		{`UPDATE filler_split_proposals SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
-		// The manifest keeps the downloaded source bytes in media_sha256/media_path, but clip_hash
-		// is its binding to the current catalog identity. If that binding stays on the retired
-		// intake hash, the detail surface loses the exact public source URL after normalization.
-		{`UPDATE filler_acquisition_artifacts SET clip_hash = ? WHERE clip_hash = ?`, []any{newHash, oldHash}},
-		{`UPDATE clips SET parent_hash = ? WHERE parent_hash = ?`, []any{newHash, oldHash}},
-		{`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`, []any{newHash, "clip", oldHash}},
-	}
-	for _, ref := range refs {
-		if _, err := tx.ExecContext(ctx, s.h.Rebind(ref.query), ref.args...); err != nil {
-			return fmt.Errorf("replace clip identity %s references: %w", oldHash, err)
+	for _, ref := range clipReferences {
+		var query string
+		var args []any
+		switch ref.rekey {
+		case rekeyMove:
+			query, args = `UPDATE `+ref.table+` SET `+ref.column+` = ? WHERE `+ref.column+` = ?`, []any{newHash, oldHash}
+		case rekeyDrop:
+			query, args = `DELETE FROM `+ref.table+` WHERE `+ref.column+` = ?`, []any{oldHash}
+		default:
+			continue
 		}
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(query), args...); err != nil {
+			return fmt.Errorf("replace clip identity %s references in %s: %w", oldHash, ref.table, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE image_refs SET owner_id = ? WHERE owner_kind = ? AND owner_id = ?`),
+		newHash, "clip", oldHash); err != nil {
+		return fmt.Errorf("replace clip identity %s references in image_refs: %w", oldHash, err)
 	}
 	for _, step := range identityHistoryMoves(oldHash, newHash) {
 		if _, err := tx.ExecContext(ctx, s.h.Rebind(step.query), step.args...); err != nil {
