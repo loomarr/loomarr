@@ -202,8 +202,8 @@ func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *s
 		PeriodicJobs: periodic,
 		Logger:       quietRiverLogger(log),
 		// Run-now latency. River's default fetch poll is 1 SECOND and SQLite has no
-		// LISTEN/NOTIFY to short-circuit it, so a click would wait up to a second where the
-		// old in-process scheduler started immediately. 100ms keeps that feeling immediate,
+		// LISTEN/NOTIFY to short-circuit it, so a click would wait up to a second. 100ms keeps
+		// it feeling immediate,
 		// 100× above River's floor, at the cost of one query per 100ms against a local
 		// database holding a dozen rows.
 		//
@@ -417,8 +417,8 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 			},
 			// ⚠ RunOnStart is deliberately OFF. It fires on every leadership election, so a
 			// restart loop would re-run every job each time — and these include a full library
-			// sweep and a channel rebuild. The old scheduler ran due-on-start jobs because it
-			// had no durable schedule; River keeps one.
+			// sweep and a channel rebuild. River keeps a durable schedule, so nothing is
+			// owed on start.
 			&river.PeriodicJobOpts{RunOnStart: false},
 		))
 	}

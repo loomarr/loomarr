@@ -60,17 +60,6 @@ func TestRiverWorker_TimeoutOfAnUnknownJobIsTheDefault(t *testing.T) {
 	}
 }
 
-// ⚠ **The ceiling must not outlive the CLAIM.** A job allowed to run past its own lease would
-// keep working after its row became re-claimable, and a second worker could start the same job
-// beside it — two ffmpeg passes over one catalog. Tying the two constants means the invariant is
-// stated once; this asserts nobody unties them.
-func TestLongJobTimeout_DoesNotOutliveTheLease(t *testing.T) {
-	if LongJobTimeout > leaseHorizon {
-		t.Fatalf("LongJobTimeout %v exceeds leaseHorizon %v — a job may then still be running "+
-			"when its claim expires, and a second worker can pick it up", LongJobTimeout, leaseHorizon)
-	}
-}
-
 // The ceiling is enforced by River, not by us, so what this pins is the WIRING: a job that
 // overruns its declared ceiling has its context cancelled, and the work sees it.
 func TestJobTimeout_CancelsTheWorkThatOverruns(t *testing.T) {

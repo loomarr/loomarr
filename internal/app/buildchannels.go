@@ -299,8 +299,8 @@ func buildChannels(
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
-		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
-		// lease/batch are still constructed; only its standalone loop is gone.
+		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
+		// constructed here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)

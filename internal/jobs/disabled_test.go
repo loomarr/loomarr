@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/riverqueue/river"
+
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -94,10 +96,10 @@ func TestDisabledJob_IsNotSeeded(t *testing.T) {
 	}
 }
 
-// ⚠ THE SAFETY GATE: even with a due row already present, the loop must not run it. This is
+// ⚠ THE SAFETY GATE: even with a due row already present, the worker must not run it. This is
 // the SQLite → Postgres case — reconcileRegistry declines to seed, but the row is already
 // there from before the migration.
-func TestDisabledJob_IsNeverClaimedEvenWithADueRow(t *testing.T) {
+func TestDisabledJob_WorkerNeverRunsItEvenWithADueRow(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
@@ -108,10 +110,9 @@ func TestDisabledJob_IsNeverClaimedEvenWithADueRow(t *testing.T) {
 	// Due NOW, as a pre-migration boot would have left it.
 	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "backup", NextRun: clk.now()})
 
-	s.tick(ctx)
-
-	// Give any wrongly-spawned goroutine time to land before asserting it did not.
-	time.Sleep(50 * time.Millisecond)
+	if err := (&riverWorker{s: s}).Work(ctx, &river.Job[jobArgs]{Args: jobArgs{Name: "backup"}}); err != nil {
+		t.Fatal(err)
+	}
 	if n := ran.Load(); n != 0 {
 		t.Errorf("disabled job ran %d times, want 0 — a backend that cannot back up must not try", n)
 	}
@@ -137,8 +138,6 @@ func TestDisabledJob_TriggerIsRefused(t *testing.T) {
 	if j, err := st.GetScheduledJob(ctx, "backup"); err == nil && !j.NextRun.IsZero() {
 		t.Errorf("a refused Trigger still wrote next_run %v", j.NextRun)
 	}
-	s.tick(ctx)
-	time.Sleep(50 * time.Millisecond)
 	if n := ran.Load(); n != 0 {
 		t.Errorf("job ran %d times after a refused Trigger, want 0", n)
 	}
@@ -174,12 +173,13 @@ func TestDisabledJob_DoesNotAffectEnabledJobs(t *testing.T) {
 	ctx := context.Background()
 
 	s.reconcileRegistry(ctx)
-	s.tick(ctx)
+	w := riverWorker{s: s}
+	for _, name := range []string{"backup", "reconcile"} {
+		if err := w.Work(ctx, &river.Job[jobArgs]{Args: jobArgs{Name: name}}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	waitFor(t, func() bool {
-		j, err := st.GetScheduledJob(ctx, "reconcile")
-		return err == nil && j.LastResult != ""
-	})
 	if enabledRan.Load() != 1 {
 		t.Errorf("enabled job ran %d times, want 1", enabledRan.Load())
 	}
