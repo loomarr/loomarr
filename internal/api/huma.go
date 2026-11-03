@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -194,12 +195,12 @@ type Server struct {
 	// binder serves the explicit channel creation helpers. Proposal approval does
 	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
-	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
+	// liveSettings answers a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
 	// a route gates on the CURRENT config (a saved connection enables it with no
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
-	liveConfig func(key string) string
+	liveSettings settings.Reader
 	// libraryConfigured resolves the complete live media-server connection from one settings
 	// snapshot. A domain-specific seam keeps handlers from independently reading flavor, URL,
 	// and token and accidentally observing a mixed generation during a concurrent save.
@@ -209,19 +210,6 @@ type Server struct {
 	ready          ReadyFunc
 	startupReports StartupReportService
 
-	liveConfigInt      func(key string) int
-	liveConfigDuration func(key string) time.Duration
-	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
-	//
-	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
-	// Kind, so `liveConfig("filler.source.folder.enabled")` killed the request rather than
-	// returning anything a comparison could inspect. A dedicated reader makes the Kind
-	// mismatch impossible to write instead of leaving the string accessor as the only tool.
-	//
-	// It is boolOn, not boolv, deliberately: nil ⇒ true, matching the syncer's own gate and
-	// the declared default. The keys read here answer "why is my catalog empty", so an
-	// unanswerable read must not render the drop-folder as switched off.
-	liveConfigBoolOn func(key string) bool
 	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
@@ -284,14 +272,14 @@ func (s *Server) featureOff(ctx context.Context, feature string) bool {
 	return s.settings != nil && !s.settings.Features(ctx)[feature]
 }
 
-// unconfigured reports whether a required setting is empty right now. Safe when
-// liveConfig is unset (unit tests) — reports false so a wired dep still serves.
-func (s *Server) unconfigured(keys ...string) bool {
-	if s.liveConfig == nil {
+// unconfigured reports whether a required string setting is empty right now. Safe when
+// liveSettings is unset (unit tests) — reports false so a wired dep still serves.
+func (s *Server) unconfigured(keys ...settings.StringKey) bool {
+	if s.liveSettings == nil {
 		return false
 	}
 	for _, k := range keys {
-		if s.liveConfig(k) == "" {
+		if k.Get(s.liveSettings) == "" {
 			return true
 		}
 	}
@@ -306,9 +294,10 @@ func (s *Server) libraryUnconfigured() bool {
 }
 
 // SettingsService is the settings surface the API depends on (config-design §8).
-// Implemented by a settings.Service adapter in the composition root; abstracted
-// so the API package needn't import internal/settings. Secrets are masked here —
-// a value never crosses this boundary (§4).
+// Implemented by a settings.Service adapter in the composition root. Its read
+// side is the typed settings.Reader on Options.LiveSettings; this interface is the
+// management surface. Secrets are masked here — a value never crosses this
+// boundary (§4).
 type SettingsService interface {
 	// List returns every operator-managed setting with its resolved value (secrets
 	// masked) + provenance + audit metadata (config-design §8).
@@ -1178,34 +1167,17 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// LiveConfig reads a setting's live resolved value so feature routes gate on the
-	// CURRENT config (a saved connection enables the route with no restart, §8.1).
-	// The composition root passes settings.Service.String; unit tests omit it.
-	LiveConfig func(key string) string
+	// LiveSettings answers a setting's live resolved value so feature routes gate on the
+	// CURRENT config (a saved connection enables the route with no restart, §8.1). Routes read
+	// it through the typed handles — `settings.GuideTimezone.Get(s.liveSettings)` — so a key
+	// cannot be misspelt or read as the wrong kind. The composition root passes its settings
+	// view; unit tests that omit it (nil) skip the live-config gates, and a handle on a nil
+	// reader answers the setting's declared default.
+	LiveSettings settings.Reader
 	// LibraryConfigured atomically reports whether the complete live media-server
 	// {flavor,url,token} connection is usable. The composition root supplies it; unit tests
 	// that wire a concrete adapter may omit it.
 	LibraryConfigured func() bool
-	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
-	// string, because settings.String PANICS on a non-string key — an int setting read
-	// through the string seam took down GET /v1/users in the quota work, and only a run
-	// against a real settings service surfaced it (unit tests leave the seam nil, so the
-	// typed accessor was never reached).
-	LiveConfigInt func(key string) int
-	// LiveConfigDuration reads hot-applied duration settings without routing them through the
-	// string accessor, which deliberately panics on a kind mismatch.
-	LiveConfigDuration func(key string) time.Duration
-	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
-	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
-	// for every Kind a route reads rather than only the two that have already broken.
-	// GET /v1/filler/sources panicked on `filler.source.folder.enabled` (a bool) exactly
-	// as /v1/users did on an int, and again only a real settings service reached it.
-	//
-	// ⚠ boolOn, not boolv: nil ⇒ TRUE. Callers here gate "is this source being scanned",
-	// where a false read renders a working drop-folder as switched off on the page whose
-	// job is explaining an empty catalog. A key that is off by default needs its own
-	// accessor rather than this one.
-	LiveConfigBoolOn func(key string) bool
 }
 
 // arrayNullableOnce guards the one write to Huma's package-level DefaultArrayNullable (see the

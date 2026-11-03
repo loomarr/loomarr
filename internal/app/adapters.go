@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -29,9 +30,11 @@ import (
 type recurateThresholds struct{ set resolved }
 
 func (t recurateThresholds) MinScorePct(context.Context) int {
-	return t.set.intv("recurate.min_score_pct")
+	return settings.RecurateMinScorePct.Get(t.set)
 }
-func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
+func (t recurateThresholds) MaxTitles(context.Context) int {
+	return settings.RecurateMaxTitles.Get(t.set)
+}
 
 // liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
 // resolver matters on Postgres: another replica can advance the checkpoint without changing this

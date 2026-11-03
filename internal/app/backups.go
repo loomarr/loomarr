@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -118,7 +119,6 @@ const (
 	// thing either way, and the reason it cannot run here is its DisabledReason, not its blurb.
 	backupJobDesc = "Writes a snapshot of the database to your backup folder, then deletes the oldest ones past the number you keep."
 	backupJobCron = "0 30 3 * * *"
-	backupJobKey  = "backup.schedule"
 )
 
 // Job returns the scheduled backup.
@@ -129,7 +129,7 @@ const (
 func (s *backupsService) Job(log *slog.Logger) jobs.Job {
 	return jobs.Job{
 		Name: backupJobName, Group: jobs.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
-		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
+		DefaultCron: backupJobCron, ScheduleKey: settings.BackupSchedule.Key(),
 		// ⚠ Must be declared: with none the job runs under River's inherited one-minute
 		// JobTimeout, and VACUUM INTO on the 1.8 GB household DB took ~57s (#1411).
 		Timeout: 15 * time.Minute,
@@ -159,7 +159,7 @@ func (s *backupsService) Job(log *slog.Logger) jobs.Job {
 func unavailableBackupJob(reason string) jobs.Job {
 	return jobs.Job{
 		Name: backupJobName, Group: jobs.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
-		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
+		DefaultCron: backupJobCron, ScheduleKey: settings.BackupSchedule.Key(),
 		DisabledReason: reason,
 	}
 }

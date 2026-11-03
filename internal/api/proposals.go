@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -105,9 +106,9 @@ func (s *Server) suggestionConfigurationError(ctx context.Context) error {
 	tmdbMissing := false
 	for _, key := range missing {
 		switch key {
-		case "llm.provider", "llm.model":
+		case settings.LLMProvider.Key(), settings.LLMModel.Key():
 			aiMissing = true
-		case "tmdb.api_key":
+		case settings.TMDBAPIKey.Key():
 			tmdbMissing = true
 		}
 	}

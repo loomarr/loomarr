@@ -229,7 +229,7 @@ func buildHandler(
 		notificationDestinations: operations.notificationDestinations,
 		webPushPublicKey:         operations.webPushPublicKey,
 		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
-		liveConfig:        operations.liveConfig,
+		liveSettings:      operations.liveSettings,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
 	})
@@ -239,5 +239,5 @@ func buildHandler(
 	// their complete runtime snapshot within the documented ~30-second bound.
 	trackReplicaSettingsRefresh(owner, store.DialectOf(st), set.svc,
 		replicaSettingsRefreshInterval, refreshSecretRedactor)
-	return handler, log, func() string { return set.str("server.public_url") }, nil
+	return handler, log, func() string { return settings.ServerPublicURL.Get(set) }, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // Job returns the channel sweep as a scheduler job (§9, §18.1) — the periodic reconcile
@@ -17,7 +18,7 @@ func (r *Runner) Job() jobs.Job {
 	return jobs.Job{
 		Name: "channel-maintenance", Group: jobs.GroupChannels, Title: "Maintain live channels",
 		Description: "Rebuilds upcoming schedules and updates each channel's selected playout backend.",
-		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_maintenance.schedule",
+		DefaultCron: "0 */10 * * * *", ScheduleKey: settings.JobChannelMaintenanceSchedule.Key(),
 		Run: func(ctx context.Context) error { r.Sweep(ctx); return nil },
 	}
 }

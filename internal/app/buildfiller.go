@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/settings"
 
 	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/clipfetch"
@@ -80,16 +81,16 @@ func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
-		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		Probe:  filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
 		// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
 		// points that setting at a custom build (the whole reason it exists — see the
 		// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
 		// silently, and the setting appeared to do nothing here.
-		Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
+		Artwork: filler.FFmpegArtwork(settings.PlayoutFFmpegPath.Get(set)),
 		Storage: governor,
 		// The quality gate's floor (§10 V40).
-		MinDuration: func() time.Duration { return set.dur("filler.min_duration") },
+		MinDuration: func() time.Duration { return settings.FillerMinDuration.Get(set) },
 		// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
 		// warning has never once been emitted. That count exists precisely because extraction is
 		// best-effort and failures are skipped — the shape that already produced one
@@ -103,11 +104,11 @@ func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *
 	// while the URL is empty, so local-only scans stay quiet and fully supported.
 	src.Tunarr = fillerSourceAdapter{
 		prog:       fillerProg,
-		configured: func() bool { return set.str("tunarr.url") != "" },
+		configured: func() bool { return settings.TunarrURL.Get(set) != "" },
 	}
 
 	syncer := filler.NewSyncer(src, fillerStoreAdapter{st}, layout, time.Now, log).
-		WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
+		WithEnabled(func() bool { return settings.FillerSourceFolderEnabled.Get(set) }).
 		WithAcquisitionManifests(st).
 		WithStorageGovernor(governor).
 		WithInferiorCopies(st)
@@ -137,8 +138,8 @@ func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
 func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts clipfetch.ArtifactWriter, governor *storagegovernor.Governor) *clipfetch.Ingestor {
-	ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
-	ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
+	ytPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
+	ffPath := resolveTool(settings.IngestFFmpegPath.Get(set), "ffmpeg")
 	if ffPath == "" {
 		return nil
 	}
@@ -178,7 +179,7 @@ func buildSplitter(st fillerstore.Store, set resolved, layout filler.Layout, log
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
 	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
-		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log).
+		func() time.Duration { return settings.FillerMinDuration.Get(set) }, newID, time.Now, log).
 		WithStorageGovernor(governor)
 	if imageService != nil {
 		splitter.WithSplitArtwork(fillerSplitArtworkAdapter{images: imageService})
@@ -201,18 +202,18 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 // MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
 // to the next span without restarting, matching the rest of the filler settings contract.
 func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools.FFmpegTools {
-	ffmpegPath := set.str("playout.ffmpeg_path")
+	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
 	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
-		set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+		settings.IngestWhisperPath.Get(set), settings.IngestWhisperModel.Get(set), "")
 	hosted := &mediatools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
 		Client: func() mediatools.AudioTranscriptionClient {
 			return hostedSpeechClient(set, recorder)
 		},
-		Model: func() string { return set.str("asr.model") },
+		Model: func() string { return settings.ASRModel.Get(set) },
 	}
 	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
-		if set.str("asr.provider") != "hosted" {
+		if settings.ASRProvider.Get(set) != "hosted" {
 			return nil
 		}
 		return hosted
@@ -241,7 +242,7 @@ func intakeLanguages(st interface {
 			}
 			own = append(own, lang)
 		}
-		return filler.IntakeLanguages(set.str("filler.language"), own), nil
+		return filler.IntakeLanguages(settings.FillerLanguage.Get(set), own), nil
 	}
 }
 
@@ -279,22 +280,22 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
 	wantLanguages := intakeLanguages(st, set)
 	var langDetect filler.LanguageDetector
-	if set.str("asr.provider") == "hosted" {
+	if settings.ASRProvider.Get(set) == "hosted" {
 		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint
 		// should not need a second chat model that happens to accept audio just to answer the same
 		// question. The closures keep URL, model and credential changes live between clips.
 		langDetect = filler.NewHostedLanguage(
 			func() mediatools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
-			func() string { return set.str("asr.model") },
-			set.str("playout.ffmpeg_path"), "")
+			func() string { return settings.ASRModel.Get(set) },
+			settings.PlayoutFFmpegPath.Get(set), "")
 	} else {
 		// ⚠ `filler.language_model`, NOT `ingest.whisper_model`. The latter is
 		// `ggml-small.en.bin` — an ENGLISH-ONLY build that does not identify languages at all,
 		// so pointing this at it would answer "en" for every clip on earth and the gate would
 		// silently never reject anything.
 		langDetect = filler.NewWhisperLanguage(
-			set.str("ingest.whisper_path"), set.str("filler.language_model"),
-			set.str("playout.ffmpeg_path"), "")
+			settings.IngestWhisperPath.Get(set), settings.FillerLanguageModel.Get(set),
+			settings.PlayoutFFmpegPath.Get(set), "")
 	}
 	// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
 	// they run on files already on disk regardless of whether yt-dlp is present).
@@ -311,11 +312,11 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	// remains resolved per call by `hotVisionProvider`, so changing the provider, URL, key or model
 	// applies to the next clip. This used to
 	// build the provider here, from `llm.url` and `llm.api_key`, behind an unlogged
-	// `&& set.str("llm.url") != ""` — so an install with vision enabled and no reachable endpoint
+	// `&& settings.LLMURL.Get(set) != ""` — so an install with vision enabled and no reachable endpoint
 	// was indistinguishable from one with vision switched off.
 	h := &hotVisionProvider{set: set, log: log, metrics: recorder}
 	var visionProvider llm.VisionProvider = h
-	if set.boolv("filler.vision.enabled") {
+	if settings.FillerVisionEnabled.Get(set) {
 		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
 		// fix the setting without restarting, which is the entire point of resolving per call —
 		// but it must not be silent, because this is the diagnosis for "grounding never runs".
@@ -341,20 +342,20 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		log.Error("rendered-child screening qualification runtime was not activated", "err", screeningErr)
 	}
 	transcribeStage := filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
-		func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now)
+		func() bool { return settings.FillerTranscribeEnabled.Get(set) }, time.Now)
 	visionStage := filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
-		func() bool { return set.boolv("filler.vision.enabled") }, time.Now)
+		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
 		clipDir, mediatools.DefaultMezzanine(),
-		func() string { return set.str("playout.ffmpeg_path") },
+		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
 		// disk, playout corrects them at air time (#2032).
 		func() float64 {
 			// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
 			// correction at all", which no numeric kind can express), so it is parsed
 			// here. An unparseable value yields 0, meaning no target and no floor.
-			lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+			lufs, err := strconv.ParseFloat(settings.FillerTargetLufs.Get(set), 64)
 			if err != nil {
 				return 0
 			}
@@ -362,14 +363,14 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		}, time.Now).WithMediaDerivatives().WithConditioning(fillerTools.MeasureConditioning).
 		WithDiagnostics(processDiagnostics).WithStorageGovernor(storageGovernor).
 		WithEncodeHost(func() encode.HostProfile {
-			return playoutRes.fileEncodeHost(encode.Encoder(set.str("playout.encoder")))
+			return playoutRes.fileEncodeHost(encode.Encoder(settings.PlayoutEncoder.Get(set)))
 		}).
 		WithAiringReplacement(fillerPipelineClipAdapter{st}, checkReplacement)
 	pipelineStages := []filler.Stage{
 		filler.NewProbeStage(
-			filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
-			func() int64 { return set.dur("filler.min_duration").Milliseconds() },
-			func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
+			filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)), fillerPipelineClipAdapter{st}, clipDir,
+			func() int64 { return settings.FillerMinDuration.Get(set).Milliseconds() },
+			func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) }, time.Now),
 		transcodeStage,
 		// Rendered compilation children must not reach enrichment or the compatibility score gate
 		// until the five certified authorities are wired. The qualification runtime records the
@@ -390,19 +391,19 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		splitter.WithSegmentLanguage(filler.SegmentLanguagePolicy{
 			Detector: langDetect,
 			Want:     wantLanguages,
-			Budget:   func() int { return set.intv("filler.pipeline.max_whisper") },
+			Budget:   func() int { return settings.FillerPipelineMaxWhisper.Get(set) },
 		})
 		autoSplitPolicy := &filler.AutoSplitPolicy{
-			Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
-			MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
-			MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+			Enabled:       func() bool { return settings.FillerAutosplitEnabled.Get(set) },
+			MinConfidence: func() int { return settings.FillerAutosplitMinConfidence.Get(set) },
+			MaxDuration:   func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 		}
-		minClipDuration := func() time.Duration { return set.dur("filler.min_duration") }
+		minClipDuration := func() time.Duration { return settings.FillerMinDuration.Get(set) }
 		// The two long-reel files apply live (#1659): each path edit builds the whole runtime
 		// afresh, and the split stage reads it once per split.
 		structureRuntime := &liveStructureRuntime{
 			paths: func() (string, string) {
-				return set.str("filler.structure_window_authority_path"), set.str("filler.structure_window_deployment_path")
+				return settings.FillerStructureWindowAuthorityPath.Get(set), settings.FillerStructureWindowDeploymentPath.Get(set)
 			},
 			build: func(authorityPath, deploymentPath string) filler.StructureRuntime {
 				materialization := &filler.StructureMaterializationPolicy{}
@@ -464,10 +465,10 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 				Taxa:     fillerVisionStoreAdapter{st},
 				ClipDir:  clipDir,
 				Budget: func() int {
-					if !set.boolv("filler.vision.enabled") {
+					if !settings.FillerVisionEnabled.Get(set) {
 						return 0
 					}
-					return set.intv("filler.pipeline.max_split_vision")
+					return settings.FillerPipelineMaxSplitVision.Get(set)
 				},
 			})
 		// The gate is attached even without a certified runtime. An empty policy then produces an
@@ -478,14 +479,14 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 	}
 	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
 		filler.Budget{
-			MaxClips: func() int { return set.intv("filler.pipeline.max_clips") },
+			MaxClips: func() int { return settings.FillerPipelineMaxClips.Get(set) },
 			// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
 			// different state from a nil closure meaning "use the default". That three-state
 			// encoding is the only way an operator can turn the most expensive rung off.
-			MaxTranscodes: func() int { return set.intv("filler.transcode.max_per_run") },
-			MaxWhisper:    func() int { return set.intv("filler.pipeline.max_whisper") },
-			MaxVision:     func() int { return set.intv("filler.pipeline.max_vision") },
-			MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
+			MaxTranscodes: func() int { return settings.FillerTranscodeMaxPerRun.Get(set) },
+			MaxWhisper:    func() int { return settings.FillerPipelineMaxWhisper.Get(set) },
+			MaxVision:     func() int { return settings.FillerPipelineMaxVision.Get(set) },
+			MaxSplits:     func() int { return settings.FillerPipelineMaxSplits.Get(set) },
 		},
 		emitter.FillerClipStage, time.Now, log).
 		WithRewind(fillerRewindAdapter{st}, clipDir).
@@ -496,11 +497,11 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())
 	}
 	log.Info("filler ingest pipeline registered",
-		"stages", len(pipelineStages), "language", set.str("filler.language"),
-		"transcribe", set.boolv("filler.transcribe.enabled"),
-		"vision", set.boolv("filler.vision.enabled"),
+		"stages", len(pipelineStages), "language", settings.FillerLanguage.Get(set),
+		"transcribe", settings.FillerTranscribeEnabled.Get(set),
+		"vision", settings.FillerVisionEnabled.Get(set),
 		"vision_provider", activeFillerVisionCapability(set).Available,
-		"autosplit", set.boolv("filler.autosplit.enabled"))
+		"autosplit", settings.FillerAutosplitEnabled.Get(set))
 	return fillerPipeline, transcribeStage, visionStage
 }
 
@@ -508,10 +509,10 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 // transcripts. A blank dedicated URL reuses the active hosted AI service (the OpenRouter path); an
 // explicit URL never inherits that service's secret, so a custom host cannot receive it by accident.
 func hostedSpeechClient(set resolved, recorder *metrics.Recorder) mediatools.AudioTranscriptionClient {
-	url := strings.TrimSpace(set.str("asr.url"))
-	model := strings.TrimSpace(set.str("asr.model"))
+	url := strings.TrimSpace(settings.ASRURL.Get(set))
+	model := strings.TrimSpace(settings.ASRModel.Get(set))
 	provider := "openai"
-	key := set.str("asr.api_key")
+	key := settings.ASRAPIKey.Get(set)
 	if url == "" {
 		sel := resolveSelection(set)
 		url, provider, key = sel.URL, sel.Provider, sel.APIKey
@@ -548,24 +549,24 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	// A closure, not the method value: the store is read only when a place is set.
 	list := func(ctx context.Context) ([]broadcaststation.Station, error) { return st.ListBroadcastStations(ctx) }
 	local := &localStations{stations: &stationDirectory{list: list},
-		radiusKM: func() int { return set.intv("filler.local_radius_km") }, log: log}
+		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {
 		return filler.Policy{
 			Geography:       set.homeGeography(),
-			Language:        set.str("filler.language"),
+			Language:        settings.FillerLanguage.Get(set),
 			LocalStations:   local.resolve,
-			PodMax:          set.intv("filler.pod_max"),
-			BreakDurationMs: set.dur("filler.break_duration").Milliseconds(),
+			PodMax:          settings.FillerPodMax.Get(set),
+			BreakDurationMs: settings.FillerBreakDuration.Get(set).Milliseconds(),
 			// V17c: 0 (the default) leaves selection exactly as it was before the floor
 			// existed — see the warning on Policy.MinQualityHeight.
-			MinQualityHeight: set.intv("filler.min_quality"),
+			MinQualityHeight: settings.FillerMinQuality.Get(set),
 			// V51f: the pod-eligibility duration bounds finally have keys behind them. Both
 			// default to 0s = off, so `durationEligible` keeps returning true on an untouched
 			// install — the difference is that it CAN now return false, which is what lets
 			// `PoolReport.Eligible` differ from `Commercials` instead of restating it.
-			MinClipMs: set.dur("filler.min_clip_duration").Milliseconds(),
-			MaxClipMs: set.dur("filler.max_clip_duration").Milliseconds(),
-			Cooldown:  time.Duration(set.intv("filler.cooldown_seconds")) * time.Second,
+			MinClipMs: settings.FillerMinClipDuration.Get(set).Milliseconds(),
+			MaxClipMs: settings.FillerMaxClipDuration.Get(set).Milliseconds(),
+			Cooldown:  time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second,
 			// The household calendar programming reads (#2030): a holiday's commercials air only
 			// in its season.
 			Calendar: calendar(),
@@ -610,7 +611,7 @@ func visionEndpoint(set resolved) visionWiring {
 		identity: sel.Provider,
 		url:      sel.URL,
 		key:      sel.APIKey,
-		model:    set.str("filler.vision.model"),
+		model:    settings.FillerVisionModel.Get(set),
 	}
 	// Empty ⇒ reuse the main model, for an install whose model already sees images. Same
 	// separation `filler.language_model` makes for the audio gate.
@@ -619,8 +620,8 @@ func visionEndpoint(set resolved) visionWiring {
 	}
 	// ⚠ "" as well as `inherit`: the declared default is the word, but an env var set to empty
 	// resolves to "" and means the same thing — inherit, not "no provider".
-	if p := set.str("filler.vision.provider"); p != "" && p != "inherit" {
-		v.provider, v.identity, v.url, v.key, v.own = p, p, set.str("filler.vision.url"), set.str("filler.vision.api_key"), true
+	if p := settings.FillerVisionProvider.Get(set); p != "" && p != "inherit" {
+		v.provider, v.identity, v.url, v.key, v.own = p, p, settings.FillerVisionURL.Get(set), settings.FillerVisionAPIKey.Get(set), true
 		// A local Ollama on the conventional port is the case worth needing no second setting —
 		// the same default `ollamaBase` applies to probes and pulls.
 		if v.url == "" && p == "ollama" {
@@ -717,7 +718,7 @@ func (h *hotVisionProvider) reconcileModel(v visionWiring) visionWiring {
 	}
 	if h.log != nil {
 		h.log.Warn("filler.vision.model is not served by the inherited LLM endpoint; using the main model instead — clear filler.vision.model or set it to a served model",
-			"filler.vision.model", v.model, "url", v.url, "using", main.Model, "served", served)
+			"configured", v.model, "url", v.url, "using", main.Model, "served", served)
 	}
 	v.model = main.Model
 	return v

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/retention"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -34,36 +35,36 @@ func buildProvisioning(
 	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
 		return libraryClient.Snapshot()
 	}, emitter, provisionbackstop.Config{
-		RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
+		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.Add(reconciler.Job())
 	registry.Add(retention.New(st, retention.Windows{
-		Proposals:   func() time.Duration { return set.dur("proposals.retention") },
-		Jobs:        func() time.Duration { return set.dur("jobs.retention") },
-		Activity:    func() time.Duration { return set.dur("activity.retention") },
-		Diagnostics: func() time.Duration { return set.dur("diagnostics.retention") },
+		Proposals:   func() time.Duration { return settings.ProposalsRetention.Get(set) },
+		Jobs:        func() time.Duration { return settings.JobsRetention.Get(set) },
+		Activity:    func() time.Duration { return settings.ActivityRetention.Get(set) },
+		Diagnostics: func() time.Duration { return settings.DiagnosticsRetention.Get(set) },
 		DiagnosticsMaxBytes: func() int64 {
-			return int64(set.intv("diagnostics.max_storage_mb")) * 1024 * 1024
+			return int64(settings.DiagnosticsMaxStorageMb.Get(set)) * 1024 * 1024
 		},
 	}, time.Now, log).WithDiagnostics(processDiagnostics).Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
-		st, libraryClient, emitter, set.dur("job.library_scan.lookback"), time.Now, log,
+		st, libraryClient, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 
 	episodeRefresh := provisionbackstop.NewDynamicEpisodeRefresh(st, func() provisionbackstop.EpisodeResolver {
 		return episodeResolver(libraryClient.Snapshot())
 	}, func() time.Duration {
-		return set.dur("episodes.max_age")
+		return settings.EpisodesMaxAge.Get(set)
 	}, time.Now, log)
 
 	if arr := set.arrRequester(metricRecorder); arr != nil {
-		queuePoll := provisionbackstop.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st, arr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
 		registry.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
 			"Updates acquisition progress and detects stalled downloads from Sonarr and Radarr."))
 	} else if seerr := set.seerrRequester(metricRecorder); seerr != nil {
-		queuePoll := provisionbackstop.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
+		queuePoll := provisionbackstop.NewQueuePoll(st, seerr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
 		registry.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
 			"Updates requested titles from the coarse acquisition states reported by Seerr."))
 	}

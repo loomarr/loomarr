@@ -227,7 +227,7 @@ func TestRestartDrift(t *testing.T) {
 			"filler.watch_dir": "/watch/old",
 		})
 		frozen, applied := set.freeze(settings.NewRegistry().RestartKeys()...)
-		layout, err := filler.NewLayout(frozen.str("filler.dir"), frozen.str("filler.watch_dir"))
+		layout, err := filler.NewLayout(settings.FillerDir.Get(frozen), settings.FillerWatchDir.Get(frozen))
 		if err != nil {
 			t.Fatal(err)
 		}
