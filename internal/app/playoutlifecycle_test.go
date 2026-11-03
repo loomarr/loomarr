@@ -179,7 +179,7 @@ func TestPostgresPlayoutLifecycleListenerLossClosesUntilDurableCatchUp(t *testin
 		}}, origin: origin, gate: gate,
 		listen: listener.Listen,
 	}
-	if err := lifecycle.Start(ctx); err != nil {
+	if err := lifecycle.Start(ctx, newGenerationLifecycle(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if !gate.Available() {
