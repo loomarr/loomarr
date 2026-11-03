@@ -133,6 +133,12 @@ RETIRED=(
   # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
   # back in help text an operator would follow to a 404.
   'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
+  # The suggest worker had two job lifecycles: raw store.Job writes (runJob/failJob) when no workflow
+  # was wired, and the durable proposal workflow. Production only ever wired the workflow; the raw
+  # path was deleted and suggest.NewService now takes the workflow as a required argument.
+  'WithDurableWorkflow|the durable proposal workflow is a required suggest.NewService argument; the raw store.Job lifecycle path was deleted'
+  'func (s *Service) runJob|the suggest worker runs jobs only through the durable proposal workflow (runWorkflow)'
+  'func (s *Service) failJob|the suggest worker fails jobs only through the durable proposal workflow (failWorkflow)'
   # V47b: renamed the playout "doctor" to "playout status" — same read-only health projection,
   # clearer name. The old operation id and path must not survive in help text an operator would
   # follow to a 404.

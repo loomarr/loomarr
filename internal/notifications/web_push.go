@@ -114,19 +114,7 @@ func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result 
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return Result{Status: StatusDelivered}
 	}
-	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
-	}
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeRecipientRejected}
-	}
-	if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
-		response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
-		result := providerTransientFailure()
-		result.RetryAfter = providerRetryAfter(response.Header.Get("Retry-After"), time.Now())
-		return result
-	}
-	return providerConfigurationFailure()
+	return failureForStatus(response)
 }
 
 func decodeWebPushValue(value string) ([]byte, error) {

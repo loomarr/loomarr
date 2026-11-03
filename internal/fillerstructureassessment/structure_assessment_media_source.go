@@ -74,6 +74,6 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareSource(ctx context.Conte
 	}
 	return preparedStructureAssessmentSource{
 		SnapshotPath: snapshotPath, Identity: structureAssessmentSourceIdentity(input.Source),
-		Profile: fillerstructuremedia.CanonicalProfile(), Tool: tool,
+		Profile: p.profile, Tool: tool,
 	}, nil
 }

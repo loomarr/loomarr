@@ -119,12 +119,11 @@ func buildSuggestions(
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
 		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
-	service := suggest.NewService(st, suggester, suggest.Config{
+	service := suggest.NewService(st, result.durableWorkflow, suggester, suggest.Config{
 		Workers: settings.JobWorkers.Get(set), Timeout: settings.JobTimeout.Get(set), CacheTTL: 24 * time.Hour,
-	}, newID, time.Now, log).
+	}, time.Now, log).
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
-		WithDurableWorkflow(result.durableWorkflow).
 		WithQualityRecorder(st)
 	service = service.WithAutoApprove(suggest.NewAutoApprover(
 		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,

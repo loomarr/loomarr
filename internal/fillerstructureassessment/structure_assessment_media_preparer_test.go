@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -30,7 +31,7 @@ func TestStructureAssessmentMediaPreparerRendersOnceAndReusesVerifiedDerivative(
 		t.Fatal(err)
 	}
 	if runs != 1 || first.Source != input.Source || first.FullPath == input.FullPath ||
-		first.Assessment.ProfileSHA256 != fillerstructuremedia.CanonicalProfile().SHA256 ||
+		first.Assessment.ProfileSHA256 != fillerstructuremedia.SoftwareProfile().SHA256 ||
 		!filler.IsContentHash(first.Assessment.LineageSHA256) {
 		t.Fatalf("first preparation = %+v, runs=%d", first, runs)
 	}
@@ -41,7 +42,7 @@ func TestStructureAssessmentMediaPreparerRendersOnceAndReusesVerifiedDerivative(
 	if inputArgument == "" || inputArgument == input.FullPath || arguments[len(arguments)-1] == first.FullPath {
 		t.Fatalf("render did not use an owned snapshot and staging output: %v", arguments)
 	}
-	wantArguments := fillerstructuremedia.PartArguments(inputArgument, 0, input.Source.DurationMs, arguments[len(arguments)-1])
+	wantArguments := fillerstructuremedia.PartArguments(fillerstructuremedia.SoftwareProfile(), inputArgument, 0, input.Source.DurationMs, arguments[len(arguments)-1])
 	if !reflect.DeepEqual(arguments, wantArguments) {
 		t.Fatalf("render arguments drifted\n got: %v\nwant: %v", arguments, wantArguments)
 	}
@@ -233,27 +234,49 @@ func TestFFmpegStructureAssessmentMediaPreparerEndToEnd(t *testing.T) {
 		},
 		FullPath: path,
 	}
-	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(root, root, ffmpeg)
-	if err != nil {
-		t.Fatal(err)
+	// #2121: the GPU cut runs the real encoder wherever this host has one, so a flag NVENC refuses
+	// fails here rather than on the first certified source.
+	families := []encode.Family{encode.FamilySoftware}
+	if trial := exec.Command(ffmpeg, "-nostdin", "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=size=256x256:duration=0.1",
+		"-c:v", "h264_nvenc", "-f", "null", "-"); trial.Run() == nil {
+		families = append(families, encode.FamilyNVENC)
 	}
-	first, err := preparer.Prepare(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
+	for _, family := range families {
+		t.Run(string(family), func(t *testing.T) {
+			profile, _ := fillerstructuremedia.ProfileFor(family)
+			mediaRoot := filepath.Join(root, string(family))
+			preparer, err := NewFFmpegStructureAssessmentMediaPreparer(root, mediaRoot, ffmpeg, profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, err := preparer.Prepare(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := preparer.Prepare(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(first, second) || first.Assessment.ProfileSHA256 != profile.SHA256 {
+				t.Fatalf("real ffmpeg reuse drifted: first=%+v second=%+v", first, second)
+			}
+		})
 	}
-	second, err := preparer.Prepare(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("real ffmpeg reuse drifted: first=%+v second=%+v", first, second)
+}
+
+func TestStructureAssessmentMediaPreparerRefusesAnUnsupportedProfile(t *testing.T) {
+	root := t.TempDir()
+	forged := fillerstructuremedia.SoftwareProfile()
+	forged.Family = encode.FamilyVAAPI
+	if _, err := NewFFmpegStructureAssessmentMediaPreparer(root, root, "/fixture/ffmpeg", forged); err == nil {
+		t.Fatal("a preparer accepted a profile no family measured")
 	}
 }
 
 func TestStructureAssessmentMediaPreparerSeparatesSourceAndPrivateMediaRoots(t *testing.T) {
 	sourceRoot, input := structureAssessmentPreparerSource(t)
 	mediaRoot := t.TempDir()
-	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, "/fixture/ffmpeg")
+	preparer, err := NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, "/fixture/ffmpeg", fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +336,7 @@ func structureAssessmentPreparerSource(t *testing.T) (string, filler.StructureAs
 
 func structureAssessmentPreparerFixture(root string, tool mediatools.MediaToolIdentity, run func(context.Context, string, []string) error) *FFmpegStructureAssessmentMediaPreparer {
 	return &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg",
+		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", profile: fillerstructuremedia.SoftwareProfile(),
 		probe: func(_ context.Context, path string) (filler.Probed, error) {
 			if strings.Contains(filepath.Base(path), "structure-source-") {
 				return filler.Probed{DurationMs: 10_000, Width: 640, Height: 480, Cadence: "24/1", SampleAspect: "1:1"}, nil

@@ -2,14 +2,14 @@ package proposalworkflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")
+// ErrStaleAttempt reports a terminal write from an Attempt that recovery or a requeue replaced.
+var ErrStaleAttempt = suggest.ErrStaleAttempt
 
 // Work is a versioned lease token. The Job id alone is never sufficient to
 // commit an activity result because an expired worker may finish after recovery

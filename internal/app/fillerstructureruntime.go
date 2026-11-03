@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -57,7 +58,7 @@ func (l *liveStructureRuntime) Current() filler.StructureRuntime {
 
 func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, layout filler.Layout,
 	authority *fillerstructurewindow.MaterializationAuthority,
-	deployment *fillerstructurewindowopenrouter.Deployment,
+	deployment *fillerstructurewindowopenrouter.Deployment, cutFamily func() encode.Family,
 ) (filler.CompleteTimelineStructureDecisioner, error) {
 	if authority == nil || deployment == nil {
 		return nil, nil
@@ -73,7 +74,7 @@ func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, la
 	return fillerstructurewindowopenrouter.NewCertifiedRuntime(fillerstructurewindowopenrouter.CertifiedRuntimeConfig{
 		Authority: *authority, Deployment: *deployment, APIKey: apiKey,
 		SourceRoot: layout.ClipDir(), MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
-		FFmpegPath: resolveTool(settings.PlayoutFFmpegPath.Get(set), "ffmpeg"),
+		FFmpegPath: resolveTool(settings.PlayoutFFmpegPath.Get(set), "ffmpeg"), CutFamily: cutFamily,
 		Ledger: productionStructureWindowLedger{store: st, budget: fillerstore.InferenceBudget{
 			PerClipNanoUSD: deployment.PerSourceBudgetNanoUSD, PerDayNanoUSD: deployment.PerDayBudgetNanoUSD,
 		}},

@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 func TestNewPlanPartitionsPrimaryCoverageAndExpandsContext(t *testing.T) {
@@ -28,7 +30,7 @@ func TestNewPlanPartitionsPrimaryCoverageAndExpandsContext(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			plan, err := NewPlan(sourceFixture(test.duration))
+			plan, err := NewPlan(sourceFixture(test.duration), softwareMedia)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +42,7 @@ func TestNewPlanPartitionsPrimaryCoverageAndExpandsContext(t *testing.T) {
 }
 
 func TestPlanBoundaryOwnershipUsesRightHandWindowAtSeam(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,20 +71,20 @@ func TestPlanBoundaryOwnershipUsesRightHandWindowAtSeam(t *testing.T) {
 }
 
 func TestPlanSupportsExactlyBoundedProtocolCapacity(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(MaximumSourceDurationMS))
+	plan, err := NewPlan(sourceFixture(MaximumSourceDurationMS), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Windows) != MaximumWindows || plan.Windows[len(plan.Windows)-1].PrimaryEndMS != MaximumSourceDurationMS {
 		t.Fatalf("maximum plan = %+v", plan)
 	}
-	if _, err := NewPlan(sourceFixture(MaximumSourceDurationMS + 1)); err == nil {
+	if _, err := NewPlan(sourceFixture(MaximumSourceDurationMS+1), softwareMedia); err == nil {
 		t.Fatal("source above protocol capacity was accepted")
 	}
 }
 
 func TestValidatePlanRejectsIdentityAndCoverageDrift(t *testing.T) {
-	base, err := NewPlan(sourceFixture(300_000))
+	base, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,20 +112,54 @@ func TestValidatePlanRejectsIdentityAndCoverageDrift(t *testing.T) {
 	}
 }
 
-func TestCanonicalProfileIsStableAndBindsAssessmentMedia(t *testing.T) {
-	profile := CanonicalProfile()
-	if profile.SHA256 != "edc18ef1b1605ba3ad5460bbd0b5a415048c4099db9acbc257b21875daa2783c" ||
-		profile.SHA256 != ProfileSHA256(profile) ||
+func TestProfileIsStableAndBindsAssessmentMedia(t *testing.T) {
+	profile := ProfileFor(softwareMedia)
+	if profile.SHA256 != ProfileSHA256(profile) ||
 		profile.MaximumWindowDurationMS != 150_000 || profile.MaximumWindows != 15 ||
 		profile.MaximumWindowBytes != 64<<20 || profile.MaximumTimelineDriftMS != 1_000 ||
-		profile.AssessmentMediaProfileSHA256 == "" {
+		profile.AssessmentMediaProfileSHA256 != softwareMedia.SHA256 {
 		t.Fatalf("profile = %+v", profile)
 	}
-	second := CanonicalProfile()
+	second := ProfileFor(fillerstructuremedia.SoftwareProfile())
 	if !reflect.DeepEqual(profile, second) {
-		t.Fatalf("canonical profile drifted: first=%+v second=%+v", profile, second)
+		t.Fatalf("profile drifted: first=%+v second=%+v", profile, second)
 	}
 }
+
+// #2121: a cut on the GPU is a different media profile, so a plan over it is a different plan, and
+// an authority certified over one cannot vouch for the other.
+func TestPlanBindsTheMediaProfileItCutsTo(t *testing.T) {
+	nvenc, ok := fillerstructuremedia.ProfileFor(encode.FamilyNVENC)
+	if !ok {
+		t.Fatal("NVENC has no cut profile")
+	}
+	software, err := NewPlan(sourceFixture(300_000), softwareMedia)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gpu, err := NewPlan(sourceFixture(300_000), nvenc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gpu.Profile.AssessmentMediaProfileSHA256 != nvenc.SHA256 || gpu.Profile.SHA256 == software.Profile.SHA256 ||
+		gpu.SHA256 == software.SHA256 || !reflect.DeepEqual(gpu.Windows, software.Windows) {
+		t.Fatalf("software plan %+v, NVENC plan %+v", software, gpu)
+	}
+	unsupported := nvenc
+	unsupported.Family = encode.FamilyVAAPI
+	if _, err := NewPlan(sourceFixture(300_000), unsupported); err == nil {
+		t.Fatal("a plan over an unsupported media profile was accepted")
+	}
+	forged := gpu
+	forged.Profile.AssessmentMediaProfileSHA256 = strings.Repeat("e", 64)
+	forged.Profile.SHA256 = ProfileSHA256(forged.Profile)
+	forged.SHA256 = PlanSHA256(forged)
+	if err := ValidatePlan(forged); err == nil {
+		t.Fatal("a plan pinning an unknown media profile validated")
+	}
+}
+
+var softwareMedia = fillerstructuremedia.SoftwareProfile()
 
 func sourceFixture(durationMS int64) fillerstructure.Source {
 	return fillerstructure.Source{SHA256: strings.Repeat("a", 64), Bytes: 1_024, DurationMS: durationMS}

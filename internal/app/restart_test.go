@@ -168,6 +168,20 @@ func TestRestartDrift(t *testing.T) {
 		}
 	})
 
+	t.Run("names any boot key, not only the database and listener", func(t *testing.T) {
+		running, err := config.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("LOOMARR_PPROF", "true")
+		t.Setenv("LOG_LEVEL", "debug")
+
+		got := restartDrift(running, nil, nil)()
+		if strings.Join(got, ",") != "LOG_LEVEL,LOOMARR_PPROF" {
+			t.Errorf("drift = %v, want [LOG_LEVEL LOOMARR_PPROF]", got)
+		}
+	})
+
 	t.Run("clears when the change is reverted", func(t *testing.T) {
 		t.Setenv("DATABASE_URL", "sqlite:///data/a.db")
 		running, err := config.Load()
