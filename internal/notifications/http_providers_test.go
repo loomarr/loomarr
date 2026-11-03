@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -327,3 +328,26 @@ func providerDelivery(destination *notifications.Destination) notifications.Deli
 }
 
 var _ notifications.HTTPDoer = (*providerDoer)(nil)
+
+func TestTelegramRejectsMalformedBotTokenWithoutPanicking(t *testing.T) {
+	t.Parallel()
+	for _, token := range []string{
+		"12 3:token", "123:to%zzken", "123:tok\x7fen", "123:tok\nen", "123:tok/en", "123:tok?en",
+		"no-colon", ":token", "abc:token", "123:", "123:tok:en", "123:tökén",
+	} {
+		t.Run(fmt.Sprintf("%q", token), func(t *testing.T) {
+			t.Parallel()
+			doer := &providerDoer{status: http.StatusOK, response: `{"ok":true,"result":{"message_id":1}}`}
+			adapter := httpAdapter(t, notifications.MeansTelegram, doer)
+			credentials := map[string]string{"botToken": token, "chatId": "123"}
+			if err := adapter.(notifications.DestinationValidator).ValidateDestination(nil, credentials); err == nil {
+				t.Fatal("ValidateDestination accepted a malformed bot token")
+			}
+			destination := providerDestination(notifications.MeansTelegram, nil, credentials)
+			result := adapter.Deliver(t.Context(), providerDelivery(&destination))
+			if result.Status == notifications.StatusDelivered || doer.request.url != "" {
+				t.Fatalf("malformed token reached the network: result = %+v", result)
+			}
+		})
+	}
+}
