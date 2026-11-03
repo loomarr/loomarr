@@ -33,6 +33,9 @@ type Record struct {
 
 	// Children are a series' episodes when the source returned them with the series.
 	Children []Record
+	// More are further items of the same kind that the same ref names: the other episodes of a
+	// multi-episode file, each with its own ids (decision 15).
+	More []Record
 }
 
 // Families returns the field families the record says something about.

@@ -127,6 +127,12 @@ func checkRecord(t *testing.T, p mp.Provider, rec mp.Record) {
 	if rec.Numbering != nil && rec.Kind != mp.KindEpisode {
 		t.Errorf("a %s record carries episode numbering", rec.Kind)
 	}
+	for _, more := range rec.More {
+		if more.Kind != rec.Kind || len(more.More) > 0 {
+			t.Errorf("a %s record has a further %s with %d more of its own", rec.Kind, more.Kind, len(more.More))
+		}
+		checkRecord(t, p, more)
+	}
 	for _, child := range rec.Children {
 		if child.Kind != mp.KindEpisode || rec.Kind != mp.KindSeries {
 			t.Errorf("a %s record has a %s child", rec.Kind, child.Kind)

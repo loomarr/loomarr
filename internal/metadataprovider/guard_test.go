@@ -6,123 +6,151 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-// Decision 16 (#2151): precedence is expressed over capabilities, and no code compares provider
-// ids. A comparison against one provider's id is a rule that a new provider silently falls
-// outside of, so the moment one is written the registry stops being the place a provider is
-// described. This gate reads the production source of the whole module and fails on:
+// Decision 16 (#2151): precedence is expressed over capabilities, and no code decides anything by
+// which provider it is talking to. A rule keyed on one provider's id is a rule a new provider
+// silently falls outside of. This gate type-checks every production package in the module that
+// names the contract, so an ID is tracked through variables, fields and calls, and fails on:
 //
-//   - == or != with a provider ID constant (metadataprovider.IDSonarr …) on either side,
-//   - == or != between a provider ID (ID() or a Provider field) and a non-empty string literal,
-//   - a switch on ID() or a Provider field, or a case listing a provider ID constant,
-//   - slices.Contains or slices.Index searching for a provider ID constant,
-//   - a provider ID built from a string literal outside the file that declares the set.
+//   - == or != with a value of type ID on either side (a check against "" is allowed),
+//   - a switch on a value of type ID,
+//   - a strings, bytes or slices function given a value of type ID or a []ID,
+//   - an ID built from a string literal outside the file that declares the set,
+//   - a type assertion or type switch from Provider to anything but an interface (a concrete
+//     provider type is a provider id by another name),
+//   - a map literal keyed by ID.
 //
-// Using an ID as a map key, stamping it as provenance, or passing it to the registry is fine.
-// The gate reads source, which the test cache tracks, so a new violation is never a cached pass.
+// Using an ID as a map index, stamping it as provenance, or passing it to the registry is fine.
+// Imports other than the contract are stubbed, so the check reads only source files, which the
+// test cache tracks: a new violation is never a cached pass.
 
 const idDeclFile = "metadataprovider.go"
 
 func TestNoCodeComparesProviderIDs(t *testing.T) {
 	root, module := moduleRoot(t)
-	pkgPath := module + "/internal/metadataprovider"
-	consts := idConstants(t)
-	if len(consts) == 0 {
-		t.Fatal("found no provider ID constants; the gate would check nothing")
+	contractPath := module + "/internal/metadataprovider"
+	contractDir := filepath.Join(root, "internal", "metadataprovider")
+
+	fset := token.NewFileSet()
+	contractFiles := parseDir(t, fset, contractDir)
+	contract, contractInfo := typeCheck(fset, contractPath, contractFiles, stubImporter{})
+	if contract.Scope().Lookup("ID") == nil || contract.Scope().Lookup("Provider") == nil {
+		t.Fatal("the contract declares no ID or Provider; the gate would check nothing")
 	}
-	scanned := 0
-	for _, dir := range []string{"internal", "cmd"} {
-		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+	report := func(dir string, findings []string) {
+		rel, _ := filepath.Rel(root, dir)
+		for _, f := range findings {
+			t.Errorf("%s/%s — express the rule over capabilities (decision 16)", filepath.ToSlash(rel), f)
+		}
+	}
+	report(contractDir, violations(fset, contractFiles, contractInfo, contract))
+
+	checked := 1
+	imp := stubImporter{known: map[string]*types.Package{contractPath: contract}}
+	for _, top := range []string{"internal", "cmd"} {
+		err := filepath.WalkDir(filepath.Join(root, top), func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() {
-				if name := d.Name(); name == "testdata" || name == "node_modules" || strings.HasPrefix(name, ".") {
-					return filepath.SkipDir
-				}
+			if !d.IsDir() {
 				return nil
 			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			if name := d.Name(); name == "testdata" || name == "node_modules" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			if p == contractDir || !importsContract(t, p, contractPath) {
 				return nil
 			}
-			rel, _ := filepath.Rel(root, path)
-			rel = filepath.ToSlash(rel)
-			inRoot := filepath.ToSlash(filepath.Dir(rel)) == "internal/metadataprovider"
-			fset := token.NewFileSet()
-			head, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-			if err != nil {
-				return err
-			}
-			names := importNames(head, pkgPath)
-			if !inRoot && len(names) == 0 {
-				return nil
-			}
-			file, err := parser.ParseFile(fset, path, nil, 0)
-			if err != nil {
-				return err
-			}
-			scanned++
-			allowLiteral := inRoot && filepath.Base(rel) == idDeclFile
-			for _, finding := range idComparisons(fset, file, names, consts, inRoot, allowLiteral) {
-				t.Errorf("%s: %s — express the rule over capabilities (decision 16)", rel, finding)
-			}
+			rel, _ := filepath.Rel(root, p)
+			files := parseDir(t, fset, p)
+			_, info := typeCheck(fset, module+"/"+filepath.ToSlash(rel), files, imp)
+			report(p, violations(fset, files, info, contract))
+			checked++
 			return nil
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if scanned < 3 {
-		t.Fatalf("scanned %d files that name metadataprovider; the gate is reading nothing", scanned)
+	if checked < 5 {
+		t.Fatalf("checked %d packages that name the contract; the gate is reading nothing", checked)
 	}
 }
 
 func TestGuardCatchesProviderIDComparisons(t *testing.T) {
-	src := `package x
-import mp "example/internal/metadataprovider"
-func f(p mp.Provider, s mp.Source) {
+	const contractSrc = `package metadataprovider
+type ID string
+const (IDSonarr ID = "sonarr"; IDNFO ID = "nfo")
+type Provider interface{ ID() ID }
+type Lister interface{ List() }
+type Source struct{ Provider ID; Basis string }
+`
+	const src = `package x
+import (
+	"slices"
+	"strings"
+	mp "example/internal/metadataprovider"
+	"example/internal/metadataprovider/arr"
+)
+func f(p mp.Provider, s mp.Source, ids []mp.ID) {
 	if p.ID() == "sonarr" {}
-	if s.Provider != mp.IDRadarr {}
-	if mp.IDNFO == s.Provider {}
+	if s.Provider != mp.IDNFO {}
 	if string(p.ID()) == "nfo" {}
+	id := s.Provider; if id == mp.IDSonarr {}
+	var local mp.ID = p.ID(); if local != "x" {}
 	switch p.ID() {}
-	switch s.Provider { case mp.IDSonarr: }
-	_ = mp.ID("radarr")
-	if s.Provider == "sonarr" {}
-	switch s.Provider { case "nfo": }
+	_ = mp.ID("nfo")
+	_ = strings.EqualFold(string(p.ID()), "sonarr")
+	_ = strings.HasPrefix(string(s.Provider), "son")
 	_ = slices.Contains(ids, mp.IDSonarr)
+	_ = map[mp.ID]int{mp.IDSonarr: 1}
+	_, _ = p.(*arr.Sonarr)
+	switch p.(type) { case *arr.Sonarr: }
 }
 func clean(p mp.Provider, m map[mp.ID]int, s mp.Source) {
 	_ = m[mp.IDSonarr]
 	s.Provider = mp.IDNFO
 	if p.ID() == "" {}
 	if s.Basis == "manager" {}
-	if s.Catalog == mp.NamespaceTVDB {}
+	_, _ = p.(mp.Lister)
+	switch p.(type) { case mp.Lister, nil: }
+	_ = make(map[mp.ID]int)
+	_ = strings.ToUpper(s.Basis)
 }
 `
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "x.go", src, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := importNames(file, "example/internal/metadataprovider")
-	consts := map[string]bool{"IDSonarr": true, "IDRadarr": true, "IDNFO": true}
-	got := idComparisons(fset, file, names, consts, false, false)
-	if len(got) != 11 {
-		t.Fatalf("found %d violations, want 11 (and none in clean):\n%s", len(got), strings.Join(got, "\n"))
-	}
-	for _, finding := range got {
-		if line, _ := strconv.Atoi(strings.SplitN(finding, ":", 2)[0]); line >= 15 {
-			t.Errorf("flagged allowed code: %s", finding)
+	parse := func(name, text string) *ast.File {
+		f, err := parser.ParseFile(fset, name, text, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
+		return f
+	}
+	contract, _ := typeCheck(fset, "example/internal/metadataprovider", []*ast.File{parse("mp.go", contractSrc)}, stubImporter{})
+	files := []*ast.File{parse("x.go", src)}
+	_, info := typeCheck(fset, "example/internal/x", files, stubImporter{known: map[string]*types.Package{contract.Path(): contract}})
+	got := violations(fset, files, info, contract)
+
+	var lines []int
+	for _, finding := range got {
+		_, rest, _ := strings.Cut(finding, ":")
+		line, _ := strconv.Atoi(strings.SplitN(rest, ":", 2)[0])
+		lines = append(lines, line)
+	}
+	sort.Ints(lines)
+	want := []int{9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}
+	if fmt.Sprint(lines) != fmt.Sprint(want) {
+		t.Fatalf("flagged lines %v, want %v (one per line of f, none in clean):\n%s", lines, want, strings.Join(got, "\n"))
 	}
 }
 
@@ -131,29 +159,220 @@ func clean(p mp.Provider, m map[mp.ID]int, s mp.Source) {
 // they reuse the audience ladder.
 func TestContractImportsNoLoomarrPackage(t *testing.T) {
 	_, module := moduleRoot(t)
-	entries, err := os.ReadDir(".")
+	files := parseDir(t, token.NewFileSet(), ".")
+	if len(files) == 0 {
+		t.Fatal("no production files read")
+	}
+	for _, f := range files {
+		for _, spec := range f.Imports {
+			if p, _ := strconv.Unquote(spec.Path.Value); strings.HasPrefix(p, module+"/") {
+				t.Errorf("the contract imports %s; it imports nothing from Loomarr", p)
+			}
+		}
+	}
+}
+
+// stubImporter returns the known packages, and an empty package for any other import. Types
+// from a stub are invalid, which is enough: the gate only needs the contract's types exactly.
+type stubImporter struct {
+	known map[string]*types.Package
+}
+
+func (s stubImporter) Import(p string) (*types.Package, error) {
+	if pkg, ok := s.known[p]; ok {
+		return pkg, nil
+	}
+	pkg := types.NewPackage(p, path.Base(p))
+	pkg.MarkComplete()
+	return pkg, nil
+}
+
+// typeCheck checks files leniently: errors from stubbed imports are expected and ignored.
+func typeCheck(fset *token.FileSet, pkgPath string, files []*ast.File, imp types.Importer) (*types.Package, *types.Info) {
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Uses:  map[*ast.Ident]types.Object{},
+		Defs:  map[*ast.Ident]types.Object{},
+	}
+	conf := types.Config{Importer: imp, Error: func(error) {}, FakeImportC: true}
+	pkg, _ := conf.Check(pkgPath, fset, files, info)
+	return pkg, info
+}
+
+// parseDir parses a directory's production files.
+func parseDir(t *testing.T, fset *token.FileSet, dir string) []*ast.File {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := 0
+	var files []*ast.File
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 			continue
 		}
-		files++
-		f, err := parser.ParseFile(token.NewFileSet(), e.Name(), nil, parser.ImportsOnly)
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, f)
+	}
+	return files
+}
+
+// importsContract reports whether any production file in dir imports the contract.
+func importsContract(t *testing.T, dir, contractPath string) bool {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, e.Name()), nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, spec := range f.Imports {
-			if path, _ := strconv.Unquote(spec.Path.Value); strings.HasPrefix(path, module+"/") {
-				t.Errorf("%s imports %s; the contract imports nothing from Loomarr", e.Name(), path)
+			if p, _ := strconv.Unquote(spec.Path.Value); p == contractPath {
+				return true
 			}
 		}
 	}
-	if files == 0 {
-		t.Fatal("no production files read")
+	return false
+}
+
+// violations returns each finding in files as "file:line:col: what".
+func violations(fset *token.FileSet, files []*ast.File, info *types.Info, contract *types.Package) []string {
+	idType := contract.Scope().Lookup("ID").Type()
+	providerType := contract.Scope().Lookup("Provider").Type()
+
+	var unwrap func(ast.Expr) ast.Expr
+	unwrap = func(e ast.Expr) ast.Expr {
+		switch x := e.(type) {
+		case *ast.ParenExpr:
+			return unwrap(x.X)
+		case *ast.CallExpr:
+			if fn, ok := x.Fun.(*ast.Ident); ok && fn.Name == "string" && len(x.Args) == 1 {
+				return unwrap(x.Args[0])
+			}
+		}
+		return e
 	}
+	typeOf := func(e ast.Expr) types.Type { return info.TypeOf(unwrap(e)) }
+	isID := func(e ast.Expr) bool {
+		t := typeOf(e)
+		return t != nil && types.Identical(t, idType)
+	}
+	isIDOrIDs := func(e ast.Expr) bool {
+		if isID(e) {
+			return true
+		}
+		s, ok := typeOf(e).(*types.Slice)
+		return ok && types.Identical(s.Elem(), idType)
+	}
+	isEmptyString := func(e ast.Expr) bool {
+		lit, ok := unwrap(e).(*ast.BasicLit)
+		return ok && lit.Kind == token.STRING && (lit.Value == `""` || lit.Value == "``")
+	}
+	isLiteral := func(e ast.Expr) bool {
+		lit, ok := unwrap(e).(*ast.BasicLit)
+		return ok && lit.Kind == token.STRING
+	}
+	isProvider := func(e ast.Expr) bool {
+		t := info.TypeOf(e)
+		return t != nil && types.Identical(t, providerType)
+	}
+	isInterface := func(e ast.Expr) bool {
+		if id, ok := e.(*ast.Ident); ok && id.Name == "nil" {
+			return true
+		}
+		t := info.TypeOf(e)
+		return t != nil && types.IsInterface(t)
+	}
+	stdlibPackage := func(e ast.Expr) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		x, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return false
+		}
+		pkg, ok := info.Uses[x].(*types.PkgName)
+		if !ok {
+			return false
+		}
+		switch pkg.Imported().Path() {
+		case "strings", "bytes", "slices":
+			return true
+		}
+		return false
+	}
+
+	var out []string
+	for _, f := range files {
+		declFile := filepath.Base(fset.Position(f.Pos()).Filename) == idDeclFile && f.Name.Name == contract.Name()
+		report := func(n ast.Node, what string) {
+			pos := fset.Position(n.Pos())
+			out = append(out, fmt.Sprintf("%s:%d:%d: %s", filepath.Base(pos.Filename), pos.Line, pos.Column, what))
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.BinaryExpr:
+				if (x.Op == token.EQL || x.Op == token.NEQ) && !declFile && (isID(x.X) || isID(x.Y)) &&
+					!isEmptyString(x.X) && !isEmptyString(x.Y) {
+					report(x, "compares a provider ID")
+				}
+			case *ast.SwitchStmt:
+				if x.Tag != nil && isID(x.Tag) {
+					report(x, "switches on a provider ID")
+				}
+			case *ast.CallExpr:
+				if tv, ok := info.Types[x.Fun]; ok && tv.IsType() && types.Identical(tv.Type, idType) &&
+					len(x.Args) == 1 && isLiteral(x.Args[0]) && !declFile {
+					report(x, "builds a provider ID from a string")
+				}
+				if stdlibPackage(x.Fun) {
+					for _, arg := range x.Args {
+						if isIDOrIDs(arg) {
+							report(x, "inspects a provider ID with a library function")
+							break
+						}
+					}
+				}
+			case *ast.TypeAssertExpr:
+				if x.Type != nil && isProvider(x.X) && !isInterface(x.Type) {
+					report(x, "asserts a Provider to a concrete provider type")
+				}
+			case *ast.TypeSwitchStmt:
+				var subject ast.Expr
+				switch a := x.Assign.(type) {
+				case *ast.ExprStmt:
+					subject = a.X
+				case *ast.AssignStmt:
+					subject = a.Rhs[0]
+				}
+				if ta, ok := subject.(*ast.TypeAssertExpr); ok && isProvider(ta.X) {
+					for _, stmt := range x.Body.List {
+						for _, typ := range stmt.(*ast.CaseClause).List {
+							if !isInterface(typ) {
+								report(typ, "switches a Provider on a concrete provider type")
+							}
+						}
+					}
+				}
+			case *ast.CompositeLit:
+				if m, ok := info.TypeOf(x).(*types.Map); ok && types.Identical(m.Key(), idType) && len(x.Elts) > 0 {
+					report(x, "keys a map literal by provider ID")
+				}
+			}
+			return true
+		})
+	}
+	return out
 }
 
 // moduleRoot returns the repository root and module path from the nearest go.mod.
@@ -181,144 +400,4 @@ func moduleRoot(t *testing.T) (string, string) {
 		}
 		dir = parent
 	}
-}
-
-// idConstants returns the names of the constants of type ID this package declares.
-func idConstants(t *testing.T) map[string]bool {
-	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), idDeclFile, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := map[string]bool{}
-	for _, decl := range f.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.CONST {
-			continue
-		}
-		for _, spec := range gen.Specs {
-			vs := spec.(*ast.ValueSpec)
-			if typ, ok := vs.Type.(*ast.Ident); ok && typ.Name == "ID" {
-				for _, n := range vs.Names {
-					out[n.Name] = true
-				}
-			}
-		}
-	}
-	return out
-}
-
-// importNames returns the names a file uses for the contract package.
-func importNames(f *ast.File, pkgPath string) map[string]bool {
-	names := map[string]bool{}
-	for _, spec := range f.Imports {
-		path, _ := strconv.Unquote(spec.Path.Value)
-		if path != pkgPath {
-			continue
-		}
-		name := "metadataprovider"
-		if spec.Name != nil {
-			name = spec.Name.Name
-		}
-		names[name] = true
-	}
-	return names
-}
-
-// idComparisons returns each violation in f as "line:col: what".
-func idComparisons(fset *token.FileSet, f *ast.File, names, consts map[string]bool, inRoot, allowLiteral bool) []string {
-	isConst := func(e ast.Expr) bool {
-		switch x := e.(type) {
-		case *ast.SelectorExpr:
-			pkg, ok := x.X.(*ast.Ident)
-			return ok && names[pkg.Name] && consts[x.Sel.Name]
-		case *ast.Ident:
-			return inRoot && consts[x.Name]
-		}
-		return false
-	}
-	isIDType := func(e ast.Expr) bool {
-		switch x := e.(type) {
-		case *ast.SelectorExpr:
-			pkg, ok := x.X.(*ast.Ident)
-			return ok && names[pkg.Name] && x.Sel.Name == "ID"
-		case *ast.Ident:
-			return inRoot && x.Name == "ID"
-		}
-		return false
-	}
-	var unwrap func(ast.Expr) ast.Expr
-	unwrap = func(e ast.Expr) ast.Expr {
-		switch x := e.(type) {
-		case *ast.ParenExpr:
-			return unwrap(x.X)
-		case *ast.CallExpr:
-			if fn, ok := x.Fun.(*ast.Ident); ok && fn.Name == "string" && len(x.Args) == 1 {
-				return unwrap(x.Args[0])
-			}
-		}
-		return e
-	}
-	isIDCall := func(e ast.Expr) bool {
-		call, ok := unwrap(e).(*ast.CallExpr)
-		if !ok || len(call.Args) != 0 {
-			return false
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		return ok && sel.Sel.Name == "ID"
-	}
-	// isProviderValue is an expression that holds a provider ID: a call to ID(), or a field named
-	// Provider (Source.Provider and its like).
-	isProviderValue := func(e ast.Expr) bool {
-		if isIDCall(e) {
-			return true
-		}
-		sel, ok := unwrap(e).(*ast.SelectorExpr)
-		return ok && sel.Sel.Name == "Provider"
-	}
-	isLiteral := func(e ast.Expr) bool {
-		lit, ok := unwrap(e).(*ast.BasicLit)
-		return ok && lit.Kind == token.STRING && lit.Value != `""` && lit.Value != "``"
-	}
-
-	var out []string
-	report := func(n ast.Node, what string) {
-		pos := fset.Position(n.Pos())
-		out = append(out, fmt.Sprintf("%d:%d: %s", pos.Line, pos.Column, what))
-	}
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.BinaryExpr:
-			if x.Op != token.EQL && x.Op != token.NEQ {
-				return true
-			}
-			l, r := unwrap(x.X), unwrap(x.Y)
-			switch {
-			case isConst(l) || isConst(r):
-				report(x, "compares with a provider ID constant")
-			case (isProviderValue(l) && isLiteral(r)) || (isProviderValue(r) && isLiteral(l)):
-				report(x, "compares a provider ID with a string")
-			}
-		case *ast.SwitchStmt:
-			if x.Tag != nil && isProviderValue(x.Tag) {
-				report(x, "switches on a provider ID")
-			}
-			for _, stmt := range x.Body.List {
-				clause := stmt.(*ast.CaseClause)
-				if slices.ContainsFunc(clause.List, isConst) {
-					report(clause, "switches on a provider ID constant")
-				}
-			}
-		case *ast.CallExpr:
-			if !allowLiteral && isIDType(x.Fun) && len(x.Args) == 1 && isLiteral(x.Args[0]) {
-				report(x, "builds a provider ID from a string")
-			}
-			if sel, ok := x.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "Contains" || sel.Sel.Name == "Index") &&
-				slices.ContainsFunc(x.Args, isConst) {
-				report(x, "searches for a provider ID constant")
-			}
-		}
-		return true
-	})
-	return out
 }

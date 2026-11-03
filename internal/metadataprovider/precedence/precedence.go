@@ -6,8 +6,9 @@
 //   - Technical facts: measured, then header, then the manager's summary.
 //   - Identity and numbering: manager, then ids embedded in names, then sidecar, then a confirmed
 //     link.
-//   - Descriptive text: text from the TMDB catalog for movies and series, from the TVDB catalog
-//     for episodes; then catalog, manager and sidecar in that order.
+//   - Descriptive text: a service (catalog or manager) whose text comes from TMDB for movies and
+//     series, or from TVDB for episodes; then any other service; then sidecars. Within each tier,
+//     catalog before manager.
 //   - Certification: the strictest grounded value on the US ladder. An episode with no rating of
 //     its own inherits its series' strictest; one a grounded source rates itself keeps that
 //     rating, stricter or not (decision 17).
@@ -171,7 +172,10 @@ func ranked(records []mp.Record, order []mp.Basis, has func(mp.Record) bool) []m
 	return out
 }
 
-// descriptiveRanked puts text from the kind's preferred catalog first, then ranks by basis.
+// descriptiveRanked orders guide text in three tiers: a service (catalog or manager) whose text
+// comes from the kind's preferred catalog, then any other service, then sidecars. Within a tier
+// it ranks by basis, then by catalog. A sidecar's catalog is only the scraper that wrote it, so it
+// orders sidecars among themselves but never lifts one above a service.
 func descriptiveRanked(kind mp.Kind, records []mp.Record) []mp.Record {
 	preferred := mp.NamespaceTMDB
 	if kind == mp.KindEpisode {
@@ -179,9 +183,22 @@ func descriptiveRanked(kind mp.Kind, records []mp.Record) []mp.Record {
 	}
 	out := ranked(records, descriptiveOrder, func(rec mp.Record) bool { return rec.Descriptive != nil })
 	slices.SortStableFunc(out, func(a, b mp.Record) int {
+		if d := descriptiveTier(a, preferred) - descriptiveTier(b, preferred); d != 0 {
+			return d
+		}
+		if d := slices.Index(descriptiveOrder, a.Source.Basis) - slices.Index(descriptiveOrder, b.Source.Basis); d != 0 {
+			return d
+		}
 		return catalogRank(a, preferred) - catalogRank(b, preferred)
 	})
 	return out
+}
+
+func descriptiveTier(rec mp.Record, preferred mp.Namespace) int {
+	if rec.Source.Basis == mp.BasisSidecar {
+		return 2
+	}
+	return catalogRank(rec, preferred)
 }
 
 func catalogRank(rec mp.Record, preferred mp.Namespace) int {

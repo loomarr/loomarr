@@ -110,17 +110,43 @@ func TestParse_MultiEpisodeFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *rec.Numbering != (mp.Numbering{Season: 2, Episode: 3, EpisodeEnd: 4}) {
-		t.Errorf("numbering = %+v, want S02E03-E04", *rec.Numbering)
+	if len(rec.More) != 1 {
+		t.Fatalf("further episodes = %d, want 1: each episodedetails is its own record", len(rec.More))
 	}
-	if !reflect.DeepEqual(rec.IDs, []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90001023"}}) {
-		t.Errorf("ids = %+v, want the first episode's own TVDB id", rec.IDs)
+	second := rec.More[0]
+	for _, tc := range []struct {
+		got                mp.Record
+		episode            int
+		tvdb, title, aired string
+	}{
+		{rec, 3, "90001023", "The Tide Ledger (1)", "2020-10-01"},
+		{second, 4, "90001024", "The Tide Ledger (2)", "2020-10-08"},
+	} {
+		if *tc.got.Numbering != (mp.Numbering{Season: 2, Episode: tc.episode}) {
+			t.Errorf("numbering = %+v, want S02E%02d", *tc.got.Numbering, tc.episode)
+		}
+		if !reflect.DeepEqual(tc.got.IDs, []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: tc.tvdb}}) {
+			t.Errorf("ids = %+v, want the episode's own TVDB id %s (decision 15)", tc.got.IDs, tc.tvdb)
+		}
+		if tc.got.Descriptive.Title != tc.title || tc.got.Descriptive.PremiereDate != tc.aired {
+			t.Errorf("descriptive = %+v, want its own title and air date", *tc.got.Descriptive)
+		}
 	}
 	if *rec.Certification != (mp.Certification{Rating: "TV-MA", Country: "US"}) {
 		t.Errorf("certification = %+v", *rec.Certification)
 	}
-	if rec.Descriptive.PremiereDate != "2020-10-01" {
-		t.Errorf("premiere = %q", rec.Descriptive.PremiereDate)
+	if second.Certification != nil || second.Descriptive.Overview != "The storm arrives." {
+		t.Errorf("the second episode borrowed the first's fields: %+v %+v", second.Certification, *second.Descriptive)
+	}
+}
+
+func TestParse_UnderstandsHTMLEntities(t *testing.T) {
+	rec, err := nfo.Parse(mp.KindMovie, []byte("<movie><title>Caf&eacute; &amp; Co&nbsp;</title></movie>"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Descriptive.Title != "Café & Co" {
+		t.Errorf("title = %q", rec.Descriptive.Title)
 	}
 }
 
@@ -146,16 +172,19 @@ func TestParse_KeepsARatingsCountry(t *testing.T) {
 }
 
 func TestParse_RefusesUnsafeOrMalformedDocuments(t *testing.T) {
-	cases := map[string]string{
-		"external entity":  `<?xml version="1.0"?><!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/hostname">]><movie><title>&x;</title></movie>`,
-		"internal entity":  `<!DOCTYPE movie [<!ENTITY a "aaaaaaaaaa">]><movie><title>&a;&a;</title></movie>`,
-		"undefined entity": `<movie><title>&undefined;</title></movie>`,
-		"wrong root":       `<tvshow><title>Elsewhere</title></tvshow>`,
-		"unclosed":         `<movie><title>Half`,
+	cases := map[string]struct {
+		doc  string
+		want error
+	}{
+		"external entity":  {`<?xml version="1.0"?><!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/hostname">]><movie><title>&x;</title></movie>`, nfo.ErrDirective},
+		"internal entity":  {`<!DOCTYPE movie [<!ENTITY a "aaaaaaaaaa">]><movie><title>&a;&a;</title></movie>`, nfo.ErrDirective},
+		"undefined entity": {`<movie><title>&undefined;</title></movie>`, nfo.ErrMalformed},
+		"wrong root":       {`<tvshow><title>Elsewhere</title></tvshow>`, nfo.ErrMalformed},
+		"unclosed":         {`<movie><title>Half`, nfo.ErrMalformed},
 	}
-	for name, doc := range cases {
-		if _, err := nfo.Parse(mp.KindMovie, []byte(doc)); err == nil {
-			t.Errorf("%s: parsed", name)
+	for name, tc := range cases {
+		if _, err := nfo.Parse(mp.KindMovie, []byte(tc.doc)); !errors.Is(err, tc.want) {
+			t.Errorf("%s: %v, want %v", name, err, tc.want)
 		}
 	}
 	if _, err := nfo.Parse(mp.KindMovie, []byte("https://www.invented-scraper.example/movie/90000501")); !errors.Is(err, mp.ErrNotFound) {
@@ -248,20 +277,30 @@ func TestFetch_PrefersTheFilesOwnNFOOverMovieNFO(t *testing.T) {
 }
 
 func TestFetch_RefusesAnOversizedOrLinkedSidecar(t *testing.T) {
-	dir := t.TempDir()
-	big := filepath.Join(dir, "Big.nfo")
-	write(t, big, []byte("<movie><title>"+strings.Repeat("x", nfo.MaxSize)+"</title></movie>"))
-	if _, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(dir, "Big.mkv"))); err == nil || errors.Is(err, mp.ErrNotFound) {
-		t.Errorf("oversized NFO = %v, want a size error", err)
+	big := filepath.Join(t.TempDir(), "Big (2001)")
+	write(t, filepath.Join(big, "Big (2001).nfo"), []byte("<movie><title>"+strings.Repeat("x", nfo.MaxSize)+"</title></movie>"))
+	if _, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(big, "Big (2001).mkv"))); !errors.Is(err, nfo.ErrTooLarge) {
+		t.Errorf("oversized NFO = %v, want ErrTooLarge", err)
 	}
 
-	target := filepath.Join(dir, "elsewhere.xml")
+	linked := filepath.Join(t.TempDir(), "Linked (2002)")
+	target := filepath.Join(linked, "elsewhere.xml")
 	write(t, target, []byte("<movie><title>Linked</title></movie>"))
-	if err := os.Symlink(target, filepath.Join(dir, "Linked.nfo")); err != nil {
+	if err := os.Symlink(target, filepath.Join(linked, "Linked (2002).nfo")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(dir, "Linked.mkv"))); err == nil || errors.Is(err, mp.ErrNotFound) {
-		t.Errorf("symlinked NFO = %v, want it refused", err)
+	if _, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(linked, "Linked (2002).mkv"))); !errors.Is(err, nfo.ErrNotRegularFile) {
+		t.Errorf("symlinked NFO = %v, want ErrNotRegularFile", err)
+	}
+
+	// A refused <file>.nfo falls through to the folder's movie.nfo.
+	write(t, filepath.Join(big, "movie.nfo"), []byte("<movie><title>From movie.nfo</title></movie>"))
+	write(t, filepath.Join(linked, "movie.nfo"), []byte("<movie><title>From movie.nfo</title></movie>"))
+	for _, media := range []string{filepath.Join(big, "Big (2001).mkv"), filepath.Join(linked, "Linked (2002).mkv")} {
+		rec, err := nfo.New().Fetch(context.Background(), fileRef(mp.KindMovie, media))
+		if err != nil || rec.Descriptive.Title != "From movie.nfo" {
+			t.Errorf("%s = %+v, %v; want movie.nfo after the refused sidecar", filepath.Base(media), rec.Descriptive, err)
+		}
 	}
 }
 

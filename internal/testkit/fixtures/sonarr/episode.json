@@ -1,8 +1,8 @@
 [
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "tvdbId": 90001001,
-    "episodeFileId": 101,
+    "episodeFileId": 90000201,
     "seasonNumber": 1,
     "episodeNumber": 1,
     "title": "First Light",
@@ -15,12 +15,12 @@
     "monitored": true,
     "absoluteEpisodeNumber": 1,
     "unverifiedSceneNumbering": false,
-    "id": 11
+    "id": 90000111
   },
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "tvdbId": 90001002,
-    "episodeFileId": 102,
+    "episodeFileId": 90000202,
     "seasonNumber": 1,
     "episodeNumber": 2,
     "title": "The Tide Ledger",
@@ -32,12 +32,12 @@
     "monitored": true,
     "absoluteEpisodeNumber": 2,
     "unverifiedSceneNumbering": false,
-    "id": 12
+    "id": 90000112
   },
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "tvdbId": 90001003,
-    "episodeFileId": 103,
+    "episodeFileId": 90000203,
     "seasonNumber": 0,
     "episodeNumber": 1,
     "title": "Lamps Before Winter",
@@ -50,10 +50,10 @@
     "airsBeforeSeasonNumber": 1,
     "airsBeforeEpisodeNumber": 2,
     "unverifiedSceneNumbering": false,
-    "id": 13
+    "id": 90000113
   },
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "tvdbId": 90001004,
     "episodeFileId": 0,
     "seasonNumber": 1,
@@ -67,12 +67,12 @@
     "monitored": true,
     "absoluteEpisodeNumber": 3,
     "unverifiedSceneNumbering": false,
-    "id": 14
+    "id": 90000114
   },
   {
-    "seriesId": 2,
+    "seriesId": 90000012,
     "tvdbId": 90002001,
-    "episodeFileId": 201,
+    "episodeFileId": 90000211,
     "seasonNumber": 1,
     "episodeNumber": 1,
     "title": "Pilot Signal",
@@ -83,6 +83,6 @@
     "hasFile": true,
     "monitored": true,
     "unverifiedSceneNumbering": false,
-    "id": 21
+    "id": 90000121
   }
 ]

@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -61,7 +62,10 @@ func (s *Sonarr) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	return mp.Record{}, fmt.Errorf("sonarr: series tvdb %d: %w", tvdb, mp.ErrNotFound)
 }
 
-// List returns every series Sonarr holds, each with its episodes.
+// List returns every series Sonarr holds, each with its episodes. A series deleted while the pull
+// runs (its episodes answer 404) is left out. Any other failure on one series does not stop the
+// pull: List returns the series it read and an error joining each one it could not, so a caller
+// can tell a partial pull from a complete one.
 func (s *Sonarr) List(ctx context.Context) ([]mp.Record, error) {
 	ep, err := s.c.endpoint()
 	if err != nil {
@@ -72,14 +76,22 @@ func (s *Sonarr) List(ctx context.Context) ([]mp.Record, error) {
 		return nil, err
 	}
 	out := make([]mp.Record, 0, len(all))
+	var errs []error
 	for _, series := range all {
+		if err := ctx.Err(); err != nil {
+			return out, errors.Join(append(errs, err)...)
+		}
 		rec, err := s.seriesRecord(ctx, ep, series)
-		if err != nil {
-			return nil, err
+		switch {
+		case isStatus(err, http.StatusNotFound):
+			continue
+		case err != nil:
+			errs = append(errs, fmt.Errorf("sonarr: series %d: %w", series.ID, err))
+			continue
 		}
 		out = append(out, rec)
 	}
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 func (s *Sonarr) seriesRecord(ctx context.Context, ep endpoint, series sonarrSeries) (mp.Record, error) {

@@ -1,6 +1,6 @@
 [
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "seasonNumber": 1,
     "relativePath": "Season 01/The Lantern Office - S01E01 - First Light.mkv",
     "path": "/data/tv/The Lantern Office/Season 01/The Lantern Office - S01E01 - First Light.mkv",
@@ -9,13 +9,11 @@
     "releaseGroup": "INVENTED",
     "languages": [
       {
-        "id": 1,
         "name": "English"
       }
     ],
     "quality": {
       "quality": {
-        "id": 3,
         "name": "WEBDL-1080p",
         "source": "web",
         "resolution": 1080
@@ -44,10 +42,10 @@
       "subtitles": "eng/spa"
     },
     "qualityCutoffNotMet": false,
-    "id": 101
+    "id": 90000201
   },
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "seasonNumber": 1,
     "relativePath": "Season 01/The Lantern Office - S01E02 - The Tide Ledger.mkv",
     "path": "/data/tv/The Lantern Office/Season 01/The Lantern Office - S01E02 - The Tide Ledger.mkv",
@@ -55,7 +53,6 @@
     "dateAdded": "2024-01-02T03:04:05Z",
     "quality": {
       "quality": {
-        "id": 3,
         "name": "WEBDL-1080p",
         "source": "web",
         "resolution": 1080
@@ -84,10 +81,10 @@
       "subtitles": ""
     },
     "qualityCutoffNotMet": false,
-    "id": 102
+    "id": 90000202
   },
   {
-    "seriesId": 1,
+    "seriesId": 90000011,
     "seasonNumber": 0,
     "relativePath": "Specials/The Lantern Office - S00E01 - Lamps Before Winter.mkv",
     "path": "/data/tv/The Lantern Office/Specials/The Lantern Office - S00E01 - Lamps Before Winter.mkv",
@@ -95,7 +92,6 @@
     "dateAdded": "2024-01-02T03:04:05Z",
     "quality": {
       "quality": {
-        "id": 3,
         "name": "WEBDL-1080p",
         "source": "web",
         "resolution": 1080
@@ -107,10 +103,10 @@
       }
     },
     "qualityCutoffNotMet": false,
-    "id": 103
+    "id": 90000203
   },
   {
-    "seriesId": 2,
+    "seriesId": 90000012,
     "seasonNumber": 1,
     "relativePath": "Season 1/Quillfeather Junction - S01E01 - Pilot Signal.avi",
     "path": "/data/tv/Quillfeather Junction/Season 1/Quillfeather Junction - S01E01 - Pilot Signal.avi",
@@ -118,7 +114,6 @@
     "dateAdded": "2024-01-02T03:04:05Z",
     "quality": {
       "quality": {
-        "id": 4,
         "name": "DVD",
         "source": "dvd",
         "resolution": 480
@@ -147,6 +142,6 @@
       "subtitles": ""
     },
     "qualityCutoffNotMet": true,
-    "id": 201
+    "id": 90000211
   }
 ]

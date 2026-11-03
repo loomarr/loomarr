@@ -120,7 +120,7 @@ move whole.
 | --- | --- |
 | Technical | measured, header, manager |
 | Identity and numbering | manager, id in a name, sidecar, confirmed link |
-| Descriptive | text from the TMDB catalog for movies and series, from TVDB for episodes; then catalog, manager, sidecar |
+| Descriptive | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
 | Certification | the strictest grounded rating on the US ladder |
 | Artwork | sidecar, catalog, manager, per artwork kind |
 

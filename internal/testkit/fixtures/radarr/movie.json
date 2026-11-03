@@ -3,7 +3,6 @@
     "title": "The Copper Orchard",
     "originalTitle": "Le Verger de Cuivre",
     "originalLanguage": {
-      "id": 2,
       "name": "French"
     },
     "alternateTitles": [],
@@ -34,7 +33,7 @@
     "path": "/data/movies/The Copper Orchard (2016)",
     "qualityProfileId": 1,
     "hasFile": true,
-    "movieFileId": 501,
+    "movieFileId": 90000301,
     "monitored": true,
     "minimumAvailability": "released",
     "isAvailable": true,
@@ -60,7 +59,7 @@
       }
     },
     "movieFile": {
-      "movieId": 1,
+      "movieId": 90000031,
       "relativePath": "The Copper Orchard (2016) [Bluray-1080p].mkv",
       "path": "/data/movies/The Copper Orchard (2016)/The Copper Orchard (2016) [Bluray-1080p].mkv",
       "size": 8589934592,
@@ -68,13 +67,11 @@
       "edition": "",
       "languages": [
         {
-          "id": 2,
           "name": "French"
         }
       ],
       "quality": {
         "quality": {
-          "id": 7,
           "name": "Bluray-1080p",
           "source": "bluray",
           "resolution": 1080,
@@ -104,20 +101,19 @@
         "subtitles": "eng"
       },
       "qualityCutoffNotMet": false,
-      "id": 501
+      "id": 90000301
     },
     "collection": {
       "title": "The Copper Orchard Collection",
       "tmdbId": 90000701
     },
     "popularity": 12.5,
-    "id": 1
+    "id": 90000031
   },
   {
     "title": "Midnight at Fennick Lane",
     "originalTitle": "Midnight at Fennick Lane",
     "originalLanguage": {
-      "id": 1,
       "name": "English"
     },
     "alternateTitles": [],
@@ -146,6 +142,6 @@
     "tags": [],
     "added": "2024-01-02T03:04:05Z",
     "ratings": {},
-    "id": 2
+    "id": 90000032
   }
 ]

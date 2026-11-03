@@ -161,11 +161,35 @@ func TestSonarr_ListPullsEverySeriesOnOneConnection(t *testing.T) {
 	}
 	want := []string{
 		"/api/v3/series",
-		"/api/v3/episode?seriesId=1", "/api/v3/episodefile?seriesId=1",
-		"/api/v3/episode?seriesId=2", "/api/v3/episodefile?seriesId=2",
+		"/api/v3/episode?seriesId=90000011", "/api/v3/episodefile?seriesId=90000011",
+		"/api/v3/episode?seriesId=90000012", "/api/v3/episodefile?seriesId=90000012",
 	}
 	if got := lib.Requests(); !reflect.DeepEqual(got, want) {
 		t.Errorf("requests = %v, want %v", got, want)
+	}
+}
+
+func TestSonarr_ListSkipsASeriesDeletedMidPull(t *testing.T) {
+	lib := testkit.NewSonarrLibrary(t)
+	lib.Fail("/api/v3/episode?seriesId=90000011", http.StatusNotFound)
+	records, err := arr.NewSonarr(conn(lib.URL), nil).List(context.Background())
+	if err != nil {
+		t.Fatalf("a series deleted mid-pull failed the pull: %v", err)
+	}
+	if len(records) != 1 || records[0].IDs[0].Value != "90000102" {
+		t.Errorf("listed %+v, want only the series that still exists", records)
+	}
+}
+
+func TestSonarr_ListKeepsGoingPastAFailedSeriesAndReportsIt(t *testing.T) {
+	lib := testkit.NewSonarrLibrary(t)
+	lib.Fail("/api/v3/episodefile?seriesId=90000011", http.StatusInternalServerError)
+	records, err := arr.NewSonarr(conn(lib.URL), nil).List(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "series 90000011") {
+		t.Fatalf("err = %v, want one naming the failed series", err)
+	}
+	if len(records) != 1 || records[0].IDs[0].Value != "90000102" {
+		t.Errorf("listed %+v, want the series that read", records)
 	}
 }
 

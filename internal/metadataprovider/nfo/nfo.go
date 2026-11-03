@@ -66,18 +66,39 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !filepath.IsAbs(media) {
 		return mp.Record{}, fmt.Errorf("nfo: path %q is not absolute: %w", ref.ID.Value, mp.ErrUnsupported)
 	}
+	var refused error
 	for _, candidate := range candidates(ref.Kind, media) {
 		data, err := readBounded(candidate)
-		if errors.Is(err, os.ErrNotExist) {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
 			continue
-		}
-		if err != nil {
+		case errors.Is(err, ErrNotRegularFile), errors.Is(err, ErrTooLarge):
+			// A refused sidecar is skipped for the next candidate, and reported if none
+			// is read.
+			refused = errors.Join(refused, err)
+			continue
+		case err != nil:
 			return mp.Record{}, err
 		}
 		return Parse(ref.Kind, data)
 	}
+	if refused != nil {
+		return mp.Record{}, refused
+	}
 	return mp.Record{}, fmt.Errorf("nfo: no sidecar for %s: %w", ref.Kind, mp.ErrNotFound)
 }
+
+var (
+	// ErrTooLarge is a sidecar over MaxSize.
+	ErrTooLarge = errors.New("nfo: sidecar over the size limit")
+	// ErrNotRegularFile is a sidecar that is a symlink, a device or a directory, or that was
+	// swapped between being checked and opened.
+	ErrNotRegularFile = errors.New("nfo: sidecar is not a regular file")
+	// ErrDirective is a document with a DOCTYPE or other directive, which could define entities.
+	ErrDirective = errors.New("nfo: directives are not allowed")
+	// ErrMalformed is a document that is not well-formed XML of the expected kind.
+	ErrMalformed = errors.New("nfo: malformed document")
+)
 
 func candidates(kind mp.Kind, media string) []string {
 	switch kind {
@@ -127,10 +148,10 @@ func readBounded(path string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("nfo: %s is not a regular file", filepath.Base(path))
+		return nil, fmt.Errorf("%w: %s", ErrNotRegularFile, filepath.Base(path))
 	}
 	if info.Size() > MaxSize {
-		return nil, fmt.Errorf("nfo: %s is %d bytes, over the %d-byte limit", filepath.Base(path), info.Size(), MaxSize)
+		return nil, fmt.Errorf("%w: %s is %d bytes", ErrTooLarge, filepath.Base(path), info.Size())
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -142,14 +163,14 @@ func readBounded(path string) ([]byte, error) {
 		return nil, err
 	}
 	if !os.SameFile(info, opened) {
-		return nil, fmt.Errorf("nfo: %s changed while it was opened", filepath.Base(path))
+		return nil, fmt.Errorf("%w: %s changed while it was opened", ErrNotRegularFile, filepath.Base(path))
 	}
 	data, err := io.ReadAll(io.LimitReader(f, MaxSize+1))
 	if err != nil {
 		return nil, err
 	}
 	if len(data) > MaxSize {
-		return nil, fmt.Errorf("nfo: %s grew past the %d-byte limit", filepath.Base(path), MaxSize)
+		return nil, fmt.Errorf("%w: %s grew while it was read", ErrTooLarge, filepath.Base(path))
 	}
 	return data, nil
 }
@@ -162,17 +183,19 @@ var rootElement = map[mp.Kind]string{
 }
 
 // Parse reads one NFO document for kind. An episode NFO with several episodedetails (a
-// multi-episode file) yields the first episode with EpisodeEnd set to the last.
+// multi-episode file) yields one record per episode, each with its own ids: the first, with the
+// rest in More. HTML's named entities (&eacute; …) are understood; no other entity can be defined.
 func Parse(kind mp.Kind, data []byte) (mp.Record, error) {
 	root, ok := rootElement[kind]
 	if !ok {
 		return mp.Record{}, fmt.Errorf("nfo: %s: %w", kind, mp.ErrUnsupported)
 	}
 	if len(data) > MaxSize {
-		return mp.Record{}, fmt.Errorf("nfo: document is over the %d-byte limit", MaxSize)
+		return mp.Record{}, ErrTooLarge
 	}
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = true
+	dec.Entity = xml.HTMLEntity
 	dec.CharsetReader = charsetReader
 	var docs []document
 	var end int64
@@ -187,33 +210,42 @@ func Parse(kind mp.Kind, data []byte) (mp.Record, error) {
 			if len(docs) > 0 && !bytes.Contains(data[end:], []byte("<")) {
 				break
 			}
-			return mp.Record{}, fmt.Errorf("nfo: %w", err)
+			return mp.Record{}, fmt.Errorf("%w: %w", ErrMalformed, err)
 		}
 		switch t := tok.(type) {
 		case xml.Directive:
-			return mp.Record{}, errors.New("nfo: a DOCTYPE or other directive is not allowed")
+			return mp.Record{}, ErrDirective
 		case xml.StartElement:
 			if t.Name.Local != root {
 				if len(docs) > 0 {
-					return recordFrom(kind, docs), nil
+					return records(kind, docs), nil
 				}
-				return mp.Record{}, fmt.Errorf("nfo: root element %q is not %q", t.Name.Local, root)
+				return mp.Record{}, fmt.Errorf("%w: root element %q is not %q", ErrMalformed, t.Name.Local, root)
 			}
 			var doc document
 			if err := dec.DecodeElement(&doc, &t); err != nil {
-				return mp.Record{}, fmt.Errorf("nfo: %w", err)
+				return mp.Record{}, fmt.Errorf("%w: %w", ErrMalformed, err)
 			}
 			docs = append(docs, doc)
 			end = dec.InputOffset()
 			if kind != mp.KindEpisode {
-				return recordFrom(kind, docs), nil
+				return records(kind, docs), nil
 			}
 		}
 	}
 	if len(docs) == 0 {
 		return mp.Record{}, fmt.Errorf("nfo: no %s element: %w", root, mp.ErrNotFound)
 	}
-	return recordFrom(kind, docs), nil
+	return records(kind, docs), nil
+}
+
+// records is the first document's record with the rest in More.
+func records(kind mp.Kind, docs []document) mp.Record {
+	rec := recordFrom(kind, docs[0])
+	for _, doc := range docs[1:] {
+		rec.More = append(rec.More, recordFrom(kind, doc))
+	}
+	return rec
 }
 
 // document is the part of a Kodi movie, tvshow or episodedetails element Loomarr reads.
@@ -241,8 +273,7 @@ type uniqueID struct {
 	Value   string `xml:",chardata"`
 }
 
-func recordFrom(kind mp.Kind, docs []document) mp.Record {
-	doc := docs[0]
+func recordFrom(kind mp.Kind, doc document) mp.Record {
 	externalIDs, catalog := identities(doc.UniqueIDs)
 	rec := mp.Record{
 		Source: mp.Source{Provider: mp.IDNFO, Basis: mp.BasisSidecar, Catalog: catalog},
@@ -268,26 +299,13 @@ func recordFrom(kind mp.Kind, docs []document) mp.Record {
 		rec.Certification = &mp.Certification{Rating: rating, Country: country}
 	}
 	if kind == mp.KindEpisode {
-		rec.Numbering = numbering(docs)
-	}
-	return rec
-}
-
-func numbering(docs []document) *mp.Numbering {
-	season, okS := whole(docs[0].Season)
-	episode, okE := whole(docs[0].Episode)
-	if !okS || !okE {
-		return nil
-	}
-	n := &mp.Numbering{Season: season, Episode: episode}
-	for _, doc := range docs[1:] {
-		s, okS := whole(doc.Season)
-		e, okE := whole(doc.Episode)
-		if okS && okE && s == season && e > n.Episode && e > n.EpisodeEnd {
-			n.EpisodeEnd = e
+		season, okS := whole(doc.Season)
+		episode, okE := whole(doc.Episode)
+		if okS && okE {
+			rec.Numbering = &mp.Numbering{Season: season, Episode: episode}
 		}
 	}
-	return n
+	return rec
 }
 
 var (

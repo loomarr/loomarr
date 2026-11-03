@@ -47,14 +47,11 @@ func TestRegistry_RoutesByCapability(t *testing.T) {
 	if got := r.Resolving(mp.Ref{Kind: mp.KindEpisode, ID: mp.ExternalID{Namespace: mp.NamespaceTVDB, Value: "90001001"}}); got != nil {
 		t.Errorf("Resolving(episode tvdb) = %v, want none: no provider fetches an episode by its own id", got)
 	}
-	if got := r.Supplying(mp.FamilyCertification); !reflect.DeepEqual(got, []mp.Provider{radarr, nfo}) {
-		t.Errorf("Supplying(certification) = %v, want registration order", got)
-	}
 	if p, ok := r.Get(mp.IDNFO); !ok || !reflect.DeepEqual(p, mp.Provider(nfo)) {
 		t.Errorf("Get(nfo) = %v, %v", p, ok)
 	}
-	if got := r.Providers(); len(got) != 3 {
-		t.Errorf("Providers() = %v", got)
+	if got := r.Providers(); !reflect.DeepEqual(got, []mp.Provider{sonarr, radarr, nfo}) {
+		t.Errorf("Providers() = %v, want registration order", got)
 	}
 }
 
@@ -67,7 +64,7 @@ func TestRegistry_AnUnregisteredProviderIsAbsent(t *testing.T) {
 		t.Error("an unregistered provider was found")
 	}
 	var nilRegistry *mp.Registry
-	if _, ok := nilRegistry.Get(mp.IDSonarr); ok || nilRegistry.Providers() != nil || nilRegistry.Supplying(mp.FamilyIdentity) != nil {
+	if _, ok := nilRegistry.Get(mp.IDSonarr); ok || nilRegistry.Providers() != nil {
 		t.Error("a nil registry holds providers")
 	}
 }

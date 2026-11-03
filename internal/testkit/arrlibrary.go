@@ -78,7 +78,8 @@ func NewRadarrLibrary(t testing.TB) *ArrLibrary {
 	return a
 }
 
-// Fail makes every request to path answer status.
+// Fail makes every request to path answer status. path may carry a query, such as
+// "/api/v3/episode?seriesId=2", to fail only that exact request.
 func (a *ArrLibrary) Fail(path string, status int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -96,7 +97,10 @@ func (a *ArrLibrary) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		a.requests = append(a.requests, r.URL.RequestURI())
-		status, failing := a.fail[r.URL.Path]
+		status, failing := a.fail[r.URL.RequestURI()]
+		if !failing {
+			status, failing = a.fail[r.URL.Path]
+		}
 		a.mu.Unlock()
 		if r.Header.Get("X-Api-Key") != ArrLibraryAPIKey {
 			w.WriteHeader(http.StatusUnauthorized)

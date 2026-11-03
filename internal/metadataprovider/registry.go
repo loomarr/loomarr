@@ -72,14 +72,3 @@ func (r *Registry) Resolving(ref Ref) []Provider {
 	}
 	return out
 }
-
-// Supplying returns the providers that supply family, in registration order.
-func (r *Registry) Supplying(family Family) []Provider {
-	var out []Provider
-	for _, p := range r.Providers() {
-		if p.Capabilities().Supplies(family) {
-			out = append(out, p)
-		}
-	}
-	return out
-}

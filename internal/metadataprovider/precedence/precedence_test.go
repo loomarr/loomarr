@@ -219,10 +219,22 @@ func TestResolve_DescriptiveText(t *testing.T) {
 			title:   "R", titleFrom: radarr, overview: "r", overviewFrom: radarr,
 		},
 		{
-			name:    "a TMDB-scraped NFO beats a TVDB catalog for a series",
+			name:    "a TMDB-scraped tvshow.nfo never beats Sonarr",
 			kind:    mp.KindSeries,
-			records: []mp.Record{desc(tvdbCat, mp.KindSeries, "V", "v"), desc(nfoTMDB, mp.KindSeries, "N", "n")},
-			title:   "N", titleFrom: nfoTMDB, overview: "n", overviewFrom: nfoTMDB,
+			records: []mp.Record{desc(nfoTMDB, mp.KindSeries, "N", "n"), desc(sonarr, mp.KindSeries, "S", "s")},
+			title:   "S", titleFrom: sonarr, overview: "s", overviewFrom: sonarr,
+		},
+		{
+			name:    "a TMDB-scraped NFO never beats a TVDB catalog",
+			kind:    mp.KindSeries,
+			records: []mp.Record{desc(nfoTMDB, mp.KindSeries, "N", "n"), desc(tvdbCat, mp.KindSeries, "V", "v")},
+			title:   "V", titleFrom: tvdbCat, overview: "v", overviewFrom: tvdbCat,
+		},
+		{
+			name:    "among sidecars, the preferred catalog's scrape wins",
+			kind:    mp.KindEpisode,
+			records: []mp.Record{desc(nfoTMDB, mp.KindEpisode, "M", "m"), desc(nfoTVDB, mp.KindEpisode, "V", "v")},
+			title:   "V", titleFrom: nfoTVDB, overview: "v", overviewFrom: nfoTVDB,
 		},
 		{
 			name:    "a series takes TMDB's text over Sonarr's",

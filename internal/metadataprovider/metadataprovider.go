@@ -180,7 +180,9 @@ type Provider interface {
 	Fetch(ctx context.Context, ref Ref) (Record, error)
 }
 
-// Lister returns every item a provider holds, for a full pull.
+// Lister returns every item a provider holds, for a full pull. A pull that read some items and
+// failed on others returns both the items and a non-nil error; the caller decides what a partial
+// pull may change.
 type Lister interface {
 	List(ctx context.Context) ([]Record, error)
 }
