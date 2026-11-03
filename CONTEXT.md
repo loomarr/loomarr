@@ -102,8 +102,9 @@ _Avoid_: test set, holdout, certification corpus
 **Proposal Job**:
 One caller-owned durable execution of an Intent. Its id is the correlation spine for generation,
 the optional Proposal it produces, and the intent-bound Channel created on approval. A Proposal Job
-may have multiple execution Attempts after worker-loss recovery or a channel Refine, but it is never
-the Proposal itself.
+may have multiple execution Attempts after worker-loss recovery or an admin's edit of the pending
+Proposal, but it is never the Proposal itself. A channel Refine or re-curation is a new Proposal Job
+that names the Channel, never a re-run of the Job that created it.
 _Avoid_: request, suggestion, generation job, Proposal
 
 **Proposal Job Attempt**:
@@ -147,15 +148,17 @@ on approval, never on suggestion (§7).
 _Avoid_: review, confirmation
 
 **Refine**:
-Re-running the Suggester against a stored Intent *plus* the channel's current lineup, to
-adjust rather than replace it (§7, §8.2).
+Re-running the Suggester against the Intent the Channel owns *plus* the channel's current
+lineup, to adjust rather than replace it (§7, §8.2). It is a new Proposal Job that names the Channel.
 _Avoid_: regenerate, retry
 
 ### Channels and programming
 
 **Channel**:
 A Loomarr-owned channel definition — identity, Lineup, and Policy — whose desired state is
-materialized locally and, when Tunarr is selected, projected into a Tunarr channel.
+materialized locally and, when Tunarr is selected, projected into a Tunarr channel. A Channel made
+from a request owns that request's approved Intent and its requester, so neither depends on the
+Proposal Job that produced it.
 _Avoid_: station, feed
 
 **Lineup**:

@@ -336,6 +336,9 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 		ProposalJSON: string(blob), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 
+	if err := st.CreateJob(ctx, store.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
 	// A different approved row for the same job proves planning does not re-resolve
 	// "newest approved" behind the caller's back.
 	seedApprovedProposal(t, st, "p-other", candidate.JobID, "other-admin",

@@ -42,6 +42,10 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		t.Fatal(err)
 	}
 	p := store.Proposal{ID: "proposal-one", JobID: "job-one", Status: "submitted", ProposalJSON: string(raw)}
+	// A proposal always has the job that produced it; the planner refuses one whose job is gone.
+	if err := st.CreateJob(ctx, store.Job{ID: p.JobID, Kind: "suggest", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
 	planner := binder.New(st, nil, nil, nil)
 	engine := channels.New(st, nil, nil, nil, channels.Config{}, time.Now, nil)
 	svc := proposaloutlook.New(proposaloutlook.Config{Titles: st, Library: media, Episodes: media.ResolveEpisodes, Planner: planner, Preview: engine})

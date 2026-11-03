@@ -70,7 +70,7 @@ func NewDynamic(apiKey func() string) *Client {
 // development overrides. The base URL is fixed for the client's lifetime; only
 // the credential is live configuration.
 func NewDynamicWithBase(baseURL string, apiKey func() string) *Client {
-	return newDynamicWithHTTP(baseURL, apiKey, httpx.NewNamed("tmdb", httpx.TimeoutTMDB))
+	return newDynamicWithHTTP(baseURL, apiKey, httpx.NewNamed(httpx.TargetTMDB, httpx.TimeoutTMDB))
 }
 
 // NewDynamicObserved binds outbound observations to one application generation.
@@ -85,7 +85,7 @@ func NewDynamicWithBaseObserved(
 	recorder *metrics.Recorder,
 ) *Client {
 	return newDynamicWithHTTP(
-		baseURL, apiKey, httpx.NewNamedObserved("tmdb", httpx.TimeoutTMDB, recorder),
+		baseURL, apiKey, httpx.NewNamedObserved(httpx.TargetTMDB, httpx.TimeoutTMDB, recorder),
 	)
 }
 

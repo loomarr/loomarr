@@ -17,7 +17,7 @@ import (
 const llmIdleConnTimeout = 3 * time.Second
 
 // NewLLMNamed is NewLLM with a whole-request budget, for the adapters (Ollama, video) that keep one.
-func NewLLMNamed(target string, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
+func NewLLMNamed(target Target, timeout time.Duration, recorder *metrics.Recorder) *http.Client {
 	if recorder == nil {
 		return newClient(timeout, newLLMTransport(), nil)
 	}
@@ -25,11 +25,9 @@ func NewLLMNamed(target string, timeout time.Duration, recorder *metrics.Recorde
 }
 
 func newLLMTransport() http.RoundTripper {
-	return replayableWrites{next: &http.Transport{
-		MaxIdleConns:        20,
-		MaxIdleConnsPerHost: 4,
-		IdleConnTimeout:     llmIdleConnTimeout,
-	}}
+	transport := baseTransport()
+	transport.IdleConnTimeout = llmIdleConnTimeout
+	return replayableWrites{next: transport}
 }
 
 // replayableWrites tags every rewindable POST with a fresh Idempotency-Key. That header is what

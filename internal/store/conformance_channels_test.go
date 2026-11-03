@@ -20,6 +20,8 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	ch := Channel{}
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
+	ch.IntentJSON = `{"description":"intent of ` + id + `"}`
+	ch.RequestedBy = "requester-" + id
 	ch.Name = "Channel " + id
 	ch.Number = number
 	ch.Group = "Loomarr"
@@ -245,7 +247,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 }
 
 // testChannelOrigin (#1663, Home's "New channel"): a channel remembers when it was created, which
-// no later save moves, and who asked for it, read through the job that produced it.
+// no later save moves, and who asked for it, read from the channel's own `requested_by`.
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -254,25 +256,17 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	for _, j := range []Job{
-		{ID: "job-member", Kind: "suggest", Status: "done", CreatedBy: "u-member"},
-		{ID: "job-ghost", Kind: "suggest", Status: "done", CreatedBy: "u-gone"},
-	} {
-		if err := s.CreateJob(ctx, j); err != nil {
-			t.Fatal(err)
-		}
-	}
 	day0 := time.Unix(1_800_000_000, 0).UTC()
 
 	requested := sampleChannel("ch-req", 1, time.Time{})
-	requested.IntentRef = "job-member"
+	requested.IntentRef, requested.RequestedBy = "job-member", "u-member"
 	before := time.Now().Add(-time.Second)
 	mustSaveChannel(t, s, requested) // no CreatedAt: the store stamps it
 	handMade := sampleChannel("ch-hand", 2, time.Time{})
-	handMade.IntentRef, handMade.CreatedAt = "", day0
+	handMade.IntentRef, handMade.RequestedBy, handMade.CreatedAt = "", "", day0
 	mustSaveChannel(t, s, handMade)
 	ghost := sampleChannel("ch-ghost", 3, time.Time{})
-	ghost.IntentRef = "job-ghost"
+	ghost.IntentRef, ghost.RequestedBy = "job-ghost", "u-gone"
 	mustSaveChannel(t, s, ghost)
 
 	got, err := s.GetChannel(ctx, "ch-req")

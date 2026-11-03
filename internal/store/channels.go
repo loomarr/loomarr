@@ -30,6 +30,14 @@ type Channel struct {
 	// Revision is the optimistic concurrency token for every channel-row mutation.
 	// Zero is the create sentinel accepted by SaveChannel; persisted rows start at 1.
 	Revision int64
+	// IntentJSON is the approved intent: the request this channel was made from, without any
+	// one-run refinement. It lives on the channel, not on the job that produced it, because
+	// housekeeping purges finished jobs while a refine or a re-curation still needs the request.
+	// Empty for a hand-made channel and for one whose job was purged before the column existed.
+	IntentJSON string
+	// RequestedBy is the user id of the person who made the request, set when the channel is
+	// created and never changed by a refine or a re-curation. Empty when no member asked.
+	RequestedBy string
 	// Lineup is the approved []LineupEntry (the intent-level "what should play").
 	Lineup []schedule.LineupEntry
 	// Desired is the last-computed []Slot (desired lineup) — persisted so the
@@ -60,14 +68,13 @@ type Channel struct {
 }
 
 // ChannelRequesters maps each channel made from a member's request to that person's name, read
-// through the job that produced it (`intent_ref`). One query for every channel; a hand-made
-// channel, or one whose requester no longer exists, has no entry (#1663).
+// from the channel's own `requested_by`. One query for every channel; a hand-made channel, or
+// one whose requester no longer exists, has no entry (#1663).
 func (s *sqlStore) ChannelRequesters(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT c.id, u.name FROM channels c
-		 JOIN jobs j ON j.id = c.intent_ref
-		 JOIN users u ON u.id = j.created_by
-		 WHERE c.intent_ref <> ''`)
+		 JOIN users u ON u.id = c.requested_by
+		 WHERE c.requested_by <> ''`)
 	if err != nil {
 		return nil, fmt.Errorf("channel requesters: %w", err)
 	}
@@ -108,6 +115,53 @@ func (s *sqlStore) GetChannelByNumber(ctx context.Context, number int) (Channel,
 func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), intentRef)
 	return scanChannel(row)
+}
+
+// GetChannelForJob finds the channel a suggestion job's proposal belongs to: the channel a refine
+// or re-curation job names in `jobs.channel_id`, or else the channel the job originated
+// (`intent_ref`). It answers "which channel does approving this proposal change?" for the binder,
+// the auto-curate grant and the job's journey.
+//
+// ErrNotFound means no channel is bound to the job yet — a first approval creates one. A job that
+// names a channel which has since been removed returns ErrJobChannelGone instead, so a caller
+// cannot mistake it for a first approval and create a second channel.
+func (s *sqlStore) GetChannelForJob(ctx context.Context, jobID string) (Channel, error) {
+	return channelForJob(ctx, s.db, s.ph, jobID)
+}
+
+func channelForJob(ctx context.Context, q channelDB, ph placeholder, jobID string) (Channel, error) {
+	var channelID string
+	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM jobs WHERE id = ?`), jobID).Scan(&channelID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
+	}
+	if channelID != "" {
+		ch, err := scanChannel(q.QueryRowContext(ctx, ph(channelSelect+` WHERE id = ?`), channelID))
+		if errors.Is(err, ErrNotFound) {
+			return Channel{}, fmt.Errorf("%w: job %s names channel %s", ErrJobChannelGone, jobID, channelID)
+		}
+		return ch, err
+	}
+	return scanChannel(q.QueryRowContext(ctx, ph(channelSelect+` WHERE intent_ref = ?`), jobID))
+}
+
+// ChannelHasUnfinishedJob reports whether one of the channel's refine or re-curation jobs is
+// still in flight: queued, running, or done with a proposal no one has decided yet. A new
+// channel job is refused while one is, so two runs never race to replace each other's lineup and
+// unapproved re-curations do not pile up. A failed job is finished: it leaves nothing to decide.
+func (s *sqlStore) ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT COUNT(*) FROM jobs j
+		  WHERE j.channel_id = ?
+		    AND (j.status IN ('queued', 'running')
+		         OR (j.status = 'done' AND EXISTS (
+		               SELECT 1 FROM proposals p WHERE p.job_id = j.id AND p.status = 'submitted')))`),
+		channelID).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("channel %s unfinished jobs: %w", channelID, err)
+	}
+	return n > 0, nil
 }
 
 func (s *sqlStore) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
@@ -170,8 +224,8 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 	if broadcastCodec == "" {
 		broadcastCodec = BroadcastCodecH264
 	}
-	args := []any{ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
-		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
+	args := []any{ch.IntentRef, ch.IntentJSON, ch.RequestedBy, ch.Name, ch.Number, ch.Group, ch.Logo,
+		string(ch.Strategy), ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
 		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
 		epoch(ch.PlayoutAnchor), epoch(ch.ReconcileDeadline), ch.UpdatedAt}
 	invalidation := ""
@@ -188,10 +242,10 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		}
 		query :=
 			`INSERT INTO channels
-			   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-			    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+			   (id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy, filler_ref,
+			    tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
 			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
 		queryArgs := append(append([]any{ch.ID}, args...), epoch(ch.CreatedAt))
 		if s.dialect == DialectPostgres {
@@ -213,8 +267,8 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 	expected := ch.Revision
 	query :=
 		`UPDATE channels SET
-		   intent_ref=?, name=?, number=?, grp=?, logo=?, strategy=?, filler_ref=?,
-		   tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
+		   intent_ref=?, intent_json=?, requested_by=?, name=?, number=?, grp=?, logo=?, strategy=?,
+		   filler_ref=?, tunarr_id=?, status=?, shuffle_seed=?, lineup_json=?, desired_json=?,
 		   policy_json=?, broadcast_codec=?, playout_anchor=?, reconcile_deadline=?, updated_at=?,
 		   revision=revision+1
 		 WHERE id=? AND revision=?
@@ -404,7 +458,7 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // this order so scanChannel serves both paths (mirrors scanTitle).
 // channelColumns is the column list scanChannel reads, in its order. The Postgres claim spells it
 // with its `c.` alias (postgres.go) and must stay in step.
-const channelColumns = `id, intent_ref, name, number, grp, logo, strategy, filler_ref,
+const channelColumns = `id, intent_ref, intent_json, requested_by, name, number, grp, logo, strategy, filler_ref,
 		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
 		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
 
@@ -418,7 +472,7 @@ func scanChannel(sc scannable) (Channel, error) {
 		seed, anchor, deadline, updatedAt   int64
 		createdAt                           int64
 	)
-	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
+	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.IntentJSON, &ch.RequestedBy, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
 		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
 		&createdAt)

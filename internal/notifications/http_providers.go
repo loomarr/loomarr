@@ -56,7 +56,7 @@ type HTTPProviderAdapter struct {
 
 func NewHTTPProviderAdapters(client HTTPDoer, publicURL func() string) ([]Adapter, []DestinationValidator) {
 	if client == nil {
-		client = httpx.NewNamed("notification-provider", httpx.TimeoutNotifications)
+		client = httpx.NewNamed(httpx.TargetNotifications, httpx.TimeoutNotifications)
 	}
 	means := []Means{
 		MeansWebhook, MeansDiscord, MeansNtfy, MeansGotify, MeansApprise, MeansPushover,

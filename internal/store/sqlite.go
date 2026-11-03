@@ -47,17 +47,6 @@ WHERE id IN (
 )
 RETURNING ` + channelColumns
 
-// SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
-const sqliteJobClaimSQL = `
-UPDATE jobs SET deadline = ?1, status = 'running', attempts = attempts + 1, updated_at = ?2
-WHERE id IN (
-    SELECT id FROM jobs
-    WHERE status IN ('queued', 'running') AND deadline <= ?2 AND deadline > 0
-    ORDER BY deadline LIMIT ?3
-)
-RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error,
-	      failure_code, workflow_version, reached_live, deadline, attempts, created_at, updated_at`
-
 // sqliteScheduledJobClaimSQL leases every due scheduled job (§18.1): advance next_run to the
 // lease so a concurrent tick/replica won't re-claim it until this run finishes and reschedules
 // (the scheduler upserts the real next_run after running). Placeholders: 1=leaseUntil, 2=now.
@@ -85,7 +74,7 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}), nil
+	return bindClusters(&sqlStore{db: db, dialect: DialectSQLite, path: path, ph: storedb.Passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}), nil
 }
 
 // openSQLiteReadOnly is the migration source opener. Both URI mode=ro and

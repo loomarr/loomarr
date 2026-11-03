@@ -1,9 +1,11 @@
 package filler_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"reflect"
 	"sort"
@@ -11,8 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 )
 
 type fetchStub struct {
@@ -47,12 +52,15 @@ func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) {
 	f.catalogCalls++
 	return f.paths, nil
 }
-func (f *fetchStub) Enumerate(_ context.Context, source filler.FetchSource, limit int) ([]sourceprovider.Item, int, error) {
+
+// list is the raw listing the stub's providers read: what the source offers, however its provider
+// then walks it.
+func (f *fetchStub) list(source filler.FetchSource, limit int) ([]sourceprovider.Item, error) {
 	f.calls++
 	f.listed = append(f.listed, source.URI)
 	f.listedKinds = append(f.listedKinds, source.Kind)
 	f.listLimits = append(f.listLimits, limit)
-	return f.offers, len(f.offers), f.enumErr
+	return f.offers, f.enumErr
 }
 func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	f.sourceID = sourceID
@@ -158,14 +166,73 @@ func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l filler.FetchLim
 		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) {
 			return states, nil
 		},
-	}, stub, stub, l, discardLog())
+	}, providersOver(t, stub.list, nil), stub, l, discardLog())
 }
+
+// providersOver is the registry the fetch tests run on: the real YouTube and archive.org
+// providers reading what list returns for each source, and the scanned folder and library beside
+// them. list receives only what the provider's own call carries, so a source is identified by its
+// Kind and URI. search is nil for a catalog that cannot search.
+func providersOver(
+	t *testing.T,
+	list func(source filler.FetchSource, limit int) ([]sourceprovider.Item, error),
+	search func(source filler.FetchSource, query string, limit int) ([]sourceprovider.Item, error),
+) *sourceprovider.Registry {
+	t.Helper()
+	providers, err := sourceprovider.NewRegistry(
+		youtubeprovider.New(func(_ context.Context, target string, limit int) ([]sourceprovider.Item, int, error) {
+			items, err := list(filler.FetchSource{Kind: "youtube", URI: target}, limit)
+			return items, len(items), err
+		}),
+		archiveprovider.New(archiveprovider.Config{
+			Catalog: archiveCatalogOver{list: list, search: search}, Log: discardLog(),
+		}),
+		sourceprovider.Scanned("folder", "Folder", ""),
+		sourceprovider.Scanned("library", "Media library", ""),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providers
+}
+
+// archiveCatalogOver is an archive.org catalog over listings of provider items. archive.org lists
+// an item by its id, so an item's URL is its details page.
+type archiveCatalogOver struct {
+	list   func(source filler.FetchSource, limit int) ([]sourceprovider.Item, error)
+	search func(source filler.FetchSource, query string, limit int) ([]sourceprovider.Item, error)
+}
+
+func discovered(items []sourceprovider.Item) clipfetch.DiscoveryResult {
+	res := clipfetch.DiscoveryResult{Total: len(items)}
+	for _, item := range items {
+		res.Items = append(res.Items, clipfetch.DiscoveredItem{
+			ID: item.ID, Title: item.Title, License: item.License, Year: item.ObservedYear,
+			Date: item.PublishedAt, DurationMS: item.DurationMS, Height: item.Height,
+		})
+	}
+	return res
+}
+
+func (c archiveCatalogOver) EnumerateCollection(_ context.Context, ref string, limit int) (clipfetch.DiscoveryResult, error) {
+	items, err := c.list(filler.FetchSource{Kind: "archive", URI: ref}, limit)
+	return discovered(items), err
+}
+
+func (c archiveCatalogOver) SearchCollection(_ context.Context, ref, query string, limit int) (clipfetch.DiscoveryResult, error) {
+	if c.search == nil {
+		return clipfetch.DiscoveryResult{}, nil
+	}
+	items, err := c.search(filler.FetchSource{Kind: "archive", URI: ref}, query, limit)
+	return discovered(items), err
+}
+
+func (archiveCatalogOver) Enrich(context.Context, []clipfetch.DiscoveredItem) {}
 
 type sourceEnum func(filler.FetchSource) []sourceprovider.Item
 
-func (e sourceEnum) Enumerate(_ context.Context, source filler.FetchSource, _ int) ([]sourceprovider.Item, int, error) {
-	items := e(source)
-	return items, len(items), nil
+func (e sourceEnum) list(source filler.FetchSource, _ int) ([]sourceprovider.Item, error) {
+	return e(source), nil
 }
 
 func youtubeRef(id string, duration time.Duration) sourceprovider.Item {
@@ -232,7 +299,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 	firstCompletion := stub.completions[sourceID]
 	if first.Queued != 2 || !reflect.DeepEqual(stub.queuedIDs, []string{"video-1", "video-2"}) ||
 		firstCompletion.Checkpoint != (sourceprovider.Checkpoint{Cursor: "video-2", PendingWatermark: "video-1"}) ||
-		!firstCompletion.ReplaceOutcomes || len(stub.listLimits) != 1 || stub.listLimits[0] != filler.YouTubeInitialLookback {
+		!firstCompletion.ReplaceOutcomes || len(stub.listLimits) != 1 || stub.listLimits[0] != youtubeprovider.InitialLookback {
 		t.Fatalf("first pass = %+v, ids=%v, completion=%+v", first, stub.queuedIDs, firstCompletion)
 	}
 	for _, id := range stub.queuedIDs {
@@ -280,14 +347,14 @@ func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
 	}}
 	enum := sourceEnum(func(source filler.FetchSource) []sourceprovider.Item {
 		return []sourceprovider.Item{
-			youtubeRef(source.ID+":1", 30*time.Second),
-			youtubeRef(source.ID+":2", 30*time.Second),
-			youtubeRef(source.ID+":3", 30*time.Second),
+			youtubeRef(source.URI+":1", 30*time.Second),
+			youtubeRef(source.URI+":2", 30*time.Second),
+			youtubeRef(source.URI+":3", 30*time.Second),
 		}
 	})
 	l := limits(3, 2000)
 	l.MaxProviderPerRun = func() int { return 5 }
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, l, discardLog())
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, l, discardLog())
 
 	res, err := fetcher.Run(t.Context())
 	if err != nil {
@@ -572,7 +639,7 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 		}
 		return []sourceprovider.Item{{ID: "abcdef12345", URL: "https://archive.org/details/abcdef12345", Height: 1080}}
 	})
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, limits(1, 2000), discardLog())
+	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, limits(1, 2000), discardLog())
 	res, err := f.Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -668,6 +735,72 @@ func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
 	res, _ := newFetcher(t, stub, limits(10, 2000)).Run(context.Background())
 	if res.SourcesPolled != 0 || len(stub.queued) != 0 {
 		t.Error("a config-backed row was polled — those are scanned, not downloaded from")
+	}
+}
+
+// A source whose provider is not registered is inert: a scheduled pass skips it, says so once, and
+// leaves the row to be fetched again when the provider is back. A scanned provider's source, even
+// one with an address, is never fetched either, and a manual check of either polls nothing.
+func TestFetch_ASourceWhoseProviderIsNotFetchedIsInert(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
+			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
+			{ID: "s1", Kind: "archive", URI: "coll", Enabled: true},
+		},
+		offers: refs("a"),
+	}
+	var logged bytes.Buffer
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub, limits(10, 2000),
+		slog.New(slog.NewTextHandler(&logged, nil)))
+
+	for range 2 {
+		res, err := fetcher.Run(t.Context())
+		if err != nil {
+			t.Fatalf("a scheduled pass failed on an inert source: %v", err)
+		}
+		if res.SourcesPolled != 1 || res.Queued != 1 {
+			t.Fatalf("pass = %+v, want only the archive source polled", res)
+		}
+		delete(stub.checked, "s1")
+	}
+	if stub.claimCalls != 2 || !reflect.DeepEqual(stub.listed, []string{"coll", "coll"}) {
+		t.Fatalf("claims=%d listed=%v, want only the archive source claimed and listed, once per pass", stub.claimCalls, stub.listed)
+	}
+	if n := strings.Count(logged.String(), "provider is not registered or not fetched"); n != 1 {
+		t.Fatalf("logged %d inert reports over two passes, want one:\n%s", n, logged.String())
+	}
+
+	for _, id := range []string{"vimeo-src", "scanned-src"} {
+		if res, err := fetcher.RunSource(t.Context(), id); err != nil || res.SourcesPolled != 0 {
+			t.Errorf("manual check of %s = %+v, %v, want nothing polled and no error", id, res, err)
+		}
+	}
+	if stub.claimCalls != 2 {
+		t.Fatalf("a manual check of an inert source claimed it (%d claims)", stub.claimCalls)
+	}
+	if status, err := fetcher.Status(t.Context()); err != nil || !status.Enabled {
+		t.Fatalf("status = %+v, %v, want fetching on: the archive source is fetched", status, err)
+	}
+}
+
+// A wake whose only enabled sources are inert reads source state and nothing else: it neither
+// claims them nor walks the catalog, so an unregistered provider costs no more than an idle wake.
+func TestFetch_AWakeWithOnlyInertSourcesStaysCheap(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
+			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
+		},
+	}
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub,
+		limits(10, 2000), nil)
+	if _, err := fetcher.Run(t.Context()); err != nil {
+		t.Fatalf("pass: %v", err)
+	}
+	if stub.catalogCalls != 0 || stub.claimCalls != 0 {
+		t.Fatalf("catalog reads=%d claims=%d, want neither for a wake with only inert sources",
+			stub.catalogCalls, stub.claimCalls)
 	}
 }
 

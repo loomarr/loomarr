@@ -57,7 +57,7 @@ func NewArrObserved(c ArrConns, recorder *metrics.Recorder) *Arr {
 		sonarr: c.Sonarr, radarr: c.Radarr,
 		sonarrQualityProfile: c.SonarrQualityProfile, sonarrRootFolder: c.SonarrRootFolder,
 		radarrQualityProfile: c.RadarrQualityProfile, radarrRootFolder: c.RadarrRootFolder,
-		http: httpx.NewNamedObserved("arr", httpx.TimeoutArr, recorder),
+		http: httpx.NewNamedObserved(httpx.TargetArr, httpx.TimeoutArr, recorder),
 	}
 }
 
@@ -177,8 +177,8 @@ func (a *Arr) lookup(ctx context.Context, ep arrEndpoint) (map[string]any, error
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("arr lookup: status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("arr lookup: %w", err)
 	}
 	var results []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
@@ -269,8 +269,8 @@ func (a *Arr) Cancel(ctx context.Context, t provision.Title) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("arr cancel: status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return fmt.Errorf("arr cancel: %w", err)
 	}
 	return nil
 }
