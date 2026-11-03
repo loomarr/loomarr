@@ -79,6 +79,13 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // locally-assembled list would be missing rows.
   activity: { prefixes: ["/v1/activity"] },
   health: { prefixes: ["/v1/diagnostics/health"] },
+  // A committed settings write, from any tab or writer. Every read a setting can change
+  // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
+  // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
+  // `/v1/filler/readiness` the storage summary derived from the filler allowances.
+  settings: {
+    prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness"],
+  },
 };
 
 // The frame types the stream subscribes to: every event the spec declares.
@@ -133,22 +140,27 @@ const openEventStream = (
 
 // invalidateByPrefix invalidates every query whose first key element (the URL, per
 // orval's fetch client) starts with prefix — coarse but correct.
-const invalidateByPrefix = (qc: QueryClient, prefix: string): void => {
-  void qc.invalidateQueries({
+const invalidateByPrefix = (qc: QueryClient, prefix: string): Promise<void> =>
+  qc.invalidateQueries({
     predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith(prefix),
   });
-};
 
-// invalidateForFrame applies a frame's row of the invalidation table.
-const invalidateForFrame = <T extends EventType>(
+// invalidateForFrame applies a frame's row of the invalidation table. The promise settles when
+// the active queries have refetched, for a caller that must not show stale data in between.
+const invalidateForFrame = async <T extends EventType>(
   qc: QueryClient,
   type: T,
   payload: EventPayloads[T],
-): void => {
+): Promise<void> => {
   const { prefixes, when }: Invalidation<T> = EVENT_INVALIDATIONS[type];
   if (when && !when(payload)) return;
-  for (const prefix of prefixes) invalidateByPrefix(qc, prefix);
+  await Promise.all(prefixes.map((prefix) => invalidateByPrefix(qc, prefix)));
 };
+
+// invalidateSettings is the settings row for a save path that just wrote a setting: the writer's
+// own tab refetches at once (no wait for the frame), through the same mapping other tabs get.
+// Awaiting it before clearing staged edits is what keeps a saved field from flashing its old value.
+const invalidateSettings = (qc: QueryClient): Promise<void> => invalidateForFrame(qc, "settings", {});
 
 // useLoomarrEvents opens the stream for the app's lifetime and applies the invalidation table
 // to every frame; `onFrame` (e.g. the provider fanning payloads out to screens) runs after the
@@ -160,7 +172,7 @@ const useLoomarrEvents = (onFrame?: FrameHandler): void => {
 
   useEffect(() => {
     return openFrameStream((type, payload) => {
-      invalidateForFrame(qc, type, payload);
+      void invalidateForFrame(qc, type, payload);
       onFrameRef.current?.(type, payload);
     });
   }, [qc]);
@@ -175,6 +187,7 @@ export {
   eventHandlerName,
   invalidateByPrefix,
   invalidateForFrame,
+  invalidateSettings,
   openEventStream,
   openFrameStream,
   useLoomarrEvents,

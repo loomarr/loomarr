@@ -78,32 +78,46 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	}()
 
 	svc := &systemLLMService{
-		swap:       sw,
-		ollamaBase: func() string { return ollamaBase(set) }, // resolved live per probe/pull
-		saveSettings: func(ctx context.Context, edits map[string]string) error {
-			results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
-			if err != nil {
-				return err
-			}
-			// A per-key refusal (an env pin, or a value the registry rejects) is NOT an
-			// error from Patch's point of view — it is a result. Swallowing it would
-			// recreate the bug in a new costume: the picker would report success while
-			// the environment kept winning, and the operator's choice would evaporate
-			// on restart with nothing having said no.
-			for _, r := range results {
-				if r.Status != settings.PatchSaved {
-					return fmt.Errorf("could not save %s: %s", r.Key, r.Problem)
-				}
-			}
-			return nil
-		},
-		store: st, protection: set.protection,
+		swap:         sw,
+		ollamaBase:   func() string { return ollamaBase(set) }, // resolved live per probe/pull
+		saveSettings: llmSettingsSaver(set, st, bus),
+		store:        st, protection: set.protection,
 		bus:   bus,
 		log:   log,
 		newID: newID,
 		start: owner.startInteractiveOperation, operations: st, pullTimeout: modelPullTimeout,
 	}
 	return sw, svc
+}
+
+// llmSettingsSaver persists the picker's llm.* edits through the settings service and announces a
+// committed write on the live-update stream, so other tabs refetch settings-derived reads.
+func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(context.Context, map[string]string) error {
+	return func(ctx context.Context, edits map[string]string) error {
+		results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
+		saved := false
+		for _, r := range results {
+			saved = saved || r.Status == settings.PatchSaved
+		}
+		// A persistence error can follow keys the batch already committed, so it announces too.
+		if (saved || err != nil) && bus != nil {
+			bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
+		}
+		if err != nil {
+			return err
+		}
+		// A per-key refusal (an env pin, or a value the registry rejects) is NOT an
+		// error from Patch's point of view — it is a result. Swallowing it would
+		// recreate the bug in a new costume: the picker would report success while
+		// the environment kept winning, and the operator's choice would evaporate
+		// on restart with nothing having said no.
+		for _, r := range results {
+			if r.Status != settings.PatchSaved {
+				return fmt.Errorf("could not save %s: %s", r.Key, r.Problem)
+			}
+		}
+		return nil
+	}
 }
 
 // keepAliveArg renders the resolved llm.keep_alive duration for the Ollama wire
