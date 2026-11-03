@@ -144,7 +144,7 @@ func (m *PackagerHLS) Stats(now time.Time) []SessionStat {
 
 // newestStillSegment is the channel's newest listed baseline segment behind its init, for the
 // channel-switch still of a channel that is on air.
-func (m *PackagerHLS) newestStillSegment(_ context.Context, channelID string, _ EncodePlan) (stillSegment, bool, error) {
+func (m *PackagerHLS) newestStillSegment(_ context.Context, channelID string) (stillSegment, bool, error) {
 	m.mu.Lock()
 	c := m.channels[packagedKey{channel: channelID, format: FormatBaseline}]
 	m.mu.Unlock()

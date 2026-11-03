@@ -34,7 +34,6 @@ const harness = (source: PlayerSourcePort = mintedSource()) => {
   const reports: PlayerErrorReport[] = [];
   const controller = createPlayerController({
     onPlayerError: (report) => reports.push(report),
-    profile: {},
     recovery: { backoffMs },
     source,
     transport,

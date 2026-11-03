@@ -60,7 +60,7 @@ func TestOriginStill_ColdChannelDecodesOneFrameFromTheSourcePerAiring(t *testing
 	for i := range 5 {
 		// The viewer keeps surfing back while the same programme airs; "now" moves on.
 		airings.set(airingOf("airing-1", "/media/film.mkv", time.Duration(73+i)*time.Second, time.Unix(1000, 0), &resolved))
-		got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+		got, ok, err := o.Still(context.Background(), "ch1")
 		if err != nil || !ok || string(got.JPEG) != "jpeg:/media/film.mkv@1m13s" {
 			t.Fatalf("Still = %q ok=%v err=%v, want the frame at the first request's offset", got.JPEG, ok, err)
 		}
@@ -74,7 +74,7 @@ func TestOriginStill_ColdChannelDecodesOneFrameFromTheSourcePerAiring(t *testing
 	}
 
 	airings.set(airingOf("airing-2", "/media/episode.mkv", 5*time.Second, time.Unix(7000, 0), nil))
-	got, ok, _ := o.Still(context.Background(), "ch1", PlanBaseline)
+	got, ok, _ := o.Still(context.Background(), "ch1")
 	if !ok || string(got.JPEG) != "jpeg:/media/episode.mkv@5s" {
 		t.Fatalf("after the next airing began got %q ok=%v, want the new programme's frame", got.JPEG, ok)
 	}
@@ -94,7 +94,7 @@ func TestOriginStill_SeeksToTheIndexedKeyframe(t *testing.T) {
 		SourceStill: calls.extract,
 	})
 
-	got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+	got, ok, err := o.Still(context.Background(), "ch1")
 	if err != nil || !ok || string(got.JPEG) != "jpeg:/media/film.mkv@1m10s" {
 		t.Fatalf("Still = %q ok=%v err=%v, want the frame at the keyframe before now (70 s)", got.JPEG, ok, err)
 	}
@@ -108,7 +108,7 @@ func TestOriginStill_WarmChannelShowsItsNewestSegmentNotTheSource(t *testing.T) 
 	o := NewOrigin(OriginDependencies{StillAiring: airings.resolve, SourceStill: source.extract, Still: countingExtractor(&segments)})
 	o.stillSources = append([]stillSource{&fakeStillSource{ok: true, seg: segment("seg-9", "live", time.Unix(1100, 0))}}, o.stillSources...)
 
-	got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+	got, ok, err := o.Still(context.Background(), "ch1")
 	if err != nil || !ok || string(got.JPEG) != "jpeg:live" {
 		t.Fatalf("got %q ok=%v err=%v, want the live segment's frame", got.JPEG, ok, err)
 	}
@@ -121,7 +121,7 @@ func TestOriginStill_NothingAiringIsAMiss(t *testing.T) {
 	var calls sourceCalls
 	o := NewOrigin(OriginDependencies{StillAiring: (&fakeAirings{}).resolve, SourceStill: calls.extract})
 
-	if _, ok, err := o.Still(context.Background(), "ch1", PlanBaseline); ok || err != nil {
+	if _, ok, err := o.Still(context.Background(), "ch1"); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss", ok, err)
 	}
 	if calls.n.Load() != 0 {
@@ -153,7 +153,7 @@ func TestOriginStill_SourceStillsWaitForADecodeSlot(t *testing.T) {
 	var wg sync.WaitGroup
 	for i, id := range channels {
 		wg.Go(func() {
-			got, ok, err := o.Still(context.Background(), id, PlanBaseline)
+			got, ok, err := o.Still(context.Background(), id)
 			if err != nil || !ok {
 				results[i] = fmt.Sprintf("miss ok=%v err=%v", ok, err)
 				return

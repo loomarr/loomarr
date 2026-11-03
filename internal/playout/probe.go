@@ -21,7 +21,7 @@ import (
 // Playout asks three questions of a source, and they used to be three separate ffprobe calls with
 // three JSON shapes and three copies of the shell-out: which audio track to map (audio.go), the
 // tracks the Watch pickers list (tracks.go), and the codec the copy decision needs (format,
-// directplay/copyplan). They all read the SAME `ffprobe -show_streams` output — so this file runs
+// mediaformat.go). They all read the SAME `ffprobe -show_streams` output — so this file runs
 // it once into one `probedStream` slice, and each consumer is a pure function over that. Fewer
 // execs, one JSON shape, no drift between three parsers of the same data.
 
@@ -398,10 +398,10 @@ func tracksOf(streams []probedStream) MediaTracks {
 	return tracks
 }
 
-// --- Consumer 3: the copy/transcode decision (copyplan.go's MediaFormat) ------------------------
+// --- Consumer 3: the source's class and geometry (mediaformat.go's MediaFormat) ----------------
 
 // FFprobeFormatNextTo returns a FormatProber built on the shared probe — the full MediaFormat for
-// PlanCopy and any later feature that needs it.
+// ClassOf and any later feature that needs it.
 func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	var observer *diagnostics.ProcessManager

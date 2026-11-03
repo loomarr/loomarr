@@ -26,11 +26,11 @@ const atCapacityDetail = "Loomarr is already using its measured transcode capaci
 	"If a safety cap is below measured capacity, increase or clear it; Loomarr will never exceed what it measured."
 
 const (
-	// rawPlayoutPreferredStartupTimeout is the native/full plan's opportunity to prove transport.
+	// rawPlayoutPreferredStartupTimeout is the first attempt's opportunity to prove transport.
 	// Cold-start measurements put healthy sessions well below this bound; waiting longer on a
-	// silent HEVC shape only delays the known-playable baseline recovery.
+	// silent session only delays the second attempt.
 	rawPlayoutPreferredStartupTimeout = 5 * time.Second
-	// rawPlayoutStartupTimeout bounds the baseline attempt. A false 200 with no MPEG-TS makes media
+	// rawPlayoutStartupTimeout bounds the second attempt. A false 200 with no MPEG-TS makes media
 	// servers wait on a channel that never started; a bounded 502 lets them retry or fail honestly.
 	rawPlayoutStartupTimeout = 15 * time.Second
 )
@@ -75,12 +75,6 @@ var (
 // access at all, api_token is break-glass admin).
 const playoutTokenParam = "token"
 
-// playoutPlanParam names the codec-audience query on the playlist and program URLs (§9.1 V48):
-// `?plan=baseline|hevc8|hevc10|full`. It selects the copy/transcode plan; see playout.EncodePlan and
-// clientPlan (the client-safe reader). ⚠ Replaces the retired `?target=browser|mediaserver` token
-// (see scripts/check-retired.sh).
-const playoutPlanParam = "plan"
-
 // playoutModeParam is an unsigned least-privilege modifier on signed HLS playlists. `warm`
 // permits a bounded live snapshot but forbids reclaiming another Channel's retained session.
 // `prepared` is retired with prepared media (#1512) and always answers 204 for beta.7 TV and
@@ -92,7 +86,7 @@ const playoutModeParam = "mode"
 // channel packagers and their filesystem layouts.
 type Playout interface {
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
-	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string, speculative bool) (playout.Asset, bool, error)
+	OpenAsset(ctx context.Context, channelID string, rel string, speculative bool) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
 	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
 	// transitions that make the channel ineligible for internal playout.
@@ -103,7 +97,7 @@ type Playout interface {
 // decoded frame. Separate from Playout because a still is a display aid, not delivery — an origin
 // without one simply has no stills and the route 404s.
 type StillProvider interface {
-	Still(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Still, bool, error)
+	Still(ctx context.Context, channelID string) (playout.Still, bool, error)
 }
 
 // PlayoutObserver is operational observation of playout, separate from the playback interface.
@@ -247,10 +241,10 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin), so first ask for the broad
-	// full plan that can preserve HEVC/AC3. A full session that starts but cannot emit even one byte
-	// is retried as the known-playable H.264/AAC baseline below, before this response commits.
-	presentation, err := s.tuneRaw(r.Context(), channelID, playout.PlanFull)
+	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin). A session that starts but
+	// cannot emit even one byte within the first, short bound is released and tuned once more with
+	// the longer bound below, before this response commits.
+	presentation, err := s.tuneRaw(r.Context(), channelID)
 	if err != nil {
 		s.writeRawTuneError(w, r, channelID, err)
 		return
@@ -262,10 +256,9 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	first, startErr := firstTransportChunk(r.Context(), presentation.Stream, rawPlayoutPreferredStartupTimeout)
 	if startErr != nil && r.Context().Err() == nil {
 		presentation.Release()
-		s.log.Warn("playout: preferred session produced no startup transport; falling back to baseline",
-			"channel", channelID, "from_plan", playout.PlanFull.String(),
-			"to_plan", playout.PlanBaseline.String(), "err", startErr)
-		presentation, err = s.tuneRaw(r.Context(), channelID, playout.PlanBaseline)
+		s.log.Warn("playout: session produced no startup transport; tuning again",
+			"channel", channelID, "err", startErr)
+		presentation, err = s.tuneRaw(r.Context(), channelID)
 		if err != nil {
 			s.writeRawTuneError(w, r, channelID, err)
 			return
@@ -277,14 +270,14 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		if r.Context().Err() != nil {
 			return
 		}
-		s.log.Warn("playout: baseline session produced no startup transport", "channel", channelID,
-			"plan", playout.PlanBaseline.String(), "err", startErr)
+		s.log.Warn("playout: second session produced no startup transport", "channel", channelID,
+			"err", startErr)
 		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
 			"Loomarr couldn't produce media for this channel in time.")
 		return
 	}
-	// MUST run: it decrements the successful presentation's refcount. The failed full presentation
-	// was already released before the baseline tune, so the recovery never occupies two slots.
+	// MUST run: it decrements the successful presentation's refcount. The failed first presentation
+	// was already released before the second tune, so the recovery never occupies two slots.
 	defer presentation.Release()
 	chunks := presentation.Stream
 
@@ -311,9 +304,9 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) tuneRaw(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Presentation, error) {
+func (s *Server) tuneRaw(ctx context.Context, channelID string) (playout.Presentation, error) {
 	return s.playout.Tune(ctx, playout.TuneRequest{
-		ChannelID: channelID, Plan: plan, Delivery: playout.DeliveryMPEGTS,
+		ChannelID: channelID, Delivery: playout.DeliveryMPEGTS,
 	})
 }
 
@@ -548,7 +541,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	viewer, tagged := s.requestViewer(r.Context(), channelID, r.URL.Query())
 	presentation, err := s.playout.Tune(withPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
-		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
+		ChannelID: channelID, Delivery: playout.DeliveryHLS,
 		Speculative: mode == "warm",
 	})
 	if err != nil {
@@ -592,24 +585,6 @@ func hlsAssetQuery(query url.Values) string {
 		asset[key] = append([]string(nil), values...)
 	}
 	return asset.Encode()
-}
-
-// clientPlan reads the EncodePlan for a Watch HLS request (a browser OR a native app) from `?plan=`.
-// It is the CLIENT-FACING edge, and its default is the safety invariant of the whole V48 model:
-//
-//   - An absent, empty, or unrecognized `?plan=` resolves to PlanBaseline (h264/aac) — NEVER a
-//     richer plan. Copying HEVC (or 10-bit, or surround) to a client that did not prove it can decode
-//     it is a black frame, so only an explicit, recognized plan token unlocks richer copy.
-//   - The token itself was minted from the client's DeviceProfile at play-url time (resolve →
-//     `?plan=`), and resolve already rounded DOWN to what the profile fully satisfies. So there are
-//     two independent guards: resolve at mint, clientPlan here at read. Either alone keeps a client
-//     from receiving an undecodable stream; both is defence in depth.
-//
-// ParseEncodePlan already defaults unknown→PlanBaseline, so this is a thin, intention-naming wrapper
-// over it — but the wrapper (and this comment) is where the client-edge invariant is asserted, so it
-// is not inlined.
-func clientPlan(r *http.Request) playout.EncodePlan {
-	return playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
 }
 
 // rewritePlaylistAuth appends the request's auth query (`?sig=…` or `?token=…`) to every SEGMENT
@@ -692,7 +667,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		viewer, tagged = s.requestViewer(ctx, channelID, r.URL.Query())
 		ctx = withPlayoutViewer(ctx, viewer, tagged)
 	}
-	asset, ok, err := s.playout.OpenAsset(ctx, channelID, clientPlan(r), rel, speculative)
+	asset, ok, err := s.playout.OpenAsset(ctx, channelID, rel, speculative)
 	if err != nil || !ok {
 		http.NotFound(w, r)
 		return
@@ -716,8 +691,8 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Content type by suffix — the only discriminator the asset carries. MPEG-TS segments (.ts) are
-	// the baseline plan; fMP4 segments (.m4s) and their init segment (init.mp4) are the HEVC plans
-	// (§9.1 V48 — HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless
+	// the default; fMP4 segments (.m4s) and their init segment (init.mp4) are the packager's
+	// variants (HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless
 	// because AssetPath already proved the file exists under the channel's own remux dir.
 	switch {
 	case strings.HasSuffix(rel, ".m3u8"):
@@ -743,7 +718,7 @@ func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	still, ok, err := provider.Still(r.Context(), channelID, clientPlan(r))
+	still, ok, err := provider.Still(r.Context(), channelID)
 	if err != nil {
 		s.log.Warn("playout: channel still failed", "channel", channelID, "err", err)
 	}
