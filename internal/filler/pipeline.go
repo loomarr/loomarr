@@ -23,7 +23,7 @@ import (
 // SSE story work: at most one clip is running, so "forty clips × eight stages" never arrives at
 // the event bus at once, and the 32-deep subscriber buffer is never the thing under pressure.
 //
-// The scheduler's `ClaimDueScheduledJobs` lease already guarantees one runner per job name across
+// The scheduler's River unique-job insert already guarantees one runner per job name across
 // replicas, so there is nothing to coordinate beyond it.
 
 // StageCost is what one execution of a stage spends from the per-run budget. A stage declares its
