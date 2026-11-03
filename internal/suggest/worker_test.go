@@ -387,6 +387,43 @@ func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 	}
 }
 
+// A cache hit is a fresh request waiting for approval like any other, so it tells the approvers too.
+func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	notifier := submittedNotifier{submitted: make(chan store.Proposal, 1)}
+	svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier)
+	intent := suggest.Intent{Description: "90s action"}
+
+	source, err := svc.Submit(ctx, intent, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := st.GetJob(ctx, source)
+	j.Status = "done"
+	if err := st.UpdateJob(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateProposal(ctx, store.Proposal{
+		ID: "source-proposal", JobID: source, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
+		ProposalJSON: `{"lineup":[{"name":"Quiet Engines"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := svc.Submit(ctx, intent, "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p := <-notifier.submitted:
+		if p.JobID != cached || p.CreatedBy != "carol" {
+			t.Fatalf("notified proposal = %+v, want carol's cached proposal for job %s", p, cached)
+		}
+	default:
+		t.Fatal("approvers were never told a cached request is waiting")
+	}
+}
+
 // Approvers hear "a request is waiting" only when a person still has to act: a proposal an
 // automatic grant already approved never sends it, so nobody gets a waiting notice followed by an
 // approval notice for the same proposal.

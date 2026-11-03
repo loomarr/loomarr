@@ -183,7 +183,7 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 	if submission.CachedProposal != nil {
 		blob, marshalErr := json.Marshal(submission.CachedProposal.Proposal)
 		if marshalErr == nil {
-			s.considerAutomaticApproval(ctx, store.Job{
+			s.settleSubmitted(ctx, store.Job{
 				ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
 			}, store.Proposal{
 				ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
