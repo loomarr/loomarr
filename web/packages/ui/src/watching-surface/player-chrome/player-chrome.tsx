@@ -66,7 +66,7 @@ const PlayerChrome = ({
             band={band}
             density={density}
             ident={card}
-            steppedBack={previewOpen && transport.pointer}
+            steppedBack={previewOpen && (transport.pointer || density === "tv")}
           />
           {card ? null : playbar ? (
             <PreviewPlaybar

@@ -4,7 +4,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   type PlaybarSegment,
@@ -27,7 +27,13 @@ import {
 
 // The package compiles without the DOM lib (it is React Native first), so the test names the little
 // of the DOM it touches.
-type Node = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
+type Node = {
+  blur(): void;
+  click(): void;
+  focus(): void;
+  getAttribute(n: string): string | null;
+  textContent: string | null;
+};
 type Host = Parameters<typeof createRoot>[0] & {
   querySelector(s: string): Node | null;
   querySelectorAll(s: string): ArrayLike<Node>;
@@ -216,6 +222,98 @@ describe("PlayerChrome", () => {
   it("leaves the picture bare when hidden, out of reach of the pointer and assistive tech", () => {
     expect(bandHidden(mount(chrome()))).toBe(false);
     expect(bandHidden(mount(chrome({ visible: false })))).toBe(true);
+  });
+
+  describe("on a TV", () => {
+    const MIN = 60_000;
+    // The playbar lays its blocks out once it knows its width: report one, as a browser would.
+    beforeEach(() => {
+      type Observed = { target: unknown };
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(private readonly report: (entries: Observed[]) => void) {}
+          observe(target: unknown) {
+            queueMicrotask(() => this.report([{ target }]));
+          }
+          disconnect() {}
+          unobserve() {}
+        },
+      );
+      const element = (globalThis as unknown as { HTMLElement: { prototype: { offsetWidth: number } } })
+        .HTMLElement.prototype;
+      vi.spyOn(element, "offsetWidth", "get").mockReturnValue(1600);
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+    const laidOut = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    const tvChrome = (overrides: Partial<PlayerChromeProps> = {}) =>
+      chrome({
+        density: "tv",
+        formatTime: (ms) => `${ms / MIN}m`,
+        playbar: {
+          onSeek: vi.fn(),
+          playheadMs: 10 * MIN,
+          segments: [
+            { chips: [], id: "p1", kind: "programme", name: "Sitcom", startMs: 0, stopMs: 22 * MIN },
+            {
+              chips: [],
+              id: "p2",
+              kind: "programme",
+              name: "Late Movie",
+              startMs: 25 * MIN,
+              stopMs: 120 * MIN,
+            },
+          ],
+          window: { endMs: 120 * MIN, nowMs: 10 * MIN, startMs: -5 * MIN },
+        },
+        transport: transport({ density: "tv", pointer: false }),
+        ...overrides,
+      });
+    const block = (host: Host, name: string) =>
+      Array.from(host.querySelectorAll("[aria-label]")).find((el) => el.getAttribute("aria-label") === name);
+
+    // Focus does what the pointer does: the remote walks every block, and OK seeks the past.
+    it("previews the focused block, seeking only one that has begun", async () => {
+      const onSeek = vi.fn();
+      const host = mount(tvChrome({ playbar: { ...tvChrome().props.playbar, onSeek } }));
+      await laidOut();
+
+      const future = block(host, "Late Movie, 25m");
+      act(() => future?.focus());
+      expect(host.textContent).toContain("25m – 120m");
+      act(() => future?.click());
+      expect(onSeek).not.toHaveBeenCalled();
+      act(() => future?.blur());
+      expect(host.textContent).not.toContain("25m – 120m");
+
+      act(() => block(host, "Seek to Sitcom, 0m")?.click());
+      expect(onSeek).toHaveBeenCalledWith(0);
+    });
+
+    // A TV unmounts hidden controls, so the focused block never blurs: the card closes on its way out.
+    it("closes an open preview when the controls hide under it", async () => {
+      const onPreviewChange = vi.fn();
+      const host = doc.createElement("div");
+      doc.body.append(host);
+      const root = createRoot(host);
+      const render = (visible: boolean) =>
+        act(() =>
+          root.render(
+            <LoomarrProvider theme="dark">{tvChrome({ onPreviewChange, visible })}</LoomarrProvider>,
+          ),
+        );
+      mounted.push({ host, unmount: () => act(() => root.unmount()) });
+      render(true);
+      await laidOut();
+
+      act(() => block(host, "Late Movie, 25m")?.focus());
+      expect(onPreviewChange).toHaveBeenLastCalledWith(true);
+      render(false);
+      expect(onPreviewChange).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it("puts an open sheet over a dimmed picture, standing the controls back", () => {

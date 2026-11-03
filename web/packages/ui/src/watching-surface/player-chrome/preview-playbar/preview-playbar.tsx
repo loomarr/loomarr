@@ -1,6 +1,6 @@
 import { type Density, playerChrome, Text } from "@loomarr/design-system";
-import { useState } from "react";
-import { type LayoutChangeEvent, Pressable, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import { glass, gradientOr, webOnly } from "../glass";
 import { layoutPlaybar } from "../playbar-layout";
@@ -13,7 +13,8 @@ import { CARD_WIDTH, PreviewCard } from "../preview-card";
 // name and start; a break carries one thumbnail per spot, sized by duration. Depth is light, never
 // size (§9.2): every block is the same height and nothing moves; now has an amber edge, the block
 // under the pointer is fully lit with a white ring, and the rest of the future is dimmed. Pointing
-// at a block opens its preview card above it (pointer only), joined to it by a connector.
+// at a block opens its preview card above it, joined to it by a connector. A TV's focus does what the
+// pointer does: the remote walks every block, past and future, and OK on the past seeks there.
 
 const GAP = 4;
 const MIN_BREAK = 36;
@@ -27,7 +28,7 @@ interface PreviewPlaybarProps {
   /** Seek to an instant in the past; without it the playbar only previews. */
   onSeek?: (wallClockMs: number) => void;
   playheadMs: number;
-  /** Pointer devices preview on hover; touch has no card. */
+  /** Pointer devices preview on hover, a TV on focus; touch has no card. */
   pointer: boolean;
   segments: readonly PlaybarSegment[];
   window: PlaybarWindow;
@@ -56,10 +57,23 @@ const PreviewPlaybar = ({
 }: PreviewPlaybarProps) => {
   const [width, setWidth] = useState(0);
   const [hovered, setHovered] = useState<string | undefined>(undefined);
+  const open = useRef(false);
+  const reportPreview = useRef(onPreviewChange);
+  reportPreview.current = onPreviewChange;
   const hover = (id: string | undefined) => {
     setHovered(id);
-    onPreviewChange?.(id !== undefined);
+    open.current = id !== undefined;
+    onPreviewChange?.(open.current);
   };
+  // A playbar that goes with a card open (a TV unmounts hidden controls; the station-ID card stands in
+  // for them) closes the card on its way out, or the band stays stepped back behind nothing.
+  useEffect(
+    () => () => {
+      if (open.current) reportPreview.current?.(false);
+    },
+    [],
+  );
+  const tv = density === "tv";
   const height = pointer ? 64 : 44;
   const { boxes, xAt } = layoutPlaybar(segments, window, width, { gap: GAP, minBreak: MIN_BREAK });
   const head = xAt(Math.min(playheadMs, window.nowMs));
@@ -70,7 +84,7 @@ const PreviewPlaybar = ({
 
   return (
     <View aria-label="Schedule" role="group">
-      {openBox && pointer ? (
+      {openBox && (pointer || tv) ? (
         <>
           <View
             pointerEvents="none"
@@ -143,8 +157,10 @@ const PreviewPlaybar = ({
                     accessibilityLabel={
                       seek ? `Seek to ${name}` : name.charAt(0).toUpperCase() + name.slice(1)
                     }
-                    focusable={seek !== undefined}
+                    focusable={seek !== undefined || tv}
                     key={segment.id}
+                    onBlur={tv ? () => hover(undefined) : undefined}
+                    onFocus={tv ? () => hover(segment.id) : undefined}
                     onHoverIn={pointer ? () => hover(segment.id) : undefined}
                     onHoverOut={pointer ? () => hover(undefined) : undefined}
                     onPress={seek}
@@ -159,6 +175,10 @@ const PreviewPlaybar = ({
                       position: "absolute",
                       width: box.width,
                       zIndex: lit ? 10 : 1,
+                      // Native has no inset shadow: a TV draws the same ring as a border.
+                      ...(tv && Platform.OS !== "web"
+                        ? { borderColor: ring.color, borderWidth: ring.width }
+                        : {}),
                       ...webOnly({
                         boxShadow: `inset 0 0 0 ${ring.width}px ${ring.color}`,
                         filter,
