@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/metrics"
 )
 
 func TestClassifyStatus(t *testing.T) {
@@ -24,6 +26,40 @@ func TestClassifyStatus(t *testing.T) {
 	for code, want := range cases {
 		if got := ClassifyStatus(code); got != want {
 			t.Errorf("ClassifyStatus(%d) = %v, want %v", code, got, want)
+		}
+	}
+}
+
+// ClassifyStatus is the one status ladder: "try again later" is 408, 425, 429 and every 5xx
+// except the two that name a permanent mismatch (501 Not Implemented, 505 HTTP Version Not
+// Supported). That keeps a CDN's 52x, 507 and 511 transient.
+func TestClassifyStatusLadder(t *testing.T) {
+	for code := 100; code <= 599; code++ {
+		want := ClassPermanent
+		switch {
+		case code < 300:
+			want = ClassNone
+		case code == 401 || code == 403:
+			want = ClassAuth
+		case code == 404 || code == 410:
+			want = ClassNotFound
+		case code == 408 || code == 425 || code == 429:
+			want = ClassTransient
+		case code >= 500 && code != 501 && code != 505:
+			want = ClassTransient
+		}
+		if got := ClassifyStatus(code); got != want {
+			t.Errorf("ClassifyStatus(%d) = %v, want %v", code, got, want)
+		}
+	}
+}
+
+// A transient status without its own metric reason is retried and counted as other_status.
+func TestRetryReasonForUnlistedTransientStatus(t *testing.T) {
+	for _, code := range []int{425, 507, 511, 522} {
+		reason, retried := retryReason(context.Background(), &http.Response{StatusCode: code}, nil)
+		if !retried || reason != metrics.OutboundRetryStatusOther {
+			t.Errorf("status %d: reason %v retried %v, want other_status retried", code, reason, retried)
 		}
 	}
 }
