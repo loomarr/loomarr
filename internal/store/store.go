@@ -150,6 +150,9 @@ type ChannelStore interface {
 	// re-curation job names, else the one the job originated. ErrNotFound means a first
 	// approval creates it; ErrJobChannelGone means the named channel was removed.
 	GetChannelForJob(ctx context.Context, jobID string) (Channel, error)
+	// ChannelHasUnfinishedJob reports a refine or re-curation job of the channel that is
+	// queued, running, or done with a proposal still awaiting a decision.
+	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
 	// at revision 1; a positive revision replaces the row only when it still
 	// matches, then returns the saved channel with its incremented revision.

@@ -126,3 +126,60 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("GetChannelForJob(removed channel) = %v, want ErrJobChannelGone and not ErrNotFound", err)
 	}
 }
+
+// A channel has an unfinished job while one of its refine or re-curation jobs is queued, running,
+// or done with a proposal still waiting for a decision. A failed job, a decided proposal, another
+// channel's job, and the job the channel was made from are not unfinished work for it.
+func testChannelHasUnfinishedJob(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	idle := func(channelID string) {
+		t.Helper()
+		got, err := s.ChannelHasUnfinishedJob(ctx, channelID)
+		if err != nil || got {
+			t.Fatalf("ChannelHasUnfinishedJob(%s) = %v, %v; want false", channelID, got, err)
+		}
+	}
+	busy := func(channelID string) {
+		t.Helper()
+		got, err := s.ChannelHasUnfinishedJob(ctx, channelID)
+		if err != nil || !got {
+			t.Fatalf("ChannelHasUnfinishedJob(%s) = %v, %v; want true", channelID, got, err)
+		}
+	}
+	job := func(id, kind, status, channelID string) {
+		t.Helper()
+		if err := s.CreateJob(ctx, Job{ID: id, Kind: kind, Status: status, ChannelID: channelID,
+			CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proposal := func(id, jobID, status string) {
+		t.Helper()
+		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: jobID, Status: status,
+			ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	idle("ch-a")
+	job("origin", "suggest", "queued", "") // the request that made a channel names no channel
+	idle("ch-a")
+	job("failed", "suggest", "failed", "ch-a")
+	idle("ch-a")
+	job("other", "suggest", "queued", "ch-b")
+	idle("ch-a")
+	job("decided", "recurate", "done", "ch-a")
+	proposal("p-decided", "decided", "approved")
+	idle("ch-a")
+
+	job("waiting", "suggest", "done", "ch-a")
+	proposal("p-waiting", "waiting", "submitted")
+	busy("ch-a")
+	idle("ch-c")
+	job("queued", "recurate", "queued", "ch-c")
+	busy("ch-c")
+	job("running", "suggest", "running", "ch-d")
+	busy("ch-d")
+}

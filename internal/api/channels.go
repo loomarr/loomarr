@@ -471,6 +471,15 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 	intent.RefineText = strings.TrimSpace(in.Body.Change)
 	intent.CurrentLineup = lineupContext(ch.Lineup)
 
+	// One channel job at a time: a second refine, or one during a re-curation, would race the
+	// first to replace the same lineup.
+	if busy, err := s.store.ChannelHasUnfinishedJob(ctx, ch.ID); err != nil {
+		return nil, err
+	} else if busy {
+		return nil, errConflict("A refine of this channel is already in progress",
+			"This channel already has a change being generated or waiting for review. Finish or dismiss it before asking for another.")
+	}
+
 	jobID, err := s.suggest.Refine(ctx, ch.ID, intent, userIDFromHuma(ctx))
 	if err != nil {
 		return nil, err

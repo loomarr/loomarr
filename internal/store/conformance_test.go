@@ -61,6 +61,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ChannelOrigin", func(t *testing.T) { testChannelOrigin(t, newStore) })
 		t.Run("ChannelOutlivesItsPurgedJob", func(t *testing.T) { testChannelOutlivesItsPurgedJob(t, newStore) })
 		t.Run("ApprovalOfJobNamingAChannel", func(t *testing.T) { testApprovalOfJobNamingAChannel(t, newStore) })
+		t.Run("ChannelHasUnfinishedJob", func(t *testing.T) { testChannelHasUnfinishedJob(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })

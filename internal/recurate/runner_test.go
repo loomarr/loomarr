@@ -207,3 +207,34 @@ func TestRunner_NoEligibleChannelsIsNoop(t *testing.T) {
 		t.Errorf("no channel should have been refined, got %v", fr.calls)
 	}
 }
+
+// A channel with an unfinished channel job (a refine being generated, or a re-curation proposal
+// nobody has decided yet) is skipped with an Info line, so unapproved re-curations never pile up
+// week after week and a run never replaces a refine still in flight.
+func TestRunner_SkipsAChannelWithAnUnfinishedChannelJob(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	ctx := context.Background()
+	seedJob(t, st, "job-busy", "90s action")
+	seedJob(t, st, "job-idle", "90s comedy")
+	seedChannelStatus(t, st, "c-busy", "job-busy", schedule.StatusLive, &schedule.AutoCurate{}, 1)
+	seedChannelStatus(t, st, "c-idle", "job-idle", schedule.StatusLive, &schedule.AutoCurate{}, 2)
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-refine", Kind: "suggest", Status: "queued", ChannelID: "c-busy",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	fr := &fakeRefiner{}
+	kicked, err := recurate.NewRunner(st, fr, slog.New(slog.NewTextHandler(&logs, nil))).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kicked != 1 || len(fr.calls) != 1 || fr.calls[0] != "c-idle" {
+		t.Fatalf("re-curated %v (kicked %d), want only c-idle", fr.calls, kicked)
+	}
+	if !strings.Contains(logs.String(), "level=INFO") || !strings.Contains(logs.String(), "unfinished") || !strings.Contains(logs.String(), "c-busy") {
+		t.Errorf("skipping c-busy left no Info line naming it:\n%s", logs.String())
+	}
+}

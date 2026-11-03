@@ -145,6 +145,25 @@ func channelForJob(ctx context.Context, q channelDB, ph placeholder, jobID strin
 	return scanChannel(q.QueryRowContext(ctx, ph(channelSelect+` WHERE intent_ref = ?`), jobID))
 }
 
+// ChannelHasUnfinishedJob reports whether one of the channel's refine or re-curation jobs is
+// still in flight: queued, running, or done with a proposal no one has decided yet. A new
+// channel job is refused while one is, so two runs never race to replace each other's lineup and
+// unapproved re-curations do not pile up. A failed job is finished: it leaves nothing to decide.
+func (s *sqlStore) ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT COUNT(*) FROM jobs j
+		  WHERE j.channel_id = ?
+		    AND (j.status IN ('queued', 'running')
+		         OR (j.status = 'done' AND EXISTS (
+		               SELECT 1 FROM proposals p WHERE p.job_id = j.id AND p.status = 'submitted')))`),
+		channelID).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("channel %s unfinished jobs: %w", channelID, err)
+	}
+	return n > 0, nil
+}
+
 func (s *sqlStore) SaveChannel(ctx context.Context, ch Channel) (Channel, error) {
 	if (ch.Status == schedule.StatusLive || ch.Status == schedule.StatusDrifted) && ch.IntentRef != "" {
 		tx, err := s.db.BeginTx(ctx, nil)

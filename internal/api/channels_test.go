@@ -2089,3 +2089,34 @@ func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
 		t.Fatalf("now-next without a guide → %d, want 200", resp.StatusCode)
 	}
 }
+
+// A refine is refused while the channel already has an unfinished channel job, so two clicks or a
+// refine during a re-curation never queue a second generation.
+func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
+	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	ctx := context.Background()
+	ch := store.Channel{IntentJSON: `{"description":"90s action"}`}
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-origin", "90s Action", 42
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-running", Kind: "recurate", Status: "running", ChannelID: "c1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken, `{"change":"more action"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("refine during another channel job → %d, want 409", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if !strings.Contains(problem.Title+problem.Detail, "already in progress") {
+		t.Errorf("problem = %+v, want it to say a refine is already in progress", problem)
+	}
+	if fs.refines != 0 {
+		t.Errorf("Refine ran %d times while another channel job was unfinished", fs.refines)
+	}
+}

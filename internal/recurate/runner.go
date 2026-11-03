@@ -28,6 +28,7 @@ type Adjacencer interface {
 // RunnerStore is the slice of the store the runner needs.
 type RunnerStore interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
+	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 }
 
 // Runner is the `channel-recurate` scheduler job (§8.2): on each tick it finds the channels
@@ -68,6 +69,17 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 	}
 	for _, ch := range channels {
 		if !eligible(ch) {
+			continue
+		}
+		busy, berr := r.store.ChannelHasUnfinishedJob(ctx, ch.ID)
+		if berr != nil {
+			r.log.Warn("re-curation: could not check the channel's unfinished jobs; skipping",
+				"channel", ch.ID, "err", berr)
+			continue
+		}
+		if busy {
+			r.log.Info("re-curation: the channel has an unfinished refine or re-curation; skipping",
+				"channel", ch.ID)
 			continue
 		}
 		intent, ok := r.refreshIntent(ctx, ch)
