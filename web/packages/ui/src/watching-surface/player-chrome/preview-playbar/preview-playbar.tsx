@@ -211,13 +211,27 @@ const PreviewPlaybar = ({
                             ),
                           }}
                         >
-                          <Text density={density} numberOfLines={1} strong textRole="cardMeta" tone="primary">
+                          {/* Left-aligned by hand: a seekable tile is a button, which the web centres. */}
+                          <Text
+                            density={density}
+                            numberOfLines={1}
+                            strong
+                            style={{ textAlign: "left" }}
+                            textRole="cardMeta"
+                            tone="primary"
+                          >
                             {/* The space keeps the name and the time two words on the web, where both
                                 are inline spans: a seekable tile's name must contain its text. */}
                             {`${segment.name} `}
                           </Text>
                           {pointer ? (
-                            <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
+                            <Text
+                              density={density}
+                              numberOfLines={1}
+                              style={{ textAlign: "left" }}
+                              textRole="guideMeta"
+                              tone="secondary"
+                            >
                               {formatTime(segment.startMs)}
                             </Text>
                           ) : null}
