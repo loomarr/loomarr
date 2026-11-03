@@ -48,7 +48,9 @@ separately. An impossible combination fails the read closed and is recorded for 
   Success inserts the Proposal and marks Attempt and Job terminal in one transaction; a failed
   execution materialises neither a Proposal nor a Channel. The suggest worker has no other job
   lifecycle: `suggest.NewService` requires the workflow, a stale Attempt's result is dropped
-  without a failure write, and a committed Proposal notifies the approvers once.
+  without a failure write, and approvers are told a request is waiting only when a person still has
+  to act: a Proposal an automatic grant approved sends no waiting notice. A claimed Job whose stored
+  Intent cannot decode is failed on its own and never aborts the rest of the claim batch.
 - Retrying a failed first request creates a fresh Job. Refine and re-curate also create a fresh Job,
   seeded from the intent the Channel owns (`channels.intent_json`); the Job names the Channel
   (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or

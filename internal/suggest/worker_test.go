@@ -387,6 +387,170 @@ func TestWorker_GeneratedProposalNotifiesApprovers(t *testing.T) {
 	}
 }
 
+// Approvers hear "a request is waiting" only when a person still has to act: a proposal an
+// automatic grant already approved never sends it, so nobody gets a waiting notice followed by an
+// approval notice for the same proposal.
+func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
+	const onePick = `{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`
+	grace := identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}
+	tests := []struct {
+		name       string
+		user       identitystore.User
+		picks      string
+		curator    *recordingCurator
+		planError  error
+		start      func(ctx context.Context, svc *suggest.Service, st store.Store) error
+		wantNotice bool
+	}{
+		{
+			name: "auto-curated recurate that is approved", user: grace, picks: onePick,
+			curator: &recordingCurator{decision: suggest.Decision{Approved: true}},
+			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
+				if _, err := st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+					ID: "channel-recurate", Number: 72, Name: "Recurate Channel", Status: schedule.StatusLive, IntentRef: "job-origin",
+				}}); err != nil {
+					return err
+				}
+				_, err := svc.Recurate(ctx, "channel-recurate", suggest.Intent{Description: "sci-fi"})
+				return err
+			},
+		},
+		{
+			name: "auto-approved within quota", user: grace, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+		},
+		{
+			// Two earlier approved acquisitions already spend the cap of one.
+			name: "requester over quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 1}, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, st store.Store) error {
+				now := time.Now().UTC()
+				if err := st.CreateJob(ctx, store.Job{
+					ID: "job-spent", Kind: "suggest", Status: "done", CreatedBy: "grace", IntentJSON: `{"description":"earlier"}`,
+					Deadline: now, CreatedAt: now, UpdatedAt: now,
+				}); err != nil {
+					return err
+				}
+				if err := st.CreateProposal(ctx, store.Proposal{
+					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
+					ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":91001,"name":"A"},{"mediaType":"movie","tmdbId":91002,"name":"B"}]}`,
+					CreatedAt:    now, UpdatedAt: now,
+				}); err != nil {
+					return err
+				}
+				for _, id := range []int{91001, 91002} {
+					key, err := provision.Title{MediaType: provision.Movie, TMDBID: id}.Key()
+					if err != nil {
+						return err
+					}
+					if err := st.UpsertTitle(ctx, provision.Record{Key: key, State: provision.Wanted}); err != nil {
+						return err
+					}
+				}
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+		{
+			name: "refine is always admin-reviewed", user: grace, picks: onePick,
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Refine(ctx, "channel-1", suggest.Intent{Description: "sci-fi", RefineText: "more"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+		{
+			name: "auto-approve errors and the proposal stays submitted", user: grace, picks: onePick,
+			planError: fmt.Errorf("cannot build local channel"),
+			start: func(ctx context.Context, svc *suggest.Service, _ store.Store) error {
+				_, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+				return err
+			},
+			wantNotice: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			if err := st.UpsertUser(ctx, tt.user); err != nil {
+				t.Fatal(err)
+			}
+			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			done := newDoneEmitter()
+			curator := tt.curator
+			if curator == nil {
+				curator = &recordingCurator{}
+			}
+			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{PlanError: tt.planError}, time.Now)
+			svc := buildService(t, st, testkit.NewLLM(
+				catalogSearchResponse(map[string]any{"query": "marigold"}),
+				finalResponseWithNone(tt.picks),
+			)).WithProposalNotifier(notifier).
+				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger())).
+				WithAutoCurate(curator).
+				WithProgressEmitter(done)
+			if err := tt.start(ctx, svc, st); err != nil {
+				t.Fatal(err)
+			}
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go svc.Run(runCtx)
+			// done is emitted after the notice and the automatic decision both settle.
+			waitForDoneEvent(t, done)
+
+			got := len(notifier.submitted)
+			if tt.wantNotice && got != 1 || !tt.wantNotice && got != 0 {
+				t.Fatalf("submitted notices = %d, want notice=%v", got, tt.wantNotice)
+			}
+		})
+	}
+}
+
+// A built proposal follows the same rule as a generated one.
+func TestSubmitBuilt_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		user       identitystore.User
+		wantNotice bool
+	}{
+		{name: "auto-approved within quota", user: identitystore.User{ID: "grace", AutoApprove: true, Quota: 100}},
+		{name: "no auto-approve grant", user: identitystore.User{ID: "grace"}, wantNotice: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := newStore(t)
+			if err := st.UpsertUser(ctx, tt.user); err != nil {
+				t.Fatal(err)
+			}
+			notifier := submittedNotifier{submitted: make(chan store.Proposal, 4)}
+			approver := suggest.NewApprover(st, &testkit.ApprovalChannels{}, time.Now)
+			svc := buildService(t, st, testkit.NewLLM()).WithProposalNotifier(notifier).
+				WithAutoApprove(suggest.NewAutoApprover(st, approver, func(context.Context) int { return 100 }, testkit.Logger()))
+			built := suggest.Proposal{
+				ChannelName: "Marigold",
+				Lineup:      []suggest.ProposalItem{{MediaType: "movie", Name: "Marigold Protocol", Year: 1999, TMDBID: 90000603, InLibrary: true}},
+			}
+			if _, err := svc.SubmitBuilt(ctx, suggest.Intent{Description: "Marigold"}, built, "grace"); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(notifier.submitted); got != btoi(tt.wantNotice) {
+				t.Fatalf("submitted notices = %d, want notice=%v", got, tt.wantNotice)
+			}
+		})
+	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	st := newStore(t)
 	workflow := proposalworkflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)

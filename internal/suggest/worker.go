@@ -224,10 +224,7 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Propo
 		ID: recorded.ID, JobID: recorded.JobID, Status: "submitted", CreatedBy: createdBy,
 		ProposalJSON: string(blob), CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
 	}
-	if s.notify != nil {
-		s.notify.ProposalSubmitted(ctx, row)
-	}
-	s.considerAutomaticApproval(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
+	s.settleSubmitted(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
 	return recorded.JobID, nil
 }
 
@@ -335,10 +332,7 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 			ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
 			ProposalJSON: string(blob), CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
 		}
-		if s.notify != nil {
-			s.notify.ProposalSubmitted(ctx, row)
-		}
-		s.considerAutomaticApproval(ctx, store.Job{
+		s.settleSubmitted(ctx, store.Job{
 			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
 		}, row)
 	}
@@ -379,11 +373,25 @@ func (s *Service) executionIntent(ctx context.Context, kind, jobID string, inten
 	return intent, nil
 }
 
+// settleSubmitted runs the automatic grants on a freshly committed proposal and tells the
+// approvers a request is waiting only if a person still has to act on it. An auto-approved or
+// auto-curated proposal never sends the waiting notice, so no one is told about a proposal and
+// then told it was approved.
+func (s *Service) settleSubmitted(ctx context.Context, job store.Job, p store.Proposal) {
+	if s.considerAutomaticApproval(ctx, job, p) {
+		return
+	}
+	if s.notify != nil {
+		s.notify.ProposalSubmitted(ctx, p)
+	}
+}
+
 // considerAutomaticApproval applies the two optional grants only after the
 // proposal is durably visible. Generation completion and proposal decision are
 // distinct lifecycles: done means inference produced a persisted proposal;
 // approval may move that proposal from submitted to approved immediately after.
-func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) {
+// It reports whether a grant approved the proposal.
+func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) (approved bool) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
@@ -400,6 +408,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 		} else if d.Approved {
 			s.log.Info("auto-approved within quota",
 				"proposal", p.ID, "user", p.CreatedBy, "enqueued", d.Enqueued)
+			approved = true
 		} else {
 			s.log.Debug("not auto-approved", "proposal", p.ID, "reason", d.Reason)
 		}
@@ -416,10 +425,12 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 		} else if d.Approved {
 			s.log.Info("auto-curated within thresholds",
 				"proposal", p.ID, "job", job.ID, "enqueued", d.Enqueued)
+			approved = true
 		} else if d.Reason != "" {
 			s.log.Debug("not auto-curated", "proposal", p.ID, "reason", d.Reason)
 		}
 	}
+	return approved
 }
 
 func (s *Service) recordSuggestionQuality(
