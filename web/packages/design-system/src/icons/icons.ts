@@ -13,9 +13,12 @@ import Ellipsis from "lucide-react-native/icons/ellipsis";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
+import List from "lucide-react-native/icons/list";
 import ListChecks from "lucide-react-native/icons/list-checks";
 import LoaderCircle from "lucide-react-native/icons/loader-circle";
+import Maximize from "lucide-react-native/icons/maximize";
 import Menu from "lucide-react-native/icons/menu";
+import Minimize from "lucide-react-native/icons/minimize";
 import Pause from "lucide-react-native/icons/pause";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
@@ -42,10 +45,15 @@ const icons = {
   // Web's phone-width bottom bar (#1785, #1659 Shell nav) — the admin/member destinations
   // the sidebar already names with lucide-react glyphs, so the bar reads as the same product.
   filler: Clapperboard,
+  // The player's window tools (§9.4).
+  fullscreen: Maximize,
+  fullscreenExit: Minimize,
   guide: BookOpen,
   help: ListChecks,
   home: House,
   info: Info,
+  // The player's Channels sheet (§9.4): a list of channels, where `channels` is the TV destination.
+  list: List,
   loading: LoaderCircle,
   menu: Menu,
   more: Ellipsis,

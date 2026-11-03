@@ -30,6 +30,9 @@ func (r *FileStructureAssessmentEvidenceRepository) PutStructureWindowAssessment
 	if err := fillerstructurewindow.ValidateRecordedAssessment(recorded); err != nil {
 		return err
 	}
+	if fillerstructurewindow.RetryableCallRecord(recorded.Record) {
+		return fmt.Errorf("publish structure window call: %w", ErrStructureWindowRetryable)
+	}
 	assessmentRaw, err := json.Marshal(recorded.Assessment)
 	if err != nil || len(assessmentRaw) == 0 || len(assessmentRaw) > structureWindowAssessmentMaximumBytes {
 		return errors.New("marshal bounded structure window assessment")

@@ -1,26 +1,25 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
 import { useAutoHideControls } from "./internal/use-auto-hide-controls";
 import { useFullscreen } from "./internal/use-fullscreen";
 import { usePlaybackState } from "./internal/use-playback-state";
-import { LiveIndicator } from "./live-indicator";
 import { PlayToggle } from "./play-toggle";
 import type { VideoPlayerProps } from "./video-player.type";
 import { VolumeControl } from "./volume-control";
 
 // VideoPlayer — the app's own video surface, with Loomarr's controls rather than the browser's
-// (V39, frontend-design §3 Layer 1). It COMPOSES named controls (PlayToggle, VolumeControl,
-// FullscreenButton, LiveIndicator, and the live scrubber slot) rather than hand-rolling each.
+// (V39, frontend-design §3 Layer 1). A clip gets its named controls (PlayToggle, VolumeControl,
+// FullscreenButton); a live channel gets the caller's §9 player chrome through `renderChrome`.
 //
 // ⚠ **Custom controls rather than `<video controls>` — a maintainer decision (2026-08-03).** Native
 // controls are keyboard-correct and free; hand-built ones make that this file's job (see the
 // keyboard shortcuts). What they buy is a player that reads as part of the app.
 //
-// ⚠ **Knows NOTHING about clips or channels.** It takes a `src`/`attach` and slots (`topBar`,
-// `scrubber`); the filler catalog hands it a clip URL, channel-watch hands it hls.js + a live
-// timeline. Putting `ClipDTO`/channel concepts in here would make "core primitive" a lie.
+// ⚠ **Knows NOTHING about clips or channels.** It takes a `src`/`attach` and slots (`overlay`,
+// `renderChrome`); the filler catalog hands it a clip URL, channel-watch hands it hls.js and the
+// player chrome. Putting `ClipDTO`/channel concepts in here would make "core primitive" a lie.
 
 // mmss renders a media time (m:ss) — for the non-live clip player's progress readout.
 const mmss = (seconds: number): string => {
@@ -30,7 +29,6 @@ const mmss = (seconds: number): string => {
 
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
-const LIVE_EDGE_STATE = { mode: "live" as const, lagSeconds: 0, viewerTimeMs: 0, noticeRevision: 0 };
 
 // Hold the outgoing decoded picture inside the same <video> while an attached source is replaced.
 // This is a poster, not a hidden player or decoder: transport teardown can release immediately,
@@ -71,17 +69,11 @@ const VideoPlayer = ({
   leading,
   live,
   liveTransport,
-  scrubber,
-  topBar,
-  timeLeft,
-  barControls,
+  renderChrome,
   overlay,
-  panel,
-  hints,
   onShortcut,
   attach,
   onChannelStep,
-  chrome = true,
   className,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -107,14 +99,6 @@ const VideoPlayer = ({
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
-
-  // An open panel holds the controls shown, the way an open menu does.
-  const panelOpen = Boolean(panel);
-  useEffect(() => {
-    if (!panelOpen) return;
-    holdControls.hold(true);
-    return () => holdControls.hold(false);
-  }, [panelOpen, holdControls]);
 
   // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
   // effects behind outgoing media work; the Tuner has already painted its acknowledgement before
@@ -156,10 +140,12 @@ const VideoPlayer = ({
     // Typing belongs to the field: a search box in the panel must be able to take "m" and "k".
     if (target.closest("input:not([type=range]), textarea, select")) return;
     const isSlider = target.getAttribute("role") === "slider";
-    const isButton = target.tagName === "BUTTON";
+    // The live chrome's controls are RN-web Pressables — `div[role=button]`, not <button> — and
+    // they act on Space and Enter themselves, so the frame must not act on the key a second time.
+    const isButton = Boolean(target.closest("button, [role=button]"));
     const ownsNavigationKey = Boolean(
       target.closest(
-        "button, input, select, textarea, [role=slider], [role=menuitem], [role=menuitemcheckbox]",
+        "button, [role=button], input, select, textarea, [role=slider], [role=menuitem], [role=menuitemcheckbox]",
       ),
     );
     switch (e.key) {
@@ -245,45 +231,48 @@ const VideoPlayer = ({
           controls stay operable. pointer-events-none so it never eats a click on the frame. */}
         {overlay && <div className="pointer-events-none absolute inset-0 z-0">{overlay}</div>}
 
-        {/* TOP BAR — over a scrim, fading with the controls. Live keeps this focused on Channel
-          identity; live-edge transport belongs beside Play below. Non-live uses `leading` (left) +
-          `title` (right), the clip player's existing chrome. */}
-        {chrome && (live ? topBar : title || leading) && (
+        {/* LIVE: the caller's chrome (§9), drawn from the player's own state. */}
+        {live &&
+          renderChrome?.({
+            controlsShown,
+            fullscreen,
+            hold: holdControls.hold,
+            muted,
+            playing,
+            setMuted,
+            setVolume,
+            toggle,
+            toggleFullscreen,
+            volume,
+          })}
+
+        {/* TOP BAR (a clip) — `leading` (left) + `title` (right), over a scrim, fading with the
+          controls. */}
+        {!live && (title || leading) && (
           <div
             className={cn(
               "pointer-events-none absolute top-0 right-0 left-0 flex items-center gap-2.5 bg-linear-to-b from-black/70 to-transparent p-3 transition-opacity duration-200",
               controlsShown ? "opacity-100" : "opacity-0",
             )}
           >
-            {live ? (
-              <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5">{topBar}</div>
-            ) : (
-              <>
-                <div className="pointer-events-auto shrink-0">{leading}</div>
-                {title && (
-                  <p className="text-static-100 pointer-events-auto ml-auto min-w-0 truncate text-right text-sm font-medium">
-                    {title}
-                  </p>
-                )}
-              </>
+            <div className="pointer-events-auto shrink-0">{leading}</div>
+            {title && (
+              <p className="text-static-100 pointer-events-auto ml-auto min-w-0 truncate text-right text-sm font-medium">
+                {title}
+              </p>
             )}
           </div>
         )}
 
-        {/* CONTROL BAR — over a bottom scrim, auto-hiding. A COLUMN: the live scrubber gets its own
-          FULL-WIDTH row above the buttons (the mock); the buttons row follows. */}
-        {chrome && (
+        {/* CONTROL BAR (a clip) — over a bottom scrim, auto-hiding: play, volume and the elapsed time
+          left-packed, fullscreen at the far edge. */}
+        {!live && (
           <div
             className={cn(
               "absolute right-0 bottom-0 left-0 flex flex-col gap-2.5 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
               controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
             )}
           >
-            {/* Row 1 (live): the full-width mini-guide scrubber. */}
-            {live && scrubber && <div className="w-full">{scrubber}</div>}
-
-            {/* Row 2 — the mock's control row: LEFT-PACKED play → volume → time, with only fullscreen
-            pushed to the far right (ml-auto). No stretching spacer: everything sits next to play. */}
             <fieldset className="flex min-w-0 items-center gap-2 border-0 p-0 sm:gap-3">
               <legend className="sr-only">Playback controls</legend>
               <PlayToggle playing={playing} onToggle={toggle} />
@@ -293,45 +282,17 @@ const VideoPlayer = ({
                 onVolumeChange={setVolume}
                 onMutedChange={setMuted}
               />
-              {live && (
-                <LiveIndicator
-                  state={liveTransport?.state ?? LIVE_EDGE_STATE}
-                  onGoLive={() => {
-                    const video = videoRef.current;
-                    if (video && liveTransport) void liveTransport.goLive(video);
-                  }}
-                />
+              {ready && (
+                <span className="text-static-300 shrink-0 font-mono text-xs tabular-nums">
+                  {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
+                </span>
               )}
-
-              {/* Time, right after volume (mock order). Live: the caller's programme time (schedule);
-              non-live (a clip): the video's own elapsed / total. */}
-              {live
-                ? timeLeft && (
-                    <span className="text-static-300 hidden shrink-0 font-mono text-xs tabular-nums lg:inline-flex">
-                      {timeLeft}
-                    </span>
-                  )
-                : ready && (
-                    <span className="text-static-300 shrink-0 font-mono text-xs tabular-nums">
-                      {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
-                    </span>
-                  )}
-
-              {/* The right cluster (ml-auto): the caller's bar controls (audio/subtitles) then fullscreen
-              at the far edge — the "controls beside fullscreen" the maintainer asked for. */}
               <div className="ml-auto flex items-center gap-1.5">
-                {barControls}
                 <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
               </div>
             </fieldset>
-
-            {/* Row 3 (live): the caller's keyboard hints. */}
-            {live && hints}
           </div>
         )}
-
-        {/* PANEL SLOT — the caller's side panel, over the controls' scrims so it takes the pointer. */}
-        {panel && <div className="absolute inset-y-0 right-0 z-10 flex max-w-full">{panel}</div>}
       </div>
     </HoldControlsContext.Provider>
   );

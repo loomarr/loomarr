@@ -5,7 +5,7 @@
 //
 // Everything reaches the output through one master gain at the player's own volume; nothing plays
 // when the player is muted, before the page has had a user gesture (a cold autoplay start), or when
-// the viewer has turned the sound off (the Audio menu's "Channel-change sound").
+// the viewer has turned the sound off (Settings' "Channel-change sound").
 
 /** The static's level (before the player's volume): near the programme's own loudness. */
 const STATIC_PEAK = 0.13;

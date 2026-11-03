@@ -45,6 +45,9 @@ type fillerBuild struct {
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
+	// providers is every provider a filler source can name; the API publishes it and the fetcher
+	// and the service adapter dispatch through it.
+	providers *sourceprovider.Registry
 	// intakeLanguages is the language gate's live wanted set, for split review to compare against.
 	intakeLanguages func(context.Context) (string, error)
 }
@@ -140,20 +143,28 @@ func buildFillerSubsystem(
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
 	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
+	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
+	// folder there is nothing to download into, and the cache lives in memory only.
+	runtimesPath := ""
+	if dir := layout.ClipDir(); dir != "" {
+		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+	}
+	providers := fillerSourceProviders(ytDlpPath,
+		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		// The compilation gate can only hold back a runtime it knows (#1773).
+		func() bool { return !set.boolv("filler.acquisition.compilations") }, log)
+	result.providers = providers
 	adapter := fillerServiceAdapter{
-		syncer: syncer, fetcher: fetcher,
+		providers: providers,
+		syncer:    syncer, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
-		archiveFinder: clipfetch.NewArchiveSourceFinder(),
-		home:          set.homeGeography,
-		splitter:      splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		home:     set.homeGeography,
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
 		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
-	}
-	if ytDlpPath != "" {
-		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
 	}
 
 	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
@@ -312,16 +323,6 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
-	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
-	// folder there is nothing to download into, and the cache lives in memory only.
-	runtimesPath := ""
-	if dir := layout.ClipDir(); dir != "" {
-		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
-	}
-	providers := fillerSourceProviders(ytDlpPath,
-		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
-		// The compilation gate can only hold back a runtime it knows (#1773).
-		func() bool { return !set.boolv("filler.acquisition.compilations") }, log)
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
@@ -382,15 +383,20 @@ func buildFillerSubsystem(
 
 // fillerSourceProviders is every provider a filler source can name. YouTube and archive.org are
 // fetched; the folder and the media library are scanned where they are. A source whose provider is
-// missing here is inert, so adding a provider is its package plus one line below.
+// missing here is inert, so adding a provider is its package plus one line below. The order is the
+// order the source list shows them in.
 func fillerSourceProviders(
 	ytDlpPath string, archiveCatalog archiveprovider.Catalog, archiveRuntimes func() bool, log *slog.Logger,
 ) *sourceprovider.Registry {
+	youtube := youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath)))
+	if ytDlpPath != "" {
+		youtube.WithFinder(clipfetch.NewYouTubeSourceFinder(ytDlpPath))
+	}
 	providers, err := sourceprovider.NewRegistry(
-		youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath))),
 		archiveprovider.New(archiveprovider.Config{Catalog: archiveCatalog, Runtimes: archiveRuntimes, Log: log}),
-		sourceprovider.Scanned("folder", "Folder", ""),
-		sourceprovider.Scanned("library", "Media library", ""),
+		youtube,
+		sourceprovider.Folder(),
+		sourceprovider.Library(),
 	)
 	if err != nil {
 		// The IDs are fixed above, so this is a programming error, never an installation's.

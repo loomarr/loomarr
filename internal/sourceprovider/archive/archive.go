@@ -13,6 +13,7 @@ package archive
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
@@ -51,6 +52,8 @@ type Config struct {
 	Runtimes func() bool
 	// Log receives a failed station search. nil discards.
 	Log *slog.Logger
+	// Finder suggests collections and verifies an address; nil uses the live service.
+	Finder sourceprovider.Finder
 }
 
 // Provider lists archive.org collections.
@@ -58,13 +61,17 @@ type Provider struct {
 	catalog  Catalog
 	runtimes func() bool
 	log      *slog.Logger
+	finder   sourceprovider.Finder
 }
 
 // New builds the provider.
 func New(cfg Config) *Provider {
-	p := &Provider{catalog: cfg.Catalog, runtimes: cfg.Runtimes, log: cfg.Log}
+	p := &Provider{catalog: cfg.Catalog, runtimes: cfg.Runtimes, log: cfg.Log, finder: cfg.Finder}
 	if p.catalog == nil {
 		p.catalog = clipfetch.NewArchiveDownloader()
+	}
+	if p.finder == nil {
+		p.finder = clipfetch.NewArchiveSourceFinder()
 	}
 	if p.log == nil {
 		p.log = slog.New(slog.DiscardHandler)
@@ -78,8 +85,51 @@ func (*Provider) ID() sourceprovider.ID { return ID }
 // Describe implements sourceprovider.Provider.
 func (*Provider) Describe() sourceprovider.Description {
 	return sourceprovider.Description{
-		Label: "Internet Archive", AddressHint: "https://archive.org/details/collection", Fetched: true,
+		Label: "Archive.org", AddressHint: "https://archive.org/details/collection", Fetched: true,
+		GroupDetail:  "collections you've added — searched and downloaded on their configured schedule",
+		SourceDetail: "New clips are checked before they can play.",
+		BadAddress: sourceprovider.Problem{
+			Title:  "That doesn't look like an archive.org collection",
+			Detail: "Paste a collection identifier (like classic_tv_commercials) or its archive.org URL.",
+		},
 	}
+}
+
+// Suggest implements sourceprovider.Finder.
+func (p *Provider) Suggest(ctx context.Context, query string, limit int) ([]sourceprovider.Suggestion, error) {
+	return p.finder.Suggest(ctx, query, limit)
+}
+
+// Resolve implements sourceprovider.Finder.
+func (p *Provider) Resolve(ctx context.Context, input string) (sourceprovider.Suggestion, error) {
+	return p.finder.Resolve(ctx, input)
+}
+
+// Address implements sourceprovider.Addresser: it pulls the collection identifier out of whatever
+// an operator pasted.
+//
+// Three spellings are accepted because all three are things people actually paste: a bare
+// identifier, a `/details/<id>` path, and a full URL. Anything else is refused, because silently
+// registering an unparseable source would produce a row that can never fetch.
+func (*Provider) Address(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	if i := strings.Index(v, "archive.org/details/"); i >= 0 {
+		v = v[i+len("archive.org/details/"):]
+	} else if i := strings.Index(v, "/details/"); i >= 0 {
+		v = v[i+len("/details/"):]
+	}
+	if j := strings.IndexAny(v, "/?#"); j >= 0 {
+		v = v[:j]
+	}
+	// An identifier is a plain slug. Anything still carrying a scheme, a dot or a space is a
+	// URL we did not recognise rather than an id, and guessing would create a dead row.
+	if v == "" || strings.ContainsAny(v, ":. \t") {
+		return ""
+	}
+	return v
 }
 
 // Items converts archive.org's discovered items to provider items.

@@ -245,3 +245,45 @@ func TestSearch_FindsItemsInsideOneSource(t *testing.T) {
 		t.Fatalf("got %v, %v (limits %v)", ids(got), err, catalog.searchLimits)
 	}
 }
+
+func TestProvider_IsDiscoverableAndAddable(t *testing.T) {
+	var p sourceprovider.Provider = archive.New(archive.Config{})
+	for name, ok := range map[string]bool{
+		"Finder":    func() bool { _, ok := p.(sourceprovider.Finder); return ok }(),
+		"Addresser": func() bool { _, ok := p.(sourceprovider.Addresser); return ok }(),
+		"Searcher":  func() bool { _, ok := p.(sourceprovider.Searcher); return ok }(),
+	} {
+		if !ok {
+			t.Errorf("the archive provider does not implement %s", name)
+		}
+	}
+	if p.Describe().BadAddress.Title == "" {
+		t.Error("the archive provider does not say what address it accepts")
+	}
+}
+
+// What an operator pastes into "Add a source" is not consistent, and the three shapes below are
+// all things people really paste. Anything else must be REFUSED rather than guessed at: a row
+// built from an unparseable string is a source that can never fetch and never explains why.
+func TestProvider_AddressReadsTheShapesAnOperatorPastes(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for _, tc := range []struct{ in, want string }{
+		{"classic_tv_commercials", "classic_tv_commercials"},
+		{"https://archive.org/details/classic_tv_commercials", "classic_tv_commercials"},
+		{"http://archive.org/details/classic_tv_commercials/", "classic_tv_commercials"},
+		{"archive.org/details/classic_tv_commercials?sort=date", "classic_tv_commercials"},
+		{"/details/classic_tv_commercials", "classic_tv_commercials"},
+		{"  classic_tv_commercials  ", "classic_tv_commercials"},
+
+		// Refused. Each of these would otherwise become a row that looks registered.
+		{"", ""},
+		{"https://example.com/some/page", ""},
+		{"not an id", ""},
+		{"https://archive.org/", ""},
+		{"archive.org/details/", ""},
+	} {
+		if got := p.Address(tc.in); got != tc.want {
+			t.Errorf("Address(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

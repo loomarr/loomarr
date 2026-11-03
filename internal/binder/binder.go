@@ -162,7 +162,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
 		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
 	}
-	lineup, err := lineupEntries(proposal)
+	lineup, err := lineupEntries(proposal, time.Now().UTC())
 	if err != nil {
 		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
 	}
@@ -452,7 +452,7 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
-	return lineupEntries(p)
+	return lineupEntries(p, time.Now().UTC())
 }
 
 // RequestFromIntent resolves who asked for the approved proposal identified by intentRef and what
@@ -557,7 +557,11 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 // which start as pending slots and swap to programs in place as they land.
 // Duplicate keys are collapsed so a title that appears in both lists (e.g. an
 // acquisition the human also marked in-library) yields exactly one entry.
-func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
+//
+// Each entry records the pick's confidence as its Fit (schedule.StampFit) and `now` as AddedAt:
+// re-curation retires the lowest fit × recency, and a re-pick of an existing entry re-scores it
+// (schedule.ApplyLineup keeps the original AddedAt).
+func lineupEntries(p suggest.Proposal, now time.Time) ([]schedule.LineupEntry, error) {
 	out := make([]schedule.LineupEntry, 0, len(p.Lineup))
 	seen := make(map[provision.Key]struct{}, len(p.Lineup))
 	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {
@@ -590,6 +594,8 @@ func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
 				SeasonMin:        it.SeasonMin,
 				SeasonMax:        it.SeasonMax,
 				EpisodeSelection: it.EpisodeSelection,
+				Fit:              schedule.StampFit(it.Confidence),
+				AddedAt:          now,
 			})
 		}
 	}
