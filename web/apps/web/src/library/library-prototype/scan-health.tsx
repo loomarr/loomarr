@@ -3,7 +3,7 @@
 // of a Library page. The bar exists only while media is being added.
 import { Action, Icon, icons, StatusDot, Surface, Text } from "@loomarr/design-system";
 import type { ScanStatus } from "./prototype-data";
-import { Callout, dotFor, Line, LitBar, pct, ReadyChips, Stack } from "./scan-health-parts";
+import { Callout, dotFor, ImportProgress, Line, pct, ReadyChips, Stack } from "./scan-health-parts";
 
 interface ScanHealthProps {
   status: ScanStatus;
@@ -41,7 +41,7 @@ const Compact = ({ status, onOpenSettings }: Omit<ScanHealthProps, "density">) =
       </Line>
       {progress ? (
         <Stack flexGrow={1} flexBasis={120} minWidth={96}>
-          <LitBar
+          <ImportProgress
             percent={pct(progress)}
             label={`Adding your media, ${pct(progress)} percent`}
             paused={!!status.paused}
@@ -111,7 +111,7 @@ const Full = ({ status, inFlow }: Pick<ScanHealthProps, "status" | "inFlow">) =>
 
       {progress ? (
         <Stack gap="control">
-          <LitBar
+          <ImportProgress
             percent={pct(progress)}
             label={`Adding your media, ${pct(progress)} percent`}
             paused={!!paused}

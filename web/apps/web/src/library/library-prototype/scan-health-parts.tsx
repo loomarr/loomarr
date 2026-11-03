@@ -3,8 +3,10 @@
 // and the media-folder card. Plain words only (see PLAIN-WORDS.md).
 import {
   Action,
+  ArtworkFrame,
   Icon,
   icons,
+  ProgressTrack,
   StatusDot,
   Surface,
   Text,
@@ -63,43 +65,14 @@ const Callout = ({
   </Surface>
 );
 
-// The calm, alive progress bar: amber fill with a soft lit edge. The glow breathes only when
-// motion is allowed; otherwise it holds still.
-const LitBar = ({ percent, label, paused }: { percent: number; label: string; paused?: boolean }) => {
-  const motion = useMotionAllowed();
-  return (
-    <Surface
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percent}
-      backgroundColor="surfaceCanvas"
-      borderWidth={0}
-      borderRadius="round"
-      height={8}
-      width="100%"
-      overflow="visible"
-    >
-      <Surface
-        backgroundColor="actionPrimary"
-        borderWidth={0}
-        borderRadius="round"
-        height={8}
-        width={`${percent}%`}
-        opacity={paused ? 0.5 : 1}
-        style={{
-          boxShadow: paused ? "none" : "0 0 10px 1px rgba(255, 184, 77, 0.55)",
-          transition: motion ? "width 600ms ease-out" : "none",
-        }}
-      />
-    </Surface>
-  );
-};
+// Adding media is preparation, so the design system's progress track in its `tune` tone; a paused
+// import drops to the neutral fill. Amber stays for focus and the primary action.
+const ImportProgress = ({ percent, label, paused }: { percent: number; label: string; paused?: boolean }) => (
+  <ProgressTrack height={6} label={label} percent={percent} tone={paused ? "elapsed" : "tune"} />
+);
 
-// A small poster stand-in (never a remote image) that slides in, one after another. Same film-like
-// look as variant D's Poster: a dark, barely tinted tile with the title set small.
-const ReadyChip = ({ title, hue, index }: { title: string; hue: number; index: number }) => {
+// A small poster (the shared ArtworkFrame, never a remote image) that slides in, one after another.
+const ReadyChip = ({ title, index }: { title: string; index: number }) => {
   const motion = useMotionAllowed();
   const [shown, setShown] = useState(false);
   useEffect(() => {
@@ -117,16 +90,9 @@ const ReadyChip = ({ title, hue, index }: { title: string; hue: number; index: n
       }}
     >
       {/* Too narrow to set the title on the tile: a plain tile with a caption, as in the grid. */}
-      <Surface
-        width={64}
-        height={92}
-        borderRadius="control"
-        borderWidth={0}
-        style={{
-          backgroundImage: `radial-gradient(120% 70% at 50% 0%, hsl(${hue} 22% 30% / 0.55), transparent 70%), linear-gradient(180deg, hsl(${hue} 14% 15%), hsl(${hue} 10% 7%))`,
-        }}
-        aria-hidden
-      />
+      <ArtworkFrame aria-hidden borderRadius="control" height={92} state="ready" width={64}>
+        <Surface backgroundColor="transparent" borderWidth={0} />
+      </ArtworkFrame>
       {/* The design system truncates inside a clipped, min-width-0 box (as the guide grid does). */}
       <Surface
         backgroundColor="transparent"
@@ -154,7 +120,7 @@ const ReadyChips = () => {
       </Text>
       <Line gap="control">
         {ready.map((it, i) => (
-          <ReadyChip key={it.id} title={it.title} hue={it.hue} index={i} />
+          <ReadyChip key={it.id} title={it.title} index={i} />
         ))}
       </Line>
     </Stack>
@@ -264,8 +230,8 @@ export {
   dotFor,
   FolderCard,
   fmt,
+  ImportProgress,
   Line,
-  LitBar,
   MOUNT_HINT,
   pct,
   ReadyChips,

@@ -1,13 +1,13 @@
 // PROTOTYPE — throwaway (#2151 step 2). Variant D · the Library page: status line, "Needs you",
 // filter tabs and the poster shelf. Posters lead; a dot appears only when something needs attention.
-import { Action, StatusDot, Surface, Tabs, Text } from "@loomarr/design-system";
+import { Action, Badge, Field, StatusDot, Surface, Tabs, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { type ItemRow, itemsFor, scanStatus } from "./prototype-data";
 import type { ScanState, Screen } from "./prototype-state";
 import { ScanHealth } from "./scan-health";
 import { CollectionsShelf } from "./variant-d-collections";
 import { NeedsCards, NeedsStrip } from "./variant-d-needs";
-import { ColorBars, FRAME, Poster, SearchBox } from "./variant-d-parts";
+import { ColorBars, FRAME, Poster } from "./variant-d-parts";
 
 type Kind = "all" | "movies" | "shows" | "collections";
 
@@ -25,22 +25,32 @@ const Tile = ({ item, onOpen }: { item: ItemRow; onOpen: () => void }) => {
   const gettingReady = notReady && !ready;
   const attention = !gettingReady && (item.problems?.length || item.facts === "failed");
   return (
+    // The host element for a pressable tile; the focus ring is the theme's focus colour.
     <button
       aria-label={item.title}
-      className="group flex min-w-0 cursor-pointer flex-col gap-2 text-left outline-none"
+      className="focus-visible:ring-ring flex min-w-0 cursor-pointer flex-col gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
       onClick={onOpen}
       type="button"
     >
-      <Poster dim={gettingReady || item.offline} hue={item.hue} title={item.title}>
+      <Poster dim={gettingReady || item.offline} title={item.title}>
         {attention ? (
-          <span className="absolute top-2 right-2 rounded-full bg-black/60 p-1">
+          // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
+          <Surface
+            backgroundColor="surfaceCanvas"
+            borderRadius="round"
+            borderWidth={0}
+            padding={6}
+            position="absolute"
+            right={8}
+            top={8}
+          >
             <StatusDot label="Needs a look" tone="warn" />
-          </span>
+          </Surface>
         ) : null}
         <div
-          className={`absolute inset-x-0 bottom-0 flex justify-center bg-black/55 px-2 py-2 motion-safe:transition-opacity motion-safe:duration-300 ${gettingReady ? "opacity-100" : "opacity-0"}`}
+          className={`absolute top-2 left-2 motion-safe:transition-opacity motion-safe:duration-300 ${gettingReady ? "opacity-100" : "opacity-0"}`}
         >
-          <Text textRole="compact">Getting ready</Text>
+          <Badge tone="neutral">Getting ready</Badge>
         </div>
       </Poster>
       <div className="flex min-h-[4.5rem] min-w-0 flex-col gap-0.5">
@@ -125,7 +135,16 @@ const LibraryPage = ({
           ]}
           value={tab}
         />
-        {screen === "items" ? <SearchBox onChange={setQ} value={q} /> : null}
+        {screen === "items" ? (
+          <div className="md:w-72">
+            <Field
+              accessibilityLabel="Search your library"
+              onChangeText={setQ}
+              placeholder="Search your library"
+              value={q}
+            />
+          </div>
+        ) : null}
       </div>
 
       {scan === "fresh" ? <FreshState go={go} /> : null}

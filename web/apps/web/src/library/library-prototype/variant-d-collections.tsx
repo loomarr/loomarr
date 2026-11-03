@@ -1,23 +1,18 @@
 // PROTOTYPE — throwaway (#2151 step 2). Variant D · Collections as stacks of posters, and a calm
 // collection editor. Plain words per PLAIN-WORDS.md.
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Field, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { COLLECTION_EDIT, COLLECTIONS, type CollectionRow } from "./prototype-data";
 import type { Screen } from "./prototype-state";
-import { BackLink, channelPhrase, Heading, Poster, TextBox, Thumb } from "./variant-d-parts";
+import { BackLink, channelPhrase, Heading, Poster, Thumb } from "./variant-d-parts";
 
 // Three posters fanned out behind one another: a collection reads as a pile of real things. All
-// bare (the name sits beside the pile, and is too long to set at this width); the ones behind are
-// darker, so the pile is one colour family, not a rainbow.
-const PosterStack = ({ hue, name }: { hue: number; name: string }) => (
+// bare (the name sits beside the pile); the ones behind are dimmer, so the front one leads.
+const PosterStack = ({ name }: { name: string }) => (
   <div className="relative h-40 w-28 shrink-0">
     {[2, 1, 0].map((i) => (
-      <div
-        className="absolute w-24"
-        key={i}
-        style={{ left: i * 8, top: (2 - i) * 6, filter: i === 0 ? undefined : `brightness(${1 - i * 0.22})` }}
-      >
-        <Poster bare hue={hue} title={name} />
+      <div className="absolute w-24" key={i} style={{ left: i * 8, top: (2 - i) * 6 }}>
+        <Poster bare dim={i > 0} title={name} />
       </div>
     ))}
   </div>
@@ -29,7 +24,7 @@ const CollectionCard = ({ c, onEdit }: { c: CollectionRow; onEdit: () => void })
   return (
     <Surface gap="control" padding="control">
       <div className="flex gap-4">
-        <PosterStack hue={c.hue} name={c.name} />
+        <PosterStack name={c.name} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <Text textRole="title">{c.name}</Text>
           {tmdb ? (
@@ -107,11 +102,11 @@ const CollectionEditor = ({ go }: { go: (s: Screen) => void }) => {
   const used = e.usedBy.length > 0;
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 md:p-8">
-      <BackLink current={name || "New collection"} label="Collections" onBack={() => go("collections")} />
+      <BackLink label="Collections" onBack={() => go("collections")} />
       <Text textRole="display">{name || "New collection"}</Text>
       <Surface gap="control" padding="section">
-        <TextBox label="Name" onChange={setName} value={name} />
-        <TextBox label="Description" onChange={setDesc} value={desc} />
+        <Field label="Name" onChangeText={setName} value={name} />
+        <Field label="Description" onChangeText={setDesc} value={desc} />
       </Surface>
       <Surface gap="control" padding="section">
         <Heading>In this collection</Heading>
@@ -126,7 +121,7 @@ const CollectionEditor = ({ go }: { go: (s: Screen) => void }) => {
                   ⠿
                 </Text>
               </span>
-              <Thumb hue={m.hue} title={m.title} width={36} />
+              <Thumb title={m.title} width={36} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text textRole="body">{m.title}</Text>
                 <Text textRole="compact" tone="secondary">
@@ -139,7 +134,7 @@ const CollectionEditor = ({ go }: { go: (s: Screen) => void }) => {
             </div>
           ))}
         </div>
-        <TextBox label="Add a title" onChange={setAdd} placeholder="Search your library" value={add} />
+        <Field label="Add a title" onChangeText={setAdd} placeholder="Search your library" value={add} />
       </Surface>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">

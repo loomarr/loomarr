@@ -1,20 +1,11 @@
 // PROTOTYPE — throwaway (#2151 step 2). Variant D · a title page that looks like a title page:
 // big artwork, a soft glow of its own colour, the story, where it airs, and ONE collapsed
 // "Technical details" section at the bottom. Plain words per PLAIN-WORDS.md.
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Disclosure, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { FARGO, type ItemDetail, WEST_WING } from "./prototype-data";
 import type { Screen } from "./prototype-state";
-import {
-  BackLink,
-  ChannelBug,
-  Collapse,
-  FRAME,
-  Heading,
-  minutesPhrase,
-  Poster,
-  RatingPill,
-} from "./variant-d-parts";
+import { BackLink, ChannelBug, FRAME, Heading, minutesPhrase, Poster, RatingPill } from "./variant-d-parts";
 
 const field = (item: ItemDetail, label: string): string =>
   item.fields.find((f) => f.label === label)?.value ?? "";
@@ -56,12 +47,12 @@ const Seasons = ({ item }: { item: ItemDetail }) => {
       <Heading>Seasons</Heading>
       <div className="flex flex-col gap-2">
         {item.seasons?.map((s) => (
-          <Collapse
-            hint={`${s.episodes} episodes`}
+          <Disclosure
+            description={`${s.episodes} episodes`}
+            expanded={open === s.number}
             key={s.number}
             label={s.label}
-            onToggle={(o) => setOpen(o ? s.number : 0)}
-            open={open === s.number}
+            onExpandedChange={(o) => setOpen(o ? s.number : 0)}
           >
             <div className="flex flex-col gap-1 p-3">
               {s.number === 4 && item.openSeason ? (
@@ -95,7 +86,7 @@ const Seasons = ({ item }: { item: ItemDetail }) => {
                 </Text>
               )}
             </div>
-          </Collapse>
+          </Disclosure>
         ))}
         {special ? (
           <Surface gap="inline" padding="control">
@@ -125,21 +116,13 @@ const TitlePage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) 
 
   return (
     <div className={`${FRAME} gap-8`}>
-      <BackLink current={item.title} label="Library" onBack={() => go("items")} />
+      <BackLink label="Library" onBack={() => go("items")} />
 
-      <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:gap-10">
-        {/* A soft pool of the poster's colour that fades to nothing before any edge. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 -left-16 h-[520px] w-[calc(100%+4rem)]"
-          style={{
-            backgroundImage: `radial-gradient(ellipse 420px 260px at 420px 260px, hsl(${item.hue} 25% 40% / 0.16), transparent)`,
-          }}
-        />
-        <div className="relative w-44 shrink-0 self-center md:w-52">
-          <Poster big hue={item.hue} title={item.title} />
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:gap-10">
+        <div className="w-44 shrink-0 self-center md:w-52">
+          <Poster big title={item.title} />
         </div>
-        <div className="relative flex min-w-0 flex-1 flex-col gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Text textRole="display">{item.title}</Text>
           <div className="flex flex-wrap items-center gap-3">
             <Text textRole="body" tone="secondary">
@@ -198,7 +181,7 @@ const TitlePage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) 
 
       {series ? <Seasons item={item} /> : null}
 
-      <Collapse label="Technical details" onToggle={setTech} open={tech}>
+      <Disclosure expanded={tech} label="Technical details" onExpandedChange={setTech}>
         <div className="flex flex-col gap-3 p-4">
           <Row label="Where details come from">{copy.origin}</Row>
           <Row label="Title match">{`Recognised from ${arr}`}</Row>
@@ -216,7 +199,7 @@ const TitlePage = ({ screen, go }: { screen: Screen; go: (s: Screen) => void }) 
           ) : null}
           {stray && !copyGone ? <Row label="Extra copy">{`${stray.path} (${stray.size})`}</Row> : null}
         </div>
-      </Collapse>
+      </Disclosure>
     </div>
   );
 };

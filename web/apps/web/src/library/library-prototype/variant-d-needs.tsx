@@ -1,14 +1,13 @@
 // PROTOTYPE — throwaway (#2151 step 2). Variant D · "Needs you": the strip on the Library page and
 // the same list expanded into full cards on the Unmatched screen. Plain words per PLAIN-WORDS.md.
-import { Action, StatusDot, Surface, Text } from "@loomarr/design-system";
+import { Action, Disclosure, Field, StatusDot, Surface, Text } from "@loomarr/design-system";
 import { useCallback, useState } from "react";
 import { type Candidate, itemsFor, UNMATCHED, type UnmatchedGroup } from "./prototype-data";
 import type { ScanState, Screen } from "./prototype-state";
-import { Collapse, LockIn, Poster, TextBox, Thumb } from "./variant-d-parts";
+import { LockIn, Poster, Thumb } from "./variant-d-parts";
 
 interface Need {
   id: string;
-  hue: number;
   name: string; // what the poster initial and aria labels use
   line: string; // the strip sentence
   kind: "match" | "problem" | "unknown";
@@ -31,7 +30,6 @@ const needsFor = (scan: ScanState): Need[] => {
     if (!g.best) {
       return {
         id: g.id,
-        hue: 210,
         name: g.files[0] ?? "Unknown file",
         line: `${g.files[0]} — we're not sure what this is`,
         kind: "unknown" as const,
@@ -41,7 +39,6 @@ const needsFor = (scan: ScanState): Need[] => {
     const what = g.best.kind === "Series" ? "show" : "movie";
     return {
       id: g.id,
-      hue: g.best.hue,
       name: g.best.title,
       line: `${g.best.title} — is this the ${g.best.year} ${what}?`,
       kind: "match" as const,
@@ -53,7 +50,6 @@ const needsFor = (scan: ScanState): Need[] => {
       const stray = /extra copy is taking (\d[\d.]* GB)/.exec(p);
       out.push({
         id: `${it.id}-${p}`,
-        hue: it.hue,
         name: it.title,
         line: stray
           ? `${it.title} — an extra copy is taking ${stray[1]}`
@@ -99,7 +95,7 @@ const StripRow = ({
   const body = (
     <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <Thumb hue={need.hue} title={need.name} width={36} />
+        <Thumb title={need.name} width={36} />
         <Text textRole="body">{locked ? `Done — ${need.name} is sorted.` : need.line}</Text>
       </div>
       {locked ? (
@@ -209,7 +205,7 @@ const ReviewCard = ({
     <Surface gap="control" padding="section">
       <div className="flex flex-col gap-5 sm:flex-row">
         <div className="w-28 shrink-0 sm:w-36">
-          <Poster big hue={need.hue} title={need.name} />
+          <Poster big title={need.name} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           {phase === "open" ? (
@@ -254,15 +250,15 @@ const ReviewCard = ({
               </div>
               {other ? (
                 <Surface gap="inline" padding="control">
-                  <TextBox
+                  <Field
                     label="Search for the title"
-                    onChange={setQ}
+                    onChangeText={setQ}
                     placeholder="Type a movie or show name"
                     value={q}
                   />
                   {(g?.others ?? []).map((c) => (
                     <div className="flex items-center gap-3" key={`${c.title}${c.year}`}>
-                      <Thumb hue={c.hue} title={c.title} width={28} />
+                      <Thumb title={c.title} width={28} />
                       <div className="min-w-0 flex-1">
                         <Text textRole="body">
                           {c.title} ({c.year})
@@ -276,10 +272,10 @@ const ReviewCard = ({
                 </Surface>
               ) : null}
               {fileNames.length > 0 ? (
-                <Collapse
+                <Disclosure
+                  expanded={files}
                   label={many ? `${fileNames.length} files` : "1 file"}
-                  onToggle={setFiles}
-                  open={files}
+                  onExpandedChange={setFiles}
                 >
                   <div className="flex flex-col gap-1 p-3">
                     {fileNames.map((f) => (
@@ -288,7 +284,7 @@ const ReviewCard = ({
                       </Text>
                     ))}
                   </div>
-                </Collapse>
+                </Disclosure>
               ) : null}
             </>
           ) : (
