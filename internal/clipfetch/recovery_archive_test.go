@@ -45,7 +45,7 @@ fi
 		t.Fatal(err)
 	}
 	seedArchiveRecoveryRun(t, firstStore, source)
-	first := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []clipfetch.Source{source})
+	first := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []clipfetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first acquisition = %+v, want transient archive commit failure", first)
 	}
@@ -91,7 +91,7 @@ fi
 	retry := source
 	retry.AcquisitionID = "acq-after-restart"
 	seedArchiveRecoveryRun(t, reopened, retry)
-	deduped := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{retry})
+	deduped := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{retry})
 	if deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("post-restart acquisition = %+v, want provider archive deduplication", deduped)
 	}
@@ -127,7 +127,7 @@ fi
 		t.Fatal(err)
 	}
 	seedArchiveRecoveryRun(t, firstStore, source)
-	first := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []clipfetch.Source{source})
+	first := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(firstStore).Run(t.Context(), []clipfetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first acquisition = %+v, want retained missing-sidecar repair", first)
 	}
@@ -176,7 +176,7 @@ fi
 	retry := source
 	retry.AcquisitionID = "acq-after-missing-sidecar"
 	seedArchiveRecoveryRun(t, reopened, retry)
-	deduped := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{retry})
+	deduped := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, watch, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{retry})
 	if deduped.Empty != 1 || deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("post-restart acquisition = %+v, want provider archive deduplication", deduped)
 	}

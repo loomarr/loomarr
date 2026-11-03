@@ -131,6 +131,22 @@ describe("Badge", () => {
 });
 
 describe("Text", () => {
+  it("announces a live region on the web as aria-live, not as an unknown DOM prop", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text accessibilityLiveRegion="polite" textRole="metadata">
+          2m behind
+        </Text>
+        <Text accessibilityLiveRegion="none" textRole="metadata">
+          quiet
+        </Text>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain('aria-live="polite"');
+    expect(markup).toContain('aria-live="off"');
+    expect(markup.toLowerCase()).not.toContain("accessibilityliveregion");
+  });
+
   it("sets a strong label at 600 without changing the role's size", () => {
     const strong = renderToStaticMarkup(
       <LoomarrProvider>

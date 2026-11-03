@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -29,7 +30,7 @@ type dropped struct {
 // retirement is one title rotated OUT to make room for a better one (§8.2a).
 type retirement struct {
 	Out      string  // the title leaving the lineup
-	OutScore float64 // its confidence when it was last scored
+	OutScore float64 // its fit when it was last scored (neutral when unscored)
 	In       string  // the title taking its place
 	InScore  float64
 }
@@ -53,7 +54,7 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool) (filterResult, error) {
+func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) (filterResult, error) {
 	var body suggest.Proposal
 	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
 		return filterResult{}, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
@@ -125,7 +126,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 	rotating := maxTitles > 0 && len(committed) >= rotationTarget(maxTitles)
 	// The turnstile (§8.2a): at the cap, a better candidate retires the weakest RETIRABLE
 	// title rather than being discarded. Built once, consumed as room runs out.
-	bench := retirableByWeakest(ch, protected)
+	bench := retirableByWeakest(ch, protected, lastAired, now)
 
 	for _, c := range survivors {
 		if room == 0 || rotating {
@@ -147,7 +148,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 				continue
 			}
 			res.Retired = append(res.Retired, retirement{
-				Out: out.title, OutScore: out.confidence, In: c.item.Name, InScore: c.item.Confidence,
+				Out: out.title, OutScore: out.fit, In: c.item.Name, InScore: c.item.Confidence,
 			})
 			res.RetiredKey = append(res.RetiredKey, out.key)
 			kept = append(kept, c.item)
@@ -232,43 +233,49 @@ func effectiveConfidence(a suggest.ProposalItem) float64 {
 	return a.Confidence
 }
 
-// benchEntry is one lineup title that MAY be retired, with the score it is judged on.
+// benchEntry is one lineup title that MAY be retired, with what it is judged on.
 type benchEntry struct {
-	key        provision.Key
-	title      string
-	confidence float64
+	key    provision.Key
+	title  string
+	fit    float64 // the entry's fit to the intent (unscored resolved to neutral)
+	retain float64 // fit × recency: the lowest is retired first
 }
 
-// bench is the retirable set, weakest first.
+// bench is the retirable set, lowest retain score first.
 type bench struct{ entries []benchEntry }
 
-// weakestBelow takes the weakest retirable title STRICTLY below `incoming`, removing it so a
-// single run cannot retire the same title twice.
+// weakestBelow takes the retirable title with the lowest retain score among those whose FIT is
+// STRICTLY below `incoming`, removing it so a single run cannot retire the same title twice.
 //
 // Strictly below, never equal: retiring a title for one of identical confidence is a coin flip
 // that churns the lineup every week — precisely the failure additive binding (§8.2) exists to
-// prevent. A tie means "no better", so nothing moves.
+// prevent. A tie means "no better", so nothing moves. The comparison is on fit, not on the
+// retain score: a newcomer must beat what the title is worth to the intent, however long it has
+// been idle.
 func (b *bench) weakestBelow(incoming float64) (benchEntry, bool) {
-	if len(b.entries) == 0 || b.entries[0].confidence >= incoming {
-		return benchEntry{}, false
+	for i, e := range b.entries {
+		if e.fit < incoming {
+			b.entries = append(b.entries[:i], b.entries[i+1:]...)
+			return e, true
+		}
 	}
-	out := b.entries[0]
-	b.entries = b.entries[1:]
-	return out, true
+	return benchEntry{}, false
 }
 
 // retirableByWeakest builds the retirable set for a channel: every lineup title that is NOT
-// currently scheduled, ordered weakest-confidence first (§8.2a).
+// currently scheduled, ordered by retain score (fit × recency, see retainScore) lowest first
+// (§8.2a). `lastAired` is when each key last aired on the channel; a key absent from it never
+// aired inside the retained history.
 //
 // ⚠ THE SCHEDULED GUARD IS THE POINT. A title in ch.Desired is airing in the current window —
 // someone may be planning to watch it today, and pulling it out from under them is a worse
 // outcome than a stale channel. Desired is already persisted per channel, so this costs no new
 // dependency and no scheduler call.
 //
-// A lineup entry carries no stored confidence (the proposal that added it is long gone), so an
-// untracked title sorts as 0 — the weakest, and therefore the first to go. That is the intended
-// reading: a title nobody has scored since it was added has the least evidence for its place.
-func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool) *bench {
+// Every lineup entry stores the Fit of the pick that added or last re-scored it, so the order
+// reflects both how well a title serves the intent and how long it has gone without airing. An
+// unscored entry reads as the neutral fit, never as the weakest.
+func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) *bench {
 	// ⚠ FAIL CLOSED on an unknown schedule. An empty Desired means "we do not know what is
 	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
 	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an
@@ -291,12 +298,14 @@ func retirableByWeakest(ch store.Channel, protected map[provision.Key]bool) *ben
 		if _, airing := scheduled[e.Key]; airing {
 			continue // never retire something on the air
 		}
-		out = append(out, benchEntry{key: e.Key, title: e.Title, confidence: 0})
+		out = append(out, benchEntry{
+			key: e.Key, title: e.Title, fit: e.EffectiveFit(), retain: retainScore(e, lastAired[e.Key], now),
+		})
 	}
-	// Weakest first; Title as a stable tiebreaker so a run is reproducible (§7).
+	// Lowest retain score first; Title only breaks exact ties so a run is reproducible (§7).
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].confidence != out[j].confidence {
-			return out[i].confidence < out[j].confidence
+		if out[i].retain != out[j].retain {
+			return out[i].retain < out[j].retain
 		}
 		return out[i].title < out[j].title
 	})

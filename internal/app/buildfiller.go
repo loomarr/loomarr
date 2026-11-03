@@ -27,6 +27,8 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
+	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -142,16 +144,16 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 		return nil
 	}
 
-	// ⚠ A nil YouTube downloader is FINE — `downloaderFor` returns nil per kind and the Ingestor
-	// counts that source as failed rather than dying. So a box with ffmpeg and no yt-dlp fetches
+	// ⚠ A missing YouTube downloader is FINE — the Ingestor finds none registered for that
+	// provider and counts that source as failed rather than dying. So a box with ffmpeg and no yt-dlp fetches
 	// archive collections (the seeded ones) and reports honestly on playlists, instead of
 	// refusing everything.
-	var ytDL clipfetch.Downloader
+	downloaders := clipfetch.Downloaders{archiveprovider.ID: clipfetch.NewArchiveDownloader()}
 	if ytPath != "" {
-		ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
+		downloaders[youtubeprovider.ID] = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(), layout.WatchDir(), log).
+	return clipfetch.New(downloaders, layout.WatchDir(), log).
 		WithArtifactWriter(artifacts).
 		WithStorageGovernor(governor)
 }

@@ -7,8 +7,8 @@ import { AUTO_SENTINEL, audioOptions, withSaved } from "./audio-options";
 
 // The channel's default audio language (#2088), on Channel info beside the On-screen logo: admin-only,
 // autosaving `policy.playout.audioLanguage` through the page's one writer like the other fields. It
-// moved here from the player's Audio menu when Watch became its own route; the player now shows it
-// read-only.
+// moved here from the player's Audio menu when Watch became its own route; the player's Settings
+// sheet now shows it read-only.
 
 interface ChannelDefaultAudioProps {
   channel: ChannelDTO;

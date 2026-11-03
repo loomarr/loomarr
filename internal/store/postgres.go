@@ -48,18 +48,6 @@ RETURNING c.id, c.intent_ref, c.intent_json, c.requested_by, c.name, c.number, c
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
           c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision, c.created_at` // channelColumns, aliased
 
-// postgresScheduledJobClaimSQL leases every due scheduled job (§18.1) via SKIP LOCKED so two
-// replicas never both run one job in a tick. Placeholders: $1=leaseUntil, $2=now.
-const postgresScheduledJobClaimSQL = `
-WITH due AS (
-    SELECT name FROM scheduled_jobs
-    WHERE next_run <= $2 AND paused = FALSE
-    FOR UPDATE SKIP LOCKED
-)
-UPDATE scheduled_jobs sj SET next_run = $1
-FROM due WHERE sj.name = due.name
-RETURNING sj.name, sj.last_run, sj.last_result, sj.last_error, sj.next_run, sj.updated_at, sj.paused`
-
 // openPostgres opens a Postgres connection via pgx's stdlib shim and returns a
 // store wired with the SKIP-LOCKED claim SQL and $N placeholder rebinding.
 // Conformance (incl. concurrent claim) is proven in Phase 4 via testcontainers.
@@ -72,5 +60,5 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}), nil
+	return bindClusters(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}), nil
 }
