@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -326,7 +327,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" }, now: func() time.Time { return fixed },
 		start: testInteractiveOperationLauncher,
 	}
@@ -463,6 +464,20 @@ func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T)
 		if _, fetched := providers.Lister(id); fetched {
 			t.Errorf("provider %q can be listed, want none: a scanned source is never fetched", id)
 		}
+	}
+}
+
+// testFillerProviders is the production registry with no network behind it.
+func testFillerProviders() *sourceprovider.Registry {
+	return fillerSourceProviders("", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler))
+}
+
+// clipfetch cannot import the provider packages (they import it), so it names the two downloaded
+// providers itself; the downloaders are registered under the providers' own IDs.
+func TestClipfetchKindsAreTheProviderIDs(t *testing.T) {
+	if clipfetch.YouTube != youtubeprovider.ID || clipfetch.Archive != archiveprovider.ID {
+		t.Fatalf("clipfetch kinds %q and %q are not the provider IDs %q and %q",
+			clipfetch.YouTube, clipfetch.Archive, youtubeprovider.ID, archiveprovider.ID)
 	}
 }
 
@@ -624,7 +639,7 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 }
 
 func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
-	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }}
+	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, newID: func() string { return "acq-17" }, providers: testFillerProviders()}
 	if _, err := a.Ingest(t.Context(), nil); err == nil {
 		t.Fatal("empty ingest created a successful-looking job")
 	}
@@ -634,7 +649,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
 		newID: func() string { return "acq-17" },
 		start: testInteractiveOperationLauncher,
 	}
@@ -671,7 +686,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
 	a := fillerServiceAdapter{
-		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)},
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)}, providers: testFillerProviders(),
 		newID: func() string { return "acq-18" },
 		start: testInteractiveOperationLauncher,
 	}

@@ -6,7 +6,9 @@
 // previews sources, and how it searches beyond its registered sources. Filler owns the rules every
 // provider shares — budgets, leases, selection, queueing — and asks the provider for the rest, so
 // adding a provider is one package plus one registration. Download is the provider's too, through
-// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing.
+// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing; clipfetch.
+// Downloaders maps a provider's ID to its downloader, and the app registers the two together.
+// The downloader's types are clipfetch's, which imports filler, so it is not held here.
 //
 // The package imports nothing from Loomarr, so filler, fillerstore, api and the provider packages
 // can all name it without importing each other.

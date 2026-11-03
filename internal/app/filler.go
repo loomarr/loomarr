@@ -1013,7 +1013,7 @@ func (a fillerServiceAdapter) ingest(
 		if kind == "" {
 			// Only the deliberate one-off admin path lacks registered source policy.
 			kind = clipfetch.KindForURL(target.URL)
-		} else if kind != clipfetch.Archive && kind != clipfetch.YouTube {
+		} else if !a.providers.Fetched(kind) {
 			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
 		}
 		if enabled, known := providerEnabled[string(kind)]; known && !enabled {
