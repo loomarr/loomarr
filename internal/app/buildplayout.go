@@ -394,7 +394,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		lifecycle := &postgresPlayoutLifecycle{
 			store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
 		}
-		if err := lifecycle.StartTracked(rootCtx, owner); err != nil {
+		if err := lifecycle.Start(rootCtx, owner); err != nil {
 			return playoutBuild{}, fmt.Errorf("start postgres playout lifecycle: %w", err)
 		}
 	}
