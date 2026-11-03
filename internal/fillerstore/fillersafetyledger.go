@@ -52,7 +52,7 @@ func (s *sqlStore) BeginSpokenSafetyRun(ctx context.Context, run fillersafety.Le
 		policy_sha256, proposer_sha256, implementation, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`),
 		run.ID, run.ClipHash, run.AuthoritySHA256, run.SourceSHA256, run.SourceBytes, run.DurationMS,
-		run.CertificationSHA256, run.PolicySHA256, run.ProposerSHA256, run.Implementation, fillerDecisionEpoch(run.CreatedAt))
+		run.CertificationSHA256, run.PolicySHA256, run.ProposerSHA256, run.Implementation, fillerNanoEpoch(run.CreatedAt))
 	if err != nil {
 		return false, fmt.Errorf("insert spoken-safety run: %w", err)
 	}
@@ -105,7 +105,7 @@ func scanSpokenSafetyRun(row scannable) (fillersafety.LedgerRun, error) {
 		&createdAt); err != nil {
 		return fillersafety.LedgerRun{}, err
 	}
-	run.CreatedAt = fromFillerDecisionEpoch(createdAt)
+	run.CreatedAt = fromFillerNanoEpoch(createdAt)
 	return run, nil
 }
 

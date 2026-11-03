@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
@@ -792,7 +791,6 @@ func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input
 }
 
 var _ api.FillerRewinder = fillerServiceAdapter{}
-var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 
 // fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
 // this adapter registers and fetches sources but cannot publish a Clip by itself.
@@ -911,33 +909,6 @@ func (a fillerServiceAdapter) RetryFailure(ctx context.Context, hash string) err
 		return errors.New("filler pipeline is not configured")
 	}
 	return a.pipeline.RetryFailure(ctx, hash)
-}
-
-func (a fillerServiceAdapter) DiagnosticRetryStatus(ctx context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
-	if a.pipeline == nil {
-		return fillerdecision.DiagnosticRetryStatus{}, nil
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	return fillerdecision.DiagnosticRetryStatus{Automatic: status.Automatic, RetryAt: status.RetryAt}, err
-}
-
-func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) error {
-	if a.pipeline == nil {
-		return errors.New("filler pipeline is not configured")
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if status.Automatic {
-		return nil
-	}
-	if err := a.pipeline.RetryFailure(ctx, hash); err == nil {
-		return nil
-	} else if !errors.Is(err, filler.ErrPipelineNotRetryable) {
-		return err
-	}
-	return a.pipeline.Rewind(ctx, hash, filler.StageScore, false)
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {

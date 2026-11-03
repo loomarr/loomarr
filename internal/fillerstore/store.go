@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
@@ -123,14 +122,6 @@ type FillerSafetyStore interface {
 	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, fillersafety.LedgerEvent, error)
 	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, fillersafety.LedgerEvent, error)
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
-}
-
-// FillerDecisionStore owns immutable V63 admission results and append-only
-// operator actions. Projection rules remain in fillerdecision.Service. An applied action's effect on
-// the clip and its pipeline row goes through the core's store.ClipTx, inside the action's transaction.
-type FillerDecisionStore interface {
-	fillerdecision.Repository
-	fillerdecision.AppliedActionRepository
 }
 
 // FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
@@ -312,7 +303,6 @@ type Store interface {
 	FillerAcquisitionStore
 	FillerEnrichmentStore
 	FillerResearchStore
-	FillerDecisionStore
 	FillerSplitProposalStore
 	FillerPipelineStore
 

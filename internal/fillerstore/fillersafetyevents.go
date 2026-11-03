@@ -44,7 +44,7 @@ func (s *sqlStore) appendSpokenSafetyEvent(ctx context.Context, tx store.Tx, eve
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_spoken_safety_events (
 		id, run_id, ordinal, kind, inference_id, payload_json, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?)`), event.ID, event.RunID, event.Ordinal, event.Kind,
-		inferenceID, string(payload), fillerDecisionEpoch(event.CreatedAt)); err != nil {
+		inferenceID, string(payload), fillerNanoEpoch(event.CreatedAt)); err != nil {
 		return fmt.Errorf("insert spoken-safety event: %w", err)
 	}
 	return nil
@@ -107,7 +107,7 @@ func scanSpokenSafetyEvent(row scannable) (fillersafety.LedgerEvent, error) {
 		return fillersafety.LedgerEvent{}, err
 	}
 	decoded.ID, decoded.RunID, decoded.Ordinal = event.ID, event.RunID, event.Ordinal
-	decoded.CreatedAt = fromFillerDecisionEpoch(createdAt)
+	decoded.CreatedAt = fromFillerNanoEpoch(createdAt)
 	if _, err := fillersafety.CanonicalLedgerEvent(decoded); err != nil {
 		return fillersafety.LedgerEvent{}, err
 	}
@@ -117,6 +117,6 @@ func scanSpokenSafetyEvent(row scannable) (fillersafety.LedgerEvent, error) {
 func sameSpokenSafetyEvent(existing, proposed fillersafety.LedgerEvent, existingPayload, proposedPayload []byte) bool {
 	return existing.ID == proposed.ID && existing.RunID == proposed.RunID &&
 		existing.Ordinal == proposed.Ordinal && existing.Kind == proposed.Kind &&
-		fillerDecisionEpoch(existing.CreatedAt) == fillerDecisionEpoch(proposed.CreatedAt) &&
+		fillerNanoEpoch(existing.CreatedAt) == fillerNanoEpoch(proposed.CreatedAt) &&
 		slices.Equal(existingPayload, proposedPayload)
 }

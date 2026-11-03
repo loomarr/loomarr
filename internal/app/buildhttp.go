@@ -130,7 +130,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Shutdown:            rootCtx.Done(),
 		Filler:              fillerSvc,
 		FillerResearch:      deps.fillers.research,
-		FillerDecisions:     deps.fillers.decisions,
 		IntakeLanguages:     deps.fillers.intakeLanguages,
 		FillerDefects:       deps.fillers.defects,
 		Pods:                podPreview,

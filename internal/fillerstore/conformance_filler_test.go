@@ -2,7 +2,6 @@ package fillerstore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -14,8 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filleradmission"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
@@ -1049,19 +1046,6 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutFillerDecision(ctx, fillerdecision.Record{
-		ID: "ready-decision", ClipHash: old.Hash, EvidenceHash: "ready-evidence",
-		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
-		Result: filleradmission.Result{Decision: &filleradmission.Decision{
-			Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-			EvidenceRefs: []string{"evidence-a"},
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	reencoded := old
 	reencoded.Hash, reencoded.Path = "ready-new-bytes", "re/ad/ready-new-bytes.mp4"
 	reencoded.UpdatedAt = at.Add(time.Hour)
@@ -1085,9 +1069,6 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 	if run, err := s.GetSpokenSafetyRun(ctx, "ready-safety-run"); err != nil || run.ClipHash != reencoded.Hash {
 		t.Errorf("spoken-safety run did not follow the re-key: %+v, %v", run, err)
-	}
-	if decision, err := s.GetFillerDecision(ctx, "ready-decision"); err != nil || decision.ClipHash != reencoded.Hash {
-		t.Errorf("admission decision did not follow the re-key: %+v, %v", decision, err)
 	}
 }
 
@@ -5358,575 +5339,44 @@ func structureAssessmentRecordFixture(t *testing.T, reservation fillerstructure.
 	return recorded.Record
 }
 
-func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
-	record := func(id string, result filleradmission.Result) fillerdecision.Record {
-		return fillerdecision.Record{
-			ID: id, ClipHash: "clip-" + id, EvidenceHash: "evidence-" + id,
-			EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-			ApplicationMode: fillerdecision.ApplicationModeShadow, Result: result, CreatedAt: at,
-		}
-	}
-	semantic := func(verdict filleradmission.Verdict) filleradmission.Result {
-		decision := &filleradmission.Decision{
-			Verdict: verdict, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-			EvidenceRefs: []string{"evidence-a"},
-		}
-		if verdict == filleradmission.VerdictReview {
-			decision.ReviewQuestion = "What product is this clip advertising?"
-		}
-		return filleradmission.Result{Decision: decision}
-	}
-
-	for _, row := range []fillerdecision.Record{
-		record("d-admit", semantic(filleradmission.VerdictAdmit)),
-		record("d-reject", semantic(filleradmission.VerdictReject)),
-		record("d-review", semantic(filleradmission.VerdictReview)),
-		record("d-hold", filleradmission.Result{Hold: &filleradmission.Hold{
-			Code: filleradmission.HoldProviderUnavailable, Detail: "provider response is deliberately not projected", Retryable: true,
-		}}),
-	} {
-		if err := s.PutFillerDecision(ctx, row); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := s.GetFillerDecision(ctx, "d-review")
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantJSON, _ := json.Marshal(record("d-review", semantic(filleradmission.VerdictReview)).Result)
-	gotJSON, _ := json.Marshal(got.Result)
-	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at || got.ApplicationMode != fillerdecision.ApplicationModeShadow {
-		t.Fatalf("decision round trip = %+v (%s), want canonical %s", got, gotJSON, wantJSON)
-	}
-	second := openSecondConformanceStore(t, s)
-	fromSecond, err := second.GetFillerDecision(ctx, "d-review")
-	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" ||
-		fromSecond.ApplicationMode != fillerdecision.ApplicationModeShadow {
-		_ = second.Close()
-		t.Fatalf("decision did not survive a fresh store pool: %+v, %v", fromSecond, err)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerDecision(ctx, record("d-review", semantic(filleradmission.VerdictReview))); err != nil {
-		t.Fatalf("idempotent insert: %v", err)
-	}
-	unknownMode := record("d-unknown-mode", semantic(filleradmission.VerdictAdmit))
-	unknownMode.ApplicationMode = "automatic"
-	if err := s.PutFillerDecision(ctx, unknownMode); !errors.Is(err, fillerdecision.ErrInvalid) {
-		t.Fatalf("unknown application mode = %v, want ErrInvalid", err)
-	}
-	conflict := record("d-review", semantic(filleradmission.VerdictReject))
-	if err := s.PutFillerDecision(ctx, conflict); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting immutable insert = %v", err)
-	}
-	missingReference := record("d-missing-inference", semantic(filleradmission.VerdictAdmit))
-	missingReference.Result.Decision.Attribution = []filleradmission.Attribution{{EvaluationID: "eval-missing"}}
-	if err := s.PutFillerDecision(ctx, missingReference); err == nil {
-		t.Fatal("decision with a missing inference evaluation was persisted")
-	}
-	if _, err := s.GetFillerDecision(ctx, missingReference.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("failed decision transaction left a row behind: %v", err)
-	}
-
-	page, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Cursor: fillerdecision.Cursor{}, Limit: 2,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 3 || len(page.Rows) != 2 || page.Rows[0].ID != "d-review" || page.Rows[1].ID != "d-reject" {
-		t.Fatalf("first keyset page = %+v", page)
-	}
-	next, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind:   fillerdecision.OutcomeSemantic,
-		Cursor: fillerdecision.Cursor{BeforeCreatedAt: page.Rows[1].CreatedAt, BeforeID: page.Rows[1].ID}, Limit: 2,
-	})
-	if err != nil || next.Total != 3 || len(next.Rows) != 1 || next.Rows[0].ID != "d-admit" {
-		t.Fatalf("second keyset page = %+v, %v", next, err)
-	}
-
-	counts, err := s.FillerDecisionCounts(ctx)
-	if err != nil || counts.Admitted != 1 || counts.Rejected != 1 || counts.Reviews != 1 ||
-		counts.Operational != 1 || counts.Retryable != 1 || counts.UnresolvedReviews != 1 {
-		t.Fatalf("decision counts = %+v, %v", counts, err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-on-current-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(250 * time.Millisecond),
-	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("current operational hold accepted a semantic action: %v", err)
-	}
-	// A recovered clip gets a new immutable decision. Current health and diagnostics follow that
-	// latest outcome, while the earlier hold remains durable history for Activity and audit reads.
-	recovered := record("d-recovered", semantic(filleradmission.VerdictAdmit))
-	recovered.ClipHash = "clip-d-hold"
-	recovered.CreatedAt = at.Add(500 * time.Millisecond)
-	if err := s.PutFillerDecision(ctx, recovered); err != nil {
-		t.Fatal(err)
-	}
-	currentHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeOperational, CurrentOnly: true, Limit: 10,
-	})
-	if err != nil || currentHolds.Total != 0 || len(currentHolds.Rows) != 0 {
-		t.Fatalf("recovered hold remained in current diagnostics = %+v, %v", currentHolds, err)
-	}
-	historicalHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeOperational, Limit: 10,
-	})
-	if err != nil || historicalHolds.Total != 1 || len(historicalHolds.Rows) != 1 {
-		t.Fatalf("recovered hold disappeared from history = %+v, %v", historicalHolds, err)
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.Admitted != 2 || counts.Operational != 0 || counts.Retryable != 0 || counts.UnresolvedReviews != 1 {
-		t.Fatalf("recovered current counts = %+v, %v", counts, err)
-	}
-
-	abandon := fillerdecision.Action{
-		ID: "action-abandon", DecisionID: "d-review", Kind: fillerdecision.ActionAbandon,
-		ActorID: "admin-1", Reason: "skip for now", CreatedAt: at.Add(750 * time.Millisecond),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, abandon); err != nil {
-		t.Fatal(err)
-	}
-	stillUnresolved, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || stillUnresolved.Total != 1 {
-		t.Fatalf("abandoned review was treated as resolved = %+v, %v", stillUnresolved, err)
-	}
-
-	resolution := fillerdecision.Action{
-		ID: "action-admit", DecisionID: "d-review", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", Reason: "closing card proves product", CreatedAt: at.Add(time.Second),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
-		t.Fatalf("idempotent action: %v", err)
-	}
-	changed := resolution
-	changed.Reason = "different payload"
-	if err := s.CommitFillerDecisionAction(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting action = %v", err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-reject", DecisionID: "d-review", Kind: fillerdecision.ActionReject,
-		ActorID: "admin-1", SupersedesID: resolution.ID, CreatedAt: at.Add(2 * time.Second),
-	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("invalid transition = %v", err)
-	}
-	reversal := fillerdecision.Action{
-		ID: "action-z-reverse", DecisionID: "d-review", Kind: fillerdecision.ActionReverse,
-		ActorID: "admin-1", Reason: "review answer was later disproven",
-		SupersedesID: resolution.ID, CreatedAt: at.Add(3*time.Second + 100*time.Nanosecond),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, reversal); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-a-restore", DecisionID: "d-review", Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "new evidence restored the reviewed answer",
-		SupersedesID: reversal.ID, CreatedAt: at.Add(3*time.Second + 200*time.Nanosecond),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerDecision(ctx, record("d-correct", semantic(filleradmission.VerdictReview))); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-correct", DecisionID: "d-correct", Kind: fillerdecision.ActionCorrect,
-		ActorID: "admin-1", Answer: "The closing card identifies soda.",
-		CorrectedVerdict: filleradmission.VerdictAdmit, CreatedAt: at.Add(5 * time.Second),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-on-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Second),
-	}); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("superseded operational hold accepted a stale semantic action: %v", err)
-	}
-
-	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 0 || len(reviews.Rows) != 0 {
-		t.Fatalf("resolved review remained actionable = %+v, %v", reviews, err)
-	}
-	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: "d-review", Limit: 10})
-	if err != nil || actions.Total != 4 || len(actions.Rows) != 4 || actions.Rows[0].ID != "action-a-restore" {
-		t.Fatalf("action history = %+v, %v", actions, err)
-	}
-	activity, err := s.ListFillerDecisionActivity(ctx, fillerdecision.Cursor{}, 10)
-	if err != nil || activity.Total != 10 || len(activity.Rows) != 10 || activity.Rows[0].Kind != fillerdecision.ActivityCorrection {
-		t.Fatalf("activity projection = %+v, %v", activity, err)
-	}
-	kinds := make(map[fillerdecision.ActivityKind]int)
-	for _, item := range activity.Rows {
-		if item.ApplicationMode != fillerdecision.ApplicationModeShadow {
-			t.Fatalf("activity %q application mode = %q, want shadow", item.ID, item.ApplicationMode)
-		}
-		kinds[item.Kind]++
-	}
-	for kind, want := range map[fillerdecision.ActivityKind]int{
-		fillerdecision.ActivityAutomaticAdmit: 2, fillerdecision.ActivityAutomaticReject: 1,
-		fillerdecision.ActivityReviewRequested: 2, fillerdecision.ActivityActionAdmit: 1,
-		fillerdecision.ActivityCorrection: 1, fillerdecision.ActivityRestore: 1,
-		fillerdecision.ActivityReversal: 1, fillerdecision.ActivityReviewAbandoned: 1,
-	} {
-		if kinds[kind] != want {
-			t.Fatalf("activity kind %q = %d, want %d: %+v", kind, kinds[kind], want, activity.Rows)
-		}
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != 0 {
-		t.Fatalf("resolved counts = %+v, %v", counts, err)
-	}
-}
-
-func testFillerDiagnosticRecoveryActions(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
-	record := fillerdecision.Record{
-		ID: "diagnostic-retry", ClipHash: "clip-diagnostic", EvidenceHash: "evidence-diagnostic",
-		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
-		Result: filleradmission.Result{Hold: &filleradmission.Hold{
-			Code: filleradmission.HoldExtractionFailed, Retryable: true,
-		}},
-	}
-	if err := s.PutFillerDecision(ctx, record); err != nil {
-		t.Fatal(err)
-	}
-	request := fillerdecision.DiagnosticRecoveryRequest{
-		ID: "diagnostic-action-1", DecisionID: record.ID, ActorID: "admin-1",
-		Action: fillerdecision.DiagnosticRecoveryRetry, CreatedAt: at.Add(time.Second),
-	}
-	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
-		t.Fatalf("idempotent diagnostic recovery = %v", err)
-	}
-	got, found, err := s.FindFillerDiagnosticRecovery(ctx, request.ID)
-	if err != nil || !found || !fillerdecision.SameDiagnosticRecovery(got, request) || got.CreatedAt != request.CreatedAt {
-		t.Fatalf("diagnostic recovery round trip = %+v, %v, %v", got, found, err)
-	}
-	changed := request
-	changed.DecisionID = "other-decision"
-	if err := s.CommitFillerDiagnosticRecovery(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting diagnostic action = %v", err)
-	}
-
-	nonRetryable := record
-	nonRetryable.ID, nonRetryable.ClipHash = "diagnostic-inspect", "clip-inspect"
-	nonRetryable.Result.Hold = &filleradmission.Hold{Code: filleradmission.HoldExtractionFailed, Retryable: false}
-	if err := s.PutFillerDecision(ctx, nonRetryable); err != nil {
-		t.Fatal(err)
-	}
-	denied := request
-	denied.ID, denied.DecisionID = "diagnostic-action-denied", nonRetryable.ID
-	if err := s.CommitFillerDiagnosticRecovery(ctx, denied); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("non-retryable diagnostic action = %v", err)
-	}
-
-	recovered := record
-	recovered.ID = "diagnostic-recovered"
-	recovered.Result = filleradmission.Result{Decision: &filleradmission.Decision{
-		Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-	}}
-	recovered.CreatedAt = at.Add(2 * time.Second)
-	if err := s.PutFillerDecision(ctx, recovered); err != nil {
-		t.Fatal(err)
-	}
-	stale := request
-	stale.ID = "diagnostic-action-stale"
-	if err := s.CommitFillerDiagnosticRecovery(ctx, stale); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("stale diagnostic action = %v", err)
-	}
-}
-
-func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) {
+// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
+// unknown role is not rejected at this boundary; terminal readiness owns its Placement. A released
+// composite of an unknown role stays out of playback.
+func testFillerHeldClipUpsertAndCompositeRelease(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
-	newDecision := func(id, hash string) fillerdecision.Record {
-		return fillerdecision.Record{
-			ID: id, ClipHash: hash, EvidenceHash: "admission-evidence-" + id,
-			EvidenceVersion: "applied-v1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-v1", TaxonomyVersion: "taxonomy-v1",
-			ApplicationMode:         fillerdecision.ApplicationModeApplied,
-			ScreeningEvidenceSHA256: strings.Repeat("b", 64),
-			ReleaseAuthoritySHA256:  strings.Repeat("c", 64),
-			Result: filleradmission.Result{Decision: &filleradmission.Decision{
-				Verdict:        filleradmission.VerdictReview,
-				ReasonCodes:    []filleradmission.ReasonCode{filleradmission.ReasonMissingCommercialIdentity},
-				ReviewQuestion: "What product is this clip advertising?",
-			}},
-			CreatedAt: at,
-		}
-	}
-	seedKind := func(hash, path string, kind filler.Kind, withPipeline bool) {
-		t.Helper()
-		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-			Hash: hash, Path: path, Name: "Applied candidate", Kind: kind,
-			DurationMs: 30_000, Held: true,
-		}, UpdatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-		if withPipeline {
-			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone,
-				Disposition: filler.DispositionReview, UpdatedAt: at,
-			}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	seed := func(hash, path string, withPipeline bool) {
-		t.Helper()
-		seedKind(hash, path, filler.Commercial, withPipeline)
-	}
-
-	hash := strings.Repeat("a", 64)
-	seed(hash, "aa/aa/"+hash+".mp4", true)
-	decision := newDecision("applied-review", hash)
-	if err := s.PutFillerDecision(ctx, decision); err != nil {
-		t.Fatal(err)
-	}
-	action := fillerdecision.Action{
-		ID: "applied-admit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(time.Minute),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, action); !errors.Is(err, fillerdecision.ErrActionMode) {
-		t.Fatalf("ordinary writer accepted applied decision: %v", err)
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, action); err != nil {
+	hash := strings.Repeat("8", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Kind: filler.Unclassified,
+		DurationMs: 30_000, Held: true,
+	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
-	if err != nil || clip.Held {
-		t.Fatalf("applied admit clip = %+v, err = %v", clip, err)
-	}
-	pipeline, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || pipeline.Disposition != filler.DispositionReady || pipeline.Status != filler.StatusDone {
-		t.Fatalf("applied admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
-	}
-	// The clip and pipeline rows keep their tables' Unix-seconds codec; only the decision ledger's own
-	// rows are nanoseconds. A nanosecond value there reads back millions of years in the future.
-	if !clip.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) || !pipeline.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) {
-		t.Fatalf("applied admit stamped clip %v, pipeline %v; want the action's time %v", clip.UpdatedAt, pipeline.UpdatedAt, action.CreatedAt)
-	}
-	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: decision.ID, Limit: 10})
-	if err != nil || actions.Total != 1 || actions.Rows[0].ID != action.ID {
-		t.Fatalf("applied admit actions = %+v, err = %v", actions, err)
-	}
-	reverse := fillerdecision.Action{
-		ID: "applied-reverse", DecisionID: decision.ID, Kind: fillerdecision.ActionReverse,
-		ActorID: "admin-1", Reason: "current evidence was withdrawn", SupersedesID: action.ID,
-		CreatedAt: at.Add(2 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reverse); err != nil {
-		t.Fatal(err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("applied reversal left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-	restore := fillerdecision.Action{
-		ID: "applied-restore", DecisionID: decision.ID, Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "fresh terminal release replay passed", SupersedesID: reverse.ID,
-		CreatedAt: at.Add(3 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restore); err != nil {
-		t.Fatal(err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("applied restore left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
-		!decisionPageContains(reviews, decision.ID) {
-		t.Fatalf("applied restored review queue = %+v, err = %v", reviews, err)
-	}
-	counts, err := s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != reviews.Total {
-		t.Fatalf("applied restored review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
-	}
-	readmit := fillerdecision.Action{
-		ID: "applied-readmit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", SupersedesID: restore.ID, CreatedAt: at.Add(3*time.Minute + time.Second),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, readmit); err != nil {
-		t.Fatalf("applied restored review did not accept a new decision: %v", err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if clip.Held || pipeline.Disposition != filler.DispositionReady {
-		t.Fatalf("applied readmit left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-
-	rejectedHash := strings.Repeat("e", 64)
-	seed(rejectedHash, "ee/ee/"+rejectedHash+".mp4", true)
-	rejectedDecision := newDecision("applied-reject-review", rejectedHash)
-	if err := s.PutFillerDecision(ctx, rejectedDecision); err != nil {
-		t.Fatal(err)
-	}
-	reject := fillerdecision.Action{
-		ID: "applied-reject", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionReject,
-		ActorID: "admin-1", CreatedAt: at.Add(4 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reject); err != nil {
-		t.Fatal(err)
-	}
-	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
-	if err != nil || len(playable) != 0 {
-		t.Fatalf("applied reject remained playable = %+v, err = %v", playable, err)
-	}
-	pipeline, _, _ = s.GetClipPipeline(ctx, rejectedHash)
-	if pipeline.Disposition != filler.DispositionDismissed {
-		t.Fatalf("applied reject pipeline = %+v", pipeline)
-	}
-	if removed, err := s.GetClip(ctx, rejectedHash); err != nil || !removed.RemovedAt.Equal(reject.CreatedAt.Truncate(time.Second)) {
-		t.Fatalf("applied reject removed the clip at %v, want %v (err %v)", removed.RemovedAt, reject.CreatedAt, err)
-	}
-	restoreRejected := fillerdecision.Action{
-		ID: "applied-restore-rejected", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "new terminal release replay passed", SupersedesID: reject.ID,
-		CreatedAt: at.Add(5 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restoreRejected); err != nil {
-		t.Fatal(err)
-	}
-	playable, err = s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
-	if err != nil || len(playable) != 0 {
-		t.Fatalf("restored reject remained playable = %+v, err = %v", playable, err)
-	}
-	restoredReject, err := s.GetClip(ctx, rejectedHash)
-	if err != nil || !restoredReject.Held || !restoredReject.RemovedAt.IsZero() {
-		t.Fatalf("restored reject is not held = %+v, err = %v", restoredReject, err)
-	}
-	pipeline, _, err = s.GetClipPipeline(ctx, rejectedHash)
-	if err != nil || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("restored reject pipeline = %+v, err = %v", pipeline, err)
-	}
-	reviews, err = s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
-		!decisionPageContains(reviews, rejectedDecision.ID) {
-		t.Fatalf("restored reject review queue = %+v, err = %v", reviews, err)
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != reviews.Total {
-		t.Fatalf("restored reject review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
-	}
-
-	rollbackHash := strings.Repeat("d", 64)
-	seed(rollbackHash, "dd/dd/"+rollbackHash+".mp4", false)
-	rollbackDecision := newDecision("applied-without-pipeline", rollbackHash)
-	if err := s.PutFillerDecision(ctx, rollbackDecision); err != nil {
-		t.Fatal(err)
-	}
-	rollbackAction := fillerdecision.Action{
-		ID: "applied-rollback", DecisionID: rollbackDecision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, rollbackAction); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("missing pipeline effect = %v, want stale rollback", err)
-	}
-	clip, err = s.GetClip(ctx, rollbackHash)
-	if err != nil || !clip.Held {
-		t.Fatalf("rolled-back clip = %+v, err = %v", clip, err)
-	}
-	actions, err = s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: rollbackDecision.ID, Limit: 10})
-	if err != nil || actions.Total != 0 {
-		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
-	}
-
-	// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
-	// unknown role is no longer rejected at this boundary; terminal readiness owns its Placement.
-	unclassifiedHash := strings.Repeat("8", 64)
-	seedKind(unclassifiedHash, "88/88/"+unclassifiedHash+".mp4", filler.Unclassified, true)
-	unclassifiedClip, err := s.GetClip(ctx, unclassifiedHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unheld := unclassifiedClip
+	unheld := clip
 	unheld.Held = false
 	if err := s.UpsertClip(ctx, unheld); err != nil {
 		t.Fatalf("ordinary upsert rejected descriptive unclassified state: %v", err)
 	}
-	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
-	if err != nil || !unclassifiedClip.Held {
-		t.Fatalf("ordinary upsert released hold = %+v, err = %v", unclassifiedClip, err)
+	clip, err = s.GetClip(ctx, hash)
+	if err != nil || !clip.Held {
+		t.Fatalf("ordinary upsert released hold = %+v, err = %v", clip, err)
 	}
-	if err := s.SetClipComposite(ctx, unclassifiedHash, true, at.Add(6*time.Minute+time.Second)); err != nil {
+	if err := s.SetClipComposite(ctx, hash, true, at.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+	if _, err := s.ReleaseCompositeHolds(ctx, []string{clip.Path}, at.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	playableUnknown, err := s.ListClips(ctx, ClipFilter{Hashes: []string{unclassifiedHash}, IncludeComposites: true})
-	if err != nil || len(playableUnknown) != 0 {
-		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playableUnknown, err)
+	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{hash}, IncludeComposites: true})
+	if err != nil || len(playable) != 0 {
+		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playable, err)
 	}
-	if _, err := s.HoldClips(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	unclassifiedDecision := newDecision("applied-unclassified", unclassifiedHash)
-	if err := s.PutFillerDecision(ctx, unclassifiedDecision); err != nil {
-		t.Fatal(err)
-	}
-	unclassifiedAction := fillerdecision.Action{
-		ID: "applied-unclassified-admit", DecisionID: unclassifiedDecision.ID,
-		Kind: fillerdecision.ActionAdmit, ActorID: "admin-1", CreatedAt: at.Add(7 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, unclassifiedAction); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("unclassified applied admission = %v, want stale", err)
-	}
-	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
-	if err != nil || !unclassifiedClip.Held || unclassifiedClip.Kind != filler.Unclassified {
-		t.Fatalf("unclassified admission changed clip = %+v, err = %v", unclassifiedClip, err)
-	}
-	unclassifiedPipeline, found, err := s.GetClipPipeline(ctx, unclassifiedHash)
-	if err != nil || !found || unclassifiedPipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("unclassified admission changed pipeline = %+v, found = %t, err = %v", unclassifiedPipeline, found, err)
-	}
-	unclassifiedActions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: unclassifiedDecision.ID, Limit: 10})
-	if err != nil || unclassifiedActions.Total != 0 {
-		t.Fatalf("unclassified admission persisted action = %+v, err = %v", unclassifiedActions, err)
-	}
-}
-
-func decisionPageContains(page fillerdecision.DecisionPage, id string) bool {
-	for _, record := range page.Rows {
-		if record.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
