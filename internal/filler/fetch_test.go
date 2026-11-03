@@ -502,6 +502,29 @@ func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
 	}
 }
 
+// Choosing one duration cut per campaign is YouTube's: its cursor can split one listing across
+// checks. Another provider has no preferred cut, so a title that names its length ("30 second
+// spot") is an ordinary item, not one already known. Until this was scoped, every such archive.org
+// item was skipped as already_known, and never fetched (#1375 to here).
+func TestFetch_ANonYouTubeTitleThatNamesItsLengthIsStillTaken(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers: []filler.DiscoveredRef{
+			{ID: "cola", URL: "https://archive.org/details/cola", Title: "Acme Cola 30 second spot", DurationMS: 30 * 1000},
+			{ID: "plain", URL: "https://archive.org/details/plain", Title: "Acme Cola spot", DurationMS: 30 * 1000},
+		},
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000)).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append([]string(nil), stub.queuedIDs...)
+	sort.Strings(got)
+	if strings.Join(got, ",") != "cola,plain" || res.Skipped != 0 {
+		t.Fatalf("queued %v with %d skipped, want cola and plain and nothing skipped", got, res.Skipped)
+	}
+}
+
 func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
