@@ -28,7 +28,16 @@ type PlayerTransportEvent =
   | { attemptId: number; type: "playing" }
   /** Playback stopped to wait for data the viewer didn't pause for; the next `playing` ends it. */
   | { attemptId: number; type: "stalled" }
-  | { attemptId: number; error: string; type: "error" };
+  | {
+      attemptId: number;
+      error: string;
+      /**
+       * Present when the server refused the stream's start and `error` is its reason (the HTTP
+       * status): final at once, since retrying only waits out the server's start deadline again.
+       */
+      startStatus?: number;
+      type: "error";
+    };
 
 interface PlayerTransport {
   dispose: () => void;

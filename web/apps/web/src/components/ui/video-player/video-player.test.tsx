@@ -147,31 +147,18 @@ describe("VideoPlayer", () => {
     expect(onChannelStep).not.toHaveBeenCalled();
   });
 
-  it("waits for replacement loadeddata before observing the frame that clears a held poster", () => {
-    const requestFrame = vi.fn(() => 1);
-    Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
-      configurable: true,
-      value: requestFrame,
-    });
-    const firstAttach = vi.fn(() => () => undefined);
-    const replacementAttach = vi.fn(() => () => undefined);
-    const { container, rerender } = render(<VideoPlayer attach={firstAttach} live />);
+  it("binds an attached transport to its own element once, and releases it on unmount", () => {
+    const release = vi.fn();
+    const attach = vi.fn(() => release);
+    const { container, rerender, unmount } = render(<VideoPlayer attach={attach} live />);
     const video = container.querySelector("video") as HTMLVideoElement;
 
-    expect(requestFrame).not.toHaveBeenCalled();
-    video.poster = "data:image/png;base64,held";
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
+    rerender(<VideoPlayer attach={attach} live overlay={<p>tuning</p>} />);
+    expect(attach).toHaveBeenCalledExactlyOnceWith(video);
+    expect(release).not.toHaveBeenCalled();
 
-    rerender(<VideoPlayer attach={replacementAttach} live />);
-    video.poster = "data:image/png;base64,held";
-    expect(video).toHaveAttribute("poster");
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
-
-    delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+    unmount();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("draws a live player's controls from the caller's chrome, handing it the player's own state", () => {

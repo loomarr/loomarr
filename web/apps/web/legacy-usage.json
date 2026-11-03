@@ -13,7 +13,7 @@
       "legacyUi": 2
     },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 47,
+      "tailwindClasses": 43,
       "legacyUi": 1
     },
     "src/channels/guide-page/guide-page.tsx": {

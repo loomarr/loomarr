@@ -1,17 +1,13 @@
-type LivePlaybackMode = "live" | "paused" | "behind";
+import type { LivePlaybackState } from "@loomarr/player";
 
-interface LivePlaybackState {
-  mode: LivePlaybackMode;
-  lagSeconds: number;
-  viewerTimeMs: number;
-  noticeRevision: number;
-}
+type LivePlaybackMode = LivePlaybackState["mode"];
 
+/** A live player's own controls: pause stays paused until play, and goLive returns to the live edge. */
 interface LivePlaybackTransport {
   state: LivePlaybackState;
-  play: (video: HTMLVideoElement) => Promise<void> | void;
-  pause: (video: HTMLVideoElement) => void;
-  goLive: (video: HTMLVideoElement) => Promise<void> | void;
+  play: () => Promise<void> | void;
+  pause: () => void;
+  goLive: () => Promise<void> | void;
 }
 
 export type { LivePlaybackMode, LivePlaybackState, LivePlaybackTransport };

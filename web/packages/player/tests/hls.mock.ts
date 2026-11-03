@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { type Mock, vi } from "vitest";
 
 const hlsMock = { supported: false, instances: [] as unknown[] };
 
@@ -33,11 +33,11 @@ class MockHls {
   loadSource = vi.fn((url: string) => {
     this.url = url;
   });
-  off = vi.fn();
-  on = vi.fn();
-  recoverMediaError = vi.fn();
-  startLoad = vi.fn();
-  stopLoad = vi.fn();
+  off: Mock = vi.fn();
+  on: Mock = vi.fn();
+  recoverMediaError: Mock = vi.fn();
+  startLoad: Mock = vi.fn();
+  stopLoad: Mock = vi.fn();
   transferMedia = vi.fn(() => null);
 
   constructor(config: unknown) {

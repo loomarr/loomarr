@@ -1,0 +1,46 @@
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
+import type { LivePlaybackState, TuneDirection } from "@loomarr/player";
+
+/** The viewer's live position and what moves it: pause stays paused until play, and goLive rejoins the edge. */
+interface WatchLiveTransport {
+  state: LivePlaybackState;
+  play: () => Promise<void> | void;
+  pause: () => void;
+  goLive: () => Promise<void> | void;
+}
+
+interface UseWatchPlayerOptions {
+  /** The channel the URL names. */
+  channelId: string;
+  /** Every channel the server lists; undefined until it has been read. */
+  channels: ChannelDTO[] | undefined;
+  nowNext: ChannelNowNext[];
+  /** The player tuned another channel (a step, a typed number, a pick): the URL follows it. */
+  onNavigate: (channelId: string) => void;
+}
+
+/** What the picture is doing: waiting for a first frame, showing one, or stopped for good. */
+type WatchPlayerStatus = "loading" | "playing" | "error";
+
+interface WatchPlayer {
+  /** Binds the player to the surface's <video>. Pass to the video surface's `attach`. */
+  attach: (video: HTMLVideoElement) => () => void;
+  canSurf: boolean;
+  /** The channel being watched or tuned, from the lineup; undefined until the player has one. */
+  channel?: ChannelDTO;
+  /** What is airing on `channel` now. */
+  currentTitle?: string;
+  error?: string;
+  /** The viewer's live position and the controls that move it. */
+  liveTransport: WatchLiveTransport;
+  playbackSessionId: string;
+  retry: () => void;
+  status: WatchPlayerStatus;
+  step: (direction: TuneDirection) => void;
+  /** The tuning channel's picture, once decoded, to show until its stream's first frame. */
+  stillURL?: string;
+  tune: (channelId: string) => void;
+}
+
+export type { UseWatchPlayerOptions, WatchLiveTransport, WatchPlayer, WatchPlayerStatus };

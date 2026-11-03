@@ -9,7 +9,7 @@ import { type ReactNode, useCallback, useMemo } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
 import { DRAWER_NOW_PERCENT, drawerChannels } from "@/channels/drawer-channels";
-import { useChannelTuner } from "@/channels/use-channel-tuner";
+import { useWatchPlayer } from "@/channels/use-watch-player";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -43,19 +43,19 @@ const WatchScreen = () => {
   useDocumentTitle(channel?.name);
   const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
   const nowNext = channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } });
-  const tune = useCallback(
-    (target: { id: string }) => {
-      void navigate({ to: "/watch/$id", params: { id: target.id }, replace: true });
+  const follow = useCallback(
+    (channelId: string) => {
+      void navigate({ to: "/watch/$id", params: { id: channelId }, replace: true });
     },
     [navigate],
   );
-  const tuner = useChannelTuner({
-    currentId: id,
-    channels: unwrap(channels.data)?.channels ?? [],
+  const player = useWatchPlayer({
+    channelId: id,
+    channels: unwrap(channels.data)?.channels,
     nowNext: unwrap(nowNext.data)?.channels ?? [],
-    onTune: tune,
+    onNavigate: follow,
   });
-  const tunedChannel = tuner.channel ?? channel;
+  const tunedChannel = player.channel ?? channel;
   // Leaving goes back where the viewer came from; a deep link with no history lands on the Guide.
   const leave = useCallback(() => {
     if (canGoBack) router.history.back();
@@ -130,17 +130,7 @@ const WatchScreen = () => {
         channel={tunedChannel}
         isAdmin={isAdmin}
         onLeave={leave}
-        tuner={{
-          canSurf: tuner.canSurf,
-          requestedChannel: tuner.requestedChannel,
-          currentTitle: tuner.currentTitle,
-          attempt: tuner.attempt,
-          acknowledging: tuner.acknowledging,
-          ready: tuner.ready,
-          step: tuner.step,
-          tune: tuner.tune,
-          retry: tuner.retry,
-        }}
+        player={player}
         drawer={{
           channels: drawerChannelList,
           favourites: favouriteIds,
