@@ -3,6 +3,7 @@ import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useEffect, useRef, useState } from "react";
+import { useFillerProviders } from "../../use-filler-providers";
 import { SourceContentPreview } from "../source-content-preview";
 
 const registeredSourceURL = (source: FillerSourceDTO) => {
@@ -26,26 +27,27 @@ const SourcePreviewSection = ({ source }: SourcePreviewSectionProps) => {
   const [suggestion, setSuggestion] = useState<FillerSourceSuggestionDTO>();
   const resolveSource = fillerApi.useResolveFillerSource();
   const resolved = useRef(false);
+  const remote = useFillerProviders().discoverable(source.kind);
 
+  // The provider registry may answer after the drawer opens, so the resolve waits for it and still
+  // runs once.
   useEffect(() => {
-    if (resolved.current) return;
-    resolved.current = true;
     const uri = source.uri?.trim();
-    if ((source.kind === "archive" || source.kind === "youtube") && source.providerEnabled && uri) {
-      resolveSource.mutate(
-        { kind: source.kind, data: { input: uri } },
-        {
-          onSuccess: (response) => {
-            const result = unwrap(response, (body) => body);
-            if (result) setSuggestion(result);
-          },
+    if (resolved.current || !remote || !source.providerEnabled || !uri) return;
+    resolved.current = true;
+    resolveSource.mutate(
+      { kind: remote.id, data: { input: uri } },
+      {
+        onSuccess: (response) => {
+          const result = unwrap(response, (body) => body);
+          if (result) setSuggestion(result);
         },
-      );
-    }
-  }, [source, resolveSource]);
+      },
+    );
+  }, [remote, source, resolveSource]);
 
   const url = registeredSourceURL(source);
-  if (!url || (source.kind !== "archive" && source.kind !== "youtube")) return null;
+  if (!url || !remote) return null;
 
   return (
     <section aria-labelledby="source-preview-heading" className="border-border border-t pt-5">
@@ -54,13 +56,14 @@ const SourcePreviewSection = ({ source }: SourcePreviewSectionProps) => {
       </h3>
       <div className="mt-2">
         <SourceContentPreview
-          kind={source.kind}
+          kind={remote.id}
+          providerLabel={remote.label}
           canonicalUrl={suggestion?.canonicalUrl ?? url}
           previewItems={suggestion?.previewItems}
           loading={source.providerEnabled && resolveSource.isPending}
           error={
             !source.providerEnabled
-              ? `Resume ${source.kind === "archive" ? "Archive.org" : "YouTube"} to refresh these examples.`
+              ? `Resume ${remote.label} to refresh these examples.`
               : resolveSource.error
                 ? "Examples aren’t available right now. You can still open the source."
                 : null

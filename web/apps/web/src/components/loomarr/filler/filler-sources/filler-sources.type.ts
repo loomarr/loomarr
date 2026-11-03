@@ -25,8 +25,8 @@ interface FillerSourcesProps {
   /** Which row's switch is in flight, so one toggle disables rather than the whole list. */
   toggling?: string | null;
   /** Change provider policy without rewriting any child switch. */
-  onToggleProvider?: (kind: "archive" | "youtube", enabled: boolean) => void;
-  togglingProvider?: "archive" | "youtube" | null;
+  onToggleProvider?: (kind: string, enabled: boolean) => void;
+  togglingProvider?: string | null;
   /** Provider-local add flow, rendered with the provider it affects. */
   renderProviderSetup?: (provider: FillerSourceDTO) => ReactNode;
   /** Folder/library add flow, rendered inside the first-class Your files group. */

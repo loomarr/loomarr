@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { SourceSearch } from "@/components/loomarr/filler/source-search";
 import { Disclosure } from "@/components/ui/disclosure";
+import { useFillerProviders } from "../../use-filler-providers";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 import { useQueuedClipJobs } from "../use-queued-clip-jobs";
 
@@ -22,6 +23,8 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<FillerSourcePreviewItemDTO>();
   const queuedJobs = useQueuedClipJobs(source.id);
+  const provider = useFillerProviders().discoverable(source.kind);
+  const searchable = Boolean(provider?.searchable);
 
   // Searching a source for clips to add (V35). ⚠ `submittedQuery` is a SEPARATE state from what the
   // operator is typing: the query runs on submit, not on keystroke. Each search costs archive.org
@@ -35,8 +38,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
     // enabled query with an empty q would 422 on mount.
     {
       query: {
-        enabled:
-          isAdmin && submittedQuery.trim().length >= 2 && source.kind === "archive" && Boolean(source.uri),
+        enabled: isAdmin && submittedQuery.trim().length >= 2 && searchable && Boolean(source.uri),
       },
     },
   );
@@ -97,7 +99,14 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
           />
         </Disclosure.Panel>
       </Disclosure>
-      <SourceItemPreviewDialog item={preview} kind="archive" onClose={() => setPreview(undefined)} />
+      {provider && (
+        <SourceItemPreviewDialog
+          item={preview}
+          kind={provider.id}
+          providerLabel={provider.label}
+          onClose={() => setPreview(undefined)}
+        />
+      )}
     </>
   );
 };

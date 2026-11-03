@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import type { RemoteProvider, RemoteProviderKind } from "../../use-filler-providers";
 import { SourceContentPreview } from "../source-content-preview";
 
 interface ProviderSourceFinderProps {
-  kind: "archive" | "youtube";
+  provider: RemoteProvider;
   enabled: boolean;
 }
 
@@ -30,7 +31,7 @@ const COPY = {
   },
 } as const;
 
-const isExactProviderInput = (kind: ProviderSourceFinderProps["kind"], value: string) => {
+const isExactProviderInput = (kind: RemoteProviderKind, value: string) => {
   if (kind === "archive") {
     return (
       /^(https?:\/\/)?(www\.)?archive\.org\/(details|metadata)\//i.test(value) ||
@@ -47,7 +48,8 @@ const isExactProviderInput = (kind: ProviderSourceFinderProps["kind"], value: st
 
 // One search-or-paste field for one provider. Search and exact resolution are deliberately
 // read-only; the separate final button is the only action that registers background work.
-const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
+const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) => {
+  const kind = provider.id;
   const copy = COPY[kind];
   const minimumQueryLength = kind === "youtube" ? 3 : 2;
   const listID = useId();
@@ -326,6 +328,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
           </div>
           <SourceContentPreview
             kind={kind}
+            providerLabel={provider.label}
             canonicalUrl={selected.canonicalUrl}
             previewItems={verified ? selected.previewItems : undefined}
             loading={resolveSource.isPending && !verified}
@@ -344,7 +347,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         <p className="text-onair-300 mt-2 text-sm">
           {problem.detail ??
             problem.title ??
-            `${kind === "archive" ? "Archive.org" : "YouTube"} is not responding right now. Try again in a moment.`}
+            `${provider.label} is not responding right now. Try again in a moment.`}
         </p>
       )}
     </div>

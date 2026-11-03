@@ -23,6 +23,7 @@ import {
   getListChannelsMockHandler,
   getListDocsMockHandler,
   getListFillerMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
@@ -163,6 +164,7 @@ const appHandlers = (): RequestHandler[] => [
   // The generated client is the coupling, and neither diff mentions the other's file.
   getListFillerMockHandler({ clips: [], total: 0 }),
   getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+  getListFillerProvidersMockHandler({ providers: [] }),
   // The guide grid's window read. `fromMs`/`toMs` are required, so an empty grid still has to
   // carry a coherent window rather than `{}`.
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),

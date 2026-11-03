@@ -9,7 +9,9 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
+import type { RemoteProviderKind } from "../../use-filler-providers";
 import { ProviderSourceFinder } from "./provider-source-finder";
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -17,6 +19,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
     {children}
   </QueryClientProvider>
 );
+
+const providerNamed = (id: RemoteProviderKind) => {
+  const provider = fillerProviders.find((candidate) => candidate.id === id);
+  if (!provider) throw new Error(`no ${id} provider in the fixture registry`);
+  return { ...provider, id };
+};
+const archiveProvider = providerNamed("archive");
+const youtubeProvider = providerNamed("youtube");
 
 const suggestion = (id: string, title: string, alreadyAdded = false) => ({
   provider: "archive" as const,
@@ -68,7 +78,7 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     await userEvent.type(
       screen.getByRole("combobox", { name: "Find an Archive.org collection" }),
       "classic tv",
@@ -115,7 +125,7 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(input, "https://archive.org/details/classic_tv");
     await screen.findByRole("button", { name: "Add collection" });
@@ -140,7 +150,7 @@ describe("ProviderSourceFinder", () => {
       getSuggestFillerSourcesMockHandler({ suggestions: [] }),
     );
 
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(input, "https://archive.org/details/classic_tv");
     await screen.findByRole("button", { name: "Checking…" });
@@ -165,7 +175,7 @@ describe("ProviderSourceFinder", () => {
         ...suggestion("already_here", "Already here", true),
       }),
     );
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(input, "already");
     await screen.findByRole("option", { name: /first collection/i });
@@ -189,7 +199,7 @@ describe("ProviderSourceFinder", () => {
         return suggestion("classic_tv", "Classic TV");
       }),
     );
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     await userEvent.type(
       screen.getByRole("combobox", { name: "Find an Archive.org collection" }),
       "https://archive.org/details/classic_tv",
@@ -228,7 +238,7 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
-    render(<ProviderSourceFinder kind="youtube" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(
       screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }),
       "retro commercials",
@@ -272,7 +282,7 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
-    render(<ProviderSourceFinder kind="youtube" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(
       screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }),
       "https://www.youtube.com/playlist?list=PL123",
@@ -299,7 +309,7 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
-    render(<ProviderSourceFinder kind="youtube" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(
       screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }),
       "@retroads",
@@ -318,7 +328,7 @@ describe("ProviderSourceFinder", () => {
         return { suggestions: [] };
       }),
     );
-    render(<ProviderSourceFinder kind="archive" enabled={false} />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled={false} />, { wrapper });
     expect(screen.getByRole("combobox", { name: "Find an Archive.org collection" })).toBeDisabled();
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(calls).toBe(0);
@@ -332,7 +342,7 @@ describe("ProviderSourceFinder", () => {
         return { suggestions: [] };
       }),
     );
-    render(<ProviderSourceFinder kind="youtube" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }), "tv");
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(calls).toBe(0);
@@ -340,7 +350,7 @@ describe("ProviderSourceFinder", () => {
 
   it("keeps the search text when there are no matches", async () => {
     server.use(getSuggestFillerSourcesMockHandler({ suggestions: [] }));
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const emptyInput = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(emptyInput, "no matches");
     await screen.findByText(/no collections found/i);
@@ -356,10 +366,21 @@ describe("ProviderSourceFinder", () => {
         ),
       ),
     );
-    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const failedInput = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(failedInput, "classic");
     await screen.findByText(/not responding right now/i);
     expect(failedInput).toHaveValue("classic");
+  });
+
+  it("names the provider by the label the registry gave it when a failure carries no detail", async () => {
+    server.use(
+      http.get("*/v1/filler/providers/archive/suggestions", () => HttpResponse.json({}, { status: 502 })),
+    );
+    render(<ProviderSourceFinder provider={{ ...archiveProvider, label: "Registry Name" }} enabled />, {
+      wrapper,
+    });
+    await userEvent.type(screen.getByRole("combobox", { name: "Find an Archive.org collection" }), "classic");
+    await screen.findByText("Registry Name is not responding right now. Try again in a moment.");
   });
 });

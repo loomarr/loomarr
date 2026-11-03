@@ -7,11 +7,13 @@ describe("SourceContentPreview", () => {
     const { rerender } = render(
       <SourceContentPreview
         kind="youtube"
+        providerLabel="Registry Name"
         canonicalUrl="https://www.youtube.com/channel/example/videos"
         loading
       />,
     );
 
+    expect(screen.getByRole("link", { name: /Open on Registry Name/ })).toBeVisible();
     expect(screen.getByText("A few videos from this source")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading examples…");
     expect(screen.getByRole("status").querySelector(".animate-spin")).not.toBeNull();
@@ -19,6 +21,7 @@ describe("SourceContentPreview", () => {
     rerender(
       <SourceContentPreview
         kind="youtube"
+        providerLabel="Registry Name"
         canonicalUrl="https://www.youtube.com/channel/example/videos"
         previewItems={[
           { title: "First", url: "https://www.youtube.com/watch?v=first" },

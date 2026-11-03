@@ -1,8 +1,8 @@
-import { getResolveFillerSourceMockHandler } from "@loomarr/api/msw";
+import { getListFillerProvidersMockHandler, getResolveFillerSourceMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { fillerSource } from "@/test/fixtures/filler";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { registeredSourceURL, SourcePreviewSection } from "./source-preview-section";
 
@@ -35,6 +35,10 @@ describe("registeredSourceURL", () => {
 });
 
 describe("SourcePreviewSection", () => {
+  beforeEach(() => {
+    server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+  });
+
   it("resolves the registered source once and shows its examples", async () => {
     const resolutions: { kind: string; input: string }[] = [];
     server.use(
@@ -54,7 +58,7 @@ describe("SourcePreviewSection", () => {
     );
     renderSection(fillerSource({ id: "archive:classic", kind: "archive", uri: "classic_tv" }));
 
-    expect(screen.getByRole("heading", { name: "From this source" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "From this source" })).toBeVisible();
     expect(await screen.findByText("First station break")).toBeVisible();
     expect(resolutions).toEqual([{ kind: "archive", input: "classic_tv" }]);
   });

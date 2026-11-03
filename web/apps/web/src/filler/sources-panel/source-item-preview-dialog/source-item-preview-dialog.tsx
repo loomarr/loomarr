@@ -9,10 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { RemoteProviderKind } from "../../use-filler-providers";
 
 interface SourceItemPreviewDialogProps {
   item?: FillerSourcePreviewItemDTO;
-  kind: "archive" | "youtube";
+  kind: RemoteProviderKind;
+  /** The provider's operator-facing name, from the provider registry. */
+  providerLabel: string;
   onClose: () => void;
 }
 
@@ -38,7 +41,7 @@ const providerEmbedURL = (kind: SourceItemPreviewDialogProps["kind"], raw: strin
   }
 };
 
-const SourceItemPreviewDialog = ({ item, kind, onClose }: SourceItemPreviewDialogProps) => {
+const SourceItemPreviewDialog = ({ item, kind, providerLabel, onClose }: SourceItemPreviewDialogProps) => {
   const embedURL = item ? providerEmbedURL(kind, item.url) : undefined;
   return (
     <Dialog open={Boolean(item)} onOpenChange={(open) => !open && onClose()}>
@@ -46,7 +49,7 @@ const SourceItemPreviewDialog = ({ item, kind, onClose }: SourceItemPreviewDialo
         <DialogHeader className="pr-8">
           <DialogTitle>{item?.title ?? "Item preview"}</DialogTitle>
           <DialogDescription>
-            This plays from {kind === "archive" ? "Archive.org" : "YouTube"}. Loomarr has not downloaded it.
+            This plays from {providerLabel}. Loomarr has not downloaded it.
           </DialogDescription>
         </DialogHeader>
         {embedURL ? (

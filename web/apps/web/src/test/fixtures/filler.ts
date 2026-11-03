@@ -1,5 +1,6 @@
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 
@@ -93,4 +94,51 @@ const fillerSource = (over: Partial<FillerSourceDTO> = {}): FillerSourceDTO => (
   ...over,
 });
 
-export { DEFAULT_KINDS, defectReport, fillerSource, readiness };
+// `fillerProviders` is the registry `GET /v1/filler/providers` answers on a stock install: the two
+// fetched, discoverable services and the two scanned local kinds.
+const fillerProviders: FillerProviderDescriptionDTO[] = [
+  {
+    id: "folder",
+    label: "Folder",
+    fetched: false,
+    listable: false,
+    searchable: false,
+    discoverable: false,
+    openSearchable: false,
+    addable: true,
+  },
+  {
+    id: "library",
+    label: "Media library",
+    fetched: false,
+    listable: false,
+    searchable: false,
+    discoverable: false,
+    openSearchable: false,
+    addable: true,
+  },
+  {
+    id: "archive",
+    label: "Archive.org",
+    addressHint: "https://archive.org/details/collection",
+    fetched: true,
+    listable: true,
+    searchable: true,
+    discoverable: true,
+    openSearchable: false,
+    addable: true,
+  },
+  {
+    id: "youtube",
+    label: "YouTube",
+    addressHint: "https://www.youtube.com/@channel/videos",
+    fetched: true,
+    listable: true,
+    searchable: false,
+    discoverable: true,
+    openSearchable: false,
+    addable: true,
+  },
+];
+
+export { DEFAULT_KINDS, defectReport, fillerProviders, fillerSource, readiness };

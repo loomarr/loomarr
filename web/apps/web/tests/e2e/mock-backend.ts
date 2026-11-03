@@ -1107,6 +1107,54 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         }
         return json(route, {});
       }
+      if (path === "/v1/filler/providers" && method === "GET") {
+        return json(route, {
+          providers: [
+            {
+              id: "folder",
+              label: "Folder",
+              fetched: false,
+              listable: false,
+              searchable: false,
+              discoverable: false,
+              openSearchable: false,
+              addable: true,
+            },
+            {
+              id: "library",
+              label: "Media library",
+              fetched: false,
+              listable: false,
+              searchable: false,
+              discoverable: false,
+              openSearchable: false,
+              addable: true,
+            },
+            {
+              id: "archive",
+              label: "Archive.org",
+              addressHint: "https://archive.org/details/collection",
+              fetched: true,
+              listable: true,
+              searchable: true,
+              discoverable: true,
+              openSearchable: false,
+              addable: true,
+            },
+            {
+              id: "youtube",
+              label: "YouTube",
+              addressHint: "https://www.youtube.com/@channel/videos",
+              fetched: true,
+              listable: true,
+              searchable: false,
+              discoverable: true,
+              openSearchable: false,
+              addable: true,
+            },
+          ],
+        });
+      }
       if (path === "/v1/filler/sources") {
         const inheritedEvery = state.edits["filler.fetch.every"] ?? "6h";
         const inheritedEverySeconds = inheritedEvery === "0" ? 0 : Number.parseInt(inheritedEvery, 10) * 3600;

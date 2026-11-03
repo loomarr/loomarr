@@ -3,10 +3,13 @@ import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { RemoteProviderKind } from "../../use-filler-providers";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
 interface SourceContentPreviewProps {
-  kind: "archive" | "youtube";
+  kind: RemoteProviderKind;
+  /** The provider's operator-facing name, from the provider registry. */
+  providerLabel: string;
   canonicalUrl: string;
   previewItems?: FillerSourcePreviewItemDTO[];
   loading?: boolean;
@@ -15,13 +18,13 @@ interface SourceContentPreviewProps {
 
 const SourceContentPreview = ({
   kind,
+  providerLabel,
   canonicalUrl,
   previewItems,
   loading = false,
   error,
 }: SourceContentPreviewProps) => {
   const [previewing, setPreviewing] = useState<FillerSourcePreviewItemDTO>();
-  const provider = kind === "archive" ? "Archive.org" : "YouTube";
   const heading = kind === "archive" ? "Popular videos in this collection" : "A few videos from this source";
   const showExamples = loading || Boolean(error) || Boolean(previewItems?.length);
 
@@ -33,7 +36,7 @@ const SourceContentPreview = ({
         target="_blank"
         rel="noreferrer"
       >
-        Open on {provider}
+        Open on {providerLabel}
         <ExternalLink className="size-3" aria-hidden />
       </a>
 
@@ -89,7 +92,12 @@ const SourceContentPreview = ({
         </div>
       )}
 
-      <SourceItemPreviewDialog item={previewing} kind={kind} onClose={() => setPreviewing(undefined)} />
+      <SourceItemPreviewDialog
+        item={previewing}
+        kind={kind}
+        providerLabel={providerLabel}
+        onClose={() => setPreviewing(undefined)}
+      />
     </>
   );
 };

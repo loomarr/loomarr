@@ -7,6 +7,7 @@ import {
   getFetchFillerSourceMockHandler,
   getFillerReadinessMockHandler,
   getGetFillerAcquisitionMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getLocationsSearchMockHandler,
   getMeMockHandler,
@@ -22,6 +23,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { SourcesPanel } from "./sources-panel";
@@ -268,7 +270,10 @@ const PanelHarness = ({
 const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })], initialSourceID?: string) =>
   render(<PanelHarness sources={sources} initialSourceID={initialSourceID} />, { wrapper: makeWrapper() });
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("SourcesPanel", () => {
   it("shows one calm server-owned storage summary", async () => {
@@ -429,6 +434,24 @@ describe("SourcesPanel", () => {
     });
   });
 
+  it("offers a source finder only for a provider the registry says can be discovered", async () => {
+    stubSources();
+    server.use(
+      getListFillerProvidersMockHandler({
+        providers: fillerProviders.map((provider) =>
+          provider.id === "youtube" ? { ...provider, discoverable: false } : provider,
+        ),
+      }),
+    );
+    renderPanel([
+      source({ kind: "archive", id: "provider:archive", target: "Archive.org", group: true }),
+      source({ kind: "youtube", id: "provider:youtube", target: "YouTube", group: true }),
+    ]);
+
+    expect(await screen.findByRole("combobox", { name: "Find an Archive.org collection" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "Find a YouTube channel or playlist" })).toBeNull();
+  });
+
   it("adds remote targets inside their provider without a kind selector", async () => {
     const { adds } = stubSources();
     server.use(
@@ -454,7 +477,11 @@ describe("SourcesPanel", () => {
     ]);
 
     const input = await screen.findByRole("combobox", { name: "Find a YouTube channel or playlist" });
-    expect(screen.queryByRole("combobox", { name: /kind of source/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "YouTube" })).queryByRole("combobox", {
+        name: /kind of source/i,
+      }),
+    ).not.toBeInTheDocument();
     await userEvent.type(input, "https://www.youtube.com/@retroads/videos");
     await userEvent.click(await screen.findByRole("button", { name: "Add source" }));
 

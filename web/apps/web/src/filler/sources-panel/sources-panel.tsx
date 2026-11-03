@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { FillerSources } from "@/components/loomarr/filler/filler-sources";
+import { useFillerProviders } from "../use-filler-providers";
 import { LocalSourceForm } from "./local-source-form";
 import { ProviderSourceFinder } from "./provider-source-finder";
 import { SourceDetailSheet } from "./source-detail-sheet";
@@ -24,6 +25,7 @@ const SourcesPanel = ({
   onCloseSource,
 }: SourcesPanelProps) => {
   const { isAdmin } = useAuth();
+  const providers = useFillerProviders();
   const actions = useSourceActions({ onSourceRemoved: onCloseSource });
   const sourceTrigger = useRef<HTMLElement>(null);
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
@@ -42,13 +44,16 @@ const SourcesPanel = ({
         selectedId={selectedSourceID}
         onToggleEnabled={(id, enabled) => actions.updateSource(id, { enabled })}
         toggling={actions.updatingSourceID ?? null}
-        onToggleProvider={actions.toggleProvider}
+        onToggleProvider={(kind, enabled) => {
+          const remote = providers.discoverable(kind);
+          if (remote) actions.toggleProvider(remote.id, enabled);
+        }}
         togglingProvider={actions.togglingProvider ?? null}
         renderLocalSetup={isAdmin ? <LocalSourceForm /> : undefined}
         error={actions.error ?? sourcesError ?? null}
-        renderProviderSetup={(provider) => {
-          if (provider.kind !== "archive" && provider.kind !== "youtube") return undefined;
-          return <ProviderSourceFinder kind={provider.kind} enabled={provider.enabled} />;
+        renderProviderSetup={(row) => {
+          const remote = providers.discoverable(row.kind);
+          return remote ? <ProviderSourceFinder provider={remote} enabled={row.enabled} /> : undefined;
         }}
       />
 
