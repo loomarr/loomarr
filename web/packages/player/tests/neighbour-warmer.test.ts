@@ -23,7 +23,7 @@ const setup = (radius?: number) => {
     started.push({ id: channel.id, signal, done });
     return done.promise.then(() => undefined);
   });
-  const warmer = createNeighbourWarmer({radius, source: { warm } });
+  const warmer = createNeighbourWarmer({ radius, source: { warm } });
   return { started, warm, warmer };
 };
 
@@ -80,13 +80,13 @@ describe("neighbour warmer", () => {
 
   it("treats a rejected warm as a harmless miss", async () => {
     const warm = vi.fn().mockRejectedValue(new Error("503"));
-    const warmer = createNeighbourWarmer({radius: 2, source: { warm } });
+    const warmer = createNeighbourWarmer({ radius: 2, source: { warm } });
     warmer.retarget(catalog, "c");
     await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(4));
   });
 
   it("does nothing when the source cannot warm or the catalog has no neighbours", () => {
-    const warmer = createNeighbourWarmer({source: {} });
+    const warmer = createNeighbourWarmer({ source: {} });
     expect(() => warmer.retarget(catalog, "c")).not.toThrow();
     const { started, warmer: solo } = setup();
     solo.retarget([catalog[0] as PlayerChannel], "a");
@@ -118,7 +118,7 @@ describe("neighbour warmer reuse", () => {
     try {
       vi.setSystemTime(10_000);
       const warm = vi.fn((channel: PlayerChannel) => Promise.resolve(warmedSource(channel.id, 10_000_000)));
-      const warmer = createNeighbourWarmer({source: { warm } });
+      const warmer = createNeighbourWarmer({ source: { warm } });
       warmer.retarget(catalog, "c");
       await vi.advanceTimersByTimeAsync(0);
 
@@ -139,7 +139,7 @@ describe("neighbour warmer reuse", () => {
         channel.id === "b" ? { ...warmedSource("b", now + 10_000) } : { ...warmedSource("d"), warmed: false },
       ),
     );
-    const warmer = createNeighbourWarmer({source: { warm } });
+    const warmer = createNeighbourWarmer({ source: { warm } });
     warmer.retarget(catalog, "c");
     await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(2));
     await Promise.resolve();
@@ -151,7 +151,7 @@ describe("neighbour warmer reuse", () => {
 
   it("drops warmed sources for channels the viewer has moved away from", async () => {
     const warm = vi.fn((channel: PlayerChannel) => Promise.resolve(warmedSource(channel.id)));
-    const warmer = createNeighbourWarmer({source: { warm } });
+    const warmer = createNeighbourWarmer({ source: { warm } });
     warmer.retarget(catalog, "c");
     await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(2));
     await Promise.resolve();

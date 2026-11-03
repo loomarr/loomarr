@@ -1,4 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+
 type PlayerChannel = Pick<ChannelDTO, "id" | "inAppPlayable" | "name" | "number">;
 
 interface PlayerSource {
