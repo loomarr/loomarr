@@ -184,17 +184,6 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 	}
 }
 
-func TestTunerPublishingDisabledReadsAgentEnvFlag(t *testing.T) {
-	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "")
-	if tunerPublishingDisabled() {
-		t.Fatal("unset env flag must default to false (production behaviour unchanged)")
-	}
-	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "1")
-	if !tunerPublishingDisabled() {
-		t.Fatal("set env flag must disable tuner publishing")
-	}
-}
-
 // #1555: an agent dev lane's library.* settings can drift onto the household media server, and
 // completing them must never add or retire its Live TV tuner/listing. Both the settings-save
 // transition (MutateAndApplyCurrent) and the channel-maintenance repair tick (ApplyCurrent) route

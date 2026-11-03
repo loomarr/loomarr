@@ -26,6 +26,12 @@ type Config struct {
 	ListenAddr string `env:"LISTEN_ADDR" envDefault:":8080"`
 	LogLevel   string `env:"LOG_LEVEL" envDefault:"info"`
 
+	// AgentDisableLiveTVTuner is the env-only flag scripts/dev-env.sh exports for an agent lane
+	// (#1555): any non-blank value stops the lane adding or retiring a Live TV tuner on whatever
+	// media server its library.* settings point at. Deliberately NOT a registry setting, so
+	// nothing the Settings UI saves can turn it off. Read it through TunerPublishingDisabled.
+	AgentDisableLiveTVTuner string `env:"LOOMARR_AGENT_DISABLE_LIVETV_TUNER"`
+
 	// DataDir is the directory holding the bootstrap file, the generated installation key and
 	// other boot-owned state. It is decided once (the SQLite database's directory, else /data)
 	// and recorded in the bootstrap file by PersistDataDir; every later boot reads it back, so
@@ -128,6 +134,11 @@ func LoadEnv(environ map[string]string) (*Config, error) {
 		c.DataDir = DataDirFor(c.DatabaseURL)
 	}
 	return &c, nil
+}
+
+// TunerPublishingDisabled reports whether the agent-lane flag is set (any non-blank value).
+func (c *Config) TunerPublishingDisabled() bool {
+	return strings.TrimSpace(c.AgentDisableLiveTVTuner) != ""
 }
 
 // processEnvironment is the process environment as a map, the one place Load reads it.

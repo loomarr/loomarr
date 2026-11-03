@@ -31,21 +31,17 @@ var envAccessFuncs = map[string]bool{
 // envAccessAllowlist maps a repo-relative file (or a directory prefix ending in "/") to why it
 // reads the environment itself.
 var envAccessAllowlist = map[string]string{
-	"cmd/demo-library/":             "standalone developer tool; flags default from the invoking shell's variables, never from a Loomarr bootstrap file",
-	"cmd/image-bench/":              "standalone benchmark tool; flags default from the invoking shell's variables",
-	"cmd/image-cert/":               "standalone certification tool; flags default from the invoking shell's variables",
-	"cmd/release-notes/":            "release tooling run in CI; reads its API key and options from the CI environment",
-	"cmd/eval/":                     "standalone diagnostic and certification tools; pass os.Getenv as their injected lookup",
-	"cmd/dev-bootstrap/":            "developer tooling; reads the repo root the dev-env script exports",
-	"cmd/playout-bench/":            "standalone benchmark tool; reads CI artifact and summary paths",
-	"cmd/seed/":                     "developer seeding tool; reads its pick list from the invoking shell",
-	"cmd/loomarr/":                  "terminal presentation only (NO_COLOR, COLUMNS); not Loomarr configuration",
-	"project/evidence/":             "measurement programs for design evidence, run by hand from a shell; not part of the server",
-	"internal/testkit/":             "test support that spawns helper processes and steers them through the environment",
-	"internal/encode/host.go":       "picks the DRM render node a host exposes (RenderNodeEnv); a per-host hardware override, not a bootstrap or settings key",
-	"internal/playout/font.go":      "locates the overlay font a host provides (FontPathEnv); a per-host path override, not a bootstrap or settings key",
-	"internal/app/buildchannels.go": "agent-lane dev flag that must stay on regardless of anything the Settings UI saves (see tunerPublishingDisabled)",
-	"internal/app/imageadapter.go":  "locates the sibling image worker binary (LOOMARR_IMAGE_WORKER); a deployment path, not a setting",
+	"cmd/demo-library/":  "standalone developer tool; flags default from the invoking shell's variables, never from a Loomarr bootstrap file",
+	"cmd/image-bench/":   "standalone benchmark tool; flags default from the invoking shell's variables",
+	"cmd/image-cert/":    "standalone certification tool; flags default from the invoking shell's variables",
+	"cmd/release-notes/": "release tooling run in CI; reads its API key and options from the CI environment",
+	"cmd/eval/":          "standalone diagnostic and certification tools; pass os.Getenv as their injected lookup",
+	"cmd/dev-bootstrap/": "developer tooling; reads the repo root the dev-env script exports",
+	"cmd/playout-bench/": "standalone benchmark tool; reads CI artifact and summary paths",
+	"cmd/seed/":          "developer seeding tool; reads its pick list from the invoking shell",
+	"cmd/loomarr/":       "terminal presentation only (NO_COLOR, COLUMNS); not Loomarr configuration",
+	"project/evidence/":  "measurement programs for design evidence, run by hand from a shell; not part of the server",
+	"internal/testkit/":  "test support that spawns helper processes and steers them through the environment",
 }
 
 func envAccessAllowed(file string) bool {

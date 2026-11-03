@@ -175,3 +175,20 @@ func TestBootstrapFileRejectsTZ(t *testing.T) {
 		t.Fatal("TZ is not a bootstrap key")
 	}
 }
+
+// LOOMARR_AGENT_DISABLE_LIVETV_TUNER is the env-only agent-lane flag; any non-blank value turns it on.
+func TestTunerPublishingDisabledFlag(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "  ": false, "1": true, "yes": true} {
+		c, err := LoadEnv(map[string]string{"LOOMARR_AGENT_DISABLE_LIVETV_TUNER": value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := c.TunerPublishingDisabled(); got != want {
+			t.Errorf("flag %q: TunerPublishingDisabled = %v, want %v", value, got, want)
+		}
+	}
+	c, err := LoadEnv(map[string]string{})
+	if err != nil || c.TunerPublishingDisabled() {
+		t.Fatalf("unset flag = %v, %v; want false", c.TunerPublishingDisabled(), err)
+	}
+}

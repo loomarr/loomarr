@@ -252,14 +252,15 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		// container, the database's own directory on a bare-metal or dev install). A fixed
 		// /data here made every non-container install fail to boot: `mkdir /data: permission
 		// denied` before the server ever listened.
-		DataDir:                cfg.DataDir,
-		DevLogin:               cfg.DevLogin,
-		Pprof:                  cfg.Pprof,
-		CapacityProbe:          true,
-		MetricsToken:           cfg.MetricsToken,
-		Restart:                lifecycle.RequestRestart,
-		DatabaseMigration:      lifecycle.RequestMigration,
-		DatabaseMigrationError: databaseMigration.lastError,
+		DataDir:                 cfg.DataDir,
+		DevLogin:                cfg.DevLogin,
+		TunerPublishingDisabled: cfg.TunerPublishingDisabled(),
+		Pprof:                   cfg.Pprof,
+		CapacityProbe:           true,
+		MetricsToken:            cfg.MetricsToken,
+		Restart:                 lifecycle.RequestRestart,
+		DatabaseMigration:       lifecycle.RequestMigration,
+		DatabaseMigrationError:  databaseMigration.lastError,
 	})
 	if err != nil {
 		printStartupReport(os.Stdout, startup.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")

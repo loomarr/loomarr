@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/images/rustgen"
@@ -91,7 +92,7 @@ func resolveImageWorker(explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
-	if configured := os.Getenv("LOOMARR_IMAGE_WORKER"); configured != "" {
+	if configured, _ := config.LookupEnv("LOOMARR_IMAGE_WORKER"); configured != "" {
 		return configured, nil
 	}
 	if self, err := os.Executable(); err == nil {
