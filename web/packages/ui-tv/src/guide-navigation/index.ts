@@ -1,7 +1,6 @@
 export {
   activateTvGuideFocus,
   moveTvGuideFocus,
-  restoreTvGuideFocus,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,

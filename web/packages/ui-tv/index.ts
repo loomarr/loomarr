@@ -21,22 +21,11 @@ export type {
 export {
   activateTvGuideFocus,
   moveTvGuideFocus,
-  restoreTvGuideFocus,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./src/guide-navigation";
-export type {
-  TvSurfActivation,
-  TvSurfDirection,
-  TvSurfMoveResult,
-} from "./src/surf-navigation";
-export {
-  activateTvSurfSelection,
-  moveTvSurfSelection,
-  restoreTvSurfSelection,
-  tvSurfFavouriteChannel,
-} from "./src/surf-navigation";
+export { restoreTvSurfSelection, tvSurfFavouriteChannel } from "./src/surf-navigation";
 export type {
   TvNumberEntryPresentation,
   TvNumberedChannel,

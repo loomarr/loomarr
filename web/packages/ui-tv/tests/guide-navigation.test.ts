@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   activateTvGuideFocus,
   moveTvGuideFocus,
-  restoreTvGuideFocus,
   type TvGuideNavigationState,
   tvGuideRowWindow,
 } from "../index";
@@ -100,12 +99,6 @@ describe("TV Guide navigation", () => {
     };
     const partialResult = moveTvGuideFocus(partial, state, "right", filters, nowMs);
     expect(partialResult).toMatchObject({ boundary: "right", pageIntent: undefined });
-  });
-
-  it("restores focus by channel and falls back deterministically after removal", () => {
-    const removed = { ...layout, channels: layout.channels.slice(1) };
-    expect(restoreTvGuideFocus(removed, state)?.gridSelection.channelId).toBe("channel-1");
-    expect(restoreTvGuideFocus({ ...layout, channels: [] }, state)).toBeUndefined();
   });
 
   it("bounds a 100-channel render window while keeping row position explicit", () => {

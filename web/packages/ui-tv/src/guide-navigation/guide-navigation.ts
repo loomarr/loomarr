@@ -2,7 +2,6 @@ import {
   type GuideController,
   type GuideLayout,
   type GuideNavigationDirection,
-  guideSelectionForChannel,
   moveGuideSelection,
 } from "@loomarr/core/guide";
 import type { GuideFocusTarget } from "@loomarr/ui";
@@ -158,27 +157,6 @@ const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation 
 const tvGuideFavouriteChannel = (focus: GuideFocusTarget | undefined): string | undefined =>
   focus?.kind === "airing" ? focus.selection.channelId : undefined;
 
-const restoreTvGuideFocus = (
-  layout: GuideLayout,
-  state: TvGuideNavigationState,
-): TvGuideNavigationState | undefined => {
-  const preferred = guideSelectionForChannel(
-    layout,
-    state.gridSelection.channelId,
-    state.gridSelection.anchorMs,
-  );
-  const first = layout.channels[0]
-    ? guideSelectionForChannel(layout, layout.channels[0].source.channelId, state.gridSelection.anchorMs)
-    : undefined;
-  const selection = preferred ?? first;
-  if (!selection) return undefined;
-  return {
-    ...state,
-    focus: state.focus.region === "grid" ? { region: "grid", selection } : state.focus,
-    gridSelection: selection,
-  };
-};
-
 const tvGuideRowWindow = (
   channelCount: number,
   focusedIndex: number,
@@ -196,11 +174,4 @@ const tvGuideRowWindow = (
   };
 };
 
-export {
-  activateTvGuideFocus,
-  moveTvGuideFocus,
-  restoreTvGuideFocus,
-  tvGuideFavouriteChannel,
-  tvGuideRowWindow,
-  tvGuideTimeEdge,
-};
+export { activateTvGuideFocus, moveTvGuideFocus, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };
