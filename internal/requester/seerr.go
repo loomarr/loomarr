@@ -161,8 +161,8 @@ func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Qu
 		return nil, fmt.Errorf("seerr media: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("seerr media: unexpected status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("seerr media: %w", err)
 	}
 	var page seerrMediaPage
 	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
