@@ -3,7 +3,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type SurfChannelData, WatchingPanel, type WatchingScheduleData } from "@loomarr/ui";
-import { ChevronDown, ChevronUp, Play, Volume2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
@@ -143,20 +143,15 @@ const ChannelWatch = ({
     expiryNoticeRef.current.revision = revision;
     toast.info("That paused point is no longer available, so you're back live.");
   }, [channel.id, player.liveTransport.state.noticeRevision]);
-  // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
-  // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
-  // second click makes "open the channel" a two-step act to do the obvious thing.
+  // Opening Watch tunes in (§9.1 V54): the player mounts with the route, with no second click.
   //
   // ⚠ **This does NOT guarantee the video starts, and that is a browser rule, not a bug.** Autoplay
   // with sound requires user activation. Reaching here by CLICKING a channel keeps the document's
   // sticky activation, so it plays; arriving by a pasted link or a reload has no activation and the
-  // browser will hold the first frame with the controls showing. Mounting the player either way is
-  // still the right call — a paused player with a play button is one click from playing, which is
-  // exactly where the old poster left you, and every other visit skips the click entirely.
+  // browser will hold the first frame with the controls showing, one click from playing.
   //
-  // The poster is kept for the paused/off-air case below, which is a different claim: nothing to
-  // play at all, rather than something waiting for permission to start.
-  const [active, setActive] = useState(true);
+  // The idle frame below is for the paused/off-air case: nothing to play at all, rather than
+  // something waiting for permission to start.
 
   // Whether the player holds a picture: once any channel has played here, a switch leaves its last
   // frame held in the <video> while the next one loads (VideoPlayer's held poster), and the tuner's
@@ -186,11 +181,11 @@ const ChannelWatch = ({
   const tracksBody = unwrap(tracks.data);
 
   // The mini-guide scrubber's data — the channel's schedule strip (now + next few + the commercial
-  // breaks between them, each with episode detail + a TMDB still). Only while active (a poster needs
-  // no timeline) and unpaused. Refetched on an interval so the live playhead and "what's next" stay
+  // breaks between them, each with episode detail + a TMDB still). Only while unpaused
+  // (the idle frame needs no timeline). Refetched on an interval so the live playhead and "what's next" stay
   // current as programmes roll.
   const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
-    query: { enabled: active && !paused, retry: false, refetchInterval: 30_000 },
+    query: { enabled: !paused, retry: false, refetchInterval: 30_000 },
   });
   const timelineBody = unwrap(timeline.data);
   const airings = timelineBody?.airings ?? [];
@@ -426,7 +421,7 @@ const ChannelWatch = ({
 
   // The player. `live` = no seek; `scrubber` = full-width mini-guide; `topBar`/`timeLeft` = the live
   // chrome; `barControls` = the audio menu beside fullscreen; `attach` binds hls.js. Fullscreen
-  // is the player's OWN control. Rendered only when active so the stream is not requested until asked.
+  // is the player's OWN control.
   const playerEl = (
     <VideoPlayer
       live
@@ -531,7 +526,7 @@ const ChannelWatch = ({
           }
           onLeave={onLeave}
         />
-      ) : active ? (
+      ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className={cn("relative", !onPhone && "min-h-0 flex-1")}>
             {playerEl}
@@ -562,20 +557,6 @@ const ChannelWatch = ({
           )}
           {phonePanel}
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setActive(true)}
-          className="group from-static-800 relative flex w-full flex-1 cursor-pointer flex-col items-center justify-center gap-3 bg-radial to-black text-center"
-        >
-          <span className="bg-signal/90 flex size-14 items-center justify-center rounded-full text-black shadow-lg transition-transform group-hover:scale-105">
-            <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />
-          </span>
-          <span className="flex flex-col gap-1">
-            <span className="text-lg font-semibold">Watch live</span>
-            <span className="text-muted-foreground text-sm">Join {channel.name} mid-programme.</span>
-          </span>
-        </button>
       )}
     </section>
   );

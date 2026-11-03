@@ -1,4 +1,3 @@
-import type { Density } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
@@ -37,7 +36,6 @@ interface WatchingSurfaceProps {
   controlsVisible?: boolean;
   /** Changes only after handled Watching activity, not while live playback presentation updates. */
   controlsActivityKey?: number;
-  density: Density;
   /** True only while the authoritative Channel catalog request is unresolved. */
   loading?: boolean;
   loadError?: string;

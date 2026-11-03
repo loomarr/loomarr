@@ -116,11 +116,7 @@ describe("ChannelWatch pickers", () => {
   // The audio control lives IN the player's bar (V47), so the player must be running
   // before they render.
   //
-  // ⚠ **No click any more: Watch tunes in on mount (§9.1 V54).** This used to press the
-  // "Watch live" poster, which no longer exists for a playing channel — the poster is now reserved
-  // for paused/off-air, where there genuinely is nothing to play. Asserting the player is present
-  // instead of clicking to summon it keeps the test on the behaviour rather than on the affordance
-  // that used to precede it.
+  // Watch tunes in on mount (§9.1 V54), so the test asserts the player is present.
   const startWatching = async () => {
     expect(await screen.findByRole("button", { name: "Audio" })).toBeInTheDocument();
   };

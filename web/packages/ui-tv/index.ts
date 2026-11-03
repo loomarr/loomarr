@@ -11,7 +11,6 @@ export {
   TvFocusRegistry,
 } from "./src/focus-registry";
 export type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideFocus,
   TvGuideMoveResult,
@@ -19,7 +18,6 @@ export type {
   TvGuideRowWindow,
 } from "./src/guide-navigation";
 export {
-  activateTvGuideFocus,
   moveTvGuideFocus,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,

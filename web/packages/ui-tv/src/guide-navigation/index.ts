@@ -1,12 +1,10 @@
 export {
-  activateTvGuideFocus,
   moveTvGuideFocus,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./guide-navigation";
 export type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideFocus,
   TvGuideMoveResult,

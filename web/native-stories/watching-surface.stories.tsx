@@ -47,7 +47,6 @@ const Preview = ({
   <LoomarrProvider>
     <View style={{ height: "100%", width: "100%" }}>
       <WatchingSurface
-        density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}

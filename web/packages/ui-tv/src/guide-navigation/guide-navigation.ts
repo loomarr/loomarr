@@ -8,7 +8,6 @@ import type { GuideFocusTarget } from "@loomarr/ui";
 
 import type { TvFocusRegistry } from "../focus-registry";
 import type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideMoveResult,
   TvGuideNavigationState,
@@ -148,11 +147,6 @@ const tvGuideTimeEdge = async (
   return intent;
 };
 
-const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation =>
-  state.focus.region === "filters"
-    ? { filter: state.focus.filter, kind: "filter" }
-    : { kind: "tune", selection: state.focus.selection };
-
 /** The channel a long-press of Select acts on: the focused programme's, never a filter chip's. */
 const tvGuideFavouriteChannel = (focus: GuideFocusTarget | undefined): string | undefined =>
   focus?.kind === "airing" ? focus.selection.channelId : undefined;
@@ -174,4 +168,4 @@ const tvGuideRowWindow = (
   };
 };
 
-export { activateTvGuideFocus, moveTvGuideFocus, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };
+export { moveTvGuideFocus, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };
