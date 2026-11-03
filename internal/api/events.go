@@ -36,9 +36,9 @@ type EventSource interface {
 
 // TitleEvent is a provisioning state change (§4).
 type TitleEvent struct {
-	Key   string `json:"key" example:"movie:tmdb:1111867"`
+	Key   string `json:"key" example:"movie:tmdb:91111867"`
 	State string `json:"state" enum:"wanted,requested,downloading,available,unavailable"`
-	Name  string `json:"name,omitempty" example:"In Flames"`
+	Name  string `json:"name,omitempty" example:"Ashgrove Anomaly"`
 }
 
 // SuggestionEvent is one generation-progress frame (§8) so the workspace's progress strip
