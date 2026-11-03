@@ -354,7 +354,8 @@ func Apply(current, candidate State) (State, bool, error) {
 		candidate.Evidence.ObservedAt.After(current.Evidence.ObservedAt)
 	if current.Status == StatusMissing || candidateRank > currentRank ||
 		(current.Evidence.Kind != EvidenceOperator && current.Value.empty() && !candidate.Value.empty()) ||
-		(candidateRank == currentRank && candidate.Evidence.Confidence > current.Evidence.Confidence) ||
+		(candidateRank == currentRank && candidate.Evidence.Confidence > current.Evidence.Confidence &&
+			(!candidate.Value.empty() || current.Value.empty())) ||
 		(candidateRank == currentRank && current.Status == StatusStale && (!candidate.Value.empty() || current.Value.empty())) ||
 		refresh || operatorCorrection {
 		return candidate, true, nil

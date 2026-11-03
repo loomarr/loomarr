@@ -172,3 +172,19 @@ func TestGroundedBrandToleratesFilenamePunctuationOnly(t *testing.T) {
 		t.Fatal("punctuation folding accepted a brand whose letters are absent")
 	}
 }
+
+func TestTextGrounding_AnAnswerWithoutConfidenceLosesToAnyScoredAnswer(t *testing.T) {
+	forest := taxonomy.New(nil)
+	signals := Signals{ClipHash: "clip", ObservedAt: time.Unix(500, 0).UTC()}
+	scored := textStates(t, forest, []Axis{AxisKind}, signals, `{"kind":"commercial","confidence":1}`)[0]
+	for _, content := range []string{`{"kind":"psa"}`, `{"kind":"psa","confidence":0}`} {
+		unscored := textStates(t, forest, []Axis{AxisKind}, signals, content)[0]
+		if unscored.Evidence.Confidence != 0 {
+			t.Fatalf("confidence of %s = %d, want the lowest", content, unscored.Evidence.Confidence)
+		}
+		got, changed, err := Apply(scored, unscored)
+		if err != nil || changed || got.Value.Text != "commercial" {
+			t.Fatalf("Apply() = %+v, changed %v, err %v; %s displaced a scored answer", got, changed, err, content)
+		}
+	}
+}
