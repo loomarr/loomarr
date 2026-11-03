@@ -35,7 +35,7 @@ func TestNon2xxIsHTTPXStatusError(t *testing.T) {
 			defer srv.Close()
 			c := tmdb.NewWithBase(srv.URL, "key")
 
-			_, err := c.Exists(context.Background(), provision.Movie, 603)
+			_, err := c.Exists(context.Background(), provision.Movie, 90000603)
 			var se *httpx.StatusError
 			if !errors.As(err, &se) || se.Status != tc.status {
 				t.Fatalf("Exists error = %v, want *httpx.StatusError with status %d", err, tc.status)
@@ -43,7 +43,7 @@ func TestNon2xxIsHTTPXStatusError(t *testing.T) {
 			if got := tmdb.FailureClass(err); got != tc.want {
 				t.Errorf("FailureClass = %q, want %q", got, tc.want)
 			}
-			if want := fmt.Sprintf("tmdb GET /movie/603: status %d: upstream says no", tc.status); err.Error() != want {
+			if want := fmt.Sprintf("tmdb GET /movie/90000603: status %d: upstream says no", tc.status); err.Error() != want {
 				t.Errorf("error text = %q, want %q", err.Error(), want)
 			}
 		})
@@ -59,14 +59,14 @@ func TestNotFoundIsNotAFailureWhereTolerated(t *testing.T) {
 	defer srv.Close()
 	c := tmdb.NewWithBase(srv.URL, "key")
 
-	if ok, err := c.Exists(context.Background(), provision.Series, 1); err != nil || ok {
+	if ok, err := c.Exists(context.Background(), provision.Series, 90000001); err != nil || ok {
 		t.Errorf("Exists on 404 = %v, %v; want false, nil", ok, err)
 	}
-	if u, err := c.EpisodeStillURL(context.Background(), 1, 1, 1); err != nil || u != "" {
+	if u, err := c.EpisodeStillURL(context.Background(), 90000001, 1, 1); err != nil || u != "" {
 		t.Errorf("EpisodeStillURL on 404 = %q, %v; want \"\", nil", u, err)
 	}
 	// A call that does not tolerate 404 reports it, as a client error.
-	_, err := c.CollectionID(context.Background(), provision.Movie, 1)
+	_, err := c.CollectionID(context.Background(), provision.Movie, 90000001)
 	if got := tmdb.FailureClass(err); got != tmdb.FailureClientError {
 		t.Errorf("FailureClass(404 from CollectionID) = %q (err %v), want %q", got, err, tmdb.FailureClientError)
 	}
