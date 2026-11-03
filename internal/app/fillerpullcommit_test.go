@@ -13,7 +13,7 @@ import (
 )
 
 func TestIngestPull_RequiresApprovalCommit(t *testing.T) {
-	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}}
+	a := fillerServiceAdapter{fetcher: successfulClipIngestor{}, providers: testFillerProviders()}
 	if _, err := a.IngestPull(t.Context(), "pull", []filler.AcquisitionTarget{{Kind: "archive", URL: "https://archive.org/details/one"}}, nil); err == nil {
 		t.Fatal("pull ingest accepted no approval commit")
 	}
@@ -22,7 +22,7 @@ func TestIngestPull_RequiresApprovalCommit(t *testing.T) {
 func TestIngestPull_CommitFailureNeverLaunches(t *testing.T) {
 	commitErr := errors.New("approval transaction failed")
 	a := fillerServiceAdapter{
-		fetcher: successfulClipIngestor{}, newID: func() string { return "uncommitted" },
+		fetcher: successfulClipIngestor{}, newID: func() string { return "uncommitted" }, providers: testFillerProviders(),
 		start: func(time.Duration, func(context.Context) error, func(context.Context, error)) error {
 			t.Error("failed commit reached the downloader launcher")
 			return nil
@@ -63,7 +63,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			fetched := make(chan []clipfetch.Source, 1)
 			interruption := errors.New("application stopped before launch")
 			a := fillerServiceAdapter{
-				fetcher: recordingClipIngestor{sources: fetched}, acquisitions: st,
+				fetcher: recordingClipIngestor{sources: fetched}, acquisitions: st, providers: testFillerProviders(),
 				newID: func() string { return "only-run" }, now: func() time.Time { return now },
 				start: func(time.Duration, func(context.Context) error, func(context.Context, error)) error {
 					if crash {

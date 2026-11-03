@@ -4240,6 +4240,63 @@ components:
         - failed
         - empty
       type: object
+    FillerProviderDescriptionDTO:
+      additionalProperties: false
+      properties:
+        addable:
+          description: An operator can register a source of this provider by typing its address
+          type: boolean
+        addressHint:
+          description: An example of the address a source of this provider takes
+          type: string
+        discoverable:
+          description: Sources can be suggested for a query and an address verified before it is added
+          type: boolean
+        fetched:
+          description: Sources are downloaded on a schedule; false means they are scanned where they are
+          type: boolean
+        id:
+          description: The provider's persisted identity, as a source row's kind
+          type: string
+        label:
+          description: Operator-facing name
+          type: string
+        listable:
+          description: Filler checks the provider's sources on a schedule
+          type: boolean
+        openSearchable:
+          description: The provider can be searched beyond its registered sources
+          type: boolean
+        searchable:
+          description: A registered source can be searched in place
+          type: boolean
+      required:
+        - id
+        - label
+        - fetched
+        - listable
+        - searchable
+        - discoverable
+        - openSearchable
+        - addable
+      type: object
+    FillerProvidersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerProvidersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        providers:
+          items:
+            $ref: "#/components/schemas/FillerProviderDescriptionDTO"
+          type: array
+      required:
+        - providers
+      type: object
     FillerReadinessDTO:
       additionalProperties: false
       properties:
@@ -15070,6 +15127,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Catalog-wide filler health
+      tags:
+        - filler
+  /v1/filler/providers:
+    get:
+      description: "Admin only. Every provider a filler source can name, in the order the source list shows them, with what each can do. The registry is the source of truth: a provider added to the server appears here with no client change."
+      operationId: list-filler-providers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerProvidersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the filler source providers
       tags:
         - filler
   /v1/filler/providers/{kind}:

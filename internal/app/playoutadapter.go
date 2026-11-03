@@ -133,8 +133,7 @@ type playoutResolver struct {
 	pathMap func() library.PathMap
 	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
 	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
-	probeFormat    playout.FormatProber
-	probeCopyStart playout.CopyStartProber
+	probeFormat playout.FormatProber
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
@@ -1559,13 +1558,6 @@ func (r *playoutResolver) PlanFor(
 		return playout.CopyPlan{}, playout.MediaFormat{}
 	}
 	return playout.PlanCopy(f, target), f
-}
-
-func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
-	if r.probeCopyStart == nil {
-		return 0, false
-	}
-	return r.probeCopyStart(ctx, input, offset, limit, fps)
 }
 
 func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {

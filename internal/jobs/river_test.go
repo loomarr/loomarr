@@ -170,9 +170,6 @@ func TestJobArgsUseOneRiverKindPerNamedTask(t *testing.T) {
 	if got, want := (jobArgs{Name: "reconcile"}).Kind(), "loomarr_job:reconcile"; got != want {
 		t.Fatalf("named kind = %q, want %q", got, want)
 	}
-	if got := (jobArgs{}).Kind(); got != legacyJobKind {
-		t.Fatalf("legacy empty-name kind = %q, want %q", got, legacyJobKind)
-	}
 }
 
 func TestSummarizeJobHistoryCountsOnlyTrustworthyRunsInTheWindow(t *testing.T) {

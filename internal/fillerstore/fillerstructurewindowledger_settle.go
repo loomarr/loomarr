@@ -62,8 +62,8 @@ func (s *sqlStore) SettleStructureWindowCall(ctx context.Context, record fillers
 	}
 	result, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_structure_window_call_ledger SET
 		state = ?, record_sha256 = ?, record_json = ?, assessed_at = ?
-		WHERE request_sha256 = ? AND state = ?`), string(fillerstructurewindow.CallLedgerSettled),
-		record.SHA256, string(raw), epoch(record.AssessedAt), record.RequestSHA256, string(row.Entry.State))
+		WHERE request_sha256 = ? AND attempt = ? AND state = ?`), string(fillerstructurewindow.CallLedgerSettled),
+		record.SHA256, string(raw), epoch(record.AssessedAt), record.RequestSHA256, row.Attempt, string(row.Entry.State))
 	if err != nil {
 		return fmt.Errorf("write structure window call settlement: %w", err)
 	}

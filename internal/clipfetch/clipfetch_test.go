@@ -87,11 +87,11 @@ func TestRun_DispatchesByKind(t *testing.T) {
 	arch.Respond = func(clipfetch.Source) (clipfetch.DownloadResult, error) {
 		return clipfetch.DownloadResult{Fetched: 5}, nil
 	}
-	ing := clipfetch.New(downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
+	ing := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
 		return yt.Call(src)
-	}), downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+	}), clipfetch.Archive: downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
 		return arch.Call(src)
-	}), "/drop", discardLog())
+	})}, "/drop", discardLog())
 
 	res := ing.Run(context.Background(), []clipfetch.Source{
 		{Kind: clipfetch.YouTube, URL: "https://youtube.com/playlist?list=a"},
@@ -105,6 +105,26 @@ func TestRun_DispatchesByKind(t *testing.T) {
 	}
 	if res.Fetched != 7 { // 2 + 5
 		t.Errorf("fetched = %d, want 7", res.Fetched)
+	}
+}
+
+// The downloader is the provider's, found by its ID: a provider the Ingestor was never taught about
+// downloads by being registered, and a source whose provider has no downloader fails alone.
+func TestRun_DispatchesByProviderIDWithoutKnowingTheProvider(t *testing.T) {
+	var vimeo recordfixture.Recorder[clipfetch.Source, clipfetch.DownloadResult]
+	vimeo.Respond = func(clipfetch.Source) (clipfetch.DownloadResult, error) {
+		return clipfetch.DownloadResult{Fetched: 4}, nil
+	}
+	ing := clipfetch.New(clipfetch.Downloaders{"vimeo": downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+		return vimeo.Call(src)
+	})}, "/drop", discardLog())
+
+	res := ing.Run(context.Background(), []clipfetch.Source{
+		{Kind: "vimeo", URL: "https://vimeo.com/channels/ads"},
+		{Kind: clipfetch.YouTube, URL: "https://youtube.com/playlist?list=a"},
+	})
+	if len(vimeo.Inputs()) != 1 || res.Fetched != 4 || res.Failed != 1 {
+		t.Errorf("vimeo got %+v; result %+v, want one download of 4 and the unregistered youtube source failed", vimeo.Inputs(), res)
 	}
 }
 
@@ -124,7 +144,7 @@ func TestPrepareReservesBeforeDownloadAndRevalidatesBeforeExecution(t *testing.T
 			return clipfetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := clipfetch.New(downloader, nil, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{Kind: clipfetch.YouTube, URL: "https://example.invalid/one"}}, storagegovernor.Automatic)
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +178,7 @@ func TestPrepareRollsBackEarlierReservationsWhenBatchCannotFit(t *testing.T) {
 			return clipfetch.DownloadResult{}, nil
 		},
 	}
-	ingestor := clipfetch.New(downloader, nil, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	_, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
 		{Kind: clipfetch.YouTube, URL: "https://example.invalid/one"},
 		{Kind: clipfetch.YouTube, URL: "https://example.invalid/two"},
@@ -198,7 +218,7 @@ sleep 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingestor := clipfetch.New(clipfetch.NewYtDlpDownloader(executable, "ffmpeg"), nil, root, discardLog()).
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
 		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{
@@ -227,11 +247,11 @@ func TestRun_ResilientToSourceFailure(t *testing.T) {
 	arch.Respond = func(clipfetch.Source) (clipfetch.DownloadResult, error) {
 		return clipfetch.DownloadResult{Fetched: 3}, nil
 	}
-	ing := clipfetch.New(downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
+	ing := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
 		return yt.Call(src)
-	}), downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+	}), clipfetch.Archive: downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
 		return arch.Call(src)
-	}), "/drop", discardLog())
+	})}, "/drop", discardLog())
 
 	res := ing.Run(context.Background(), []clipfetch.Source{
 		{Kind: clipfetch.YouTube, URL: "https://youtube.com/bad"},
@@ -255,11 +275,11 @@ func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 	good.Respond = func(clipfetch.Source) (clipfetch.DownloadResult, error) {
 		return clipfetch.DownloadResult{Fetched: 2}, nil
 	}
-	ing := clipfetch.New(downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
+	ing := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
 		return empty.Call(src)
-	}), downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+	}), clipfetch.Archive: downloaderFunc(func(_ context.Context, src clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
 		return good.Call(src)
-	}), "/drop", discardLog())
+	})}, "/drop", discardLog())
 
 	res := ing.Run(context.Background(), []clipfetch.Source{
 		{Kind: clipfetch.YouTube, URL: "https://youtube.com/nonexistent"},
@@ -301,9 +321,9 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 		}
 		return clipfetch.DownloadResult{Fetched: 1, Outputs: []clipfetch.Output{{MediaPath: media, SidecarPath: sidecar, SHA256: digest, Bytes: 22, ClipHash: clipHash}}}, nil
 	}
-	ing := clipfetch.New(nil, downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
+	ing := clipfetch.New(clipfetch.Downloaders{clipfetch.Archive: downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	}), dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
+	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
 		_, err := writer.Call(append([]filler.AcquisitionArtifact(nil), artifacts...))
 		return err
 	}))
@@ -346,9 +366,9 @@ func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 		}
 		return clipfetch.DownloadResult{Fetched: 1, Outputs: []clipfetch.Output{{MediaPath: media, SHA256: strings.Repeat("a", 64), Bytes: 22, ClipHash: strings.Repeat("b", 64), Repair: "missing sidecar"}}}, errors.New("missing sidecar")
 	}
-	ing := clipfetch.New(downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
+	ing := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: downloaderFunc(func(_ context.Context, src clipfetch.Source, attemptDir string) (clipfetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	}), nil, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
+	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
 		_, err := writer.Call(append([]filler.AcquisitionArtifact(nil), artifacts...))
 		return err
 	}))
@@ -394,7 +414,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 	if err := closed.Close(); err != nil {
 		t.Fatal(err)
 	}
-	first := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, dir, discardLog()).WithArtifactWriter(closed).Run(t.Context(), []clipfetch.Source{source})
+	first := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(closed).Run(t.Context(), []clipfetch.Source{source})
 	if first.Failed != 1 {
 		t.Fatalf("first = %+v, want manifest failure", first)
 	}
@@ -411,7 +431,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	retry := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{source})
+	retry := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{source})
 	if retry.Fetched != 1 || len(retry.Artifacts) != 1 || retry.Artifacts[0].State != filler.ArtifactPublished {
 		t.Fatalf("retry = %+v, want one published artifact", retry)
 	}
@@ -428,7 +448,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 	if err := reopened.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{ID: second.AcquisitionID, SourceID: second.ID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}
-	deduped := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{second})
+	deduped := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []clipfetch.Source{second})
 	if deduped.Empty != 1 || deduped.Fetched != 0 || len(deduped.Artifacts) != 0 {
 		t.Fatalf("deduped retry = %+v, want shared archive skip", deduped)
 	}
@@ -495,7 +515,7 @@ func TestPrepareQueuesTheRestOfABatchWhenOneItemHasNoEstimate(t *testing.T) {
 			return clipfetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
 		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
 		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
@@ -538,7 +558,7 @@ sleep 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	ingestor := clipfetch.New(clipfetch.NewYtDlpDownloader(executable, "ffmpeg"), nil, root, discardLog()).
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
 		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{
@@ -580,7 +600,7 @@ func TestPlanReleasesEachReservationWhenItsItemFinishes(t *testing.T) {
 			return clipfetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
 		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
 		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
@@ -626,7 +646,7 @@ func TestPrepareDropsAnItemWithNothingToFetchWithoutReservingIt(t *testing.T) {
 			return clipfetch.DownloadResult{Fetched: 1}, nil
 		},
 	}
-	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
 		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
 		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
@@ -654,7 +674,7 @@ func TestPrepareFailsWhenEveryEstimateFailsForAnotherReason(t *testing.T) {
 	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy { return storagegovernor.Policy{} })
 	outage := errors.New("archive.org unreachable")
 	downloader := perSourceDownloader{estimate: map[string]error{"https://archive.example/one": outage}}
-	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	ingestor := clipfetch.New(clipfetch.Downloaders{clipfetch.Archive: downloader}, "/filler", discardLog()).WithStorageGovernor(governor)
 	_, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{Kind: clipfetch.Archive, URL: "https://archive.example/one"}}, storagegovernor.Automatic)
 	var capacityErr *clipfetch.CapacityError
 	if !errors.Is(err, outage) || errors.As(err, &capacityErr) {

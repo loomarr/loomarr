@@ -368,3 +368,122 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 		}
 	}
 }
+
+// recordAiring marks film n as last aired `ago` before now on the channel (one unit per film).
+func recordAiring(t *testing.T, st store.Store, channelID string, n int, ago time.Duration) {
+	t.Helper()
+	at := time.Now().Add(-ago)
+	if err := st.RecordAiring(context.Background(), channelID, movieKey(n), "lib-"+string(movieKey(n)), at, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// scoredEntry is film n's lineup entry with a stored fit.
+func scoredEntry(n int, title string, fit float64) schedule.LineupEntry {
+	e := lineupEntry(n, title)
+	e.Fit = fit
+	return e
+}
+
+// THE BUG THIS CLOSES: every lineup entry used to read confidence 0, so the turnstile retired
+// the alphabetically first retirable title. Here the alphabetically first title fits well and
+// aired yesterday; the other fits poorly and has been off the air for a month. The poor, stale
+// one must go.
+func TestCurator_RetiresLowFitStaleTitleNotTheAlphabeticallyFirst(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{
+			lineupEntry(100, "On The Air"),
+			scoredEntry(200, "Aardvark Adventures", 0.9),
+			scoredEntry(300, "Zed Zone", 0.2),
+		},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 24*time.Hour)
+	recordAiring(t, st, "ch1", 300, 30*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3})
+
+	if _, err := cur.Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if !retired[movieKey(300)] {
+		t.Errorf("the low-fit stale title was not retired: retired=%v", retired)
+	}
+	if retired[movieKey(200)] {
+		t.Error("the high-fit recently aired title was retired (alphabetical order)")
+	}
+}
+
+// At equal fit the title that has gone longest without airing goes first, whatever its name.
+func TestCurator_AtEqualFitTheLongestIdleTitleIsRetired(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{
+			lineupEntry(100, "On The Air"),
+			scoredEntry(200, "Zed Zone", 0.6),
+			scoredEntry(300, "Aardvark Adventures", 0.6),
+		},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 2*24*time.Hour)
+	recordAiring(t, st, "ch1", 300, 6*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3}).Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if !retired[movieKey(300)] || retired[movieKey(200)] {
+		t.Errorf("retired = %v, want only the title idle for 6 days", retired)
+	}
+}
+
+// A newcomer must beat the title's FIT: a well fitting title is never retired for a weaker
+// candidate, however long it has been idle.
+func TestCurator_ADeservedButIdleTitleIsNotRetiredForAWeakerCandidate(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "On The Air"), scoredEntry(200, "Idle Classic", 0.95)},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 60*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(300, "Weaker", 0.7)})
+	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if retiredOf(t, st, "p1")[movieKey(200)] {
+		t.Fatal("an idle title that fits better than the candidate was retired")
+	}
+}
+
+// THE FLOOR. Rotation begins at rotationTarget(max_titles) and not before, and every retirement
+// is paired with an admission, so retirement never takes the lineup below the target. Cap 4 ⇒
+// target 3: three candidates rotate out the two retirable titles, and the lineup still ends up
+// with at least three titles counting what was admitted.
+func TestCurator_RetirementNeverTakesTheLineupBelowTheTarget(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "On The Air"), scoredEntry(200, "B", 0.2), scoredEntry(300, "C", 0.2)},
+		[]provision.Key{movieKey(100)})
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		acqItem(400, "D", 0.95), acqItem(500, "E", 0.94), acqItem(600, "F", 0.93),
+	})
+	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4}).Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if len(retired) != 2 {
+		t.Fatalf("retired = %v, want both retirable titles rotated out", retired)
+	}
+	remaining := 3 - len(retired)
+	if remaining+d.Enqueued < 3 {
+		t.Fatalf("lineup would shrink to %d (kept %d + admitted %d), below the target of 3", remaining+d.Enqueued, remaining, d.Enqueued)
+	}
+}

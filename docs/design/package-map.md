@@ -27,7 +27,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
 | `encode` | 6 | — |
-| `filler` | 10 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
+| `filler` | 11 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
@@ -234,7 +234,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
+- **`filler`** · 11 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`
   One pipeline every image in Loomarr travels (§22).
@@ -272,7 +272,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`sourceprovider/archive`** · 1 importer · → `clipfetch`, `sourceprovider`
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
-- **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `sourceprovider`
+- **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `filler`, `sourceprovider`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
 - **`testkit`** · 1 importer · → `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).

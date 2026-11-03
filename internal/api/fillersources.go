@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -288,7 +286,7 @@ func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int)
 }
 
 func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
-	if src.Kind != "archive" && src.Kind != "youtube" {
+	if !s.sourceProviders.Fetched(sourceprovider.ID(src.Kind)) {
 		return nil
 	}
 	every, pollable := src.FetchEvery(s.fillerFetchEvery())
@@ -310,17 +308,30 @@ func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, eligible
 	return out
 }
 
-// providerGroups are the kinds that roll up, in the order their groups appear.
-//
-// ⚠ **`folder` and `library` deliberately do NOT group.** A twirl-down exists because ONE SERVICE
-// offers many targets; two watched folders are two unrelated directories with no service in
-// common, so a "Folders" container would be a row that dims and changes nothing — §10's own
-// forbidden shape. It also leaves the config-backed projection in `listFillerSources` untouched.
-var providerGroups = []struct {
+type providerGroup struct {
 	kind, id, label, detail string
-}{
-	{"archive", providerIDPrefix + "archive", "Archive.org", "collections you've added — searched and downloaded on their configured schedule"},
-	{"youtube", providerIDPrefix + "youtube", "YouTube", "playlists you've added — titles and descriptions are kept for tagging"},
+}
+
+// providerGroups are the kinds that roll up, in the order their groups appear: the fetched
+// providers, in registry order.
+//
+// ⚠ **A scanned provider (the folder, the library) deliberately does NOT group.** A twirl-down
+// exists because ONE SERVICE offers many targets; two watched folders are two unrelated
+// directories with no service in common, so a "Folders" container would be a row that dims and
+// changes nothing — §10's own forbidden shape. It also leaves the config-backed projection in
+// `listFillerSources` untouched.
+func (s *Server) providerGroups() []providerGroup {
+	var groups []providerGroup
+	for _, p := range s.sourceProviders.All() {
+		d := p.Describe()
+		if !d.Fetched {
+			continue
+		}
+		groups = append(groups, providerGroup{
+			kind: string(p.ID()), id: providerIDPrefix + string(p.ID()), label: d.Label, detail: d.GroupDetail,
+		})
+	}
+	return groups
 }
 
 // ⚠ `Remotes` is GONE from this DTO (V37). It carried the archive collections nested under the
@@ -367,6 +378,42 @@ type FillerSourcePreviewItemDTO struct {
 	Title      string `json:"title"`
 	URL        string `json:"url"`
 	DurationMS int64  `json:"durationMs,omitempty"`
+}
+
+// FillerProviderDescriptionDTO is one registered source provider and what it can do.
+type FillerProviderDescriptionDTO struct {
+	ID          string `json:"id" doc:"The provider's persisted identity, as a source row's kind"`
+	Label       string `json:"label" doc:"Operator-facing name"`
+	AddressHint string `json:"addressHint,omitempty" doc:"An example of the address a source of this provider takes"`
+	Fetched     bool   `json:"fetched" doc:"Sources are downloaded on a schedule; false means they are scanned where they are"`
+	Listable    bool   `json:"listable" doc:"Filler checks the provider's sources on a schedule"`
+	Searchable  bool   `json:"searchable" doc:"A registered source can be searched in place"`
+	// Discoverable providers can suggest sources for a query and verify an address.
+	Discoverable   bool `json:"discoverable" doc:"Sources can be suggested for a query and an address verified before it is added"`
+	OpenSearchable bool `json:"openSearchable" doc:"The provider can be searched beyond its registered sources"`
+	Addable        bool `json:"addable" doc:"An operator can register a source of this provider by typing its address"`
+}
+
+type fillerProvidersOutput struct {
+	Body struct {
+		Providers []FillerProviderDescriptionDTO `json:"providers"`
+	}
+}
+
+func (s *Server) listFillerProviders(context.Context, *struct{}) (*fillerProvidersOutput, error) {
+	out := &fillerProvidersOutput{}
+	out.Body.Providers = []FillerProviderDescriptionDTO{}
+	for _, p := range s.sourceProviders.All() {
+		d := p.Describe()
+		c := sourceprovider.CapabilitiesOf(p)
+		_, addable := p.(sourceprovider.Addresser)
+		out.Body.Providers = append(out.Body.Providers, FillerProviderDescriptionDTO{
+			ID: string(p.ID()), Label: d.Label, AddressHint: d.AddressHint, Fetched: d.Fetched,
+			Listable: c.Listable, Searchable: c.Searchable, Discoverable: c.Discoverable,
+			OpenSearchable: c.OpenSearchable, Addable: addable,
+		})
+	}
+	return out, nil
 }
 
 type fillerSourceSuggestionsInput struct {
@@ -453,6 +500,15 @@ func (s *Server) registerFillerSources(api huma.API) {
 	}, RoleAdmin), s.addFillerSource)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "list-filler-providers", Method: http.MethodGet, Path: "/v1/filler/providers",
+		Summary: "List the filler source providers",
+		Description: "Admin only. Every provider a filler source can name, in the order the source list shows " +
+			"them, with what each can do. The registry is the source of truth: a provider added to the " +
+			"server appears here with no client change.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.listFillerProviders)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "set-filler-provider-enabled", Method: http.MethodPatch, Path: "/v1/filler/providers/{kind}",
 		Summary: "Pause or resume a filler provider",
 		Description: "Admin only (§10 V51c). Changes provider policy without rewriting child source " +
@@ -517,9 +573,8 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 		if errors.Is(err, filler.ErrInvalidSourceReference) {
 			return nil, errUnprocessable("That search could not be used", err.Error())
 		}
-		if in.Kind == "youtube" && errors.Is(err, filler.ErrSourceProvider) {
-			return nil, huma.Error502BadGateway(
-				"YouTube search isn’t available right now. Paste a channel or playlist URL instead.", err)
+		if down := s.providerDescription(in.Kind).SearchDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
+			return nil, huma.Error502BadGateway(down, err)
 		}
 		return nil, huma.Error502BadGateway("find filler sources", err)
 	}
@@ -546,8 +601,8 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 		if errors.Is(err, filler.ErrInvalidSourceReference) {
 			return nil, errUnprocessable("That source could not be verified", err.Error())
 		}
-		if in.Kind == "youtube" && errors.Is(err, filler.ErrSourceProvider) {
-			return nil, huma.Error502BadGateway("YouTube couldn’t check that source right now. Try again in a moment.", err)
+		if down := s.providerDescription(in.Kind).ResolveDown; down != "" && errors.Is(err, filler.ErrSourceProvider) {
+			return nil, huma.Error502BadGateway(down, err)
 		}
 		return nil, huma.Error502BadGateway("check filler source", err)
 	}
@@ -556,6 +611,27 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 		return nil, huma.Error500InternalServerError("list registered filler sources", err)
 	}
 	return &resolveFillerSourceOutput{Body: sourceSuggestionDTO(result, registered)}, nil
+}
+
+// providerDescription is the registered provider's description; the zero value for a kind nothing
+// is registered under.
+func (s *Server) providerDescription(kind string) sourceprovider.Description {
+	if p, ok := s.sourceProviders.Get(sourceprovider.ID(kind)); ok {
+		return p.Describe()
+	}
+	return sourceprovider.Description{}
+}
+
+// discoverableLabels names the providers an operator can search or verify a source with, for
+// "Choose …" refusals.
+func (s *Server) discoverableLabels() string {
+	var labels []string
+	for _, p := range s.sourceProviders.All() {
+		if _, ok := p.(sourceprovider.Finder); ok {
+			labels = append(labels, p.Describe().Label)
+		}
+	}
+	return strings.Join(labels, " or ")
 }
 
 func (s *Server) requireFillerProviderEnabled(ctx context.Context, kind string) error {
@@ -572,7 +648,7 @@ func (s *Server) requireFillerProviderEnabled(ctx context.Context, kind string) 
 		}
 		return nil
 	}
-	return errUnprocessable("Unknown filler source service", "Choose Archive.org or YouTube.")
+	return errUnprocessable("Unknown filler source service", "Choose "+s.discoverableLabels()+".")
 }
 
 func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourceItemInput) (*queueFillerSourceItemOutput, error) {
@@ -593,8 +669,8 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if selected == nil {
 		return nil, huma.Error404NotFound("Filler source not found")
 	}
-	if selected.Kind != "archive" && selected.Kind != "youtube" {
-		return nil, errUnprocessable("That source has no online catalog", "Choose an Archive.org or YouTube source.")
+	if !s.sourceProviders.Fetched(sourceprovider.ID(selected.Kind)) {
+		return nil, errUnprocessable("That source has no online catalog", "Choose an "+s.discoverableLabels()+" source.")
 	}
 	if !selected.Enabled {
 		return nil, errConflict("That source is paused", "Turn this source back on before adding a clip from it.")
@@ -673,7 +749,7 @@ func canFetchRow(src fillerstore.FillerSource, ingestAvailable bool) bool {
 type addFillerSourceInput struct {
 	Body struct {
 		// ⚠ Required, and validated PER KIND below. Before V37 this was absent and the kind was
-		// hardcoded "archive", so `archiveIdentifier` — which rejects anything containing a dot —
+		// hardcoded "archive", so the archive identifier rule — which rejects anything containing a dot —
 		// was applied to every URI, and a YouTube playlist URL 400'd on a message about
 		// archive.org collections. One validator cannot serve two vocabularies.
 		Kind    string `json:"kind" enum:"archive,youtube,folder,library" doc:"Which kind of source this is"`
@@ -683,74 +759,25 @@ type addFillerSourceInput struct {
 	}
 }
 
-// normalizeSourceURI validates a URI against its OWN kind's rules and returns the canonical
-// identity to store, or "" if the kind cannot use it.
+// normalizeSourceURI validates a URI against its OWN provider's rules and returns the canonical
+// identity to store, or "" if the provider cannot use it.
 //
-// ⚠ The two kinds disagree about what a valid URI even looks like: an archive identifier is a
+// ⚠ The providers disagree about what a valid URI even looks like: an archive identifier is a
 // plain slug and is REJECTED if it contains a dot, while a YouTube playlist URL is nothing but
-// dots and slashes. That is why validation is per kind rather than one shared check — the
+// dots and slashes. That is why validation is the provider's rather than one shared check — the
 // pre-V37 code applied the archive rule to everything, which is precisely why YouTube could not
 // be registered.
 //
-// ⚠ `folder` and `library` are ADDABLE since V38c. They were singleton rows materialised from
+// ⚠ The folder and the library are ADDABLE since V38c. They were singleton rows materialised from
 // configuration (migration 00029) and refused here; V38c allows many of each, and the maintainer's
 // 2026-08-02 decision returned `library` to being scanned for real (§10). The singleton index is
 // gone (migration 00032), so the guard that used to 409 them is gone with it.
-func normalizeSourceURI(kind, raw string) string {
-	switch kind {
-	case "archive":
-		return archiveIdentifier(raw)
-	case "youtube":
-		return youtubeTarget(raw)
-	case "folder":
-		return folderPath(raw)
-	case "library":
-		return libraryName(raw)
-	default:
+func (s *Server) normalizeSourceURI(kind, raw string) string {
+	addresser, ok := s.sourceProviders.Addresser(sourceprovider.ID(kind))
+	if !ok {
 		return ""
 	}
-}
-
-// folderPath validates a watched-folder path an operator typed.
-//
-// ⚠ **ABSOLUTE ONLY, and that is a correctness rule rather than a style preference.** A relative
-// path resolves against Loomarr's working directory, which is an implementation detail the
-// operator cannot see and which differs between a container and a `go run`. "ads" would silently
-// mean different directories in dev and in production, and the failure — an empty catalog — says
-// nothing about why.
-//
-// ⚠ `..` is refused even inside an absolute path. It cannot escape anything by itself here (the
-// scan is confined to whatever this resolves to), but a path that needs cleaning is a path the
-// operator did not mean to type, and storing the pre-cleaned form makes the row disagree with the
-// directory it names.
-func folderPath(raw string) string {
-	p := strings.TrimSpace(raw)
-	if p == "" || !strings.HasPrefix(p, "/") {
-		return ""
-	}
-	if strings.Contains(p, "..") {
-		return ""
-	}
-	// Cleaned so `/data/filler/` and `/data//filler` are ONE source rather than two rows watching
-	// one directory — the duplicate the dropped singleton index no longer prevents.
-	cleaned := path.Clean(p)
-	if cleaned == "/" {
-		// Scanning the filesystem root would walk the entire machine. Refused as an obvious
-		// mis-type rather than accepted as an heroic instruction.
-		return ""
-	}
-	return cleaned
-}
-
-// libraryName validates a media-server library name (§10 V38c).
-//
-// ⚠ Deliberately permissive: this is a NAME the operator reads off their own media server
-// ("Commercials", "TV Ads (80s)"), not an identifier with a grammar. Over-validating it would
-// reject real libraries for containing a bracket. The scan resolves it against the media server,
-// which is the only thing that can actually say whether it exists — an unmatched name surfaces
-// there as a scan that finds nothing, with the library named.
-func libraryName(raw string) string {
-	return strings.TrimSpace(raw)
+	return addresser.Address(raw)
 }
 
 type addFillerSourceOutput struct {
@@ -768,28 +795,18 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	// many of each and drops that index (00032), so both the guard and the index are gone
 	// together. Leaving the guard would have made the UI's own "Add a source" dialog 409 against
 	// two of the three kinds it offers.
-	id := normalizeSourceURI(kind, in.Body.URI)
+	id := s.normalizeSourceURI(kind, in.Body.URI)
 	if id == "" {
-		// The message names the shape THIS kind accepts. A shared "invalid URI" would have been
-		// the pre-V37 behaviour that told a YouTube user about archive.org collections.
-		switch kind {
-		case "youtube":
-			return nil, errBadRequest("That doesn't look like a YouTube playlist or channel",
-				"Paste a playlist URL (youtube.com/playlist?list=…) or a channel URL.")
-		case "folder":
-			return nil, errBadRequest("That doesn't look like a folder Loomarr can watch",
-				"Give a full path starting with / — for example /data/filler. "+
-					"A relative path would mean different directories depending on how Loomarr was started.")
-		case "library":
-			return nil, errBadRequest("That library needs a name",
-				"Use the library's name as it appears on your media server — for example Commercials.")
-		default:
-			return nil, errBadRequest("That doesn't look like an archive.org collection",
-				"Paste a collection identifier (like classic_tv_commercials) or its archive.org URL.")
+		// The message names the shape THIS provider accepts. A shared "invalid URI" would have
+		// been the pre-V37 behaviour that told a YouTube user about archive.org collections.
+		problem := s.providerDescription(kind).BadAddress
+		if problem.Title == "" {
+			problem = sourceprovider.Problem{Title: "That kind of source can't be added", Detail: "Choose one of the source services listed."}
 		}
+		return nil, errBadRequest(problem.Title, problem.Detail)
 	}
 	var resolvedTitle string
-	if kind == "archive" || kind == "youtube" {
+	if _, discoverable := s.sourceProviders.Finder(sourceprovider.ID(kind)); discoverable {
 		if s.filler == nil {
 			return nil, huma.Error501NotImplemented("source verification is not available on this instance")
 		}
@@ -803,16 +820,15 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 			}
 			return nil, huma.Error502BadGateway("verify source", err)
 		}
-		validType := resolved.TargetType == "collection" && kind == "archive" ||
-			(resolved.TargetType == "channel" || resolved.TargetType == "playlist") && kind == "youtube"
-		if resolved.Provider != sourceprovider.ID(kind) || !validType {
+		if resolved.Provider != sourceprovider.ID(kind) {
 			return nil, huma.Error502BadGateway("verify source", errors.New("provider returned the wrong source kind"))
 		}
-		canonical := resolved.CanonicalID
-		if kind == "youtube" {
-			canonical = resolved.CanonicalURL
+		// The provider's own address rule reads the canonical target, whichever of its identifier
+		// and URL that rule takes.
+		id = s.normalizeSourceURI(kind, resolved.CanonicalID)
+		if id == "" {
+			id = s.normalizeSourceURI(kind, resolved.CanonicalURL)
 		}
-		id = normalizeSourceURI(kind, canonical)
 		if id == "" {
 			return nil, huma.Error502BadGateway("verify source", errors.New("provider returned an invalid canonical identifier"))
 		}
@@ -972,7 +988,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	}
 
 	switch in.ID {
-	case "folder":
+	case string(sourceprovider.FolderID):
 		if s.settings == nil {
 			return nil, huma.Error501NotImplemented("settings are not available on this instance")
 		}
@@ -1078,7 +1094,7 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 			"This row groups the sources you've added — remove them individually.")
 	}
 	switch in.ID {
-	case "folder", "library":
+	case string(sourceprovider.FolderID), string(sourceprovider.LibraryID):
 		// ⚠ The config-backed SINGLETONS are not registrations, so there is nothing to
 		// un-register. Deleting one would have to mean "unset filler.dir", which belongs in
 		// Settings where the consequence is legible — and since migration 00029 materialises
@@ -1175,19 +1191,16 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
 		for _, src := range srcs {
-			if src.Kind == "folder" && (!src.Configured() || src.URI == dir) {
-				continue // the config-backed drop-folder; rendered from configuration above
-			}
-			if src.Kind == "library" && !src.Configured() {
-				continue // the seeded placeholder, never configured into
-			}
-			// ⚠ The seeded blank-URI `youtube` row (migration 00034) is skipped for the same
-			// reason, and V51c is what makes that correct rather than a loss. It was shaped like
-			// a provider root all along — no URI, nothing to fetch — and rendered as a peer with
-			// a blank target. The DERIVED group node is now that row, so skipping the stored one
-			// removes a duplicate instead of removing YouTube from the list.
-			if src.Kind == "youtube" && !src.Configured() {
+			// ⚠ A row with a blank URI is a seeded placeholder, never configured into, and is skipped
+			// whatever its provider. The seeded blank-URI `youtube` row (migration 00034) was shaped
+			// like a provider root all along — no URI, nothing to fetch — and rendered as a peer
+			// with a blank target; V51c's DERIVED group node is now that row, so skipping the stored
+			// one removes a duplicate instead of removing YouTube from the list.
+			if !src.Configured() {
 				continue
+			}
+			if src.Kind == string(sourceprovider.FolderID) && src.URI == dir {
+				continue // the config-backed drop-folder; rendered from configuration above
 			}
 			label := src.Label
 			if label == "" {
@@ -1205,7 +1218,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				Removable:        true,
 				Target:           label,
 				URI:              src.URI,
-				Detail:           sourceDetail(src.Kind, src.URI),
+				Detail:           s.sourceDetail(src.Kind, src.URI),
 				Count:            bySource[src.ID],
 				Incoming:         incomingBySource[src.ID],
 				Configured:       true,
@@ -1215,11 +1228,12 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// `Fetchable()`/`Scannable()` pair is what keeps a folder out of a PULL plan,
 				// which is the distinction that actually matters.
 				Fetchable: canFetchRow(src, s.filler != nil) && eligible,
-				// ⚠ Only archive can be searched in place. A "search" box on a YouTube playlist
-				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
-				// YouTube, and offering the box would be a control that returns nothing forever.
-				// A folder or library is not searchable for the same reason.
-				Searchable:         src.Kind == "archive" && s.filler != nil,
+				// ⚠ Only a provider that implements Searcher can be searched in place. A "search"
+				// box on a YouTube playlist would have nothing to query: yt-dlp enumerates a
+				// playlist, it does not search YouTube, and offering the box would be a control
+				// that returns nothing forever. A folder or library is not searchable for the same
+				// reason.
+				Searchable:         s.sourceSearchable(src.Kind),
 				AutomaticDownloads: s.sourceAutomaticDownloads(src, eligible),
 				LastCheck:          fillerSourceCheckSummaryDTO(src.LastCheckSummary),
 			}
@@ -1238,7 +1252,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// ⚠ The parent is DERIVED from the kind here, at the one place a row is built. Any
 			// other arrangement — a stored column, a second pass that assigns parents — is a
 			// place the parent could disagree with the kind.
-			if parent, grouped := providerFor(src.Kind); grouped {
+			if parent, grouped := s.providerFor(src.Kind); grouped {
 				row.ParentID = parent
 				byProvider[src.Kind] = append(byProvider[src.Kind], row)
 				continue
@@ -1251,8 +1265,8 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	out.Body.Total = totalClips
 	out.Body.Sources = []FillerSourceDTO{
 		{
-			ID:   "folder",
-			Kind: "folder",
+			ID:   string(sourceprovider.FolderID),
+			Kind: string(sourceprovider.FolderID),
 			// The folder's switch is a SETTING, because the folder itself is derived from one.
 			// `boolOn` semantics: anything other than an explicit false reads as on, so a
 			// settings service that cannot answer does not silently stop the scan.
@@ -1280,10 +1294,11 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// row appended below with its own target, switch and counts. Rendering this one unconditionally
 	// alongside those would put two different things called "library" in one list, one of them
 	// inert — which is the competing-descriptions problem this file's header exists to prevent.
-	if n, incoming := bySource["library"], incomingBySource["library"]; n > 0 || incoming > 0 {
+	library := string(sourceprovider.LibraryID)
+	if n, incoming := bySource[library], incomingBySource[library]; n > 0 || incoming > 0 {
 		out.Body.Sources = append(out.Body.Sources, FillerSourceDTO{
-			ID:         "library",
-			Kind:       "library",
+			ID:         library,
+			Kind:       library,
 			Enabled:    true,
 			Switchable: false, // provenance, not a scan — there is no work to stop
 			Target:     "media server (previously scanned)",
@@ -1307,17 +1322,18 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// twirl-down renders from exactly this shape by hiding rows whose parent is collapsed. It is
 	// also purely ADDITIVE, so a client that knows nothing about `group`/`parentId` renders the
 	// same flat list it always did rather than breaking.
-	for _, g := range providerGroups {
+	for _, g := range s.providerGroups() {
 		out.Body.Sources = append(out.Body.Sources, providerNode(g.id, g.kind, g.label, g.detail, providerEnabled[g.kind], byProvider[g.kind]))
 		out.Body.Sources = append(out.Body.Sources, byProvider[g.kind]...)
 	}
 	for i := range out.Body.Sources {
-		projectSourceReadiness(&out.Body.Sources[i], home)
+		s.projectSourceReadiness(&out.Body.Sources[i], home)
 	}
 	return out, nil
 }
 
-func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
+func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
+	fetched := s.sourceProviders.Fetched(sourceprovider.ID(row.Kind))
 	row.Actions = []FillerSourceAction{}
 	if row.Group {
 		// Provider rows summarize children visually but do not perform work themselves.
@@ -1354,7 +1370,7 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 	case !row.Configured:
 		row.Readiness = FillerSourceNotConfigured
 		row.Actions = []FillerSourceAction{FillerSourceConfigure}
-	case (row.Kind == "archive" || row.Kind == "youtube") && !row.ProviderEnabled:
+	case fetched && !row.ProviderEnabled:
 		row.Readiness = FillerSourceProviderOff
 		row.Actions = []FillerSourceAction{FillerSourceEditLocation}
 		if row.Removable {
@@ -1363,7 +1379,7 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 	case !row.Enabled:
 		row.Readiness = FillerSourceOff
 		row.Actions = []FillerSourceAction{FillerSourceEnable}
-		if row.Kind == "archive" || row.Kind == "youtube" {
+		if fetched {
 			row.Actions = append(row.Actions, FillerSourceEditLocation)
 		}
 		if row.Removable {
@@ -1375,7 +1391,7 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 	case row.Country != "" && !filler.SourceGeographicallyEligible(effective, home):
 		row.Readiness = FillerSourceOutOfArea
 		row.Actions = []FillerSourceAction{FillerSourceEditLocation, FillerSourceDisable, FillerSourceRemove}
-	case (row.Kind == "archive" || row.Kind == "youtube") && !row.Fetchable:
+	case fetched && !row.Fetchable:
 		row.Readiness = FillerSourceUnavailable
 		row.Actions = []FillerSourceAction{FillerSourceEditLocation, FillerSourceDisable, FillerSourceRemove}
 	default:
@@ -1393,15 +1409,15 @@ func projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
 		if row.Removable {
 			row.Actions = append(row.Actions, FillerSourceRemove)
 		}
-		if row.Kind == "archive" || row.Kind == "youtube" {
+		if fetched {
 			row.Actions = append(row.Actions, FillerSourceEditLocation)
 		}
 	}
 }
 
 // providerFor maps a source kind to its group id, and reports whether that kind rolls up at all.
-func providerFor(kind string) (string, bool) {
-	for _, g := range providerGroups {
+func (s *Server) providerFor(kind string) (string, bool) {
+	for _, g := range s.providerGroups() {
 		if g.kind == kind {
 			return g.id, true
 		}
@@ -1459,15 +1475,17 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 // sourceDetail is the operator-facing sentence under a registered source's name. Keep it true
 // across every readiness and policy state; the projected status and source workspace own whether
 // automatic downloads can currently run.
-func sourceDetail(kind, uri string) string {
-	switch kind {
-	case "archive":
-		return "New clips are checked before they can play."
-	case "youtube":
-		return "New clips are checked before they can play."
-	default:
-		return uri
+// sourceSearchable reports whether a source of this kind can be searched in place.
+func (s *Server) sourceSearchable(kind string) bool {
+	_, ok := s.sourceProviders.Searcher(sourceprovider.ID(kind))
+	return ok && s.filler != nil
+}
+
+func (s *Server) sourceDetail(kind, uri string) string {
+	if p, ok := s.sourceProviders.Get(sourceprovider.ID(kind)); ok && p.Describe().SourceDetail != "" {
+		return p.Describe().SourceDetail
 	}
+	return uri
 }
 
 type fetchFillerSourceOutput struct {
@@ -1550,73 +1568,4 @@ func orPlaceholder(v, placeholder string) string {
 func errSourceDisabled() huma.StatusError {
 	return errConflict("The drop-folder is switched off",
 		"Loomarr isn't scanning the drop-folder because that source is turned off. Switch it back on under Filler → Sources, then sync again.")
-}
-
-// archiveIdentifier pulls the collection identifier out of whatever an operator pasted.
-//
-// Three spellings are accepted because all three are things people actually paste: a bare
-// identifier, a `/details/<id>` path, and a full URL. Returns "" for anything else, which the
-// caller turns into a message naming the shapes that work — silently registering an
-// unparseable source would produce a row that can never fetch.
-// youtubeTarget validates a YouTube playlist or channel URL for REGISTRATION (V37), returning
-// the canonical URL to store or "" if it is not one.
-//
-// ⚠ Deliberately STRICTER than `clipfetch.KindForURL`, which defaults an unknown host to YouTube
-// because yt-dlp handles the widest set of sites. That default is right for INGEST — an admin
-// pasting one URL deliberately, watching it work. It is wrong here: a registered source persists
-// and is fetched unattended, so a typo'd host would become a permanent row that can never fetch,
-// with the failure surfacing much later and far from the mistake. Registration is the stricter
-// act because nobody is watching the second time.
-//
-// Accepts the shapes an operator actually pastes — a playlist, a channel, a @handle, a /c/ or
-// /user/ URL — on youtube.com (with or without a subdomain) or youtu.be.
-func youtubeTarget(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return ""
-	}
-	// Scheme is optional in what people paste; normalise so the host check is uniform.
-	probe := v
-	if !strings.Contains(probe, "://") {
-		probe = "https://" + probe
-	}
-	u, err := url.Parse(probe)
-	if err != nil {
-		return ""
-	}
-	host := strings.ToLower(u.Hostname())
-	host = strings.TrimPrefix(host, "www.")
-	// ⚠ Exact host match, never `strings.Contains`: "youtube.com.evil.test" contains the string
-	// and is a different site. A substring check here would register an attacker-chosen host as
-	// a trusted source.
-	if host != "youtube.com" && host != "m.youtube.com" && host != "music.youtube.com" && host != "youtu.be" {
-		return ""
-	}
-	// A bare host with no path identifies nothing to fetch.
-	if strings.Trim(u.Path, "/") == "" && u.RawQuery == "" {
-		return ""
-	}
-	u.Scheme = "https"
-	return u.String()
-}
-
-func archiveIdentifier(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return ""
-	}
-	if i := strings.Index(v, "archive.org/details/"); i >= 0 {
-		v = v[i+len("archive.org/details/"):]
-	} else if i := strings.Index(v, "/details/"); i >= 0 {
-		v = v[i+len("/details/"):]
-	}
-	if j := strings.IndexAny(v, "/?#"); j >= 0 {
-		v = v[:j]
-	}
-	// An identifier is a plain slug. Anything still carrying a scheme, a dot or a space is a
-	// URL we did not recognise rather than an id, and guessing would create a dead row.
-	if v == "" || strings.ContainsAny(v, ":. \t") {
-		return ""
-	}
-	return v
 }

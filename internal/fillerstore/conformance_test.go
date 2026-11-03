@@ -74,6 +74,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
 		t.Run("FillerStructureAssessmentLedger", func(t *testing.T) { testFillerStructureAssessmentLedger(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })
+		t.Run("FillerStructureWindowCallLedgerRetry", func(t *testing.T) { testFillerStructureWindowCallLedgerRetry(t, newStore) })
 		t.Run("FillerHeldClipUpsertAndCompositeRelease", func(t *testing.T) { testFillerHeldClipUpsertAndCompositeRelease(t, newStore) })
 		t.Run("FillerTerminalReadyTransaction", func(t *testing.T) { testFillerTerminalReadyTransaction(t, newStore) })
 		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
