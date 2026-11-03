@@ -18,7 +18,7 @@ const (
 
 type submissionRepository interface {
 	SubmitIntent(context.Context, suggest.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
-	RequeueIntent(context.Context, string, suggest.Intent, string) error
+	SubmitChannelIntent(context.Context, string, suggest.Intent, string, string) (string, error)
 	ReviseIntent(context.Context, string, string, int, suggest.Intent) error
 	RecordProposal(context.Context, suggest.Intent, suggest.Proposal, string) (suggest.WorkflowProposal, error)
 }
@@ -62,17 +62,28 @@ func (w *Workflow) Submit(
 	return repository.SubmitIntent(ctx, intent, createdBy, cacheSince)
 }
 
-// Requeue keeps a Channel's stable intent reference while replacing only its
-// terminal execution. The repository compare-and-swap rejects concurrent reruns.
-func (w *Workflow) Requeue(ctx context.Context, jobID string, intent suggest.Intent, kind string) error {
+// SubmitForChannel creates a fresh lifecycle that re-curates an existing Channel: a refine
+// (kind suggest, owned by the person who asked) or a scheduled re-curation (kind recurate,
+// ownerless). The Job names the Channel so approving its Proposal changes that Channel; it never
+// touches the Job the Channel was made from, and it never reads the generation cache because a
+// refine always regenerates.
+func (w *Workflow) SubmitForChannel(
+	ctx context.Context,
+	channelID string,
+	intent suggest.Intent,
+	kind, createdBy string,
+) (string, error) {
+	if channelID == "" {
+		return "", fmt.Errorf("%w: a channel Proposal Job needs a channel", ErrInvalidState)
+	}
 	if kind != jobKindSuggest && kind != jobKindRecurate {
-		return fmt.Errorf("%w: unsupported Proposal Job kind %q", ErrInvalidState, kind)
+		return "", fmt.Errorf("%w: unsupported Proposal Job kind %q", ErrInvalidState, kind)
 	}
 	repository, ok := w.repository.(submissionRepository)
 	if !ok {
-		return fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
+		return "", fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
 	}
-	return repository.RequeueIntent(ctx, jobID, intent, kind)
+	return repository.SubmitChannelIntent(ctx, channelID, intent, kind, createdBy)
 }
 
 // Revise replaces the Intent behind the exact submitted Proposal an authorized
@@ -168,22 +179,26 @@ func (r *storeRepository) RecordProposal(
 	}, nil
 }
 
-func (r *storeRepository) RequeueIntent(ctx context.Context, jobID string, intent suggest.Intent, kind string) error {
-	job, err := r.store.GetJob(ctx, jobID)
-	if err != nil {
-		return fmt.Errorf("load Proposal Job %q: %w", jobID, err)
-	}
+func (r *storeRepository) SubmitChannelIntent(
+	ctx context.Context,
+	channelID string,
+	intent suggest.Intent,
+	kind, createdBy string,
+) (string, error) {
 	blob, err := json.Marshal(intent)
 	if err != nil {
-		return fmt.Errorf("marshal Intent: %w", err)
+		return "", fmt.Errorf("marshal Intent: %w", err)
 	}
 	now := r.now()
-	if err := r.store.RequeueSuggestionJob(
-		ctx, job.ID, job.Attempts, kind, string(blob), suggest.IntentHash(intent), now, now,
-	); err != nil {
-		return fmt.Errorf("requeue Proposal Job %q: %w", jobID, err)
+	job := store.Job{
+		ID: r.newID(), Kind: kind, Status: "queued", IntentJSON: string(blob),
+		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy, ChannelID: channelID,
+		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
 	}
-	return nil
+	if err := r.store.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
 }
 
 func (r *storeRepository) ReviseIntent(

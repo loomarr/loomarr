@@ -30,10 +30,11 @@ import (
 // WHOLE intent survives the wire — the hand-mirrored body this replaced had silently
 // dropped RuntimeTgt, and nothing caught it.
 type fakeSuggest struct {
-	submits   int
-	refines   int
-	lastJobID string
-	last      suggest.Intent
+	submits       int
+	refines       int
+	lastChannelID string
+	lastRequester string
+	last          suggest.Intent
 }
 
 func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string) (string, error) {
@@ -47,11 +48,12 @@ func (f *fakeSuggest) SubmitBuilt(context.Context, suggest.Intent, suggest.Propo
 	return "", errors.New("fakeSuggest: SubmitBuilt is not part of the proposal routes")
 }
 
-func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
+func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent suggest.Intent, requestedBy string) (string, error) {
 	f.refines++
-	f.lastJobID = jobID
+	f.lastChannelID = channelID
+	f.lastRequester = requestedBy
 	f.last = intent
-	return jobID, nil // Refine re-runs the same job, so it returns the job id it was given
+	return "job-refine-1", nil // a refine is a new job, never the channel's origin job
 }
 
 type proposalHarnessConfig struct {

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -56,15 +55,9 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	now := time.Now().UTC()
+	// The channels own their request, as approval leaves them: there is no job behind them, so
+	// the weekly run seeds from the channel alone.
 	for i, id := range []string{"job-channel-a", "job-channel-b"} {
-		if err := h.store.CreateJob(ctx, store.Job{
-			ID: id, Kind: "suggest", Status: "done", CreatedBy: "owner",
-			IntentJSON: `{"description":"action"}`, IntentHash: id,
-			WorkflowVersion: proposalworkflow.WorkflowVersion1, CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
-			t.Fatal(err)
-		}
 		channelID := "channel-a"
 		if i == 1 {
 			channelID = "channel-b"
@@ -72,7 +65,8 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		if _, err := h.store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
 			ID: channelID, Number: 80 + i, Name: channelID, Status: schedule.StatusBuilding,
 			IntentRef: id, Strategy: schedule.Sequential,
-		}, Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}}}); err != nil {
+		}, IntentJSON: `{"description":"action"}`,
+			Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -90,8 +84,8 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		t.Fatalf("run channel-recurate = %d, want 202", code)
 	}
 
-	channelA, attemptA := awaitRecuratedProposalAfter(t, h, "job-channel-a", 0)
-	channelB, attemptB := awaitRecuratedProposalAfter(t, h, "job-channel-b", 0)
+	channelA, attemptA := awaitRecuratedProposalAfter(t, h, "channel-a", 0)
+	channelB, attemptB := awaitRecuratedProposalAfter(t, h, "channel-b", 0)
 	assertProposalKeys(t, channelA, []provision.Key{"movie:tmdb:90000100", "movie:tmdb:90000101"})
 	assertProposalKeys(t, channelB, []provision.Key{"movie:tmdb:90000101", "movie:tmdb:90000603"})
 
@@ -102,8 +96,8 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	if code := h.status(http.MethodPost, "/v1/jobs/channel-recurate/run", "", admin); code != http.StatusAccepted {
 		t.Fatalf("rerun channel-recurate = %d, want 202", code)
 	}
-	clearedA, _ := awaitRecuratedProposalAfter(t, h, "job-channel-a", attemptA)
-	clearedB, _ := awaitRecuratedProposalAfter(t, h, "job-channel-b", attemptB)
+	clearedA, _ := awaitRecuratedProposalAfter(t, h, "channel-a", attemptA)
+	clearedB, _ := awaitRecuratedProposalAfter(t, h, "channel-b", attemptB)
 	assertProposalKeys(t, clearedA, []provision.Key{"movie:tmdb:90000100", "movie:tmdb:90000101", "movie:tmdb:90000603"})
 	assertProposalKeys(t, clearedB, []provision.Key{"movie:tmdb:90000101", "movie:tmdb:90000603"})
 	if llmMock.Calls != 8 {
@@ -155,27 +149,38 @@ func (r *toolOrderRecorder) all() [][]provision.Key {
 	return out
 }
 
-func awaitRecuratedProposalAfter(t *testing.T, h *harness, jobID string, previousAttempt int) (suggest.Proposal, int) {
+// awaitRecuratedProposalAfter waits until the channel has more re-curation proposals than
+// `previous` and returns the newest one with the new count. Every re-curation is its own job
+// that names the channel, so the proposals are found through the jobs that produced them.
+func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, previous int) (suggest.Proposal, int) {
 	t.Helper()
+	ctx := context.Background()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		snapshot, err := h.store.GetProposalJob(context.Background(), jobID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if snapshot.Job.Status == "failed" {
-			t.Fatalf("recurate %s failed: %s", jobID, snapshot.Job.LastError)
-		}
-		if snapshot.Job.Status == "done" && snapshot.Job.Attempts > previousAttempt && snapshot.Proposal != nil {
-			var proposal suggest.Proposal
-			if err := json.Unmarshal([]byte(snapshot.Proposal.ProposalJSON), &proposal); err != nil {
+		var found []store.Proposal
+		for _, status := range []string{"submitted", "approved"} {
+			proposals, err := h.store.ListProposalsByStatus(ctx, status)
+			if err != nil {
 				t.Fatal(err)
 			}
-			return proposal, snapshot.Job.Attempts
+			for _, p := range proposals {
+				job, err := h.store.GetJob(ctx, p.JobID)
+				if err == nil && job.Kind == "recurate" && job.ChannelID == channelID {
+					found = append(found, p)
+				}
+			}
+		}
+		if len(found) > previous {
+			slices.SortFunc(found, func(a, b store.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
+			var proposal suggest.Proposal
+			if err := json.Unmarshal([]byte(found[len(found)-1].ProposalJSON), &proposal); err != nil {
+				t.Fatal(err)
+			}
+			return proposal, len(found)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("recurate %s did not complete", jobID)
+	t.Fatalf("recurate for %s did not complete", channelID)
 	return suggest.Proposal{}, 0
 }
 

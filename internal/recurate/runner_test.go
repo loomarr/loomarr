@@ -1,9 +1,13 @@
 package recurate_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -12,26 +16,26 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// fakeRefiner records which jobs were asked to refine + with what intent.
+// fakeRefiner records which channels were asked to re-curate + with what intent.
 type fakeRefiner struct {
 	calls   []string
 	intents map[string]suggest.Intent
 	err     error
 }
 
-func (f *fakeRefiner) Recurate(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
+func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent suggest.Intent) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}
-	f.calls = append(f.calls, jobID)
+	f.calls = append(f.calls, channelID)
 	if f.intents == nil {
 		f.intents = map[string]suggest.Intent{}
 	}
-	f.intents[jobID] = intent
-	return jobID, nil
+	f.intents[channelID] = intent
+	return "job-for-" + channelID, nil
 }
 
-// seedJob writes a suggestion job carrying the original intent (the runner re-uses it).
+// seedJob writes the suggestion job a channel is made from, carrying the original request.
 func seedJob(t *testing.T, st store.Store, id, description string) {
 	t.Helper()
 	blob, _ := json.Marshal(suggest.Intent{Description: description, Era: "1990s"})
@@ -40,12 +44,24 @@ func seedJob(t *testing.T, st store.Store, id, description string) {
 	}
 }
 
+// ownIntent is the request a channel made from jobID owns, as approval copies it onto the
+// channel. A channel with no job (hand-made) owns none.
+func ownIntent(t *testing.T, st store.Store, jobID string) string {
+	t.Helper()
+	job, err := st.GetJob(context.Background(), jobID)
+	if err != nil {
+		return ""
+	}
+	return job.IntentJSON
+}
+
 // seedChannelStatus writes a channel with the given status + auto-curate opt-in.
 func seedChannelStatus(t *testing.T, st store.Store, id, jobID string, status schedule.ChannelStatus, ac *schedule.AutoCurate, number int) {
 	t.Helper()
 	ch := store.Channel{}
 	ch.ID = id
 	ch.IntentRef = jobID
+	ch.IntentJSON = ownIntent(t, st, jobID)
 	ch.Name = "Ch " + id
 	ch.Number = number
 	ch.Strategy = schedule.Sequential
@@ -85,18 +101,57 @@ func TestRunner_TriggersOnlyEligibleChannels(t *testing.T) {
 		t.Fatalf("kicked %d, want 3 (live + building + drifted auto-curate channels)", kicked)
 	}
 	got := map[string]bool{}
-	for _, j := range fr.calls {
-		got[j] = true
+	for _, c := range fr.calls {
+		got[c] = true
 	}
-	if !got["job-live"] || !got["job-building"] || !got["job-drifted"] {
-		t.Errorf("refined %v, want job-live + job-building + job-drifted", fr.calls)
+	if !got["c-live"] || !got["c-building"] || !got["c-drifted"] {
+		t.Errorf("refined %v, want c-live + c-building + c-drifted", fr.calls)
 	}
-	if got["job-paused"] || got["job-notopted"] {
+	if got["c-paused"] || got["c-notopted"] || got["c-handmade"] {
 		t.Errorf("refined an ineligible channel: %v", fr.calls)
 	}
 }
 
-// The refresh refine carries the channel's ORIGINAL intent (from its source job) with NO
+// Housekeeping purges finished jobs, so a channel past `jobs.retention` is re-curated from the
+// intent it owns: the job it was made from is gone and the weekly run must still happen. A
+// channel whose request was already gone before channels owned it is skipped with a reason, not
+// guessed at.
+func TestRunner_RecuratesFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	ctx := context.Background()
+	old := time.Now().Add(-31 * 24 * time.Hour)
+	blob, _ := json.Marshal(suggest.Intent{Description: "90s action", Era: "1990s"})
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-old", Kind: "suggest", Status: "done", IntentJSON: string(blob), UpdatedAt: old,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seedChannelStatus(t, st, "c-owned", "job-old", schedule.StatusLive, &schedule.AutoCurate{}, 1)
+	seedChannelStatus(t, st, "c-orphan", "job-already-gone", schedule.StatusLive, &schedule.AutoCurate{}, 2)
+
+	if purged, err := st.PurgeFinishedJobs(ctx, time.Now().Add(-30*24*time.Hour)); err != nil || purged != 1 {
+		t.Fatalf("purge = %d, %v; want the 31-day-old job purged", purged, err)
+	}
+
+	var logs bytes.Buffer
+	fr := &fakeRefiner{}
+	kicked, err := recurate.NewRunner(st, fr, slog.New(slog.NewTextHandler(&logs, nil))).Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kicked != 1 || len(fr.calls) != 1 || fr.calls[0] != "c-owned" {
+		t.Fatalf("re-curated %v (kicked %d), want only c-owned", fr.calls, kicked)
+	}
+	if got := fr.intents["c-owned"]; got.Description != "90s action" || got.Era != "1990s" {
+		t.Errorf("re-curation lost the channel's intent: %+v", got)
+	}
+	if !strings.Contains(logs.String(), "original request is unavailable") || !strings.Contains(logs.String(), "c-orphan") {
+		t.Errorf("skipping c-orphan left no clear reason in the log:\n%s", logs.String())
+	}
+}
+
+// The refresh refine carries the channel's ORIGINAL intent (the one it owns) with NO
 // operator RefineText — a scheduled "re-evaluate against the library", not a human change.
 func TestRunner_RefreshIntentKeepsOriginalNoRefineText(t *testing.T) {
 	t.Parallel()
@@ -109,7 +164,7 @@ func TestRunner_RefreshIntentKeepsOriginalNoRefineText(t *testing.T) {
 	if _, err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	intent := fr.intents["job1"]
+	intent := fr.intents["c1"]
 	if intent.Description != "90s action heroes" || intent.Era != "1990s" {
 		t.Errorf("refresh intent lost the original constraints: %+v", intent)
 	}
@@ -131,7 +186,7 @@ func TestRunner_RefreshIntentDoesNotClaimFeedbackScope(t *testing.T) {
 	if _, err := recurate.NewRunner(st, fr, testkit.Logger()).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if scope := fr.intents["job1"].DiscoveryScopeID; scope != "" {
+	if scope := fr.intents["channel-a"].DiscoveryScopeID; scope != "" {
 		t.Fatalf("scheduler supplied transient feedback scope %q; execution scope must be derived after durable claim", scope)
 	}
 }

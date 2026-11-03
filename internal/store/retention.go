@@ -23,6 +23,10 @@ import (
 // holds its lease right now. Deleting either would strand the worker or silently drop
 // requested work — and the reconciler's deadline discipline (§4) already ages out genuinely
 // stuck jobs by moving them to a terminal state, which is what makes them eligible here.
+//
+// A channel does not depend on the job it was made from: it carries its own approved intent and
+// requester (`channels.intent_json`, `channels.requested_by`), so a purge never takes away what a
+// refine or a re-curation needs.
 func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(
 		`DELETE FROM jobs WHERE status IN ('done','failed') AND updated_at < ?`), epoch(before))

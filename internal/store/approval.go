@@ -200,6 +200,9 @@ func (s *sqlStore) commitProposalApproval(
 			enqueued++
 		}
 	}
+	if err := validateApprovalBinding(ctx, tx, s.ph, p, commit.Channel); err != nil {
+		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
+	}
 	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
 			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
@@ -290,10 +293,30 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if ch.IntentRef == "" {
 		return fmt.Errorf("channel %s has no intent ref", ch.ID)
 	}
-	if ch.IntentRef != p.JobID {
-		return fmt.Errorf("channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
-	}
 	return nil
+}
+
+// validateApprovalBinding checks, inside the approval transaction, that the planned channel is
+// the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
+// channel the job originated. A job with no channel yet may only create one it originates.
+func validateApprovalBinding(ctx context.Context, q channelDB, ph placeholder, p Proposal, ch Channel) error {
+	bound, err := channelForJob(ctx, q, ph, p.JobID)
+	switch {
+	case err == nil:
+		if bound.ID != ch.ID {
+			// The plan predates a competing approval that bound the job first. The caller
+			// reloads and replans, exactly as for a lost uniqueness race.
+			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
+		}
+		return nil
+	case errors.Is(err, ErrNotFound):
+		if ch.IntentRef != p.JobID {
+			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		return nil
+	default:
+		return err
+	}
 }
 
 func validateApprovalTitle(rec provision.Record) error {

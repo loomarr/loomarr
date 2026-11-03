@@ -37,10 +37,9 @@ type Thresholds interface {
 // CuratorStore is the channel lookup the grant needs before handing an authorized, filtered
 // proposal to the shared approval gate.
 type CuratorStore interface {
-	// GetChannelByIntentRef identifies WHICH channel a re-curation proposal authorizes: the
-	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
-	// plus a linear walk, duplicated byte-for-byte in `binder`.
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
+	// GetChannelForJob identifies WHICH channel a re-curation proposal authorizes: the channel
+	// the proposal's job names.
+	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
 	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
 	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
@@ -190,15 +189,11 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 	return protected, nil
 }
 
-// channelForJob finds the channel bound to a suggestion job (its IntentRef). A re-curation
-// proposal's JobID IS the channel's IntentRef, so this identifies which channel to authorize.
-//
-// ⚠ An INDEXED lookup since V41 (00037). This was `ListChannels` plus a linear walk — the same
-// function, byte for byte, as `binder.channelByIntent`, because neither package had a store
-// method to reach for. A zero Channel still means "no channel for this job", which `Consider`
-// reads as not-opted-in and fails closed on.
+// channelForJob finds the channel a re-curation job names, which identifies the channel to
+// authorize. A zero Channel still means "no channel for this job", which `Consider` reads as
+// not-opted-in and fails closed on.
 func (c *Curator) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
-	ch, err := c.store.GetChannelByIntentRef(ctx, jobID)
+	ch, err := c.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Channel{}, nil
 	}

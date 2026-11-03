@@ -953,24 +953,21 @@ func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	}
 }
 
-func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
+// A refine is seeded from the intent the CHANNEL owns, so it works when the job the channel was
+// made from is long gone — housekeeping purges finished jobs older than `jobs.retention`. The
+// channel here has no job row at all, as a channel a month past its request.
+func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
 
-	// A channel bound to a suggestion job, with a current lineup.
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "job-orig", Kind: "suggest", Status: "done",
-		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
-	}); err != nil {
-		t.Fatal(err)
-	}
 	ch := store.Channel{
+		IntentJSON: `{"description":"90s action","era":"1990s","mustExclude":["Slow Burn"],"refineText":"old note","channelName":"Fixed"}`,
 		Lineup: []schedule.LineupEntry{
 			{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
 			{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 		},
 	}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
@@ -983,24 +980,50 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	var body struct{ JobID string }
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	// Returns the channel's OWN job id (re-queued in place), so the refined proposal binds
-	// back to this channel — the whole point of "reuse the intentRef job".
-	if body.JobID != "job-orig" {
-		t.Errorf("refine returned jobId %q, want the channel's IntentRef job-orig", body.JobID)
+	// A refine is a NEW job, never the job the channel was made from.
+	if body.JobID != "job-refine-1" {
+		t.Errorf("refine returned jobId %q, want the new refine job", body.JobID)
 	}
-	if fs.refines != 1 || fs.lastJobID != "job-orig" {
-		t.Errorf("Refine called %d times on job %q, want 1 on job-orig", fs.refines, fs.lastJobID)
+	if fs.refines != 1 || fs.lastChannelID != "c1" {
+		t.Errorf("Refine called %d times for channel %q, want 1 for c1", fs.refines, fs.lastChannelID)
 	}
-	// The refine intent carried the change + the current lineup as context + kept the
-	// original description.
+	// The refine intent kept the channel's full intent, replaced the one-run inputs, and carries
+	// the change + the current lineup as context.
 	if fs.last.RefineText != "add more heist capers, drop the slow ones" {
 		t.Errorf("refine intent RefineText = %q", fs.last.RefineText)
 	}
-	if fs.last.Description != "90s action" {
-		t.Errorf("refine intent kept original description? got %q, want '90s action'", fs.last.Description)
+	if fs.last.Description != "90s action" || fs.last.Era != "1990s" || len(fs.last.MustExclude) != 1 {
+		t.Errorf("refine intent lost the channel's intent: %+v", fs.last)
+	}
+	if fs.last.ChannelName != "" {
+		t.Errorf("refine intent kept the requested name %q; the channel may have been renamed", fs.last.ChannelName)
 	}
 	if len(fs.last.CurrentLineup) != 2 || fs.last.CurrentLineup[0].Name != "Marigold Protocol" {
 		t.Errorf("refine intent CurrentLineup = %+v, want the 2 seeded titles", fs.last.CurrentLineup)
+	}
+}
+
+// A channel whose request is gone (its job was purged before channels owned their intent) is
+// never refined from a guess such as its name: the admin is asked to describe it again.
+func TestRefineChannel_UnavailableOriginalRequest422(t *testing.T) {
+	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	ch := store.Channel{}
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken, `{"change":"more action"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refine → %d, want 422", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if !strings.Contains(problem.Detail, "Describe the channel again") {
+		t.Errorf("problem detail = %q, want it to ask the admin to describe the channel again", problem.Detail)
+	}
+	if fs.refines != 0 {
+		t.Errorf("Refine ran %d times for a channel with no request; it must not fall back to the channel name", fs.refines)
 	}
 }
 

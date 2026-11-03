@@ -35,9 +35,8 @@ type ProposalStore interface {
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
 	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
 	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
-	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
 }
 
 // Service owns submission + the worker pool (§8). It's the seam the API depends
@@ -241,15 +240,14 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 	return job.ID, nil
 }
 
-// Refine re-runs an EXISTING suggestion job with a refine-flavored intent (§7 refine).
-// It re-queues the channel's own `IntentRef` job rather than minting a new one, so the
-// refined proposal lands on that job — and approving that exact proposal patches the SAME
-// intent-bound channel (no duplicate channel). Bypasses the intent-hash cache deliberately:
-// a refine always re-generates
-// (the operator asked for a change; a cached identical run would be surprising). Returns
-// the job id (== the channel's IntentRef) for the caller to poll for the new proposal.
-func (s *Service) Refine(ctx context.Context, jobID string, intent Intent) (string, error) {
-	return s.requeue(ctx, jobID, intent, jobKindSuggest, "refine")
+// Refine submits a NEW job that re-curates an existing channel with a refine-flavored intent
+// (§7 refine). The job names the channel, so approving its proposal patches that channel in
+// place (no duplicate channel). It is the admin's own request, listed under them, and it never
+// touches the request the channel was made from. Bypasses the intent-hash cache deliberately:
+// a refine always re-generates (the operator asked for a change; a cached identical run would be
+// surprising). Returns the new job id for the caller to poll for the proposal.
+func (s *Service) Refine(ctx context.Context, channelID string, intent Intent, requestedBy string) (string, error) {
+	return s.submitForChannel(ctx, channelID, intent, jobKindSuggest, requestedBy, "refine")
 }
 
 // SubmitBuilt puts a proposal that needed no generation (a library channel idea, #1720) in the
@@ -281,37 +279,24 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Propo
 	return recorded.JobID, nil
 }
 
-// Recurate re-runs a channel job under the channel-scoped unattended grant. The distinct
-// durable kind is the authorization discriminator the worker reads: a scheduled refresh must
-// never fall through the requester's auto-approve grant, and a human refine must never be
-// mistaken for unattended curation merely because its channel is opted in.
-func (s *Service) Recurate(ctx context.Context, jobID string, intent Intent) (string, error) {
-	return s.requeue(ctx, jobID, intent, jobKindRecurate, "recurate")
+// Recurate submits a NEW job that re-curates a channel under the channel-scoped unattended
+// grant. The distinct durable kind is the authorization discriminator the worker reads: a
+// scheduled refresh must never fall through a requester's auto-approve grant, and a human refine
+// must never be mistaken for unattended curation merely because its channel is opted in. The job
+// has no requester: it is system work, so it never appears in anyone's request list.
+func (s *Service) Recurate(ctx context.Context, channelID string, intent Intent) (string, error) {
+	return s.submitForChannel(ctx, channelID, intent, jobKindRecurate, "", "recurate")
 }
 
-func (s *Service) requeue(ctx context.Context, jobID string, intent Intent, kind, operation string) (string, error) {
-	if s.workflow != nil {
-		if err := s.workflow.Requeue(ctx, jobID, intent, kind); err != nil {
-			return "", fmt.Errorf("%s: %w", operation, err)
-		}
-		return jobID, nil
+func (s *Service) submitForChannel(ctx context.Context, channelID string, intent Intent, kind, createdBy, operation string) (string, error) {
+	if s.workflow == nil {
+		return "", fmt.Errorf("%s: durable workflow not configured", operation)
 	}
-	job, err := s.store.GetJob(ctx, jobID)
+	jobID, err := s.workflow.SubmitForChannel(ctx, channelID, intent, kind, createdBy)
 	if err != nil {
-		return "", fmt.Errorf("%s: load job %q: %w", operation, jobID, err)
+		return "", fmt.Errorf("%s: %w", operation, err)
 	}
-	blob, err := json.Marshal(intent)
-	if err != nil {
-		return "", fmt.Errorf("%s: marshal intent: %w", operation, err)
-	}
-	now := s.now()
-	// Re-queue in place only if the terminal execution we loaded is still current.
-	// A concurrent refine or active worker wins cleanly rather than having a stale
-	// whole-row write restore an old attempt token.
-	if err := s.store.RequeueSuggestionJob(ctx, job.ID, job.Attempts, kind, string(blob), IntentHash(intent), now, now); err != nil {
-		return "", fmt.Errorf("%s: requeue job: %w", operation, err)
-	}
-	return job.ID, nil
+	return jobID, nil
 }
 
 // Run starts the worker pool and blocks until ctx is cancelled (§8). Each worker
@@ -510,13 +495,13 @@ func (s *Service) executionIntent(ctx context.Context, kind, jobID string, inten
 	if kind != jobKindRecurate {
 		return intent, nil
 	}
-	channel, err := s.store.GetChannelByIntentRef(ctx, jobID)
+	channel, err := s.store.GetChannelForJob(ctx, jobID)
 	if err != nil {
 		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
 	}
-	if strings.TrimSpace(channel.ID) == "" || channel.IntentRef != jobID || channel.Status == schedule.StatusDetached {
-		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q intent_ref=%q status=%q",
-			jobID, channel.ID, channel.IntentRef, channel.Status)
+	if strings.TrimSpace(channel.ID) == "" || channel.Status == schedule.StatusDetached {
+		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q status=%q",
+			jobID, channel.ID, channel.Status)
 	}
 	intent.DiscoveryScopeID = channel.ID
 	return intent, nil
