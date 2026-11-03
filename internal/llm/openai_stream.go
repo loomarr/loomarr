@@ -205,14 +205,10 @@ func (o *OpenAI) exchange(ctx context.Context, op string, body []byte) (completi
 		return completion{}, 0, fail(fmt.Errorf("%s [%s]: %w", op, site, err))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if err := httpx.CheckStatus(resp); err != nil {
-		// ⚠ The body carries WHY, and a bare status code hides it: "model not found" (a wrong
-		// llm.model), "no image input", "no credit", or a llama.cpp slot error. CheckStatus caps
-		// it at 512 bytes and it never contains our key.
-		var se *httpx.StatusError
-		if errors.As(err, &se) {
-			err = &callStatusError{op: op, err: se}
-		}
+	// ⚠ The body carries WHY, and a bare status code hides it: "model not found" (a wrong
+	// llm.model), "no image input", "no credit", or a llama.cpp slot error. It is capped at
+	// 512 bytes and never contains our key.
+	if err := checkStatusWithBody(resp, op); err != nil {
 		return completion{}, resp.StatusCode, err
 	}
 

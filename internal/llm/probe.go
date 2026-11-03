@@ -276,8 +276,8 @@ func (p *Prober) Pull(ctx context.Context, tag string, onProgress func(PullProgr
 		return fmt.Errorf("ollama pull: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ollama pull: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama pull"); err != nil {
+		return err
 	}
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
