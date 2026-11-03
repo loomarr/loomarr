@@ -150,7 +150,7 @@ func buildOperations(
 		guide: buildGuide(st, set, playoutResolver, appliedBackend, metricRecorder),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
-			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
+			refreshSecretRedactor, readGeneratedSecret, triggerHealth, emitter.SettingsChanged, log,
 		),
 		notificationDestinations: buildNotificationDestinations(
 			destinationRepository, providerValidators, accountDelivery.service,
@@ -399,6 +399,7 @@ func buildSettings(
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	triggerHealth func(context.Context),
+	settingsChanged func(),
 	log *slog.Logger,
 ) api.SettingsService {
 	if st == nil || secrets == nil {
@@ -407,7 +408,7 @@ func buildSettings(
 	return settingsAdapter{
 		svc: set.svc, secrets: secrets, store: st, log: log, protection: set.protection,
 		tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshRedactor,
-		readSecret: readSecret, triggerHealth: triggerHealth,
+		readSecret: readSecret, triggerHealth: triggerHealth, changed: settingsChanged,
 	}
 }
 

@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidateByPrefix, openEventStream } from "./events";
+import { invalidateByPrefix, invalidateForFrame, invalidateSettings, openEventStream } from "./events";
 import type { EventStreamMessage } from "./events.type";
 
 describe("invalidateByPrefix", () => {
@@ -16,6 +16,37 @@ describe("invalidateByPrefix", () => {
     const channels = qc.getQueryState(["/v1/channels"]);
     expect(titles?.isInvalidated).toBe(true);
     expect(channels?.isInvalidated).toBe(false);
+  });
+});
+
+describe("settings invalidation", () => {
+  // The queries a saved setting can change. LLM status is the one the save bar used to skip.
+  const derived = [
+    ["/v1/settings"],
+    ["/v1/setup/status"],
+    ["/v1/system/llm"],
+    ["/v1/system/llm/discover"],
+    ["/v1/filler/readiness"],
+  ];
+
+  it("maps the settings frame to every settings-derived query and nothing else", async () => {
+    const qc = new QueryClient();
+    for (const key of derived) await qc.prefetchQuery({ queryKey: key, queryFn: () => "x" });
+    await qc.prefetchQuery({ queryKey: ["/v1/channels"], queryFn: () => "c" });
+
+    invalidateForFrame(qc, "settings", {});
+
+    for (const key of derived) expect(qc.getQueryState(key)?.isInvalidated, key[0]).toBe(true);
+    expect(qc.getQueryState(["/v1/channels"])?.isInvalidated).toBe(false);
+  });
+
+  it("gives the save paths the same mapping through invalidateSettings", async () => {
+    const qc = new QueryClient();
+    await qc.prefetchQuery({ queryKey: ["/v1/system/llm"], queryFn: () => "x" });
+
+    invalidateSettings(qc);
+
+    expect(qc.getQueryState(["/v1/system/llm"])?.isInvalidated).toBe(true);
   });
 });
 

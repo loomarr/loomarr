@@ -2,6 +2,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
@@ -62,7 +63,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        await invalidateSettings(queryClient);
       },
     },
   });

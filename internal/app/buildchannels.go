@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -152,7 +151,7 @@ func buildChannels(
 		// fails closed instead of publishing a process-local target.
 		liveTVConnector = setup.NewLiveTVConnector(
 			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{},
-		).WithTunerPublishingDisabled(tunerPublishingDisabled(), log)
+		).WithTunerPublishingDisabled(ov.TunerPublishingDisabled, log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
 			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
@@ -338,15 +337,6 @@ func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, 
 		log.Warn("unrecognised playout.backend value; Live TV URLs fall back to internal playout", "backend", backend)
 	}
 	return setup.InternalPlayoutURLs(publicURL, deviceToken)
-}
-
-// tunerPublishingDisabled reads the env-only dev flag scripts/dev-env.sh exports for an agent
-// lane (#1555, docs/contributing/dev-loop.md): LOOMARR_AGENT_DISABLE_LIVETV_TUNER. It is
-// intentionally NOT a declared setting — library.url/token can point an agent lane at the
-// household media server, and this must stay on regardless of what the Settings UI saves.
-// Unset/empty (production, and the primary worktree) ⇒ false, today's behaviour unchanged.
-func tunerPublishingDisabled() bool {
-	return strings.TrimSpace(os.Getenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER")) != ""
 }
 
 // householdCalendar is the calendar every channel arrangement and on-screen logo reads (#2030):

@@ -107,7 +107,6 @@ const RolePicker = ({
 const AiModelSettings = ({
   provider,
   baseUrl,
-  onBaseUrlChange,
   onModelChange,
   visionProvider = "inherit",
   visionModel = "",
@@ -116,7 +115,6 @@ const AiModelSettings = ({
 }: {
   provider?: string;
   baseUrl?: string;
-  onBaseUrlChange?: (value: string) => void;
   onModelChange?: () => void;
   visionProvider?: string;
   visionModel?: string;
@@ -135,16 +133,6 @@ const AiModelSettings = ({
   // fetched — the branch below picks which surface to render from the same payload.
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
   const status = unwrap(llm.data);
-  const openRouterBase = status?.hosted?.find((hosted) => hosted.key === "openrouter")?.baseUrl;
-
-  // The probe already owns the blessed provider's canonical API base. When someone chooses the
-  // hosted path on a blank form, stage that fact into the same edit buffer as the visible field.
-  // Never overwrite a non-empty URL: that is the Custom path and remains fully operator-owned.
-  useEffect(() => {
-    if (isHosted && baseUrl === "" && openRouterBase && onBaseUrlChange) {
-      onBaseUrlChange(openRouterBase);
-    }
-  }, [baseUrl, isHosted, onBaseUrlChange, openRouterBase]);
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
   // A model became active: refresh our own status AND notify the host (setup-status, etc.).
@@ -303,6 +291,7 @@ const AiModelSettings = ({
     lineup = (
       <div className="flex flex-col gap-5">
         {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
+        {discover.error != null && <ErrorState error={discover.error} onRetry={() => discover.refetch()} />}
         {pullError && <ErrorState error={new Error(pullError)} />}
         {lineupCatalog.length > 0 ? (
           <ModelPicker

@@ -10183,6 +10183,9 @@ components:
       required:
         - enabled
       type: object
+    SettingsEvent:
+      additionalProperties: false
+      type: object
     SettingsListOutputBody:
       additionalProperties: false
       properties:
@@ -14454,6 +14457,24 @@ paths:
                         - data
                         - event
                       title: Event playout
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/SettingsEvent"
+                        event:
+                          const: settings
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event settings
                       type: object
                     - properties:
                         data:

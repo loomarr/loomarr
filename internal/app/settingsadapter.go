@@ -41,6 +41,9 @@ type settingsAdapter struct {
 	refreshRedactor func()
 	readSecret      func(context.Context, settings.GeneratedSecret) (string, error)
 	triggerHealth   func(context.Context)
+	// changed announces a committed settings write to the live-update stream, so every client read
+	// derived from settings refetches. nil-safe: a test or schema-only build publishes nothing.
+	changed func()
 	// tests maps a check name → a live connection probe (media_server, tunarr, …).
 	// nil-safe: an unknown/unconfigured check returns a neutral "not configured".
 	tests map[string]func(ctx context.Context) (bool, string)
@@ -120,9 +123,15 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 	}
 	out := make([]api.SettingResult, 0, len(results))
 	healthChanged := false
+	saved := false
 	for _, r := range results {
 		out = append(out, api.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
+		saved = saved || r.Status == settings.PatchSaved
 		healthChanged = healthChanged || (r.Status == settings.PatchSaved && isHealthSetting(r.Key))
+	}
+	// A persistence error can follow keys the batch already committed, so it announces too.
+	if saved || err != nil {
+		a.announceChange()
 	}
 	// A persistence error surfaces as an extra synthetic invalid result so the UI
 	// shows the save failed rather than silently reporting nothing.
@@ -144,6 +153,9 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
+	if res.Status == settings.PatchSaved {
+		a.announceChange()
+	}
 	if res.Status == settings.PatchSaved && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
@@ -159,10 +171,19 @@ func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
 	}
+	if st == settings.EnvOverrideApplied {
+		a.announceChange()
+	}
 	if st == settings.EnvOverrideApplied && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
 	return api.SettingResult{Key: key, Status: string(st)}
+}
+
+func (a settingsAdapter) announceChange() {
+	if a.changed != nil {
+		a.changed()
+	}
 }
 
 func isHealthSetting(key string) bool {

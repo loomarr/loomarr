@@ -148,6 +148,12 @@ func (e *eventEmitter) HealthChanged() {
 	e.bus.Publish(events.Event{Type: "health", Payload: api.HealthEvent{}})
 }
 
+// SettingsChanged invalidates every client read derived from settings after a committed write. It
+// carries no payload; the GETs (settings list, setup status, AI provider status) own the shapes.
+func (e *eventEmitter) SettingsChanged() {
+	e.bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
+}
+
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
 //
 // ⚠ **Throttled HERE rather than at the source, which is the call `PlayoutEvent` already
