@@ -64,6 +64,9 @@ type Airing struct {
 	// MeasuredTruePeak is the same derivative's true peak in dBTP, or nil when it was not measured.
 	// It caps a boost so a raised clip cannot clip.
 	MeasuredTruePeak *float64
+	// RecentRepeat and RotationPinned say how a filler clip was picked, for the rotation metric
+	// recorded when the clip is served: it repeated a recent clip, and that repeat was a pin.
+	RecentRepeat, RotationPinned bool
 	// Title is for logs and the guide, never for identity.
 	Title string
 	// Offset is how far INTO the item playout should start.
