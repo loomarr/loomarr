@@ -254,6 +254,41 @@ type LineupEntry struct {
 	// forever — the N+1 the stamping exists to avoid. CollectionID's -1 trick does not
 	// transfer to a slice, and nil-vs-empty does not survive a JSON round trip.
 	BoxSetsResolved bool
+	// Fit is how well this title serves the channel's intent, in (0, 1]: the confidence of the
+	// suggest or re-curation pick that added or last re-scored it. 0 means unscored (a manual
+	// add, or an entry that predates scoring) and reads as neutral (UnscoredFit) wherever a
+	// score is needed. A real confidence is floored at MinFit when stamped, so 0 stays
+	// unambiguous. Internal: never on the wire.
+	Fit float64 `json:"fit,omitempty"`
+	// AddedAt is when the binder first put this title on the lineup. Zero means unknown (a
+	// manual add, or an entry that predates the field). It bounds how long a never-aired
+	// title has been waiting. Internal: never on the wire.
+	AddedAt time.Time `json:"addedAt,omitzero"`
+}
+
+// MinFit is the smallest Fit a scored entry stores; a pick scored at (or rounded to) zero
+// still counts as scored, because Fit == 0 is reserved for "unscored".
+const MinFit = 0.01
+
+// UnscoredFit is the neutral fit an unscored entry is read as: halfway, so a manual add is
+// neither favoured nor first to go.
+const UnscoredFit = 0.5
+
+// EffectiveFit is the entry's fit with the unscored case resolved to UnscoredFit.
+func (e LineupEntry) EffectiveFit() float64 {
+	if e.Fit <= 0 {
+		return UnscoredFit
+	}
+	return e.Fit
+}
+
+// StampFit converts a pick's model confidence into a stored Fit: 0 (no confidence given)
+// stays unscored, anything else is clamped to [MinFit, 1].
+func StampFit(confidence float64) float64 {
+	if confidence <= 0 {
+		return 0
+	}
+	return min(max(confidence, MinFit), 1)
 }
 
 // inSeasonRange reports whether an episode season falls within the entry's

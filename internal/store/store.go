@@ -573,6 +573,10 @@ type AiringStore interface {
 	// window opens (#1674). A unit that has never aired is absent — callers treat absence as
 	// "least recently aired", which sorts it first.
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+	// LastAiredByKey returns the latest airing of any unit of each provisioning key on one
+	// channel, for ranking lineup entries by how long they have gone without airing. A key that
+	// has not aired inside the retained history is absent — callers read that as "never aired".
+	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout
