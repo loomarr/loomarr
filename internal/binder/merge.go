@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -24,7 +25,7 @@ func isAutoCurate(p store.Proposal) bool {
 // existing title may be dropped even though it's still available. Empty when the proposal has
 // no intent or no exclusions.
 func mustExcludeKeys(p store.Proposal) map[string]struct{} {
-	var body suggest.Proposal
+	var body proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return nil
 	}
@@ -45,7 +46,7 @@ func mustExcludeKeys(p store.Proposal) map[string]struct{} {
 // computed — it weighed the outgoing title's score against the incoming one's and committed to
 // the swap. Empty for every non-auto-curate proposal, and for auto-curate runs that had room.
 func retiredKeys(p store.Proposal) map[provision.Key]struct{} {
-	var body suggest.Proposal
+	var body proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return nil
 	}

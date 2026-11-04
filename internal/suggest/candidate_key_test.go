@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -29,7 +30,7 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 		strings.Contains(string(blob), "tmdbId") || strings.Contains(string(blob), "tvdbId") {
 		t.Fatalf("model candidates must expose only canonical keys: %s", blob)
 	}
-	intent := Intent{Description: "series"}
+	intent := Intent{Intent: proposal.Intent{Description: "series"}}
 	meaning, err := ValidateDateMeaning(intent, &DateMeaning{Kind: DateMeaningNone})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +60,7 @@ func TestCandidateKeyIsSoleModelIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			proposal, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &DecisionTrace{}, meaning)
+			proposal, err := (&Suggester{maxAcq: 3}).buildProposal(context.Background(), intent, out, surfaced, &proposal.DecisionTrace{}, meaning)
 			if tc.want == "" {
 				if !errors.Is(err, ErrNoGroundedTitles) || len(proposal.Lineup)+len(proposal.Acquisitions) != 0 {
 					t.Fatalf("ungrounded key survived: %+v, err = %v", proposal, err)
@@ -85,7 +86,7 @@ func TestNamesOnlyDirectFinalReceivesCatalogKey(t *testing.T) {
 		MediaType: provision.Series, TMDBID: 90021502, TVDBID: 90269680, Name: "Murmur Bay", Year: 2013, InLibrary: true,
 	}}}
 	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[{"mediaType":"series","name":"Murmur Bay","year":2013}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`))
-	proposal, err := New(model, catalog.New(nil, corpus), nil, 3).Suggest(context.Background(), Intent{Description: "mysteries"})
+	proposal, err := New(model, catalog.New(nil, corpus), nil, 3).Suggest(context.Background(), proposal.Intent{Description: "mysteries"})
 	if err != nil {
 		t.Fatal(err)
 	}

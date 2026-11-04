@@ -42,15 +42,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
 | `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
-| `provision` | 24 | — |
+| `proposal` | 9 | `provision`, `schedule`, `storagegovernor` |
+| `provision` | 25 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 23 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 24 | `holidayvocab`, `inventory`, `provision` |
 | `settings` | 8 | `config`, `library` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
 | `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
+| `suggest` | 7 | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 6 | — |
 
 ## Every package, by layer
@@ -111,7 +112,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 24 importers
+- **`provision`** · 25 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 6 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -191,7 +192,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 23 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 24 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
@@ -206,6 +207,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
 - **`playout`** · 6 importers · → `config`, `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
+- **`proposal`** · 9 importers · → `provision`, `schedule`, `storagegovernor`
+  The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 - **`store/catalogstore`** · 4 importers · → `broadcaststation`, `clipcatalog`, `creative`, `defects`, `holidayvocab`, `schedule`, `store/storedb`, `taxonomy`
@@ -225,6 +228,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 - **`store/identitystore`** · 4 importers · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
+- **`testkit/channeljourney`** · → `proposal`, `provision`, `schedule`
+  The public synthetic approval-to-schedule fixtures for #1103.
 
 ### Layer 5
 
@@ -319,23 +324,21 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 12
 
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `storagegovernor`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposal`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 
 ### Layer 13
 
-- **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
+- **`binder`** · 2 importers · → `proposal`, `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
+- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `proposal`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
-- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `provision`, `schedule`, `store`, `suggest`
+- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `proposal`, `provision`, `schedule`, `store`, `suggest`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
-- **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
+- **`proposalworkflow`** · 2 importers · → `proposal`, `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
-- **`recurate`** · 1 importer · → `catalog`, `jobs`, `provision`, `schedule`, `settings`, `store`, `suggest`
+- **`recurate`** · 1 importer · → `catalog`, `jobs`, `proposal`, `provision`, `schedule`, `settings`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit/channeljourney`** · → `provision`, `schedule`, `suggest`
-  The public synthetic approval-to-schedule fixtures for #1103.
 
 ### Layer 14
 
@@ -344,12 +347,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `settings`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `settings`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `housekeeping`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `housekeeping`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

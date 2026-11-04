@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -173,7 +174,7 @@ func NewService(st ProposalStore, workflow DurableWorkflow, sug *Suggester, cfg 
 // Submit creates a caller-owned suggestion job for an intent (§8). A successful
 // cache hit copies only proposal content into a fresh job/proposal lifecycle; it
 // never reuses another request's id, owner, or approval state. Returns the job id.
-func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (string, error) {
+func (s *Service) Submit(ctx context.Context, intent proposal.Intent, createdBy string) (string, error) {
 	// The workflow serves the cache only for a recent SUCCESSFUL job, so a failed job (no
 	// grounded titles, a timeout) never wedges a re-submit.
 	submission, err := s.workflow.Submit(ctx, intent, createdBy, s.now().Add(-s.cacheTTL))
@@ -201,7 +202,7 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 // touches the request the channel was made from. Bypasses the intent-hash cache deliberately:
 // a refine always re-generates (the operator asked for a change; a cached identical run would be
 // surprising). Returns the new job id for the caller to poll for the proposal.
-func (s *Service) Refine(ctx context.Context, channelID string, intent Intent, requestedBy string) (string, error) {
+func (s *Service) Refine(ctx context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error) {
 	return s.submitForChannel(ctx, channelID, intent, jobKindSuggest, requestedBy, "refine")
 }
 
@@ -209,8 +210,8 @@ func (s *Service) Refine(ctx context.Context, channelID string, intent Intent, r
 // approval queue as the requester's own request, and returns its job id. The model never runs, so
 // it works with the LLM off. Afterwards it does what a generated proposal gets: admins are told a
 // request is waiting, and the requester's auto-approve grant, if any, applies within its cap.
-func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Proposal, createdBy string) (string, error) {
-	recorded, err := s.workflow.Record(ctx, intent, proposal, createdBy)
+func (s *Service) SubmitBuilt(ctx context.Context, intent proposal.Intent, built proposal.Proposal, createdBy string) (string, error) {
+	recorded, err := s.workflow.Record(ctx, intent, built, createdBy)
 	if err != nil {
 		return "", err
 	}
@@ -233,11 +234,11 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Propo
 // scheduled refresh must never fall through a requester's auto-approve grant, and a human refine
 // must never be mistaken for unattended curation merely because its channel is opted in. The job
 // has no requester: it is system work, so it never appears in anyone's request list.
-func (s *Service) Recurate(ctx context.Context, channelID string, intent Intent) (string, error) {
+func (s *Service) Recurate(ctx context.Context, channelID string, intent proposal.Intent) (string, error) {
 	return s.submitForChannel(ctx, channelID, intent, jobKindRecurate, "", "recurate")
 }
 
-func (s *Service) submitForChannel(ctx context.Context, channelID string, intent Intent, kind, createdBy, operation string) (string, error) {
+func (s *Service) submitForChannel(ctx context.Context, channelID string, intent proposal.Intent, kind, createdBy, operation string) (string, error) {
 	jobID, err := s.workflow.SubmitForChannel(ctx, channelID, intent, kind, createdBy)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", operation, err)
@@ -306,13 +307,13 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		return
 	}
 	started := s.now()
-	proposal, err := s.suggester.Suggest(jobCtx, intent)
+	suggested, err := s.suggester.Suggest(jobCtx, intent)
 	duration := s.now().Sub(started)
 	if err != nil {
 		s.failWorkflow(ctx, work, err, duration, true)
 		return
 	}
-	completed, err := s.workflow.Complete(ctx, work, proposal)
+	completed, err := s.workflow.Complete(ctx, work, suggested)
 	if errors.Is(err, ErrStaleAttempt) {
 		s.log.Info("discarding stale suggestion result", "job", work.JobID, "attempt", work.Attempt, "err", err)
 		return
@@ -348,7 +349,7 @@ func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause err
 	}
 	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause, "cause", unwrapFailure(cause))
 	if measured {
-		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, Proposal{}, cause)
+		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, proposal.Proposal{}, cause)
 	}
 	s.emitPhase(work.JobID, PhaseFailed, 0)
 }
@@ -356,17 +357,17 @@ func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause err
 // executionIntent derives channel feedback scope from durable server-owned work.
 // DiscoveryScopeID is intentionally not serialized, so no caller-controlled Intent
 // can select another channel's feedback at execution time.
-func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent Intent) (Intent, error) {
+func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent proposal.Intent) (proposal.Intent, error) {
 	intent.DiscoveryScopeID = ""
 	if kind != jobKindRecurate {
 		return intent, nil
 	}
 	channel, err := s.store.GetChannelForJob(ctx, jobID)
 	if err != nil {
-		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
+		return proposal.Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
 	}
 	if strings.TrimSpace(channel.ID) == "" || channel.Status == schedule.StatusDetached {
-		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q status=%q",
+		return proposal.Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q status=%q",
 			jobID, channel.ID, channel.Status)
 	}
 	intent.DiscoveryScopeID = channel.ID
@@ -438,7 +439,7 @@ func (s *Service) recordSuggestionQuality(
 	jobID string,
 	attempt int,
 	duration time.Duration,
-	proposal Proposal,
+	result proposal.Proposal,
 	cause error,
 ) {
 	if s.quality == nil {
@@ -450,7 +451,7 @@ func (s *Service) recordSuggestionQuality(
 	} else if duration > quality.MaxObservationDuration {
 		duration = quality.MaxObservationDuration
 	}
-	trace := proposal.Trace
+	trace := result.Trace
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace
@@ -467,7 +468,7 @@ func (s *Service) recordSuggestionQuality(
 }
 
 func classifySuggestionQuality(
-	trace DecisionTrace,
+	trace proposal.DecisionTrace,
 	duration time.Duration,
 	succeeded bool,
 	failure *Failure,
@@ -547,7 +548,7 @@ func normalizeContextFailure(cause error) error {
 	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
 		return cause
 	}
-	trace := DecisionTrace{Version: DecisionTraceVersion}
+	trace := proposal.DecisionTrace{Version: DecisionTraceVersion}
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace.Clone()
@@ -604,7 +605,8 @@ func classifyFailure(cause error) string {
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field
 // order + case are normalized so semantically-identical intents collide.
-func IntentHash(i Intent) string {
+func IntentHash(request proposal.Intent) string {
+	i := Intent{Intent: request}
 	referenceIdentity, _ := reference.URL(referenceIntentText(i))
 	ceiling, excludeUnrated := intentExplicitAudienceCeiling(i), intentExcludesUnrated(i)
 	audienceConstraint := ""
@@ -653,7 +655,7 @@ func IntentHash(i Intent) string {
 
 // lineupKeys extracts + sorts the current-lineup keys for a stable, order-independent
 // contribution to the intent hash.
-func lineupKeys(ctx []LineupContext) []string {
+func lineupKeys(ctx []proposal.LineupContext) []string {
 	out := make([]string, 0, len(ctx))
 	for _, e := range ctx {
 		if e.Key != "" {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -51,7 +52,7 @@ type ApprovalEdit struct {
 	// Add are titles the approver added via search or a grounded collection.
 	// ResolveApprovalEdit rechecks current Library presence before applyEdit places
 	// each one in the Lineup or acquisitions; client presence fields are not authority.
-	Add []ProposalItem
+	Add []proposal.ProposalItem
 	// Note is the approver's message to the requester, persisted for the audit trail.
 	Note string
 	// ownedAddKeys is server-resolved authority, never populated from the wire.
@@ -64,7 +65,7 @@ type ApprovalEdit struct {
 // boundary. Production uses the current Library snapshot; clients cannot grant
 // themselves ownership or choose the Library item that will be scheduled.
 type ApprovalAdditionResolver interface {
-	ResolveApprovalAddition(context.Context, ProposalItem) (ProposalItem, bool, error)
+	ResolveApprovalAddition(context.Context, proposal.ProposalItem) (proposal.ProposalItem, bool, error)
 }
 
 // ResolveApprovalEdit returns a detached edit whose additions carry current,
@@ -80,7 +81,7 @@ func ResolveApprovalEdit(
 	}
 	resolved := &ApprovalEdit{
 		DropKeys:     append([]provision.Key(nil), edit.DropKeys...),
-		Add:          make([]ProposalItem, 0, len(edit.Add)),
+		Add:          make([]proposal.ProposalItem, 0, len(edit.Add)),
 		Note:         edit.Note,
 		ownedAddKeys: make(map[provision.Key]bool),
 	}
@@ -142,7 +143,7 @@ func (e *ApprovalEdit) isEmpty() bool {
 // as a client-supplied []ProposalItem, with an InLibrary flag and a LibraryItemID the caller
 // could type by hand. Without this, a fabricated InLibrary:true would schedule a title the
 // household never actually owns.
-func (a *Approver) ResolveManualLineup(ctx context.Context, items []ProposalItem) (lineup, acquisitions []ProposalItem, err error) {
+func (a *Approver) ResolveManualLineup(ctx context.Context, items []proposal.ProposalItem) (lineup, acquisitions []proposal.ProposalItem, err error) {
 	resolved, err := ResolveApprovalEdit(ctx, &ApprovalEdit{Add: items}, a.additions)
 	if err != nil {
 		return nil, nil, err
@@ -406,13 +407,13 @@ func (a *Approver) afterApprovalCommitted(ctx context.Context, channelID string)
 // approval, changing status, or touching the store. The coordinator and pre-approval
 // outlook share this edit and trusted episode-selector boundary. holidays are the definitions a
 // named holiday in the Intent is read against.
-func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab.Vocabulary) (store.Proposal, Proposal, error) {
+func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab.Vocabulary) (store.Proposal, proposal.Proposal, error) {
 	if p.Status != "submitted" {
-		return store.Proposal{}, Proposal{}, ErrNotSubmitted
+		return store.Proposal{}, proposal.Proposal{}, ErrNotSubmitted
 	}
-	var body Proposal
+	var body proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return store.Proposal{}, Proposal{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
+		return store.Proposal{}, proposal.Proposal{}, fmt.Errorf("approve: stored proposal is malformed: %w", err)
 	}
 
 	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
@@ -421,14 +422,14 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	// originally proposed — otherwise the audit trail describes a lineup that never existed.
 	summary, editedJSON, aerr := applyEdit(&body, edit)
 	if aerr != nil {
-		return store.Proposal{}, Proposal{}, aerr
+		return store.Proposal{}, proposal.Proposal{}, aerr
 	}
 	// This guards the human edit boundary, where every title in an otherwise valid draft can
 	// be deliberately unchecked. A nil edit is also used by automatic re-curation, whose empty
 	// incoming delta is valid: it means "keep the existing channel" after its quality/cap filter
 	// admitted nothing new.
 	if edit != nil && len(body.Lineup) == 0 && len(body.Acquisitions) == 0 {
-		return store.Proposal{}, Proposal{}, ErrEmptyApproval
+		return store.Proposal{}, proposal.Proposal{}, ErrEmptyApproval
 	}
 	// The edit surface controls title membership, not scheduler semantics. Re-ground every
 	// series from the Proposal's original Intent after additions/drops, at this one approval
@@ -440,7 +441,7 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 	if selectionChanged {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return store.Proposal{}, Proposal{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
+			return store.Proposal{}, proposal.Proposal{}, fmt.Errorf("approve: re-serialising grounded episode selection: %w", err)
 		}
 		editedJSON = string(raw)
 	}
@@ -469,7 +470,7 @@ func PrepareApproval(p store.Proposal, edit *ApprovalEdit, holidays holidayvocab
 // lists, so filtering only the visible starting list would make an explicit exclusion temporary.
 // Returns the summary and the re-serialised proposal JSON; an empty JSON string means the
 // stored bytes should be left exactly as they were.
-func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
+func applyEdit(body *proposal.Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
 	if edit.isEmpty() {
 		// An unmodified approval leaves ProposalJSON untouched here. The enclosing
 		// approval gate may still re-serialise it if a series selector is missing or
@@ -482,8 +483,8 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 		drop[k] = true
 	}
 
-	keep := func(items []ProposalItem) ([]ProposalItem, int) {
-		out := make([]ProposalItem, 0, len(items))
+	keep := func(items []proposal.ProposalItem) ([]proposal.ProposalItem, int) {
+		out := make([]proposal.ProposalItem, 0, len(items))
 		dropped := 0
 		for _, it := range items {
 			k, err := acquisitionKey(it)
@@ -508,7 +509,7 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 	droppedTotal += n
 
 	existing := make(map[provision.Key]bool)
-	for _, items := range [][]ProposalItem{body.Lineup, body.Acquisitions, body.Alternates} {
+	for _, items := range [][]proposal.ProposalItem{body.Lineup, body.Acquisitions, body.Alternates} {
 		for _, item := range items {
 			if key, keyErr := acquisitionKey(item); keyErr == nil {
 				existing[key] = true
@@ -554,7 +555,7 @@ func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON s
 // titles — the number that would actually be spent by approving it. Used by the quota
 // gate, which must not charge a user for a title someone else already caused.
 func NewAcquisitions(ctx context.Context, st TitleReader, p store.Proposal) (int, error) {
-	var body Proposal
+	var body proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return 0, fmt.Errorf("quota: stored proposal is malformed: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -17,10 +18,10 @@ const (
 )
 
 type submissionRepository interface {
-	SubmitIntent(context.Context, suggest.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
-	SubmitChannelIntent(context.Context, string, suggest.Intent, string, string) (string, error)
-	ReviseIntent(context.Context, string, string, int, suggest.Intent) error
-	RecordProposal(context.Context, suggest.Intent, suggest.Proposal, string) (suggest.WorkflowProposal, error)
+	SubmitIntent(context.Context, proposal.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
+	SubmitChannelIntent(context.Context, string, proposal.Intent, string, string) (string, error)
+	ReviseIntent(context.Context, string, string, int, proposal.Intent) error
+	RecordProposal(context.Context, proposal.Intent, proposal.Proposal, string) (suggest.WorkflowProposal, error)
 }
 
 // Record creates a fresh caller-owned lifecycle for a Proposal that needed no generation: a
@@ -30,28 +31,28 @@ type submissionRepository interface {
 // grounded identity, as a generated Proposal's must.
 func (w *Workflow) Record(
 	ctx context.Context,
-	intent suggest.Intent,
-	proposal suggest.Proposal,
+	intent proposal.Intent,
+	prop proposal.Proposal,
 	createdBy string,
 ) (suggest.WorkflowProposal, error) {
-	if len(proposal.Lineup) == 0 {
+	if len(prop.Lineup) == 0 {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: a recorded Proposal needs a lineup", ErrInvalidState)
 	}
-	if err := validateProposalIdentities(proposal); err != nil {
+	if err := validateProposalIdentities(prop); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
 	repository, ok := w.repository.(submissionRepository)
 	if !ok {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
 	}
-	return repository.RecordProposal(ctx, intent, proposal, createdBy)
+	return repository.RecordProposal(ctx, intent, prop, createdBy)
 }
 
 // Submit creates a fresh caller-owned lifecycle. cacheSince only saves the
 // grounded result activity; identity, ownership, decisions, and history remain fresh.
 func (w *Workflow) Submit(
 	ctx context.Context,
-	intent suggest.Intent,
+	intent proposal.Intent,
 	createdBy string,
 	cacheSince time.Time,
 ) (suggest.WorkflowSubmission, error) {
@@ -70,7 +71,7 @@ func (w *Workflow) Submit(
 func (w *Workflow) SubmitForChannel(
 	ctx context.Context,
 	channelID string,
-	intent suggest.Intent,
+	intent proposal.Intent,
 	kind, createdBy string,
 ) (string, error) {
 	if channelID == "" {
@@ -89,7 +90,7 @@ func (w *Workflow) SubmitForChannel(
 // Revise replaces the Intent behind the exact submitted Proposal an authorized
 // operator is reviewing. The repository performs the proposal/job transition as
 // one compare-and-swap; the prior Proposal stays visible until a replacement wins.
-func (w *Workflow) Revise(ctx context.Context, viewer Viewer, jobID string, intent suggest.Intent) error {
+func (w *Workflow) Revise(ctx context.Context, viewer Viewer, jobID string, intent proposal.Intent) error {
 	journey, err := w.Inspect(ctx, viewer, jobID)
 	if err != nil {
 		return err
@@ -109,7 +110,7 @@ func (w *Workflow) Revise(ctx context.Context, viewer Viewer, jobID string, inte
 
 func (r *storeRepository) SubmitIntent(
 	ctx context.Context,
-	intent suggest.Intent,
+	intent proposal.Intent,
 	createdBy string,
 	cacheSince time.Time,
 ) (suggest.WorkflowSubmission, error) {
@@ -125,14 +126,14 @@ func (r *storeRepository) SubmitIntent(
 	}
 	if cached, findErr := r.store.FindJobByIntentHash(ctx, job.IntentHash, cacheSince); findErr == nil && cached.Status == "done" {
 		job.Status = "done"
-		proposal, cloneErr := r.store.CloneSuggestionSuccess(ctx, cached.ID, job, r.newID())
+		cloned, cloneErr := r.store.CloneSuggestionSuccess(ctx, cached.ID, job, r.newID())
 		if cloneErr == nil {
-			var payload suggest.Proposal
-			if err := json.Unmarshal([]byte(proposal.ProposalJSON), &payload); err != nil {
+			var payload proposal.Proposal
+			if err := json.Unmarshal([]byte(cloned.ProposalJSON), &payload); err != nil {
 				return suggest.WorkflowSubmission{}, fmt.Errorf("decode cached Proposal: %w", err)
 			}
 			return suggest.WorkflowSubmission{JobID: job.ID, CachedProposal: &suggest.WorkflowProposal{
-				ID: proposal.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: payload, CreatedAt: proposal.CreatedAt,
+				ID: cloned.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: payload, CreatedAt: cloned.CreatedAt,
 			}}, nil
 		}
 		if !errors.Is(cloneErr, store.ErrNotFound) {
@@ -148,16 +149,16 @@ func (r *storeRepository) SubmitIntent(
 
 func (r *storeRepository) RecordProposal(
 	ctx context.Context,
-	intent suggest.Intent,
-	proposal suggest.Proposal,
+	intent proposal.Intent,
+	prop proposal.Proposal,
 	createdBy string,
 ) (suggest.WorkflowProposal, error) {
-	proposal.Intent = intent
+	prop.Intent = intent
 	intentBlob, err := json.Marshal(intent)
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Intent: %w", err)
 	}
-	proposalBlob, err := json.Marshal(proposal)
+	proposalBlob, err := json.Marshal(prop)
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Proposal: %w", err)
 	}
@@ -175,14 +176,14 @@ func (r *storeRepository) RecordProposal(
 		return suggest.WorkflowProposal{}, err
 	}
 	return suggest.WorkflowProposal{
-		ID: row.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: proposal, CreatedAt: now,
+		ID: row.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: prop, CreatedAt: now,
 	}, nil
 }
 
 func (r *storeRepository) SubmitChannelIntent(
 	ctx context.Context,
 	channelID string,
-	intent suggest.Intent,
+	intent proposal.Intent,
 	kind, createdBy string,
 ) (string, error) {
 	blob, err := json.Marshal(intent)
@@ -205,7 +206,7 @@ func (r *storeRepository) ReviseIntent(
 	ctx context.Context,
 	jobID, proposalID string,
 	expectedAttempt int,
-	intent suggest.Intent,
+	intent proposal.Intent,
 ) error {
 	blob, err := json.Marshal(intent)
 	if err != nil {

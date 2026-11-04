@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
@@ -20,12 +21,12 @@ const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId
 func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{}
-	owned := suggest.ProposalItem{
+	owned := proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition",
 		InLibrary: true, LibraryItemID: "library-90000672", OfficialRating: "PG",
 	}
-	missing := suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition"}
-	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+	missing := proposal.ProposalItem{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition"}
+	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
 		{Item: owned, Owned: true},
 		{Item: missing, Owned: false},
 	}}
@@ -34,7 +35,7 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
 		ProposalJSON: `{"lineup":[{"mediaType":"movie","tmdbId":90000671,"name":"Existing","inLibrary":true,"libraryItemId":"library-90000671"}]}`,
 	}
-	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+	edit := &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition", InLibrary: false},
 		{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
 	}}
@@ -52,7 +53,7 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	if records[2].Key != "movie:tmdb:90000673" || records[2].State != provision.Wanted || records[2].LibraryID != "" {
 		t.Fatalf("missing record = %+v, want wanted without forged Library id", records[2])
 	}
-	var committed suggest.Proposal
+	var committed proposal.Proposal
 	if err := json.Unmarshal([]byte(st.Commits[0].Proposal.ProposalJSON), &committed); err != nil {
 		t.Fatal(err)
 	}

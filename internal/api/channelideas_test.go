@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -304,7 +305,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
 		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
 	}
-	var payload suggest.Proposal
+	var payload proposal.Proposal
 	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +354,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 // Approver (with an ordered resolver double for Library presence) — the manual builder's
 // grounding guarantee is the thing under test, so a fake approver would test nothing.
 func newManualChannelHarness(
-	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[suggest.ProposalItem],
+	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[proposal.ProposalItem],
 ) *apiHarness {
 	t.Helper()
 	ms := testkit.NewMediaServer(t)
@@ -426,9 +427,9 @@ func submitManualChannel(
 func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
-	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
+	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
+		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
+		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	kid := login(t, h.Server, "kid", "pw")
@@ -453,7 +454,7 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
 		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
 	}
-	var payload suggest.Proposal
+	var payload proposal.Proposal
 	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
 		t.Fatal(err)
 	}
@@ -473,8 +474,8 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
-		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
+	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
+		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	boss := login(t, h.Server, "boss", "pw")
@@ -490,7 +491,7 @@ func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
 // is always disabled until at least one title is picked, but the API enforces it too.
 func TestSubmitManualChannelRejectsEmptyInput(t *testing.T) {
 	t.Parallel()
-	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{})
+	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{})
 	kid := login(t, h.Server, "kid", "pw")
 	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
 		"name":   "",

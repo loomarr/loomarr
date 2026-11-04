@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -194,14 +195,14 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 }
 
 func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID string, c demolibrary.Channel) error {
-	intent := suggest.Intent{Description: c.Name}
-	var lineup []suggest.ProposalItem
+	intent := proposal.Intent{Description: c.Name}
+	var lineup []proposal.ProposalItem
 	for _, id := range c.Titles {
 		t, ok := demolibrary.ByID(id)
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}
-		item := suggest.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
+		item := proposal.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
 		if t.Kind == demolibrary.Series {
 			item.MediaType, item.TVDBID = provision.Series, t.ProviderID()
 		} else {
@@ -213,7 +214,7 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err != nil {
 		return err
 	}
-	propJSON, err := json.Marshal(suggest.Proposal{Intent: intent, Lineup: lineup})
+	propJSON, err := json.Marshal(proposal.Proposal{Intent: intent, Lineup: lineup})
 	if err != nil {
 		return err
 	}

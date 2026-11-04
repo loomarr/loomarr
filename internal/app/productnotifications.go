@@ -9,10 +9,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type productNotificationCoordinator struct {
@@ -124,9 +124,9 @@ func (c *productNotificationCoordinator) logPublicationFailure(err error, refere
 	}
 }
 
-func proposalSubject(proposal store.Proposal) string {
-	var body suggest.Proposal
-	if json.Unmarshal([]byte(proposal.ProposalJSON), &body) == nil {
+func proposalSubject(row store.Proposal) string {
+	var body proposal.Proposal
+	if json.Unmarshal([]byte(row.ProposalJSON), &body) == nil {
 		if name := strings.TrimSpace(body.ChannelName); name != "" {
 			return name
 		}

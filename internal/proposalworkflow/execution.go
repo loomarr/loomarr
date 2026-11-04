@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -20,7 +21,7 @@ type Work = suggest.WorkflowWork
 // Attempt transitions either all become visible or none do.
 type Completion struct {
 	Work     Work
-	Proposal suggest.Proposal
+	Proposal proposal.Proposal
 }
 
 type AttemptFailure struct {
@@ -59,26 +60,26 @@ func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration
 
 // Complete atomically publishes a grounded Proposal and closes the current
 // Attempt. A stale lease token must be rejected by the repository guard.
-func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Proposal) (suggest.WorkflowProposal, error) {
+func (w *Workflow) Complete(ctx context.Context, work Work, prop proposal.Proposal) (suggest.WorkflowProposal, error) {
 	if err := validateWork(work); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if len(proposal.Lineup)+len(proposal.Acquisitions)+len(proposal.Alternates)+len(proposal.Refused) == 0 {
+	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates)+len(prop.Refused) == 0 {
 		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
 	}
-	if err := validateProposalIdentities(proposal); err != nil {
+	if err := validateProposalIdentities(prop); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if proposal.Trace.Version != suggest.DecisionTraceVersion {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, proposal.Trace.Version, suggest.DecisionTraceVersion)
+	if prop.Trace.Version != suggest.DecisionTraceVersion {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, suggest.DecisionTraceVersion)
 	}
-	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
 	if w.execution == nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
 	}
-	completed, err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: proposal})
+	completed, err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
@@ -118,8 +119,8 @@ func validateWork(work Work) error {
 	return nil
 }
 
-func validateProposalIdentities(proposal suggest.Proposal) error {
-	groups := [][]suggest.ProposalItem{proposal.Lineup, proposal.Acquisitions, proposal.Alternates}
+func validateProposalIdentities(prop proposal.Proposal) error {
+	groups := [][]proposal.ProposalItem{prop.Lineup, prop.Acquisitions, prop.Alternates}
 	for _, items := range groups {
 		for _, item := range items {
 			if _, err := item.Key(); err != nil {
@@ -127,7 +128,7 @@ func validateProposalIdentities(proposal suggest.Proposal) error {
 			}
 		}
 	}
-	for _, refused := range proposal.Refused {
+	for _, refused := range prop.Refused {
 		if _, err := refused.Item.Key(); err != nil {
 			return fmt.Errorf("%w: Proposal contains an ungrounded refused identity: %v", ErrInvalidState, err)
 		}

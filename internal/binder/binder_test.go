@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -76,7 +77,7 @@ func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedu
 }
 
 // seedApprovedProposal writes an APPROVED proposal for jobID (approvedBy sets the path).
-func seedApprovedProposal(t *testing.T, st store.Store, id, jobID, approvedBy string, picks []suggest.ProposalItem, mustExclude []string) {
+func seedApprovedProposal(t *testing.T, st store.Store, id, jobID, approvedBy string, picks []proposal.ProposalItem, mustExclude []string) {
 	t.Helper()
 	seedApprovedProposalRetiring(t, st, id, jobID, approvedBy, picks, mustExclude, nil)
 }
@@ -87,14 +88,14 @@ func seedApprovedProposalRetiring(
 	t *testing.T,
 	st store.Store,
 	id, jobID, approvedBy string,
-	picks []suggest.ProposalItem,
+	picks []proposal.ProposalItem,
 	mustExclude []string,
 	retired []provision.Key,
 ) {
 	t.Helper()
-	body := suggest.Proposal{
+	body := proposal.Proposal{
 		Lineup:  picks,
-		Intent:  suggest.Intent{MustExclude: mustExclude},
+		Intent:  proposal.Intent{MustExclude: mustExclude},
 		Retired: retired,
 	}
 	blob, _ := json.Marshal(body)
@@ -105,8 +106,8 @@ func seedApprovedProposalRetiring(
 	}
 }
 
-func inLib(n int, name string) suggest.ProposalItem {
-	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
+func inLib(n int, name string) proposal.ProposalItem {
+	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
 }
 
 func lineupKeys(ch store.Channel) map[provision.Key]bool {
@@ -134,7 +135,7 @@ func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	// + Clockwork Hunter are simply omitted (not excluded, still available).
 	putAvailable(t, st, 4, "Night Warden 2")
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
-		[]suggest.ProposalItem{inLib(3, "Copper Canyon"), inLib(4, "Night Warden 2")}, nil)
+		[]proposal.ProposalItem{inLib(3, "Copper Canyon"), inLib(4, "Night Warden 2")}, nil)
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -177,7 +178,7 @@ func TestPlan_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	putAvailable(t, st, 3, "Incoming")
 	seedApprovedProposalRetiring(t, st, "p1", "job1", suggest.AutoCuratedBy,
-		[]suggest.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
+		[]proposal.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -210,7 +211,7 @@ func TestPlan_ManualApproval_IgnoresRetirements(t *testing.T) {
 		schedule.ChannelPolicy{})
 	// A human's approval re-picks the title, while the body still carries a retirement for it.
 	seedApprovedProposalRetiring(t, st, "p1", "job1", "admin",
-		[]suggest.ProposalItem{inLib(1, "Kept By A Human")}, nil, []provision.Key{movieKey(1)})
+		[]proposal.ProposalItem{inLib(1, "Kept By A Human")}, nil, []provision.Key{movieKey(1)})
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -234,7 +235,7 @@ func TestPlan_AutoCurate_DropsUnavailable(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Gone")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
-		[]suggest.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
+		[]proposal.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -261,7 +262,7 @@ func TestPlan_ManualApprove_ReplacesLineup(t *testing.T) {
 		schedule.ChannelPolicy{})
 	// A human approved a proposal that DROPS Old and picks New.
 	putAvailable(t, st, 2, "New")
-	seedApprovedProposal(t, st, "p1", "job1", "admin-user", []suggest.ProposalItem{inLib(2, "New")}, nil)
+	seedApprovedProposal(t, st, "p1", "job1", "admin-user", []proposal.ProposalItem{inLib(2, "New")}, nil)
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -294,7 +295,7 @@ func TestPlan_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Film")},
 		schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: rules}, OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac, Window: schedule.WindowFull}})
 	// The refreshed proposal's policy carries NONE of these operator-owned fields.
-	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy, []suggest.ProposalItem{inLib(1, "Film")}, nil)
+	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy, []proposal.ProposalItem{inLib(1, "Film")}, nil)
 
 	b := binder.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -319,13 +320,13 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	ctx := context.Background()
-	body := suggest.Proposal{
+	body := proposal.Proposal{
 		ChannelName: "The Exact Candidate",
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Scope:    schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
 			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 		}},
-		Lineup: []suggest.ProposalItem{inLib(1, "Exact")},
+		Lineup: []proposal.ProposalItem{inLib(1, "Exact")},
 	}
 	blob, err := json.Marshal(body)
 	if err != nil {
@@ -342,7 +343,7 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 	// A different approved row for the same job proves planning does not re-resolve
 	// "newest approved" behind the caller's back.
 	seedApprovedProposal(t, st, "p-other", candidate.JobID, "other-admin",
-		[]suggest.ProposalItem{inLib(2, "Other")}, nil)
+		[]proposal.ProposalItem{inLib(2, "Other")}, nil)
 
 	before := time.Now().UTC()
 	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, candidate)
@@ -373,10 +374,10 @@ func TestPlanApprovedChannelPreservesAnExplicitEmptyFillerSelection(t *testing.T
 	putAvailable(t, st, 1, "Film")
 	seedChannel(t, st, "c1", "job1", []schedule.LineupEntry{entry(1, "Film")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Filler: &schedule.FillerSelection{}}})
-	seedApprovedProposal(t, st, "p1", "job1", "admin", []suggest.ProposalItem{inLib(1, "Film")}, nil)
+	seedApprovedProposal(t, st, "p1", "job1", "admin", []proposal.ProposalItem{inLib(1, "Film")}, nil)
 
 	p := mustProposal(t, st, "p1")
-	var body suggest.Proposal
+	var body proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		t.Fatal(err)
 	}

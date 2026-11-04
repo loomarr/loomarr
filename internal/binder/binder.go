@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -158,7 +159,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
 
-	var proposal suggest.Proposal
+	var proposal proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
 		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
 	}
@@ -407,7 +408,7 @@ func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 // Classics" — §8), falling back to a truncated intent description, then a generic label.
 // A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
 func channelNameFromIntent(p store.Proposal) string {
-	var parsed suggest.Proposal
+	var parsed proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &parsed); err == nil {
 		if n := strings.TrimSpace(parsed.ChannelName); n != "" {
 			return truncateLabel(n, 60)
@@ -448,7 +449,7 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err != nil {
 		return nil, err
 	}
-	var p suggest.Proposal
+	var p proposal.Proposal
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
@@ -466,7 +467,7 @@ func (b *Binder) RequestFromIntent(ctx context.Context, intentRef string) (inten
 	if err != nil {
 		return "", "", err
 	}
-	var p suggest.Proposal
+	var p proposal.Proposal
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return "", "", fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
@@ -479,7 +480,7 @@ func (b *Binder) RequestFromIntent(ctx context.Context, intentRef string) (inten
 
 // channelIntentJSON is the approved intent a channel stores: the proposal's request without the
 // inputs that belong to the one run that produced it.
-func channelIntentJSON(p suggest.Proposal) (string, error) {
+func channelIntentJSON(p proposal.Proposal) (string, error) {
 	blob, err := json.Marshal(p.Intent.ChannelIntent())
 	if err != nil {
 		return "", fmt.Errorf("marshal intent: %w", err)
@@ -500,7 +501,7 @@ func (b *Binder) PolicyFromIntent(ctx context.Context, intentRef string) (schedu
 	if err != nil {
 		return schedule.ChannelPolicy{}, err
 	}
-	var p suggest.Proposal
+	var p proposal.Proposal
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return schedule.ChannelPolicy{}, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
@@ -561,10 +562,10 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 // Each entry records the pick's confidence as its Fit (schedule.StampFit) and `now` as AddedAt:
 // re-curation retires the lowest fit × recency, and a re-pick of an existing entry re-scores it
 // (schedule.ApplyLineup keeps the original AddedAt).
-func lineupEntries(p suggest.Proposal, now time.Time) ([]schedule.LineupEntry, error) {
+func lineupEntries(p proposal.Proposal, now time.Time) ([]schedule.LineupEntry, error) {
 	out := make([]schedule.LineupEntry, 0, len(p.Lineup))
 	seen := make(map[provision.Key]struct{}, len(p.Lineup))
-	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {
+	for _, items := range [][]proposal.ProposalItem{p.Lineup, p.Acquisitions} {
 		for _, it := range items {
 			key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
 			if err != nil {

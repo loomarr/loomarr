@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -29,13 +30,13 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	t.Cleanup(func() { _ = st.Close() })
 	minute := int64(time.Minute / time.Millisecond)
 	media := &outlookfixture.OutlookLibrary{Metadata: map[string]library.ItemMetadata{"movie-one": {RuntimeMs: 90 * minute}, "movie-two": {RuntimeMs: 0}}}
-	body := suggest.Proposal{
-		Intent: suggest.Intent{Description: "An action channel"},
-		Lineup: []suggest.ProposalItem{
+	body := proposal.Proposal{
+		Intent: proposal.Intent{Description: "An action channel"},
+		Lineup: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000001, Name: "One", InLibrary: true, LibraryItemID: "movie-one"},
 			{MediaType: provision.Movie, TMDBID: 90000002, Name: "Unknown runtime", InLibrary: true, LibraryItemID: "movie-two", RuntimeMinutes: 180},
 		},
-		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200}},
+		Acquisitions: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200}},
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -67,11 +68,11 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	}
 	t.Run("owned review addition uses the same resolved placement as approval", func(t *testing.T) {
 		media.Metadata = map[string]library.ItemMetadata{"movie-added": {RuntimeMs: 80 * minute}}
-		addition := suggest.ProposalItem{
+		addition := proposal.ProposalItem{
 			MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition",
 			InLibrary: true, LibraryItemID: "movie-added",
 		}
-		resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
 			{Item: addition, Owned: true},
 		}}
 		ownedService := proposaloutlook.New(proposaloutlook.Config{
@@ -80,7 +81,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		})
 		ownedProposal := p
 		ownedProposal.ProposalJSON = `{"intent":{"description":"An owned movie"},"lineup":[]}`
-		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition", InLibrary: false},
 		}})
 		if err != nil {
@@ -97,7 +98,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 			{LibraryItemID: "season-two", DurationMs: 22 * minute, Season: 2, Episode: 1},
 			{LibraryItemID: "season-three", DurationMs: 90 * minute, Season: 3, Episode: 1},
 		}}
-		series := suggest.Proposal{Intent: suggest.Intent{Description: "A series channel"}, Lineup: []suggest.ProposalItem{
+		series := proposal.Proposal{Intent: proposal.Intent{Description: "A series channel"}, Lineup: []proposal.ProposalItem{
 			{MediaType: provision.Series, TMDBID: 90000044, TVDBID: 90000044, Name: "Show", InLibrary: true, LibraryItemID: "show", SeasonMin: 2, SeasonMax: 2},
 		}}
 		raw, err := json.Marshal(series)

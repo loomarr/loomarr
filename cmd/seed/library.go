@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -30,7 +31,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 	if err != nil {
 		return fmt.Errorf("read picks: %w", err)
 	}
-	var picks []suggest.ProposalItem
+	var picks []proposal.ProposalItem
 	if err := json.Unmarshal(raw, &picks); err != nil {
 		return fmt.Errorf("parse picks: %w", err)
 	}
@@ -47,13 +48,13 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			return fmt.Errorf("pick %q is not an in-library search result", pick.Name)
 		}
 		now := time.Now()
-		intent := suggest.Intent{Description: pick.Name}
+		intent := proposal.Intent{Description: pick.Name}
 		intentJSON, err := json.Marshal(intent)
 		if err != nil {
 			return err
 		}
 		jobID := jobIDs()
-		propJSON, err := json.Marshal(suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{pick}})
+		propJSON, err := json.Marshal(proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{pick}})
 		if err != nil {
 			return err
 		}

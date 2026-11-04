@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -62,14 +63,14 @@ func split(s string, at ...int) []string {
 	return append(out, s[prev:])
 }
 
-func runTracked(t *testing.T, m *streamingLLM) (*suggest.ProgressTracker, []suggest.ProgressSnapshot, suggest.Proposal, error) {
+func runTracked(t *testing.T, m *streamingLLM) (*suggest.ProgressTracker, []suggest.ProgressSnapshot, proposal.Proposal, error) {
 	t.Helper()
 	var history []suggest.ProgressSnapshot
 	var tracker *suggest.ProgressTracker
 	tracker = suggest.NewProgressTracker(time.Now(), func() { history = append(history, tracker.Snapshot()) })
 	m.seen = func() {}
 	ctx := suggest.WithProgressTracker(context.Background(), tracker)
-	prop, err := buildSuggester(t, m).Suggest(ctx, suggest.Intent{Description: "90s action"})
+	prop, err := buildSuggester(t, m).Suggest(ctx, proposal.Intent{Description: "90s action"})
 	return tracker, history, prop, err
 }
 
@@ -89,7 +90,7 @@ func TestProgress_StreamsStageTermsAndResolvedPicks(t *testing.T) {
 	tracker = suggest.NewProgressTracker(time.Now(), func() { history = append(history, tracker.Snapshot()) })
 	ctx := suggest.WithProgressTracker(context.Background(), tracker)
 	// Progress phases come from the same ctx the worker sets; a bare tracker still tracks them.
-	prop, err := buildSuggester(t, m).Suggest(suggest.WithProgress(ctx, func(suggest.Phase, int) {}), suggest.Intent{Description: "90s action"})
+	prop, err := buildSuggester(t, m).Suggest(suggest.WithProgress(ctx, func(suggest.Phase, int) {}), proposal.Intent{Description: "90s action"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,7 @@ func TestProgress_StreamsStageTermsAndResolvedPicks(t *testing.T) {
 	}
 	// Nothing shown is dropped by the final proposal.
 	kept := map[string]bool{}
-	for _, it := range append(append(append([]suggest.ProposalItem{}, prop.Lineup...), prop.Acquisitions...), prop.Alternates...) {
+	for _, it := range append(append(append([]proposal.ProposalItem{}, prop.Lineup...), prop.Acquisitions...), prop.Alternates...) {
 		if key, err := it.Key(); err == nil {
 			kept[string(key)] = true
 		}
@@ -208,7 +209,7 @@ func TestWorker_ProgressIsReadableMidStreamAndDroppedAfter(t *testing.T) {
 	svc := buildService(t, st, model)
 	terminal := newDoneEmitter()
 	svc.WithProgressEmitter(terminal)
-	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "90s action"}, "alice")
+	jobID, err := svc.Submit(ctx, proposal.Intent{Description: "90s action"}, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +269,7 @@ func TestProgress_StageAdvancesAfterASearchWithoutAQueryOrGenres(t *testing.T) {
 				}
 			})
 			ctx := suggest.WithProgressTracker(context.Background(), tracker)
-			if _, err := buildSuggester(t, m).Suggest(suggest.WithProgress(ctx, func(suggest.Phase, int) {}), suggest.Intent{Description: "90s action"}); err != nil {
+			if _, err := buildSuggester(t, m).Suggest(suggest.WithProgress(ctx, func(suggest.Phase, int) {}), proposal.Intent{Description: "90s action"}); err != nil {
 				t.Fatal(err)
 			}
 			want := []suggest.Stage{suggest.StageSearching, suggest.StageChoosing, suggest.StageBuilding}
@@ -317,7 +318,7 @@ func TestWorker_EveryProgressChangeIsAnnouncedWhileStreaming(t *testing.T) {
 	svc := buildService(t, newStore(t), model)
 	probe := &frameProbe{svc: svc}
 	svc.WithProgressEmitter(probe)
-	if _, err := svc.Submit(ctx, suggest.Intent{Description: "90s action"}, "alice"); err != nil {
+	if _, err := svc.Submit(ctx, proposal.Intent{Description: "90s action"}, "alice"); err != nil {
 		t.Fatal(err)
 	}
 	runCtx, cancel := context.WithCancel(ctx)

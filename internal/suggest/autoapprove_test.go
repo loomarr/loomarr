@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -184,11 +185,11 @@ func (q *quotaStore) quotaLockHeld() bool {
 
 // proposalWith builds a stored proposal whose acquisitions are the given TMDB movie ids.
 func proposalWith(id, createdBy, status string, tmdbIDs ...int) store.Proposal {
-	items := make([]suggest.ProposalItem, 0, len(tmdbIDs))
+	items := make([]proposal.ProposalItem, 0, len(tmdbIDs))
 	for _, n := range tmdbIDs {
-		items = append(items, suggest.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
+		items = append(items, proposal.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
 	}
-	blob, _ := json.Marshal(suggest.Proposal{Acquisitions: items})
+	blob, _ := json.Marshal(proposal.Proposal{Acquisitions: items})
 	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
 }
 

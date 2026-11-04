@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -66,7 +67,7 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 		if p.Status != "approved" {
 			continue
 		}
-		var body Proposal
+		var body proposal.Proposal
 		if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 			// The cap is a safety boundary. If an approved audit row cannot be read,
 			// its pending spend is unknown, so unattended approval must fail closed.
@@ -97,7 +98,7 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 }
 
 // acquisitionKey derives the provisioning key for a proposed acquisition.
-func acquisitionKey(a ProposalItem) (provision.Key, error) {
+func acquisitionKey(a proposal.ProposalItem) (provision.Key, error) {
 	title := provision.Title{
 		MediaType: provision.MediaType(a.MediaType),
 		TMDBID:    a.TMDBID, TVDBID: a.TVDBID, Name: a.Name, Year: a.Year, Seasons: a.Seasons,

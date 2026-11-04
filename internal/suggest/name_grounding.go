@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -32,7 +33,7 @@ func (s *Suggester) groundPickNames(
 	feedback []FeedbackSignal,
 	picks []pick,
 	surfaced map[provision.Key]catalog.Candidate,
-	trace *DecisionTrace,
+	trace *proposal.DecisionTrace,
 ) ([]pick, bool, error) {
 	queries := make([]nameGroundingQuery, 0, min(len(picks), maxPickNameQueries))
 	incomplete := false

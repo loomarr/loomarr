@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -155,7 +156,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			pick := fixture.Proposal.Lineup[0]
 			pick.InLibrary, pick.LibraryItemID = false, ""
 			fixture.Proposal.Lineup = nil
-			fixture.Proposal.Acquisitions = []suggest.ProposalItem{pick}
+			fixture.Proposal.Acquisitions = []proposal.ProposalItem{pick}
 			raw, err := json.Marshal(fixture.Proposal)
 			if err != nil {
 				t.Fatal(err)

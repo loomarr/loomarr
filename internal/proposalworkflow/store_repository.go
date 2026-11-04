@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -53,7 +54,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 	if err != nil {
 		return Record{}, err
 	}
-	var intent suggest.Intent
+	var intent proposal.Intent
 	if err := json.Unmarshal([]byte(snapshot.Job.IntentJSON), &intent); err != nil {
 		return Record{}, fmt.Errorf("decode Proposal Job %s Intent: %w", jobID, err)
 	}
@@ -74,7 +75,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 		record.Attempts = append(record.Attempts, attempt)
 	}
 	if snapshot.Proposal != nil {
-		var proposal suggest.Proposal
+		var proposal proposal.Proposal
 		if err := json.Unmarshal([]byte(snapshot.Proposal.ProposalJSON), &proposal); err != nil {
 			return Record{}, fmt.Errorf("decode Proposal Job %s Proposal: %w", jobID, err)
 		}
@@ -116,7 +117,7 @@ func (r *storeRepository) ClaimAttempts(
 	}
 	works := make([]Work, 0, len(jobs))
 	for _, job := range jobs {
-		var intent suggest.Intent
+		var intent proposal.Intent
 		if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
 			// A stored Intent that cannot decode never will: retrying it only strands the rest of
 			// the batch under their leases. Fail this Job terminally and keep going.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -14,15 +15,15 @@ import (
 // (#1817). A client-supplied size on a title that is not owned must not reach the approval
 // surface whatever the resolver returns, including no resolver at all.
 func TestResolveApprovalEditDropsSizeFromUnownedAdditions(t *testing.T) {
-	forged := suggest.ProposalItem{
+	forged := proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true,
 		LibraryItemID: "forged", SizeBytes: 9, SizeConfidence: storagegovernor.SizeExact,
 	}
-	owned := suggest.ProposalItem{
+	owned := proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true,
 		LibraryItemID: "library-2", SizeBytes: 4_200_000_000, SizeConfidence: storagegovernor.SizeExact,
 	}
-	passThrough := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+	passThrough := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
 		{Item: forged, Owned: false},
 		{Item: owned, Owned: true},
 	}}
@@ -32,7 +33,7 @@ func TestResolveApprovalEditDropsSizeFromUnownedAdditions(t *testing.T) {
 		"pass-through": passThrough,
 	} {
 		t.Run(name, func(t *testing.T) {
-			edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{forged, owned}}
+			edit := &suggest.ApprovalEdit{Add: []proposal.ProposalItem{forged, owned}}
 			if resolver == nil {
 				edit.Add = edit.Add[:1]
 			}

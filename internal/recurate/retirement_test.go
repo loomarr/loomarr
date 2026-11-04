@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -48,7 +49,7 @@ func retiredOf(t *testing.T, st store.Store, proposalID string) map[provision.Ke
 	if err != nil {
 		t.Fatal(err)
 	}
-	var body suggest.Proposal
+	var body proposal.Proposal
 	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
 		t.Fatalf("proposal %s malformed: %v", proposalID, uerr)
 	}
@@ -85,10 +86,10 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	item := acqItem(300, "Much Better Fit", 0.95)
-	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{item}, Trace: suggest.DecisionTrace{
+	body := proposal.Proposal{Acquisitions: []proposal.ProposalItem{item}, Trace: proposal.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
+			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}}
 	blob, err := json.Marshal(body)
 	if err != nil {
@@ -116,7 +117,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var after suggest.Proposal
+	var after proposal.Proposal
 	if err := json.Unmarshal([]byte(persisted.ProposalJSON), &after); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p := seedProposal(t, st, "p-keep", "job-keep", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p-keep", "job-keep", nil, []proposal.ProposalItem{
 		acqItem(300, "New Candidate", 0.99),
 	})
 	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p)
@@ -176,7 +177,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title")},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Much Better Fit", 0.99),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 1})
@@ -201,7 +202,7 @@ func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "Keeper"), lineupEntry(200, "Also Keeper")},
 		nil) // nothing airing ⇒ both retirable, but there's room
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "New Title", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
@@ -226,7 +227,7 @@ func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
 		nil) // never reconciled ⇒ Desired empty ⇒ schedule UNKNOWN
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Better", 0.99), acqItem(400, "Also Better", 0.98),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2})
@@ -256,7 +257,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 
 	// A lineup entry carries no stored confidence, so the bench scores 0 — an incoming 0
 	// therefore ties it and must NOT displace it.
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Ties The Bench", 0),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 0, maxTitles: 2})
@@ -284,7 +285,7 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 		},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(400, "Fresh Pick", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
@@ -320,7 +321,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "New", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
@@ -346,7 +347,7 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 			provision.Key("movie:tmdb:90000100"), provision.Key("movie:tmdb:90000200"), provision.Key("movie:tmdb:90000300"),
 		})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(400, "New", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
@@ -402,7 +403,7 @@ func TestCurator_RetiresLowFitStaleTitleNotTheAlphabeticallyFirst(t *testing.T) 
 	recordAiring(t, st, "ch1", 200, 24*time.Hour)
 	recordAiring(t, st, "ch1", 300, 30*24*time.Hour)
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(400, "Newcomer", 0.95)})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3})
 
 	if _, err := cur.Consider(context.Background(), p); err != nil {
@@ -431,7 +432,7 @@ func TestCurator_AtEqualFitTheLongestIdleTitleIsRetired(t *testing.T) {
 	recordAiring(t, st, "ch1", 200, 2*24*time.Hour)
 	recordAiring(t, st, "ch1", 300, 6*24*time.Hour)
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(400, "Newcomer", 0.95)})
 	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3}).Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +452,7 @@ func TestCurator_ADeservedButIdleTitleIsNotRetiredForAWeakerCandidate(t *testing
 		[]provision.Key{movieKey(100)})
 	recordAiring(t, st, "ch1", 200, 60*24*time.Hour)
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{acqItem(300, "Weaker", 0.7)})
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(300, "Weaker", 0.7)})
 	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +472,7 @@ func TestCurator_RetirementNeverTakesTheLineupBelowTheTarget(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "On The Air"), scoredEntry(200, "B", 0.2), scoredEntry(300, "C", 0.2)},
 		[]provision.Key{movieKey(100)})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(400, "D", 0.95), acqItem(500, "E", 0.94), acqItem(600, "F", 0.93),
 	})
 	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4}).Consider(context.Background(), p)

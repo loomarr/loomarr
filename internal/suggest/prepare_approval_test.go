@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -15,26 +16,26 @@ import (
 )
 
 func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *testing.T) {
-	body := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Drop", EditorialRole: suggest.EditorialCore},
-		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Keep", EditorialRole: suggest.EditorialDiscovery},
+	body := proposal.Proposal{Lineup: []proposal.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Drop", EditorialRole: proposal.EditorialCore},
+		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Keep", EditorialRole: proposal.EditorialDiscovery},
 	}}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: string(raw)}
-	edit := &suggest.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: suggest.EditorialCore},
+	edit := &suggest.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []proposal.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: proposal.EditorialCore},
 	}, Note: "More variety"}
 	prepared, decoded, err := suggest.PrepareApproval(p, edit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Status != "submitted" || p.ProposalJSON != string(raw) || edit.Add[0].EditorialRole != suggest.EditorialCore {
+	if prepared.Status != "submitted" || p.ProposalJSON != string(raw) || edit.Add[0].EditorialRole != proposal.EditorialCore {
 		t.Fatal("pure preparation changed status or caller-owned input")
 	}
-	if len(decoded.Lineup) != 1 || decoded.Lineup[0].EditorialRole != suggest.EditorialDiscovery || len(decoded.Acquisitions) != 1 || decoded.Acquisitions[0].EditorialRole != "" {
+	if len(decoded.Lineup) != 1 || decoded.Lineup[0].EditorialRole != proposal.EditorialDiscovery || len(decoded.Acquisitions) != 1 || decoded.Acquisitions[0].EditorialRole != "" {
 		t.Fatalf("retain recorded roles, but reject a role supplied by a review addition: %+v", decoded)
 	}
 	st := &testkit.ApprovalStore{}
@@ -48,9 +49,9 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 }
 
 func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
-	body := suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Keep"}},
-		Alternates: []suggest.ProposalItem{
+	body := proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Keep"}},
+		Alternates: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000002, Name: "Excluded backup"},
 			{MediaType: provision.Movie, TMDBID: 90000003, Name: "Keep backup"},
 		},
@@ -72,7 +73,7 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 }
 
 func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T) {
-	body := suggest.Proposal{Lineup: []suggest.ProposalItem{
+	body := proposal.Proposal{Lineup: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"},
 	}}
 	raw, err := json.Marshal(body)
@@ -80,16 +81,16 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 		t.Fatal(err)
 	}
 	p := store.Proposal{ID: "p-owned-add", Status: "submitted", ProposalJSON: string(raw)}
-	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+	edit := &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true, LibraryItemID: "library-2"},
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged-library-id"},
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Duplicate owned addition", InLibrary: false},
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Duplicate existing title", InLibrary: false},
 	}}
-	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
 		{Item: edit.Add[0], Owned: true},
 		{Item: edit.Add[1], Owned: false},
-		{Item: suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"}, Owned: true},
+		{Item: proposal.ProposalItem{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"}, Owned: true},
 	}}
 	resolvedEdit, err := suggest.ResolveApprovalEdit(context.Background(), edit, resolver)
 	if err != nil {
@@ -114,7 +115,7 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 }
 
 func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
-	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{
+	body := proposal.Proposal{Acquisitions: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Only title"},
 	}}
 	raw, err := json.Marshal(body)

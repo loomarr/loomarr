@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -190,10 +191,10 @@ func summarize(cycle channels.CycleResult) Assessment {
 	return result
 }
 
-func editorialMix(proposal suggest.Proposal, lineup []schedule.LineupEntry) Mix {
+func editorialMix(prop proposal.Proposal, lineup []schedule.LineupEntry) Mix {
 	// Historical and edited additions without run-local role evidence stay unknown.
-	roles := map[provision.Key]suggest.EditorialRole{}
-	for _, items := range [][]suggest.ProposalItem{proposal.Lineup, proposal.Acquisitions} {
+	roles := map[provision.Key]proposal.EditorialRole{}
+	for _, items := range [][]proposal.ProposalItem{prop.Lineup, prop.Acquisitions} {
 		for _, item := range items {
 			if key, err := item.Key(); err == nil {
 				if _, present := roles[key]; !present {
@@ -205,11 +206,11 @@ func editorialMix(proposal suggest.Proposal, lineup []schedule.LineupEntry) Mix 
 	var mix Mix
 	for _, entry := range lineup {
 		switch roles[entry.Key] {
-		case suggest.EditorialCore:
+		case proposal.EditorialCore:
 			mix.Core++
-		case suggest.EditorialAdjacent:
+		case proposal.EditorialAdjacent:
 			mix.Adjacent++
-		case suggest.EditorialDiscovery:
+		case proposal.EditorialDiscovery:
 			mix.Discovery++
 		default:
 			mix.Unknown++

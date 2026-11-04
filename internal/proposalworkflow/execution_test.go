@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -16,7 +17,7 @@ func TestWorkflowClaimReturnsVersionedAttemptTokens(t *testing.T) {
 	now := time.Date(2026, time.August, 22, 14, 0, 0, 0, time.UTC)
 	repo := &executionRepositorySpy{works: []Work{{
 		Version: WorkflowVersion1, JobID: "job-1", Attempt: 2,
-		Intent: suggest.Intent{Description: "Saturday morning cartoons"},
+		Intent: proposal.Intent{Description: "Saturday morning cartoons"},
 	}}}
 	workflow := newWorkflow(repo)
 
@@ -53,7 +54,7 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	repo := &executionRepositorySpy{}
 	workflow := newWorkflow(repo)
 
-	_, err := workflow.Complete(context.Background(), work, suggest.Proposal{})
+	_, err := workflow.Complete(context.Background(), work, proposal.Proposal{})
 	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
 		t.Fatalf("Complete empty Proposal error = %v, want ErrNoGroundedTitles", err)
 	}
@@ -61,10 +62,10 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 		t.Fatal("empty Proposal reached repository")
 	}
 
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	prop := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
-	_, err = workflow.Complete(context.Background(), work, proposal)
+	_, err = workflow.Complete(context.Background(), work, prop)
 	if err != nil {
 		t.Fatalf("Complete grounded Proposal: %v", err)
 	}
@@ -74,8 +75,8 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	}
 
 	repo.completed = nil
-	proposal.Trace = suggest.DecisionTrace{}
-	if _, err := workflow.Complete(context.Background(), work, proposal); !errors.Is(err, ErrInvalidState) {
+	prop.Trace = proposal.DecisionTrace{}
+	if _, err := workflow.Complete(context.Background(), work, prop); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("Complete absent trace error = %v, want ErrInvalidState", err)
 	}
 	if repo.completed != nil {
@@ -83,8 +84,8 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	}
 
 	repo.completed = nil
-	proposal.Trace = suggest.DecisionTrace{Version: suggest.DecisionTraceVersion + 1}
-	if _, err := workflow.Complete(context.Background(), work, proposal); !errors.Is(err, ErrInvalidState) {
+	prop.Trace = proposal.DecisionTrace{Version: suggest.DecisionTraceVersion + 1}
+	if _, err := workflow.Complete(context.Background(), work, prop); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("Complete invalid trace error = %v, want ErrInvalidState", err)
 	}
 	if repo.completed != nil {
@@ -92,12 +93,12 @@ func TestWorkflowCompleteUsesCurrentAttemptTokenAndRejectsEmptyResult(t *testing
 	}
 
 	repo.completed = nil
-	refusedOnly := suggest.Proposal{Refused: []suggest.RefusedPick{{Item: suggest.ProposalItem{
+	refusedOnly := proposal.Proposal{Refused: []proposal.RefusedPick{{Item: proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
-	}, Reason: suggest.ReasonOverCeiling}}, Trace: suggest.DecisionTrace{
+	}, Reason: suggest.ReasonOverCeiling}}, Trace: proposal.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: "library",
+			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionRefused, Reason: suggest.ReasonOverCeiling}},
 	}}
 	if _, err := workflow.Complete(context.Background(), work, refusedOnly); err != nil {
 		t.Fatalf("Complete refused-only review Proposal: %v", err)
@@ -114,7 +115,7 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 	workflow := newWorkflow(repo)
 	_, err := workflow.Complete(context.Background(), Work{
 		Version: WorkflowVersion1, JobID: "job-1", Attempt: 1,
-	}, suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	}, proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "acquisition")})
 	if !errors.Is(err, ErrStaleAttempt) {
@@ -122,11 +123,11 @@ func TestWorkflowCompletePreservesStaleAttemptRejection(t *testing.T) {
 	}
 }
 
-func selectedDecisionTrace(key, name, ownership string) suggest.DecisionTrace {
-	return suggest.DecisionTrace{
+func selectedDecisionTrace(key, name, ownership string) proposal.DecisionTrace {
+	return proposal.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: key, Name: name, Ownership: ownership,
-			Rank: suggest.RankTuple{TieKey: key}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+		Candidates: []proposal.DecisionCandidate{{Key: key, Name: name, Ownership: ownership,
+			Rank: proposal.RankTuple{TieKey: key}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}
 }
 

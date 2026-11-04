@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
@@ -34,21 +35,21 @@ type fakeSuggest struct {
 	refines       int
 	lastChannelID string
 	lastRequester string
-	last          suggest.Intent
+	last          proposal.Intent
 }
 
-func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string) (string, error) {
+func (f *fakeSuggest) Submit(_ context.Context, intent proposal.Intent, _ string) (string, error) {
 	f.submits++
 	f.last = intent
 	return "job-1", nil
 }
 
 // SubmitBuilt is unused by these routes; the channel-ideas tests run the real service.
-func (f *fakeSuggest) SubmitBuilt(context.Context, suggest.Intent, suggest.Proposal, string) (string, error) {
+func (f *fakeSuggest) SubmitBuilt(context.Context, proposal.Intent, proposal.Proposal, string) (string, error) {
 	return "", errors.New("fakeSuggest: SubmitBuilt is not part of the proposal routes")
 }
 
-func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent suggest.Intent, requestedBy string) (string, error) {
+func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error) {
 	f.refines++
 	f.lastChannelID = channelID
 	f.lastRequester = requestedBy
@@ -254,7 +255,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 		t.Fatalf("response leaked private diagnostic: %s", body)
 	}
 	var got struct {
-		Intent  suggest.Intent `json:"intent"`
+		Intent  proposal.Intent `json:"intent"`
 		Failure struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -551,7 +552,7 @@ func TestEvents_RequiresAuth(t *testing.T) {
 
 // The WHOLE intent must survive the wire. This is the regression test for a real gap:
 // the submit body used to be a hand-mirrored struct that had drifted from
-// suggest.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
+// proposal.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
 // though the suggester feeds it to the LLM prompt and the scorer, and §13 lists a
 // runtime target among the constraints a user may set. Typing the body from the domain
 // fixed it; this keeps any future Intent field from going missing the same way.
@@ -752,7 +753,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var persisted suggest.Proposal
+			var persisted proposal.Proposal
 			if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
 				t.Fatal(err)
 			}
@@ -845,7 +846,7 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var persisted suggest.Proposal
+	var persisted proposal.Proposal
 	if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
 		t.Fatal(err)
 	}
@@ -1210,7 +1211,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
-	var approved suggest.Proposal
+	var approved proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
 		t.Fatal(err)
 	}
@@ -1235,11 +1236,11 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var approved suggest.Proposal
+	var approved proposal.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
 		t.Fatal(err)
 	}
-	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+	for _, items := range [][]proposal.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
 		for _, item := range items {
 			if item.Name == "Quiet Engines" {
 				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
