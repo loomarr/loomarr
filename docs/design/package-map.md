@@ -32,7 +32,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
-| `httpx` | 10 | `metrics` |
+| `httpx` | 11 | `metrics` |
 | `inventory` | 6 | — |
 | `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
@@ -186,7 +186,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 2
 
-- **`httpx`** · 10 importers · → `metrics`
+- **`httpx`** · 11 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
@@ -320,7 +320,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 12
 
-- **`metadataprovider/tmdb`** · → `metadataprovider`, `schedule`, `tmdb`
+- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `schedule`, `tmdb`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `storagegovernor`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).

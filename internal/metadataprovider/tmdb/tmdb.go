@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/httpx"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/schedule"
 	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
@@ -151,7 +152,7 @@ func (l locale) detailQuery(appendTo string) string {
 // get decodes path into out and maps the client's errors onto the contract's.
 func (p *Provider) get(ctx context.Context, path string, out any) error {
 	err := p.client.GetJSON(ctx, path, out)
-	var status *tmdbclient.StatusError
+	var status *httpx.StatusError
 	switch {
 	case err == nil:
 		return nil
