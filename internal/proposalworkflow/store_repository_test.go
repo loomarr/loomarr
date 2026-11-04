@@ -359,7 +359,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		}
 		prop := store.Proposal{
 			ID: "proposal-" + jobID, JobID: jobID, Status: "submitted", CreatedBy: "alice",
-			ProposalJSON: `{"lineup":[{"name":"Noir"}]}`, CreatedAt: now, UpdatedAt: now,
+			Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Noir"}}}, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := st.CommitSuggestionSuccess(ctx, jobID, 1, prop, now); err != nil {
 			t.Fatal(err)

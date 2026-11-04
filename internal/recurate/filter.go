@@ -2,8 +2,6 @@ package recurate
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"sort"
 	"time"
 
@@ -54,11 +52,8 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) (filterResult, error) {
-	var body proposal.Proposal
-	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
-		return filterResult{}, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
-	}
+func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
+	body := p.Body
 	var res filterResult
 
 	// The bar: a per-title Confidence (0..1) at or above minScorePct/100. A title the model gave
@@ -168,13 +163,9 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 	// itself, which made it a second writer racing the binder's additive union — ordered against
 	// each other by a comment rather than by anything the compiler or a test could check.
 	body.Retired = res.RetiredKey
-	blob, merr := json.Marshal(body)
-	if merr != nil {
-		return filterResult{}, fmt.Errorf("recurate: re-marshal proposal %s: %w", p.ID, merr)
-	}
-	p.ProposalJSON = string(blob)
+	p.Body = body
 	res.Proposal = p
-	return res, nil
+	return res
 }
 
 // effectiveMinScore resolves the quality bar for a channel: its per-channel override if set

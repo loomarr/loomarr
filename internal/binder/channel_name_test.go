@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/proposal"
@@ -14,8 +13,7 @@ import (
 func TestChannelNameFromIntent(t *testing.T) {
 	t.Parallel()
 	mk := func(p proposal.Proposal) store.Proposal {
-		b, _ := json.Marshal(p)
-		return store.Proposal{ProposalJSON: string(b)}
+		return store.Proposal{Body: p}
 	}
 
 	cases := []struct {

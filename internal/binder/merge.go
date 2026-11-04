@@ -2,10 +2,8 @@ package binder
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -25,12 +23,8 @@ func isAutoCurate(p store.Proposal) bool {
 // existing title may be dropped even though it's still available. Empty when the proposal has
 // no intent or no exclusions.
 func mustExcludeKeys(p store.Proposal) map[string]struct{} {
-	var body proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return nil
-	}
-	out := make(map[string]struct{}, len(body.Intent.MustExclude))
-	for _, t := range body.Intent.MustExclude {
+	out := make(map[string]struct{}, len(p.Body.Intent.MustExclude))
+	for _, t := range p.Body.Intent.MustExclude {
 		if t = strings.ToLower(strings.TrimSpace(t)); t != "" {
 			out[t] = struct{}{}
 		}
@@ -46,12 +40,8 @@ func mustExcludeKeys(p store.Proposal) map[string]struct{} {
 // computed — it weighed the outgoing title's score against the incoming one's and committed to
 // the swap. Empty for every non-auto-curate proposal, and for auto-curate runs that had room.
 func retiredKeys(p store.Proposal) map[provision.Key]struct{} {
-	var body proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return nil
-	}
-	out := make(map[provision.Key]struct{}, len(body.Retired))
-	for _, k := range body.Retired {
+	out := make(map[provision.Key]struct{}, len(p.Body.Retired))
+	for _, k := range p.Body.Retired {
 		out[k] = struct{}{}
 	}
 	return out

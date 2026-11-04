@@ -168,7 +168,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 	}
 	if err := st.CreateProposal(ctx, store.Proposal{
 		ID: "source-proposal", JobID: id1, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
-		ProposalJSON: `{"lineup":[{"name":"Quiet Engines"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(carols) != 1 || carols[0].JobID != id3 || carols[0].Status != "submitted" ||
-		carols[0].ApprovedBy != "" || carols[0].ProposalJSON != `{"lineup":[{"name":"Quiet Engines"}]}` {
+		carols[0].ApprovedBy != "" || len(carols[0].Body.Lineup) != 1 || carols[0].Body.Lineup[0].Name != "Quiet Engines" {
 		t.Fatalf("cached proposal lifecycle = %+v", carols)
 	}
 
@@ -223,7 +223,7 @@ func TestSubmit_DistinctCaseSensitiveReferenceURLsDoNotShareSuccess(t *testing.T
 	}
 	if err := st.CreateProposal(ctx, store.Proposal{
 		ID: "upper-reference-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice",
-		ProposalJSON: `{"lineup":[{"name":"Roster A"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Roster A"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestSubmit_CaseSensitiveOrdinaryReferenceDoesNotCloneSuccess(t *testing.T) 
 	if err := st.UpdateJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateProposal(ctx, store.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", ProposalJSON: `{"lineup":[{"name":"Grand Oak Hotel"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+	if err := st.CreateProposal(ctx, store.Proposal{ID: "kettle-proposal", JobID: sourceID, Status: "submitted", CreatedBy: "alice", Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Grand Oak Hotel"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	newID, err := svc.Submit(ctx, proposal.Intent{Description: "KETTLE KIDS"}, "bob")
@@ -407,7 +407,7 @@ func TestSubmit_CacheHitNotifiesApprovers(t *testing.T) {
 	}
 	if err := st.CreateProposal(ctx, store.Proposal{
 		ID: "source-proposal", JobID: source, Status: "approved", CreatedBy: "alice", ApprovedBy: "admin",
-		ProposalJSON: `{"lineup":[{"name":"Quiet Engines"}]}`, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Quiet Engines"}}}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -473,8 +473,11 @@ func TestWorker_NotifiesApproversOnlyWhenAPersonMustAct(t *testing.T) {
 				}
 				if err := st.CreateProposal(ctx, store.Proposal{
 					ID: "spent", JobID: "job-spent", CreatedBy: "grace", Status: "approved", ApprovedBy: "admin",
-					ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":90091001,"name":"A"},{"mediaType":"movie","tmdbId":90091002,"name":"B"}]}`,
-					CreatedAt:    now, UpdatedAt: now,
+					Body: proposal.Proposal{Acquisitions: []proposal.ProposalItem{
+						{MediaType: provision.Movie, TMDBID: 90091001, Name: "A"},
+						{MediaType: provision.Movie, TMDBID: 90091002, Name: "B"},
+					}},
+					CreatedAt: now, UpdatedAt: now,
 				}); err != nil {
 					return err
 				}

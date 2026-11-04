@@ -305,10 +305,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
 		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
 	}
-	var payload proposal.Proposal
-	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
-		t.Fatal(err)
-	}
+	payload := queue[0].Body
 	if payload.ChannelName != "Comedy Movies" || payload.FromIdea != "genre:comedy" ||
 		payload.Intent.Description != comedy.Name || payload.Rationale != comedy.Pitch ||
 		len(payload.Lineup) != 6 || len(payload.Acquisitions) != 0 {
@@ -454,10 +451,7 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
 		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
 	}
-	var payload proposal.Proposal
-	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
-		t.Fatal(err)
-	}
+	payload := queue[0].Body
 	if !payload.Manual || payload.ChannelName != "My Hand-Built Channel" || payload.Rationale != "Built by hand, title by title." {
 		t.Fatalf("queued proposal = %+v, want a manual proposal carrying the name and description", payload)
 	}

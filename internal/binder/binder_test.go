@@ -2,7 +2,6 @@ package binder_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -98,9 +97,8 @@ func seedApprovedProposalRetiring(
 		Intent:  proposal.Intent{MustExclude: mustExclude},
 		Retired: retired,
 	}
-	blob, _ := json.Marshal(body)
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
+	p := store.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -328,13 +326,9 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 		}},
 		Lineup: []proposal.ProposalItem{inLib(1, "Exact")},
 	}
-	blob, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
 	candidate := store.Proposal{
 		ID: "p-exact", JobID: "job-exact", Status: "approved", ApprovedBy: "admin",
-		ProposalJSON: string(blob), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Body: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 
 	if err := st.CreateJob(ctx, store.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
@@ -377,16 +371,7 @@ func TestPlanApprovedChannelPreservesAnExplicitEmptyFillerSelection(t *testing.T
 	seedApprovedProposal(t, st, "p1", "job1", "admin", []proposal.ProposalItem{inLib(1, "Film")}, nil)
 
 	p := mustProposal(t, st, "p1")
-	var body proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		t.Fatal(err)
-	}
-	body.Policy.Audience.Ceiling = "TV-Y7"
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.ProposalJSON = string(raw)
+	p.Body.Policy.Audience.Ceiling = "TV-Y7"
 
 	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(context.Background(), p)
 	if err != nil {
@@ -406,14 +391,9 @@ func TestPlan_RejectsAnythingOtherThanAnApprovedCandidate(t *testing.T) {
 	b := binder.New(st, nil, nil, testkit.Logger())
 
 	if _, err := b.PlanApprovedChannel(context.Background(), store.Proposal{
-		ID: "p-submitted", JobID: "job", Status: "submitted", ProposalJSON: `{}`,
+		ID: "p-submitted", JobID: "job", Status: "submitted",
 	}); err == nil {
 		t.Fatal("planned a submitted proposal")
-	}
-	if _, err := b.PlanApprovedChannel(context.Background(), store.Proposal{
-		ID: "p-bad", JobID: "job", Status: "approved", ProposalJSON: `{`,
-	}); err == nil {
-		t.Fatal("planned malformed proposal JSON")
 	}
 }
 

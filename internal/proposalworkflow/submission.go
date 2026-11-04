@@ -128,12 +128,8 @@ func (r *storeRepository) SubmitIntent(
 		job.Status = "done"
 		cloned, cloneErr := r.store.CloneSuggestionSuccess(ctx, cached.ID, job, r.newID())
 		if cloneErr == nil {
-			var payload proposal.Proposal
-			if err := json.Unmarshal([]byte(cloned.ProposalJSON), &payload); err != nil {
-				return suggest.WorkflowSubmission{}, fmt.Errorf("decode cached Proposal: %w", err)
-			}
 			return suggest.WorkflowSubmission{JobID: job.ID, CachedProposal: &suggest.WorkflowProposal{
-				ID: cloned.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: payload, CreatedAt: cloned.CreatedAt,
+				ID: cloned.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: cloned.Body, CreatedAt: cloned.CreatedAt,
 			}}, nil
 		}
 		if !errors.Is(cloneErr, store.ErrNotFound) {
@@ -158,10 +154,6 @@ func (r *storeRepository) RecordProposal(
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Intent: %w", err)
 	}
-	proposalBlob, err := json.Marshal(prop)
-	if err != nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Proposal: %w", err)
-	}
 	now := r.now()
 	job := store.Job{
 		ID: r.newID(), Kind: jobKindSuggest, Status: "done", IntentJSON: string(intentBlob),
@@ -170,7 +162,7 @@ func (r *storeRepository) RecordProposal(
 	}
 	row := store.Proposal{
 		ID: r.newID(), JobID: job.ID, Status: "submitted", CreatedBy: createdBy,
-		ProposalJSON: string(proposalBlob), CreatedAt: now, UpdatedAt: now,
+		Body: prop, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := r.store.CreateSuggestionResult(ctx, job, row); err != nil {
 		return suggest.WorkflowProposal{}, err

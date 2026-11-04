@@ -75,14 +75,10 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 		record.Attempts = append(record.Attempts, attempt)
 	}
 	if snapshot.Proposal != nil {
-		var proposal proposal.Proposal
-		if err := json.Unmarshal([]byte(snapshot.Proposal.ProposalJSON), &proposal); err != nil {
-			return Record{}, fmt.Errorf("decode Proposal Job %s Proposal: %w", jobID, err)
-		}
 		record.Proposal = &ProposalRef{
 			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status),
 			ApprovedBy: snapshot.Proposal.ApprovedBy, ApprovedAt: snapshot.Proposal.ApprovedAt, DenyReason: snapshot.Proposal.DenyReason,
-			ModSummary: snapshot.Proposal.ModSummary, Note: snapshot.Proposal.Note, Proposal: proposal,
+			ModSummary: snapshot.Proposal.ModSummary, Note: snapshot.Proposal.Note, Proposal: snapshot.Proposal.Body,
 		}
 	}
 	if snapshot.Channel != nil {
@@ -142,24 +138,20 @@ func (r *storeRepository) CompleteAttempt(ctx context.Context, completion Comple
 	if err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	blob, err := json.Marshal(completion.Proposal)
-	if err != nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("encode Proposal: %w", err)
-	}
 	now := r.now()
-	proposal := store.Proposal{
+	row := store.Proposal{
 		ID: r.newID(), JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now,
+		Body: completion.Proposal, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := r.store.CommitSuggestionSuccess(ctx, job.ID, completion.Work.Attempt, proposal, now); err != nil {
+	if err := r.store.CommitSuggestionSuccess(ctx, job.ID, completion.Work.Attempt, row, now); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			return suggest.WorkflowProposal{}, ErrStaleAttempt
 		}
 		return suggest.WorkflowProposal{}, err
 	}
 	return suggest.WorkflowProposal{
-		ID: proposal.ID, JobID: proposal.JobID, CreatedBy: proposal.CreatedBy,
-		Proposal: completion.Proposal, CreatedAt: proposal.CreatedAt,
+		ID: row.ID, JobID: row.JobID, CreatedBy: row.CreatedBy,
+		Proposal: completion.Proposal, CreatedAt: row.CreatedAt,
 	}, nil
 }
 

@@ -2,7 +2,6 @@ package suggest_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
@@ -24,6 +23,8 @@ type quotaStore struct {
 	proposals map[string]store.Proposal
 	channels  map[string]store.Channel
 	titleErr  error
+	// listErr is what the store reports for a proposal list it cannot decode.
+	listErr error
 
 	dataMu           sync.RWMutex
 	quotaMu          sync.Mutex
@@ -141,6 +142,9 @@ func (q *quotaStore) ListProposalsByCreator(_ context.Context, userID string) ([
 	}
 	q.dataMu.RLock()
 	defer q.dataMu.RUnlock()
+	if q.listErr != nil {
+		return nil, q.listErr
+	}
 	var out []store.Proposal
 	for _, p := range q.proposals {
 		if p.CreatedBy == userID {
@@ -189,8 +193,7 @@ func proposalWith(id, createdBy, status string, tmdbIDs ...int) store.Proposal {
 	for _, n := range tmdbIDs {
 		items = append(items, proposal.ProposalItem{MediaType: "movie", TMDBID: n, Name: "Film"})
 	}
-	blob, _ := json.Marshal(proposal.Proposal{Acquisitions: items})
-	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, ProposalJSON: string(blob)}
+	return store.Proposal{ID: id, JobID: "job-" + id, CreatedBy: createdBy, Status: status, Body: proposal.Proposal{Acquisitions: items}}
 }
 
 type quotaChannels struct {
@@ -522,10 +525,10 @@ func TestAutoApprove_FailsClosed(t *testing.T) {
 		}
 	})
 
-	t.Run("approved audit is malformed", func(t *testing.T) {
+	t.Run("approved audit is unreadable", func(t *testing.T) {
 		st := newQuotaStore()
 		st.users["grace"] = identitystore.User{ID: "grace", AutoApprove: true, Quota: 99}
-		st.proposals["old"] = store.Proposal{ID: "old", CreatedBy: "grace", Status: "approved", ProposalJSON: `{`}
+		st.listErr = errors.New("decode proposal old: unexpected end of JSON input")
 		p := proposalWith("p1", "grace", "submitted", 101)
 		st.proposals[p.ID] = p
 		d, err := autoApprover(st, 99).Consider(ctx, p)

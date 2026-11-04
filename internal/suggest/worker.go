@@ -182,16 +182,13 @@ func (s *Service) Submit(ctx context.Context, intent proposal.Intent, createdBy 
 		return "", err
 	}
 	if submission.CachedProposal != nil {
-		blob, marshalErr := json.Marshal(submission.CachedProposal.Proposal)
-		if marshalErr == nil {
-			s.settleSubmitted(ctx, store.Job{
-				ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
-			}, store.Proposal{
-				ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
-				CreatedBy: createdBy, ProposalJSON: string(blob),
-				CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
-			})
-		}
+		s.settleSubmitted(ctx, store.Job{
+			ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
+		}, store.Proposal{
+			ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
+			CreatedBy: createdBy, Body: submission.CachedProposal.Proposal,
+			CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
+		})
 	}
 	return submission.JobID, nil
 }
@@ -215,15 +212,9 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent proposal.Intent, built
 	if err != nil {
 		return "", err
 	}
-	blob, err := json.Marshal(recorded.Proposal)
-	if err != nil {
-		// Already durable; only the post-commit notice and grant are skipped.
-		s.log.Error("marshal recorded Proposal for notification", "job", recorded.JobID, "err", err)
-		return recorded.JobID, nil
-	}
 	row := store.Proposal{
 		ID: recorded.ID, JobID: recorded.JobID, Status: "submitted", CreatedBy: createdBy,
-		ProposalJSON: string(blob), CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
+		Body: recorded.Proposal, CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
 	}
 	s.settleSubmitted(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
 	return recorded.JobID, nil
@@ -323,20 +314,13 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		return
 	}
 	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
-	blob, err := json.Marshal(completed.Proposal)
-	if err != nil {
-		// The same value was already encoded by the workflow repository, so this
-		// can only affect the optional post-commit grant, never durability.
-		s.log.Error("marshal committed Proposal for notification and automatic approval", "job", work.JobID, "err", err)
-	} else {
-		row := store.Proposal{
-			ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
-			ProposalJSON: string(blob), CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
-		}
-		s.settleSubmitted(ctx, store.Job{
-			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
-		}, row)
+	row := store.Proposal{
+		ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
+		Body: completed.Proposal, CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
 	}
+	s.settleSubmitted(ctx, store.Job{
+		ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
+	}, row)
 	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 

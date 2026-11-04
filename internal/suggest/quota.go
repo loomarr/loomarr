@@ -2,7 +2,6 @@ package suggest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -67,13 +66,9 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 		if p.Status != "approved" {
 			continue
 		}
-		var body proposal.Proposal
-		if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-			// The cap is a safety boundary. If an approved audit row cannot be read,
-			// its pending spend is unknown, so unattended approval must fail closed.
-			return Usage{}, fmt.Errorf("quota: proposal %s is malformed: %w", p.ID, err)
-		}
-		for _, a := range body.Acquisitions {
+		// The cap is a safety boundary. An approved audit row the store cannot decode fails the
+		// list above, so its pending spend is never guessed and unattended approval fails closed.
+		for _, a := range p.Body.Acquisitions {
 			key, kerr := acquisitionKey(a)
 			if kerr != nil || seen[string(key)] {
 				continue

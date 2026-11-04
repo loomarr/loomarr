@@ -172,11 +172,7 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 		}
 		if len(found) > previous {
 			slices.SortFunc(found, func(a, b store.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
-			var prop proposal.Proposal
-			if err := json.Unmarshal([]byte(found[len(found)-1].ProposalJSON), &prop); err != nil {
-				t.Fatal(err)
-			}
-			return prop, len(found)
+			return found[len(found)-1].Body, len(found)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

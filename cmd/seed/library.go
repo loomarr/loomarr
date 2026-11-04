@@ -54,10 +54,6 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			return err
 		}
 		jobID := jobIDs()
-		propJSON, err := json.Marshal(proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{pick}})
-		if err != nil {
-			return err
-		}
 		propID := propIDs()
 		// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
 		// Job, its succeeded Attempt 1, and the submitted Proposal in one transaction — the
@@ -70,7 +66,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			CreatedAt: now, UpdatedAt: now,
 		}, store.Proposal{
 			ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-			ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now,
+			Body: proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{pick}}, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("create suggestion result: %w", err)
 		}

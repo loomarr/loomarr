@@ -25,7 +25,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -219,10 +218,6 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		Acquisitions: acquisitions,
 		Policy:       policy,
 	}
-	propJSON, err := json.Marshal(prop)
-	if err != nil {
-		return fmt.Errorf("marshal proposal: %w", err)
-	}
 	propID := newID("prop")()
 	// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
 	// Job, its succeeded Attempt 1, and the submitted Proposal in one transaction — the
@@ -239,13 +234,13 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}, store.Proposal{
-		ID:           propID,
-		JobID:        jobID,
-		Status:       "submitted",
-		CreatedBy:    adminID,
-		ProposalJSON: string(propJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:        propID,
+		JobID:     jobID,
+		Status:    "submitted",
+		CreatedBy: adminID,
+		Body:      prop,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}

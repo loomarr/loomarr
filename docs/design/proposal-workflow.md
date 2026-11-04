@@ -22,6 +22,12 @@ Its interface is small: submit an Intent (fresh, or for an existing Channel), cl
 Attempt, and read or list Journeys. The Store and the model runner are private ports; API, worker
 and frontend never rebuild lifecycle rules from raw rows.
 
+The Intent, the Proposal and the evidence they carry (Scores, Decision Trace) are the value types of the
+leaf package `internal/proposal`. The store is the one place a Proposal's JSON is encoded and
+decoded: `store.Proposal.Body` is the typed value, an empty column reads as the zero Proposal, and
+a column the store cannot decode is an error rather than an empty Proposal. Everything above the
+store passes the typed value.
+
 The Job id is the correlation spine, not a state machine that takes over domain ownership. The
 Proposal stays the grounded artifact and approval audit; the Channel owns `building`/`live`. The
 Journey composes them into one milestone:

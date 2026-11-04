@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -196,11 +195,7 @@ func rfc3339OrEmpty(t time.Time) string {
 }
 
 func proposalToDTO(p store.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
-	var payload proposal.Proposal
-	// A malformed stored proposal shouldn't 500 a list; leave the payload zero-valued.
-	if len(p.ProposalJSON) > 0 {
-		_ = json.Unmarshal([]byte(p.ProposalJSON), &payload)
-	}
+	payload := p.Body
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
@@ -458,9 +453,8 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
 	// widen the gate's signature for telemetry.
 	//
-	// The line says WHAT HAPPENED, not what was requested: the proposal's channel name lives
-	// inside ProposalJSON and this handler never unmarshals it, so parsing one purely for a
-	// feed label would add a failure mode to the approval path for a cosmetic gain.
+	// The line says WHAT HAPPENED, not what was requested: a feed label is not worth reading
+	// the proposal's channel name into the approval path.
 	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(result.Enqueued))
 	return out, nil
 }

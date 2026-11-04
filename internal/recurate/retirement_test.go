@@ -2,7 +2,6 @@ package recurate_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -49,12 +48,8 @@ func retiredOf(t *testing.T, st store.Store, proposalID string) map[provision.Ke
 	if err != nil {
 		t.Fatal(err)
 	}
-	var body proposal.Proposal
-	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
-		t.Fatalf("proposal %s malformed: %v", proposalID, uerr)
-	}
 	out := map[provision.Key]bool{}
-	for _, k := range body.Retired {
+	for _, k := range p.Body.Retired {
 		out[k] = true
 	}
 	return out
@@ -91,12 +86,8 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
 			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}}
-	blob, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now()
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -117,10 +108,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var after proposal.Proposal
-	if err := json.Unmarshal([]byte(persisted.ProposalJSON), &after); err != nil {
-		t.Fatal(err)
-	}
+	after := persisted.Body
 	if len(after.Trace.Candidates) != 1 || after.Trace.Candidates[0] != body.Trace.Candidates[0] {
 		t.Fatalf("re-curation rewrote original decision evidence: before=%+v after=%+v", body.Trace, after.Trace)
 	}

@@ -42,7 +42,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
 | `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
-| `proposal` | 9 | `provision`, `schedule`, `storagegovernor` |
+| `proposal` | 10 | `provision`, `schedule`, `storagegovernor` |
 | `provision` | 25 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
@@ -50,7 +50,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `settings` | 8 | `config`, `library` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
-| `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 7 | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 6 | — |
 
@@ -207,7 +207,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
 - **`playout`** · 6 importers · → `config`, `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`proposal`** · 9 importers · → `provision`, `schedule`, `storagegovernor`
+- **`proposal`** · 10 importers · → `provision`, `schedule`, `storagegovernor`
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
@@ -237,7 +237,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
-- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
+- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 6

@@ -105,6 +105,17 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	return &proposalHarness{apiHarness: base, Suggest: fs}
 }
 
+// wireProposal reads a proposal fixture written in its wire JSON form, so a test states the
+// stored proposal in the shape clients and operators see.
+func wireProposal(t testing.TB, raw string) proposal.Proposal {
+	t.Helper()
+	var p proposal.Proposal
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatalf("proposal fixture is not valid proposal JSON: %v", err)
+	}
+	return p
+}
+
 // seedProposal writes a submitted proposal with one acquisition (Quiet Engines).
 func seedProposal(t *testing.T, st store.Store, id string) {
 	seedProposalAt(t, st, id, time.Time{})
@@ -114,7 +125,7 @@ func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) 
 	t.Helper()
 	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000100","name":"Quiet Engines","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:90000100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
 	err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 		CreatedAt: created,
 	})
 
@@ -134,7 +145,7 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 	// A proposal whose lineup has one in-library pick (Marigold Protocol) and no acquisitions.
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-lib", JobID: "job-lib", Status: "submitted", ProposalJSON: body,
+		ID: "p-lib", JobID: "job-lib", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +308,7 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:90000001","ownership":"library","disposition":"selected","reason":"selected"}]}}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
@@ -318,7 +329,7 @@ func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"scores":{"themeFit":1,"availabilityRatio":0.5,"eraBalance":null,"overall":0.7941176470588235}}`
-	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/era-proposal", adminToken, "")
@@ -601,7 +612,7 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-ch", JobID: "job-ch", Status: "submitted", ProposalJSON: body,
+		ID: "p-ch", JobID: "job-ch", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +660,7 @@ func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
 		`"inLibrary":true,"libraryItemId":"lib-kettle-kids",` +
 		`"episodeSelection":{"mode":"highlights"}}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", ProposalJSON: body,
+		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -705,7 +716,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 				`{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","inLibrary":true,"libraryItemId":"marigold"}],`+
 				`"acquisitions":[]}`, tt.intent)
 			if err := createProposalWithJob(st, context.Background(), store.Proposal{
-				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", ProposalJSON: body,
+				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", Body: wireProposal(t, body),
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -753,10 +764,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var persisted proposal.Proposal
-			if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
-				t.Fatal(err)
-			}
+			persisted := approved.Body
 			if len(persisted.Acquisitions) != 1 ||
 				persisted.Acquisitions[0].EpisodeSelection.Mode != tt.want.Mode ||
 				strings.Join(persisted.Acquisitions[0].EpisodeSelection.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
@@ -774,7 +782,7 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 		`"inLibrary":true,"libraryItemId":"marigold"}],` +
 		`"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", ProposalJSON: body,
+		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +840,7 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 		`{"mediaType":"movie","tmdbId":90000100,"name":"Crafted Movie Mode","inLibrary":false,` +
 		`"episodeSelection":{"mode":"highlights"}}]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", ProposalJSON: body,
+		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -846,10 +854,7 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var persisted proposal.Proposal
-	if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
-		t.Fatal(err)
-	}
+	persisted := approved.Body
 	if len(persisted.Alternates) != 3 {
 		t.Fatalf("persisted alternates = %+v, want three", persisted.Alternates)
 	}
@@ -873,7 +878,7 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-era", JobID: "job-era", Status: "submitted", ProposalJSON: body,
+		ID: "p-era", JobID: "job-era", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -907,7 +912,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 		`"acquisitions":[]}`
 	seed := func(id, job string, created time.Time) {
 		if err := createProposalWithJob(st, context.Background(), store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -977,7 +982,7 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","year":1999,"inLibrary":true,` +
 			`"libraryItemId":"lib-` + tmdb + `"}],"acquisitions":[]}`
 		if err := createProposalWithJob(st, ctx, store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -1051,7 +1056,7 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","inLibrary":true,"libraryItemId":"lib-` + tmdb + `"}]}`
 		if err := createProposalWithJob(st, ctx, store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -1107,7 +1112,7 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":90000603,` +
 		`"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-n", JobID: "job-n", Status: "submitted", ProposalJSON: body,
+		ID: "p-n", JobID: "job-n", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1140,7 +1145,7 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 		{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994},
 		{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: "p-drop", JobID: "j", Status: "submitted", ProposalJSON: body,
+		ID: "p-drop", JobID: "j", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1211,10 +1216,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
-	var approved proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
-		t.Fatal(err)
-	}
+	approved := p.Body
 	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:90000100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
 		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
 	}
@@ -1236,10 +1238,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var approved proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
-		t.Fatal(err)
-	}
+	approved := p.Body
 	for _, items := range [][]proposal.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
 		for _, item := range items {
 			if item.Name == "Quiet Engines" {
@@ -1287,8 +1286,8 @@ func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.ProposalJSON != before.ProposalJSON {
-		t.Error("an unmodified approval rewrote the proposal JSON")
+	if !reflect.DeepEqual(after.Body, before.Body) {
+		t.Error("an unmodified approval changed the proposal")
 	}
 	if after.ModSummary != "" {
 		t.Errorf("modSummary = %q, want empty for an unmodified approval", after.ModSummary)
@@ -1601,7 +1600,7 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 	body := fmt.Sprintf(
 		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
 	err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 	})
 
 	if err != nil {
@@ -1618,7 +1617,7 @@ func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	// No job row: written straight to the store, as a purge left it.
 	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-old", JobID: "job-purged", Status: "submitted", ProposalJSON: body,
+		ID: "p-old", JobID: "job-purged", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}

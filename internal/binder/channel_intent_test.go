@@ -17,16 +17,12 @@ import (
 // proposalFor builds an approved candidate for jobID carrying intent, made by createdBy.
 func proposalFor(t *testing.T, id, jobID, createdBy string, intent proposal.Intent) store.Proposal {
 	t.Helper()
-	blob, err := json.Marshal(proposal.Proposal{
-		Intent: intent,
-		Lineup: []proposal.ProposalItem{inLib(1, "Exact")},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return store.Proposal{
 		ID: id, JobID: jobID, Status: "approved", CreatedBy: createdBy, ApprovedBy: "admin",
-		ProposalJSON: string(blob), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Body: proposal.Proposal{
+			Intent: intent,
+			Lineup: []proposal.ProposalItem{inLib(1, "Exact")},
+		}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }
 

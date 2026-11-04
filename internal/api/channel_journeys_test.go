@@ -71,13 +71,9 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
 	}))
 	t.Cleanup(srv.Close)
-	body, err := json.Marshal(tc.Proposal)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := createProposalWithJob(st, ctx, store.Proposal{
 		ID: "reference", JobID: "reference-job", Status: "submitted",
-		ProposalJSON: string(body), CreatedBy: "alice",
+		Body: tc.Proposal, CreatedBy: "alice",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -157,11 +153,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			pick.InLibrary, pick.LibraryItemID = false, ""
 			fixture.Proposal.Lineup = nil
 			fixture.Proposal.Acquisitions = []proposal.ProposalItem{pick}
-			raw, err := json.Marshal(fixture.Proposal)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", ProposalJSON: string(raw)}); err != nil {
+			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
 				t.Fatal(err)
 			}
 			resp := do(t, srv, http.MethodPost, "/v1/proposals/sparse/approve", adminToken, "")

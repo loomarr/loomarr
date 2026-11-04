@@ -2,7 +2,6 @@ package proposaloutlook_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -38,11 +37,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		},
 		Acquisitions: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200}},
 	}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := store.Proposal{ID: "proposal-one", JobID: "job-one", Status: "submitted", ProposalJSON: string(raw)}
+	p := store.Proposal{ID: "proposal-one", JobID: "job-one", Status: "submitted", Body: body}
 	// A proposal always has the job that produced it; the planner refuses one whose job is gone.
 	if err := st.CreateJob(ctx, store.Job{ID: p.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
@@ -80,7 +75,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 			Planner: planner, Preview: engine, Additions: resolver,
 		})
 		ownedProposal := p
-		ownedProposal.ProposalJSON = `{"intent":{"description":"An owned movie"},"lineup":[]}`
+		ownedProposal.Body = proposal.Proposal{Intent: proposal.Intent{Description: "An owned movie"}, Lineup: []proposal.ProposalItem{}}
 		got, err := ownedService.Assess(ctx, ownedProposal, &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition", InLibrary: false},
 		}})
@@ -101,12 +96,8 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		series := proposal.Proposal{Intent: proposal.Intent{Description: "A series channel"}, Lineup: []proposal.ProposalItem{
 			{MediaType: provision.Series, TMDBID: 90000044, TVDBID: 90000044, Name: "Show", InLibrary: true, LibraryItemID: "show", SeasonMin: 2, SeasonMax: 2},
 		}}
-		raw, err := json.Marshal(series)
-		if err != nil {
-			t.Fatal(err)
-		}
 		pending := p
-		pending.ProposalJSON = string(raw)
+		pending.Body = series
 		got, err := svc.Assess(ctx, pending, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -117,7 +108,9 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	})
 	t.Run("waiting acquisition has no guessed runway", func(t *testing.T) {
 		waiting := p
-		waiting.ProposalJSON = `{"intent":{"description":"A movie channel"},"acquisitions":[{"mediaType":"movie","tmdbId":90000003,"name":"Missing","runtimeMinutes":200}]}`
+		waiting.Body = proposal.Proposal{Intent: proposal.Intent{Description: "A movie channel"}, Acquisitions: []proposal.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing", RuntimeMinutes: 200},
+		}}
 		got, err := svc.Assess(ctx, waiting, nil)
 		if err != nil {
 			t.Fatal(err)

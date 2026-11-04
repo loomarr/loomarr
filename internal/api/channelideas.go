@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -202,11 +201,8 @@ func (s *Server) requestedIdeas(ctx context.Context, userID string) (map[string]
 		if p.CreatedBy != userID {
 			continue
 		}
-		var provenance struct {
-			FromIdea string `json:"fromIdea"`
-		}
-		if json.Unmarshal([]byte(p.ProposalJSON), &provenance) == nil && provenance.FromIdea != "" {
-			out[provenance.FromIdea] = p.JobID
+		if p.Body.FromIdea != "" {
+			out[p.Body.FromIdea] = p.JobID
 		}
 	}
 	return out, nil

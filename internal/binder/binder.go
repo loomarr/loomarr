@@ -159,11 +159,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
 
-	var proposal proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
-		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
-	}
-	lineup, err := lineupEntries(proposal, time.Now().UTC())
+	lineup, err := lineupEntries(p.Body, time.Now().UTC())
 	if err != nil {
 		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
 	}
@@ -232,7 +228,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 	// autoCurate), operator-pinned fields, and the reconcile-owned Applied are preserved, and
 	// rules merge by provenance. This replaces the old capture-then-restore block; a refine can
 	// no longer silently revert an operator's era/ceiling edit or turn off its own AutoCurate.
-	ch.Policy = existing.Policy.MergeFromProposal(proposal.Policy)
+	ch.Policy = existing.Policy.MergeFromProposal(p.Body.Policy)
 	// A generated channel hands grounded era + audience facts to its operator-owned filler
 	// selection once. A present selection—including one whose fields are all unset—is
 	// operator-owned and never re-seeded by refine or auto-curation. Unset era retains its
@@ -242,7 +238,7 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 	}
 	// The channel keeps the approved request itself, so a refine or a re-curation can be seeded
 	// from it long after the job that produced it is purged.
-	ch.IntentJSON, err = channelIntentJSON(proposal)
+	ch.IntentJSON, err = channelIntentJSON(p.Body)
 	if err != nil {
 		return store.Channel{}, fmt.Errorf("proposal %s: %w", p.ID, err)
 	}
@@ -408,14 +404,11 @@ func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 // Classics" — §8), falling back to a truncated intent description, then a generic label.
 // A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
 func channelNameFromIntent(p store.Proposal) string {
-	var parsed proposal.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &parsed); err == nil {
-		if n := strings.TrimSpace(parsed.ChannelName); n != "" {
-			return truncateLabel(n, 60)
-		}
-		if d := strings.TrimSpace(parsed.Intent.Description); d != "" {
-			return truncateLabel(d, 60)
-		}
+	if n := strings.TrimSpace(p.Body.ChannelName); n != "" {
+		return truncateLabel(n, 60)
+	}
+	if d := strings.TrimSpace(p.Body.Intent.Description); d != "" {
+		return truncateLabel(d, 60)
 	}
 	return "Suggested channel"
 }
@@ -449,11 +442,7 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err != nil {
 		return nil, err
 	}
-	var p proposal.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	return lineupEntries(p, time.Now().UTC())
+	return lineupEntries(prop.Body, time.Now().UTC())
 }
 
 // RequestFromIntent resolves who asked for the approved proposal identified by intentRef and what
@@ -467,11 +456,7 @@ func (b *Binder) RequestFromIntent(ctx context.Context, intentRef string) (inten
 	if err != nil {
 		return "", "", err
 	}
-	var p proposal.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return "", "", fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	intentJSON, err = channelIntentJSON(p)
+	intentJSON, err = channelIntentJSON(prop.Body)
 	if err != nil {
 		return "", "", fmt.Errorf("proposal %s: %w", prop.ID, err)
 	}
@@ -501,11 +486,7 @@ func (b *Binder) PolicyFromIntent(ctx context.Context, intentRef string) (schedu
 	if err != nil {
 		return schedule.ChannelPolicy{}, err
 	}
-	var p proposal.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return schedule.ChannelPolicy{}, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	return p.Policy, nil
+	return prop.Body.Policy, nil
 }
 
 // ApprovedProposalForJob finds the proposal for a suggestion job.

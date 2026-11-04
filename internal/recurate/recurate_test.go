@@ -2,7 +2,6 @@ package recurate_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -67,12 +66,8 @@ func inLibItem(n int, name, libID string) proposal.ProposalItem {
 func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposal.ProposalItem) store.Proposal {
 	t.Helper()
 	body := proposal.Proposal{Lineup: lineup, Acquisitions: acquisitions}
-	blob, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "submitted", ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
+	p := store.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}

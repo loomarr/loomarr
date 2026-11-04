@@ -214,10 +214,6 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err != nil {
 		return err
 	}
-	propJSON, err := json.Marshal(proposal.Proposal{Intent: intent, Lineup: lineup})
-	if err != nil {
-		return err
-	}
 	now := time.Now()
 	// CreateSuggestionResult writes the done Job, its succeeded Attempt 1 and the submitted
 	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
@@ -226,7 +222,7 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
 	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now}); err != nil {
+		Body: proposal.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
 	return nil

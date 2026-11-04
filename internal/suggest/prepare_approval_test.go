@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -24,15 +25,16 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: string(raw)}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body}
 	edit := &suggest.ApprovalEdit{DropKeys: []provision.Key{"movie:tmdb:90000001"}, Add: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Review addition", EditorialRole: proposal.EditorialCore},
 	}, Note: "More variety"}
-	prepared, decoded, err := suggest.PrepareApproval(p, edit, holidayvocab.Default())
+	prepared, err := suggest.PrepareApproval(p, edit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Status != "submitted" || p.ProposalJSON != string(raw) || edit.Add[0].EditorialRole != proposal.EditorialCore {
+	decoded := prepared.Body
+	if after, _ := json.Marshal(p.Body); prepared.Status != "submitted" || string(after) != string(raw) || edit.Add[0].EditorialRole != proposal.EditorialCore {
 		t.Fatal("pure preparation changed status or caller-owned input")
 	}
 	if len(decoded.Lineup) != 1 || decoded.Lineup[0].EditorialRole != proposal.EditorialDiscovery || len(decoded.Acquisitions) != 1 || decoded.Acquisitions[0].EditorialRole != "" {
@@ -43,7 +45,7 @@ func TestPrepareApprovalMatchesCommittedContentWithoutGrantingAddedRoles(t *test
 	if _, err := suggest.NewApprover(st, channels, time.Now).Approve(context.Background(), p, edit, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Commits) != 1 || st.Commits[0].Proposal.ProposalJSON != prepared.ProposalJSON || st.Commits[0].Proposal.ModSummary != prepared.ModSummary {
+	if len(st.Commits) != 1 || !reflect.DeepEqual(st.Commits[0].Proposal.Body, prepared.Body) || st.Commits[0].Proposal.ModSummary != prepared.ModSummary {
 		t.Fatalf("outlook preparation and actual approval diverged: %+v", st.Commits)
 	}
 }
@@ -56,17 +58,14 @@ func TestPrepareApprovalDropsExcludedBackup(t *testing.T) {
 			{MediaType: provision.Movie, TMDBID: 90000003, Name: "Keep backup"},
 		},
 	}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := store.Proposal{ID: "p-backup", Status: "submitted", ProposalJSON: string(raw)}
-	_, decoded, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+	p := store.Proposal{ID: "p-backup", Status: "submitted", Body: body}
+	prepared, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000002"},
 	}, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
+	decoded := prepared.Body
 	if len(decoded.Alternates) != 1 || decoded.Alternates[0].Name != "Keep backup" {
 		t.Fatalf("alternates = %+v, want only the retained backup", decoded.Alternates)
 	}
@@ -76,11 +75,7 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 	body := proposal.Proposal{Lineup: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Existing", InLibrary: true, LibraryItemID: "library-1"},
 	}}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := store.Proposal{ID: "p-owned-add", Status: "submitted", ProposalJSON: string(raw)}
+	p := store.Proposal{ID: "p-owned-add", Status: "submitted", Body: body}
 	edit := &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Owned addition", InLibrary: true, LibraryItemID: "library-2"},
 		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged-library-id"},
@@ -96,10 +91,11 @@ func TestPrepareApprovalPlacesOwnedAdditionsWithoutReacquiringThem(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, decoded, err := suggest.PrepareApproval(p, resolvedEdit, holidayvocab.Default())
+	prepared, err := suggest.PrepareApproval(p, resolvedEdit, holidayvocab.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
+	decoded := prepared.Body
 	if len(decoded.Lineup) != 2 || decoded.Lineup[1].Name != "Owned addition" {
 		t.Fatalf("lineup = %+v, want the owned review addition placed with available titles", decoded.Lineup)
 	}
@@ -118,12 +114,8 @@ func TestPrepareApprovalRejectsAnEmptyEffectiveChannel(t *testing.T) {
 	body := proposal.Proposal{Acquisitions: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Only title"},
 	}}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := store.Proposal{ID: "p-empty", Status: "submitted", ProposalJSON: string(raw)}
-	_, _, err = suggest.PrepareApproval(p, &suggest.ApprovalEdit{
+	p := store.Proposal{ID: "p-empty", Status: "submitted", Body: body}
+	_, err := suggest.PrepareApproval(p, &suggest.ApprovalEdit{
 		DropKeys: []provision.Key{"movie:tmdb:90000001"},
 	}, holidayvocab.Default())
 	if !errors.Is(err, suggest.ErrEmptyApproval) {
