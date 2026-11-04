@@ -62,6 +62,9 @@ type ArrHooks struct {
 	// Secret is what each arr sends as its password.
 	Secret string
 	Now    func() time.Time
+	// Degraded hears when an arr's registration starts failing (decision 32): its new files then
+	// wait for the hourly walk. Nil hears nothing.
+	Degraded func(ctx context.Context, app string, err error)
 
 	mu     sync.Mutex
 	status map[string]HookStatus
@@ -100,11 +103,14 @@ func (h *ArrHooks) Register(ctx context.Context, app string) error {
 		h.setState(app, HookNotConfigured, nil)
 		return nil
 	case err != nil:
-		if ctx.Err() == nil {
-			h.Scanner.Importer.log().Warn("library scan: an arr's webhook is not registered; the hourly walk still finds its files",
-				"app", app, "err", err)
+		if ctx.Err() != nil {
+			return err
 		}
-		h.setState(app, HookFailed, err)
+		h.Scanner.Importer.log().Warn("library scan: an arr's webhook is not registered; the hourly walk still finds its files",
+			"app", app, "err", err)
+		if was := h.setState(app, HookFailed, err); was != HookFailed && h.Degraded != nil {
+			h.Degraded(ctx, app, err)
+		}
 		return err
 	}
 	h.setState(app, HookRegistered, nil)
@@ -180,10 +186,12 @@ func (h *ArrHooks) statusLocked(app string) HookStatus {
 	return s
 }
 
-func (h *ArrHooks) setState(app string, state HookState, err error) {
+// setState records app's state and returns the one it replaced.
+func (h *ArrHooks) setState(app string, state HookState, err error) HookState {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s := h.statusLocked(app)
+	was := s.State
 	s.State, s.Error = state, ""
 	if err != nil {
 		s.Error = err.Error()
@@ -192,6 +200,7 @@ func (h *ArrHooks) setState(app string, state HookState, err error) {
 		s.RegisteredAt = h.now()
 	}
 	h.status[app] = s
+	return was
 }
 
 func (h *ArrHooks) apps() []string {

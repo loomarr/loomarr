@@ -100,3 +100,36 @@ func TestArrHooks(t *testing.T) {
 		t.Fatalf("Receive from another app = %v", err)
 	}
 }
+
+// An arr that stops taking Loomarr's connection is reported once, when it starts failing.
+func TestArrHooksReportDegradedOnce(t *testing.T) {
+	h := newHarness(t)
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(refusing.Close)
+	var degraded []string
+	hooks := &ArrHooks{
+		Scanner: NewScanner(h.im, time.Hour),
+		Clients: map[string]arrhook.Client{"radarr": {Conn: func() (string, string) { return refusing.URL, "key" }}},
+		URL:     func(app string) string { return "http://loomarr.test/v1/library/hooks/" + app },
+		Secret:  "s",
+		Degraded: func(_ context.Context, app string, err error) {
+			if err == nil {
+				t.Error("degraded without a reason")
+			}
+			degraded = append(degraded, app)
+		},
+	}
+	for range 3 {
+		if err := hooks.Register(context.Background(), "radarr"); err == nil {
+			t.Fatal("Register against a refusing arr succeeded")
+		}
+	}
+	if len(degraded) != 1 || degraded[0] != "radarr" {
+		t.Fatalf("degraded = %v, want radarr once", degraded)
+	}
+	if s := hooks.Status("radarr"); s.State != HookFailed || s.Error == "" {
+		t.Fatalf("status = %+v", s)
+	}
+}

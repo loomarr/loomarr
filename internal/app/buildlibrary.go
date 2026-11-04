@@ -42,8 +42,24 @@ type libraryBuild struct {
 	processes *diagnostics.ProcessManager
 	// hookSecret is the password Sonarr and Radarr send with each webhook.
 	hookSecret string
-	log        *slog.Logger
-	owner      *generationLifecycle
+	// notify tells the operators about offline folders and delayed changes; nil tells no one.
+	notify libraryNotifier
+	log    *slog.Logger
+	owner  *generationLifecycle
+}
+
+// libraryNotifier is productNotificationCoordinator's library half (#2151 decision 32).
+type libraryNotifier interface {
+	LibraryFolder(ctx context.Context, root string, readable bool)
+	LibraryChangesDegraded(ctx context.Context, app string, err error)
+}
+
+// libraryNotifierOf is c as a libraryNotifier, nil (not a typed nil) when there is none.
+func libraryNotifierOf(c *productNotificationCoordinator) libraryNotifier {
+	if c == nil {
+		return nil
+	}
+	return c
 }
 
 // libraryServices is Settings → Library and the arrs' webhooks; both nil without a store.
@@ -93,6 +109,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	if deps.budget != nil {
 		im.Busy = func() bool { return deps.budget.Sessions() > 0 }
 	}
+	if deps.notify != nil {
+		im.RootReadability = deps.notify.LibraryFolder
+	}
 	scanner := scan.NewScanner(im, scan.ReconcileInterval)
 	watcher := &scan.Watcher{Scanner: scanner}
 	hooks := &scan.ArrHooks{
@@ -103,6 +122,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		},
 		URL:    func(app string) string { return libraryHookURL(settings.ServerPublicURL.Get(set), app) },
 		Secret: deps.hookSecret,
+	}
+	if deps.notify != nil {
+		hooks.Degraded = deps.notify.LibraryChangesDegraded
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)

@@ -43,6 +43,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })
 		t.Run("LibraryRootDiscovery", func(t *testing.T) { testLibraryRootDiscovery(t, newStore) })
 		t.Run("LibraryRootByHand", func(t *testing.T) { testLibraryRootByHand(t, newStore) })
+		t.Run("LibraryRootCheck", func(t *testing.T) { testLibraryRootCheck(t, newStore) })
 		t.Run("LibraryFiles", func(t *testing.T) { testLibraryFiles(t, newStore) })
 	})
 

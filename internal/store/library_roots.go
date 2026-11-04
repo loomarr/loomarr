@@ -78,6 +78,10 @@ type LibraryRootStore interface {
 	// (unconfirmed) when it is new. An empty rootPath hands the row back to discovery.
 	// ErrNotFound when the authority never reported that folder.
 	SetLibraryRootPath(ctx context.Context, authority, authorityPath, rootPath string, at time.Time) error
+	// CheckLibraryRoot records one readability check of a root, as a scan pass makes it, and
+	// reports whether it flipped the root between readable and not. A root never checked before
+	// does not flip. ErrNotFound when the root does not exist.
+	CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (flipped bool, err error)
 }
 
 func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
@@ -173,6 +177,28 @@ func (s *sqlStore) applyLibraryRootChecks(ctx context.Context, tx *sql.Tx, check
 		}
 	}
 	return nil
+}
+
+func (s *sqlStore) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (bool, error) {
+	if check.Path == "" || at.IsZero() {
+		return false, fmt.Errorf("check library root: path and time are required")
+	}
+	flipped := false
+	err := s.libraryRootTx(ctx, "check library root", func(tx *sql.Tx) error {
+		var readable bool
+		var checkedAt int64
+		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, checked_at FROM library_roots WHERE path = ?`), check.Path).
+			Scan(&readable, &checkedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		flipped = checkedAt != 0 && readable != check.Readable
+		return s.applyLibraryRootChecks(ctx, tx, []LibraryRootCheck{check}, at.UnixMilli())
+	})
+	return flipped, err
 }
 
 func (s *sqlStore) AddLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) error {
