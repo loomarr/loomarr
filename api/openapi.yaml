@@ -10502,6 +10502,7 @@ components:
         - library.url
         - library.token
         - library.path_map
+        - library.scanner.enabled
         - requester.provider
         - seerr.url
         - seerr.api_key
@@ -10661,6 +10662,7 @@ components:
         - LibraryURL
         - LibraryToken
         - LibraryPathMap
+        - LibraryScannerEnabled
         - RequesterProvider
         - SeerrURL
         - SeerrAPIKey

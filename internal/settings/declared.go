@@ -353,6 +353,12 @@ func declared() []Setting {
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
 		},
+		{
+			// The scanner's kill switch (#2151): passes, folder watches and header reads stop.
+			Key: "library.scanner.enabled", Label: "Scan media folders", EnvVar: "LIBRARY_SCANNER_ENABLED",
+			Group: GroupMediaServer, Kind: KindBool, Default: true, Advanced: true,
+			Doc: "Whether Loomarr reads your media folders itself to learn what each file is. Turn this off to stop it reading them; what it already learned is kept.",
+		},
 		// --- Connections: requester (§15, Phase 6) ---
 		// How Loomarr acquires missing titles: through Seerr (default), or Sonarr + Radarr
 		// directly. The provider gates which fields show (ShowWhen), mirroring llm.provider.
