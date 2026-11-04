@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -73,7 +74,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), catalog.New(lib, tm), tm, 10)
 			svc := suggest.NewService(st, proposalworkflow.New(st, func() string { return "wf-1" }, time.Now), sug,
 				suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour}, time.Now, testkit.Logger())
-			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
+			jobID, err := svc.Submit(context.Background(), proposal.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 			if err != nil {
 				t.Fatal(err)
 			}

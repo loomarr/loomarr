@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -99,7 +100,7 @@ func TestLive_SuggestLatency(t *testing.T) {
 		s := suggest.New(rec, catalog.New(nil, liveCorpus()), referenceExistsValidator{}, 10)
 		desc := descriptions[i%len(descriptions)]
 		start := time.Now()
-		prop, err := s.Suggest(context.Background(), suggest.Intent{Description: desc})
+		prop, err := s.Suggest(context.Background(), proposal.Intent{Description: desc})
 		total := time.Since(start)
 		var rows []string
 		for n, c := range rec.calls {

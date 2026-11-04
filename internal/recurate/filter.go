@@ -2,16 +2,14 @@ package recurate
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"sort"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // dropped is one rejected acquisition, kept for the audit log.
@@ -54,11 +52,8 @@ type filterResult struct {
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) (filterResult, error) {
-	var body suggest.Proposal
-	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
-		return filterResult{}, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
-	}
+func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct, maxTitles int, protected map[provision.Key]bool, lastAired map[provision.Key]time.Time, now time.Time) filterResult {
+	body := p.Body
 	var res filterResult
 
 	// The bar: a per-title Confidence (0..1) at or above minScorePct/100. A title the model gave
@@ -80,7 +75,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 
 	// Rank candidate acquisitions by confidence (desc), keep only those over the bar.
 	type cand struct {
-		item suggest.ProposalItem
+		item proposal.ProposalItem
 		key  provision.Key
 	}
 	survivors := make([]cand, 0, len(body.Acquisitions))
@@ -106,7 +101,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 	})
 
 	// Apply the growth cap: room = maxTitles − (already committed). maxTitles 0 ⇒ unbounded.
-	kept := make([]suggest.ProposalItem, 0, len(survivors))
+	kept := make([]proposal.ProposalItem, 0, len(survivors))
 	room := -1 // -1 = unbounded
 	if maxTitles > 0 {
 		room = maxTitles - len(committed)
@@ -168,13 +163,9 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 	// itself, which made it a second writer racing the binder's additive union — ordered against
 	// each other by a comment rather than by anything the compiler or a test could check.
 	body.Retired = res.RetiredKey
-	blob, merr := json.Marshal(body)
-	if merr != nil {
-		return filterResult{}, fmt.Errorf("recurate: re-marshal proposal %s: %w", p.ID, merr)
-	}
-	p.ProposalJSON = string(blob)
+	p.Body = body
 	res.Proposal = p
-	return res, nil
+	return res
 }
 
 // effectiveMinScore resolves the quality bar for a channel: its per-channel override if set
@@ -226,7 +217,7 @@ const adjacencyUnscoredFloor = 0.60
 //
 // Identity for everything except an adjacency pick the model left unscored — see
 // adjacencyUnscoredFloor for why that one case is not the same as a zero.
-func effectiveConfidence(a suggest.ProposalItem) float64 {
+func effectiveConfidence(a proposal.ProposalItem) float64 {
 	if a.Confidence == 0 && a.Source == string(catalog.ScopeAdjacent) {
 		return adjacencyUnscoredFloor
 	}

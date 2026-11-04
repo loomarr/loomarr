@@ -8,10 +8,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Library is the existing media adapter's read-only metadata boundary.
@@ -42,7 +42,7 @@ func (o observation) ResolveEpisodes(key provision.Key) schedule.EpisodeResoluti
 	return schedule.EpisodeResolution{Programs: o.programs[key], EditorialUnavailable: o.unknown[key]}
 }
 
-func observe(ctx context.Context, titles Titles, lib Library, resolveEpisodes channels.EpisodeResolver, proposal suggest.Proposal, lineup []schedule.LineupEntry) observation {
+func observe(ctx context.Context, titles Titles, lib Library, resolveEpisodes channels.EpisodeResolver, proposal proposal.Proposal, lineup []schedule.LineupEntry) observation {
 	out := observation{programs: map[provision.Key][]schedule.ResolvedProgram{}, unknown: map[provision.Key]bool{}, missing: map[provision.Key]bool{}}
 	ids := map[provision.Key]string{}
 	for _, item := range proposal.Lineup {

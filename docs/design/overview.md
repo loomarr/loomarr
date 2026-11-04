@@ -99,7 +99,7 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 | The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/jobs` | `internal/schedule` |
 | Materializing a channel and converging its Tunarr projection; the per-channel mutex | `internal/channels` | `internal/provisionbackstop` |
 | The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/provisionbackstop` | `internal/channels` |
-| Turning an approved Proposal into a channel, preserving operator edits | `internal/binder` | `internal/channels` |
+| Turning an approved Proposal into a channel, preserving operator edits (`binder.Bind` is the pure core; the `Binder` shell reads the store and logs) | `internal/binder` | `internal/channels` |
 | Re-evaluating a channel's intent through the approval gate | `internal/recurate` | `internal/suggest` |
 | Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/provisionbackstop` |
 | Operator connection flows (Live TV wiring, setup checklist) | `internal/setup` | `internal/config`, `internal/app` |

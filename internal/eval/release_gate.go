@@ -15,6 +15,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -251,10 +252,10 @@ type releaseGateGenerator struct {
 	surfaced     int
 }
 
-func (g *releaseGateGenerator) Suggest(ctx context.Context, intent suggest.Intent) (suggest.Proposal, error) {
+func (g *releaseGateGenerator) Suggest(ctx context.Context, intent proposal.Intent) (proposal.Proposal, error) {
 	caseID, ok := g.caseByIntent[intent.Description]
 	if !ok {
-		return suggest.Proposal{}, fmt.Errorf("Intent is absent from the embedded release-gate corpus")
+		return proposal.Proposal{}, fmt.Errorf("Intent is absent from the embedded release-gate corpus")
 	}
 	g.fixture.selectCase(caseID)
 	proposal, err := g.inner.Suggest(ctx, intent)

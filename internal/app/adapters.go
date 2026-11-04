@@ -14,12 +14,12 @@ import (
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -299,17 +299,17 @@ type approvalAdditionAdapter struct {
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	ctx context.Context,
-	item suggest.ProposalItem,
-) (suggest.ProposalItem, bool, error) {
+	item proposal.ProposalItem,
+) (proposal.ProposalItem, bool, error) {
 	key, err := (provision.Title{
 		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
 	}).Key()
 	if err != nil {
-		return suggest.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
+		return proposal.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
 	}
 	mediaType, _, _, ok := provision.ParseKey(key)
 	if !ok {
-		return suggest.ProposalItem{}, false, errors.New("invalid title key")
+		return proposal.ProposalItem{}, false, errors.New("invalid title key")
 	}
 	item.InLibrary = false
 	item.LibraryItemID = ""
@@ -324,7 +324,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	}
 	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
 	if err != nil {
-		return suggest.ProposalItem{}, false, err
+		return proposal.ProposalItem{}, false, err
 	}
 	if !found {
 		return item, false, nil

@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channeledit"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -492,10 +493,10 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 
 // lineupContext turns a channel's stored lineup entries into the lightweight
 // name/year/key context the refiner reasons about.
-func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
-	out := make([]suggest.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposal.LineupContext {
+	out := make([]proposal.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, suggest.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposal.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }

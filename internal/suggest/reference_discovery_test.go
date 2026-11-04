@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -47,9 +48,9 @@ func TestSuggestDiscoversNamedBlockSourceOnce(t *testing.T) {
 				URL: "https://lineups.example/frozen-block", Title: "Synthetic block roster", Excerpt: "Marigold Protocol", TitleAnchors: []string{"Marigold Protocol"},
 			}}
 			model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
-			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: request})
-			if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
-				t.Fatalf("proposal=%+v err=%v", proposal, err)
+			prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: request})
+			if err != nil || len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
+				t.Fatalf("proposal=%+v err=%v", prop, err)
 			}
 			if got := references.Discoveries(); len(got) != 1 || got[0] != "QFUN" || len(references.Calls()) != 0 {
 				t.Fatalf("discovery=%v pasted=%v", got, references.Calls())
@@ -77,13 +78,13 @@ func TestSuggestDiscoversAcronymSourceWithoutPhaseQualifier(t *testing.T) {
 				testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 			)
 
-			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).
-				Suggest(context.Background(), suggest.Intent{Description: request})
+			prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).
+				Suggest(context.Background(), proposal.Intent{Description: request})
 			if got := references.Discoveries(); len(got) != 1 || got[0] != "LCU" {
 				t.Fatalf("discovery=%v, want the stable LCU source label", got)
 			}
-			if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
-				t.Fatalf("proposal=%+v err=%v", proposal, err)
+			if err != nil || len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
+				t.Fatalf("proposal=%+v err=%v", prop, err)
 			}
 		})
 	}
@@ -103,12 +104,12 @@ func TestSuggestNamedBlockStopsRetrievalAfterReferenceGrounding(t *testing.T) {
 	}}
 	model := &namedSetToolAvailabilityLLM{}
 
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), nil, 10).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "QFUN"})
+	prop, err := suggest.New(model, catalog.New(nil, corpus), nil, 10).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatalf("suggestion failed after %d model calls and %d catalog searches: %v", model.calls, len(corpus.Searches()), err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
-		t.Fatalf("proposal=%+v, want the source-grounded constituent", proposal)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
+		t.Fatalf("proposal=%+v, want the source-grounded constituent", prop)
 	}
 	if model.calls != 2 {
 		t.Fatalf("model calls=%d, want collection hypothesis followed by tool-free finalization", model.calls)
@@ -146,12 +147,12 @@ func TestSuggestNamedBlockContinuesPastUnresolvedSourceAnchors(t *testing.T) {
 		testkit.FinalResponse(`{"channelName":"Friday Night","rationale":"A verified named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[{"mediaType":"series","key":"series:tmdb:90001001","name":"Grand Oak Hotel","rationale":"A defining constituent.","confidence":0.98},{"mediaType":"series","key":"series:tmdb:90001002","name":"Crumb Street Bakery","rationale":"A defining constituent.","confidence":0.98}],"policy":{}}`),
 	)
 
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "QFUN"})
+	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatalf("suggestion failed after %d source lookups: %v", len(corpus.Searches()), err)
 	}
-	if len(proposal.Lineup) != 2 {
-		t.Fatalf("lineup=%+v, want later usable source members after early misses", proposal.Lineup)
+	if len(prop.Lineup) != 2 {
+		t.Fatalf("lineup=%+v, want later usable source members after early misses", prop.Lineup)
 	}
 	if got := len(corpus.Searches()); got != 10 {
 		t.Fatalf("source lookups=%d, want the bounded roster scanned through both usable members", got)
@@ -182,13 +183,13 @@ func TestSuggestNamedBlockSurfacesGroundedMembersBeyondModelShortlist(t *testing
 		],"policy":{}}`),
 	)
 
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: "QFUN"})
+		Suggest(context.Background(), proposal.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	items := append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...)
 	for _, item := range items {
 		if item.Name == "Penny the Pocket Witch" {
 			return
@@ -230,15 +231,15 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 		],"policy":{}}`),
 	)
 
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
+		Suggest(context.Background(), proposal.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	items := append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...)
 	if len(items) != 3 {
-		t.Fatalf("items=%+v searches=%+v trace=%+v, want the three distinct requested titles", items, corpus.Searches(), proposal.Trace)
+		t.Fatalf("items=%+v searches=%+v trace=%+v, want the three distinct requested titles", items, corpus.Searches(), prop.Trace)
 	}
 	want := map[int]bool{90001001: true, 90001002: true, 90001003: true}
 	for _, item := range items {
@@ -250,8 +251,8 @@ func TestSuggestNamedBlockPreservesDistinctRequestedTitlesAndRejectsNamesakes(t 
 	if len(want) != 0 {
 		t.Fatalf("missing requested title ids %v from %+v", want, items)
 	}
-	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
-		t.Fatalf("preserved required-title trace is not persistable: %v; trace=%+v", err, proposal.Trace)
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+		t.Fatalf("preserved required-title trace is not persistable: %v; trace=%+v", err, prop.Trace)
 	}
 }
 
@@ -277,12 +278,12 @@ func TestSuggestNamedSetExclusionDoesNotRemoveShorterRelatedTitle(t *testing.T) 
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90001726"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
 
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{
+	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{
 		Description: "LCU Phase One lineup, but leave out Copper Knight 2.",
 		MustExclude: []string{"Copper Knight 2"},
 	})
-	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != copperKnight.TMDBID || len(proposal.Acquisitions) != 0 {
-		t.Fatalf("related-title exclusion removed the wrong member: proposal=%+v err=%v", proposal, err)
+	if err != nil || len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != copperKnight.TMDBID || len(prop.Acquisitions) != 0 {
+		t.Fatalf("related-title exclusion removed the wrong member: proposal=%+v err=%v", prop, err)
 	}
 }
 
@@ -318,10 +319,10 @@ func TestSuggestNamedSourceCompletionRespectsKnownMovieReleaseRange(t *testing.T
 		testkit.FinalResponse(string(final)),
 	)
 
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: description})
-	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != inRange.TMDBID || len(proposal.Acquisitions) != 0 {
-		t.Fatalf("source completion restored an out-of-range film: proposal=%+v err=%v", proposal, err)
+	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).
+		Suggest(context.Background(), proposal.Intent{Description: description})
+	if err != nil || len(prop.Lineup) != 1 || prop.Lineup[0].TMDBID != inRange.TMDBID || len(prop.Acquisitions) != 0 {
+		t.Fatalf("source completion restored an out-of-range film: proposal=%+v err=%v", prop, err)
 	}
 }
 
@@ -350,18 +351,18 @@ func TestSuggestNamedBlockFallsBackToGroundedRequiredTitles(t *testing.T) {
 		testkit.FinalResponse(`{"channelName":"QFUN","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[],"policy":{}}`),
 		unsolicited, unsolicited, unsolicited,
 	)
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
+		Suggest(context.Background(), proposal.Intent{Description: "QFUN — include Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	items := append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...)
 	if len(items) != 3 {
 		t.Fatalf("fallback items = %+v, want every independently grounded required title", items)
 	}
-	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
-		t.Fatalf("fallback trace is not persistable: %v; trace=%+v", err, proposal.Trace)
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
+		t.Fatalf("fallback trace is not persistable: %v; trace=%+v", err, prop.Trace)
 	}
 }
 
@@ -385,14 +386,14 @@ func TestSuggestNamedBlockPreservesSourceMediaType(t *testing.T) {
 		testkit.FinalResponse(`{"channelName":"QFUN","rationale":"A verified named block.","dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[{"mediaType":"series","key":"series:tmdb:90001002","name":"Pinwheel Summer","rationale":"The source identifies the television series.","confidence":0.98}],"policy":{}}`),
 	)
 
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: "QFUN"})
+		Suggest(context.Background(), proposal.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatalf("suggestion failed: %v", err)
 	}
-	if len(proposal.Lineup) != 0 || len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].MediaType != "series" {
-		t.Fatalf("proposal=%+v, want the source-typed series rather than the owned namesake movie", proposal)
+	if len(prop.Lineup) != 0 || len(prop.Acquisitions) != 1 || prop.Acquisitions[0].MediaType != "series" {
+		t.Fatalf("proposal=%+v, want the source-typed series rather than the owned namesake movie", prop)
 	}
 }
 
@@ -416,14 +417,14 @@ func TestSuggestNamedBlockUsesSourceYearToResolveSeriesNamesake(t *testing.T) {
 		],"policy":{}}`),
 	)
 
-	proposal, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+	prop, err := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 		WithReferences(references).
-		Suggest(context.Background(), suggest.Intent{Description: "QFUN"})
+		Suggest(context.Background(), proposal.Intent{Description: "QFUN"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].TMDBID != 90001002 || proposal.Acquisitions[0].Year != 1996 {
-		t.Fatalf("proposal = %+v, want the source-disambiguated 1996 series", proposal)
+	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 90001002 || prop.Acquisitions[0].Year != 1996 {
+		t.Fatalf("proposal = %+v, want the source-disambiguated 1996 series", prop)
 	}
 }
 
@@ -432,8 +433,8 @@ func TestSuggestMissingNamedSourceDoesNotPromoteModelMemory(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	references := &testkit.ReferenceResolver{}
 	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, meaning)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "QFUN block"})
-	if err == nil || len(proposal.Lineup) != 0 || len(references.Discoveries()) != 1 {
-		t.Fatalf("proposal=%+v err=%v discovery=%v", proposal, err, references.Discoveries())
+	prop, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "QFUN block"})
+	if err == nil || len(prop.Lineup) != 0 || len(references.Discoveries()) != 1 {
+		t.Fatalf("proposal=%+v err=%v discovery=%v", prop, err, references.Discoveries())
 	}
 }
