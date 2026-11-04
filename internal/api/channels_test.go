@@ -200,12 +200,8 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore
 	h := api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
 		Binder: binder.New(st, chSvc, nil, log),
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return "" // in particular: tunarr.url is unconfigured
-		},
+		// In particular: tunarr.url is unconfigured.
+		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -1433,12 +1429,7 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
 		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return ""
-		},
+		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	}))
 	t.Cleanup(srv.Close)
 

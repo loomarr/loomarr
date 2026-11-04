@@ -71,28 +71,18 @@ func dispatch(args []string) error {
 // pointing at the closed resources of the last one.
 func run() error {
 	processStarted := time.Now()
-	// Config is loaded once for the log level only. Each generation re-loads it, so an
-	// operator who edits a boot-time setting gets the new value on restart — which is the
-	// entire point of the RestartRequired flag (config-design §3).
-	bootCfg, err := config.Load()
-	if err != nil {
-		health := newGenerationHealth(processStarted, 1)
-		health.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupFailed,
-			"configuration is invalid", "", "")
-		health.CompletePending(diagnostics.StartupSkipped, "configuration unavailable")
-		printStartupReport(os.Stdout, health.Snapshot(), stdoutInteractive(), terminalWidth(), os.Getenv("NO_COLOR") == "")
-		return err
-	}
 	// Logging is hoisted above the loop deliberately: slog.SetDefault mutates process
 	// state, and re-running it per generation would be the exact package-level-mutation
-	// hazard §9.2 warns about.
-	log := newLogger(bootCfg.LogLevel)
+	// hazard §9.2 warns about. The level is a LevelVar each generation sets from its own
+	// config, so LOG_LEVEL applies on restart like every other boot key (config-design §3).
+	level := new(slog.LevelVar)
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
 
 	databaseMigration := &databaseMigrationState{bootstrapDir: config.ConventionalDataDir}
 	for generation := 1; ; generation++ {
 		startup := newGenerationHealth(processStarted, generation)
-		restart, err := runOnce(log, generation, databaseMigration, startup)
+		restart, err := runOnce(log, level, generation, databaseMigration, startup)
 		if err != nil {
 			return err
 		}
@@ -144,7 +134,7 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 // The returned bool and error are deliberately separate: "the operator restarted us" is
 // not a failure, and collapsing it into an error would make a normal action look like one
 // in the logs.
-func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrationState, startup *diagnostics.Startup) (restart bool, err error) {
+func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMigration *databaseMigrationState, startup *diagnostics.Startup) (restart bool, err error) {
 	cfg, err := config.Load()
 	if err != nil {
 		startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupFailed,
@@ -165,6 +155,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
 	// boot (an invalid enum fails there, config-design §3) — no separate check here.
 
+	level.Set(logLevel(cfg.LogLevel))
 	log.Info("loomarr starting", "listen", cfg.ListenAddr, "log_level", cfg.LogLevel, "generation", generation)
 
 	// Open the store (§5): backend chosen by DATABASE_URL scheme, migrations run
@@ -546,13 +537,13 @@ func conciseDatabaseMigrationError(err error) string {
 	return msg
 }
 
-// newLogger builds a JSON slog logger at the configured level (§14, §17).
-func newLogger(level string) *slog.Logger {
+// logLevel parses LOG_LEVEL (§14, §17); an unknown name logs at info.
+func logLevel(name string) slog.Level {
 	var lvl slog.Level
-	if err := lvl.UnmarshalText([]byte(level)); err != nil {
-		lvl = slog.LevelInfo
+	if err := lvl.UnmarshalText([]byte(name)); err != nil {
+		return slog.LevelInfo
 	}
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	return lvl
 }
 
 func stdoutInteractive() bool {

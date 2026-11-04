@@ -33,6 +33,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -102,7 +103,8 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, suggester, suggest.Config{Workers: 1, Timeout: 30 * time.Second}, ids, clock, testkit.Logger())
+	svc := suggest.NewService(st, proposalworkflow.New(st, ids, clock), suggester,
+		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration
 	// resolver, so program slots carry runtime and the break interleave fires.

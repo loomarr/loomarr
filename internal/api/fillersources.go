@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -228,10 +229,10 @@ func isProviderID(id string) bool { return strings.HasPrefix(id, providerIDPrefi
 
 func (s *Server) fillerFetchEvery() time.Duration {
 	const fallback = 6 * time.Hour
-	if s.liveConfigDuration == nil {
+	if s.liveSettings == nil {
 		return fallback
 	}
-	every := s.liveConfigDuration("filler.fetch.every")
+	every := settings.FillerFetchEvery.Get(s.liveSettings)
 	if every < 0 {
 		return fallback
 	}
@@ -239,10 +240,10 @@ func (s *Server) fillerFetchEvery() time.Duration {
 }
 
 func (s *Server) fillerFetchMaxPerCheck() int {
-	if s.liveConfigInt == nil {
+	if s.liveSettings == nil {
 		return 10
 	}
-	if value := s.liveConfigInt("filler.fetch.max_per_run"); value > 0 {
+	if value := settings.FillerFetchMaxPerRun.Get(s.liveSettings); value > 0 {
 		return value
 	}
 	return 10
@@ -996,7 +997,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 		// WHO changed it, so flipping this switch is audited exactly like editing the same key
 		// on the Settings page. A private write path would be the one setting with no history.
 		results := s.settings.Patch(ctx,
-			map[string]string{"filler.source.folder.enabled": strconv.FormatBool(in.Body.Enabled)},
+			map[string]string{settings.FillerSourceFolderEnabled.Key(): strconv.FormatBool(in.Body.Enabled)},
 			auditActor(ctx))
 		for _, r := range results {
 			if r.Status == "pinned" {
@@ -1147,14 +1148,10 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// path here would claim scan/fetch actions target a directory they do not yet use.
 	dir := s.fillerLayout.ClipDir()
 
-	// ⚠ Read through the BOOL seam, never liveConfig: settings.String panics on a non-string
-	// Kind, so routing this key through the string accessor took the whole route down with an
-	// empty reply rather than returning something a comparison could inspect.
-	//
-	// An unanswerable read is ON, matching the syncer's own gate (`resolved.boolOn`) and the
-	// setting's declared default. Treating it as "off" would render the drop-folder switched
+	// An unanswerable read is ON: the handle answers the setting's declared default, the same
+	// as the syncer's own gate. Treating it as "off" would render the drop-folder switched
 	// off on a page whose whole job is telling the operator why their catalog is empty.
-	folderEnabled := s.liveConfigBoolOn == nil || s.liveConfigBoolOn("filler.source.folder.enabled")
+	folderEnabled := settings.FillerSourceFolderEnabled.Get(s.liveSettings)
 	providers, err := s.store.ListFillerProviders(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list filler providers", err)
@@ -1268,7 +1265,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			ID:   string(sourceprovider.FolderID),
 			Kind: string(sourceprovider.FolderID),
 			// The folder's switch is a SETTING, because the folder itself is derived from one.
-			// `boolOn` semantics: anything other than an explicit false reads as on, so a
+			// The handle answers the declared default (on) when the reader cannot, so a
 			// settings service that cannot answer does not silently stop the scan.
 			Enabled:          folderEnabled,
 			EffectiveEnabled: folderEnabled,

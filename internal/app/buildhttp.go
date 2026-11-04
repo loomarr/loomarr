@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 type httpBuild struct {
@@ -36,7 +37,7 @@ type httpBuild struct {
 	webPushPublicKey         string
 	invitationDelivery       api.InvitationDeliveryService
 	passwordRecovery         api.PasswordRecoveryService
-	liveConfig               func(string) string
+	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService
 	database                 api.DatabaseService
@@ -83,7 +84,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutSecret, playoutSecretCurrent := deps.auth.playoutSecret, deps.auth.playoutSecretCurrent
 	backupsSvc, restartSvc, bootCfg := deps.backups, deps.restart, deps.bootConfig
 	guideSvc, settingsSvc := deps.guide, deps.settings
-	liveConfig, libraryConfigured := deps.liveConfig, deps.libraryConfigured
+	liveSettings, libraryConfigured := deps.liveSettings, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
 	return api.Router(log, api.Options{
 		Store:                st,
@@ -99,56 +100,51 @@ func buildHTTP(deps httpBuild) http.Handler {
 		InvitationRedemption: invitationRedemption,
 		InvitationDelivery:   deps.invitationDelivery,
 		PasswordRecovery:     deps.passwordRecovery,
-		AccessPublicURL: func() string {
-			if liveConfig == nil {
-				return ""
-			}
-			return liveConfig("access.public_url")
-		},
-		UserSync:            userSync,
-		Devices:             deviceMgr,
-		DeviceLimiter:       deviceLimiter,
-		CookieSecure:        set.str("cookie.secure"),
-		TrustProxy:          set.boolv("security.trust_proxy"),
-		DevLogin:            ov.DevLogin,
-		Pprof:               ov.Pprof,
-		MetricsToken:        ov.MetricsToken,
-		Channels:            channelSvc,
-		LiveTV:              liveTVSvc,
-		TunerRescanner:      tunerRescanner,
-		TunarrConnect:       tunarrConnectSvc,
-		Suggest:             suggestSvc,
-		ProposalWorkflow:    proposalWorkflow,
-		ProposalProgress:    deps.suggestions.progress,
-		Search:              searchSvc,
-		MovieCollections:    movieCollectionsSvc,
-		Collections:         collectionsSvc,
-		IdeaLibrary:         deps.suggestions.ideaLibrary,
-		Icons:               iconSvc,
-		Images:              imageService(imageSvc),
-		Events:              eventBus,
-		Shutdown:            rootCtx.Done(),
-		Filler:              fillerSvc,
-		SourceProviders:     deps.fillers.providers,
-		FillerResearch:      deps.fillers.research,
-		IntakeLanguages:     deps.fillers.intakeLanguages,
-		FillerDefects:       deps.fillers.defects,
-		Pods:                podPreview,
-		Taxonomy:            taxonomyEditor,
-		SystemLLM:           systemLLM,
-		Database:            databaseSvc,
-		Encryption:          buildEncryptionService(st, deps.foundation.protection),
-		Backups:             backupsSvc,
-		SSO:                 ssoSvc,
-		Restart:             restartSvc,
-		Activity:            activityRec,
-		DiagnosticEvents:    deps.foundation.diagnosticEvents,
-		DiagnosticProcesses: deps.foundation.diagnosticProcesses,
-		DiagnosticBundles:   deps.foundation.diagnosticBundles,
-		DiagnosticCapture:   deps.foundation.diagnostics,
-		ClientDiagnostics:   deps.foundation.clientDiagnostics,
-		ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
-		StartupReports:      deps.foundation.startupReports,
+		AccessPublicURL:      func() string { return settings.AccessPublicURL.Get(liveSettings) },
+		UserSync:             userSync,
+		Devices:              deviceMgr,
+		DeviceLimiter:        deviceLimiter,
+		CookieSecure:         settings.CookieSecure.Get(set),
+		TrustProxy:           settings.SecurityTrustProxy.Get(set),
+		DevLogin:             ov.DevLogin,
+		Pprof:                ov.Pprof,
+		MetricsToken:         ov.MetricsToken,
+		Channels:             channelSvc,
+		LiveTV:               liveTVSvc,
+		TunerRescanner:       tunerRescanner,
+		TunarrConnect:        tunarrConnectSvc,
+		Suggest:              suggestSvc,
+		ProposalWorkflow:     proposalWorkflow,
+		ProposalProgress:     deps.suggestions.progress,
+		Search:               searchSvc,
+		MovieCollections:     movieCollectionsSvc,
+		Collections:          collectionsSvc,
+		IdeaLibrary:          deps.suggestions.ideaLibrary,
+		Icons:                iconSvc,
+		Images:               imageService(imageSvc),
+		Events:               eventBus,
+		Shutdown:             rootCtx.Done(),
+		Filler:               fillerSvc,
+		SourceProviders:      deps.fillers.providers,
+		FillerResearch:       deps.fillers.research,
+		IntakeLanguages:      deps.fillers.intakeLanguages,
+		FillerDefects:        deps.fillers.defects,
+		Pods:                 podPreview,
+		Taxonomy:             taxonomyEditor,
+		SystemLLM:            systemLLM,
+		Database:             databaseSvc,
+		Encryption:           buildEncryptionService(st, deps.foundation.protection),
+		Backups:              backupsSvc,
+		SSO:                  ssoSvc,
+		Restart:              restartSvc,
+		Activity:             activityRec,
+		DiagnosticEvents:     deps.foundation.diagnosticEvents,
+		DiagnosticProcesses:  deps.foundation.diagnosticProcesses,
+		DiagnosticBundles:    deps.foundation.diagnosticBundles,
+		DiagnosticCapture:    deps.foundation.diagnostics,
+		ClientDiagnostics:    deps.foundation.clientDiagnostics,
+		ClientCrashes:        clientCrashService(deps.foundation.clientCrashes),
+		StartupReports:       deps.foundation.startupReports,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
 		RestartDrift:             restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
@@ -167,7 +163,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Approver:          proposalApprover,
 		Binder:            chBinder,
 		FillerLayout:      fillerLayout,
-		LiveConfig:        liveConfig,
+		LiveSettings:      liveSettings,
 		LibraryConfigured: libraryConfigured,
 		BackendCheckpoint: func(ctx context.Context) (api.BackendCheckpoint, error) {
 			snapshot, err := checkpointSnapshot(ctx)
@@ -176,11 +172,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 				PublishedInternal: snapshot.PublishedInternal,
 			}, err
 		},
-		LiveConfigInt:      set.intv,
-		LiveConfigDuration: set.dur,
-		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
-		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
-		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
@@ -197,9 +188,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont:       playout.CardFontFor(set.str("playout.ffmpeg_path")),
-		PlayoutTonemap:    playout.TonemapperFor(set.str("playout.ffmpeg_path")),
-		PlayoutGPUTonemap: playout.GPUFiltersFor(set.str("playout.ffmpeg_path")),
+		PlayoutFont:       playout.CardFontFor(settings.PlayoutFFmpegPath.Get(set)),
+		PlayoutTonemap:    playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)),
+		PlayoutGPUTonemap: playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set)),
 		// Measured, not a build property: the boot class probe publishes it (probeCapacity).
 		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
 		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction

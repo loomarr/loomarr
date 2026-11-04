@@ -158,10 +158,10 @@ func newPlayoutHarness(t *testing.T, config playoutHarnessConfig) *playoutHarnes
 			"playout.backend":   config.Backend,
 		}
 		opts := api.Options{
-			Store:      defaults.Store,
-			Auth:       api.NewTokenAuthorizer(adminToken),
-			Log:        defaults.Log,
-			LiveConfig: func(key string) string { return cfg[key] },
+			Store:        defaults.Store,
+			Auth:         api.NewTokenAuthorizer(adminToken),
+			Log:          defaults.Log,
+			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
 		}
 		if config.Sessions != nil {
 			opts.Playout = config.Sessions

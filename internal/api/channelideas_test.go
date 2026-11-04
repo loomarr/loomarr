@@ -116,8 +116,7 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("idea-req-%d", next.Add(1)) }
 		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
-		service := suggest.NewService(defaults.Store, nil, suggest.Config{}, newID, func() time.Time { return now }, defaults.Log).
-			WithDurableWorkflow(workflow).
+		service := suggest.NewService(defaults.Store, workflow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
 			WithProposalNotifier(notify)
 		return api.Router(defaults.Log, api.Options{
 			Suggest:          service,
@@ -371,8 +370,7 @@ func newManualChannelHarness(
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
 		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
-		service := suggest.NewService(defaults.Store, nil, suggest.Config{}, newID, func() time.Time { return now }, defaults.Log).
-			WithDurableWorkflow(workflow)
+		service := suggest.NewService(defaults.Store, workflow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
 		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
 		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)

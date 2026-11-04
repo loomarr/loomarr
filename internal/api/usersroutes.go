@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -262,7 +263,7 @@ func (s *Server) deleteUserContactReplacement(ctx context.Context, in *userConta
 func (s *Server) withUsage(ctx context.Context, body userBody, u identitystore.User) userBody {
 	limit := u.Quota
 	if limit <= 0 {
-		limit = s.configInt("suggest.max_acquisitions")
+		limit = s.configInt(settings.SuggestMaxAcquisitions)
 	}
 	body.EffectiveQuota = limit
 	usage, err := suggest.PendingFor(ctx, s.store, u.ID, limit)

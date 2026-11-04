@@ -99,7 +99,7 @@ fetches by, the field families it supplies (technical, identity and numbering, d
 certification, artwork), its **basis** (the kind of evidence it is: manager, sidecar, catalog …), the
 catalog its text comes from, and rate hints. It fetches one item by id and may also list everything
 (`Lister`) or report changes since a cursor (`ChangeFeed`). Provider ids are a closed set (`sonarr`,
-`radarr`, `nfo`), and a guard test fails on any code that compares them.
+`radarr`, `nfo`, `tmdb`), and a guard test fails on any code that compares them.
 
 - **Sonarr and Radarr** (`metadataprovider/arr`) are managers. Sonarr returns a series by TVDB id with
   every episode: the episode's own TVDB id, its numbering including the air-order position of specials,
@@ -110,6 +110,18 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   elements, guide text, `mpaa` and numbering. The default `uniqueid` names its catalog. Reads are capped
   at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop malformed
   ids.
+- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
+  series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
+  content ratings, keywords, images), so the record carries guide text, genres, keywords, the
+  community rating, series status, the US certification (the strictest of a movie's releases),
+  poster, fanart and logo references, and imdb and tvdb ids. A movie's TMDB collection rides on its
+  descriptive record, since the movie call already returns it. An episode is fetched by its own
+  TVDB episode id through `/find`, never by season and episode number, and its record carries no
+  numbering: TMDB and TVDB lay out many shows differently, so only the id bridges the two. Its
+  `vote_average` is the episode's community rating. Language and country are the installation's
+  `metadata.language` and `metadata.country`; a country other than the US is refused. The change
+  feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
+  cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
 - **Arr requests never follow a redirect**, so the API key cannot reach another host.
 
 **Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
@@ -120,7 +132,7 @@ move whole.
 | --- | --- |
 | Technical | measured, header, manager |
 | Identity and numbering | manager, id in a name, sidecar, confirmed link |
-| Descriptive | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
+| Descriptive (text, genres, keywords, community rating, collection) | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
 | Certification | the strictest grounded rating on the US ladder |
 | Artwork | sidecar, catalog, manager, per artwork kind |
 

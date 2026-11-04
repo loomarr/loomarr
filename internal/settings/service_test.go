@@ -73,9 +73,9 @@ func TestResolveMany_UsesOneSnapshotWithOrdinaryPrecedence(t *testing.T) {
 
 // A default resolves to the setting's TYPED value, not the raw string, exactly like the
 // env/db paths — because the real registry (declared.go) stores every default as a raw
-// STRING ("24h", "2", "true"), and a typed accessor (set.dur/intv/boolv → Value.(T)) must
+// STRING ("24h", "2", "true"), and a typed handle (Get → Value.(T)) must
 // still get a real T. Regression for the rolling-window bug: an unparsed "24h" default
-// failed the time.Duration assertion in set.dur → window 0 → no truncation → the whole
+// failed the time.Duration assertion in the typed read → window 0 → no truncation → the whole
 // 800-episode run materialized. (The prior tests hid this by hand-typing their defaults
 // e.g. Default: 2; the real registry never does.)
 // A string list reads comma-joined through String, the form an operator types, so a live-config

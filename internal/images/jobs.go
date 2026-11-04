@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // The image service's scheduled jobs (§22, §18.1).
@@ -32,7 +33,7 @@ func FetchJob(f *Fetcher) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "images-fetch", Group: jobs.GroupArtwork, Title: "Download pending artwork",
 		Description: "Downloads recorded artwork that is still showing as a placeholder.",
-		DefaultCron: "0 * * * * *", ScheduleKey: "job.images_fetch.schedule",
+		DefaultCron: "0 * * * * *", ScheduleKey: settings.JobImagesFetchSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := f.FetchPending(ctx); return err },
 	}
 }
@@ -50,7 +51,7 @@ func AVIFJobSpec(j *AVIFJob, disabledReason string) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "images-avif", Group: jobs.GroupArtwork, Title: "Encode AVIF artwork",
 		Description: "Creates smaller AVIF variants while retaining WebP fallbacks for browser compatibility.",
-		DefaultCron: "0 20 * * * *", ScheduleKey: "job.images_avif.schedule",
+		DefaultCron: "0 20 * * * *", ScheduleKey: settings.JobImagesAvifSchedule.Key(),
 		DisabledReason: disabledReason,
 		Run:            func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
@@ -63,7 +64,7 @@ func MaintenanceJob(f *Fetcher, g *GC) jobs.Job {
 	return jobs.Job{
 		Name: "images-maintenance", Group: jobs.GroupArtwork, Title: "Maintain stored artwork",
 		Description: "Restores recoverable files, enforces retention, removes unreferenced images, and evicts variants above budget.",
-		DefaultCron: "0 0 5 * * *", ScheduleKey: "job.images_maintenance.schedule",
+		DefaultCron: "0 0 5 * * *", ScheduleKey: settings.JobImagesMaintenanceSchedule.Key(),
 		Run: func(ctx context.Context) error {
 			_, restoreErr := f.Rehydrate(ctx)
 			_, cleanupErr := g.Run(ctx)
@@ -86,7 +87,7 @@ func AdoptJobSpec(j *AdoptJob) jobs.Job {
 	return jobs.Job{
 		Name: "images-adopt-artwork", Group: jobs.GroupArtwork, Title: "Adopt clip artwork",
 		Description: "Moves clip thumbnails and previews into the shared image library for consistent delivery.",
-		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.images_adopt_artwork.schedule",
+		DefaultCron: "0 */5 * * * *", ScheduleKey: settings.JobImagesAdoptArtworkSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }

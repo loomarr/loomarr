@@ -369,7 +369,7 @@ type placeholder func(query string) string
 type scannable = store.Scannable
 
 // The core's Unix-seconds time-column codec, under the names the moved code already uses. The
-// nanosecond codec the decision and safety ledgers use is this package's own (fillerDecisionEpoch).
+// nanosecond codec the safety ledger uses is this package's own (fillerNanoEpoch).
 var (
 	epoch     = store.Epoch
 	fromEpoch = store.FromEpoch

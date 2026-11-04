@@ -161,7 +161,7 @@ func TestAuthorizePlayout_AcceptsDeviceToken(t *testing.T) {
 func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 	s := &Server{
 		playoutSecret: func() string { return testPlayoutTok },
-		liveConfig:    func(k string) string { return map[string]string{"server.public_url": "http://loomarr.local:8080"}[k] },
+		liveSettings:  mapSettings{"server.public_url": "http://loomarr.local:8080"},
 	}
 	u := s.playoutHLSURL("ch_abc", "720", playout.PlanBaseline, time.Now().Add(time.Hour))
 	if u == "" {
@@ -192,7 +192,7 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 	// No public URL ⇒ no ABSOLUTE URL, matching the other playout builders' "not configured"
 	// signal. But the RELATIVE URL must still be built — the web player uses it and does not need
 	// public_url — which is the whole point of returning both.
-	noBase := &Server{playoutSecret: func() string { return testPlayoutTok }, liveConfig: func(string) string { return "" }}
+	noBase := &Server{playoutSecret: func() string { return testPlayoutTok }, liveSettings: mapSettings{}}
 	if noBase.playoutHLSURL("ch_abc", "", playout.PlanBaseline, time.Now().Add(time.Hour)) != "" {
 		t.Fatal("built an ABSOLUTE HLS URL with no public_url")
 	}

@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -97,8 +98,8 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 	// backend has no speech engine: left on, the filler pipeline fails every clip at that stage
 	// ("whisper not configured") and none ever reaches a break.
 	if err := api.expectOK(ctx, http.MethodPatch, "/v1/settings", map[string]any{"edits": map[string]string{
-		"library.flavor": "emby", "library.url": cfg.libraryURL, "library.token": DemoToken,
-		"filler.transcribe.enabled": "false",
+		settings.LibraryFlavor.Key(): "emby", settings.LibraryURL.Key(): cfg.libraryURL, settings.LibraryToken.Key(): DemoToken,
+		settings.FillerTranscribeEnabled.Key(): "false",
 	}}, nil); err != nil {
 		return fmt.Errorf("point the backend at the demo library: %w", err)
 	}
