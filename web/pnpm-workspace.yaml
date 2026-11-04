@@ -23,18 +23,18 @@ minimumReleaseAgeExclude:
   # Expo SDK 58.0.23 (published 2026-11-03T17:06Z by Expo): expo-doctor requires the newest SDK
   # patch, so the release-age wait is waived for exactly these versions (maintainer-approved).
   # Drop these entries once they are a day old.
-  - '@expo/cli@58.1.19'
-  - '@expo/config-plugins@58.0.12'
-  - '@expo/config@58.0.11'
-  - '@expo/env@2.5.4'
-  - '@expo/fingerprint@0.21.9'
-  - '@expo/inline-modules@0.2.9'
-  - '@expo/local-build-cache-provider@58.0.11'
-  - '@expo/log-box@58.0.15'
-  - '@expo/metro-config@58.0.21'
-  - '@expo/metro-runtime@58.0.17'
-  - '@expo/prebuild-config@58.0.19'
-  - '@expo/router-server@58.0.21'
+  - "@expo/cli@58.1.19"
+  - "@expo/config-plugins@58.0.12"
+  - "@expo/config@58.0.11"
+  - "@expo/env@2.5.4"
+  - "@expo/fingerprint@0.21.9"
+  - "@expo/inline-modules@0.2.9"
+  - "@expo/local-build-cache-provider@58.0.11"
+  - "@expo/log-box@58.0.15"
+  - "@expo/metro-config@58.0.21"
+  - "@expo/metro-runtime@58.0.17"
+  - "@expo/prebuild-config@58.0.19"
+  - "@expo/router-server@58.0.21"
   - babel-preset-expo@58.0.24
   - expo-asset@58.0.20
   - expo-modules-autolinking@58.0.17
