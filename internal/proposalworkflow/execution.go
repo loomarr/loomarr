@@ -31,22 +31,13 @@ type AttemptFailure struct {
 	TraceJSON  string
 }
 
-type executionRepository interface {
-	ClaimAttempts(context.Context, time.Time, time.Duration, int) ([]Work, error)
-	CompleteAttempt(context.Context, Completion) (suggest.WorkflowProposal, error)
-	FailAttempt(context.Context, AttemptFailure) error
-}
-
 // Claim leases bounded work. Lease recovery and monotonically numbered Attempt
 // creation are one repository transaction behind this module-owned command.
 func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Work, error) {
 	if lease <= 0 || limit <= 0 {
 		return nil, fmt.Errorf("%w: invalid claim lease=%s limit=%d", ErrInvalidState, lease, limit)
 	}
-	if w.execution == nil {
-		return nil, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
-	works, err := w.execution.ClaimAttempts(ctx, now, lease, limit)
+	works, err := w.repository.ClaimAttempts(ctx, now, lease, limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim Proposal Jobs: %w", err)
 	}
@@ -76,10 +67,7 @@ func (w *Workflow) Complete(ctx context.Context, work Work, prop proposal.Propos
 	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
-	if w.execution == nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
-	completed, err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})
+	completed, err := w.repository.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
@@ -96,14 +84,11 @@ func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic 
 	if boundedCode != FailureNoGroundedTitles && boundedCode != FailureSelectionEmpty && boundedCode != FailureBudgetExhausted {
 		boundedCode = FailureGenerationFailed
 	}
-	if w.execution == nil {
-		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
 	trace := ""
 	if len(traceJSON) > 0 {
 		trace = traceJSON[0]
 	}
-	if err := w.execution.FailAttempt(ctx, AttemptFailure{
+	if err := w.repository.FailAttempt(ctx, AttemptFailure{
 		Work: work, Code: boundedCode, Diagnostic: diagnostic,
 		TraceJSON: trace,
 	}); err != nil {

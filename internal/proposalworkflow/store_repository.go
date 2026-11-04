@@ -12,23 +12,6 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-// Store is the private persistence port used by Workflow. The application
-// passes its ordinary store.Store; callers never receive this lower-level seam.
-type Store interface {
-	GetJob(context.Context, string) (store.Job, error)
-	GetProposalJob(context.Context, string) (store.ProposalJob, error)
-	ListProposalJobIDs(context.Context, int) ([]string, error)
-	ListProposalJobIDsByCreator(context.Context, string, int) ([]string, error)
-	CreateJob(context.Context, store.Job) error
-	FindJobByIntentHash(context.Context, string, time.Time) (store.Job, error)
-	CloneSuggestionSuccess(context.Context, string, store.Job, string) (store.Proposal, error)
-	CreateSuggestionResult(context.Context, store.Job, store.Proposal) error
-	ReviseSubmittedProposal(context.Context, string, string, int, string, string, time.Time, time.Time) error
-	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
-	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
-	CommitSuggestionFailure(context.Context, string, int, string, string, string, time.Time) error
-}
-
 func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error) {
 	if all {
 		return r.store.ListProposalJobIDs(ctx, limit)
@@ -37,14 +20,14 @@ func (r *storeRepository) ListIDs(ctx context.Context, ownerID string, all bool,
 }
 
 type storeRepository struct {
-	store Store
+	store store.ProposalRepository
 	newID func() string
 	now   func() time.Time
 }
 
 // New installs the Store-backed durable workflow. Identifier and clock
 // functions are injected so crash/replay tests stay deterministic.
-func New(st Store, newID func() string, now func() time.Time) *Workflow {
+func New(st store.ProposalRepository, newID func() string, now func() time.Time) *Workflow {
 	repository := &storeRepository{store: st, newID: newID, now: now}
 	return newWorkflow(repository)
 }

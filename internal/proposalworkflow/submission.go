@@ -17,13 +17,6 @@ const (
 	jobKindRecurate = "recurate"
 )
 
-type submissionRepository interface {
-	SubmitIntent(context.Context, proposal.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
-	SubmitChannelIntent(context.Context, string, proposal.Intent, string, string) (string, error)
-	ReviseIntent(context.Context, string, string, int, proposal.Intent) error
-	RecordProposal(context.Context, proposal.Intent, proposal.Proposal, string) (suggest.WorkflowProposal, error)
-}
-
 // Record creates a fresh caller-owned lifecycle for a Proposal that needed no generation: a
 // library channel idea whose titles the library already grounded (#1720). It lands exactly where a
 // generated Proposal does (done, one succeeded Attempt, submitted for approval), so the queue,
@@ -41,11 +34,7 @@ func (w *Workflow) Record(
 	if err := validateProposalIdentities(prop); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	repository, ok := w.repository.(submissionRepository)
-	if !ok {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
-	}
-	return repository.RecordProposal(ctx, intent, prop, createdBy)
+	return w.repository.RecordProposal(ctx, intent, prop, createdBy)
 }
 
 // Submit creates a fresh caller-owned lifecycle. cacheSince only saves the
@@ -56,11 +45,7 @@ func (w *Workflow) Submit(
 	createdBy string,
 	cacheSince time.Time,
 ) (suggest.WorkflowSubmission, error) {
-	repository, ok := w.repository.(submissionRepository)
-	if !ok {
-		return suggest.WorkflowSubmission{}, fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
-	}
-	return repository.SubmitIntent(ctx, intent, createdBy, cacheSince)
+	return w.repository.SubmitIntent(ctx, intent, createdBy, cacheSince)
 }
 
 // SubmitForChannel creates a fresh lifecycle that re-curates an existing Channel: a refine
@@ -80,11 +65,7 @@ func (w *Workflow) SubmitForChannel(
 	if kind != jobKindSuggest && kind != jobKindRecurate {
 		return "", fmt.Errorf("%w: unsupported Proposal Job kind %q", ErrInvalidState, kind)
 	}
-	repository, ok := w.repository.(submissionRepository)
-	if !ok {
-		return "", fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
-	}
-	return repository.SubmitChannelIntent(ctx, channelID, intent, kind, createdBy)
+	return w.repository.SubmitChannelIntent(ctx, channelID, intent, kind, createdBy)
 }
 
 // Revise replaces the Intent behind the exact submitted Proposal an authorized
@@ -98,11 +79,7 @@ func (w *Workflow) Revise(ctx context.Context, viewer Viewer, jobID string, inte
 	if journey.Proposal == nil || journey.Proposal.Status != ProposalSubmitted {
 		return ErrNotRevisable
 	}
-	repository, ok := w.repository.(submissionRepository)
-	if !ok {
-		return fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
-	}
-	if err := repository.ReviseIntent(ctx, jobID, journey.Proposal.ID, len(journey.Attempts), intent); err != nil {
+	if err := w.repository.ReviseIntent(ctx, jobID, journey.Proposal.ID, len(journey.Attempts), intent); err != nil {
 		return fmt.Errorf("revise Proposal Job %q: %w", jobID, err)
 	}
 	return nil

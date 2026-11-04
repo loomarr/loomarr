@@ -533,7 +533,10 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 	}
 }
 
+// recordingRepository fakes only Load. It embeds the Repository interface, so a test that reaches
+// any other method fails loudly on the nil embedded value instead of being answered by a stub.
 type recordingRepository struct {
+	Repository
 	record   Record
 	err      error
 	loadedID string

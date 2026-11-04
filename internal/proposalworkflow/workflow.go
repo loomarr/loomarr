@@ -193,12 +193,23 @@ type Journey struct {
 	UpdatedAt time.Time
 }
 
-type repository interface {
+// Repository is the one persistence port of the Proposal Job workflow: it reads a Job's Record,
+// lists Jobs, runs the Attempt lifecycle (claim, complete, fail) and creates or revises the Job
+// behind an Intent or a recorded Proposal. Each method is one repository transaction; lifecycle
+// rules stay in Workflow. The production implementation is Store-backed (see New); tests fake
+// only the methods they exercise, by embedding the interface.
+type Repository interface {
 	Load(context.Context, string) (Record, error)
-}
+	ListIDs(ctx context.Context, ownerID string, all bool, limit int) ([]string, error)
 
-type listRepository interface {
-	ListIDs(context.Context, string, bool, int) ([]string, error)
+	ClaimAttempts(context.Context, time.Time, time.Duration, int) ([]Work, error)
+	CompleteAttempt(context.Context, Completion) (suggest.WorkflowProposal, error)
+	FailAttempt(context.Context, AttemptFailure) error
+
+	SubmitIntent(ctx context.Context, intent proposal.Intent, createdBy string, cacheSince time.Time) (suggest.WorkflowSubmission, error)
+	SubmitChannelIntent(ctx context.Context, channelID string, intent proposal.Intent, kind, createdBy string) (string, error)
+	ReviseIntent(ctx context.Context, jobID, proposalID string, attempts int, intent proposal.Intent) error
+	RecordProposal(ctx context.Context, intent proposal.Intent, prop proposal.Proposal, createdBy string) (suggest.WorkflowProposal, error)
 }
 
 type ListOptions struct {
@@ -207,17 +218,14 @@ type ListOptions struct {
 }
 
 // Workflow keeps lifecycle and projection rules behind one interface. The
-// production constructor will install the Store-backed repository; tests use
+// production constructor installs the Store-backed Repository; tests use
 // newWorkflow so they exercise this same interface without exposing that seam.
 type Workflow struct {
-	repository repository
-	execution  executionRepository
+	repository Repository
 }
 
-func newWorkflow(repository repository) *Workflow {
-	workflow := &Workflow{repository: repository}
-	workflow.execution, _ = repository.(executionRepository)
-	return workflow
+func newWorkflow(repository Repository) *Workflow {
+	return &Workflow{repository: repository}
 }
 
 // Inspect returns one owner-authorized authoritative Journey.
@@ -337,15 +345,11 @@ func isAIRecoveryReason(reason FailureReason) bool {
 // List returns bounded authoritative Journeys newest-first. Member reads are
 // always caller-scoped; Mine only changes admin behavior.
 func (w *Workflow) List(ctx context.Context, viewer Viewer, options ListOptions) ([]Journey, error) {
-	lister, ok := w.repository.(listRepository)
-	if !ok {
-		return nil, fmt.Errorf("%w: list repository unavailable", ErrInvalidState)
-	}
 	all := viewer.Admin && !options.Mine
 	if !all && viewer.UserID == "" {
 		return []Journey{}, nil
 	}
-	ids, err := lister.ListIDs(ctx, viewer.UserID, all, 100)
+	ids, err := w.repository.ListIDs(ctx, viewer.UserID, all, 100)
 	if err != nil {
 		return nil, fmt.Errorf("list Proposal Jobs: %w", err)
 	}
