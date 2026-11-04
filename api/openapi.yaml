@@ -6534,6 +6534,37 @@ components:
         - episodes
         - other
       type: object
+    LibraryHookDTO:
+      additionalProperties: false
+      properties:
+        app:
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        error:
+          description: Why registering failed
+          type: string
+        lastEvent:
+          description: The arr's event type, since Loomarr started
+          type: string
+        lastEventAt:
+          format: date-time
+          type: string
+        registeredAt:
+          format: date-time
+          type: string
+        state:
+          enum:
+            - registered
+            - not_configured
+            - no_address
+            - failed
+          type: string
+      required:
+        - app
+        - state
+      type: object
     LibraryPathMappingDTO:
       additionalProperties: false
       properties:
@@ -6708,6 +6739,11 @@ components:
           items:
             $ref: "#/components/schemas/LibraryHeldDTO"
           type: array
+        hooks:
+          description: Sonarr's and Radarr's webhooks to Loomarr
+          items:
+            $ref: "#/components/schemas/LibraryHookDTO"
+          type: array
         inUse:
           description: Folders in use
           format: int64
@@ -6736,6 +6772,7 @@ components:
         - headersPending
         - problems
         - held
+        - hooks
       type: object
     LineupContext:
       additionalProperties: false
@@ -17153,6 +17190,68 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List media-server collections
+      tags:
+        - library
+  /v1/library/hooks/{app}:
+    post:
+      description: Where Sonarr and Radarr send file events once Loomarr has registered itself with them. Authenticated by the generated secret as the basic-auth password, not by a session.
+      operationId: receiveLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              contentMediaType: application/octet-stream
+              format: binary
+              type: string
+        required: true
+      responses:
+        "202":
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Receive an event from Sonarr or Radarr
+      tags:
+        - library
+  /v1/library/hooks/{app}/test:
+    post:
+      description: Registers Loomarr with the arr again and asks it to send its test event. 502 with the arr's answer when it cannot save or reach Loomarr's connection.
+      operationId: testLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Test an arr's webhook
       tags:
         - library
   /v1/library/path-map:

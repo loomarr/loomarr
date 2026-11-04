@@ -23,7 +23,10 @@ func TestWatcherPassesOverChangedFolders(t *testing.T) {
 	h.run()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	w := &Watcher{Scanner: NewScanner(h.im, time.Hour), Debounce: 50 * time.Millisecond, Resync: time.Hour}
+	sc := NewScanner(h.im, time.Hour)
+	sc.Debounce = 50 * time.Millisecond
+	w := &Watcher{Scanner: sc, Resync: time.Hour}
+	go sc.Run(ctx)
 	go w.Run(ctx)
 	time.Sleep(300 * time.Millisecond) // the watches are added
 

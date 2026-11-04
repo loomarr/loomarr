@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,24 +14,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Watch defaults (decision 9).
-const (
-	// watchDebounce is how long a root must be quiet before its changed folders are passed over.
-	// A file being copied in keeps it busy, so a pass never reads half a file.
-	watchDebounce = 5 * time.Second
-	// watchResync is how often the watched roots are compared with the in-use ones.
-	watchResync = time.Minute
-)
+// watchResync is how often the watched roots are compared with the in-use ones.
+const watchResync = time.Minute
 
-// Watcher passes over the folders a change names, a few seconds after it lands, for each in-use
-// root on a local filesystem. inotify sees only changes made through this machine's kernel, so a
+// Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root
+// on a local filesystem. inotify sees only changes made through this machine's kernel, so a
 // network share (CIFS, NFS, FUSE) is left to the hourly walk and the arrs' webhooks. A kernel
 // queue overflow asks for a full pass instead.
 type Watcher struct {
 	Scanner *Scanner
-	// Debounce and Resync are zero for their defaults.
-	Debounce time.Duration
-	Resync   time.Duration
+	// Resync is zero for its default.
+	Resync time.Duration
 }
 
 // Run watches until ctx ends.
@@ -83,12 +75,8 @@ func (w *Watcher) watch(ctx context.Context, roots []string) error {
 		w.addTree(fsw, root, root)
 	}
 
-	debounce := orDuration(w.Debounce, watchDebounce)
-	quiet := time.NewTimer(debounce)
-	quiet.Stop()
 	resync := time.NewTicker(orDuration(w.Resync, watchResync))
 	defer resync.Stop()
-	changed := map[string]map[string]bool{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -107,29 +95,17 @@ func (w *Watcher) watch(ctx context.Context, roots []string) error {
 					w.addTree(fsw, root, ev.Name)
 				}
 			}
-			if changed[root] == nil {
-				changed[root] = map[string]bool{}
-			}
-			changed[root][filepath.Dir(ev.Name)] = true
-			quiet.Reset(debounce)
+			w.Scanner.PassFolders(root, filepath.Dir(ev.Name))
 		case err, ok := <-fsw.Errors:
 			if !ok {
 				return errors.New("library scan: the watch closed")
 			}
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
 				w.log().Warn("library scan: too many changes at once; walking every folder")
-				clear(changed)
 				w.Scanner.Trigger()
 				continue
 			}
 			return err
-		case <-quiet.C:
-			for root, dirs := range changed {
-				if err := w.Scanner.Importer.RunFolders(ctx, root, slices.Sorted(maps.Keys(dirs))); err != nil && ctx.Err() == nil {
-					w.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
-				}
-			}
-			clear(changed)
 		case <-resync.C:
 			now, err := w.roots(ctx)
 			if err != nil || !slices.Equal(now, roots) {

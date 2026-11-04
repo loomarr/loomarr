@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/scan"
@@ -52,33 +53,40 @@ func newLibraryHarness(t *testing.T, sonarrFolders ...string) *apiHarness {
 // scanner's own loop never starts.
 func newScanHarness(t *testing.T, sonarrFolders ...string) (*apiHarness, *scan.Library) {
 	t.Helper()
-	lib := &scan.Library{}
+	var lib *scan.Library
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		resolver, err := precedence.New("US")
-		if err != nil {
-			t.Fatal(err)
-		}
-		lib.Roots = &scan.Roots{
-			Store: defaults.Store,
-			Sources: func() []scan.Source {
-				return []scan.Source{
-					{Authority: "sonarr", Folders: func(context.Context) ([]string, error) { return sonarrFolders, nil }},
-					{Authority: "radarr", Folders: func(context.Context) ([]string, error) { return nil, scan.ErrSkipped }},
-				}
-			},
-			PathMap: func() library.PathMap { return nil },
-			Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
-			Now:     time.Now,
-		}
-		lib.Scanner = scan.NewScanner(&scan.Importer{
-			Store: defaults.Store, Inventory: inventory.New(defaults.Store), Disk: lib.Disk,
-			Resolver: resolver, Enabled: func() bool { return true },
-		}, 0)
+		lib = newScanLibrary(t, defaults.Store, sonarrFolders...)
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, LibraryRoots: lib,
 		})
 	})
 	return h, lib
+}
+
+// newScanLibrary is the real scan.Library over st, with Sonarr naming sonarrFolders and Radarr
+// not set up.
+func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *scan.Library {
+	t.Helper()
+	resolver, err := precedence.New("US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := &scan.Roots{
+		Store: st,
+		Sources: func() []scan.Source {
+			return []scan.Source{
+				{Authority: "sonarr", Folders: func(context.Context) ([]string, error) { return sonarrFolders, nil }},
+				{Authority: "radarr", Folders: func(context.Context) ([]string, error) { return nil, scan.ErrSkipped }},
+			}
+		},
+		PathMap: func() library.PathMap { return nil },
+		Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
+		Now:     time.Now,
+	}
+	return &scan.Library{Roots: roots, Scanner: scan.NewScanner(&scan.Importer{
+		Store: st, Inventory: inventory.New(st), Disk: roots.Disk,
+		Resolver: resolver, Enabled: func() bool { return true },
+	}, 0)}
 }
 
 func decodeLibraryRoots(t *testing.T, resp *http.Response) libraryRootsBody {

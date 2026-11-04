@@ -42,8 +42,8 @@ type httpBuild struct {
 	jobs                     api.JobService
 	database                 api.DatabaseService
 	residentLLM              residentLLMBuild
-	// library is Settings → Library and the scanner over its folders.
-	library api.LibraryRootService
+	// library is Settings → Library, the scanner over its folders, and the arrs' webhooks.
+	library libraryServices
 }
 
 func buildHTTP(deps httpBuild) http.Handler {
@@ -121,7 +121,8 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Search:               searchSvc,
 		MovieCollections:     movieCollectionsSvc,
 		Collections:          collectionsSvc,
-		LibraryRoots:         deps.library,
+		LibraryRoots:         deps.library.roots,
+		LibraryHooks:         deps.library.hooks,
 		IdeaLibrary:          deps.suggestions.ideaLibrary,
 		Icons:                iconSvc,
 		Images:               imageService(imageSvc),

@@ -85,6 +85,7 @@ func (s *Server) registerLibrary(api huma.API) {
 			"404 when nothing is waiting for that folder; 409 when the scanner is turned off.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, RoleAdmin), s.confirmLibraryRemoval)
+	s.registerLibraryHooks(api)
 }
 
 type libraryFolderNameDTO struct {
@@ -284,6 +285,7 @@ type libraryStatusOutput struct {
 		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
 		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
 		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 	}
 }
 
@@ -306,6 +308,7 @@ func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatus
 	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
 	b.Held = heldView(counts.Held)
+	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()
 	b.Scan = libraryScanDTO{

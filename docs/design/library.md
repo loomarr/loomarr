@@ -206,13 +206,24 @@ step 5). Nothing reads the scanner's origins until the cutover.
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
-- **Change signals.** `scan.Watcher` watches each in-use root on a local filesystem with inotify
-  and, once a root has been quiet for 5 s, passes over only the folders a change named
-  (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
-  and still counts every file outside them as present. A folder deleted whole is a change to the
-  one above it. A kernel queue overflow asks for a full pass. inotify sees only changes made
-  through this machine, so a CIFS, NFS or FUSE root is not watched; SMB change notifications and
-  the arrs' webhooks cover those (#2151 step 6), with the hourly walk as the safety net.
+- **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
+  once folder changes have been quiet for 5 s (`Importer.RunFolders`): it writes and removes what
+  is under them, under the same removal guard, and still counts every file outside them as
+  present. A folder deleted whole is a change to the one above it.
+  - `scan.Watcher` watches each in-use root on a local filesystem with inotify. A kernel queue
+    overflow asks for a full pass. inotify sees only changes made through this machine, so a CIFS,
+    NFS or FUSE root is not watched.
+  - **Arr webhooks** (`internal/library/arrhook`, `scan.ArrHooks`). At start and hourly, Loomarr
+    keeps one webhook connection named "Loomarr" in each connected Sonarr and Radarr, posting
+    the file events (download, upgrade, rename, file and series/movie delete) to
+    `POST /v1/library/hooks/{app}` at `server.public_url`. The arr tests a connection before saving
+    it, so a saved one could reach Loomarr. Each event's folders map through that arr's path map.
+    The route is public: an arr holds no session, so the credential is a generated secret
+    (`secret.arr_webhook`, never shown) sent as the basic-auth password. `GET /v1/library/status`
+    lists each arr's state (registered, not connected, no address, failed) and its last event,
+    and `POST /v1/library/hooks/{app}/test` registers again and asks the arr to send its test.
+  - SMB change notifications for CIFS roots are not built yet; until then the arrs' webhooks and
+    the hourly walk cover a network share.
 
 ## Cached series episodes
 
