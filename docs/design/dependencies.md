@@ -7,7 +7,7 @@ place. A new dependency adds its row here in the same PR (AGENTS.md).
 actions use digests or commit SHAs; Renovate proposes the next exact pin. Peer ranges are
 compatibility contracts only. A platform hold (for example Expo's) stays exact and is documented next
 to the dependency. The native clients pin Expo SDK 58 stable and take every native module version
-from its `bundledNativeModules` catalog (React Native 0.88 through `react-native-tvos` 0.88.0-0, which
+from its `bundledNativeModules` catalog (React Native 0.88 through `react-native-tvos` 0.88.1-0, which
 requires React 19.3.0); expo-doctor enforces it. Metro 0.87.1 measures image assets with its own
 parser chosen by the declared asset type, so the former `image-size@1.2.1` source patch (#1162) is
 retired; `web/scripts/metro-asset-size.test.mjs` keeps the malformed ICNS/JXL/HEIF payloads failing,

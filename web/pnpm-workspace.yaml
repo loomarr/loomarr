@@ -45,6 +45,11 @@ minimumReleaseAgeExclude:
   - expo-linking@58.0.16
   - expo-router@58.0.30
   - expo-splash-screen@58.0.13
+  # expo-modules-core 58.0.30 (above) calls RCTStatusBarAppearance, which React Native TV first
+  # ships in 0.88.1-0 (published 2026-11-03T21:18Z); same maintainer-approved waiver, drop once a
+  # day old.
+  - "@react-native-tvos/virtualized-lists@0.88.1-0"
+  - react-native-tvos@0.88.1-0
 
 # dependency-cruiser intentionally leaves transpilers optional. Declare the
 # analyzer-only compatible compiler beside it so pnpm's isolated linker makes
@@ -96,7 +101,7 @@ overrides:
   # workspace-wide pins, pnpm can auto-fill optional peers with a second React Native Metro
   # context and unsupported Reanimated/Worklets releases that pass JS bundling but fail native C++.
   # React Native 0.88's renderer requires exactly React 19.3.0.
-  "@react-native/metro-config": "0.88.0"
+  "@react-native/metro-config": "0.88.1"
   # Expo packages request expo-constants by tilde range. Resolve every transitive request to the
   # SDK's one version so native clients cannot contain two Expo module graphs.
   expo-constants: "58.0.15"
@@ -160,4 +165,4 @@ overrides:
 patchedDependencies:
   expo-modules-jsi@58.0.22: patches/expo-modules-jsi@58.0.22.patch
   expo-video@58.0.13: patches/expo-video@58.0.13.patch
-  react-native-tvos@0.88.0-0: patches/react-native-tvos@0.88.0-0.patch
+  react-native-tvos@0.88.1-0: patches/react-native-tvos@0.88.1-0.patch
