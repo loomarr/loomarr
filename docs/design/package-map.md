@@ -39,7 +39,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
 | `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
-| `metadataprovider` | 5 | — |
+| `metadataprovider` | 6 | — |
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
 | `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
@@ -105,7 +105,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
-- **`metadataprovider`** · 5 importers
+- **`metadataprovider`** · 6 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
@@ -172,6 +172,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
 - **`metadataprovider/arr`** · → `metadataprovider`
   Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
+- **`metadataprovider/localart`** · → `metadataprovider`
+  The artwork beside the media as a metadata provider (#2151 decision 19).
 - **`metadataprovider/nfo`** · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
 - **`metadataprovider/providertest`** · → `metadataprovider`

@@ -25,14 +25,15 @@ import (
 type ID string
 
 const (
-	IDSonarr ID = "sonarr"
-	IDRadarr ID = "radarr"
-	IDNFO    ID = "nfo"
-	IDTMDB   ID = "tmdb"
+	IDSonarr   ID = "sonarr"
+	IDRadarr   ID = "radarr"
+	IDNFO      ID = "nfo"
+	IDTMDB     ID = "tmdb"
+	IDLocalArt ID = "localart"
 )
 
 // IDs returns every provider ID, in a stable order. It is the closed enum the API publishes.
-func IDs() []ID { return []ID{IDSonarr, IDRadarr, IDNFO, IDTMDB} }
+func IDs() []ID { return []ID{IDSonarr, IDRadarr, IDNFO, IDTMDB, IDLocalArt} }
 
 // ParseID returns the provider ID s names, or an error when it names none.
 func ParseID(s string) (ID, error) {
