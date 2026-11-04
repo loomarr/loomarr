@@ -407,6 +407,21 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	}
 }
 
+// An arr with no connection is not a manager: its silence holds nothing back.
+func TestImportUnconfiguredArrIsNoOutage(t *testing.T) {
+	sonarr := &fakeLister{err: fmt.Errorf("sonarr: %w", mp.ErrNotConfigured)}
+	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
+	h.file("Foxtrot (2011)/Foxtrot.mkv", 10)
+	h.run()
+	foxtrot := fileOrigin(h.root, "Foxtrot (2011)/Foxtrot.mkv")
+	if _, ok, err := h.inv.Item(context.Background(), inventory.ItemRef{Origin: &foxtrot}); err != nil || !ok {
+		t.Fatalf("the file waited on an arr with no connection: ok=%v err=%v", ok, err)
+	}
+	if h.im.Progress().ArrIncomplete {
+		t.Error("an arr with no connection reads as incomplete")
+	}
+}
+
 // A file first written with no ids follows them to the item they name once an arr gives them,
 // rather than becoming an identity conflict for good.
 func TestImportOriginFollowsLaterIDs(t *testing.T) {
