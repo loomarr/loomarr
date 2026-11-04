@@ -12,8 +12,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -186,7 +186,7 @@ func TestCertificationIdentitiesFromEnvKeepsJudgeProviderIndependentWhenModelFal
 	if provider.Name() != "custom-judge" {
 		t.Fatalf("judge provider builder identity = %q", provider.Name())
 	}
-	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}}, RunnerConfig{Generator: generator, Judge: judge}).Run(context.Background(), []Case{{Name: "identity"}})
 	if card.Generator != generator || card.Judge != judge {

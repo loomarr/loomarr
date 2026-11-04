@@ -6,12 +6,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/housekeeping"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/retention"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -38,7 +38,7 @@ func buildProvisioning(
 		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.Add(reconciler.Job())
-	registry.Add(retention.New(st, retention.Windows{
+	registry.Add(housekeeping.New(st, housekeeping.Windows{
 		Proposals:   func() time.Duration { return settings.ProposalsRetention.Get(set) },
 		Jobs:        func() time.Duration { return settings.JobsRetention.Get(set) },
 		Activity:    func() time.Duration { return settings.ActivityRetention.Get(set) },

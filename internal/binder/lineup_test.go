@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // A season window the suggester put on a series pick ("classic Mudpuddles" → 1–10)
@@ -14,8 +14,8 @@ import (
 // the last hop of the §8 season-scope path. A movie carries none.
 func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
 	t.Parallel()
-	p := suggest.Proposal{
-		Lineup: []suggest.ProposalItem{
+	p := proposal.Proposal{
+		Lineup: []proposal.ProposalItem{
 			{MediaType: provision.Series, TVDBID: 90071663, Name: "The Mudpuddles", SeasonMin: 1, SeasonMax: 10,
 				EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
 			{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"},
@@ -53,12 +53,12 @@ func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
 func TestLineupEntriesStampsFitAndAddedAt(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
-	p := suggest.Proposal{
-		Lineup: []suggest.ProposalItem{
+	p := proposal.Proposal{
+		Lineup: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000601, Name: "Scored", Confidence: 0.85},
 			{MediaType: provision.Movie, TMDBID: 90000602, Name: "Unscored"},
 		},
-		Acquisitions: []suggest.ProposalItem{
+		Acquisitions: []proposal.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000603, Name: "Tiny", Confidence: 0.001},
 		},
 	}

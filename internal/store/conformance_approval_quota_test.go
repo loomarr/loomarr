@@ -28,8 +28,8 @@ func testProposalAutoApprovalQuotaAcrossStores(t *testing.T, first, second Store
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	for _, p := range []Proposal{
-		{ID: "quota-race-a", JobID: "quota-job-a", Status: "submitted", CreatedBy: "member", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now},
-		{ID: "quota-race-b", JobID: "quota-job-b", Status: "submitted", CreatedBy: "member", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now},
+		{ID: "quota-race-a", JobID: "quota-job-a", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
+		{ID: "quota-race-b", JobID: "quota-job-b", Status: "submitted", CreatedBy: "member", CreatedAt: now, UpdatedAt: now},
 	} {
 		if err := first.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)
@@ -207,7 +207,7 @@ func seedApprovalProposals(t *testing.T, s Store, now time.Time, ids ...string) 
 	for _, id := range ids {
 		if err := s.CreateProposal(context.Background(), Proposal{
 			ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "member",
-			ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+			CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func seedApprovalProposals(t *testing.T, s Store, now time.Time, ids ...string) 
 func testApprovalCommit(id, creator string, tmdbID, channelNumber int, now time.Time) ProposalApproval {
 	proposal := Proposal{
 		ID: id, JobID: "job-" + id, Status: "approved", CreatedBy: creator,
-		ApprovedBy: "auto", ProposalJSON: `{}`, ApprovedAt: now, CreatedAt: now, UpdatedAt: now,
+		ApprovedBy: "auto", ApprovedAt: now, CreatedAt: now, UpdatedAt: now,
 	}
 	return ProposalApproval{
 		Proposal: proposal,

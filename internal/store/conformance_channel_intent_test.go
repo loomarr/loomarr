@@ -93,7 +93,7 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	}
 	proposal := Proposal{
 		ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
-		ProposalJSON: `{"lineup":[]}`, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
 	if err := s.CreateProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func testChannelHasUnfinishedJob(t *testing.T, newStore NewStoreFunc) {
 	proposal := func(id, jobID, status string) {
 		t.Helper()
 		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: jobID, Status: status,
-			ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}); err != nil {
+			CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -249,11 +249,11 @@ func testApprovalSupersessionIsPerChannel(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	older := Proposal{ID: "p-refine", JobID: "job-refine", Status: "submitted", CreatedBy: "u-admin",
-		ProposalJSON: `{}`, CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour)}
+		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour)}
 	newer := Proposal{ID: "p-recurate", JobID: "job-recurate", Status: "submitted",
-		ProposalJSON: `{}`, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+		CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
 	unrelated := Proposal{ID: "p-other", JobID: "job-refine-other", Status: "submitted", CreatedBy: "u-admin",
-		ProposalJSON: `{}`, CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now.Add(-3 * time.Hour)}
+		CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now.Add(-3 * time.Hour)}
 	for _, p := range []Proposal{older, newer, unrelated} {
 		if err := s.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)
