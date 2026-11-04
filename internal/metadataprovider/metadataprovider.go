@@ -28,10 +28,11 @@ const (
 	IDSonarr ID = "sonarr"
 	IDRadarr ID = "radarr"
 	IDNFO    ID = "nfo"
+	IDTMDB   ID = "tmdb"
 )
 
 // IDs returns every provider ID, in a stable order. It is the closed enum the API publishes.
-func IDs() []ID { return []ID{IDSonarr, IDRadarr, IDNFO} }
+func IDs() []ID { return []ID{IDSonarr, IDRadarr, IDNFO, IDTMDB} }
 
 // ParseID returns the provider ID s names, or an error when it names none.
 func ParseID(s string) (ID, error) {
@@ -102,6 +103,9 @@ const (
 	NamespaceTMDB Namespace = "tmdb"
 	NamespaceTVDB Namespace = "tvdb"
 	NamespaceIMDB Namespace = "imdb"
+	// NamespaceTMDBCollection is a TMDB movie collection (a franchise). Its ids are not TMDB
+	// movie ids.
+	NamespaceTMDBCollection Namespace = "tmdb_collection"
 	// NamespaceFile is a local media path. A provider that reads files beside the media, rather
 	// than querying a service, resolves it.
 	NamespaceFile Namespace = "file"

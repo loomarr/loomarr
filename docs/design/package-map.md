@@ -32,20 +32,21 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
-| `httpx` | 10 | `metrics` |
+| `httpx` | 11 | `metrics` |
 | `inventory` | 6 | — |
 | `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
 | `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
+| `metadataprovider` | 5 | — |
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
 | `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
 | `provision` | 24 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 23 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 24 | `holidayvocab`, `inventory`, `provision` |
 | `settings` | 8 | `config`, `library` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
@@ -103,7 +104,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
-- **`metadataprovider`** · 4 importers
+- **`metadataprovider`** · 5 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
@@ -185,13 +186,13 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 2
 
-- **`httpx`** · 10 importers · → `metrics`
+- **`httpx`** · 11 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 23 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 24 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
@@ -312,13 +313,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
-- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+- **`tmdb`** · 4 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
 - **`tunarr/tunarrtest`** · → `schedule`, `setup`, `tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 
 ### Layer 12
 
+- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `schedule`, `tmdb`
+  TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `storagegovernor`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 
