@@ -99,9 +99,13 @@ type Resolved struct {
 	PremiereDate  Picked[string]
 	Year          Picked[int]
 	Genres        Picked[[]string]
+	Keywords      Picked[[]string]
 	Network       Picked[string]
 	Status        Picked[string]
 	Runtime       Picked[time.Duration]
+
+	CommunityRating Picked[float64]
+	Collection      Picked[mp.CollectionRef]
 
 	Certification Picked[Certification]
 
@@ -259,6 +263,14 @@ func resolveDescriptive(out *Resolved, records []mp.Record) {
 	out.Year = first(records, func(rec mp.Record) int { return rec.Descriptive.Year })
 	out.Runtime = first(records, func(rec mp.Record) time.Duration { return rec.Descriptive.Runtime })
 	out.Genres = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Genres })
+	out.Keywords = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Keywords })
+	out.CommunityRating = first(records, func(rec mp.Record) float64 { return rec.Descriptive.CommunityRating })
+	for _, rec := range records {
+		if c := rec.Descriptive.Collection; c != nil && c.ID.Value != "" {
+			out.Collection = Picked[mp.CollectionRef]{Value: *c, From: rec.Source}
+			break
+		}
+	}
 }
 
 func resolveTechnical(out *Resolved, records []mp.Record) {

@@ -59,6 +59,13 @@ func (r Record) Families() []Family {
 	return out
 }
 
+// CollectionRef names a franchise in a catalog. The ID's namespace is the catalog's collection
+// namespace, not an item namespace.
+type CollectionRef struct {
+	ID   ExternalID
+	Name string
+}
+
 // FileRef is a media file a source associates with an item, in the source's own path space.
 type FileRef struct {
 	Path      string
@@ -87,6 +94,13 @@ type Descriptive struct {
 	PremiereDate  string
 	Year          int
 	Genres        []string
+	// Keywords are the catalog's topic tags for the item. They stand in for the tags a media
+	// server keeps.
+	Keywords []string
+	// CommunityRating is the audience score on a 0-10 scale, or zero when the source has no votes.
+	CommunityRating float64
+	// Collection is the franchise a movie belongs to in the source's catalog, or nil.
+	Collection *CollectionRef
 	// Network is a series' network or a movie's studio.
 	Network string
 	// Status is a series' status as its source reports it, such as "continuing" or "ended".
