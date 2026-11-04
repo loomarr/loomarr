@@ -3,9 +3,10 @@ package tunarr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -264,15 +265,12 @@ func (t *Tunarr) channelBody(spec ChannelSpec) tunarrChannel {
 func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel, bool, error) {
 	ctx, _ = t.operation(ctx)
 	var ch tunarrChannel
-	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch)
-	if err != nil {
-		return ActualChannel{}, false, err
-	}
-	if status == http.StatusNotFound {
+	err := t.do(ctx, t.http, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch)
+	if answeredWith(err, http.StatusNotFound) {
 		return ActualChannel{}, false, nil
 	}
-	if status < 200 || status >= 300 {
-		return ActualChannel{}, false, statusErr("get channel "+tunarrID, status, snippet)
+	if err != nil {
+		return ActualChannel{}, false, err
 	}
 	return ActualChannel{
 		TunarrID:     ch.ID,
@@ -295,12 +293,8 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 func (t *Tunarr) ListChannels(ctx context.Context) ([]ActualChannel, error) {
 	ctx, _ = t.operation(ctx)
 	var raw []tunarrChannel
-	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels", nil, &raw)
-	if err != nil {
+	if err := t.do(ctx, t.http, http.MethodGet, "/api/channels", nil, &raw); err != nil {
 		return nil, err
-	}
-	if status < 200 || status >= 300 {
-		return nil, statusErr("list channels", status, snippet)
 	}
 	out := make([]ActualChannel, 0, len(raw))
 	for _, ch := range raw {
@@ -323,14 +317,11 @@ func (t *Tunarr) LiveTVURLs() setup.LiveTVURLs {
 // DeleteChannel implements Programmer; a 404 is treated as already-gone (idempotent).
 func (t *Tunarr) DeleteChannel(ctx context.Context, tunarrID string) error {
 	ctx, _ = t.operation(ctx)
-	status, snippet, err := t.doStatus(ctx, t.http, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)
-	if err != nil {
-		return err
-	}
-	if status == http.StatusNotFound || (status >= 200 && status < 300) {
+	err := t.do(ctx, t.http, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)
+	if err == nil || answeredWith(err, http.StatusNotFound) {
 		return nil
 	}
-	return statusErr("delete channel "+tunarrID, status, snippet)
+	return err
 }
 
 // --- HTTP helpers ---
@@ -346,38 +337,28 @@ func (t *Tunarr) doJSONBulk(ctx context.Context, method, path string, in, out an
 }
 
 func (t *Tunarr) doJSONClient(ctx context.Context, client *http.Client, method, path string, in, out any) error {
-	status, snippet, err := t.doStatus(ctx, client, method, path, in, out)
-	if err != nil {
-		return err
-	}
-	if status < 200 || status >= 300 {
-		return statusErr(method+" "+path, status, snippet)
-	}
-	return nil
+	return t.do(ctx, client, method, path, in, out)
 }
 
-// statusErr formats a non-2xx Tunarr response, appending the body snippet when
-// present so the error carries Tunarr's own reason (a 400's "{"error":"..."}")
-// rather than a bare status code — the difference between "can't reach Tunarr,
-// status 400" and knowing exactly which field the request got wrong.
-func statusErr(what string, status int, snippet string) error {
-	if snippet != "" {
-		return fmt.Errorf("%s: status %d: %s", what, status, snippet)
-	}
-	return fmt.Errorf("%s: status %d", what, status)
+// answeredWith reports whether err is a Tunarr answer with one of the given
+// statuses. Tunarr uses a few statuses to say "nothing here" (404, and 400 for a
+// lineup or guide that has not been generated), which callers treat as an answer.
+func answeredWith(err error, statuses ...int) bool {
+	var se *httpx.StatusError
+	return errors.As(err, &se) && slices.Contains(statuses, se.Status)
 }
 
-// doStatus executes a request and returns the HTTP status; it decodes into out
-// only on a 2xx (so callers can special-case 404 without a decode error). in is
-// JSON-marshaled when non-nil. On a non-2xx it returns a bounded snippet of the
-// response body so callers can surface Tunarr's own error reason (e.g. a 400's
-// "{"error":"..."}") instead of a bare status code.
-func (t *Tunarr) doStatus(ctx context.Context, client *http.Client, method, path string, in, out any) (int, string, error) {
+// do executes a request, JSON-marshaling in when non-nil and decoding a 2xx body
+// into out when non-nil. A non-2xx answer is an *httpx.StatusError carrying
+// Tunarr's own reason (a 400's "{"error":"..."}") rather than a bare status code —
+// the difference between "can't reach Tunarr, status 400" and knowing exactly
+// which field the request got wrong. Classify it with httpx.Classify.
+func (t *Tunarr) do(ctx context.Context, client *http.Client, method, path string, in, out any) error {
 	var reader *strings.Reader
 	if in != nil {
 		blob, err := json.Marshal(in)
 		if err != nil {
-			return 0, "", fmt.Errorf("marshal %s body: %w", path, err)
+			return fmt.Errorf("marshal %s body: %w", path, err)
 		}
 		reader = strings.NewReader(string(blob))
 	}
@@ -389,28 +370,25 @@ func (t *Tunarr) doStatus(ctx context.Context, client *http.Client, method, path
 		req, err = http.NewRequestWithContext(ctx, method, t.configFor(ctx).BaseURL+path, nil)
 	}
 	if err != nil {
-		return 0, "", err
+		return err
 	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, "", fmt.Errorf("%s %s: %w", method, path, err)
+		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Read a bounded slice of the error body; Tunarr replies with a small JSON
-		// object, and we never want a runaway body in an error string.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return resp.StatusCode, strings.TrimSpace(string(snippet)), nil
+	if err := httpx.CheckStatus(resp); err != nil {
+		return err
 	}
 	if out != nil {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return resp.StatusCode, "", fmt.Errorf("decode %s: %w", path, err)
+			return fmt.Errorf("decode %s: %w", path, err)
 		}
 	}
-	return resp.StatusCode, "", nil
+	return nil
 }
 
 var _ Programmer = (*Tunarr)(nil)

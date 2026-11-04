@@ -8,7 +8,7 @@ import (
 )
 
 func TestMediaSetBindsEveryPlannedWindow(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestMediaSetBindsEveryPlannedWindow(t *testing.T) {
 }
 
 func TestMediaSetRejectsMissingAndDriftedWindowAuthority(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

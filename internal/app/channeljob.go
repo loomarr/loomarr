@@ -7,6 +7,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // channelMaintenanceJob composes the two prerequisites for a current channel guide. Episode
@@ -21,7 +22,7 @@ func channelMaintenanceJob(
 	job.Name = "channel-maintenance"
 	job.Title = "Maintain live channels"
 	job.Description = "Refreshes series episodes, rebuilds upcoming schedules, and converges each channel's playout backend."
-	job.ScheduleKey = "job.channel_maintenance.schedule"
+	job.ScheduleKey = settings.JobChannelMaintenanceSchedule.Key()
 	runSweep := job.Run
 	job.Run = func(ctx context.Context) error {
 		_, refreshErr := episodes.Run(ctx)

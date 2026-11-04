@@ -82,7 +82,7 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 			Sessions:        mgr,
 			Devices:         devices,
 			CookieSecure:    "false",
-			LiveConfig:      func(key string) string { return cfg[key] },
+			LiveSettings:    stringSettings(func(key string) string { return cfg[key] }),
 			Playout:         sessions,
 			PlayoutObserver: sessions,
 			PlayoutSecret:   func() string { return playoutToken },

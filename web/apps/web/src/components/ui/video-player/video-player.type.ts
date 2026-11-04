@@ -35,44 +35,25 @@ interface VideoPlayerProps {
   // dismissal; a dialog passes its close button through here so the control sits over the video
   // rather than above it.
   leading?: React.ReactNode;
-  // LIVE mode (§9.1 V47). A live channel has nothing to seek to, so there is no seek bar; instead
-  // the player renders a LiveIndicator (top-left) and, in the control bar, the `scrubber` slot (the
-  // mini-guide timeline) as its own full-width row above the buttons — the mock's layout. Play,
-  // volume and fullscreen stay.
+  // LIVE mode. A live channel has nothing to seek to and a schedule the player knows nothing about,
+  // so the player draws no controls of its own: the caller's `renderChrome` draws them (the §9
+  // player chrome, frontend-design.md), over the picture and inside the frame, so they go fullscreen
+  // with it. Without `renderChrome` the picture is bare (a portrait phone's controls sit under it).
   live?: boolean;
-  // Optional live-clock controller. Channel Watch supplies it so the generic play toggle preserves
-  // an intentional paused point and the top-left status can offer a one-action return to live.
+  // Optional live-clock controller. Channel Watch supplies it so the play toggle preserves an
+  // intentional paused point and the chrome can offer a one-action return to live.
   liveTransport?: LivePlaybackTransport;
-  // The live scrubber SLOT (§9.1 V47). A live channel cannot seek but has a schedule, so the caller
-  // (channel-watch) passes a mini-guide timeline (TimelineScrubber) here and the player renders it
-  // FULL-WIDTH in its own row of the control bar. The player stays ignorant of what the strip is (it
-  // takes a node, not a channel). Only used in `live` mode.
-  scrubber?: React.ReactNode;
-  // The top-bar SLOT (live mode) — channel-specific chrome the player itself must not know: the mock
-  // shows "CH 1" (left, after the LIVE badge) and the encoder line "h264 · 1080p" (right).
-  // channel-watch fills it; the player only places it, keeping "knows nothing about channels".
-  topBar?: React.ReactNode;
-  // The time-left SLOT (live mode) — the "22m left" the mock shows in the controls row between the
-  // volume and fullscreen. It is PROGRAMME time (from the schedule), which the player has no source
-  // for; channel-watch derives it from the airings and passes the text/node. Placed by the player.
-  timeLeft?: React.ReactNode;
-  // Extra bar controls the caller adds just before fullscreen (§9.1 V47) — channel-watch passes the
-  // Audio + Subtitle TrackSelectMenus here. They are channel/policy concerns the player must not
-  // know, so it only PLACES them (right side of the controls row, left of the fullscreen button).
-  barControls?: React.ReactNode;
-  // A centered SLOT over the video, beneath the control scrims (§9.1 Watch). The caller renders a
+  // Live mode's controls, drawn by the caller from the player's own state (§9). The player keeps
+  // what only it can own — the element's transport, fullscreen, the auto-hide and the keys — and
+  // hands them over; the caller draws everything. `hold(true)` keeps the controls shown while
+  // something in them is open (a preview card, a sheet), as an open menu does.
+  renderChrome?: (chrome: VideoPlayerChrome) => React.ReactNode;
+  // A centered SLOT over the video, beneath the controls (§9.1 Watch). The caller renders a
   // transient state here — channel-watch passes the TunerLoader while the stream warms up, so the
   // cold-start beat reads as a tuner acquiring signal instead of a black frame. The player only
   // places it (fills the frame, centered) and stays ignorant of what it is; pass `undefined` to
-  // show nothing. It sits UNDER the top/bottom control bars so those stay operable over it.
+  // show nothing. It sits UNDER the controls so those stay operable over it.
   overlay?: React.ReactNode;
-  // A side SLOT along the frame's right edge, ABOVE the control scrims: channel-watch's channels
-  // drawer (#1659 W1). It lives inside the frame so it goes fullscreen with the video, and while it
-  // is present the controls stay shown, as they do while a menu is open. The caller owns open and
-  // closed; pass `undefined` for closed.
-  panel?: React.ReactNode;
-  // A last row under the control row, for the caller's keyboard hints (live mode).
-  hints?: React.ReactNode;
   // Keys the player doesn't use itself, offered to the caller (channel-watch: 0-9 and G). Return
   // true when the key was handled. Never called while focus is in a text field or a menu.
   onShortcut?: (key: string) => boolean;
@@ -85,11 +66,22 @@ interface VideoPlayerProps {
   // Live-tuner navigation. Kept as a direction callback so this transport-agnostic primitive does
   // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
   onChannelStep?: (direction: -1 | 1) => void;
-  // False leaves the picture bare: no top bar or control bar over it. A portrait phone draws its
-  // controls under the picture instead (#1785, native mock 5e). Tap-to-pause, the overlay and panel
-  // slots, and the keyboard shortcuts still work. Default true.
-  chrome?: boolean;
   className?: string;
 }
 
-export type { VideoPlayerProps };
+// What a live player's caller draws its controls from (`renderChrome`).
+interface VideoPlayerChrome {
+  // The controls should be showing: the pointer moved, focus is inside, or playback is paused.
+  controlsShown: boolean;
+  fullscreen: boolean;
+  hold: (on: boolean) => void;
+  muted: boolean;
+  playing: boolean;
+  setMuted: (muted: boolean) => void;
+  setVolume: (volume: number) => void;
+  toggle: () => void;
+  toggleFullscreen: () => void;
+  volume: number;
+}
+
+export type { VideoPlayerChrome, VideoPlayerProps };

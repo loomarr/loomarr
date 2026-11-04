@@ -287,6 +287,52 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 // transaction, so the only way an approved Proposal loses its Channel is a later
 // hard delete (DELETE /v1/channels/{id}?purge=true). One such orphan must not
 // fail the whole list, and the healthy neighbour must still be reported.
+// A Job whose stored Intent cannot be decoded is failed on its own; it never aborts the claim, so
+// the healthy Jobs claimed in the same batch still run instead of sitting leased until expiry.
+func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "poison.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	for _, job := range []store.Job{
+		{ID: "poison", IntentJSON: "{"},
+		{ID: "good", IntentJSON: `{"description":"Noir"}`},
+	} {
+		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", store.ProposalWorkflowVersion
+		job.Deadline, job.CreatedAt, job.UpdatedAt = now, now, now
+		if err := st.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	works, err := workflow.Claim(ctx, now, time.Minute, 10)
+	if err != nil {
+		t.Fatalf("Claim = %v, want the healthy Job despite the poison one", err)
+	}
+	if len(works) != 1 || works[0].JobID != "good" || works[0].Intent.Description != "Noir" {
+		t.Fatalf("Claim returned %+v, want only the good Job", works)
+	}
+	poison, err := st.GetJob(ctx, "poison")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if poison.Status != "failed" || poison.FailureCode != string(FailureGenerationFailed) ||
+		!strings.Contains(poison.LastError, "Intent") {
+		t.Fatalf("poison Job = status %q code %q last_error %q, want failed with an Intent decode explanation",
+			poison.Status, poison.FailureCode, poison.LastError)
+	}
+	// Failed is terminal: the next claim never hands it out again.
+	if again, err := workflow.Claim(ctx, now.Add(time.Hour), time.Minute, 10); err != nil || len(again) != 1 || again[0].JobID != "good" {
+		t.Fatalf("second Claim = %+v, %v, want the expired good lease only", again, err)
+	}
+}
+
 func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
 	t.Parallel()
 
@@ -353,5 +399,59 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 	}
 	if got := byJob["job-orphaned"]; got.Milestone != MilestoneFailed || got.Failure == nil || got.Channel != nil {
 		t.Fatalf("orphaned Journey = %+v, want an explained failed state", got)
+	}
+}
+
+// A channel job is a fresh, queued lifecycle that names its channel. It never clones a cached
+// proposal for an identical intent (a refine always regenerates), and it never touches the job a
+// cached copy came from.
+func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "channel-job.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
+	var next atomic.Int64
+	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+	intent := suggest.Intent{Description: "Saturday morning cartoons"}
+	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := workflow.Claim(ctx, now, time.Minute, 1)
+	if err != nil || len(work) != 1 {
+		t.Fatalf("Claim = %+v, %v", work, err)
+	}
+	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
+	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
+	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
+		t.Fatal(err)
+	}
+
+	jobID, err := workflow.SubmitForChannel(ctx, "ch-1", intent, "suggest", "admin")
+	if err != nil || jobID == first.JobID {
+		t.Fatalf("SubmitForChannel = %q, %v; want a new job", jobID, err)
+	}
+	job, err := st.GetJob(ctx, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "queued" || job.ChannelID != "ch-1" || job.CreatedBy != "admin" || job.Kind != "suggest" {
+		t.Errorf("channel job = status %q channel %q owner %q kind %q", job.Status, job.ChannelID, job.CreatedBy, job.Kind)
+	}
+	if source, err := st.GetJob(ctx, first.JobID); err != nil || source.Status != "done" || source.ChannelID != "" {
+		t.Errorf("the job a cached copy came from changed: %+v, %v", source, err)
+	}
+
+	if _, err := workflow.SubmitForChannel(ctx, "", intent, "suggest", "admin"); !errors.Is(err, ErrInvalidState) {
+		t.Errorf("channel job without a channel = %v, want ErrInvalidState", err)
+	}
+	if _, err := workflow.SubmitForChannel(ctx, "ch-1", intent, "bogus", "admin"); !errors.Is(err, ErrInvalidState) {
+		t.Errorf("channel job with an unknown kind = %v, want ErrInvalidState", err)
 	}
 }

@@ -109,41 +109,6 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	return nil
 }
 
-// RequeueSuggestionJob replaces only a terminal execution the caller actually
-// observed. It never rewrites attempts, requester identity, or creation time.
-func (s *sqlStore) RequeueSuggestionJob(
-	ctx context.Context,
-	jobID string,
-	expectedAttempt int,
-	kind, intentJSON, intentHash string,
-	deadline, updatedAt time.Time,
-) error {
-	result, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE jobs
-			SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', failure_code='', failure_trace_json='', deadline=?, updated_at=?
-		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?`),
-		kind, intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt)
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: transition: %w", jobID, err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: transition count: %w", jobID, err)
-	}
-	if affected == 1 {
-		return nil
-	}
-	var status string
-	err = s.db.QueryRowContext(ctx, s.ph(`SELECT status FROM jobs WHERE id = ?`), jobID).Scan(&status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: read status: %w", jobID, err)
-	}
-	return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotTerminal, jobID, status)
-}
-
 // ReviseSubmittedProposal starts a replacement generation without making the
 // current review disappear. The exact newest submitted proposal and the terminal
 // execution are one compare-and-swap, so approval, another revision, or a newer

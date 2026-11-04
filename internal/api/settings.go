@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // registerSettings mounts /v1/settings* (config-design §8): the typed settings
@@ -109,21 +111,21 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 // liveTVWiringKeys are settings that can change either the media-server connection or the
 // tuner/guide URLs it should consume. A PATCH touching one may require idempotent re-wiring.
 var liveTVWiringKeys = map[string]struct{}{
-	"tunarr.url":        {},
-	"library.url":       {},
-	"library.token":     {},
-	"library.flavor":    {},
-	"playout.backend":   {},
-	"server.public_url": {},
+	settings.TunarrURL.Key():       {},
+	settings.LibraryURL.Key():      {},
+	settings.LibraryToken.Key():    {},
+	settings.LibraryFlavor.Key():   {},
+	settings.PlayoutBackend.Key():  {},
+	settings.ServerPublicURL.Key(): {},
 }
 
 // mediaSourceWiringKeys are the original Tunarr media-source inputs. Playout URL changes do
 // not affect that integration and must not cause an unrelated Tunarr library scan.
 var mediaSourceWiringKeys = map[string]struct{}{
-	"tunarr.url":     {},
-	"library.url":    {},
-	"library.token":  {},
-	"library.flavor": {},
+	settings.TunarrURL.Key():     {},
+	settings.LibraryURL.Key():    {},
+	settings.LibraryToken.Key():  {},
+	settings.LibraryFlavor.Key(): {},
 }
 
 // autoWireMediaSourceAfterSave retains the independent Tunarr media-source consequence. Live TV
@@ -132,7 +134,7 @@ var mediaSourceWiringKeys = map[string]struct{}{
 func (s *Server) autoWireMediaSourceAfterSave(ctx context.Context, edits map[string]string) {
 	// Media source: needs both Tunarr and the media server reachable.
 	if touchesAny(edits, mediaSourceWiringKeys) && s.tunarrConnect != nil &&
-		!s.unconfigured("tunarr.url") && !s.libraryUnconfigured() {
+		!s.unconfigured(settings.TunarrURL) && !s.libraryUnconfigured() {
 		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
 			s.logw("auto-wire Tunarr media source failed after save", err)
 		} else if enabled > 0 {

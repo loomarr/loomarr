@@ -96,6 +96,20 @@ never decides.
   assessment binds the source and the derivative as distinct identities. The preparer gets two
   roots, the applied filler root and a private assessment-media root, and neither is derived from
   the other.
+- **The cut encodes on the channels' GPU (#2121).** Decode, cadence, scale and pad stay on the CPU,
+  so every family cuts the same picture; only the encoder differs, through the shared
+  `encode.FileVideoArgs`. Each family with a measured cut level is its **own profile**, with its own
+  digest: x264 `medium` CRF 23 in software, NVENC `-cq 29`. The NVENC level is the highest whose
+  VMAF against the same scaled source matched or beat the software cut's on every one of 20 real
+  masters (60 s each; median 94.4 against 93.8), at a median 80% of its size; `-cq 31` fell below it
+  on all 20. A family without a measured cut level (VAAPI,
+  VideoToolbox, the generic encoders) cuts in software.
+- **A certification covers one profile.** The authority pins its media-profile digest, and the
+  runtime cuts to exactly that profile: a host whose encoder is not the certified family (a GPU
+  certification on a host in software, or the reverse) sends each proposal to split review rather
+  than assessing a picture nobody reviewed. Moving a household to the GPU cut means certifying the
+  GPU profile. The certify tools in the frozen research module still build the old software
+  profile, so a new certificate needs them back in the main module first.
 - The runtime prepares and validates all media, and stays inside the certified duration and byte
   envelope, **before** any provider metadata refresh, reservation or request. Nothing extrapolates
   from shorter cases, truncates a reel or substitutes chunks; long reels need their own certified
@@ -103,8 +117,17 @@ never decides.
 - The OpenRouter adapter uses one fallback-disabled, zero-retention route and a strict schema,
   hashes everything, and durably reserves the request digest and worst-case charge in the shared
   filler-inference budget before sending. A journal refuses a second reservation for the same
-  request. An unknown settlement keeps the full reservation; open and budget-held entries are
-  recovery holds, never permission to resend.
+  request once the call has an answer. An unknown settlement keeps the full reservation, and an
+  open entry is a recovery hold, never permission to resend.
+- **Only a known outcome is replayed.** A window call that is accepted, refused or invalid
+  (provider answer), unsettled with response bytes, or over its reservation has a response that may
+  have been billed, so it is published and replays without a second call. A call that produced **no
+  answer** is not published and is retried on the next pass: a budget hold (nothing was sent, so the
+  retry replaces the hold) and a transport failure (no response came back, so the lost request keeps
+  its reservation in the budget and the retry reserves a new attempt of the same request, bounded by
+  that budget). The earlier windows of the same source replay, and the pass fails as retryable
+  rather than storing a held decision, so a day of budget exhaustion or a network blip never pins a
+  source at split review.
 - The reducer publishes an immutable artifact with every candidate and the reason for each
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.

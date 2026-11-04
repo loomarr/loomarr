@@ -22,6 +22,12 @@ var ErrNotSubmitted = store.ErrProposalNotSubmitted
 // row remains submitted for an explicit deny/audit decision.
 var ErrSuperseded = store.ErrProposalSuperseded
 
+// ErrProposalJobGone reports a proposal whose job no longer exists, so approving it cannot create
+// its channel: housekeeping once purged done jobs while their proposals were still submitted. It is
+// a refusal the admin can act on (deny the proposal, ask again), not a server fault. The binder
+// returns it; the suggest package owns it so callers need not import the binder.
+var ErrProposalJobGone = errors.New("suggest: the proposal's job no longer exists")
+
 // ErrRevisionActive reports a proposal whose replacement generation currently
 // owns its stable Job. Approval resumes only if that revision fails; success
 // atomically publishes a new submitted proposal instead.
@@ -349,7 +355,9 @@ func (a *Approver) approveDurably(
 		// This check belongs inside the retry loop. A newer approval can commit after an
 		// older candidate's first check and force its channel CAS to fail. Rechecking before
 		// every replan prevents that older candidate from then serialising after the newer
-		// decision and rolling the channel back.
+		// decision and rolling the channel back. This is the early per-job check; the approval
+		// transaction repeats it per channel (a refine and a re-curation are different jobs for
+		// one channel) and returns the same ErrSuperseded.
 		latest, err := a.store.NewestProposalByStatusForJob(ctx, p.JobID, "approved")
 		if err == nil && !latest.CreatedAt.Before(p.CreatedAt) {
 			return ApprovalResult{}, ErrSuperseded

@@ -144,7 +144,7 @@ func buildFoundation(
 		result.desiredSet = set
 		result.set, result.appliedRestartSettings = set.freeze(settings.NewRegistry().RestartKeys()...)
 		result.fillerLayout, err = filler.NewLayout(
-			result.set.str("filler.dir"), result.set.str("filler.watch_dir"),
+			settings.FillerDir.Get(result.set), settings.FillerWatchDir.Get(result.set),
 		)
 		if err != nil {
 			return foundationBuild{}, fmt.Errorf("resolve filler storage layout: %w", err)
@@ -153,13 +153,13 @@ func buildFoundation(
 		storagePolicy := func(domain storagegovernor.Domain) storagegovernor.Policy {
 			switch domain {
 			case storagegovernor.DomainFiller:
-				budget := result.set.intv("filler.storage.library_budget_gb")
+				budget := settings.FillerStorageLibraryBudgetGb.Get(result.set)
 				if budget > 0 {
 					return storagegovernor.Policy{SoftBudgetBytes: int64(budget) * storagegovernor.GiB}
 				}
 				return storagegovernor.Policy{AutomaticBudget: true}
 			case storagegovernor.DomainDiagnostics:
-				return storagegovernor.Policy{SoftBudgetBytes: int64(result.set.intv("diagnostics.max_storage_mb")) * (1 << 20)}
+				return storagegovernor.Policy{SoftBudgetBytes: int64(settings.DiagnosticsMaxStorageMb.Get(result.set)) * (1 << 20)}
 			default:
 				return storagegovernor.Policy{}
 			}
@@ -170,7 +170,7 @@ func buildFoundation(
 			return []storagegovernor.ManagedRoot{
 				{Path: result.fillerLayout.ClipDir(), Domain: storagegovernor.DomainFiller},
 				{Path: result.fillerLayout.WatchDir(), Domain: storagegovernor.DomainFiller},
-				{Path: result.set.str("diagnostics.dir"), Domain: storagegovernor.DomainDiagnostics},
+				{Path: settings.DiagnosticsDir.Get(result.set), Domain: storagegovernor.DomainDiagnostics},
 			}
 		}
 		if _, err = storagegovernor.NewFilesystem(managedRoots(), storagePolicy); err == nil {
@@ -188,7 +188,7 @@ func buildFoundation(
 		secretRedactor = redactor
 		result.secretRedactor = redactor
 		result.libraryClient = library.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
-		key := func() string { return result.set.str("tmdb.api_key") }
+		key := func() string { return settings.TMDBAPIKey.Get(result.set) }
 		if overrides.TMDBBaseURL != "" {
 			result.tmdbClient = tmdb.NewDynamicWithBaseObserved(overrides.TMDBBaseURL, key, result.metrics)
 		} else {
@@ -226,7 +226,7 @@ func buildFoundation(
 		} else if n > 0 {
 			fallbackLog.Info("diagnostics: finalized process runs left running by a previous process", "count", n)
 		}
-		diagnosticsDir := func() string { return result.set.str("diagnostics.dir") }
+		diagnosticsDir := func() string { return settings.DiagnosticsDir.Get(result.set) }
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDirFunc: diagnosticsDir, InstanceID: instanceID,
 			Storage:   result.storageGovernor,

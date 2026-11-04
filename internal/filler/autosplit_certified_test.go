@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -228,7 +229,7 @@ func TestSplitStageNeverAppliesCompatibilityPartitionWithoutDecision(t *testing.
 
 func passingWindowStructureDecision(t *testing.T, complete fillerstructure.Artifact) *fillerstructure.Artifact {
 	t.Helper()
-	plan, err := fillerstructurewindow.NewPlan(complete.Decision.Source)
+	plan, err := fillerstructurewindow.NewPlan(complete.Decision.Source, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +271,7 @@ func allowCertifiedWindowStructure(t *testing.T, artifact fillerstructure.Artifa
 		SchemaVersion:             fillerstructurewindow.MaterializationAuthoritySchemaVersion,
 		ContractVersion:           fillerstructurewindow.MaterializationAuthorityContractVersion,
 		WindowCertificationSHA256: strings.Repeat("d", 64), ShortLongShadowSHA256: strings.Repeat("e", 64),
-		WindowProfileSHA256:          fillerstructurewindow.CanonicalProfile().SHA256,
+		WindowProfileSHA256:          fillerstructurewindow.ProfileFor(fillerstructuremedia.SoftwareProfile()).SHA256,
 		AssessmentMediaProfileSHA256: artifact.Decision.Input.ProfileSHA256,
 		MinimumSourceDurationMS:      1, MaximumSourceDurationMS: artifact.Decision.Source.DurationMS,
 		MaximumWindowBytes: maximumBytes, MaximumWindows: len(artifact.Decision.Input.Items),

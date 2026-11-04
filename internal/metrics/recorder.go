@@ -318,7 +318,7 @@ func New(options Options) *Recorder {
 		}
 	}
 	for _, target := range outboundTargets {
-		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other"} {
+		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other_status", "other"} {
 			outboundMetrics.retries.WithLabelValues(target, reason)
 		}
 	}

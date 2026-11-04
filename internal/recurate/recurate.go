@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
@@ -37,10 +38,12 @@ type Thresholds interface {
 // CuratorStore is the channel lookup the grant needs before handing an authorized, filtered
 // proposal to the shared approval gate.
 type CuratorStore interface {
-	// GetChannelByIntentRef identifies WHICH channel a re-curation proposal authorizes: the
-	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
-	// plus a linear walk, duplicated byte-for-byte in `binder`.
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
+	// GetChannelForJob identifies WHICH channel a re-curation proposal authorizes: the channel
+	// the proposal's job names.
+	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
+	// LastAiredByKey says when each lineup title last aired on the channel; retirement ranks
+	// titles by how long they have gone without airing.
+	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 	// ⚠ NO SaveChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
 	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
@@ -60,6 +63,7 @@ type Curator struct {
 	approver   *suggest.Approver
 	thresholds Thresholds
 	log        *slog.Logger
+	now        func() time.Time
 }
 
 // NewCurator wires the grant.
@@ -67,7 +71,7 @@ func NewCurator(st CuratorStore, approver *suggest.Approver, th Thresholds, log 
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Curator{store: st, approver: approver, thresholds: th, log: log}
+	return &Curator{store: st, approver: approver, thresholds: th, log: log, now: time.Now}
 }
 
 // Consider applies the auto-curate grant to a just-produced re-curation proposal. It returns
@@ -107,7 +111,14 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 		// guess which titles are retirable; leave the proposal for manual review.
 		return suggest.Decision{Reason: "discovery feedback unavailable"}, nil
 	}
-	res, err := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected)
+	// Retirement ranks titles by how long they have gone without airing, so the airing history
+	// is required input. Like the keep feedback above, an unreadable history fails closed: no
+	// guess about what is stale, the proposal waits for a person.
+	lastAired, err := c.store.LastAiredByKey(ctx, ch.ID)
+	if err != nil {
+		return suggest.Decision{Reason: "airing history unavailable"}, nil
+	}
+	res, err := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
 	if err != nil {
 		return suggest.Decision{Reason: "proposal unreadable"}, err
 	}
@@ -190,15 +201,11 @@ func (c *Curator) protectedTitles(ctx context.Context, channelID string) (map[pr
 	return protected, nil
 }
 
-// channelForJob finds the channel bound to a suggestion job (its IntentRef). A re-curation
-// proposal's JobID IS the channel's IntentRef, so this identifies which channel to authorize.
-//
-// ⚠ An INDEXED lookup since V41 (00037). This was `ListChannels` plus a linear walk — the same
-// function, byte for byte, as `binder.channelByIntent`, because neither package had a store
-// method to reach for. A zero Channel still means "no channel for this job", which `Consider`
-// reads as not-opted-in and fails closed on.
+// channelForJob finds the channel a re-curation job names, which identifies the channel to
+// authorize. A zero Channel still means "no channel for this job", which `Consider` reads as
+// not-opted-in and fails closed on.
 func (c *Curator) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
-	ch, err := c.store.GetChannelByIntentRef(ctx, jobID)
+	ch, err := c.store.GetChannelForJob(ctx, jobID)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Channel{}, nil
 	}

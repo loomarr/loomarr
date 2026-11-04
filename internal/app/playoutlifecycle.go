@@ -72,22 +72,14 @@ type postgresPlayoutLifecycle struct {
 	now         func() time.Time // nil is time.Now
 }
 
-func (l *postgresPlayoutLifecycle) Start(ctx context.Context) error {
-	return l.start(ctx, func(run func()) { go run() })
-}
-
-func (l *postgresPlayoutLifecycle) StartTracked(ctx context.Context, owner *generationLifecycle) error {
-	return l.start(ctx, func(run func()) {
-		owner.goRun(func(context.Context) { run() })
-	})
-}
-
-func (l *postgresPlayoutLifecycle) start(ctx context.Context, launch func(func())) error {
-	if l == nil || l.store == nil || l.checkpoint == nil || l.origin == nil || l.gate == nil {
+// Start runs the lifecycle as a worker of owner and returns once the first durable catch-up opens
+// admission (or fails).
+func (l *postgresPlayoutLifecycle) Start(ctx context.Context, owner *generationLifecycle) error {
+	if l == nil || l.store == nil || l.checkpoint == nil || l.origin == nil || l.gate == nil || owner == nil {
 		return fmt.Errorf("postgres playout lifecycle is incomplete")
 	}
 	first := make(chan error, 1)
-	launch(func() { l.run(ctx, first) })
+	owner.goRun(func(context.Context) { l.run(ctx, first) })
 	select {
 	case err := <-first:
 		return err

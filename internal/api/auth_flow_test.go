@@ -585,7 +585,7 @@ func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string,
 	if p.ProposalJSON == "" {
 		p.ProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}]}`
 	}
-	if err := st.CreateProposal(context.Background(), p); err != nil {
+	if err := createProposalWithJob(st, context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
 }

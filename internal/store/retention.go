@@ -23,9 +23,20 @@ import (
 // holds its lease right now. Deleting either would strand the worker or silently drop
 // requested work — and the reconciler's deadline discipline (§4) already ages out genuinely
 // stuck jobs by moving them to a terminal state, which is what makes them eligible here.
+//
+// ⚠ **A job whose proposal is still `submitted` is not finished, whatever its status.** Approving
+// that proposal needs the job: a refine or re-curation job is how it finds its channel, and
+// without it approval would create a second channel. The job becomes purgeable once the proposal
+// is decided.
+//
+// A channel does not depend on the job it was made from: it carries its own approved intent and
+// requester (`channels.intent_json`, `channels.requested_by`), so a purge never takes away what a
+// refine or a re-curation needs.
 func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM jobs WHERE status IN ('done','failed') AND updated_at < ?`), epoch(before))
+		`DELETE FROM jobs WHERE status IN ('done','failed') AND updated_at < ?
+		   AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.job_id = jobs.id AND p.status = 'submitted')`),
+		epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge finished jobs: %w", err)
 	}

@@ -76,12 +76,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, fillerstore.Store) 
 		FillerLayout: layout,
 		// A saved desired value may differ until restart. Serving the clip successfully proves the
 		// byte route uses the applied layout above, not this live settings seam.
-		LiveConfig: func(key string) string {
-			if key == "filler.dir" {
-				return filepath.Join(root, "desired-after-restart")
-			}
-			return ""
-		},
+		LiveSettings: mapSettings{"filler.dir": filepath.Join(root, "desired-after-restart")},
 	}))
 	t.Cleanup(srv.Close)
 	return srv, root, st

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -88,7 +87,7 @@ func buildChannels(
 		return nil
 	}
 	desiredBackend := func(context.Context) (string, error) {
-		return set.str("playout.backend"), nil
+		return settings.PlayoutBackend.Get(set), nil
 	}
 	resolveDesiredBackend := func(ctx context.Context) (string, error) {
 		if err := refreshBackendSettings(ctx); err != nil {
@@ -152,7 +151,7 @@ func buildChannels(
 		// fails closed instead of publishing a process-local target.
 		liveTVConnector = setup.NewLiveTVConnector(
 			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{},
-		).WithTunerPublishingDisabled(tunerPublishingDisabled(), log)
+		).WithTunerPublishingDisabled(ov.TunerPublishingDisabled, log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
 			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
@@ -169,7 +168,7 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
+				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
 		}
 		transportFreshness := transportTunerRescanner{
@@ -183,7 +182,7 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
+				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
 		}
 		tunerRescanner = transportFreshness
@@ -203,7 +202,7 @@ func buildChannels(
 		// a resolver so program slots carry a real runtime before the Tunarr push,
 		// and an episode resolver so a series entry expands into its episodes (§9).
 		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
-		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return set.dur("episodes.max_age") })
+		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
 		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
@@ -225,14 +224,14 @@ func buildChannels(
 			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
 			Policy:               schedule.PodFill,
-			ReconcileTTL:         set.dur("channel.reconcile_every"),
-			BreaksPerHour:        set.intv("filler.breaks_per_hour"),
-			BreakDuration:        set.dur("filler.break_duration"),
-			DefaultWindow:        set.dur("sched.window_hours"),
-			ResolveReconcileTTL:  func() time.Duration { return set.dur("channel.reconcile_every") },
-			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
-			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
-			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			ReconcileTTL:         settings.ChannelReconcileEvery.Get(set),
+			BreaksPerHour:        settings.FillerBreaksPerHour.Get(set),
+			BreakDuration:        settings.FillerBreakDuration.Get(set),
+			DefaultWindow:        settings.SchedWindowHours.Get(set),
+			ResolveReconcileTTL:  func() time.Duration { return settings.ChannelReconcileEvery.Get(set) },
+			ResolveBreaksPerHour: func() int { return settings.FillerBreaksPerHour.Get(set) },
+			ResolveBreakDuration: func() time.Duration { return settings.FillerBreakDuration.Get(set) },
+			ResolveDefaultWindow: func() time.Duration { return settings.SchedWindowHours.Get(set) },
 			ResolveCalendar:      calendar,
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
 			// supplies the durable in-progress target when one exists, otherwise the applied
@@ -297,7 +296,7 @@ func buildChannels(
 		resourceBudget = playoutBuilt.budget
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
-		chEvery := set.dur("channel.reconcile_every")
+		chEvery := settings.ChannelReconcileEvery.Get(set)
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
 		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
 		// constructed here; it has no standalone loop.
@@ -305,7 +304,7 @@ func buildChannels(
 		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}))
-		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
+		log.Info("channel scheduler registered", "tunarr", settings.TunarrURL.Get(set), "sweep_every", chEvery)
 	}
 	return channelBuild{
 		channelService: channelSvc, liveTV: liveTVSvc, tunerRescanner: tunerRescanner,
@@ -340,23 +339,14 @@ func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, 
 	return setup.InternalPlayoutURLs(publicURL, deviceToken)
 }
 
-// tunerPublishingDisabled reads the env-only dev flag scripts/dev-env.sh exports for an agent
-// lane (#1555, docs/contributing/dev-loop.md): LOOMARR_AGENT_DISABLE_LIVETV_TUNER. It is
-// intentionally NOT a declared setting — library.url/token can point an agent lane at the
-// household media server, and this must stay on regardless of what the Settings UI saves.
-// Unset/empty (production, and the primary worktree) ⇒ false, today's behaviour unchanged.
-func tunerPublishingDisabled() bool {
-	return strings.TrimSpace(os.Getenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER")) != ""
-}
-
 // householdCalendar is the calendar every channel arrangement and on-screen logo reads (#2030):
 // the window grid's wall clock (windowZone), the household's country (filler.home_country) and
 // the holiday definitions. Each read resolves the settings live.
 func householdCalendar(set resolved, holidays holidayvocab.Source, log *slog.Logger) func() schedule.Calendar {
-	zone := windowZone(func() string { return set.str("guide.timezone") }, log)
+	zone := windowZone(func() string { return settings.GuideTimezone.Get(set) }, log)
 	return func() schedule.Calendar {
 		defs := holidays.Current()
-		return schedule.Calendar{Zone: zone(), Country: set.str("filler.home_country"), Holidays: &defs}
+		return schedule.Calendar{Zone: zone(), Country: settings.FillerHomeCountry.Get(set), Holidays: &defs}
 	}
 }
 

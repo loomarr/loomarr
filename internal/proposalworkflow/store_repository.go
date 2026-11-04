@@ -22,7 +22,6 @@ type Store interface {
 	FindJobByIntentHash(context.Context, string, time.Time) (store.Job, error)
 	CloneSuggestionSuccess(context.Context, string, store.Job, string) (store.Proposal, error)
 	CreateSuggestionResult(context.Context, store.Job, store.Proposal) error
-	RequeueSuggestionJob(context.Context, string, int, string, string, string, time.Time, time.Time) error
 	ReviseSubmittedProposal(context.Context, string, string, int, string, string, time.Time, time.Time) error
 	ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error)
 	CommitSuggestionSuccess(context.Context, string, int, store.Proposal, time.Time) error
@@ -119,11 +118,19 @@ func (r *storeRepository) ClaimAttempts(
 	for _, job := range jobs {
 		var intent suggest.Intent
 		if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
-			return nil, fmt.Errorf("decode claimed Proposal Job %s Intent: %w", job.ID, err)
+			// A stored Intent that cannot decode never will: retrying it only strands the rest of
+			// the batch under their leases. Fail this Job terminally and keep going.
+			if ferr := r.store.CommitSuggestionFailure(
+				ctx, job.ID, job.Attempts, fmt.Sprintf("decode stored Intent: %v", err),
+				string(FailureGenerationFailed), "", r.now(),
+			); ferr != nil {
+				return nil, fmt.Errorf("fail Proposal Job %s with undecodable Intent: %w", job.ID, ferr)
+			}
+			continue
 		}
 		works = append(works, Work{
 			Version: job.WorkflowVersion, JobID: job.ID, Attempt: job.Attempts,
-			Kind: job.Kind, CreatedBy: job.CreatedBy, Intent: intent,
+			Kind: job.Kind, CreatedBy: job.CreatedBy, ChannelID: job.ChannelID, Intent: intent,
 		})
 	}
 	return works, nil

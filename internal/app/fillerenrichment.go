@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -43,12 +44,12 @@ func capabilityVersion(version string, identity ...string) string {
 }
 
 func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilitySelection {
-	if !set.boolv("filler.transcribe.enabled") {
+	if !settings.FillerTranscribeEnabled.Get(set) {
 		return fillerenrichment.CapabilitySelection{}
 	}
-	if set.str("asr.provider") == "hosted" {
-		model := strings.TrimSpace(set.str("asr.model"))
-		url := strings.TrimSpace(set.str("asr.url"))
+	if settings.ASRProvider.Get(set) == "hosted" {
+		model := strings.TrimSpace(settings.ASRModel.Get(set))
+		url := strings.TrimSpace(settings.ASRURL.Get(set))
 		identity := "speech-service"
 		if url == "" {
 			selection := resolveSelection(set)
@@ -62,17 +63,17 @@ func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilityS
 			ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
 				identity, url, model)}
 	}
-	model := strings.TrimSpace(set.str("ingest.whisper_model"))
+	model := strings.TrimSpace(settings.IngestWhisperModel.Get(set))
 	if model == "" {
 		return fillerenrichment.CapabilitySelection{}
 	}
 	return fillerenrichment.CapabilitySelection{Available: true, Producer: "transcript:whisper",
 		ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
-			set.str("ingest.whisper_path"), model)}
+			settings.IngestWhisperPath.Get(set), model)}
 }
 
 func activeFillerVisionCapability(set resolved) fillerenrichment.CapabilitySelection {
-	if !set.boolv("filler.vision.enabled") {
+	if !settings.FillerVisionEnabled.Get(set) {
 		return fillerenrichment.CapabilitySelection{}
 	}
 	wiring := visionEndpoint(set)

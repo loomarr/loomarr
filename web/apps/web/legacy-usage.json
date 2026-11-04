@@ -13,8 +13,8 @@
       "legacyUi": 2
     },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 169,
-      "legacyUi": 4
+      "tailwindClasses": 47,
+      "legacyUi": 1
     },
     "src/channels/guide-page/guide-page.tsx": {
       "tailwindClasses": 138,
@@ -479,24 +479,12 @@
       "tailwindClasses": 10,
       "legacyUi": 1
     },
-    "src/components/ui/video-player/live-indicator/live-indicator.tsx": {
-      "tailwindClasses": 67
-    },
     "src/components/ui/video-player/play-toggle/play-toggle.tsx": {
       "tailwindClasses": 12,
       "legacyUi": 1
     },
-    "src/components/ui/video-player/timeline-scrubber/timeline-scrubber.tsx": {
-      "tailwindClasses": 85,
-      "baseUi": 1,
-      "legacyUi": 1
-    },
-    "src/components/ui/video-player/track-select-menu/track-select-menu.tsx": {
-      "tailwindClasses": 16,
-      "legacyUi": 2
-    },
     "src/components/ui/video-player/video-player.tsx": {
-      "tailwindClasses": 97
+      "tailwindClasses": 77
     },
     "src/components/ui/video-player/volume-control/volume-control.tsx": {
       "tailwindClasses": 46,

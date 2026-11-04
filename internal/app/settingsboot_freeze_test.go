@@ -40,32 +40,32 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 		"filler.source.folder.enabled":            "false",
 	})
 
-	if got := frozen.str("filler.dir"); got != "/clips/old" {
+	if got := settings.FillerDir.Get(frozen); got != "/clips/old" {
 		t.Errorf("frozen string = %q, want old value", got)
 	}
-	if got := frozen.str("filler.watch_dir"); got != "/watch/old" {
+	if got := settings.FillerWatchDir.Get(frozen); got != "/watch/old" {
 		t.Errorf("frozen watch = %q, want old value", got)
 	}
-	if got := frozen.str("filler.structure_window_authority_path"); got != "/authority/new.json" {
+	if got := settings.FillerStructureWindowAuthorityPath.Get(frozen); got != "/authority/new.json" {
 		t.Errorf("live authority = %q, want new value", got)
 	}
-	if got := frozen.str("filler.structure_window_deployment_path"); got != "/deployment/new.json" {
+	if got := settings.FillerStructureWindowDeploymentPath.Get(frozen); got != "/deployment/new.json" {
 		t.Errorf("live deployment = %q, want new value", got)
 	}
-	if got := frozen.dur("filler.sync_every").String(); got != "10m0s" {
+	if got := settings.FillerSyncEvery.Get(frozen).String(); got != "10m0s" {
 		t.Errorf("live duration = %q, want 10m0s", got)
 	}
-	if got := frozen.intv("filler.weight"); got != 7 {
+	if got := settings.FillerWeight.Get(frozen); got != 7 {
 		t.Errorf("live int = %d, want 7", got)
 	}
-	if got := frozen.boolv("filler.source.folder.enabled"); got {
+	if got := settings.FillerSourceFolderEnabled.Get(frozen); got {
 		t.Error("live bool did not move to the newly persisted false value")
 	}
-	if got := frozen.boolOn("filler.source.folder.enabled"); got {
+	if got := settings.FillerSourceFolderEnabled.Get(frozen); got {
 		t.Error("live safe-on bool did not move to the newly persisted false value")
 	}
 
-	if got := set.str("filler.dir"); got != "/clips/new" {
+	if got := settings.FillerDir.Get(set); got != "/clips/new" {
 		t.Errorf("live facade = %q, want newly persisted value", got)
 	}
 }

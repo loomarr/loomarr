@@ -1,0 +1,24 @@
+{
+  "movie_results": [],
+  "person_results": [],
+  "tv_results": [],
+  "tv_episode_results": [
+    {
+      "id": 90001301,
+      "name": "Slack Water",
+      "overview": "The tide table is wrong, and the crew has to decide who to tell.",
+      "media_type": "tv_episode",
+      "vote_average": 7.8,
+      "vote_count": 12,
+      "air_date": "2022-04-12",
+      "episode_number": 5,
+      "episode_type": "standard",
+      "production_code": "",
+      "runtime": 43,
+      "season_number": 2,
+      "show_id": 90000701,
+      "still_path": "/episode-still-90001301.jpg"
+    }
+  ],
+  "tv_season_results": []
+}

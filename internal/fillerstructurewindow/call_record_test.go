@@ -78,6 +78,12 @@ func TestRecordedAssessmentClosesEveryOperationalStateWithoutSegments(t *testing
 				len(recorded.Assessment.Segments) != 0 || recorded.Record.AssessmentSHA256 != recorded.Assessment.SHA256 {
 				t.Fatalf("recorded assessment = %+v", recorded)
 			}
+			// Only the two outcomes that produced no answer are retried: no call was made (budget)
+			// or no response came back (transport). Every response-bearing outcome is replayed.
+			wantRetryable := test.name == "transport" || test.name == "budget"
+			if RetryableCallRecord(recorded.Record) != wantRetryable {
+				t.Fatalf("RetryableCallRecord(%s) = %v, want %v", test.name, !wantRetryable, wantRetryable)
+			}
 		})
 	}
 }
@@ -119,7 +125,7 @@ func TestRecordedAssessmentRejectsTamperedBytesAssessmentAndAccounting(t *testin
 
 func callRecordMediaSetFixture(t *testing.T) MediaSet {
 	t.Helper()
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

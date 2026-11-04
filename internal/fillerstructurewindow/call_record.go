@@ -10,6 +10,23 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
+// RetryableCallRecord reports whether a settled call produced no answer at all: the budget held it
+// before any request left, or the request got no response back. Neither is a fact about the
+// window, so neither is replayed; the next pass calls again. A transport record keeps its full
+// reservation in the shared budget because the provider may have charged the lost request.
+// Every outcome that carries response bytes (accepted, failed, unsettled with a response,
+// over-reservation) is a known outcome and replays, so a billed call is never repeated.
+func RetryableCallRecord(record CallRecord) bool {
+	switch record.State {
+	case fillerstructure.AssessmentRecordHeldBudget:
+		return true
+	case fillerstructure.AssessmentRecordUnsettled:
+		return record.Failure == fillerstructure.AssessmentFailureTransport
+	default:
+		return false
+	}
+}
+
 func NewRecordedAssessment(input CallRecordInput) (RecordedAssessment, error) {
 	failure := strings.TrimSpace(input.Failure)
 	assessmentInput := AssessmentInput{

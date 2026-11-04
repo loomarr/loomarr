@@ -17,6 +17,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/viewing"
 )
@@ -180,10 +181,10 @@ func (s *Server) playoutToken() string {
 // fetchable at all. An unset public_url therefore means playout cannot serve, and the handlers
 // say so rather than emitting a URL that fails somewhere less obvious.
 func (s *Server) playoutBaseURL() string {
-	if s.liveConfig == nil {
+	if s.liveSettings == nil {
 		return ""
 	}
-	return strings.TrimRight(strings.TrimSpace(s.liveConfig("server.public_url")), "/")
+	return strings.TrimRight(strings.TrimSpace(settings.ServerPublicURL.Get(s.liveSettings)), "/")
 }
 
 // playoutURL builds an absolute, token-bearing playout URL. Returns "" when the base is unset.
@@ -481,8 +482,8 @@ func (s *Server) checkpoint(ctx context.Context) (BackendCheckpoint, error) {
 
 func (s *Server) legacyBackendCheckpoint() BackendCheckpoint {
 	applied := ""
-	if s.liveConfig != nil {
-		applied = s.liveConfig("playout.backend")
+	if s.liveSettings != nil {
+		applied = settings.PlayoutBackend.Get(s.liveSettings)
 	}
 	return BackendCheckpoint{
 		Applied: applied, PublishedInternal: applied == schedule.PlayoutBackendInternal,

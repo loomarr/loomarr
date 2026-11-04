@@ -10,6 +10,10 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
+// ErrStructureWindowRetryable marks a window call that produced no answer: the budget held it or
+// the request got no response. Nothing is published, so the next pass calls the window again.
+var ErrStructureWindowRetryable = errors.New("structure window call produced no answer and is retried on the next pass")
+
 // StructureWindowFamilyRuntime owns one assessor family's complete serial window run. It commits
 // and replays every call before advancing, then persists the deterministic whole-source stitch.
 // Running families through separate instances prevents either family from observing peer answers.
@@ -22,7 +26,7 @@ type StructureWindowFamilyRuntime struct {
 
 func NewStructureWindowFamilyRuntime(assessor CompleteWindowStructureAssessor, evidence StructureWindowEvidenceRepository, boundaryTolerance int64) (*StructureWindowFamilyRuntime, error) {
 	if assessor == nil || evidence == nil || boundaryTolerance < 0 ||
-		boundaryTolerance >= fillerstructurewindow.CanonicalProfile().ContextOverlapMS {
+		boundaryTolerance >= fillerstructurewindow.ContextOverlapMS {
 		return nil, errors.New("structure window family runtime requires an assessor, evidence repository, and valid tolerance")
 	}
 	profile := assessor.Profile()
@@ -73,6 +77,11 @@ func (r *StructureWindowFamilyRuntime) AssessWithEvidence(ctx context.Context, p
 		}
 		if !validRecordedWindowAuthority(prepared.Authority, window, r.profile, ordinal, recorded) {
 			return StructureWindowFamilyEvidence{}, fmt.Errorf("structure window %d drifted authority", ordinal)
+		}
+		if !found && fillerstructurewindow.RetryableCallRecord(recorded.Record) {
+			// The ledger already holds the settlement. Publishing the operation would replay this
+			// empty outcome on every later pass and pin the source until someone intervened.
+			return StructureWindowFamilyEvidence{}, fmt.Errorf("structure window %d (%s): %w", ordinal, recorded.Record.State, ErrStructureWindowRetryable)
 		}
 		if !found {
 			if err := r.evidence.PutStructureWindowAssessmentEvidence(ctx, recorded); err != nil {

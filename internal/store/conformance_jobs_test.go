@@ -360,7 +360,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
+func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
@@ -381,20 +381,20 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 1, "suggest", `{"description":"first refine"}`,
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1, `{"description":"first refine"}`,
 		"hash-refine-a", now, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 1, "suggest", `{"description":"stale refine"}`,
-		"hash-refine-b", now, now); !errors.Is(err, ErrJobNotTerminal) {
-		t.Fatalf("stale concurrent requeue = %v, want ErrJobNotTerminal", err)
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 1, `{"description":"stale refine"}`,
+		"hash-refine-b", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		t.Fatalf("stale concurrent revision = %v, want ErrProposalNotRevisable", err)
 	}
 	queued, err := s.GetJob(ctx, job.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if queued.Status != "queued" || queued.Attempts != 1 || queued.IntentHash != "hash-refine-a" {
-		t.Fatalf("stale requeue overwrote winner: %+v", queued)
+		t.Fatalf("stale revision overwrote winner: %+v", queued)
 	}
 
 	claimed, err = s.ClaimDueJobs(ctx, now, time.Minute, 1)
@@ -404,8 +404,8 @@ func testSuggestionRequeueCAS(t *testing.T, newStore NewStoreFunc) {
 	if claimed[0].Attempts != 2 || claimed[0].Status != "running" {
 		t.Fatalf("refined execution token = %+v", claimed[0])
 	}
-	if err := s.RequeueSuggestionJob(ctx, job.ID, 2, "suggest", `{}`, "active-overwrite", now, now); !errors.Is(err, ErrJobNotTerminal) {
-		t.Fatalf("active requeue = %v, want ErrJobNotTerminal", err)
+	if err := s.ReviseSubmittedProposal(ctx, job.ID, first.ID, 2, `{}`, "active-overwrite", now, now); !errors.Is(err, ErrProposalNotRevisable) {
+		t.Fatalf("active revision = %v, want ErrProposalNotRevisable", err)
 	}
 
 	second := Proposal{
@@ -898,32 +898,8 @@ func testScheduledJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-// testClaimDueScheduledJobs: only due rows (next_run <= now) are claimed, and claiming leases
-// next_run forward so a second claim returns nothing until rescheduled.
-func testClaimDueScheduledJobs(t *testing.T, newStore NewStoreFunc) {
-	s := newStore(t)
-	ctx := context.Background()
-	now := time.Unix(1_800_000_000, 0).UTC()
-	_ = s.UpsertScheduledJob(ctx, ScheduledJob{Name: "due", NextRun: now.Add(-time.Minute), UpdatedAt: now})
-	_ = s.UpsertScheduledJob(ctx, ScheduledJob{Name: "future", NextRun: now.Add(time.Hour), UpdatedAt: now})
-
-	claimed, err := s.ClaimDueScheduledJobs(ctx, now, time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(claimed) != 1 || claimed[0].Name != "due" {
-		t.Fatalf("ClaimDueScheduledJobs = %d, want just 'due': %+v", len(claimed), claimed)
-	}
-	// Leased forward → an immediate re-claim returns nothing.
-	again, _ := s.ClaimDueScheduledJobs(ctx, now, time.Minute)
-	if len(again) != 0 {
-		t.Errorf("re-claim returned %d leased jobs, want 0", len(again))
-	}
-}
-
-// testScheduledJobPaused: the pause flag persists, survives an ordinary state write, and keeps
-// the job out of the due-claim (§18.1). One suite, both dialects — the claim SQL differs
-// (guarded UPDATE vs FOR UPDATE SKIP LOCKED) and both must skip paused rows.
+// testScheduledJobPaused: the pause flag persists, survives an ordinary state write, and clears
+// on resume (§18.1). The scheduler reads it to skip a paused job.
 func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
@@ -956,33 +932,12 @@ func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
 		t.Error("a routine state write cleared paused — it must be absent from ON CONFLICT DO UPDATE")
 	}
 
-	// ⚠ The behaviour: a paused row is never claimed, even though it is due.
-	due, err := s.ClaimDueScheduledJobs(ctx, now.Add(time.Minute), time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, j := range due {
-		if j.Name == "reconcile" {
-			t.Error("a paused job was claimed; it would then run on its schedule")
-		}
-	}
-
-	// Resuming makes it claimable again, or pause is a one-way door.
+	// Resuming clears it, or pause is a one-way door.
 	if err := s.SetScheduledJobPaused(ctx, "reconcile", false); err != nil {
 		t.Fatal(err)
 	}
-	due, err = s.ClaimDueScheduledJobs(ctx, now.Add(2*time.Minute), time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, j := range due {
-		if j.Name == "reconcile" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("a resumed job was still not claimed")
+	if got, _ = s.GetScheduledJob(ctx, "reconcile"); got.Paused {
+		t.Error("a resumed job still reads paused")
 	}
 
 	// Pausing a job that has never run creates the row, so a task can be paused before its

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // registerSearch mounts GET /v1/search (§7.2). Any authenticated user may search
@@ -59,7 +61,7 @@ func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, 
 		if request.Scope == "library" {
 			return nil, errBadRequest("Invalid search scope", "Structured discovery requires the tmdb or all scope.")
 		}
-		if s.liveConfig != nil && strings.TrimSpace(s.liveConfig("tmdb.api_key")) == "" {
+		if s.liveSettings != nil && strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) == "" {
 			return nil, errNotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to discover titles.")
 		}
 	} else {
@@ -200,14 +202,14 @@ func normalizeSearchScope(scope string) string {
 
 // configuredSearchScope narrows all/default to the corpora configured for this
 // request. The composition root keeps both adapters alive, so a saved setting
-// changes the next call without rebuilding the server. A nil liveConfig is the
+// changes the next call without rebuilding the server. A nil liveSettings is the
 // established unit-test convention: an explicitly wired fake is usable.
 func (s *Server) configuredSearchScope(requested string) (string, bool) {
 	scope := normalizeSearchScope(requested)
 	libraryConfigured := !s.libraryUnconfigured()
-	// A nil liveConfig is the established unit-test convention: an explicitly wired
+	// A nil liveSettings is the established unit-test convention: an explicitly wired
 	// adapter is usable. Production always supplies it, so the current key gates TMDB.
-	tmdbConfigured := s.liveConfig == nil || strings.TrimSpace(s.liveConfig("tmdb.api_key")) != ""
+	tmdbConfigured := s.liveSettings == nil || strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) != ""
 	switch scope {
 	case "library":
 		return scope, libraryConfigured

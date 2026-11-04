@@ -13,11 +13,14 @@ import (
 
 const structureWindowCallLedgerSelect = `SELECT request_sha256, evaluation_id, source_sha256,
 	media_set_sha256, window_ordinal, assessor_id, state, reservation_json, record_sha256,
-	record_json, requested_at, assessed_at FROM filler_structure_window_call_ledger`
+	record_json, requested_at, assessed_at, attempt FROM filler_structure_window_call_ledger`
 
 type structureWindowCallLedgerRow struct {
 	Entry        fillerstructurewindow.CallLedgerEntry
 	EvaluationID string
+	// Attempt numbers the reservations of one request digest from 1. A call that produced no
+	// answer is reserved again as the next attempt, and the latest attempt governs replay.
+	Attempt int
 }
 
 func (s *sqlStore) GetStructureWindowCallLedgerEntry(ctx context.Context, requestSHA256 string) (fillerstructurewindow.CallLedgerEntry, error) {
@@ -36,7 +39,7 @@ func (s *sqlStore) ListOpenStructureWindowCallLedgerEntries(ctx context.Context,
 		return nil, errors.New("list open structure window call ledger entries: limit must be between 1 and 1000")
 	}
 	rows, err := s.db.QueryContext(ctx, s.ph(structureWindowCallLedgerSelect+`
-		WHERE state <> ? ORDER BY requested_at ASC, request_sha256 ASC LIMIT ?`),
+		WHERE state <> ? ORDER BY requested_at ASC, request_sha256 ASC, attempt ASC LIMIT ?`),
 		string(fillerstructurewindow.CallLedgerSettled), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list open structure window call ledger entries: %w", err)
@@ -59,7 +62,7 @@ func (s *sqlStore) ListOpenStructureWindowCallLedgerEntries(ctx context.Context,
 func (s *sqlStore) getStructureWindowCallLedgerRow(ctx context.Context, queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, requestSHA256 string, lock bool) (structureWindowCallLedgerRow, error) {
-	query := structureWindowCallLedgerSelect + ` WHERE request_sha256 = ?`
+	query := structureWindowCallLedgerSelect + ` WHERE request_sha256 = ? ORDER BY attempt DESC LIMIT 1`
 	if lock {
 		query = storedb.LockRows(s.dialect, query)
 	}
@@ -75,10 +78,10 @@ func (s *sqlStore) getStructureWindowCallLedgerRow(ctx context.Context, queryer 
 
 func scanStructureWindowCallLedgerRow(scanner scannable) (structureWindowCallLedgerRow, error) {
 	var requestSHA, evaluationID, sourceSHA, mediaSetSHA, assessorID, state, reservationRaw, recordSHA, recordRaw string
-	var ordinal int
+	var ordinal, attempt int
 	var requestedAt, assessedAt int64
 	if err := scanner.Scan(&requestSHA, &evaluationID, &sourceSHA, &mediaSetSHA, &ordinal, &assessorID,
-		&state, &reservationRaw, &recordSHA, &recordRaw, &requestedAt, &assessedAt); err != nil {
+		&state, &reservationRaw, &recordSHA, &recordRaw, &requestedAt, &assessedAt, &attempt); err != nil {
 		return structureWindowCallLedgerRow{}, err
 	}
 	var reservation fillerstructurewindow.CallReservation
@@ -103,5 +106,5 @@ func scanStructureWindowCallLedgerRow(scanner scannable) (structureWindowCallLed
 	if err := fillerstructurewindow.ValidateCallLedgerEntry(entry); err != nil {
 		return structureWindowCallLedgerRow{}, err
 	}
-	return structureWindowCallLedgerRow{Entry: entry, EvaluationID: evaluationID}, nil
+	return structureWindowCallLedgerRow{Entry: entry, EvaluationID: evaluationID, Attempt: attempt}, nil
 }

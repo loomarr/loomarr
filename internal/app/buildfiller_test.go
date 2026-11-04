@@ -107,10 +107,18 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
 }
 
-type enumeratorFunc func(context.Context, filler.FetchSource, int) ([]sourceprovider.Item, int, error)
+// listingProvider is the archive provider with its listing replaced by a function.
+type listingProvider func(context.Context, sourceprovider.Source) ([]sourceprovider.Item, error)
 
-func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]sourceprovider.Item, int, error) {
-	return f(ctx, source, limit)
+func (listingProvider) ID() sourceprovider.ID { return "archive" }
+
+func (listingProvider) Describe() sourceprovider.Description {
+	return sourceprovider.Description{Label: "Archive", Fetched: true}
+}
+
+func (f listingProvider) List(ctx context.Context, source sourceprovider.Source, _ sourceprovider.ListRequest) (sourceprovider.Listing, error) {
+	items, err := f(ctx, source)
+	return sourceprovider.Listing{Items: items, Checkpoint: source.Checkpoint, ReplaceOutcomes: true}, err
 }
 
 type fetchIngestorFunc func(context.Context, string, string, []string) (string, error)
@@ -166,16 +174,20 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 	addSource("due-custom", &everyHour, now.Add(-2*time.Hour))
 
 	var enumerated []string
+	providers, err := sourceprovider.NewRegistry(listingProvider(func(_ context.Context, source sourceprovider.Source) ([]sourceprovider.Item, error) {
+		enumerated = append(enumerated, source.ID)
+		return nil, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	fetcher := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
 			fetchEvery: func() time.Duration { return 6 * time.Hour },
 			home:       func() filler.Geography { return filler.Geography{Country: "US"} },
 		},
-		enumeratorFunc(func(_ context.Context, source filler.FetchSource, _ int) ([]sourceprovider.Item, int, error) {
-			enumerated = append(enumerated, source.ID)
-			return nil, 0, nil
-		}),
+		providers,
 		fetchIngestorFunc(func(context.Context, string, string, []string) (string, error) {
 			t.Fatal("an empty provider listing must not enqueue an ingest")
 			return "", nil

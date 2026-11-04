@@ -5,6 +5,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // restartAdapter is the composition root's bridge between the API's RestartService and
@@ -27,11 +28,12 @@ func (r restartAdapter) Restart() { r.fn() }
 // names the specific key, so the UI can say WHICH setting is waiting rather than
 // "something changed".
 //
-// ⚠ It names ONLY what truly cannot apply live (#1659 Q-S1): the bootstrap DATABASE_URL and
-// LISTEN_ADDR (the process is already connected and listening), and the registry's
-// `apply=restart` keys, which are just the filler folders (the watcher, the storage roots and the
-// clip layout are all built on them). Everything else hot-applies; a key that goes live drops out
-// of this list by losing `ApplyRestart`, with no edit here. The route that serves it is admin-only.
+// ⚠ It names ONLY what truly cannot apply live (#1659 Q-S1): every bootstrap key (a generation
+// reads them all once, when it starts; config.ChangedKeys walks the struct, so a new boot key is
+// covered with no edit here), and the registry's `apply=restart` keys, which are just the filler
+// folders (the watcher, the storage roots and the clip layout are all built on them). Everything
+// else hot-applies; a key that goes live drops out of this list by losing `ApplyRestart`, with no
+// edit here. The route that serves it is admin-only.
 //
 // `running` is captured ONCE, when the handler is built — that is what this generation
 // started with, and re-reading it per call would compare the file against itself and
@@ -48,14 +50,8 @@ func restartDrift(
 			// means the file changed to something invalid — worth a log elsewhere, but
 			// reporting it as "restart required" would tell the operator to do the one thing
 			// that cannot fix it.
-			desired, err := config.Load()
-			if err == nil {
-				if desired.DatabaseURL != running.DatabaseURL {
-					pending = append(pending, "DATABASE_URL")
-				}
-				if desired.ListenAddr != running.ListenAddr {
-					pending = append(pending, "LISTEN_ADDR")
-				}
+			if desired, err := config.Load(); err == nil {
+				pending = running.ChangedKeys(desired)
 			}
 		}
 
@@ -81,11 +77,11 @@ func restartDrift(
 // spelling persisted in Settings. Equivalent edits such as `/data/x/../filler` must not ask for a
 // restart, and an empty watch setting must track the derived `<clip>/_watch` path.
 func canonicalFillerRestartBaseline(applied map[string]string, layout filler.Layout) {
-	if _, ok := applied["filler.dir"]; ok {
-		applied["filler.dir"] = layout.ClipDir()
+	if _, ok := applied[settings.FillerDir.Key()]; ok {
+		applied[settings.FillerDir.Key()] = layout.ClipDir()
 	}
-	if _, ok := applied["filler.watch_dir"]; ok {
-		applied["filler.watch_dir"] = layout.WatchDir()
+	if _, ok := applied[settings.FillerWatchDir.Key()]; ok {
+		applied[settings.FillerWatchDir.Key()] = layout.WatchDir()
 	}
 }
 
@@ -93,14 +89,14 @@ func canonicalFillerRestartBaseline(applied map[string]string, layout filler.Lay
 // Build. Invalid pair topology stays visibly different and remains pending until fixed.
 func canonicalRestartCurrent(set resolved) func(string) string {
 	return func(key string) string {
-		if key != "filler.dir" && key != "filler.watch_dir" {
-			return set.str(key)
+		if key != settings.FillerDir.Key() && key != settings.FillerWatchDir.Key() {
+			return settings.ValueString(set.Value(key))
 		}
-		layout, err := filler.NewLayout(set.str("filler.dir"), set.str("filler.watch_dir"))
+		layout, err := filler.NewLayout(settings.FillerDir.Get(set), settings.FillerWatchDir.Get(set))
 		if err != nil {
-			return set.str(key)
+			return settings.ValueString(set.Value(key))
 		}
-		if key == "filler.dir" {
+		if key == settings.FillerDir.Key() {
 			return layout.ClipDir()
 		}
 		return layout.WatchDir()

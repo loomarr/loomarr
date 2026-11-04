@@ -80,10 +80,10 @@ var ErrProposalRevisionActive = errors.New("store: proposal revision is active")
 // guarantees that no orphan proposal was persisted.
 var ErrJobNotRunning = errors.New("store: suggestion job is not running")
 
-// ErrJobNotTerminal reports a refine/recuration that raced another execution
-// or targeted a job that is still queued/running. Active executions are never
-// overwritten in place.
-var ErrJobNotTerminal = errors.New("store: suggestion job is not terminal")
+// ErrJobChannelGone reports a refine or re-curation job whose channel was removed
+// before the job's proposal could be approved. It is not ErrNotFound: that answer
+// means "no channel yet" and makes approval create one.
+var ErrJobChannelGone = errors.New("store: the job's channel no longer exists")
 
 // ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
 // with different facts.
@@ -143,9 +143,16 @@ type TitleStore interface {
 type ChannelStore interface {
 	GetChannel(ctx context.Context, id string) (Channel, error)
 	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
-	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
-	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
+	// GetChannelByIntentRef finds the channel a suggestion job originated (its intent_ref).
+	// Indexed (00037).
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
+	// GetChannelForJob finds the channel a job's proposal changes: the one a refine or
+	// re-curation job names, else the one the job originated. ErrNotFound means a first
+	// approval creates it; ErrJobChannelGone means the named channel was removed.
+	GetChannelForJob(ctx context.Context, jobID string) (Channel, error)
+	// ChannelHasUnfinishedJob reports a refine or re-curation job of the channel that is
+	// queued, running, or done with a proposal still awaiting a decision.
+	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
 	// at revision 1; a positive revision replaces the row only when it still
 	// matches, then returns the saved channel with its incremented revision.
@@ -224,13 +231,9 @@ type JobStore interface {
 	// stale intent or ownership fields. A lost transition leaves the newer
 	// lifecycle untouched.
 	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
-	// RequeueSuggestionJob replaces the intent only when the caller's observed
-	// terminal execution is still current. Attempts are preserved; the next claim
-	// increments them to create a new execution token.
-	RequeueSuggestionJob(ctx context.Context, jobID string, expectedAttempt int, kind, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	// ReviseSubmittedProposal atomically requeues the exact newest submitted
-	// proposal the operator reviewed. Unlike a channel refine, it may not target a
-	// decided proposal; unlike a fresh submit, it preserves one durable Journey.
+	// proposal the operator reviewed. It may not target a decided proposal, and
+	// unlike a fresh submit it preserves one durable Journey.
 	ReviseSubmittedProposal(ctx context.Context, jobID, proposalID string, expectedAttempt int, intentJSON, intentHash string, deadline, updatedAt time.Time) error
 	// CloneSuggestionSuccess materializes cached proposal CONTENT into a fresh,
 	// caller-owned done job and submitted proposal. It never reuses the source
@@ -300,17 +303,14 @@ type ScheduledJobStore interface {
 	// UpsertScheduledJob writes a job's runtime state (last-run/result + next-run lease).
 	// ⚠ Never writes `paused` — see SetScheduledJobPaused.
 	UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
-	// SetScheduledJobPaused pauses or resumes a job (§18.1). A paused job is never claimed by
-	// ClaimDueScheduledJobs, so it simply does not run until resumed. Creates the row if the
-	// job has not run yet, so a task can be paused before its first execution.
+	// SetScheduledJobPaused pauses or resumes a job (§18.1). The scheduler skips a paused job, so
+	// it simply does not run until resumed. Creates the row if the job has not run yet, so a task
+	// can be paused before its first execution.
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	// GetScheduledJob returns one job's state, or ErrNotFound.
 	GetScheduledJob(ctx context.Context, name string) (ScheduledJob, error)
 	// ListScheduledJobs returns all job state rows for the Tasks page.
 	ListScheduledJobs(ctx context.Context) ([]ScheduledJob, error)
-	// ClaimDueScheduledJobs leases every job whose next_run is due (advancing next_run to
-	// now+lease) so only one replica runs it per tick — same SKIP LOCKED idiom as titles.
-	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]ScheduledJob, error)
 }
 
 // UserStore is the users & sessions surface (§11).
@@ -573,6 +573,10 @@ type AiringStore interface {
 	// window opens (#1674). A unit that has never aired is absent — callers treat absence as
 	// "least recently aired", which sorts it first.
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+	// LastAiredByKey returns the latest airing of any unit of each provisioning key on one
+	// channel, for ranking lineup entries by how long they have gone without airing. A key that
+	// has not aired inside the retained history is absent — callers read that as "never aired".
+	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout

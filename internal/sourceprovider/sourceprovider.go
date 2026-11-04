@@ -6,13 +6,18 @@
 // previews sources, and how it searches beyond its registered sources. Filler owns the rules every
 // provider shares — budgets, leases, selection, queueing — and asks the provider for the rest, so
 // adding a provider is one package plus one registration. Download is the provider's too, through
-// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing.
+// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing; clipfetch.
+// Downloaders maps a provider's ID to its downloader, and the app registers the two together.
+// The downloader's types are clipfetch's, which imports filler, so it is not held here.
 //
 // The package imports nothing from Loomarr, so filler, fillerstore, api and the provider packages
 // can all name it without importing each other.
 package sourceprovider
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ID names a provider. It is stable: it is persisted on every source row and published on the
 // wire, so a provider never changes its ID.
@@ -33,6 +38,54 @@ type Description struct {
 	// Fetched is false for a provider whose sources are scanned where they are (a folder, the
 	// media library) rather than downloaded.
 	Fetched bool
+	// GroupDetail is the sentence under the provider's row in the source list, which rolls up the
+	// sources registered under it. Empty for a provider whose sources are not grouped.
+	GroupDetail string
+	// SourceDetail is the sentence under each of its registered sources. Empty shows the source's
+	// own address instead.
+	SourceDetail string
+	// SearchDown and ResolveDown are what an operator reads when the provider's service cannot be
+	// reached while searching for a source or checking one. Empty falls back to a generic message.
+	SearchDown, ResolveDown string
+	// BadAddress is what an operator reads when the address they typed is not one this provider
+	// can use. It names the shape the provider accepts.
+	BadAddress Problem
+}
+
+// Problem is a refusal's headline and the way out of it.
+type Problem struct {
+	Title, Detail string
+}
+
+// Addresser reads the address an operator typed when registering a source. A provider without one
+// cannot have sources registered by hand.
+type Addresser interface {
+	// Address returns the canonical address to store, or "" when the provider cannot use raw. A
+	// provider validates by its own grammar: an archive.org identifier and a YouTube URL share no
+	// rule.
+	Address(raw string) string
+}
+
+// Capabilities are the optional interfaces a provider implements, as the UI needs to know them.
+type Capabilities struct {
+	// Listable providers are fetched: filler checks their sources on a schedule.
+	Listable bool
+	// Searchable providers search inside a registered source.
+	Searchable bool
+	// Discoverable providers suggest sources for a query and verify an address before it is
+	// registered.
+	Discoverable bool
+	// OpenSearchable providers search beyond their registered sources.
+	OpenSearchable bool
+}
+
+// CapabilitiesOf reports which optional interfaces p implements.
+func CapabilitiesOf(p Provider) Capabilities {
+	_, listable := p.(Lister)
+	_, searchable := p.(Searcher)
+	_, discoverable := p.(Finder)
+	_, openSearchable := p.(OpenSearcher)
+	return Capabilities{Listable: listable, Searchable: searchable, Discoverable: discoverable, OpenSearchable: openSearchable}
 }
 
 // Source is the part of a registered source a provider reads.
@@ -71,6 +124,9 @@ type Item struct {
 	// Gap is the channel coverage gap the pass selected this item for (EraGapKey, #749). Set only
 	// on the way to ingest, where it is recorded on the downloaded artifact.
 	Gap string
+	// Station is the call sign whose search inside the source found this item. A provider sets it
+	// on the hits of the station searches it ran for a ListRequest.
+	Station string
 }
 
 // Outcome is a durable, user-explainable result of considering one listed item. The set is closed
@@ -92,6 +148,61 @@ const (
 // Outcomes counts items by outcome, for the current or most recently completed sweep.
 type Outcomes map[Outcome]int
 
+// Lister reads what one registered source currently offers, without downloading media. A provider
+// that implements it is fetched: filler checks its sources on a schedule and asks it for each
+// listing.
+//
+// The provider owns how the listing is read: how much of the source it walks, where it resumes
+// from, which of its items its own metadata rules out, and which of the rest are worth offering
+// first. The caller owns what is shared: the budget, the lease on the source, the rejections every
+// provider is held to, the dedupe against what is already known, and the selection.
+type Lister interface {
+	List(ctx context.Context, source Source, req ListRequest) (Listing, error)
+}
+
+// ListRequest is one check's terms, set by the caller.
+type ListRequest struct {
+	// Take is the most items the caller will select from this listing.
+	Take int
+	// List is Take before the pool's shortfall cut it. A provider that over-lists sizes its read
+	// from List, because a short read of a source whose newest items are all known would report
+	// nothing new while the pool stays short.
+	List int
+	// Now is the check's time, for a provider that rotates its work by the hour.
+	Now time.Time
+	// Stations are the call signs a provider that can search inside a source looks for. Empty
+	// when the pass is not looking for any.
+	Stations []string
+	// MinDuration and MaxDuration are the clip envelope a provider whose listing carries an honest
+	// duration screens against. Zero is unbounded.
+	MinDuration, MaxDuration time.Duration
+	// Reject is the rejection every provider is held to. It is asked first of each item the
+	// provider reads, and reports the outcome that rules the item out. A provider counts the
+	// outcome in Listing.Outcomes and drops the item.
+	Reject func(Item) (Outcome, bool)
+	// Known reports whether the caller already has the item: acquired, queued or declined. A
+	// provider that resumes a listing counts it against Take only when it is not known, so a page
+	// of known items does not use up the check. A provider that does not resume need not ask: the
+	// caller's selection drops a known item.
+	Known func(Item) bool
+}
+
+// Listing is what one check of a source found.
+type Listing struct {
+	// Items are the items to offer the caller's selection, in the provider's order. They have been
+	// through Reject and the provider's own screens.
+	Items []Item
+	// Checkpoint is where this check stopped, to be stored once the check completes. A provider
+	// that does not resume returns the one it was given.
+	Checkpoint Checkpoint
+	// ReplaceOutcomes begins a new sweep: the caller replaces the source's outcome summary with
+	// this check's. Otherwise the outcomes extend the summary an in-progress cursor retained.
+	ReplaceOutcomes bool
+	// Outcomes counts the items the provider read and did not offer, by why. A known item is
+	// counted OutcomeAlreadyKnown.
+	Outcomes Outcomes
+}
+
 // Searcher searches inside one registered source, such as a station's call sign within an
 // archive.org collection.
 type Searcher interface {
@@ -104,7 +215,8 @@ type OpenSearcher interface {
 }
 
 // Finder helps an operator choose a source: it suggests sources for a query and resolves an
-// address the operator typed.
+// address the operator typed. It returns only targets the provider can register as a source, such
+// as a channel or playlist, so a caller need not check the target's type.
 type Finder interface {
 	Suggest(ctx context.Context, query string, limit int) ([]Suggestion, error)
 	Resolve(ctx context.Context, input string) (Suggestion, error)

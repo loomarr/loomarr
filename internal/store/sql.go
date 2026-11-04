@@ -53,12 +53,10 @@ type sqlStore struct {
 	*catalogCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
-	path                 string
-	ph                   placeholder // rebinds ? -> the dialect's placeholder
-	claimSQL             string      // dialect-specific ClaimDueTitles statement (already rebound)
-	channelClaimSQL      string      // dialect-specific ClaimDueChannels statement (already rebound)
-	jobClaimSQL          string      // dialect-specific ClaimDueJobs statement (already rebound)
-	scheduledJobClaimSQL string      // dialect-specific ClaimDueScheduledJobs statement (already rebound)
+	path            string
+	ph              placeholder // rebinds ? -> the dialect's placeholder
+	claimSQL        string      // dialect-specific ClaimDueTitles statement (already rebound)
+	channelClaimSQL string      // dialect-specific ClaimDueChannels statement (already rebound)
 }
 
 // bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a

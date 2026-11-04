@@ -44,36 +44,9 @@ WITH due AS (
 )
 UPDATE channels c SET reconcile_deadline = $1, revision = c.revision + 1
 FROM due WHERE c.id = due.id
-RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
+RETURNING c.id, c.intent_ref, c.intent_json, c.requested_by, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
           c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision, c.created_at` // channelColumns, aliased
-
-// Postgres job claim: FOR UPDATE SKIP LOCKED so replicas never run one job twice
-// (§8/§18). Placeholders: $1=leaseUntil, $2=now, $3=limit.
-const postgresJobClaimSQL = `
-WITH due AS (
-    SELECT id FROM jobs
-    WHERE status IN ('queued', 'running') AND deadline <= $2 AND deadline > 0
-    ORDER BY deadline
-    LIMIT $3
-    FOR UPDATE SKIP LOCKED
-)
-UPDATE jobs j SET deadline = $1, status = 'running', attempts = j.attempts + 1, updated_at = $2
-FROM due WHERE j.id = due.id
-RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
-	      j.failure_code, j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at`
-
-// postgresScheduledJobClaimSQL leases every due scheduled job (§18.1) via SKIP LOCKED so two
-// replicas never both run one job in a tick. Placeholders: $1=leaseUntil, $2=now.
-const postgresScheduledJobClaimSQL = `
-WITH due AS (
-    SELECT name FROM scheduled_jobs
-    WHERE next_run <= $2 AND paused = FALSE
-    FOR UPDATE SKIP LOCKED
-)
-UPDATE scheduled_jobs sj SET next_run = $1
-FROM due WHERE sj.name = due.name
-RETURNING sj.name, sj.last_run, sj.last_result, sj.last_error, sj.next_run, sj.updated_at, sj.paused`
 
 // openPostgres opens a Postgres connection via pgx's stdlib shim and returns a
 // store wired with the SKIP-LOCKED claim SQL and $N placeholder rebinding.
@@ -87,5 +60,5 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return bindClusters(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}), nil
+	return bindClusters(&sqlStore{db: db, dialect: DialectPostgres, dsn: dsn, ph: storedb.PgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}), nil
 }
