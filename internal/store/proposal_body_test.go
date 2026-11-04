@@ -20,8 +20,8 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 	want := proposal.Proposal{
 		Intent:      proposal.Intent{Description: "90s action", MustExclude: []string{"Cats"}},
 		ChannelName: "Action Hour",
-		Lineup:      []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true}},
-		Retired:     []provision.Key{"movie:tmdb:1"},
+		Lineup:      []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Round Trip Movie", InLibrary: true}},
+		Retired:     []provision.Key{"movie:tmdb:90000002"},
 	}
 	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", CreatedBy: "u", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Body.ChannelName != want.ChannelName || got.Body.Intent.Description != "90s action" ||
-		len(got.Body.Lineup) != 1 || got.Body.Lineup[0].TMDBID != 603 || len(got.Body.Retired) != 1 {
+		len(got.Body.Lineup) != 1 || got.Body.Lineup[0].TMDBID != 90000001 || len(got.Body.Retired) != 1 {
 		t.Fatalf("body did not round-trip as a typed value: %+v", got.Body)
 	}
 	listed, err := s.ListProposalsByCreator(ctx, "u")
