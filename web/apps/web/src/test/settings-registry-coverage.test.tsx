@@ -41,6 +41,8 @@ interface DocRow {
 const GROUP_HEADING_TO_WIRE: Record<string, string> = {
   "Connections — Media server": "connections.media_server",
   "Connections — Requester": "connections.requester",
+  "Connections — Sonarr": "connections.sonarr",
+  "Connections — Radarr": "connections.radarr",
   "Connections — Tunarr": "connections.tunarr",
   "Connections — TMDB": "connections.tmdb",
   General: "general",

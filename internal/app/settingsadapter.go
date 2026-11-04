@@ -312,7 +312,7 @@ func connectionTests(
 			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
 			if settings.RequesterProvider.Get(set) == "arr" {
 				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
-					return false, "set a Sonarr and/or Radarr URL"
+					return false, "connect Sonarr and/or Radarr above"
 				}
 				if err := requester.NewArr(set.arrConns()).Reachable(ctx); err != nil {
 					return false, "could not reach Sonarr/Radarr: " + err.Error()
@@ -327,6 +327,14 @@ func connectionTests(
 			}
 			return true, ""
 		},
+		// sonarr and radarr (#2151 decision 29): their own connections, whichever requester is
+		// chosen — the library reads them either way.
+		"sonarr": arrCheck("Sonarr", func() (string, string) {
+			return settings.SonarrURL.Get(set), settings.SonarrAPIKey.Get(set)
+		}),
+		"radarr": arrCheck("Radarr", func() (string, string) {
+			return settings.RadarrURL.Get(set), settings.RadarrAPIKey.Get(set)
+		}),
 		// llm (§8/§8.1): local Ollama is probed live (reachable + the selected model
 		// pulled). Hosted providers (openrouter/custom) aren't reachability-probed
 		// here — their key is validated via POST /v1/system/llm/test; the checklist
@@ -395,6 +403,26 @@ func connectionTests(
 		},
 	}
 }
+
+// arrCheck is one arr's Test: its address and key answer, nothing else is touched.
+func arrCheck(name string, conn func() (string, string)) func(context.Context) (bool, string) {
+	conns := requester.ArrConns{Sonarr: conn, Radarr: noArr}
+	if name == "Radarr" {
+		conns = requester.ArrConns{Sonarr: noArr, Radarr: conn}
+	}
+	return func(ctx context.Context) (bool, string) {
+		if base, _ := conn(); strings.TrimSpace(base) == "" {
+			return false, "set the " + name + " URL"
+		}
+		if err := requester.NewArr(conns).Reachable(ctx); err != nil {
+			return false, err.Error()
+		}
+		return true, ""
+	}
+}
+
+// noArr is an arr that is not configured; Reachable skips it.
+func noArr() (string, string) { return "", "" }
 
 func probeWritableDirectory(dir string) error {
 	info, err := os.Stat(dir)

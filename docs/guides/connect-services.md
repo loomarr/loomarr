@@ -65,6 +65,9 @@ and nothing downloads until an admin approves a proposal.
 - **Seerr** (one connection for movies and shows): `SEERR_URL`, `SEERR_API_KEY`.
 - **Sonarr and Radarr** directly: `SONARR_URL`, `SONARR_API_KEY`, `RADARR_URL`, `RADARR_API_KEY`.
 
+Sonarr and Radarr have their own cards under **Settings → Connections**, whichever way you
+request titles. Connect them even with Seerr: Loomarr learns your library from them too.
+
 There's nothing to set up for finished downloads. Loomarr scans the library on a schedule, and
 with Sonarr and Radarr also checks their queues. A title becomes available once it's in your
 media server. To check sooner, open **Settings → Tasks** and use **Run now**. Older versions

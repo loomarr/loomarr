@@ -27,14 +27,24 @@ To replace the installation key, supply the new current key and provide the old 
 | `requester.provider` (`REQUESTER_PROVIDER`) | Connections | enum | `seerr` | How Loomarr downloads missing titles: through Seerr, or Sonarr and Radarr directly. _(one of: seerr \| arr)_ |
 | `seerr.url` (`SEERR_URL`) | Connections | url | — | Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles. _(required for acquisition)_ |
 | `seerr.api_key` (`SEERR_API_KEY`) | Connections | secret | (secret) | Your Seerr API key. |
-| `sonarr.url` (`SONARR_URL`) | Connections | url | — | Sonarr address (for TV), e.g. http://sonarr:8989. |
-| `sonarr.api_key` (`SONARR_API_KEY`) | Connections | secret | (secret) | Your Sonarr API key (Settings → General in Sonarr). |
 | `sonarr.quality_profile` (`SONARR_QUALITY_PROFILE`) | Connections | string | — | Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile. _(advanced)_ |
 | `sonarr.root_folder` (`SONARR_ROOT_FOLDER`) | Connections | string | — | Optional Sonarr root folder path. Blank = Sonarr's first root folder. _(advanced)_ |
-| `radarr.url` (`RADARR_URL`) | Connections | url | — | Radarr address (for movies), e.g. http://radarr:7878. |
-| `radarr.api_key` (`RADARR_API_KEY`) | Connections | secret | (secret) | Your Radarr API key (Settings → General in Radarr). |
 | `radarr.quality_profile` (`RADARR_QUALITY_PROFILE`) | Connections | string | — | Optional Radarr quality profile (name or id). Blank = Radarr's first profile. _(advanced)_ |
 | `radarr.root_folder` (`RADARR_ROOT_FOLDER`) | Connections | string | — | Optional Radarr root folder path. Blank = Radarr's first root folder. _(advanced)_ |
+
+## Connections — Sonarr
+
+| Setting (env) | Owner task | Kind | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `sonarr.url` (`SONARR_URL`) | Connections | url | — | Your Sonarr address, e.g. http://sonarr:8989. Loomarr learns your shows from it and hears about new episodes. |
+| `sonarr.api_key` (`SONARR_API_KEY`) | Connections | secret | (secret) | Your Sonarr API key (Settings → General in Sonarr). |
+
+## Connections — Radarr
+
+| Setting (env) | Owner task | Kind | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `radarr.url` (`RADARR_URL`) | Connections | url | — | Your Radarr address, e.g. http://radarr:7878. Loomarr learns your movies from it and hears about new ones. |
+| `radarr.api_key` (`RADARR_API_KEY`) | Connections | secret | (secret) | Your Radarr API key (Settings → General in Radarr). |
 
 ## Connections — Tunarr
 

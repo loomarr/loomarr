@@ -43,6 +43,22 @@ const ConnectionsSettings = () => {
             "Optional. Connect Seerr, or Sonarr and Radarr directly, only if Loomarr should request missing titles.",
         },
         {
+          group: "connections.sonarr",
+          title: "Sonarr",
+          check: "sonarr",
+          optional: true,
+          description:
+            "Optional. Loomarr learns your shows from Sonarr and hears about new episodes as they arrive.",
+        },
+        {
+          group: "connections.radarr",
+          title: "Radarr",
+          check: "radarr",
+          optional: true,
+          description:
+            "Optional. Loomarr learns your movies from Radarr and hears about new ones as they arrive.",
+        },
+        {
           group: "connections.tunarr",
           title: "Tunarr",
           check: "tunarr",
