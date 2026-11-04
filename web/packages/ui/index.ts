@@ -58,7 +58,10 @@ export type {
   LibraryAuthority,
   LibraryFolder,
   LibraryHealth,
+  LibraryHeldRemoval,
+  LibraryHook,
   LibraryPathMapping,
+  LibraryScan,
   LibrarySettingsProps,
 } from "./src/library";
 export { LibrarySettings } from "./src/library";
