@@ -70,8 +70,8 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 		t.Run(conflict.Error(), func(t *testing.T) {
 			st := &testkit.ApprovalStore{CommitErrors: []error{conflict, nil}}
 			channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, attempt int) store.Channel {
-				ch := store.Channel{}
-				ch.ID, ch.IntentRef, ch.Number = "ch-approved", p.JobID, attempt
+				ch := testkit.ApprovedChannel(p, attempt)
+				ch.ID = "ch-approved"
 				return ch
 			}}
 			approver := suggest.NewApprover(st, channels, time.Now)
@@ -127,8 +127,8 @@ func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 	st := &testkit.ApprovalStore{Enqueued: 1}
 	channels := &testkit.ApprovalChannels{PlanFunc: func(p store.Proposal, _ int) store.Channel {
-		ch := store.Channel{}
-		ch.ID, ch.IntentRef = "ch-approved", p.JobID
+		ch := testkit.ApprovedChannel(p, 1)
+		ch.ID = "ch-approved"
 		return ch
 	}}
 	decisionAt := time.Unix(1_800_000_000, 0).UTC()

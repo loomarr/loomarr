@@ -99,7 +99,7 @@ const VideoPlayer = ({
     // clamp and a stray `endAt` would pause the stream at a number that means nothing.
   } = usePlaybackState(videoRef, live ? {} : { startAt, endAt }, liveTransport);
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
-  const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
+  const { controlsShown, hideControls, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
 
   // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
@@ -264,6 +264,7 @@ const VideoPlayer = ({
             controlsShown,
             fullscreen,
             goLive,
+            hide: hideControls,
             hold: holdControls.hold,
             muted,
             playing,

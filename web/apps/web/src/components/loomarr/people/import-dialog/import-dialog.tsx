@@ -1,10 +1,3 @@
-import { Search, Server, ShieldCheck } from "lucide-react";
-import { useId, useMemo, useState } from "react";
-import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +6,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { Search, Server, ShieldCheck } from "lucide-react";
+import { useId, useMemo, useState } from "react";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,15 +97,14 @@ const ImportDialog = ({
 
   return (
     <Dialog defaultOpen={defaultOpen}>
-      <DialogTrigger render={<Button />}>
-        <Server aria-hidden />
-        Import from Emby/Jellyfin
+      <DialogTrigger>
+        <Button>
+          <Server aria-hidden />
+          Import from Emby/Jellyfin
+        </Button>
       </DialogTrigger>
-      <DialogContent
-        portalContainer={portalContainer}
-        className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-hidden p-0 sm:w-[calc(100%-2rem)]"
-      >
-        <DialogHeader className="border-static-800 border-b px-6 pt-6 pr-12 pb-4">
+      <DialogContent layout="sectioned" portalContainer={portalContainer} size="reading">
+        <DialogHeader>
           <DialogTitle>Import from Emby/Jellyfin</DialogTitle>
           <DialogDescription>
             Choose which media-server accounts may sign in to Loomarr. Nothing is provisioned unless you
@@ -265,7 +264,7 @@ const ImportDialog = ({
               </div>
             </div>
 
-            <DialogFooter className="border-static-800 border-t px-6 py-4">
+            <DialogFooter>
               <Button
                 type="button"
                 disabled={selectedIds.length === 0 || importing || syncing}

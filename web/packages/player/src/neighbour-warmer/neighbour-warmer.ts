@@ -31,7 +31,6 @@ const MIN_REMAINING_MS = 60_000;
  */
 const createNeighbourWarmer = ({
   prefetchStill,
-  profile,
   radius = DEFAULT_RADIUS,
   source,
 }: NeighbourWarmerOptions): NeighbourWarmer => {
@@ -44,7 +43,7 @@ const createNeighbourWarmer = ({
   };
 
   const warmOne = async (channel: PlayerChannel, signal: AbortSignal) => {
-    const result = await source.warm?.(channel, profile, signal);
+    const result = await source.warm?.(channel, signal);
     if (!result || signal.aborted) return;
     const { warmed: _certified, ...reusable } = result;
     warmed.set(channel.id, { at: Date.now(), source: reusable });

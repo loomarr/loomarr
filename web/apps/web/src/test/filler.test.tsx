@@ -66,14 +66,6 @@ type Opts = {
   taxonomy?: ListTaxonomyOutputBody;
 };
 
-// The SSE stream, captured so a test can fire frames at the app: the split job's terminal
-// `filler_split` frame is what hands the review route its proposal id (V34), and a no-op
-// EventSource would leave that handoff untestable.
-// The shared FakeEventSource (installed globally by setup.ts) records every stream the app opens.
-const fireFrame = (type: string, payload: unknown) => {
-  for (const stream of FakeEventSource.instances) stream.emit(type, payload);
-};
-
 // ⚠ The stub this replaces was a ten-branch `includes` ladder whose CORRECTNESS DEPENDED ON ITS
 // ORDER, and it said so out loud: "Stubbed BEFORE the catch-all `/v1/filler` branch below, which
 // would otherwise answer these with a clip list". That comment is the bug report. Three of the
@@ -670,10 +662,10 @@ describe("Filler page", () => {
     expect(await screen.findByText(/detecting cuts in crunchlings/i)).toBeInTheDocument();
 
     act(() => {
-      fireFrame("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
+      FakeEventSource.broadcast("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
     });
     act(() => {
-      fireFrame("filler_split", {
+      FakeEventSource.broadcast("filler_split", {
         jobId: "job-split-1",
         clipHash: "c1",
         status: "success",
@@ -694,7 +686,7 @@ describe("Filler page", () => {
     await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
 
     act(() => {
-      fireFrame("filler_split", {
+      FakeEventSource.broadcast("filler_split", {
         jobId: "job-split-1",
         clipHash: "c1",
         status: "error",

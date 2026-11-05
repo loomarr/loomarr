@@ -6,6 +6,7 @@ import {
   fillerSourcesWithRemotes,
 } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { widthFrame } from "@/test/story-utils";
 import { FillerSources } from "./filler-sources";
 
@@ -25,7 +26,9 @@ const meta = {
   component: FillerSources,
   // ⚠ No `total`. This header reads "N of M on"; the catalog size belongs to the page header's
   // `watchLine` pill, not here — two components reporting it is how they start disagreeing.
-  args: { sources: SOURCES, onSelect: noop, now: NOW },
+  // `descriptions` is what the page reads from `GET /v1/filler/providers`; without it a provider
+  // heading loses its blurb.
+  args: { sources: SOURCES, onSelect: noop, now: NOW, descriptions: fillerProviders },
   decorators: [widthFrame(760)],
 } satisfies Meta<typeof FillerSources>;
 

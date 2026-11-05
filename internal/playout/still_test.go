@@ -21,7 +21,7 @@ type fakeStillSource struct {
 	err error
 }
 
-func (f *fakeStillSource) newestStillSegment(context.Context, string, EncodePlan) (stillSegment, bool, error) {
+func (f *fakeStillSource) newestStillSegment(context.Context, string) (stillSegment, bool, error) {
 	return f.seg, f.ok, f.err
 }
 
@@ -51,7 +51,7 @@ func TestOriginStill_DecodesOncePerSegmentAndTracksTheLiveEdge(t *testing.T) {
 	o.stillExtractor = countingExtractor(&calls)
 
 	for range 5 { // five requests inside one segment interval
-		got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+		got, ok, err := o.Still(context.Background(), "ch1")
 		if err != nil || !ok || string(got.JPEG) != "jpeg:one" {
 			t.Fatalf("Still = %q ok=%v err=%v, want jpeg:one", got.JPEG, ok, err)
 		}
@@ -62,7 +62,7 @@ func TestOriginStill_DecodesOncePerSegmentAndTracksTheLiveEdge(t *testing.T) {
 
 	// The live edge moves: the next request must show the NEW segment, not the cached one.
 	src.seg = segment("seg-2", "two", time.Unix(104, 0))
-	got, _, _ := o.Still(context.Background(), "ch1", PlanBaseline)
+	got, _, _ := o.Still(context.Background(), "ch1")
 	if string(got.JPEG) != "jpeg:two" || !got.At.Equal(time.Unix(104, 0)) {
 		t.Fatalf("after the edge moved got %q at %v, want jpeg:two at 104", got.JPEG, got.At)
 	}
@@ -77,7 +77,7 @@ func TestOriginStill_NoSegmentIsAMissNotAnError(t *testing.T) {
 	o.stillSources = []stillSource{&fakeStillSource{ok: false}}
 	o.stillExtractor = countingExtractor(&calls)
 
-	if _, ok, err := o.Still(context.Background(), "ch1", PlanBaseline); ok || err != nil {
+	if _, ok, err := o.Still(context.Background(), "ch1"); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss", ok, err)
 	}
 	if calls.Load() != 0 {
@@ -94,7 +94,7 @@ func TestOriginStill_FallsThroughToTheNextSource(t *testing.T) {
 	}
 	o.stillExtractor = countingExtractor(&calls)
 
-	got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+	got, ok, err := o.Still(context.Background(), "ch1")
 	if err != nil || !ok || string(got.JPEG) != "jpeg:live" {
 		t.Fatalf("got %q ok=%v err=%v, want the live source's frame", got.JPEG, ok, err)
 	}
@@ -103,7 +103,7 @@ func TestOriginStill_FallsThroughToTheNextSource(t *testing.T) {
 func TestOriginStill_NoExtractorMeansNoStills(t *testing.T) {
 	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{&fakeStillSource{ok: true, seg: segment("s", "x", time.Now())}}
-	if _, ok, err := o.Still(context.Background(), "ch1", PlanBaseline); ok || err != nil {
+	if _, ok, err := o.Still(context.Background(), "ch1"); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss when ffmpeg is not wired", ok, err)
 	}
 }
@@ -180,7 +180,7 @@ func TestOriginStill_ConcurrentMissesShareOneDecode(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+			got, ok, err := o.Still(context.Background(), "ch1")
 			if err != nil || !ok {
 				t.Errorf("request %d: ok=%v err=%v", i, ok, err)
 			}
@@ -218,7 +218,7 @@ func TestOriginStill_DecodeBoundNeverQueuesAPileOfFFmpeg(t *testing.T) {
 	for _, id := range []string{"ch1", "ch2", "ch-old", "ch-cold", "ch-ancient"} {
 		sources[id] = &fakeStillSource{ok: true, seg: segment(id+"-new", id, now)}
 	}
-	o.stillSources = []stillSource{stillSourceFunc(func(_ context.Context, id string, _ EncodePlan) (stillSegment, bool, error) {
+	o.stillSources = []stillSource{stillSourceFunc(func(_ context.Context, id string) (stillSegment, bool, error) {
 		s := sources[id]
 		return s.seg, s.ok, nil
 	})}
@@ -227,7 +227,7 @@ func TestOriginStill_DecodeBoundNeverQueuesAPileOfFFmpeg(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, id := range []string{"ch1", "ch2"} {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, _, _ = o.Still(context.Background(), id, PlanBaseline) }()
+		go func() { defer wg.Done(); _, _, _ = o.Still(context.Background(), id) }()
 	}
 	<-gate.started
 	<-gate.started
@@ -252,10 +252,10 @@ func TestOriginStill_DecodeBoundNeverQueuesAPileOfFFmpeg(t *testing.T) {
 }
 
 // stillSourceFunc adapts a function to stillSource, for tests that need per-channel segments.
-type stillSourceFunc func(context.Context, string, EncodePlan) (stillSegment, bool, error)
+type stillSourceFunc func(context.Context, string) (stillSegment, bool, error)
 
-func (f stillSourceFunc) newestStillSegment(ctx context.Context, id string, plan EncodePlan) (stillSegment, bool, error) {
-	return f(ctx, id, plan)
+func (f stillSourceFunc) newestStillSegment(ctx context.Context, id string) (stillSegment, bool, error) {
+	return f(ctx, id)
 }
 
 // stillWithin asks for a still and fails the test if the call blocks: past the decode bound a
@@ -269,7 +269,7 @@ func stillWithin(t *testing.T, o *Origin, id string) (Still, bool, error) {
 	}
 	done := make(chan answer, 1)
 	go func() {
-		s, ok, err := o.Still(context.Background(), id, PlanBaseline)
+		s, ok, err := o.Still(context.Background(), id)
 		done <- answer{s, ok, err}
 	}()
 	select {

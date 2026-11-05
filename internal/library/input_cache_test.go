@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // memPathCache is an in-memory PathCache that records writes.
@@ -62,25 +65,37 @@ func TestResolveInput_CachedPathMakesNoMediaServerRequest(t *testing.T) {
 	}
 }
 
-func TestResolveInput_StaleCacheFallsBackAndRefreshes(t *testing.T) {
-	var calls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls.Add(1)
-		_, _ = w.Write([]byte(`{"Items":[{"Path":"/data/tv/moved.mkv"}]}`))
-	}))
-	t.Cleanup(srv.Close)
-	cache := &memPathCache{m: map[string]string{"item1": "/data/tv/old.mkv"}}
-	c := New(Emby, srv.URL, "tok", "dev").WithPathCache(cache)
-	pm := ParsePathMap("/data=>/mnt")
+// demoItemPath is the stand-in's server path for its first film, and the path map that mounts the
+// stand-in's directory at /mnt.
+func demoItemPath(t *testing.T, demo *testkit.DemoLibrary) (id, serverPath string, pm PathMap) {
+	t.Helper()
+	dir, err := filepath.Abs(demo.Layout.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id = testkit.FirstMovie().ID()
+	serverPath, err = filepath.Abs(demo.Layout.Item(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id, serverPath, ParsePathMap(dir + "=>/mnt")
+}
 
-	src := c.ResolveInput(t.Context(), "item1", pm, func(p string) bool { return p == "/mnt/tv/moved.mkv" })
-	if src.Kind != InputFile || src.URL != "/mnt/tv/moved.mkv" {
+func TestResolveInput_StaleCacheFallsBackAndRefreshes(t *testing.T) {
+	demo := testkit.NewDemoLibrary(t)
+	id, serverPath, pm := demoItemPath(t, demo)
+	cache := &memPathCache{m: map[string]string{id: filepath.Join(filepath.Dir(serverPath), "moved-away.mp4")}}
+	c := New(Emby, demo.URL, testkit.DemoLibraryToken, "dev").WithPathCache(cache)
+	want := "/mnt/items/" + id + ".mp4"
+
+	src := c.ResolveInput(t.Context(), id, pm, func(p string) bool { return p == want })
+	if src.Kind != InputFile || src.URL != want {
 		t.Fatalf("stale cache must fall back to ItemPath, got %+v", src)
 	}
-	if calls.Load() != 1 {
-		t.Fatalf("want exactly one fallback lookup, got %d", calls.Load())
+	if n := len(demo.Requests()); n != 1 {
+		t.Fatalf("want exactly one fallback lookup, got %d", n)
 	}
-	if got, _, _ := cache.ItemPath(t.Context(), "item1"); got != "/data/tv/moved.mkv" {
+	if got, _, _ := cache.ItemPath(t.Context(), id); got != serverPath {
 		t.Fatalf("cache not refreshed, holds %q", got)
 	}
 }
@@ -98,17 +113,15 @@ func TestResolveInput_NoCacheNoMappingIsHTTPStream(t *testing.T) {
 }
 
 func TestResolveInput_ColdCacheLooksUpAndStores(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"Items":[{"Path":"/data/tv/x.mkv"}]}`))
-	}))
-	t.Cleanup(srv.Close)
+	demo := testkit.NewDemoLibrary(t)
+	id, serverPath, pm := demoItemPath(t, demo)
 	cache := &memPathCache{}
-	c := New(Emby, srv.URL, "tok", "dev").WithPathCache(cache)
-	src := c.ResolveInput(t.Context(), "item1", ParsePathMap("/data=>/mnt"), func(string) bool { return true })
+	c := New(Emby, demo.URL, testkit.DemoLibraryToken, "dev").WithPathCache(cache)
+	src := c.ResolveInput(t.Context(), id, pm, func(string) bool { return true })
 	if src.Kind != InputFile {
 		t.Fatalf("got %+v", src)
 	}
-	if len(cache.puts) != 1 || cache.puts[0] != "item1=/data/tv/x.mkv" {
+	if len(cache.puts) != 1 || cache.puts[0] != id+"="+serverPath {
 		t.Fatalf("server path (never the mapped path) must be cached, got %v", cache.puts)
 	}
 }

@@ -26,13 +26,6 @@ type Action = ActionBase &
     | {
         to: "/filler/incoming" | "/filler/library" | "/filler/sources";
         section?: never;
-        hash?: never;
-      }
-    | {
-        // Diagnostics live in Manage's Needs attention panel, which opens on this hash.
-        to: "/filler/manage";
-        section?: never;
-        hash: "diagnostics";
       }
   );
 
@@ -86,17 +79,15 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
       return {
         title: "A download needs another try",
         description: `${pluralize(readiness.actionCount ?? 0, "item")} could not finish downloading.`,
-        label: "Open diagnostics",
-        to: "/filler/manage",
-        hash: "diagnostics",
+        label: "Open Incoming",
+        to: "/filler/incoming",
       };
     case "retry_failed_work":
       return {
         title: "Some filler can be retried",
         description: `${pluralize(readiness.actionCount ?? 0, "item")} hit a recoverable processing problem.`,
-        label: "Open diagnostics",
-        to: "/filler/manage",
-        hash: "diagnostics",
+        label: "Open Incoming",
+        to: "/filler/incoming",
       };
     case "review_incoming":
       return {
@@ -190,7 +181,7 @@ const FillerOverview = () => {
                   action.section ? (
                     <Link to="/filler/settings/$section" params={{ section: action.section }} />
                   ) : (
-                    <Link to={action.to} {...(action.hash ? { hash: action.hash } : {})} />
+                    <Link to={action.to} />
                   )
                 }
               >

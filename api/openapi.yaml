@@ -217,12 +217,7 @@ components:
           maxLength: 2
           type: string
         kind:
-          description: Which kind of source this is
-          enum:
-            - archive
-            - youtube
-            - folder
-            - library
+          description: The provider's id, as listed by GET /v1/filler/providers, whose sources are added by typing an address
           type: string
         label:
           description: Operator-facing name; falls back to the identifier
@@ -3129,37 +3124,6 @@ components:
         - token
         - deviceName
       type: object
-    DeviceProfileBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/DeviceProfileBody.json
-          format: uri
-          readOnly: true
-          type: string
-        audio:
-          description: Audio codecs the client can decode (e.g. ["eac3","ac3"]). aac is always implied.
-          items:
-            type: string
-          type: array
-        hdr:
-          description: Whether the client can display HDR (PQ/HLG).
-          type: boolean
-        maxResolution:
-          description: Tallest video height the client will direct-play (e.g. 1080); 0 = no cap.
-          format: int64
-          type: integer
-        video:
-          description: Video codecs the client can DECODE (e.g. ["hevc"]). h264 is always implied.
-          items:
-            type: string
-          type: array
-        video10bit:
-          description: Whether the client can decode 10-bit (or deeper) video.
-          type: boolean
-      type: object
     DeviceStartInputBody:
       additionalProperties: false
       properties:
@@ -3303,6 +3267,8 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          type: string
         height:
           format: int64
           type: integer
@@ -3903,192 +3869,6 @@ components:
         - progress
         - disposition
       type: object
-    FillerDecisionActivityOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionActivityOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerDecisionActivityWireDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
-      type: object
-    FillerDecisionActivityWireDTO:
-      additionalProperties: false
-      properties:
-        actionId:
-          type: string
-        clipHash:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        decisionId:
-          type: string
-        id:
-          type: string
-        kind:
-          enum:
-            - automatic_admit
-            - automatic_reject
-            - review_requested
-            - review_admit
-            - review_reject
-            - correction
-            - review_abandoned
-            - restore
-            - reversal
-          type: string
-      required:
-        - id
-        - decisionId
-        - clipHash
-        - kind
-        - createdAt
-      type: object
-    FillerDecisionCountsDTO:
-      additionalProperties: false
-      properties:
-        admitted:
-          format: int64
-          type: integer
-        operational:
-          format: int64
-          type: integer
-        rejected:
-          format: int64
-          type: integer
-        retryable:
-          format: int64
-          type: integer
-        reviews:
-          format: int64
-          type: integer
-        unresolvedReviews:
-          format: int64
-          type: integer
-      required:
-        - admitted
-        - rejected
-        - reviews
-        - operational
-        - retryable
-        - unresolvedReviews
-      type: object
-    FillerDecisionDiagnosticDTO:
-      additionalProperties: false
-      properties:
-        clipHash:
-          type: string
-        code:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        id:
-          type: string
-        recovery:
-          $ref: "#/components/schemas/FillerDecisionRecoveryDTO"
-        retryable:
-          type: boolean
-      required:
-        - id
-        - clipHash
-        - code
-        - retryable
-        - recovery
-        - createdAt
-      type: object
-    FillerDecisionDiagnosticsOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionDiagnosticsOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerDecisionDiagnosticDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
-      type: object
-    FillerDecisionOverviewDTO:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionOverviewDTO.json
-          format: uri
-          readOnly: true
-          type: string
-        actionCount:
-          format: int64
-          type: integer
-        counts:
-          $ref: "#/components/schemas/FillerDecisionCountsDTO"
-        healthy:
-          type: boolean
-        nextAction:
-          enum:
-            - none
-            - repair_processing
-            - retry_processing
-            - review_decisions
-          type: string
-      required:
-        - healthy
-        - nextAction
-        - counts
-      type: object
-    FillerDecisionRecoveryDTO:
-      additionalProperties: false
-      properties:
-        action:
-          enum:
-            - configure_provider
-            - adjust_budget
-            - retry_extraction
-            - inspect_media
-            - update_policy
-          type: string
-        destination:
-          description: Exact application or media destination for configuration and inspection recovery
-          type: string
-        mode:
-          enum:
-            - automatic_retry
-            - manual_retry
-            - configuration
-            - inspection
-          type: string
-        retryAt:
-          description: Exact next-attempt time for automatic recovery
-          format: date-time
-          type: string
-      required:
-        - action
-        - mode
-      type: object
     FillerDefectBandScoreDTO:
       additionalProperties: false
       properties:
@@ -4347,42 +4127,6 @@ components:
         - undecided
         - pending
       type: object
-    FillerDiagnosticRecoveryInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDiagnosticRecoveryInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        action:
-          enum:
-            - retry
-          type: string
-        actionId:
-          maxLength: 128
-          type: string
-      required:
-        - actionId
-        - action
-      type: object
-    FillerDiagnosticRecoveryOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDiagnosticRecoveryOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        id:
-          type: string
-      required:
-        - id
-      type: object
     FillerFetchStatusDTO:
       additionalProperties: false
       properties:
@@ -4480,12 +4224,34 @@ components:
         addressHint:
           description: An example of the address a source of this provider takes
           type: string
+        addressLabel:
+          description: Names the field a source's address is typed into when the provider has no finder
+          type: string
+        blurb:
+          description: The sentence under the provider's heading on the source page
+          type: string
         discoverable:
           description: Sources can be suggested for a query and an address verified before it is added
           type: boolean
         fetched:
           description: Sources are downloaded on a schedule; false means they are scanned where they are
           type: boolean
+        findAdd:
+          description: The button that registers the source the finder chose
+          type: string
+        findLabel:
+          description: Names the source finder's field; absent unless discoverable
+          type: string
+        findMinQuery:
+          description: The fewest characters a search runs with
+          format: int64
+          type: integer
+        findNoMatches:
+          description: What a search with no results tells the operator to do next
+          type: string
+        findPlaceholder:
+          description: The source finder's placeholder
+          type: string
         id:
           description: The provider's persisted identity, as a source row's kind
           type: string
@@ -4498,9 +4264,15 @@ components:
         openSearchable:
           description: The provider can be searched beyond its registered sources
           type: boolean
+        previewHeading:
+          description: Introduces the examples shown from a source
+          type: string
         searchable:
           description: A registered source can be searched in place
           type: boolean
+        sourceNoun:
+          description: What one registered source is, as the source drawer's subtitle
+          type: string
       required:
         - id
         - label
@@ -4794,11 +4566,7 @@ components:
           format: int64
           type: integer
         kind:
-          enum:
-            - folder
-            - library
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         lastCheck:
           $ref: "#/components/schemas/FillerSourceCheckSummaryDTO"
@@ -4817,6 +4585,9 @@ components:
           type: string
         onForPlace:
           type: boolean
+        pageUrl:
+          description: The source's own page at its provider; absent when it has none
+          type: string
         parentId:
           type: string
         providerEnabled:
@@ -4869,6 +4640,9 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          description: Player that plays the item in place; absent when the provider does not allow it
+          type: string
         title:
           type: string
         url:
@@ -4904,9 +4678,7 @@ components:
           maxItems: 3
           type: array
         provider:
-          enum:
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         targetType:
           enum:
@@ -4934,12 +4706,16 @@ components:
           format: uri
           readOnly: true
           type: string
+        exact:
+          description: "The query was an address, not words: suggestions holds the one source it names, already checked"
+          type: boolean
         suggestions:
           items:
             $ref: "#/components/schemas/FillerSourceSuggestionDTO"
           type: array
       required:
         - suggestions
+        - exact
       type: object
     FillerSourcesOutputBody:
       additionalProperties: false
@@ -5999,9 +5775,6 @@ components:
           description: Attempts of the current processing stage; not a whole-preparation attempt count
           format: int64
           type: integer
-        diagnosticsHref:
-          description: Existing operational owner; absent when no deeper evidence exists
-          type: string
         nextTryAt:
           description: RFC3339; absent unless this work is scheduled to retry
           type: string
@@ -13073,12 +12846,6 @@ paths:
             examples:
               - auto
             type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DeviceProfileBody"
-        required: true
       responses:
         "200":
           content:
@@ -15042,151 +14809,6 @@ paths:
       summary: Retag a selection of clips
       tags:
         - filler
-  /v1/filler/decisions/activity:
-    get:
-      description: Member-readable bounded audit of automatic semantic decisions and subsequent operator actions (§10 V63).
-      operationId: filler-decision-activity
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionActivityOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Filler admission decision activity
-      tags:
-        - filler
-  /v1/filler/decisions/diagnostics:
-    get:
-      description: Admin-only operational holds. Raw provider responses, prompts, paths, evidence locations, and secrets are never projected (§10 V63).
-      operationId: filler-decision-diagnostics
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionDiagnosticsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Filler admission processing diagnostics
-      tags:
-        - filler
-  /v1/filler/decisions/diagnostics/{id}/actions:
-    post:
-      description: Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).
-      operationId: act-on-filler-diagnostic
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FillerDiagnosticRecoveryInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDiagnosticRecoveryOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Recover a filler processing hold
-      tags:
-        - filler
-  /v1/filler/decisions/overview:
-    get:
-      description: Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.
-      operationId: filler-decision-overview
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionOverviewDTO"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Admission decision health and next action
-      tags:
-        - filler
   /v1/filler/defects:
     get:
       description: Admin only (#2034). What the defect floor would retire on this install, every measured clip's findings, and how the floor and its vision judge score against the maintainer's labels, per era band. Labels stay in this install's database; nothing here leaves the machine.
@@ -15557,13 +15179,12 @@ paths:
       description: Admin only (§10 V51c). Changes provider policy without rewriting child source switches or removing clips already in the catalog.
       operationId: set-filler-provider-enabled
       parameters:
-        - in: path
+        - description: A fetched provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A fetched provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15592,13 +15213,12 @@ paths:
       description: Admin only (§10 V67). Validates one exact provider URL or identifier and returns its canonical target without registering or downloading it.
       operationId: resolve-filler-source
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15627,13 +15247,12 @@ paths:
       description: Admin only (§10 V67). Searches one provider for source candidates without registering a source, downloading media, or granting background-work authority.
       operationId: suggest-filler-sources
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
         - explode: false
           in: query

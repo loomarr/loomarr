@@ -1,7 +1,4 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { DeviceProfileBody } from "@loomarr/api/models/deviceProfileBody";
-
-type DevicePlaybackProfile = Omit<DeviceProfileBody, "$schema">;
 
 type PlayerChannel = Pick<ChannelDTO, "id" | "inAppPlayable" | "name" | "number">;
 
@@ -28,11 +25,7 @@ interface WarmedSource extends PlayerSource {
 }
 
 interface PlayerSourcePort {
-  mint: (
-    channel: PlayerChannel,
-    profile: DevicePlaybackProfile,
-    signal: AbortSignal,
-  ) => Promise<PlayerSource>;
+  mint: (channel: PlayerChannel, signal: AbortSignal) => Promise<PlayerSource>;
   /**
    * Starts a minted source's stream on the server and returns the source the player should open.
    * Rejects with `StartFailure` when the server refused the start and said why, so the viewer sees
@@ -46,11 +39,7 @@ interface PlayerSourcePort {
    * that cannot warm is simply never pre-warmed. A refusal (no capacity) is a miss, not an error:
    * it resolves with `warmed: false`.
    */
-  warm?: (
-    channel: PlayerChannel,
-    profile: DevicePlaybackProfile,
-    signal: AbortSignal,
-  ) => Promise<WarmedSource | undefined>;
+  warm?: (channel: PlayerChannel, signal: AbortSignal) => Promise<WarmedSource | undefined>;
 }
 
-export type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort, WarmedSource };
+export type { PlayerChannel, PlayerSource, PlayerSourcePort, WarmedSource };

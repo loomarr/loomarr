@@ -1,6 +1,7 @@
 import type { FillerSourcesOutputBody } from "@loomarr/api";
 import {
   getFillerReadinessMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getMeMockHandler,
 } from "@loomarr/api/msw";
@@ -8,7 +9,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { SourcesTab } from "./sources-tab";
 
@@ -93,6 +95,10 @@ const makeWrapper = () => {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
 };
+
+beforeEach(() => {
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("SourcesTab", () => {
   it("fetches the source list itself rather than being handed it", async () => {

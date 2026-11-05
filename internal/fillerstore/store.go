@@ -1,7 +1,6 @@
 // Package fillerstore persists the filler pipeline's own state: the remote source registry, the
 // pull approvals and the acquisition runs and artifacts they start, the hosted-inference
-// accounting and the ledgers layered over it (spoken safety, structure assessment, structure
-// windows) (§10).
+// accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 //
 // It extends the core store rather than standing beside it. Its tables live in the same database,
 // it runs on the core's store.Handle, and every transaction it takes begins through
@@ -23,11 +22,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerscreening"
-	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -105,10 +102,6 @@ type FillerInferenceStore interface {
 // FillerStructureAssessmentStore owns the structure-specific journal layered over shared filler
 // inference accounting. Duplicate requests remain visible conflicts rather than implicit retries.
 type FillerStructureAssessmentStore interface {
-	ReserveStructureAssessment(context.Context, fillerstructure.AssessmentReservation, InferenceBudget) (fillerstructure.AssessmentReservationState, error)
-	SettleStructureAssessment(context.Context, fillerstructure.AssessmentRecord) error
-	GetStructureAssessmentLedgerEntry(context.Context, string) (fillerstructure.AssessmentLedgerEntry, error)
-	ListOpenStructureAssessmentLedgerEntries(context.Context, int) ([]fillerstructure.AssessmentLedgerEntry, error)
 	ReserveStructureWindowCall(context.Context, fillerstructurewindow.CallReservation, InferenceBudget) (fillerstructurewindow.CallReservationState, error)
 	SettleStructureWindowCall(context.Context, fillerstructurewindow.CallRecord) error
 	GetStructureWindowCallLedgerEntry(context.Context, string) (fillerstructurewindow.CallLedgerEntry, error)
@@ -123,14 +116,6 @@ type FillerSafetyStore interface {
 	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error)
 	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error)
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
-}
-
-// FillerDecisionStore owns immutable V63 admission results and append-only
-// operator actions. Projection rules remain in fillerdecision.Service. An applied action's effect on
-// the clip and its pipeline row goes through the core's store.ClipTx, inside the action's transaction.
-type FillerDecisionStore interface {
-	fillerdecision.Repository
-	fillerdecision.AppliedActionRepository
 }
 
 // FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
@@ -312,7 +297,6 @@ type Store interface {
 	FillerAcquisitionStore
 	FillerEnrichmentStore
 	FillerResearchStore
-	FillerDecisionStore
 	FillerSplitProposalStore
 	FillerPipelineStore
 
@@ -379,7 +363,7 @@ type placeholder func(query string) string
 type scannable = store.Scannable
 
 // The core's Unix-seconds time-column codec, under the names the moved code already uses. The
-// nanosecond codec the decision and safety ledgers use is this package's own (fillerDecisionEpoch).
+// nanosecond codec the safety ledger uses is this package's own (fillerNanoEpoch).
 var (
 	epoch     = store.Epoch
 	fromEpoch = store.FromEpoch
