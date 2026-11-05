@@ -60,6 +60,7 @@ const PlayerChrome = ({
             density={density}
             formatTime={formatTime}
             onPreviewChange={preview}
+            onSeek={playbar.onSeek}
             playheadMs={playbar.playheadMs}
             pointer={transport.pointer}
             segments={playbar.segments}

@@ -23,7 +23,7 @@ func TestPlaybackIntegrityEvaluatorVerifiesRenderedChildAndReplaysSettledResult(
 		return time.Date(2026, time.September, 14, 1, 0, 0, 0, time.UTC)
 	})
 	first, err := evaluator.Evaluate(t.Context(), media)
-	if err != nil || first.Evidence.Outcome != filler.ScreenPass || first.Evidence.ReasonCode != "playback_verified" {
+	if err != nil || first.Evidence.Outcome != ScreenPass || first.Evidence.ReasonCode != "playback_verified" {
 		t.Fatalf("first=%+v error=%v", first, err)
 	}
 	if bytes.Contains(first.RawEvidence, []byte(filepath.Dir(media.PlaybackPath))) {
@@ -97,7 +97,7 @@ func TestPlaybackIntegrityEvaluatorHoldsArtifactOrSidecarDrift(t *testing.T) {
 			}
 			evaluator := mustPlaybackIntegrityEvaluator(t, repository, time.Now)
 			recorded, err := evaluator.Evaluate(t.Context(), media)
-			if err != nil || recorded.Evidence.Outcome != filler.ScreenHold || recorded.Evidence.ReasonCode != test.wantReason {
+			if err != nil || recorded.Evidence.Outcome != ScreenHold || recorded.Evidence.ReasonCode != test.wantReason {
 				t.Fatalf("recorded=%+v error=%v", recorded, err)
 			}
 		})
@@ -108,12 +108,12 @@ func TestPlaybackIntegrityEvaluatorMapsMeasuredQualityToClosedOutcome(t *testing
 	tests := []struct {
 		name        string
 		quality     filler.MediaQuality
-		wantOutcome filler.SegmentScreeningOutcome
+		wantOutcome SegmentScreeningOutcome
 		wantReason  string
 	}{
-		{name: "dead air", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: filler.ScreenReject, wantReason: "playback_quality_reject"},
-		{name: "long black", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: filler.ScreenHold, wantReason: "playback_quality_hold"},
-		{name: "clear", quality: validPlaybackIntegrityQuality(), wantOutcome: filler.ScreenPass, wantReason: "playback_verified"},
+		{name: "dead air", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: ScreenReject, wantReason: "playback_quality_reject"},
+		{name: "long black", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: ScreenHold, wantReason: "playback_quality_hold"},
+		{name: "clear", quality: validPlaybackIntegrityQuality(), wantOutcome: ScreenPass, wantReason: "playback_verified"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *te
 
 func mustPlaybackIntegrityEvaluator(t *testing.T, repository SegmentScreeningAxisEvidenceReplay, now func() time.Time) *PlaybackIntegrityEvaluator {
 	t.Helper()
-	profile := screeningProfileFixture(filler.ScreenPlayback, "4")
+	profile := screeningProfileFixture(ScreenPlayback, "4")
 	profile.EvidenceContract = playbackIntegrityEvidenceContractVersion
 	evaluator, err := NewPlaybackIntegrityEvaluator(profile, repository, now)
 	if err != nil {
