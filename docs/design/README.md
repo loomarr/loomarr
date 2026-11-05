@@ -24,6 +24,9 @@ moves them to `docs/contributing/` and `project/android-release.md`.
   [`reference/settings.md`](../reference/settings.md), and the package inventory is
   [`package-map.md`](package-map.md). Do not restate them in prose.
 - Vocabulary is defined in [`CONTEXT.md`](../../CONTEXT.md). Work status lives in GitHub issues.
+- **New to the backend?** Read [Start here](package-map.md#start-here) in the package map first. It
+  groups the packages under `internal/` into areas in plain words and traces a channel request and a
+  commercial end to end.
 
 ## Subsystems
 
@@ -33,7 +36,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | --- | --- | --- | --- |
 | [overview](overview.md) | scope, design envelope, ports, package-name traps, backend structure rules, HTTP API rules, concurrency rules | 1, 2, 7, 7.1, 14.1, 18 | here |
 | [dependencies](dependencies.md) | every dependency and bundled tool, with its reason | 14 | here |
-| [package-map](package-map.md) | generated package inventory | 2 (map), 14.2 | here |
+| [package-map](package-map.md) | generated package inventory, grouped into areas with the two main flows | 2 (map), 14.2 | here |
 | [acquisition](acquisition.md) | title identity, provisioning state machine, requesters, outbound client rules | 3, 4, 6 | here |
 | [library](library.md) | media-server contract, media inventory, series episode cache, search | 5 (inventory), 6, 7.2 | here |
 | [storage](storage.md) | one store with two backends, Postgres concurrency, retention, backup | 5, 16 (backup) | here |

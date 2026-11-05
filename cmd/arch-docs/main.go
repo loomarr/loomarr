@@ -1,5 +1,6 @@
 // Command arch-docs regenerates the package map in docs/design/package-map.md from the
-// code itself — each package's own doc comment plus its imports.
+// code itself — each package's own doc comment plus its imports — grouped by the area
+// table in areas.go into the page's "Start here" section.
 //
 // It exists because design.md §2, where the map first lived, was the one part of the
 // design doc a newcomer read first and the one part nothing kept honest: its diagram omitted `filler` (explicitly, "to keep
@@ -42,6 +43,14 @@ func main() {
 	if err != nil {
 		slog.Error("scan packages", "root", root, "err", err)
 		os.Exit(1)
+	}
+
+	listed, _ := areaInventory(areas)
+	for _, p := range pkgs {
+		if !listed[p.Name] {
+			slog.Error("package has no area; add it to one area in cmd/arch-docs/areas.go", "package", p.Name)
+			os.Exit(1)
+		}
 	}
 
 	current, err := os.ReadFile(docPath)

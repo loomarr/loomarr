@@ -45,7 +45,7 @@ func TestArchDocs_NoDrift(t *testing.T) {
 // bug cannot make both the generator and its coverage gate agree on the same omission.
 func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	root := repoRoot(t)
-	source, err := productionPackageNames(filepath.Join(root, "internal"))
+	source, err := goPackageNames(filepath.Join(root, "internal"), false)
 	if err != nil {
 		t.Fatalf("discover source packages: %v", err)
 	}
@@ -57,6 +57,90 @@ func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	missing, stale := packageInventoryDiff(source, rendered)
 	if len(missing) > 0 || len(stale) > 0 {
 		t.Errorf("generated package inventory differs from source\nmissing: %v\nstale: %v", missing, stale)
+	}
+}
+
+// The area table names every Go package under internal/ exactly once, test-only packages
+// included, and names nothing that is not a package. A new package has to be given an area
+// before it merges; a renamed or deleted one has to leave the table. Discovery is the
+// test's own walk, not the generator's, for the same reason as TestArchDocs_CoversEveryPackage.
+func TestArchDocs_AreasCoverEveryPackage(t *testing.T) {
+	source, err := goPackageNames(filepath.Join(repoRoot(t), "internal"), true)
+	if err != nil {
+		t.Fatalf("discover source packages: %v", err)
+	}
+	listed, duplicates := areaInventory(areas)
+	if len(duplicates) > 0 {
+		t.Errorf("packages listed in more than one area in cmd/arch-docs/areas.go: %v", duplicates)
+	}
+	missing, stale := packageInventoryDiff(source, listed)
+	if len(missing) > 0 {
+		t.Errorf("packages under internal/ with no area — add each to one area in cmd/arch-docs/areas.go: %v", missing)
+	}
+	if len(stale) > 0 {
+		t.Errorf("cmd/arch-docs/areas.go names packages that do not exist under internal/: %v", stale)
+	}
+}
+
+// The two traced flows name packages in backticks; each must still be a listed package, so a
+// rename that updates the table cannot leave the walkthrough pointing at a package that is gone.
+func TestArchDocs_FlowsNameListedPackages(t *testing.T) {
+	listed, _ := areaInventory(areas)
+	for _, f := range flows {
+		parts := strings.Split(f.Text, "`")
+		for i := 1; i < len(parts); i += 2 {
+			if !listed[parts[i]] {
+				t.Errorf("flow %q names `%s`, which no area lists", f.Title, parts[i])
+			}
+		}
+	}
+}
+
+func TestAreaInventoryReportsDuplicates(t *testing.T) {
+	listed, duplicates := areaInventory([]area{
+		{Name: "one", Packages: []string{"a", "b"}},
+		{Name: "two", Packages: []string{"b", "c"}},
+	})
+	if want := map[string]bool{"a": true, "b": true, "c": true}; !reflect.DeepEqual(listed, want) {
+		t.Fatalf("listed = %v, want %v", listed, want)
+	}
+	if !reflect.DeepEqual(duplicates, []string{"b"}) {
+		t.Fatalf("duplicates = %v, want [b]", duplicates)
+	}
+}
+
+// Each area's import count is the number of package-to-package imports that cross into
+// another area, grouped by that area and listed busiest first.
+func TestRenderStartHere_CountsCrossAreaImports(t *testing.T) {
+	fixture := []area{
+		{Name: "channels", Title: "Channels", Description: "Channel things.", Packages: []string{"schedule", "binder"}},
+		{Name: "platform", Title: "Platform", Description: "Shared ground.", Packages: []string{"store", "httpx"}},
+		{Name: "library", Title: "Library", Description: "What is owned.", Packages: []string{"library", "itest"}},
+	}
+	pkgs := []Package{
+		{Name: "binder", Synopsis: "Plans a channel.", Imports: []string{"httpx", "library", "schedule", "store"}},
+		{Name: "httpx", Synopsis: "HTTP client."},
+		{Name: "library", Synopsis: "Library port.", Imports: []string{"httpx"}},
+		{Name: "schedule", Synopsis: "Scheduler.", Imports: []string{"store"}},
+		{Name: "store", Synopsis: "Persistence."},
+	}
+
+	out := renderStartHere(fixture, pkgs)
+	for _, want := range []string{
+		"**Imports from other areas:** platform (3), library (1)",
+		"**Imports from other areas:** none",
+		"**Imports from other areas:** platform (1)",
+		"| `binder` | Plans a channel. |",
+		"| `itest` | Tests only. |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("start-here section missing %q\n%s", want, out)
+		}
+	}
+	// The coverage gate parses "- **`name`**" rows as the layer inventory; the area tables
+	// must not look like one, or a test-only package would read as a stale layer row.
+	if strings.Contains(out, "- **`") {
+		t.Error("start-here section uses the layer-row prefix the inventory gate parses")
 	}
 }
 
@@ -237,7 +321,10 @@ func writeGoFixture(t *testing.T, root, relative, content string) {
 	}
 }
 
-func productionPackageNames(root string) (map[string]bool, error) {
+// goPackageNames lists every directory below root that holds Go files. With includeTests
+// false only non-test files count, which is the set the layer listing renders; with it true a
+// directory of tests alone counts too, which is the set the area table must cover.
+func goPackageNames(root string, includeTests bool) (map[string]bool, error) {
 	names := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -255,7 +342,8 @@ func productionPackageNames(root string) (map[string]bool, error) {
 			return err
 		}
 		for _, child := range entries {
-			if child.IsDir() || !strings.HasSuffix(child.Name(), ".go") || strings.HasSuffix(child.Name(), "_test.go") {
+			if child.IsDir() || !strings.HasSuffix(child.Name(), ".go") ||
+				(!includeTests && strings.HasSuffix(child.Name(), "_test.go")) {
 				continue
 			}
 			relative, err := filepath.Rel(root, path)

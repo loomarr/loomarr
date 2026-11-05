@@ -33,6 +33,8 @@ func render(pkgs []Package) string {
 	var b strings.Builder
 
 	b.WriteString(beginMarker + "\n\n")
+	b.WriteString(renderStartHere(areas, pkgs))
+	b.WriteString("## The measured map\n\n")
 	b.WriteString("Generated recursively from each package's own doc comment and exact internal imports, ")
 	b.WriteString("using full paths below `internal/`, so it cannot drift from the code the way a ")
 	b.WriteString("hand-maintained list does. **Layer** is derived: the longest ")
