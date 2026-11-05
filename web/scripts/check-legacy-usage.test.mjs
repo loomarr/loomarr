@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { compareToLedger, measureSource, shrinkLedger } from "./check-legacy-usage.mjs";
+import {
+  compareRetired,
+  compareToLedger,
+  measureSource,
+  retiredImports,
+  shrinkLedger,
+} from "./check-legacy-usage.mjs";
 
 const appFile = (path) => fileURLToPath(new URL(`../apps/web/src/${path}`, import.meta.url));
 
@@ -93,6 +99,44 @@ describe("compareToLedger", () => {
       canShrink: true,
     });
     assert.deepEqual(compareToLedger(ledger, ledger), { violations: [], canShrink: false });
+  });
+});
+
+describe("retiredImports", () => {
+  it("names a retired component however a file reaches it, tests and stories included", () => {
+    const source = `
+      import { Dialog } from "@/components/ui/dialog";
+      import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+      import { Button } from "@/components/ui/button";
+      import { Menu } from "@base-ui/react/menu";
+    `;
+    assert.deepEqual(retiredImports(source, appFile("feature/view.stories.tsx")), ["dialog"]);
+    assert.deepEqual(
+      retiredImports(`import { Dialog } from "../ui/dialog";`, appFile("components/x/x.tsx")),
+      ["dialog"],
+    );
+  });
+
+  it("does not count the legacy component's own wiring", () => {
+    const own = `import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"; export * from "./dialog";`;
+    assert.deepEqual(retiredImports(own, appFile("components/ui/dialog/dialog.tsx")), []);
+    assert.deepEqual(retiredImports(own, appFile("components/ui/dialog/index.ts")), []);
+  });
+});
+
+describe("compareRetired", () => {
+  const retired = { dialog: ["src/old.tsx"] };
+
+  it("fails a file that is not allowed to import a retired component", () => {
+    assert.deepEqual(compareRetired({ "src/old.tsx": ["dialog"], "src/new.tsx": ["dialog"] }, retired), [
+      "src/new.tsx: imports the retired dialog; use @loomarr/design-system's instead",
+    ]);
+  });
+
+  it("fails an allowance that is no longer used, so the list only shrinks", () => {
+    assert.deepEqual(compareRetired({}, retired), [
+      "src/old.tsx: no longer imports the retired dialog; drop it from RETIRED in check-legacy-usage.mjs",
+    ]);
   });
 });
 

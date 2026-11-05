@@ -23,6 +23,20 @@ const ledgerPath = join(appRoot, "legacy-usage.json");
 // Every measure, in report order. A file's entry lists only its non-zero measures.
 const MEASURES = ["tailwindClasses", "tailwindMerge", "clsx", "cva", "baseUi", "legacyUi", "legacyTokens"];
 
+// Copied components the design system has replaced (#2147), each with its Base UI primitive and the
+// only files still allowed to import either. Every other file fails, tests and stories included, and
+// an allowance a file no longer uses fails too, so the list only shrinks to zero.
+const RETIRED = {
+  dialog: {
+    primitive: "@base-ui/react/dialog",
+    allowed: [
+      "src/components/loomarr/filler/clip-player/clip-player.tsx",
+      "src/diagnostics/support-bundle/support-bundle.tsx",
+      "src/palette/command-palette/command-palette.tsx",
+    ],
+  },
+};
+
 const isToolingFile = (path) =>
   path.includes(`${sep}test${sep}`) ||
   /\.(?:test|stories)\.(?:ts|tsx)$/.test(path) ||
@@ -191,6 +205,68 @@ const measureSource = (source, file) => {
   return withoutZeros(counts);
 };
 
+// retiredImports names the retired components a source imports, through the copied component or
+// its Base UI primitive. The component's own files are its wiring, not a consumer.
+const retiredImports = (source, file) => {
+  const program = parse(source, {
+    sourceType: "module",
+    plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
+  }).program;
+  const own = legacyComponentOf(file, true);
+  const found = new Set();
+  for (const specifier of importSpecifiers(program)) {
+    for (const [component, { primitive }] of Object.entries(RETIRED)) {
+      if (component === own) continue;
+      let target = null;
+      if (specifier.startsWith("@/components/ui")) target = join(sourceRoot, specifier.slice(2));
+      else if (specifier.startsWith(".")) target = resolve(dirname(file), specifier);
+      const viaCopy = target !== null && legacyComponentOf(target, false) === component;
+      if (viaCopy || specifier === primitive) found.add(component);
+    }
+  }
+  return [...found].sort();
+};
+
+// compareRetired lists the imports RETIRED does not allow and the allowances no file still uses.
+// `found` is { "src/…": [component, …] }.
+const compareRetired = (found, retired) => {
+  const violations = [];
+  for (const [file, components] of Object.entries(found)) {
+    for (const component of components) {
+      if (!retired[component]?.includes(file)) {
+        violations.push(`${file}: imports the retired ${component}; use @loomarr/design-system's instead`);
+      }
+    }
+  }
+  for (const [component, files] of Object.entries(retired)) {
+    for (const file of files) {
+      if (!found[file]?.includes(component)) {
+        violations.push(
+          `${file}: no longer imports the retired ${component}; drop it from RETIRED in check-legacy-usage.mjs`,
+        );
+      }
+    }
+  }
+  return violations;
+};
+
+// findRetired returns { "src/…": [component, …] } for every source file, production or not.
+const findRetired = (directory = sourceRoot) => {
+  const found = {};
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (/\.(?:ts|tsx)$/.test(entry.name)) {
+        const components = retiredImports(readFileSync(path, "utf8"), path);
+        if (components.length > 0) found[relative(appRoot, path).split(sep).join("/")] = components;
+      }
+    }
+  };
+  visit(directory);
+  return found;
+};
+
 // measureApp returns { "src/…": counts } for every production file with legacy usage.
 const measureApp = (root = sourceRoot) => {
   const files = {};
@@ -269,6 +345,15 @@ if (isMain) {
     writeLedger(files);
     console.log(`legacy-usage: ledger ${hasLedger ? "shrunk" : "recorded"} — ${summary}`);
   } else {
+    const retired = compareRetired(
+      findRetired(),
+      Object.fromEntries(Object.entries(RETIRED).map(([component, { allowed }]) => [component, allowed])),
+    );
+    if (retired.length > 0) {
+      console.error("Retired legacy components are imported outside their allowance (#2147):");
+      for (const violation of retired) console.error(`  ${violation}`);
+      process.exitCode = 1;
+    }
     const { violations, canShrink } = compareToLedger(current, ledger);
     if (violations.length > 0) {
       console.error("Legacy Web usage rose past apps/web/legacy-usage.json (#970):");
@@ -282,4 +367,14 @@ if (isMain) {
   }
 }
 
-export { compareToLedger, countClasses, importCategory, measureApp, measureSource, shrinkLedger, totals };
+export {
+  compareRetired,
+  compareToLedger,
+  countClasses,
+  importCategory,
+  measureApp,
+  measureSource,
+  retiredImports,
+  shrinkLedger,
+  totals,
+};
