@@ -4,31 +4,26 @@ import {
   getReviseProposalJobMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
-import type { EventHandlers, SuggestionPhase } from "@loomarr/core/events";
+import type { SuggestionPhase } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { LoomarrEventsProvider } from "@/events";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
 import { useSuggestionRun } from "./use-suggestion-run";
 
-// Capture the handlers useSuggestionRun registers so a test can drive the SSE phases the
-// hook otherwise only receives live. The real provider is an EventSource jsdom cannot run;
-// this stands in for exactly the one seam under test — the phase fan-out — without it.
-let handlers: EventHandlers | undefined;
-vi.mock("@/events/events-provider", () => ({
-  useLoomarrEventListener: (h: EventHandlers) => {
-    handlers = h;
-  },
-}));
-
+// The SSE phases arrive down the real events provider's stream, which the shared fake feeds.
 const emit = (jobId: string, phase: SuggestionPhase) =>
-  act(() => handlers?.onSuggestion?.({ jobId, phase, round: 0 }));
+  act(() => FakeEventSource.broadcast("suggestion", { jobId, phase, round: 0 }));
 
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>
   );
 };
 

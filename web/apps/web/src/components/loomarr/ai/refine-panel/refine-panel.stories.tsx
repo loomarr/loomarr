@@ -2,6 +2,7 @@ import type { ApproveOutputBody, Proposal, ProposalJourneyDTO, RefineChannelOutp
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LoomarrEventsProvider } from "@/events";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { widthFrame } from "@/test/story-utils";
 import { RefinePanel } from "./refine-panel";
 
@@ -12,21 +13,6 @@ import { RefinePanel } from "./refine-panel";
 // that reads like a rendering regression.
 const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-
-class StoryEventSource {
-  static last: StoryEventSource | undefined;
-  private handlers = new Map<string, (event: MessageEvent) => void>();
-  constructor() {
-    StoryEventSource.last = this;
-  }
-  addEventListener(type: string, callback: (event: MessageEvent) => void) {
-    this.handlers.set(type, callback);
-  }
-  close() {}
-  emit(type: string, data: unknown) {
-    this.handlers.get(type)?.({ data: JSON.stringify(data) } as MessageEvent);
-  }
-}
 
 const proposal: Proposal = {
   intent: { description: "add more Juno Castellan" },
@@ -116,7 +102,7 @@ const withFailingRefine = (): Decorator => (Story) => {
     }
     return new Promise<Response>(() => {});
   }) as typeof fetch;
-  (window as unknown as { EventSource: unknown }).EventSource = StoryEventSource;
+  (window as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -140,7 +126,7 @@ const meta = {
       { name: "The Seventh Satellite Choir", year: 1991, key: "movie:tmdb:90009426" },
     ],
   },
-  // widthFrame only (visual). Each story below brings its OWN fetch/EventSource stub so
+  // widthFrame only (visual). Each story below brings its OWN fetch stub so
   // the happy-path and failure decorators never both patch window.fetch on one render.
   decorators: [widthFrame(560)],
 } satisfies Meta<typeof RefinePanel>;
@@ -172,7 +158,7 @@ const GenerationFailed: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(await canvas.findByLabelText(CHANGE), "add more action");
     await userEvent.click(canvas.getByRole("button", { name: SUGGEST }));
-    StoryEventSource.last?.emit("suggestion", { jobId: "job-1", phase: "failed" });
+    FakeEventSource.broadcast("suggestion", { jobId: "job-1", phase: "failed" });
     await canvas.findByText(/couldn't complete/i);
   },
 };
