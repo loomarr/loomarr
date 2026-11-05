@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/tunarr"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
@@ -19,7 +20,7 @@ func TestLiveTVURLsFor_TunarrReadsTheAdapter(t *testing.T) {
 	t.Parallel()
 	prog := fakeLiveTVAdapter{
 		Tunarr: tunarrtest.NewTunarr(),
-		urls:   setup.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
+		urls:   tunarr.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
 	}
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
@@ -36,7 +37,7 @@ func TestLiveTVURLsFor_UnrecognisedFallsBackToInternalAndWarns(t *testing.T) {
 	t.Parallel()
 	prog := fakeLiveTVAdapter{
 		Tunarr: tunarrtest.NewTunarr(),
-		urls:   setup.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
+		urls:   tunarr.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
 	}
 	want := setup.InternalPlayoutURLs("http://loomarr:8080", "tok")
 	for _, backend := range []string{"internal", "", "something-else"} {
@@ -62,7 +63,7 @@ func TestLiveTVURLsFor_UnrecognisedFallsBackToInternalAndWarns(t *testing.T) {
 // answer (never the live `tunarr.url` setting) is what a non-internal backend reads.
 type fakeLiveTVAdapter struct {
 	*tunarrtest.Tunarr
-	urls setup.LiveTVURLs
+	urls tunarr.LiveTVURLs
 }
 
-func (f fakeLiveTVAdapter) LiveTVURLs() setup.LiveTVURLs { return f.urls }
+func (f fakeLiveTVAdapter) LiveTVURLs() tunarr.LiveTVURLs { return f.urls }

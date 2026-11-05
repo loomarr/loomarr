@@ -3,8 +3,6 @@ package tunarr
 import (
 	"context"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/setup"
 )
 
 // Adapter is the single seam for Loomarr's optional Tunarr playout backend (§6/§9,
@@ -33,11 +31,8 @@ type Adapter interface {
 	ListLocalFillerClipsAll(ctx context.Context) ([]LocalClip, error)
 
 	// LiveTVURLs returns Tunarr's own Live TV URL pair, derived from the live-configured
-	// base URL (§6) — byte-for-byte what setup.TunarrURLsFrom(configured base URL) gave
-	// the deleted setup.LiveTVURLsFor free function on its non-internal branch. Callers
-	// still decide internal-vs-Tunarr themselves; that branch collapses onto the adapter
-	// in a later PR.
-	LiveTVURLs() setup.LiveTVURLs
+	// base URL (§6). Callers decide internal-vs-Tunarr themselves.
+	LiveTVURLs() LiveTVURLs
 }
 
 var _ Adapter = (*Tunarr)(nil)

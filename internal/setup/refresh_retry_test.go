@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // fakeEmby serves the media-server surface RefreshTarget touches. Each POST /LiveTv/TunerHosts
@@ -60,12 +61,12 @@ func (f *fakeEmby) handler() http.Handler {
 	})
 }
 
-func refreshFixture(t *testing.T, statuses ...int) (*fakeEmby, *setup.LiveTVConnector, setup.LiveTVURLs) {
+func refreshFixture(t *testing.T, statuses ...int) (*fakeEmby, *setup.LiveTVConnector, tunarr.LiveTVURLs) {
 	t.Helper()
 	fake := &fakeEmby{t: t, statuses: statuses}
 	srv := httptest.NewServer(fake.handler())
 	t.Cleanup(srv.Close)
-	urls := setup.LiveTVURLs{M3U: "http://192.0.2.79:8001/api/channels.m3u", XMLTV: "http://192.0.2.79:8001/api/xmltv.xml"}
+	urls := tunarr.LiveTVURLs{M3U: "http://192.0.2.79:8001/api/channels.m3u", XMLTV: "http://192.0.2.79:8001/api/xmltv.xml"}
 	client := library.New(library.Emby, srv.URL, "test-token", "dev-1")
 	return fake, setup.NewLiveTVConnectorFixed(client, urls), urls
 }

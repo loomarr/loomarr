@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // backendTransitionDependencies are the composition-owned adapters needed to construct the
@@ -43,11 +44,11 @@ func buildBackendTransition(
 // against another.
 type backendPublisher struct {
 	connector       *setup.LiveTVConnector
-	urls            func(context.Context, string) (setup.LiveTVURLs, error)
+	urls            func(context.Context, string) (tunarr.LiveTVURLs, error)
 	log             *slog.Logger // optional
 	mu              sync.Mutex
 	preparedTarget  string
-	preparedURLs    setup.LiveTVURLs
+	preparedURLs    tunarr.LiveTVURLs
 	preparedLibrary *setup.LiveTVConnector
 }
 
@@ -146,14 +147,14 @@ func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, e
 	return result.TunerRemoved, err
 }
 
-func (p *backendPublisher) prepared(target string) (*setup.LiveTVConnector, setup.LiveTVURLs, error) {
+func (p *backendPublisher) prepared(target string) (*setup.LiveTVConnector, tunarr.LiveTVURLs, error) {
 	if p == nil || p.connector == nil {
-		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
+		return nil, tunarr.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.preparedTarget != target || p.preparedLibrary == nil {
-		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
+		return nil, tunarr.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
 	}
 	return p.preparedLibrary, p.preparedURLs, nil
 }

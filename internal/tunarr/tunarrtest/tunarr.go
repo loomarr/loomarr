@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
@@ -338,8 +337,8 @@ func (m *Tunarr) Guide(context.Context, time.Time, time.Time) (map[string][]tuna
 // LiveTVURLs satisfies the Adapter's Live TV URL surface with the zero value. Like Guide, it is
 // unreached by current tests: the Live TV URL wiring always reads the concrete, non-overridden
 // adapter built alongside this double (see app.liveTVURLsFor), never ov.Programmer.
-func (m *Tunarr) LiveTVURLs() setup.LiveTVURLs {
-	return setup.LiveTVURLs{}
+func (m *Tunarr) LiveTVURLs() tunarr.LiveTVURLs {
+	return tunarr.LiveTVURLs{}
 }
 
 var _ tunarr.Adapter = (*Tunarr)(nil)

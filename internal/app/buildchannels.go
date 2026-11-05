@@ -150,37 +150,37 @@ func buildChannels(
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
 		liveTVConnector = setup.NewLiveTVConnector(
-			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{},
+			func() library.LiveTV { return libraryClient.Snapshot() }, tunarr.LiveTVURLs{},
 		).WithTunerPublishingDisabled(ov.TunerPublishingDisabled, log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+			urls: func(ctx context.Context) (tunarr.LiveTVURLs, error) {
 				if set.svc != nil {
 					if err := set.svc.Refresh(ctx); err != nil {
-						return setup.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
+						return tunarr.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
 					}
 				}
 				backend, err := appliedBackendContext(ctx)
 				if err != nil {
-					return setup.LiveTVURLs{}, err
+					return tunarr.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
+					return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
 				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
 		}
 		transportFreshness := transportTunerRescanner{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+			urls: func(ctx context.Context) (tunarr.LiveTVURLs, error) {
 				backend, err := transportBackendContext(ctx)
 				if err != nil {
-					return setup.LiveTVURLs{}, err
+					return tunarr.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
+					return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
 				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
@@ -328,7 +328,7 @@ func buildChannels(
 // maintainer's call-site consolidation decision (Refs #1564 PR 3): internal is the default
 // backend and Tunarr is now optional, so a stale or corrupted setting must not silently serve
 // a backend the household doesn't run.
-func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, log *slog.Logger) setup.LiveTVURLs {
+func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, log *slog.Logger) tunarr.LiveTVURLs {
 	normalized := schedule.NormalizePlayoutBackend(backend)
 	if normalized == schedule.PlayoutBackendTunarr {
 		return prog.LiveTVURLs()

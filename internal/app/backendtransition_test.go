@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
@@ -66,16 +67,16 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 			return primary
 		}
 		return rotated
-	}, setup.LiveTVURLs{})
+	}, tunarr.LiveTVURLs{})
 	resolves := 0
 	publisher := &backendPublisher{
 		connector: connector,
-		urls: func(context.Context, string) (setup.LiveTVURLs, error) {
+		urls: func(context.Context, string) (tunarr.LiveTVURLs, error) {
 			resolves++
 			if resolves == 1 {
-				return setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
+				return tunarr.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
 			}
-			return setup.LiveTVURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
+			return tunarr.LiveTVURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
 		},
 	}
 	ctx := context.Background()
@@ -107,11 +108,11 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
 	connector := setup.NewLiveTVConnectorFixed(liveTV,
-		setup.TunarrURLsFrom("http://applied-tunarr:8000"))
+		tunarr.LiveTVURLsAt("http://applied-tunarr:8000"))
 	target := setup.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
 	rescanner := transportTunerRescanner{
 		c: connector,
-		urls: func(context.Context) (setup.LiveTVURLs, error) {
+		urls: func(context.Context) (tunarr.LiveTVURLs, error) {
 			return target, nil
 		},
 	}
@@ -197,12 +198,12 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 		lib := testkit.NewLiveTV()
 		// A stale Loomarr-owned tuner at a DIFFERENT url: if retirement ran, it would be removed.
 		lib.SeedTuner("http://stale-tuner.invalid/old.m3u", "loomarr")
-		urls := setup.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
+		urls := tunarr.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
 		connector := setup.NewLiveTVConnectorFixed(lib, urls).
 			WithTunerPublishingDisabled(disabled, slog.New(slog.DiscardHandler))
 		publisher := &backendPublisher{
 			connector: connector,
-			urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+			urls:      func(context.Context, string) (tunarr.LiveTVURLs, error) { return urls, nil },
 		}
 		fleet := testkit.NewBackendTransitionPhaseProbe()
 		controller := backendtransition.NewController(st, fleet, publisher, nil)
@@ -262,12 +263,12 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 // publisher's other phases from running on later ticks.
 func TestBackendPublisherRefreshLogsTransientCauseOnce(t *testing.T) {
 	lib := testkit.NewLiveTV()
-	urls := setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
+	urls := tunarr.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
 	lib.RescanErr = setup.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
 	var logs strings.Builder
 	publisher := &backendPublisher{
 		connector: setup.NewLiveTVConnectorFixed(lib, urls),
-		urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+		urls:      func(context.Context, string) (tunarr.LiveTVURLs, error) { return urls, nil },
 		log:       slog.New(slog.NewTextHandler(&logs, nil)),
 	}
 	ctx := context.Background()
