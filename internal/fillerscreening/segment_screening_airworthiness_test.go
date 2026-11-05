@@ -3,8 +3,6 @@ package fillerscreening
 import (
 	"slices"
 	"testing"
-
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func TestSegmentAirworthinessRejectsCertifiedPositiveDespiteOtherAxisHold(t *testing.T) {
@@ -12,14 +10,14 @@ func TestSegmentAirworthinessRejectsCertifiedPositiveDespiteOtherAxisHold(t *tes
 	subject := screeningChildSubjectFixture(t)
 	records := passingAxisEvidence(t, subject)
 	visual := &records[0].Evidence
-	visual.Suitability.Observations = []fillerairworthiness.Observation{{
-		ID: "visual-positive-1", Flag: fillerairworthiness.FlagAdultNudity,
-		Severity: fillerairworthiness.SeverityLow, Context: fillerairworthiness.ContextDepiction,
+	visual.Suitability.Observations = []AirworthinessObservation{{
+		ID: "visual-positive-1", Flag: FlagAdultNudity,
+		Severity: SeverityLow, Context: ContextDepiction,
 		StartMS: 1_000, EndMS: 2_000,
 	}}
 	visual.SHA256 = SegmentScreeningAxisEvidenceSHA256(*visual)
 	records[0].Evidence = *visual
-	records[1].Evidence.Suitability.Coverage = fillerairworthiness.CoverageIncomplete
+	records[1].Evidence.Suitability.Coverage = CoverageIncomplete
 	records[1].Evidence.Outcome = ScreenHold
 	records[1].Evidence.ReasonCode = "spoken_coverage_incomplete"
 	records[1].Evidence.SHA256 = SegmentScreeningAxisEvidenceSHA256(records[1].Evidence)
@@ -30,8 +28,8 @@ func TestSegmentAirworthinessRejectsCertifiedPositiveDespiteOtherAxisHold(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.Verdict != fillerairworthiness.VerdictReject || len(decision.Triggers) != 1 ||
-		decision.Triggers[0].Flag != fillerairworthiness.FlagAdultNudity {
+	if decision.Verdict != VerdictReject || len(decision.Triggers) != 1 ||
+		decision.Triggers[0].Flag != FlagAdultNudity {
 		t.Fatalf("decision = %#v", decision)
 	}
 }
@@ -40,7 +38,7 @@ func TestSegmentAggregateRequiresAirworthinessPass(t *testing.T) {
 	t.Parallel()
 	subject := screeningChildSubjectFixture(t)
 	records := passingAxisEvidence(t, subject)
-	archive, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileRestrictedArchive, screeningProfiles(records))
+	archive, err := NewSegmentAirworthinessEvaluator(ProfileRestrictedArchive, screeningProfiles(records))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +55,7 @@ func TestSegmentAggregateRequiresAirworthinessPass(t *testing.T) {
 		t.Fatal(err)
 	}
 	if evidence.Passes() || ValidateSegmentScreeningEvidence(evidence) != nil ||
-		evidence.Airworthiness.Verdict != fillerairworthiness.VerdictHold {
+		evidence.Airworthiness.Verdict != VerdictHold {
 		t.Fatalf("restricted archive aggregate = %#v", evidence)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
@@ -17,8 +16,8 @@ func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScr
 	}
 	airworthiness, safety := airworthinessAxis(axis)
 	if safety {
-		for _, flag := range fillerairworthiness.Vocabulary() {
-			if slices.Contains(fillerairworthiness.AxesForFlag(flag), airworthiness) {
+		for _, flag := range airworthinessVocabulary() {
+			if slices.Contains(airworthinessAxesForFlag(flag), airworthiness) {
 				profile.CertifiedSuitabilityFlags = append(profile.CertifiedSuitabilityFlags, flag)
 			}
 		}
@@ -90,34 +89,34 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	return records
 }
 
-func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *fillerairworthiness.AxisEvidence {
+func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *AirworthinessAxisEvidence {
 	axisProfile, err := segmentAirworthinessProfile(profile)
 	if err != nil {
 		return nil
 	}
-	coverage := fillerairworthiness.CoverageComplete
+	coverage := CoverageComplete
 	if outcome == ScreenHold {
-		coverage = fillerairworthiness.CoverageIncomplete
+		coverage = CoverageIncomplete
 	}
 	if outcome == ScreenReject {
-		coverage = fillerairworthiness.CoverageConflict
+		coverage = CoverageConflict
 	}
-	return &fillerairworthiness.AxisEvidence{
+	return &AirworthinessAxisEvidence{
 		SubjectSHA256: subject.SHA256, Profile: axisProfile, Coverage: coverage,
-		EvidenceSHA256: filler.ScreeningBytesSHA256(raw), Observations: []fillerairworthiness.Observation{},
+		EvidenceSHA256: filler.ScreeningBytesSHA256(raw), Observations: []AirworthinessObservation{},
 	}
 }
 
-func screeningAirworthinessEvaluator(t *testing.T, profiles []SegmentScreeningAxisProfile) *fillerairworthiness.Evaluator {
+func screeningAirworthinessEvaluator(t *testing.T, profiles []SegmentScreeningAxisProfile) *AirworthinessEvaluator {
 	t.Helper()
-	evaluator, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, profiles)
+	evaluator, err := NewSegmentAirworthinessEvaluator(ProfileAllAges, profiles)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return evaluator
 }
 
-func screeningAirworthinessDecision(t *testing.T, subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) fillerairworthiness.Decision {
+func screeningAirworthinessDecision(t *testing.T, subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) AirworthinessDecision {
 	t.Helper()
 	profiles := make([]SegmentScreeningAxisProfile, 0, len(records))
 	for _, record := range records {

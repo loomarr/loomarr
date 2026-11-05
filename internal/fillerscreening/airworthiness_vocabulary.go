@@ -1,8 +1,8 @@
-package fillerairworthiness
+package fillerscreening
 
 import "slices"
 
-var vocabulary = []Flag{
+var vocabulary = []AirworthinessFlag{
 	FlagAdultNudity,
 	FlagAgeAmbiguous,
 	FlagAlcohol,
@@ -32,7 +32,7 @@ var vocabulary = []Flag{
 	FlagWeaponDepiction,
 }
 
-var policyFlags = []Flag{
+var policyFlags = []AirworthinessFlag{
 	FlagAdultNudity,
 	FlagAlcohol,
 	FlagAnimalHarmOrDeath,
@@ -57,55 +57,54 @@ var policyFlags = []Flag{
 	FlagWeaponDepiction,
 }
 
-var axisOrder = []Axis{AxisVisual, AxisSpoken, AxisWritten}
+var axisOrder = []AirworthinessAxis{AxisVisual, AxisSpoken, AxisWritten}
 
-// Vocabulary returns the complete closed version-one suitability vocabulary.
-//
-// No binary calls it (deadcode reports it): it is exported for the api and filler tests that
-// enumerate every flag, which cannot see the unexported table.
-func Vocabulary() []Flag { return slices.Clone(vocabulary) }
+// airworthinessVocabulary returns a copy of the complete closed version-one suitability
+// vocabulary for the tests that enumerate every flag.
+func airworthinessVocabulary() []AirworthinessFlag { return slices.Clone(vocabulary) }
 
-func validFlag(value Flag) bool { return slices.Contains(vocabulary, value) }
+func validFlag(value AirworthinessFlag) bool { return slices.Contains(vocabulary, value) }
 
-func validAxis(value Axis) bool { return slices.Contains(axisOrder, value) }
+func validAxis(value AirworthinessAxis) bool { return slices.Contains(axisOrder, value) }
 
-func validProfile(value Profile) bool {
+func validProfile(value AirworthinessProfile) bool {
 	return value == ProfileAllAges || value == ProfileGeneralAudience || value == ProfileRestrictedArchive
 }
 
-func validSeverity(value Severity) bool {
+func validSeverity(value AirworthinessSeverity) bool {
 	return value == SeverityLow || value == SeverityModerate || value == SeverityHigh
 }
 
-func validContext(value Context) bool {
+func validContext(value AirworthinessContext) bool {
 	return value == ContextPresence || value == ContextDepiction || value == ContextPromotion || value == ContextInstruction
 }
 
-func flagOwners(flag Flag) []Axis {
+func flagOwners(flag AirworthinessFlag) []AirworthinessAxis {
 	switch flag {
 	case FlagAdultNudity, FlagAgeAmbiguous, FlagAnimalHarmOrDeath, FlagFrighteningOrDisturbing,
 		FlagGraphicViolenceOrGore, FlagHumanDeathOrCorpse, FlagMinorNudityOrSexualRisk,
 		FlagMinorPresent, FlagNonGraphicViolence, FlagSevereInjuryOrMedical,
 		FlagSexualActivityOrPresentation, FlagWeaponDepiction:
-		return []Axis{AxisVisual}
+		return []AirworthinessAxis{AxisVisual}
 	case FlagExplicitSexualLanguage, FlagProfanity, FlagSlurOrDegradingLanguage:
-		return []Axis{AxisSpoken, AxisWritten}
+		return []AirworthinessAxis{AxisSpoken, AxisWritten}
 	case FlagHateOrExtremistSymbol:
-		return []Axis{AxisVisual, AxisWritten}
+		return []AirworthinessAxis{AxisVisual, AxisWritten}
 	case FlagAlcohol, FlagCommercialOrBrand, FlagDrug, FlagGambling, FlagHatefulTargeting,
 		FlagRegulatedProductPromotion, FlagReligiousSuffering, FlagSelfHarmOrSuicide,
 		FlagThreat, FlagTobaccoOrNicotine, FlagWarOrMilitary:
-		return []Axis{AxisVisual, AxisSpoken, AxisWritten}
+		return []AirworthinessAxis{AxisVisual, AxisSpoken, AxisWritten}
 	default:
 		return nil
 	}
 }
 
-// AxesForFlag returns the safety modalities whose certified coverage can
-// support one closed suitability flag.
-//
-// No binary calls it (deadcode reports it): it is exported for the api and filler tests that
-// build per-axis fixtures, which cannot see flagOwners.
-func AxesForFlag(flag Flag) []Axis { return slices.Clone(flagOwners(flag)) }
+// airworthinessAxesForFlag returns the safety modalities whose certified coverage can
+// support one closed suitability flag, for the tests that build per-axis fixtures.
+func airworthinessAxesForFlag(flag AirworthinessFlag) []AirworthinessAxis {
+	return slices.Clone(flagOwners(flag))
+}
 
-func axisOwnsFlag(axis Axis, flag Flag) bool { return slices.Contains(flagOwners(flag), axis) }
+func axisOwnsFlag(axis AirworthinessAxis, flag AirworthinessFlag) bool {
+	return slices.Contains(flagOwners(flag), axis)
+}

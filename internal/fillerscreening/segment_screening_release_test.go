@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
@@ -95,12 +94,12 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	t.Run("Airworthiness profile", func(t *testing.T) {
 		aggregate, _, repository, records, _ := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)
-		evaluator, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileGeneralAudience, profiles)
+		evaluator, err := NewSegmentAirworthinessEvaluator(ProfileGeneralAudience, profiles)
 		if err != nil {
 			t.Fatal(err)
 		}
 		release := screeningReleaseFixture(profiles, true)
-		release.AirworthinessProfile = fillerairworthiness.ProfileGeneralAudience
+		release.AirworthinessProfile = ProfileGeneralAudience
 		release.AirworthinessAuthoritySHA256 = evaluator.AuthoritySHA256()
 		release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)
 		certification, err := NewSegmentScreeningCertification(release, repository)
@@ -157,7 +156,7 @@ func screeningProfiles(records []RecordedSegmentScreeningAxisEvidence) []Segment
 }
 
 func screeningReleaseFixture(profiles []SegmentScreeningAxisProfile, production bool) SegmentScreeningReleaseAuthority {
-	airworthiness, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, profiles)
+	airworthiness, err := NewSegmentAirworthinessEvaluator(ProfileAllAges, profiles)
 	if err != nil {
 		panic(err)
 	}
@@ -165,7 +164,7 @@ func screeningReleaseFixture(profiles []SegmentScreeningAxisProfile, production 
 		SchemaVersion: SegmentScreeningReleaseSchemaVersion, ContractVersion: SegmentScreeningReleaseContractVersion,
 		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: SegmentScreeningContractVersion,
 		Profiles:                     append([]SegmentScreeningAxisProfile(nil), profiles...),
-		AirworthinessProfile:         fillerairworthiness.ProfileAllAges,
+		AirworthinessProfile:         ProfileAllAges,
 		AirworthinessAuthoritySHA256: airworthiness.AuthoritySHA256(), ProductionAdmissionAllowed: production,
 	}
 	release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)

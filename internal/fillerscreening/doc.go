@@ -3,7 +3,9 @@
 // content-addressed evidence repository behind it, the playback-integrity and qualification
 // evaluators, the release certification that replays an aggregate against its authority, and the
 // SCREEN conveyor stage that turns the outcome into a pipeline verdict. It owns the four-axis
-// aggregate (SegmentScreeningEvidence) and the per-axis result model it is built from.
+// aggregate (SegmentScreeningEvidence), the per-axis result model it is built from, and
+// Airworthiness: the deterministic audience policy that reduces the three safety axes' certified
+// observations to the one decision every aggregate carries.
 //
 // It sits above internal/filler and imports it for the screening subject and the sidecar
 // reference, the clip catalog types and the stage contract; internal/filler knows nothing of it.

@@ -10,7 +10,6 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 const (
@@ -24,7 +23,7 @@ type SegmentScreeningReleaseAuthority struct {
 	CertificateSHA256            string                        `json:"certificateSha256"`
 	AggregateContractVersion     string                        `json:"aggregateContractVersion"`
 	Profiles                     []SegmentScreeningAxisProfile `json:"profiles"`
-	AirworthinessProfile         fillerairworthiness.Profile   `json:"airworthinessProfile"`
+	AirworthinessProfile         AirworthinessProfile          `json:"airworthinessProfile"`
 	AirworthinessAuthoritySHA256 string                        `json:"airworthinessAuthoritySha256"`
 	ProductionAdmissionAllowed   bool                          `json:"productionAdmissionAllowed"`
 	SHA256                       string                        `json:"sha256"`

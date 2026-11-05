@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 // SegmentScreeningMedia supplies an evaluator with the exact rendered-child artifacts named by
@@ -34,10 +33,10 @@ type SegmentScreeningEvaluator interface {
 type SegmentScreeningRuntime struct {
 	evaluators    []SegmentScreeningEvaluator
 	evidence      SegmentScreeningEvidenceRepository
-	airworthiness *fillerairworthiness.Evaluator
+	airworthiness *AirworthinessEvaluator
 }
 
-func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository, airworthiness *fillerairworthiness.Evaluator) (*SegmentScreeningRuntime, error) {
+func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository, airworthiness *AirworthinessEvaluator) (*SegmentScreeningRuntime, error) {
 	if len(evaluators) != len(segmentScreeningAxisOrder) || evidence == nil || airworthiness == nil {
 		return nil, fmt.Errorf("segment screening runtime requires four evaluators, evidence repository, and Airworthiness policy")
 	}

@@ -81,8 +81,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`filleradmission`** · 3 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerairworthiness`** · 1 importer
-  Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
 - **`fillersafety`** · 1 importer
@@ -276,7 +274,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerscreening`** · 2 importers · → `filler`, `fillerairworthiness`, `fillerstructureassessment`, `mediatools`
+- **`fillerscreening`** · 2 importers · → `filler`, `fillerstructureassessment`, `mediatools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `encode`, `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructuremedia`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.

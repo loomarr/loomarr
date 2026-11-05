@@ -1,4 +1,4 @@
-package fillerairworthiness
+package fillerscreening
 
 import "testing"
 
@@ -6,9 +6,9 @@ func TestVersionOnePolicyBoundaries(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
-		flag     Flag
-		severity Severity
-		context  Context
+		flag     AirworthinessFlag
+		severity AirworthinessSeverity
+		context  AirworthinessContext
 		allAges  policyAction
 		general  policyAction
 	}{
@@ -62,7 +62,7 @@ func TestVersionOnePolicyBoundaries(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			observation := Observation{Flag: test.flag, Severity: test.severity, Context: test.context}
+			observation := AirworthinessObservation{Flag: test.flag, Severity: test.severity, Context: test.context}
 			if got := policyActionFor(ProfileAllAges, observation); got != test.allAges {
 				t.Fatalf("all_ages action = %v, want %v", got, test.allAges)
 			}
@@ -75,11 +75,11 @@ func TestVersionOnePolicyBoundaries(t *testing.T) {
 
 func TestPolicyIsTotalForClosedVocabulary(t *testing.T) {
 	t.Parallel()
-	for _, profile := range []Profile{ProfileAllAges, ProfileGeneralAudience, ProfileRestrictedArchive} {
-		for _, flag := range Vocabulary() {
-			for _, severity := range []Severity{SeverityLow, SeverityModerate, SeverityHigh} {
-				for _, context := range []Context{ContextPresence, ContextDepiction, ContextPromotion, ContextInstruction} {
-					action := policyActionFor(profile, Observation{Flag: flag, Severity: severity, Context: context})
+	for _, profile := range []AirworthinessProfile{ProfileAllAges, ProfileGeneralAudience, ProfileRestrictedArchive} {
+		for _, flag := range airworthinessVocabulary() {
+			for _, severity := range []AirworthinessSeverity{SeverityLow, SeverityModerate, SeverityHigh} {
+				for _, context := range []AirworthinessContext{ContextPresence, ContextDepiction, ContextPromotion, ContextInstruction} {
+					action := policyActionFor(profile, AirworthinessObservation{Flag: flag, Severity: severity, Context: context})
 					if action != policyAllow && action != policyReview && action != policyReject {
 						t.Fatalf("no action for profile=%s flag=%s severity=%s context=%s", profile, flag, severity, context)
 					}

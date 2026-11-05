@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 const (
@@ -97,10 +96,10 @@ func (e *qualificationSafetyEvaluator) Evaluate(ctx context.Context, media Segme
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
-	suitability := &fillerairworthiness.AxisEvidence{
+	suitability := &AirworthinessAxisEvidence{
 		SubjectSHA256: media.Subject.SHA256, Profile: profile,
-		Coverage: fillerairworthiness.CoverageIncomplete, EvidenceSHA256: filler.ScreeningBytesSHA256(raw),
-		Observations: []fillerairworthiness.Observation{},
+		Coverage: CoverageIncomplete, EvidenceSHA256: filler.ScreeningBytesSHA256(raw),
+		Observations: []AirworthinessObservation{},
 	}
 	return NewSegmentScreeningAxisEvidence(media.Subject, e.profile, ScreenHold, reasonCode, suitability, raw, e.now())
 }
@@ -134,7 +133,7 @@ func NewQualificationSegmentScreeningRuntime(evidenceRoot string, now func() tim
 		return nil, err
 	}
 	evaluators = append(evaluators, playbackEvaluator)
-	airworthiness, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, safetyProfiles)
+	airworthiness, err := NewSegmentAirworthinessEvaluator(ProfileAllAges, safetyProfiles)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +152,7 @@ func qualificationSegmentScreeningProfile(axis SegmentScreeningAxis, evidenceCon
 		ImplementationSHA256: filler.ScreeningBytesSHA256([]byte(implementationVersion + "\x00" + string(axis))),
 	}
 	if _, safety := airworthinessAxis(axis); safety {
-		profile.CertifiedSuitabilityFlags = []fillerairworthiness.Flag{}
+		profile.CertifiedSuitabilityFlags = []AirworthinessFlag{}
 	}
 	return profile
 }
