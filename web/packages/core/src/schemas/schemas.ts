@@ -14,18 +14,19 @@
 // fails with `Type 'true' is not assignable to type 'never'` on that line. It means exactly
 // one thing: *that field does not exist on the wire schema.*
 //
-// ⚠ **Generation carries NAMES and TYPES, not RULES.** The spec declares almost no constraints
-// (5 `minimum`, 3 `maximum`, 7 `minLength` across ~9k lines; `maxAcquisitions` has no bounds at
-// all), and OpenAPI has nowhere to put a user-facing message. So every product rule below —
-// the trims, the lengths, the 0–200 cap, the password confirmation — is deliberately
-// hand-authored and must STAY that way. Do not "simplify" these into the generated schema.
+// ⚠ **A limit the server declares is read from the generated constant; the MESSAGE stays here.**
+// The password minimum is `bootstrapBodyPasswordMin`, from the server's `minLength` on that route,
+// so the form and the API cannot disagree about it. OpenAPI has nowhere to put a user-facing
+// message, so every message is authored below. Rules the server does not declare — the trims, the
+// 3-character description, the 0–200 cap, the password confirmation — are still hand-authored
+// here; moving one to the server means a struct tag there and its generated constant here.
 // ⚠ PascalCase because orval 8.24 renamed generated zod SCHEMA exports (`loginBody` →
 // `LoginBody`). Scalar constraint constants kept their camelCase (`changePasswordBodyNextMin`),
 // so the casing here is not a blanket rule — it tracks what the generator emits per symbol.
 import { LoginBody } from "@loomarr/api/zod/auth";
 import { NotificationProvidersUpdateBody } from "@loomarr/api/zod/notifications";
 import { SubmitProposalBody } from "@loomarr/api/zod/proposals";
-import { BootstrapBody } from "@loomarr/api/zod/setup";
+import { BootstrapBody, bootstrapBodyPasswordMin } from "@loomarr/api/zod/setup";
 import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only
@@ -61,7 +62,7 @@ const intentSchema = intentShape.extend({
 const bootstrapSchema = BootstrapBody.pick({ username: true, password: true })
   .extend({
     username: z.string().trim().min(1, "Pick a username."),
-    password: z.string().min(8, "At least 8 characters."),
+    password: z.string().min(bootstrapBodyPasswordMin, `At least ${bootstrapBodyPasswordMin} characters.`),
     confirm: z.string(),
   })
   .refine((v) => v.password === v.confirm, { message: "Passwords don't match.", path: ["confirm"] });

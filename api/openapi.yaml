@@ -543,6 +543,8 @@ components:
           type: string
         password:
           description: The owning admin's password (Argon2id-hashed at rest).
+          format: password
+          minLength: 8
           type: string
         username:
           description: The owning admin's local username.
@@ -1048,7 +1050,7 @@ components:
           format: password
           type: string
         next:
-          description: The new password (min 8 characters).
+          description: The new password.
           format: password
           minLength: 8
           type: string
@@ -9099,6 +9101,7 @@ components:
           type: string
         password:
           format: password
+          minLength: 8
           type: string
         username:
           type: string
@@ -9121,6 +9124,7 @@ components:
           type: string
         password:
           format: password
+          minLength: 8
           type: string
       required:
         - grant
