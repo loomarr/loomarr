@@ -237,4 +237,4 @@ func (l *LiveTV) Calls() []string {
 // Note: this mock deliberately does NOT reference library.LiveTV to avoid a
 // testkit→library import cycle (library's internal tests import testkit). It
 // satisfies the interface structurally; the assertion lives at the use site
-// (setup.NewLiveTVConnector takes a library.LiveTV).
+// (livetvpublish.NewLiveTVConnector takes a library.LiveTV).

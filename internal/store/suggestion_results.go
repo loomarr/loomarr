@@ -321,9 +321,13 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: read source result: %w", job.ID, err)
 	}
 
+	body, err := decodeProposalBody(proposalID, proposalJSON)
+	if err != nil {
+		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
+	}
 	p := Proposal{
 		ID: proposalID, JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: proposalJSON, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
+		Body: body, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
 	}
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
@@ -347,11 +351,15 @@ func (s *sqlStore) CloneSuggestionSuccess(
 }
 
 func insertProposalTx(ctx context.Context, tx *sql.Tx, s *sqlStore, p Proposal) error {
-	_, err := tx.ExecContext(ctx, s.ph(
+	body, err := encodeProposalBody(p)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, s.ph(
 		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}

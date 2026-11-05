@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
@@ -360,7 +360,7 @@ const workerWait = 30 * time.Second
 
 // awaitProposal polls the submitted queue until the job's proposal appears (the
 // worker ran) or the deadline passes; a worker failure surfaces the job's error.
-func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, suggest.Proposal) {
+func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, proposal.Proposal) {
 	h.t.Helper()
 	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
@@ -374,7 +374,7 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.getJSON("/v1/proposals?status=submitted", cookie, &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop suggest.Proposal
+				var prop proposal.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					h.t.Fatalf("decode proposal: %v", err)
 				}
@@ -387,5 +387,5 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	h.t.Fatalf("proposal never appeared for job %s", jobID)
-	return "", suggest.Proposal{}
+	return "", proposal.Proposal{}
 }

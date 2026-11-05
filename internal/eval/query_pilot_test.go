@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -17,7 +18,7 @@ import (
 )
 
 func TestRunnerDevelopmentEvidenceCannotCertify(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Series, TMDBID: 3921, Name: "Sabrina the Teenage Witch"}}}
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{MediaType: provision.Series, TMDBID: 3921, Name: "Sabrina the Teenage Witch"}}}
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{DevelopmentCorpus: true}).Run(context.Background(), []Case{{
 		Name: "development-anchor", MinGrounded: 1, RequireKeys: []provision.Key{"series:tmdb:3921"},
 	}})
@@ -243,7 +244,7 @@ func TestQueryPilotCausalOutcomeControls(t *testing.T) {
 	owned.Acquisitions, owned.Lineup = owned.Lineup[2:], owned.Lineup[:2]
 	controls := []struct {
 		caseID             string
-		positive, negative suggest.Proposal
+		positive, negative proposal.Proposal
 		failure            string
 	}{
 		{"history-original", proposalWithKeys(t, "series:tmdb:50001", "series:tmdb:50002", "series:tmdb:50003", "series:tmdb:50004", "series:tmdb:50005", "series:tmdb:50006"), proposalWithKeys(t, "series:tmdb:50001"), "grounded titles"},
@@ -349,8 +350,8 @@ func TestQueryPilotHistoryEpochRejectsUnwantedEpisodeDates(t *testing.T) {
 }
 
 func TestRunnerPilotRejectsDuplicateChoices(t *testing.T) {
-	item := suggest.ProposalItem{MediaType: provision.Series, TMDBID: 3921, Name: "Sabrina the Teenage Witch"}
-	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{item, item}}}, RunnerConfig{}).Run(context.Background(), []Case{{
+	item := proposal.ProposalItem{MediaType: provision.Series, TMDBID: 3921, Name: "Sabrina the Teenage Witch"}
+	card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{Lineup: []proposal.ProposalItem{item, item}}}, RunnerConfig{}).Run(context.Background(), []Case{{
 		Name: "duplicate-choices", MinGrounded: 2, RequireUniqueKeys: true,
 	}})
 	if card.Results[0].Passed() || !strings.Contains(strings.Join(card.Results[0].Failures, " "), "duplicate grounded key") {

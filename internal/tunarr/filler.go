@@ -76,7 +76,7 @@ type programMeta struct {
 }
 
 // EnsureLocalSourceResult reports what EnsureLocalSource did, so a caller/UI can
-// distinguish "created the source" from "already there" (mirrors setup.ConnectResult).
+// distinguish "created the source" from "already there" (mirrors livetvpublish.ConnectResult).
 type EnsureLocalSourceResult struct {
 	SourceID    string
 	LibraryIDs  []string

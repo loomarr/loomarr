@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -27,7 +27,7 @@ func TestSuggest_RetiredEraCannotBeProjectedAway(t *testing.T) {
 		}
 	}
 
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{
 		Description: "A named programming block",
 		MustInclude: []string{"Marigold Protocol"},
 	})

@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -21,11 +22,11 @@ func TestSuggest_DateSourceOrderInitialDenialMatrix(t *testing.T) {
 	conflict := `{"picks":[],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4},{"field":"description","start":9,"end":13}],"axes":[{"kind":"movie_release","combine":"all","intervals":[{"anchor":0,"start":1990,"end":1999},{"anchor":1,"start":2000,"end":2009}]}]}}`
 	for _, source := range []struct {
 		name   string
-		intent suggest.Intent
+		intent proposal.Intent
 	}{
-		{name: "reference", intent: suggest.Intent{Description: "1990 and 2000 https://lineups.example/friday"}},
-		{name: "curated", intent: suggest.Intent{Description: "1990 and 2000 Classic Marigold Protocol"}},
-		{name: "named", intent: suggest.Intent{Description: "1990 and 2000 A named programming block", MustInclude: []string{"Marigold Protocol"}}},
+		{name: "reference", intent: proposal.Intent{Description: "1990 and 2000 https://lineups.example/friday"}},
+		{name: "curated", intent: proposal.Intent{Description: "1990 and 2000 Classic Marigold Protocol"}},
+		{name: "named", intent: proposal.Intent{Description: "1990 and 2000 A named programming block", MustInclude: []string{"Marigold Protocol"}}},
 	} {
 		for _, failureCase := range []struct {
 			name, response, code, terminal string
@@ -76,7 +77,7 @@ func TestSuggest_DateSourceOrderReferenceEvidenceTitleAnchorsMarigoldProtocol(t 
 		t.Fatal(err)
 	}
 	model := testkit.NewLLM(testkit.FinalResponse(string(bootstrap)), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "1990 and 2000 https://lineups.example/friday"})
+	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "1990 and 2000 https://lineups.example/friday"})
 	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID || model.Calls != 2 || len(references.Calls()) != 1 || len(corpus.Searches()) != 1 || len(corpus.Discoveries()) != 0 {
 		t.Fatalf("proposal=%+v err=%v model calls=%d reference calls=%d searches=%d discoveries=%d", proposal, err, model.Calls, len(references.Calls()), len(corpus.Searches()), len(corpus.Discoveries()))
 	}
@@ -147,7 +148,7 @@ func TestSuggest_DateSourceOrderReferenceContinuationUsesTwoRepairs(t *testing.T
 			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			references := &testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
 			model := testkit.NewLLM(responses...)
-			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "1990 and 2000 https://lineups.example/friday"})
+			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "1990 and 2000 https://lineups.example/friday"})
 			if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID || len(references.Calls()) != 1 || len(corpus.Searches()) != 1 {
 				t.Fatalf("proposal=%+v err=%v calls=%d refs=%d searches=%d", proposal, err, model.Calls, len(references.Calls()), len(corpus.Searches()))
 			}
@@ -168,7 +169,7 @@ func TestSuggest_DateSourceOrderSourceCapacityReservedBeforeInitialization(t *te
 	model := testkit.NewLLM(invalid, invalid, invalid, invalid, testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "movie", "dateMeaning": meaning}))
 	corpus := &catalogfixture.Corpus{}
 	references := &testkit.ReferenceResolver{}
-	_, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "1990 and 2000 and 2010 A named programming block", MustInclude: []string{"Marigold Protocol"}})
+	_, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "1990 and 2000 and 2010 A named programming block", MustInclude: []string{"Marigold Protocol"}})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != suggest.FailureBudgetExhausted || model.Calls != 5 || len(corpus.Searches()) != 0 || len(corpus.Discoveries()) != 0 || len(references.Calls()) != 0 {
 		t.Fatalf("err=%v calls=%d searches=%d discoveries=%d references=%d", err, model.Calls, len(corpus.Searches()), len(corpus.Discoveries()), len(references.Calls()))
@@ -178,7 +179,7 @@ func TestSuggest_DateSourceOrderSourceCapacityReservedBeforeInitialization(t *te
 func TestSuggest_DateSourceOrderInitialAmbiguityDoesNotResolveReference(t *testing.T) {
 	references := &testkit.ReferenceResolver{Evidence: reference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}
 	model := testkit.NewLLM(testkit.FinalResponse(`{"picks":[],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":0,"end":5}],"axes":[]}}`))
-	_, err := buildSuggester(t, model).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "dated https://lineups.example/friday"})
+	_, err := buildSuggester(t, model).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "dated https://lineups.example/friday"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
 		t.Fatalf("failure = %#v", err)
@@ -197,7 +198,7 @@ func TestSuggest_DateSourceOrderValidTitleAndCollectionCallsReserveNoNegativeWor
 		t.Run(name, func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 			model := testkit.NewLLM(testkit.ToolCallResponse("catalog_search", arguments), testkit.FinalResponse(finalWithDateMeaning(t, meaning)))
-			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "marigold"})
+			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "marigold"})
 			if err != nil || len(proposal.Lineup) != 1 {
 				t.Fatalf("proposal=%#v err=%v", proposal, err)
 			}
@@ -216,7 +217,7 @@ func TestSuggest_DateSourceOrderInvalidCollectionExtraFieldDoesNotInitializeSour
 			t.Fatalf("sources initialized before corrected tool call: searches=%#v", corpus.Searches())
 		}
 	}
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A named programming block", MustInclude: []string{"Marigold Protocol"}})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A named programming block", MustInclude: []string{"Marigold Protocol"}})
 	if err != nil || len(proposal.Lineup) != 1 {
 		t.Fatalf("proposal=%#v err=%v", proposal, err)
 	}
@@ -246,7 +247,7 @@ func TestSuggest_DateSourceOrderCuratedIdentitySurvivesSourceInitialization(t *t
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": unrelated.Name, "dateMeaning": meaning}),
 		testkit.FinalResponse(string(final)),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{
 		Description: "Classic Marigold Protocol",
 		MustInclude: []string{"Unrelated Movie"},
 	})
@@ -272,7 +273,7 @@ func TestSuggest_DateSourceOrderReferenceInitialMalformedFinalDoesNotResolveUnti
 			t.Fatalf("reference resolved before malformed bootstrap repaired: calls=%#v", references.Calls())
 		}
 	}
-	_, err = buildSuggester(t, model).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: "https://lineups.example/friday"})
+	_, err = buildSuggester(t, model).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: "https://lineups.example/friday"})
 	if err == nil || len(references.Calls()) != 1 {
 		t.Fatalf("err=%v reference calls=%d, want source initialization only after repaired valid bootstrap", err, len(references.Calls()))
 	}

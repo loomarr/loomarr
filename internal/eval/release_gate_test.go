@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -59,17 +60,17 @@ func TestReleaseGateEpochContractRevisionPreservesCasesAndGates(t *testing.T) {
 	}
 }
 
-func proposalWithKeys(t *testing.T, values ...string) suggest.Proposal {
+func proposalWithKeys(t *testing.T, values ...string) proposal.Proposal {
 	t.Helper()
-	proposal := suggest.Proposal{}
+	prop := proposal.Proposal{}
 	for _, value := range values {
 		mediaType, provider, id, ok := provision.ParseKey(provision.Key(value))
 		if !ok || provider != "tmdb" {
 			t.Fatalf("test key %q is not a TMDB key", value)
 		}
-		proposal.Lineup = append(proposal.Lineup, suggest.ProposalItem{MediaType: mediaType, TMDBID: id, Name: value})
+		prop.Lineup = append(prop.Lineup, proposal.ProposalItem{MediaType: mediaType, TMDBID: id, Name: value})
 	}
-	return proposal
+	return prop
 }
 
 func TestReleaseGateScorecardRecordsBoundedPhasesWithoutRawPrompt(t *testing.T) {
@@ -232,16 +233,16 @@ func TestReleaseGateStructuralCasesUseProductionGrounding(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			proposal, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
+			prop, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
 			if tc.wantError {
-				if !errors.Is(suggestErr, suggest.ErrNoGroundedTitles) || len(allItems(proposal)) != 0 {
-					t.Fatalf("ungrounded response = (%+v, %v), want explicit abstention", proposal, suggestErr)
+				if !errors.Is(suggestErr, suggest.ErrNoGroundedTitles) || len(allItems(prop)) != 0 {
+					t.Fatalf("ungrounded response = (%+v, %v), want explicit abstention", prop, suggestErr)
 				}
 				return
 			}
-			if suggestErr != nil || len(allItems(proposal)) != 1 || allItems(proposal)[0].Name != tc.wantTitle ||
-				allItems(proposal)[0].TMDBID == 999997 {
-				t.Fatalf("exact-title recovery = (%+v, %v), want catalog identity for %q", proposal, suggestErr, tc.wantTitle)
+			if suggestErr != nil || len(allItems(prop)) != 1 || allItems(prop)[0].Name != tc.wantTitle ||
+				allItems(prop)[0].TMDBID == 999997 {
+				t.Fatalf("exact-title recovery = (%+v, %v), want catalog identity for %q", prop, suggestErr, tc.wantTitle)
 			}
 		})
 	}
@@ -317,11 +318,11 @@ func TestReleaseGateBroaderIntentFamiliesUseProductionRoutes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			proposal, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
-			if suggestErr != nil || len(allItems(proposal)) != tc.want {
-				t.Fatalf("proposal = (%+v, %v), want %d grounded items", proposal, suggestErr, tc.want)
+			prop, suggestErr := generator.Suggest(context.Background(), mapIntent(c.Intent))
+			if suggestErr != nil || len(allItems(prop)) != tc.want {
+				t.Fatalf("proposal = (%+v, %v), want %d grounded items", prop, suggestErr, tc.want)
 			}
-			if failures := deterministicChecks(c, proposal, nil); len(failures) != 0 {
+			if failures := deterministicChecks(c, prop, nil); len(failures) != 0 {
 				t.Fatalf("release checks failed: %v", failures)
 			}
 		})
@@ -418,11 +419,11 @@ func TestReleaseGateRunsMoreThanOneThousandScriptedInputVariants(t *testing.T) {
 				variant.Intent.Description = description
 				provider.SetResponses(releaseScriptedResponses(t, variant, fixture.arguments, fixture.final)...)
 				observer.Begin()
-				proposal, suggestErr := generator.Suggest(context.Background(), mapIntent(variant.Intent))
+				prop, suggestErr := generator.Suggest(context.Background(), mapIntent(variant.Intent))
 				if suggestErr != nil {
 					t.Fatalf("%s variant %q failed: %v; cause=%v", fixture.caseID, description, suggestErr, errors.Unwrap(suggestErr))
 				}
-				if failures := deterministicChecks(variant, proposal, nil); len(failures) != 0 {
+				if failures := deterministicChecks(variant, prop, nil); len(failures) != 0 {
 					t.Fatalf("%s variant %q: %v", fixture.caseID, description, failures)
 				}
 				checked++
@@ -439,8 +440,8 @@ func TestReleaseGateAcceptableMembersAndEndToEndLatencyAreHardGates(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal := proposalWithKeys(t, "series:tmdb:20101", "series:tmdb:20102")
-	failures := deterministicChecks(Case{AcceptableKeys: acceptable, MinAcceptableKeys: 3}, proposal, nil)
+	prop := proposalWithKeys(t, "series:tmdb:20101", "series:tmdb:20102")
+	failures := deterministicChecks(Case{AcceptableKeys: acceptable, MinAcceptableKeys: 3}, prop, nil)
 	if len(failures) != 1 || !strings.Contains(failures[0], "acceptable grounded members 2 < required 3") {
 		t.Fatalf("acceptable-member failures = %v", failures)
 	}
