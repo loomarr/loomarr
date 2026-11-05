@@ -258,3 +258,37 @@ printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/wa
 		t.Fatalf("items = %+v, want bounded YouTube result", items)
 	}
 }
+
+// A finder given an address checks it; given words it searches. The provider draws the line.
+func TestProvider_RecognizesAddressesNotWords(t *testing.T) {
+	p := youtube.New(nil)
+	for in, want := range map[string]bool{
+		"https://www.youtube.com/@vault/videos": true,
+		"youtu.be/abc":                          true,
+		"@vault":                                true,
+		"UCabcdefghijklmnop":                    true,
+		"PLabcdefghij":                          true,
+		"retro ads":                             false,
+		"vault":                                 false,
+		"https://example.com/watch":             false,
+	} {
+		if got := p.Recognizes(in); got != want {
+			t.Errorf("Recognizes(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestProvider_LinksToItsOwnPages(t *testing.T) {
+	p := youtube.New(nil)
+	if got := p.SourceURL(" https://www.youtube.com/@vault "); got != "https://www.youtube.com/@vault" {
+		t.Errorf("SourceURL = %q", got)
+	}
+	if got := p.EmbedURL("https://www.youtube.com/watch?v=abc_123"); got != "https://www.youtube-nocookie.com/embed/abc_123?autoplay=1&playsinline=1" {
+		t.Errorf("EmbedURL = %q", got)
+	}
+	for _, refused := range []string{"https://youtube.com.evil.test/watch?v=abc", "https://www.youtube.com/watch?v=a/../b", "https://www.youtube.com/watch", "::"} {
+		if got := p.EmbedURL(refused); got != "" {
+			t.Errorf("EmbedURL(%q) = %q, want none", refused, got)
+		}
+	}
+}

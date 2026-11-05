@@ -132,14 +132,10 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # image-worker bases above.
 FROM debian:stable-slim@sha256:a717a33469731894e77e912ea7d714e27c2dc38ee6554fd1a3102e92999cfc66 AS runtime
 ARG TARGETARCH
-# The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
-# resolves the SAME package versions on every build — the digest-pinned base above fixes the root
-# filesystem, and this fixes what gets layered onto it. This is the value the pinned base's OWN
-# `debian.sources` records in a comment (`# http://snapshot.debian.org/archive/debian/<ts>`); keep
-# the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
-# pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
-# digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
-ARG DEBIAN_SNAPSHOT=20261020T213255Z
+# The Debian packages layered onto the digest-pinned base come from the base image's own
+# `debian.sources` (deb.debian.org, Debian stable), so they follow stable's point releases rather
+# than a fixed snapshot. snapshot.debian.org shed load with 503 "No healthy backends" for days
+# (2026-11), failing image builds, so the image does not depend on it.
 ARG YTDLP_VERSION=2026.10.26
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
@@ -247,15 +243,11 @@ RUN set -eux; \
     FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
     FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2 | cut -d- -f1)"; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
-    # Repoint apt at the pinned snapshot (see the DEBIAN_SNAPSHOT note above) so every install below
-    # is reproducible. deb822 `debian.sources`; both the archive and security suites. `http://`, not
-    # https, is deliberate and matches the base image's own recorded snapshot comment: this stage runs
-    # BEFORE `ca-certificates` is installed (it is one of the packages being fetched), so TLS would
-    # fail its own cert check — and repo integrity comes from the GPG `Signed-By` keyring, not the
-    # transport. Snapshots carry an old `Valid-Until`, so updates use `Check-Valid-Until=false`.
-    printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
-      "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
-    apt-get -o Acquire::Check-Valid-Until=false update; \
+    # Every apt fetch in this stage retries with backoff, so one refused request from a mirror does
+    # not fail the image build. Repo integrity comes from the base image's GPG keyring, not the
+    # transport (its sources are `http://`; `ca-certificates` is among the packages fetched here).
+    printf 'Acquire::Retries "8";\nAcquire::Retries::Delay::Maximum "60";\n' > /etc/apt/apt.conf.d/80-retries; \
+    apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
     # without them EVERY hardware family fails the capability probe on EVERY host —

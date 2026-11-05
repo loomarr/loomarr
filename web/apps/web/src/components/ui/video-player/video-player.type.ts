@@ -74,9 +74,18 @@ interface VideoPlayerChrome {
   // The controls should be showing: the pointer moved, focus is inside, or playback is paused.
   controlsShown: boolean;
   fullscreen: boolean;
+  // Back to the live edge (the live transport's Go live).
+  goLive: () => void;
+  // Hide the controls now, for a moment the caller draws alone (a station-ID card); held or paused
+  // controls stay. The next pointer move or focus shows them again.
+  hide: () => void;
   hold: (on: boolean) => void;
   muted: boolean;
   playing: boolean;
+  // Through the live window (#2088 decision 2): by a step from the frame on screen (forward from
+  // live does nothing), or to a wall-clock instant; reaching the edge goes live.
+  seekBy: (deltaMs: number) => void;
+  seekTo: (wallClockMs: number) => void;
   setMuted: (muted: boolean) => void;
   setVolume: (volume: number) => void;
   toggle: () => void;

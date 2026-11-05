@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -25,7 +25,7 @@ type SpokenSafetyInferenceReservation struct {
 // not already authority-owned by the V62 settlement.
 type SpokenSafetyInferenceSettlement struct {
 	EventID, RunID, ReservationEventID, ResponseSHA256 string
-	Failure                                            fillersafety.SettlementFailure
+	Failure                                            fillerscreening.SpokenSafetySettlementFailure
 	ChargeKnown                                        bool
 	Ordinal                                            int
 	CreatedAt                                          time.Time
@@ -38,13 +38,13 @@ const spokenSafetyRunSelect = `SELECT id, clip_hash, authority_sha256, source_sh
 const spokenSafetyEventSelect = `SELECT id, run_id, ordinal, kind, payload_json, created_at
 	FROM filler_spoken_safety_events`
 
-func (s *sqlStore) PutSpokenSafetyRun(ctx context.Context, run fillersafety.LedgerRun) error {
+func (s *sqlStore) PutSpokenSafetyRun(ctx context.Context, run fillerscreening.SpokenSafetyLedgerRun) error {
 	_, err := s.BeginSpokenSafetyRun(ctx, run)
 	return err
 }
 
-func (s *sqlStore) BeginSpokenSafetyRun(ctx context.Context, run fillersafety.LedgerRun) (bool, error) {
-	if err := fillersafety.ValidateLedgerRun(run); err != nil {
+func (s *sqlStore) BeginSpokenSafetyRun(ctx context.Context, run fillerscreening.SpokenSafetyLedgerRun) (bool, error) {
+	if err := fillerscreening.ValidateSpokenSafetyLedgerRun(run); err != nil {
 		return false, err
 	}
 	res, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_spoken_safety_runs (
@@ -52,7 +52,7 @@ func (s *sqlStore) BeginSpokenSafetyRun(ctx context.Context, run fillersafety.Le
 		policy_sha256, proposer_sha256, implementation, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`),
 		run.ID, run.ClipHash, run.AuthoritySHA256, run.SourceSHA256, run.SourceBytes, run.DurationMS,
-		run.CertificationSHA256, run.PolicySHA256, run.ProposerSHA256, run.Implementation, fillerDecisionEpoch(run.CreatedAt))
+		run.CertificationSHA256, run.PolicySHA256, run.ProposerSHA256, run.Implementation, fillerNanoEpoch(run.CreatedAt))
 	if err != nil {
 		return false, fmt.Errorf("insert spoken-safety run: %w", err)
 	}
@@ -69,49 +69,49 @@ func (s *sqlStore) BeginSpokenSafetyRun(ctx context.Context, run fillersafety.Le
 		return false, fmt.Errorf("read existing spoken-safety run: %w", err)
 	}
 	if existing != run {
-		return false, fillersafety.ErrLedgerConflict
+		return false, fillerscreening.ErrSpokenSafetyLedgerConflict
 	}
 	return false, nil
 }
 
-func (s *sqlStore) GetSpokenSafetyRun(ctx context.Context, id string) (fillersafety.LedgerRun, error) {
+func (s *sqlStore) GetSpokenSafetyRun(ctx context.Context, id string) (fillerscreening.SpokenSafetyLedgerRun, error) {
 	run, found, err := s.FindSpokenSafetyRun(ctx, id)
 	if err != nil {
-		return fillersafety.LedgerRun{}, err
+		return fillerscreening.SpokenSafetyLedgerRun{}, err
 	}
 	if !found {
-		return fillersafety.LedgerRun{}, store.ErrNotFound
+		return fillerscreening.SpokenSafetyLedgerRun{}, store.ErrNotFound
 	}
 	return run, nil
 }
 
-func (s *sqlStore) FindSpokenSafetyRun(ctx context.Context, id string) (fillersafety.LedgerRun, bool, error) {
+func (s *sqlStore) FindSpokenSafetyRun(ctx context.Context, id string) (fillerscreening.SpokenSafetyLedgerRun, bool, error) {
 	run, err := scanSpokenSafetyRun(s.db.QueryRowContext(ctx,
 		s.ph(spokenSafetyRunSelect+` WHERE id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return fillersafety.LedgerRun{}, false, nil
+		return fillerscreening.SpokenSafetyLedgerRun{}, false, nil
 	}
 	if err != nil {
-		return fillersafety.LedgerRun{}, false, fmt.Errorf("find spoken-safety run: %w", err)
+		return fillerscreening.SpokenSafetyLedgerRun{}, false, fmt.Errorf("find spoken-safety run: %w", err)
 	}
 	return run, true, nil
 }
 
-func scanSpokenSafetyRun(row scannable) (fillersafety.LedgerRun, error) {
-	var run fillersafety.LedgerRun
+func scanSpokenSafetyRun(row scannable) (fillerscreening.SpokenSafetyLedgerRun, error) {
+	var run fillerscreening.SpokenSafetyLedgerRun
 	var createdAt int64
 	if err := row.Scan(&run.ID, &run.ClipHash, &run.AuthoritySHA256, &run.SourceSHA256,
 		&run.SourceBytes, &run.DurationMS, &run.CertificationSHA256, &run.PolicySHA256, &run.ProposerSHA256, &run.Implementation,
 		&createdAt); err != nil {
-		return fillersafety.LedgerRun{}, err
+		return fillerscreening.SpokenSafetyLedgerRun{}, err
 	}
-	run.CreatedAt = fromFillerDecisionEpoch(createdAt)
+	run.CreatedAt = fromFillerNanoEpoch(createdAt)
 	return run, nil
 }
 
-func (s *sqlStore) AppendSpokenSafetyEvent(ctx context.Context, event fillersafety.LedgerEvent) error {
-	if event.Kind == fillersafety.LedgerInferenceReserved || event.Kind == fillersafety.LedgerInferenceSettled {
-		return fillersafety.ErrLedgerInvalid
+func (s *sqlStore) AppendSpokenSafetyEvent(ctx context.Context, event fillerscreening.SpokenSafetyLedgerEvent) error {
+	if event.Kind == fillerscreening.LedgerInferenceReserved || event.Kind == fillerscreening.LedgerInferenceSettled {
+		return fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -132,30 +132,30 @@ func (s *sqlStore) ReserveSpokenSafetyInference(
 	command SpokenSafetyInferenceReservation,
 	evaluation InferenceEvaluation,
 	budget InferenceBudget,
-) (InferenceEvaluation, fillersafety.LedgerEvent, error) {
+) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error) {
 	if command.EventID == "" || command.RunID == "" || command.Ordinal < 0 || command.CreatedAt.IsZero() ||
 		command.RequestSHA256 == "" || evaluation.RunID != command.RunID {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
 	if err := validateInferenceReservation(evaluation, budget); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	evaluation.Modalities = slices.Clone(evaluation.Modalities)
 	slices.Sort(evaluation.Modalities)
 	requestedNanoUSD := evaluation.ReservedNanoUSD
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("begin spoken-safety inference reservation: %w", err)
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fmt.Errorf("begin spoken-safety inference reservation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if existing, found, err := getSpokenSafetyEvent(ctx, tx, s.ph, command.EventID); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	} else if found {
 		stored, err := scanInferenceEvaluation(tx.QueryRowContext(ctx,
-			s.ph(inferenceEvaluationSelect+` WHERE id = ?`), fillersafety.LedgerEventInferenceID(existing)))
+			s.ph(inferenceEvaluationSelect+` WHERE id = ?`), fillerscreening.SpokenSafetyLedgerEventInferenceID(existing)))
 		if err != nil || !sameSpokenSafetyReservationCommand(existing, command, evaluation, requestedNanoUSD) {
-			return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerConflict
+			return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerConflict
 		}
 		return stored, existing, nil
 	}
@@ -163,26 +163,26 @@ func (s *sqlStore) ReserveSpokenSafetyInference(
 	run, err := scanSpokenSafetyRun(tx.QueryRowContext(ctx,
 		s.ph(spokenSafetyRunSelect+` WHERE id = ?`), command.RunID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, store.ErrNotFound
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, store.ErrNotFound
 	}
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("read spoken-safety reservation run: %w", err)
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fmt.Errorf("read spoken-safety reservation run: %w", err)
 	}
 	if evaluation.ClipHash != run.ClipHash || !evaluation.CreatedAt.Equal(command.CreatedAt) {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
 	evaluation, err = s.reserveInferenceEvaluation(ctx, tx, evaluation, budget)
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
-	state := fillersafety.ReservationAccepted
+	state := fillerscreening.ReservationAccepted
 	if evaluation.State == InferenceHeldBudget {
-		state = fillersafety.ReservationHeldBudget
+		state = fillerscreening.ReservationHeldBudget
 	}
-	event := fillersafety.LedgerEvent{
+	event := fillerscreening.SpokenSafetyLedgerEvent{
 		ID: command.EventID, RunID: command.RunID, Ordinal: command.Ordinal,
-		Kind: fillersafety.LedgerInferenceReserved, CreatedAt: command.CreatedAt,
-		Reserve: &fillersafety.InferenceReserved{
+		Kind: fillerscreening.LedgerInferenceReserved, CreatedAt: command.CreatedAt,
+		Reserve: &fillerscreening.SpokenSafetyInferenceReserved{
 			EvaluationID: evaluation.ID, RequestSHA256: command.RequestSHA256,
 			RequestedProvider: evaluation.RequestedProvider, RequestedModel: evaluation.RequestedModel,
 			UpstreamProvider: evaluation.UpstreamProvider, Role: evaluation.Role, Rung: evaluation.Rung,
@@ -196,16 +196,16 @@ func (s *sqlStore) ReserveSpokenSafetyInference(
 		},
 	}
 	if err := s.appendSpokenSafetyEvent(ctx, tx, event); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("commit spoken-safety inference reservation: %w", err)
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fmt.Errorf("commit spoken-safety inference reservation: %w", err)
 	}
 	return evaluation, event, nil
 }
 
 func sameSpokenSafetyReservationCommand(
-	event fillersafety.LedgerEvent,
+	event fillerscreening.SpokenSafetyLedgerEvent,
 	command SpokenSafetyInferenceReservation,
 	evaluation InferenceEvaluation,
 	requestedNanoUSD int64,
@@ -227,66 +227,66 @@ func (s *sqlStore) SettleSpokenSafetyInference(
 	ctx context.Context,
 	command SpokenSafetyInferenceSettlement,
 	settlement InferenceSettlement,
-) (InferenceEvaluation, fillersafety.LedgerEvent, error) {
+) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error) {
 	if command.EventID == "" || command.RunID == "" || command.ReservationEventID == "" ||
 		command.Ordinal < 0 || command.CreatedAt.IsZero() || !settlement.UpdatedAt.Equal(command.CreatedAt) {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
-	if command.Failure == fillersafety.FailureNone && settlement.State != "" && settlement.State != InferenceCompleted ||
-		command.Failure != fillersafety.FailureNone && settlement.State != InferenceFailed {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
+	if command.Failure == fillerscreening.FailureNone && settlement.State != "" && settlement.State != InferenceCompleted ||
+		command.Failure != fillerscreening.FailureNone && settlement.State != InferenceFailed {
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
-	if command.Failure == fillersafety.FailureInterrupted && !settlement.RetainReservation ||
-		command.Failure != fillersafety.FailureInterrupted && settlement.RetainReservation {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
+	if command.Failure == fillerscreening.FailureInterrupted && !settlement.RetainReservation ||
+		command.Failure != fillerscreening.FailureInterrupted && settlement.RetainReservation {
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("begin spoken-safety inference settlement: %w", err)
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fmt.Errorf("begin spoken-safety inference settlement: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if existing, found, err := getSpokenSafetyEvent(ctx, tx, s.ph, command.EventID); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	} else if found {
 		stored, err := scanInferenceEvaluation(tx.QueryRowContext(ctx,
-			s.ph(inferenceEvaluationSelect+` WHERE id = ?`), fillersafety.LedgerEventInferenceID(existing)))
+			s.ph(inferenceEvaluationSelect+` WHERE id = ?`), fillerscreening.SpokenSafetyLedgerEventInferenceID(existing)))
 		if err != nil || !sameSpokenSafetySettlementCommand(existing, command, settlement) {
-			return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerConflict
+			return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerConflict
 		}
 		return stored, existing, nil
 	}
 
 	reservation, found, err := getSpokenSafetyEvent(ctx, tx, s.ph, command.ReservationEventID)
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	if !found || reservation.RunID != command.RunID || reservation.Reserve == nil ||
-		reservation.Reserve.State != fillersafety.ReservationAccepted {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerConflict
+		reservation.Reserve.State != fillerscreening.ReservationAccepted {
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fillerscreening.ErrSpokenSafetyLedgerConflict
 	}
 	stored, overBudget, err := s.settleInferenceEvaluation(ctx, tx, reservation.Reserve.EvaluationID, settlement)
 	if err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
-	state := fillersafety.SettlementCompleted
+	state := fillerscreening.SettlementCompleted
 	failure := command.Failure
-	if failure == fillersafety.FailureInterrupted {
-		state = fillersafety.SettlementUnknown
-	} else if stored.State != InferenceCompleted || failure != fillersafety.FailureNone {
-		state = fillersafety.SettlementFailed
+	if failure == fillerscreening.FailureInterrupted {
+		state = fillerscreening.SettlementUnknown
+	} else if stored.State != InferenceCompleted || failure != fillerscreening.FailureNone {
+		state = fillerscreening.SettlementFailed
 	}
 	if overBudget {
-		state, failure = fillersafety.SettlementFailed, fillersafety.FailureBudget
+		state, failure = fillerscreening.SettlementFailed, fillerscreening.FailureBudget
 	}
 	outcome := stored.Outcome
-	if state != fillersafety.SettlementCompleted {
+	if state != fillerscreening.SettlementCompleted {
 		outcome = ""
 	}
-	event := fillersafety.LedgerEvent{
+	event := fillerscreening.SpokenSafetyLedgerEvent{
 		ID: command.EventID, RunID: command.RunID, Ordinal: command.Ordinal,
-		Kind: fillersafety.LedgerInferenceSettled, CreatedAt: command.CreatedAt,
-		Settle: &fillersafety.InferenceSettled{
+		Kind: fillerscreening.LedgerInferenceSettled, CreatedAt: command.CreatedAt,
+		Settle: &fillerscreening.SpokenSafetyInferenceSettled{
 			ReservationEventID: command.ReservationEventID, EvaluationID: stored.ID,
 			ResponseSHA256: command.ResponseSHA256, ResolvedProvider: stored.ResolvedProvider,
 			ResolvedModel: stored.ResolvedModel, UpstreamProvider: stored.UpstreamProvider,
@@ -298,10 +298,10 @@ func (s *sqlStore) SettleSpokenSafetyInference(
 		},
 	}
 	if err := s.appendSpokenSafetyEvent(ctx, tx, event); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, err
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("commit spoken-safety inference settlement: %w", err)
+		return InferenceEvaluation{}, fillerscreening.SpokenSafetyLedgerEvent{}, fmt.Errorf("commit spoken-safety inference settlement: %w", err)
 	}
 	if overBudget {
 		return stored, event, ErrInferenceBudgetExceeded
@@ -310,13 +310,13 @@ func (s *sqlStore) SettleSpokenSafetyInference(
 }
 
 func sameSpokenSafetySettlementCommand(
-	event fillersafety.LedgerEvent,
+	event fillerscreening.SpokenSafetyLedgerEvent,
 	command SpokenSafetyInferenceSettlement,
 	settlement InferenceSettlement,
 ) bool {
 	result := event.Settle
 	failureMatches := result != nil && (result.Failure == command.Failure ||
-		result.Failure == fillersafety.FailureBudget && command.Failure == fillersafety.FailureNone)
+		result.Failure == fillerscreening.FailureBudget && command.Failure == fillerscreening.FailureNone)
 	if result == nil || !failureMatches || event.ID != command.EventID || event.RunID != command.RunID || event.Ordinal != command.Ordinal ||
 		!event.CreatedAt.Equal(command.CreatedAt) || result.ReservationEventID != command.ReservationEventID ||
 		result.ResponseSHA256 != command.ResponseSHA256 ||

@@ -24,6 +24,8 @@ interface PreviewPlaybarProps {
   formatTime: (ms: number) => string;
   /** Called as a preview card opens and closes, so the band can step back behind it. */
   onPreviewChange?: (open: boolean) => void;
+  /** Seek to an instant in the past; without it the playbar only previews. */
+  onSeek?: (wallClockMs: number) => void;
   playheadMs: number;
   /** Pointer devices preview on hover; touch has no card. */
   pointer: boolean;
@@ -46,6 +48,7 @@ const PreviewPlaybar = ({
   density,
   formatTime,
   onPreviewChange,
+  onSeek,
   playheadMs,
   pointer,
   segments,
@@ -116,6 +119,13 @@ const PreviewPlaybar = ({
                 const lit = segment.id === hovered;
                 const isNow = segment.startMs <= window.nowMs && window.nowMs < segment.stopMs;
                 const future = segment.startMs > window.nowMs;
+                // The past is seekable (#2088 decision 2): a block that has begun takes the viewer to
+                // its start, or to the window's when the block began before it. The future previews.
+                const seek = onSeek && !future ? () => onSeek(segment.startMs) : undefined;
+                const name =
+                  segment.kind === "break"
+                    ? `the break at ${formatTime(segment.startMs)}`
+                    : `${segment.name}, ${formatTime(segment.startMs)}`;
                 const filter = lit ? playerChrome.litFilter : future ? playerChrome.futureFilter : "none";
                 const ring =
                   segment.kind === "break"
@@ -131,16 +141,16 @@ const PreviewPlaybar = ({
                 return (
                   <Pressable
                     accessibilityLabel={
-                      segment.kind === "break"
-                        ? `Break at ${formatTime(segment.startMs)}`
-                        : `${segment.name}, ${formatTime(segment.startMs)}`
+                      seek ? `Seek to ${name}` : name.charAt(0).toUpperCase() + name.slice(1)
                     }
-                    focusable={false}
+                    focusable={seek !== undefined}
                     key={segment.id}
-                    // A labelled preview tile, not a control: a group names it without claiming an action.
-                    role="group"
                     onHoverIn={pointer ? () => hover(segment.id) : undefined}
                     onHoverOut={pointer ? () => hover(undefined) : undefined}
+                    onPress={seek}
+                    // A past tile seeks, so it is a button; any other is a labelled preview, a group
+                    // that names it without claiming an action.
+                    role={seek ? "button" : "group"}
                     style={{
                       borderRadius: 6,
                       height: "100%",
@@ -201,11 +211,27 @@ const PreviewPlaybar = ({
                             ),
                           }}
                         >
-                          <Text density={density} numberOfLines={1} strong textRole="cardMeta" tone="primary">
-                            {segment.name}
+                          {/* Left-aligned by hand: a seekable tile is a button, which the web centres. */}
+                          <Text
+                            density={density}
+                            numberOfLines={1}
+                            strong
+                            style={{ textAlign: "left" }}
+                            textRole="cardMeta"
+                            tone="primary"
+                          >
+                            {/* The space keeps the name and the time two words on the web, where both
+                                are inline spans: a seekable tile's name must contain its text. */}
+                            {`${segment.name} `}
                           </Text>
                           {pointer ? (
-                            <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
+                            <Text
+                              density={density}
+                              numberOfLines={1}
+                              style={{ textAlign: "left" }}
+                              textRole="guideMeta"
+                              tone="secondary"
+                            >
                               {formatTime(segment.startMs)}
                             </Text>
                           ) : null}

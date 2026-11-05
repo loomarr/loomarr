@@ -28,7 +28,7 @@ import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
 
 type EventRange = "all" | "1h" | "6h" | "24h";
 type EventLevel = "all" | "debug" | "info" | "warn" | "error";
-type EventSource = "all" | "server" | "web" | "android_tv";
+type EventSource = "all" | EventView["source"];
 type EventOrder = "newest" | "oldest";
 
 type ApplicationFilters = {
@@ -97,11 +97,18 @@ const levelLabel = (level: EventView["level"]) => {
   return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
 };
 
-const sourceLabel = (source: EventView["source"]) => {
-  if (source === "server") return "Loomarr";
-  if (source === "android_tv") return "Android TV";
-  return "Web player";
+// Typed by the generated source enum, so a runtime the server starts recording cannot lack a name.
+const sourceNames: Record<EventView["source"], string> = {
+  android: "Android phone",
+  android_tv: "Android TV",
+  apple_tv: "Apple TV",
+  ios: "iPhone",
+  server: "Loomarr",
+  web: "Web player",
 };
+const eventSources = Object.keys(sourceNames) as EventView["source"][];
+
+const sourceLabel = (source: EventView["source"]) => sourceNames[source];
 
 const fallbackMessage = (event: EventView) =>
   event.event
@@ -500,9 +507,11 @@ const ApplicationDiagnostics = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All sources</SelectItem>
-                <SelectItem value="server">Loomarr</SelectItem>
-                <SelectItem value="web">Web player</SelectItem>
-                <SelectItem value="android_tv">Android TV</SelectItem>
+                {eventSources.map((source) => (
+                  <SelectItem key={source} value={source}>
+                    {sourceNames[source]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Input
@@ -707,4 +716,4 @@ const ApplicationDiagnostics = ({
 };
 
 export type { ApplicationFilters, EventLevel, EventOrder, EventRange, EventSource };
-export { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS };
+export { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS, eventSources };

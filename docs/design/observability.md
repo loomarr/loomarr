@@ -68,7 +68,7 @@ indexes are partial (`WHERE col <> ''`), and low-selectivity columns are not ind
 
 ## Client diagnostics
 
-`POST /v1/diagnostics/client-events` takes 1–20 observations from `web` or `android_tv`, from a closed
+`POST /v1/diagnostics/client-events` takes 1–20 observations from `web`, `android_tv`, `apple_tv`, `ios` or `android`, from a closed
 vocabulary: `client.error_boundary`, `client.unhandled_error`, `client.api_failed`,
 `player.attached`, `player.detached`, `player.ready`, `player.source_replaced`,
 `player.buffering_started`, `player.buffering_ended`, `player.seeking`, `player.seeked`,
@@ -78,6 +78,12 @@ derives `actor_id` and owns severity. Any invalid field rejects the whole batch.
 return `202` after enqueue. The limit is 120 observations a minute per actor with a burst of 30.
 Clients keep a 100-observation memory queue, send at most 20 every two seconds, drop routine events
 before errors, and never block playback or keep a second log.
+
+The batch's `platform` must belong to its `source`: `web` takes the browsers, `android_tv` takes
+`android_tv`, `shield_tv` and `unknown_android_tv`, and `apple_tv`, `ios` and `android` each take their
+own name. Both native apps derive their pair from the platform they run on (`createNativeApp`), and
+the observation's `transport` names the player that played: `native_hls` (AVPlayer) on Apple
+platforms, `media3` on Android.
 
 ## Client crash reports
 

@@ -23,9 +23,9 @@ type calmIncomingBody struct {
 		Rows []struct {
 			ClipHash, Name, StatusLabel string
 			Processing                  struct {
-				Attempts                   int
-				NextTryAt, DiagnosticsHref string
-				Stages                     []struct {
+				Attempts  int
+				NextTryAt string
+				Stages    []struct {
 					Label, Outcome, OutcomeLabel, Note, At string
 					Progress                               *int
 				} `json:"stages"`
@@ -148,9 +148,6 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 		t.Fatalf("Incoming = status %d, preparing %+v", res.StatusCode, body.Preparing)
 	}
 	processing := body.Preparing.Rows[0].Processing
-	if processing.DiagnosticsHref != "/filler/manage#diagnostics" {
-		t.Fatalf("diagnostics href = %q, want existing owner", processing.DiagnosticsHref)
-	}
 	if len(processing.Stages) != 4 {
 		t.Fatalf("stages = %+v, want all three stored occurrences plus current", processing.Stages)
 	}

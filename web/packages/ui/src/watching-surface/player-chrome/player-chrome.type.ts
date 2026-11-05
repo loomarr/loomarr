@@ -64,6 +64,26 @@ interface PlayerBandData {
   timeLabel?: string;
   /** A break is airing: the progress line takes the break's tint. */
   inBreak?: boolean;
+  /** `1990s · Portland, ME`: the station's era and place, read on the station-ID card. */
+  station?: string;
+}
+
+/** The Info sheet's programme (§9, mock "info"): the block at the playhead and what follows it. */
+interface PlayerInfoData {
+  /** The band's programme line. */
+  title: string;
+  /** `1994 · TV-PG · Mystery · Drama`. */
+  facts?: string;
+  synopsis?: string;
+  stillUri?: string;
+  startMs: number;
+  stopMs: number;
+  /** 0–1 through the block. */
+  progress: number;
+  /** The band's `9m in · 13m left`. */
+  timeLabel?: string;
+  /** The next programme; breaks are passed over. */
+  upNext?: { startMs: number; name: string; line?: string };
 }
 
 interface PlayerChromeProps {
@@ -71,8 +91,21 @@ interface PlayerChromeProps {
   density: Density;
   /** The controls are shown (pointer moved, focus inside, paused…); hidden leaves the picture bare. */
   visible: boolean;
-  /** The preview playbar's blocks and window; omitted while the schedule hasn't loaded. */
-  playbar?: { playheadMs: number; segments: readonly PlaybarSegment[]; window: PlaybarWindow };
+  /**
+   * The station-ID card (§9.1): just after a tune settles, the band alone, fuller, while the controls
+   * are hidden. The app times it; shown controls take its place.
+   */
+  ident?: boolean;
+  /**
+   * The preview playbar's blocks and window; omitted while the schedule hasn't loaded. With `onSeek`
+   * the past is seekable: a block that has begun takes the viewer to its start (or the window's).
+   */
+  playbar?: {
+    onSeek?: (wallClockMs: number) => void;
+    playheadMs: number;
+    segments: readonly PlaybarSegment[];
+    window: PlaybarWindow;
+  };
   /** Formats a wall-clock instant for the playbar ("8:44 PM"). */
   formatTime: (ms: number) => string;
   /** A preview card opened or closed: the app keeps its controls shown while one is open. */
@@ -88,8 +121,13 @@ interface PlayerTransportProps {
   pointer: boolean;
   playing: boolean;
   onTogglePlay: () => void;
+  /** ⟲/⟳ 10 s through the window; omitted where the player cannot seek. Forward is off while live. */
+  onSeekBack?: () => void;
+  onSeekForward?: () => void;
   live: PlayerLiveState;
   onGoLive: () => void;
+  /** Back to the programme's start; omitted unless it began inside the window. */
+  onStartOver?: () => void;
   muted: boolean;
   /** 0–1. */
   volume: number;
@@ -98,6 +136,9 @@ interface PlayerTransportProps {
   /** Settings (⚙): open or close the settings sheet. */
   settingsOpen: boolean;
   onSettings: () => void;
+  /** Info (ⓘ): open or close the info sheet; omitted while there is no programme to describe. */
+  infoOpen?: boolean;
+  onInfo?: () => void;
   /** Channels: open or close the channels sheet; omitted where there is no channel list. */
   channelsOpen?: boolean;
   onChannels?: () => void;
@@ -125,6 +166,7 @@ export type {
   PlaybarWindow,
   PlayerBandData,
   PlayerChromeProps,
+  PlayerInfoData,
   PlayerLiveState,
   PlayerSheetProps,
   PlayerTransportProps,

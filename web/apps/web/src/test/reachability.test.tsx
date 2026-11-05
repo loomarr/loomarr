@@ -4,8 +4,6 @@ import {
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
-  getFillerDecisionActivityMockHandler,
-  getFillerDecisionDiagnosticsMockHandler,
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
@@ -184,19 +182,6 @@ const stubReachable = () => {
       },
       recentlyReady: { rows: [], total: 0 },
     } as never),
-    getFillerDecisionActivityMockHandler({
-      rows: [
-        {
-          id: "automatic-admit-event",
-          decisionId: "automatic-admit-decision",
-          clipHash: "auto-hash",
-          kind: "automatic_admit",
-          createdAt: "2026-08-25T12:00:00Z",
-        },
-      ],
-      total: 1,
-    }),
-    getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
     // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
     // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
     // so using one row to assert both doors would require the UI to offer an action that cannot
@@ -476,9 +461,6 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
     ["/filler/incoming", /where should this compilation be split/i, "the genuine Incoming choice"],
-    // Automatic outcomes remain visible as plain activity without exposing the runtime mode that
-    // produced them. Keeping this route-level assertion prevents unattended work from disappearing.
-    ["/filler/manage", /added automatically/i, "automatic filler activity"],
     // ⚠ And Incoming itself must be reachable FROM Filler's own navigation, or the assertions
     // above only prove a deep link works. This is the V1/V17a/V23 failure in tab form. The web
     // mock moved it off the tab bar into the Manage hub (#1659), so its entry point is there.
