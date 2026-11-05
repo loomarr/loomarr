@@ -952,6 +952,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       });
     }
 
+    // The provider registry is fixed server data, answered whether or not the filler shell is
+    // configured: a spec that mocks the filler pages itself still reads the real registry.
+    if (path === "/v1/filler/providers" && method === "GET") {
+      return json(route, { providers: fillerProviders });
+    }
+
     // --- configured Filler shell -------------------------------------------------
     // Page-level browser contracts need complete empty DTOs, not a loose `{}`: the real
     // client deliberately trusts generated response shapes once the capability is enabled.
@@ -1130,9 +1136,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           state.fillerSourcePolicy = patch.automaticDownloads as typeof state.fillerSourcePolicy;
         }
         return json(route, {});
-      }
-      if (path === "/v1/filler/providers" && method === "GET") {
-        return json(route, { providers: fillerProviders });
       }
       if (path === "/v1/filler/sources") {
         const inheritedEvery = state.edits["filler.fetch.every"] ?? "6h";
