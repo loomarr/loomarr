@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/playout"
 )
 
 func TestAuthorizePlayoutUsesCurrentReplicaTokenForRawAndSignedCredentials(t *testing.T) {
@@ -163,7 +161,7 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 		playoutSecret: func() string { return testPlayoutTok },
 		liveSettings:  mapSettings{"server.public_url": "http://loomarr.local:8080"},
 	}
-	u := s.playoutHLSURL("ch_abc", "720", playout.PlanBaseline, time.Now().Add(time.Hour))
+	u := s.playoutHLSURL("ch_abc", "720", time.Now().Add(time.Hour))
 	if u == "" {
 		t.Fatal("empty HLS URL with public_url and token set")
 	}
@@ -176,27 +174,14 @@ func TestPlayoutHLSURL_CarriesSigAndQuality(t *testing.T) {
 	if !strings.Contains(u, "quality=720") {
 		t.Fatalf("URL dropped the quality cap: %s", u)
 	}
-	// The BASELINE plan is the default the reader assumes on absence, so it is OMITTED from the URL to
-	// keep the common case clean (§9.1 V48).
-	if strings.Contains(u, playoutPlanParam+"=") {
-		t.Fatalf("baseline plan should not be written to the URL: %s", u)
-	}
-
-	// A richer plan IS written explicitly, as an unsigned `?plan=` — this is how the resolved
-	// DeviceProfile reaches the HLS handler.
-	hevc := s.playoutHLSURL("ch_abc", "720", playout.PlanHEVC8, time.Now().Add(time.Hour))
-	if !strings.Contains(hevc, playoutPlanParam+"=hevc8") {
-		t.Fatalf("hevc8 plan not carried on the URL: %s", hevc)
-	}
-
 	// No public URL ⇒ no ABSOLUTE URL, matching the other playout builders' "not configured"
 	// signal. But the RELATIVE URL must still be built — the web player uses it and does not need
 	// public_url — which is the whole point of returning both.
 	noBase := &Server{playoutSecret: func() string { return testPlayoutTok }, liveSettings: mapSettings{}}
-	if noBase.playoutHLSURL("ch_abc", "", playout.PlanBaseline, time.Now().Add(time.Hour)) != "" {
+	if noBase.playoutHLSURL("ch_abc", "", time.Now().Add(time.Hour)) != "" {
 		t.Fatal("built an ABSOLUTE HLS URL with no public_url")
 	}
-	rel := noBase.playoutHLSPathURL("ch_abc", "720", playout.PlanBaseline, time.Now().Add(time.Hour))
+	rel := noBase.playoutHLSPathURL("ch_abc", "720", time.Now().Add(time.Hour))
 	if rel == "" {
 		t.Fatal("relative HLS URL should be built even with no public_url")
 	}

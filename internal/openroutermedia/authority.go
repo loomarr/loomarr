@@ -13,7 +13,6 @@ import (
 
 const (
 	CapabilitySnapshotSchemaVersion = 3
-	legacyCapabilitySnapshotSchema  = 2
 	maxCapabilityModels             = 16
 	maxCapabilityEndpoints          = 256
 	maxCapabilityPricingOverrides   = 4
@@ -214,8 +213,8 @@ func CapabilitySnapshotSHA256(snapshot CapabilitySnapshot) string {
 
 func ValidateCapabilitySnapshot(snapshot CapabilitySnapshot) error {
 	parsedSource, sourceErr := url.Parse(snapshot.SourceBaseURL)
-	if (snapshot.SchemaVersion != legacyCapabilitySnapshotSchema && snapshot.SchemaVersion != CapabilitySnapshotSchemaVersion) || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
-		return fmt.Errorf("OpenRouter snapshot requires supported schema %d or %d and a UTC retrieval time", legacyCapabilitySnapshotSchema, CapabilitySnapshotSchemaVersion)
+	if snapshot.SchemaVersion != CapabilitySnapshotSchemaVersion || sourceErr != nil || parsedSource.Host == "" || snapshot.RetrievedAt.IsZero() || snapshot.RetrievedAt.Location() != time.UTC {
+		return fmt.Errorf("OpenRouter snapshot requires schema %d and a UTC retrieval time", CapabilitySnapshotSchemaVersion)
 	}
 	if len(snapshot.Models) == 0 || len(snapshot.Models) > maxCapabilityModels || snapshot.Requests != len(snapshot.Models)+2 || snapshot.ResponseBytes <= 0 || snapshot.ResponseBytes > maxCapabilityResponseBytes {
 		return fmt.Errorf("OpenRouter snapshot has invalid bounded request, response, or model counts")
@@ -240,9 +239,6 @@ func ValidateCapabilitySnapshot(snapshot CapabilitySnapshot) error {
 				return fmt.Errorf("OpenRouter snapshot model %q repeats endpoint %q", model.ID, endpoint.ProviderSlug)
 			}
 			seen[key] = struct{}{}
-			if snapshot.SchemaVersion == legacyCapabilitySnapshotSchema && len(endpoint.PricingOverrides) > 0 {
-				return fmt.Errorf("OpenRouter snapshot schema %d cannot contain pricing overrides", legacyCapabilitySnapshotSchema)
-			}
 			if endpoint.Name == "" || endpoint.ModelID != model.ID || endpoint.ProviderName == "" || endpoint.ProviderSlug == "" || requiresContext && endpoint.ContextLength <= 0 || !requiresContext && endpoint.ContextLength < 0 || endpoint.MaxCompletionTokens < 0 || endpoint.MaxPromptTokens < 0 || !canonicalStrings(endpoint.SupportedParameters) || len(endpoint.PricingOverrides) > maxCapabilityPricingOverrides {
 				return fmt.Errorf("OpenRouter snapshot model %q has an invalid endpoint", model.ID)
 			}

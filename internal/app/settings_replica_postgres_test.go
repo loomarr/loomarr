@@ -19,16 +19,18 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	stores := testkit.PostgresStores(t, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	old := store.SettingBatch{Upserts: []store.SettingMutation{
-		{Key: "library.flavor", Value: "emby"},
-		{Key: "library.url", Value: "http://old:8096"},
-		{Key: "library.token", Value: "old-token"},
-	}}
-	if err := stores[0].ApplySettingBatch(ctx, old); err != nil {
+	// The token is sealed on the way in, as every write path stores a protected setting.
+	protection := testSecretProtection(t, stores[1])
+	if err := (storePersister{st: stores[0], protection: protection}).Apply(ctx, settings.PersistenceBatch{
+		Upserts: []settings.PersistedSetting{
+			{Key: "library.flavor", Value: "emby"},
+			{Key: "library.url", Value: "http://old:8096"},
+			{Key: "library.token", Value: "old-token"},
+		}, UpdatedAt: time.Unix(1_699_999_000, 0).UTC(), UpdatedBy: "replica-a",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	baseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	protection := testSecretProtection(t, stores[1])
 	set, _, _, _, err := bootSettings(ctx, stores[1], protection, baseLog, "")
 	if err != nil {
 		t.Fatal(err)

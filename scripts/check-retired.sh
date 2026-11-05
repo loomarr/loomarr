@@ -144,12 +144,11 @@ RETIRED=(
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
-  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
-  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # The playout copy-audience query is retired: every client is served the same variant. The VALUE
   # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
-  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
-  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  'target=browser|the playout copy-audience query is retired; every client gets the same variant'
+  'target=mediaserver|the playout copy-audience query is retired; every client gets the same variant'
   # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
   # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
   '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'

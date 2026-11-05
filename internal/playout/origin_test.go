@@ -19,7 +19,7 @@ type tuneSessions struct {
 	stopped string
 }
 
-func (s *tuneSessions) Attach(_ context.Context, channel string, _ EncodePlan) (Stream, func(), error) {
+func (s *tuneSessions) Attach(_ context.Context, channel string) (Stream, func(), error) {
 	s.channel = channel
 	return playoutstreamfixture.Channel{Chunks: make(chan []byte)}, func() {}, nil
 }
@@ -31,12 +31,12 @@ func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 	t.Parallel()
 	origin := newOrigin(&tuneSessions{}, nil)
 	_, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS,
+		ChannelID: "ch-one", Delivery: DeliveryHLS,
 	})
 	if !errors.Is(err, ErrUnsupportedDelivery) {
 		t.Fatalf("Tune error = %v, want ErrUnsupportedDelivery", err)
 	}
-	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts", false); err != nil || ok {
+	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", "segment.ts", false); err != nil || ok {
 		t.Fatal("asset resolved without an HLS delivery")
 	}
 }
@@ -49,14 +49,14 @@ type tuneHLS struct {
 	viewer      string
 }
 
-func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan, speculative bool, viewer string) (hlsPlaylistLease, error) {
+func (h *tuneHLS) acquirePlaylist(channel string, speculative bool, viewer string) (hlsPlaylistLease, error) {
 	h.channel = channel
 	h.speculative = speculative
 	h.viewer = viewer
 	return hlsPlaylistLease{path: h.path, release: func() {}, await: func(ctx context.Context) error { return ctx.Err() }}, nil
 }
 
-func (h *tuneHLS) AssetPath(string, EncodePlan, string) (string, bool) { return "", false }
+func (h *tuneHLS) AssetPath(string, string) (string, bool) { return "", false }
 
 func (h *tuneHLS) StopChannel(channel string) { h.stopped = channel }
 func (h *tuneHLS) StopAll()                   { h.stopped = "*" }
@@ -72,13 +72,13 @@ func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 	origin := newOrigin(sessions, hls)
 
 	stream, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+		ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 	})
 	if err != nil || stream.Stream == nil || stream.Manifest != nil {
 		t.Fatalf("MPEG-TS tune = (%#v, %v)", stream, err)
 	}
 	manifest, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-two", Plan: PlanBaseline, Delivery: DeliveryHLS, Speculative: true,
+		ChannelID: "ch-two", Delivery: DeliveryHLS, Speculative: true,
 	})
 	if err != nil || manifest.Stream != nil || string(manifest.Manifest) != "#EXTM3U\n" {
 		t.Fatalf("HLS tune = (%#v, %v)", manifest, err)
@@ -105,11 +105,11 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	origin.hls = hls
 
 	if _, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+		ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 	}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Tune while lifecycle unavailable error = %v, want ErrUnavailable", err)
 	}
-	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts", false); !errors.Is(err, ErrUnavailable) || ok {
+	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", "segment.ts", false); !errors.Is(err, ErrUnavailable) || ok {
 		t.Fatalf("OpenAsset while lifecycle unavailable = (_, %v, %v), want false, ErrUnavailable", ok, err)
 	}
 	origin.StopAll()
@@ -119,7 +119,7 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 
 	available = true
 	stream, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+		ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 	})
 	if err != nil || stream.Stream == nil {
 		t.Fatalf("Tune after lifecycle recovery = (%#v, %v)", stream, err)
@@ -131,7 +131,7 @@ type quiescingSessions struct {
 	once   sync.Once
 }
 
-func (s *quiescingSessions) Attach(context.Context, string, EncodePlan) (Stream, func(), error) {
+func (s *quiescingSessions) Attach(context.Context, string) (Stream, func(), error) {
 	return playoutstreamfixture.Channel{Chunks: s.stream}, func() {}, nil
 }
 func (*quiescingSessions) StopChannel(string) {}
@@ -143,7 +143,7 @@ func TestOriginQuiesceEndsActiveStreamAndPermanentlyClosesAdmission(t *testing.T
 	origin := newOrigin(sessions, nil)
 
 	presentation, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+		ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestOriginQuiesceEndsActiveStreamAndPermanentlyClosesAdmission(t *testing.T
 		t.Fatal("active stream remained open after Origin.Quiesce")
 	}
 	if _, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+		ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 	}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Tune after quiesce error = %v, want ErrUnavailable", err)
 	}
@@ -171,7 +171,7 @@ func TestOriginNormalizesOptionalNilDependencies(t *testing.T) {
 
 	for _, delivery := range []Delivery{DeliveryMPEGTS, DeliveryHLS} {
 		if _, err := origin.Tune(context.Background(), TuneRequest{
-			ChannelID: "ch-one", Plan: PlanFull, Delivery: delivery,
+			ChannelID: "ch-one", Delivery: delivery,
 		}); !errors.Is(err, ErrUnsupportedDelivery) {
 			t.Fatalf("Tune delivery %d error = %v, want ErrUnsupportedDelivery", delivery, err)
 		}
@@ -203,7 +203,7 @@ func TestOriginTuneDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := NewOrigin(OriginDependencies{Eligible: tc.eligible})
-			_, err := origin.Tune(context.Background(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+			_, err := origin.Tune(context.Background(), TuneRequest{ChannelID: "ch-one", Delivery: DeliveryHLS})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("Tune error = %v, want %v", err, tc.want)
 			}
@@ -217,7 +217,7 @@ type blockingTuneSessions struct {
 	stopped atomic.Bool
 }
 
-func (s *blockingTuneSessions) Attach(context.Context, string, EncodePlan) (Stream, func(), error) {
+func (s *blockingTuneSessions) Attach(context.Context, string) (Stream, func(), error) {
 	close(s.entered)
 	<-s.release
 	return playoutstreamfixture.Channel{Chunks: make(chan []byte)}, func() {}, nil
@@ -236,7 +236,7 @@ func TestOriginStopAllOrdersAgainstTuneAdmission(t *testing.T) {
 	tuned := make(chan error, 1)
 	go func() {
 		_, err := origin.Tune(context.Background(), TuneRequest{
-			ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
+			ChannelID: "ch-one", Delivery: DeliveryMPEGTS,
 		})
 		tuned <- err
 	}()
@@ -285,7 +285,7 @@ func TestOriginWarmVariantReadinessDoesNotBlockLifecycleTeardown(t *testing.T) {
 			defer cancel()
 			readDone := make(chan error, 1)
 			go func() {
-				_, _, err := origin.OpenAsset(ctx, "neighbour", PlanBaseline, string(Format4KHDR)+".m3u8", true)
+				_, _, err := origin.OpenAsset(ctx, "neighbour", string(Format4KHDR)+".m3u8", true)
 				readDone <- err
 			}()
 			deadline := time.Now().Add(time.Second)

@@ -21,11 +21,6 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 	t.Setenv("API_TOKEN", "")
 	t.Setenv("PLAYOUT_TOKEN", "")
 	st := testkit.MigratedSQLiteStore(t)
-	legacyKey := "secret." + "session_" + "secret"
-	const legacyValue = "legacy-inert-value-should-not-be-live"
-	if err := st.SetSetting(context.Background(), legacyKey, legacyValue); err != nil {
-		t.Fatal(err)
-	}
 
 	var logs bytes.Buffer
 	base := slog.New(slog.NewTextHandler(&logs, nil))
@@ -49,7 +44,7 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 	}
 	generated := map[string]string{}
 	for _, row := range rows {
-		if strings.HasPrefix(row.Key, "secret.") && row.Key != legacyKey {
+		if strings.HasPrefix(row.Key, "secret.") {
 			generated[row.Key] = row.Value
 		}
 	}
@@ -67,29 +62,19 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 		strings.Contains(logs.String(), secrets.WebPushIdentity().PrivateKey) {
 		t.Fatalf("generated token leaked through boot logger: %s", logs.String())
 	}
-
-	// An existing legacy row remains inert but is still encrypted so old secret-shaped
-	// values do not survive as plaintext in the database.
-	if stored, err := st.GetSetting(context.Background(), legacyKey); err != nil ||
-		stored == legacyValue || !secretprotection.IsEnvelope(stored) {
-		t.Fatalf("legacy row = (%q, %v), want protected inert value", stored, err)
-	}
-	if strings.Contains(strings.Join(secrets.RedactionValues(), "\n"), legacyValue) {
-		t.Fatal("legacy inert row was loaded as a live generated credential")
-	}
 }
 
 func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
 	t.Setenv("NOTIFICATIONS_SMTP_PASSWORD", "")
 	st := testkit.MigratedSQLiteStore(t)
 	const password = "smtp-password-that-must-stay-secret"
-	if err := st.SetSetting(context.Background(), "notifications.smtp.password", password); err != nil {
+	protection := testSecretProtection(t, st)
+	if err := writeProtectedSetting(context.Background(), st, protection, "notifications.smtp.password", password); err != nil {
 		t.Fatal(err)
 	}
 
 	var logs bytes.Buffer
 	base := slog.New(slog.NewTextHandler(&logs, nil))
-	protection := testSecretProtection(t, st)
 	set, _, _, log, err := bootSettings(context.Background(), st, protection, base, "")
 	if err != nil {
 		t.Fatal(err)
@@ -111,16 +96,16 @@ func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
 	}
 }
 
-func TestBootSettingsMigratesNamespacedLLMKeys(t *testing.T) {
+func TestBootSettingsOpensNamespacedLLMKeys(t *testing.T) {
 	t.Setenv("API_TOKEN", "test-api-token")
 	t.Setenv("PLAYOUT_TOKEN", "test-playout-token")
 	st := testkit.MigratedSQLiteStore(t)
 	const key = "llm.api_key.openrouter"
 	const value = "namespaced-provider-key"
-	if err := st.SetSetting(context.Background(), key, value); err != nil {
+	protection := testSecretProtection(t, st)
+	if err := writeProtectedSetting(context.Background(), st, protection, key, value); err != nil {
 		t.Fatal(err)
 	}
-	protection := testSecretProtection(t, st)
 	set, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), "")
 	if err != nil {
 		t.Fatal(err)
@@ -154,13 +139,10 @@ func TestStorePersisterEncryptsOnlySecretSettings(t *testing.T) {
 	}
 }
 
-func TestBootSettingsLeavesLegacyPlaintextUntouchedWhenAnyCiphertextIsCorrupt(t *testing.T) {
+func TestBootSettingsRejectsCorruptProtectedCiphertext(t *testing.T) {
 	t.Setenv("API_TOKEN", "test-api-token")
 	t.Setenv("PLAYOUT_TOKEN", "test-playout-token")
 	st := testkit.MigratedSQLiteStore(t)
-	if err := st.SetSetting(context.Background(), "library.token", "legacy-library-token"); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.SetSetting(context.Background(), "notifications.smtp.password", "loomarr-secret:v1:missing:bad"); err != nil {
 		t.Fatal(err)
 	}
@@ -168,9 +150,37 @@ func TestBootSettingsLeavesLegacyPlaintextUntouchedWhenAnyCiphertextIsCorrupt(t 
 	if _, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), ""); err == nil {
 		t.Fatal("boot accepted corrupt protected setting")
 	}
-	got, err := st.GetSetting(context.Background(), "library.token")
-	if err != nil || got != "legacy-library-token" {
-		t.Fatalf("failed migration changed plaintext row = (%q, %v)", got, err)
+}
+
+// A protected setting stored as plaintext predates encrypted settings. Boot names every such
+// key with the remedy, never echoes the value, and leaves the row untouched.
+func TestBootSettingsFailsClosedOnPlaintextProtectedSettings(t *testing.T) {
+	t.Setenv("API_TOKEN", "test-api-token")
+	t.Setenv("PLAYOUT_TOKEN", "test-playout-token")
+	st := testkit.MigratedSQLiteStore(t)
+	const tokenValue, passwordValue = "plain-library-token-value", "plain-smtp-password-value"
+	if err := st.SetSetting(context.Background(), "library.token", tokenValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(context.Background(), "notifications.smtp.password", passwordValue); err != nil {
+		t.Fatal(err)
+	}
+	protection := testSecretProtection(t, st)
+	_, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), "")
+	if err == nil {
+		t.Fatal("boot accepted plaintext protected settings")
+	}
+	msg := err.Error()
+	for _, want := range []string{"library.token", "notifications.smtp.password", "v0.2.0-beta.1", "re-enter"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("boot error %q lacks %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, tokenValue) || strings.Contains(msg, passwordValue) {
+		t.Fatalf("boot error leaked a setting value: %q", msg)
+	}
+	if got, err := st.GetSetting(context.Background(), "library.token"); err != nil || got != tokenValue {
+		t.Fatalf("failed boot changed plaintext row = (%q, %v)", got, err)
 	}
 }
 
