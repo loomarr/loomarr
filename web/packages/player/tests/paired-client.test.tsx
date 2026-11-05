@@ -31,6 +31,7 @@ const fakes = vi.hoisted(() => {
       subscribe: () => () => undefined,
     },
     playbackSessionIds: [] as string[],
+    playbackTransports: [] as string[],
     transport: undefined as unknown as PlayerTransport & { emit: (event: PlayerTransportEvent) => void },
   };
 });
@@ -55,9 +56,11 @@ vi.mock("@loomarr/core/client-diagnostics", () => ({
   createAuthenticatedBatchSender: () => ({}),
 }));
 vi.mock("../src/native-event-stream", () => ({ createNativeEventStreamFactory: () => vi.fn() }));
-vi.mock("../src/native-playback-diagnostics", () => ({
-  createNativePlaybackDiagnostics: (_reporter: unknown, sessionId: string) => {
+vi.mock("../src/native-playback-diagnostics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/native-playback-diagnostics")>()),
+  createNativePlaybackDiagnostics: (_reporter: unknown, sessionId: string, transport: string) => {
     fakes.playbackSessionIds.push(sessionId);
+    fakes.playbackTransports.push(transport);
     return {
       channelChanged: () => undefined,
       dispose: () => undefined,
@@ -126,6 +129,7 @@ const mountClient = async (diagnostics?: { platform: string }, lastChannel?: Las
 
 afterEach(() => {
   fakes.playbackSessionIds.length = 0;
+  fakes.playbackTransports.length = 0;
 });
 
 describe("paired client", () => {
@@ -168,5 +172,13 @@ describe("paired client", () => {
     const { root } = await mountClient({ platform: "ios" });
     expect(fakes.playbackSessionIds).toEqual(["ios-11111111-2222-4333-8444-555555555555"]);
     await act(async () => root.unmount());
+  });
+
+  it("labels diagnostics with the transport the platform plays through", async () => {
+    const apple = await mountClient({ platform: "apple_tv" });
+    await act(async () => apple.root.unmount());
+    const android = await mountClient({ platform: "android" });
+    await act(async () => android.root.unmount());
+    expect(fakes.playbackTransports).toEqual(["native_hls", "media3"]);
   });
 });

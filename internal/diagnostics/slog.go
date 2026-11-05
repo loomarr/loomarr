@@ -178,10 +178,10 @@ func promoteSlogFields(event *Event) {
 	promote(&event.InstanceID, "instance_id", "instanceId")
 	var source string
 	promote(&source, "source")
-	switch Source(source) {
-	case SourceServer, SourceWeb, SourceAndroidTV:
+	switch {
+	case Source(source).valid():
 		event.Source = Source(source)
-	case "":
+	case source == "":
 	default:
 		// An invalid override is still useful evidence; retain it as an attribute while the
 		// observation honestly remains server-sourced.
