@@ -139,6 +139,23 @@ describe("playbarFromTimeline", () => {
     ]);
   });
 
+  it("starts over at the programme under the playhead, only while the window holds its start", () => {
+    const read = (from: number, playheadMs = NOW) =>
+      playbarFromTimeline({
+        airings: [programme("p", from, 30), breakAt("b", 30, [spot("station_id", "", 10)])],
+        channel,
+        live,
+        nowMs: NOW,
+        playheadMs,
+      }).startOverMs;
+
+    expect(read(-12)).toBe(at(-12));
+    // Began before the fifteen minutes the stream holds: nowhere to start over from.
+    expect(read(-20)).toBeUndefined();
+    // A break has no programme start to go back to.
+    expect(read(-12, at(30) + 5_000)).toBeUndefined();
+  });
+
   it("is the channel alone while nothing is known to be airing", () => {
     const { band, segments } = playbarFromTimeline({
       airings: [],
@@ -149,5 +166,71 @@ describe("playbarFromTimeline", () => {
     });
     expect(band).toEqual({ channelName: "Coast 90s", channelNumber: "7" });
     expect(segments).toEqual([]);
+  });
+
+  it("gives the station-ID card the channel's era and place, saying nothing of an open span", () => {
+    const station = (era?: { from?: number; to?: number }, place?: string) =>
+      playbarFromTimeline({
+        airings: [],
+        channel: { ...channel, era, place },
+        live,
+        nowMs: NOW,
+        playheadMs: NOW,
+      }).band.station;
+
+    expect(station({ from: 1990, to: 1999 }, "Portland, ME")).toBe("1990s · Portland, ME");
+    expect(station({ from: 1996, to: 1996 })).toBe("1996");
+    expect(station({ from: 1985, to: 1994 })).toBe("1985–1994");
+    expect(station({ from: 1990 }, "Portland, ME")).toBe("Portland, ME");
+    expect(station()).toBeUndefined();
+  });
+
+  it("describes the programme at the playhead for Info, with the next programme past any break", () => {
+    const { info } = playbarFromTimeline({
+      airings: [
+        programme("now", -9, 13, {
+          description: "A storm cuts the island off from the mainland.",
+          episode: 4,
+          genres: ["Mystery", "Drama"],
+          rating: "TV-PG",
+          season: 2,
+          series: "Coastline Mysteries",
+          title: "The Last Lighthouse",
+          year: 1994,
+        }),
+        breakAt("b", 13, [spot("commercial", "Fizz", 30)]),
+        programme("next", 14, 40, { episode: 1, season: 1, series: "Night Shift Diner", title: "Pilot" }),
+      ],
+      channel,
+      live,
+      nowMs: NOW,
+      playheadMs: NOW,
+    });
+
+    expect(info).toMatchObject({
+      facts: "1994 · TV-PG · Mystery · Drama",
+      progress: 9 / 22,
+      startMs: at(-9),
+      stopMs: at(13),
+      synopsis: "A storm cuts the island off from the mainland.",
+      timeLabel: "9m in · 13m left",
+      title: "Coastline Mysteries · S2 E4 “The Last Lighthouse”",
+      upNext: { line: "S1 E1 “Pilot”", name: "Night Shift Diner", startMs: at(14) },
+    });
+  });
+
+  it("describes a break for Info by its label alone", () => {
+    const { info } = playbarFromTimeline({
+      airings: [breakAt("b", -1, [spot("commercial", "Fizz", 120)])],
+      channel,
+      live,
+      nowMs: NOW,
+      playheadMs: NOW,
+    });
+
+    expect(info?.title).toBe("Commercials · Fizz");
+    expect(info?.facts).toBeUndefined();
+    expect(info?.synopsis).toBeUndefined();
+    expect(info?.upNext).toBeUndefined();
   });
 });

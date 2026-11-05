@@ -423,6 +423,14 @@ RETIRED=(
   # still verifies those artifacts, but no new review is run.
   'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
   'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
+  # #2147: nothing wrote an admission decision at runtime, so the ledger, its service and the Filler
+  # Manage Activity and Diagnostics panels that read it were deleted whole with their four tables.
+  'fillerdecision|#2147: the filler admission decision ledger and its service were deleted; readiness evidence is the terminal-ready event'
+  'v1/filler/decisions|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-overview|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
+  'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

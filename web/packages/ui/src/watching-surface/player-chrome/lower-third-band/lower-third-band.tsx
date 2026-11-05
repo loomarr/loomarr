@@ -7,16 +7,22 @@ import type { PlayerBandData } from "../player-chrome.type";
 // The lower third (§9.1, plane 2): identity. An amber channel block — CH over the number — beside a
 // glass panel with `CH n · name`, the programme line, a thin progress line and the time. While a
 // preview card is open the band steps back a plane, dimmer and softened, so the card is in front.
+// The same band is the station-ID card: a larger block, and `era · place` after the name.
 
 interface LowerThirdBandProps {
   band: PlayerBandData;
   density: Density;
+  /** Drawn as the station-ID card. */
+  ident?: boolean;
   /** A preview card is open in front of it. */
   steppedBack?: boolean;
 }
 
-const LowerThirdBand = ({ band, density, steppedBack = false }: LowerThirdBandProps) => {
+const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: LowerThirdBandProps) => {
   const compact = density === "touch";
+  const identity = [`CH ${band.channelNumber}`, band.channelName, ident ? band.station : undefined]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <View
       style={{
@@ -40,7 +46,7 @@ const LowerThirdBand = ({ band, density, steppedBack = false }: LowerThirdBandPr
           borderTopLeftRadius: 8,
           justifyContent: "center",
           paddingVertical: 6,
-          width: compact ? 48 : 64,
+          width: ident ? (compact ? 64 : 96) : compact ? 48 : 64,
           ...webOnly({
             backgroundImage: `linear-gradient(180deg, ${playerChrome.signal}, ${playerChrome.signalDeep})`,
             boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 0 rgba(0, 0, 0, 0.15)",
@@ -50,7 +56,13 @@ const LowerThirdBand = ({ band, density, steppedBack = false }: LowerThirdBandPr
         <Text density={density} shout textRole="guideIdent" tone="inverse" tracking={0.2}>
           CH
         </Text>
-        <Text density={density} textRole={compact ? "guideNumber" : "channelNumber"} tone="inverse">
+        <Text
+          density={density}
+          textRole={
+            ident ? (compact ? "channelNumber" : "display") : compact ? "guideNumber" : "channelNumber"
+          }
+          tone="inverse"
+        >
           {band.channelNumber}
         </Text>
       </View>
@@ -67,13 +79,14 @@ const LowerThirdBand = ({ band, density, steppedBack = false }: LowerThirdBandPr
         }}
       >
         <Text density={density} numberOfLines={1} shout textRole="guideMeta" tone="secondary" tracking={0.14}>
-          {`CH ${band.channelNumber} · ${band.channelName}`}
+          {identity}
         </Text>
         {band.programmeLine ? (
           <Text
             density={density}
             numberOfLines={1}
             strong
+            style={ident ? { marginTop: 4 } : undefined}
             textRole={compact ? "cardTitle" : "headline"}
             tone="primary"
           >

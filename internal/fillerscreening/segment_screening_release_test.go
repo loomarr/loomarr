@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func TestSegmentScreeningCertificationReplaysEveryAxisAndRawEvidence(t *testing.T) {
@@ -37,7 +36,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	t.Run("subject", func(t *testing.T) {
 		aggregate, certification, _, _, _ := screeningCertificationFixture(t, subject, true)
 		aggregate.SubjectSHA256 = strings.Repeat("f", 64)
-		aggregate.SHA256 = filler.SegmentScreeningEvidenceSHA256(aggregate)
+		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("subject drift passed")
 		}
@@ -45,7 +44,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	t.Run("axis projection", func(t *testing.T) {
 		aggregate, certification, _, _, _ := screeningCertificationFixture(t, subject, true)
 		aggregate.Results[0].ReasonCode = "different_reason"
-		aggregate.SHA256 = filler.SegmentScreeningEvidenceSHA256(aggregate)
+		aggregate.SHA256 = SegmentScreeningEvidenceSHA256(aggregate)
 		if err := certification.Verify(t.Context(), aggregate); err == nil {
 			t.Fatal("axis projection drift passed")
 		}
@@ -95,12 +94,12 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 	t.Run("Airworthiness profile", func(t *testing.T) {
 		aggregate, _, repository, records, _ := screeningCertificationFixture(t, subject, true)
 		profiles := screeningProfiles(records)
-		evaluator, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileGeneralAudience, profiles)
+		evaluator, err := NewSegmentAirworthinessEvaluator(ProfileGeneralAudience, profiles)
 		if err != nil {
 			t.Fatal(err)
 		}
 		release := screeningReleaseFixture(profiles, true)
-		release.AirworthinessProfile = fillerairworthiness.ProfileGeneralAudience
+		release.AirworthinessProfile = ProfileGeneralAudience
 		release.AirworthinessAuthoritySHA256 = evaluator.AuthoritySHA256()
 		release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)
 		certification, err := NewSegmentScreeningCertification(release, repository)
@@ -115,7 +114,7 @@ func TestSegmentScreeningCertificationFailsClosedOnReleaseAndEvidenceDrift(t *te
 
 // screeningCertificationFixture also returns the repository root, which the tampering subtests use
 // to reach the stored blobs.
-func screeningCertificationFixture(t *testing.T, subject filler.SegmentScreeningSubject, production bool) (filler.SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence, string) {
+func screeningCertificationFixture(t *testing.T, subject filler.SegmentScreeningSubject, production bool) (SegmentScreeningEvidence, *SegmentScreeningCertification, *FileSegmentScreeningEvidenceRepository, []RecordedSegmentScreeningAxisEvidence, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "evidence")
 	repository, err := NewFileSegmentScreeningEvidenceRepository(root)
@@ -126,14 +125,14 @@ func screeningCertificationFixture(t *testing.T, subject filler.SegmentScreening
 		t.Fatal(err)
 	}
 	records := passingAxisEvidence(t, subject)
-	results := make([]filler.SegmentScreeningResult, 0, len(records))
+	results := make([]SegmentScreeningResult, 0, len(records))
 	for _, recorded := range records {
 		if err := repository.PutSegmentScreeningAxisEvidence(t.Context(), recorded); err != nil {
 			t.Fatal(err)
 		}
 		results = append(results, recorded.Evidence.Result())
 	}
-	aggregate, err := filler.NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
+	aggregate, err := NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,15 +156,15 @@ func screeningProfiles(records []RecordedSegmentScreeningAxisEvidence) []Segment
 }
 
 func screeningReleaseFixture(profiles []SegmentScreeningAxisProfile, production bool) SegmentScreeningReleaseAuthority {
-	airworthiness, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, profiles)
+	airworthiness, err := NewSegmentAirworthinessEvaluator(ProfileAllAges, profiles)
 	if err != nil {
 		panic(err)
 	}
 	release := SegmentScreeningReleaseAuthority{
 		SchemaVersion: SegmentScreeningReleaseSchemaVersion, ContractVersion: SegmentScreeningReleaseContractVersion,
-		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: filler.SegmentScreeningContractVersion,
+		CertificateSHA256: strings.Repeat("e", 64), AggregateContractVersion: SegmentScreeningContractVersion,
 		Profiles:                     append([]SegmentScreeningAxisProfile(nil), profiles...),
-		AirworthinessProfile:         fillerairworthiness.ProfileAllAges,
+		AirworthinessProfile:         ProfileAllAges,
 		AirworthinessAuthoritySHA256: airworthiness.AuthoritySHA256(), ProductionAdmissionAllowed: production,
 	}
 	release.SHA256 = SegmentScreeningReleaseAuthoritySHA256(release)

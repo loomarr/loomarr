@@ -124,6 +124,7 @@ const FillerSources = ({
   togglingProvider,
   renderProviderSetup,
   renderLocalSetup,
+  descriptions = [],
   error,
   now,
   className,
@@ -134,6 +135,8 @@ const FillerSources = ({
     childrenByProvider.set(source.parentId, [...(childrenByProvider.get(source.parentId) ?? []), source]);
   }
   const providers = sources.filter((source) => source.group);
+  // A provider's row carries its operator-facing name, which its paused children quote.
+  const providerRowsByID = new Map(providers.map((provider) => [provider.id, provider]));
   const localSources = sources.filter((source) => !source.group && !source.parentId);
   const realSources = sources.filter((source) => !source.group);
   const needsLocation = realSources.some((source) => source.actions.includes("set_location"));
@@ -168,7 +171,7 @@ const FillerSources = ({
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"
-              ? `Paused with ${source.kind === "archive" ? "Archive.org" : "YouTube"}. Existing clips stay here.`
+              ? `Paused with ${providerRowsByID.get(source.parentId ?? "")?.target ?? source.kind}. Existing clips stay here.`
               : dormant(source)
                 ? "Paused. Existing clips stay in your library."
                 : source.id === "folder"
@@ -288,9 +291,7 @@ const FillerSources = ({
 
       {providers.map((provider) => {
         const children = childrenByProvider.get(provider.id) ?? [];
-        const providerKind =
-          provider.kind === "archive" || provider.kind === "youtube" ? provider.kind : undefined;
-        const providerBodyOpen = provider.enabled && togglingProvider !== providerKind;
+        const providerBodyOpen = provider.enabled && togglingProvider !== provider.kind;
         return (
           <section
             key={provider.id}
@@ -305,19 +306,17 @@ const FillerSources = ({
                 <p className="text-muted-foreground mt-1 text-sm">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`
-                    : provider.kind === "archive"
-                      ? "Public collections of commercials, bumpers, and other broadcast material."
-                      : "Channels and playlists you choose from YouTube."}
+                    : descriptions.find((description) => description.id === provider.kind)?.blurb}
                 </p>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-3">
                 <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
-                {onToggleProvider && providerKind && (
+                {onToggleProvider && (
                   <Switch
                     id={`provider-use-${provider.kind}`}
                     checked={provider.enabled}
                     disabled={togglingProvider != null}
-                    onChange={() => onToggleProvider(providerKind, !provider.enabled)}
+                    onChange={() => onToggleProvider(provider.kind, !provider.enabled)}
                     aria-label={`Use ${provider.target}`}
                   />
                 )}

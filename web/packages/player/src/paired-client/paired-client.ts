@@ -11,7 +11,7 @@ import { AppState, Image } from "react-native";
 import { createCatalogRefresher } from "../catalog-refresher";
 import { createExpoVideoTransport } from "../native/native";
 import { createNativeEventStreamFactory } from "../native-event-stream";
-import { createNativePlaybackDiagnostics } from "../native-playback-diagnostics";
+import { createNativePlaybackDiagnostics, nativeTransportOf } from "../native-playback-diagnostics";
 import { createNativePlayerLifecycle } from "../native-player-lifecycle";
 import { createChannelCatalogPort, createPlayUrlSourcePort } from "../play-url-source";
 import { createPlayerController } from "../player-controller";
@@ -52,7 +52,11 @@ const usePairedClient = ({
       diagnostics,
     );
     return {
-      playback: createNativePlaybackDiagnostics(reporter, newPlaybackSessionId(diagnostics.platform)),
+      playback: createNativePlaybackDiagnostics(
+        reporter,
+        newPlaybackSessionId(diagnostics.platform),
+        nativeTransportOf(diagnostics.platform),
+      ),
       reporter,
     };
   }, [diagnostics, request]);

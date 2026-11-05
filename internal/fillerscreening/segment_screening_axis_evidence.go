@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 const (
@@ -20,27 +19,27 @@ const (
 // The certificate owns model/route details when an axis uses inference; deterministic axes bind
 // their measurement certification through the same small interface.
 type SegmentScreeningAxisProfile struct {
-	Axis                      filler.SegmentScreeningAxis `json:"axis"`
-	EvidenceContract          string                      `json:"evidenceContract"`
-	PolicySHA256              string                      `json:"policySha256"`
-	CertificationSHA256       string                      `json:"certificationSha256"`
-	ImplementationSHA256      string                      `json:"implementationSha256"`
-	CertifiedSuitabilityFlags []fillerairworthiness.Flag  `json:"certifiedSuitabilityFlags"`
+	Axis                      SegmentScreeningAxis `json:"axis"`
+	EvidenceContract          string               `json:"evidenceContract"`
+	PolicySHA256              string               `json:"policySha256"`
+	CertificationSHA256       string               `json:"certificationSha256"`
+	ImplementationSHA256      string               `json:"implementationSha256"`
+	CertifiedSuitabilityFlags []AirworthinessFlag  `json:"certifiedSuitabilityFlags"`
 }
 
 // SegmentScreeningAxisEvidence is the provider-neutral closed result for one axis and rendered child.
 // RawEvidenceSHA256 points at private bounded bytes stored before this record is published.
 type SegmentScreeningAxisEvidence struct {
-	SchemaVersion     int                               `json:"schemaVersion"`
-	ContractVersion   string                            `json:"contractVersion"`
-	SubjectSHA256     string                            `json:"subjectSha256"`
-	Profile           SegmentScreeningAxisProfile       `json:"profile"`
-	Outcome           filler.SegmentScreeningOutcome    `json:"outcome"`
-	ReasonCode        string                            `json:"reasonCode"`
-	RawEvidenceSHA256 string                            `json:"rawEvidenceSha256"`
-	Suitability       *fillerairworthiness.AxisEvidence `json:"suitability,omitempty"`
-	AssessedAt        time.Time                         `json:"assessedAt"`
-	SHA256            string                            `json:"sha256"`
+	SchemaVersion     int                         `json:"schemaVersion"`
+	ContractVersion   string                      `json:"contractVersion"`
+	SubjectSHA256     string                      `json:"subjectSha256"`
+	Profile           SegmentScreeningAxisProfile `json:"profile"`
+	Outcome           SegmentScreeningOutcome     `json:"outcome"`
+	ReasonCode        string                      `json:"reasonCode"`
+	RawEvidenceSHA256 string                      `json:"rawEvidenceSha256"`
+	Suitability       *AirworthinessAxisEvidence  `json:"suitability,omitempty"`
+	AssessedAt        time.Time                   `json:"assessedAt"`
+	SHA256            string                      `json:"sha256"`
 }
 
 type RecordedSegmentScreeningAxisEvidence struct {
@@ -48,7 +47,7 @@ type RecordedSegmentScreeningAxisEvidence struct {
 	RawEvidence []byte
 }
 
-func NewSegmentScreeningAxisEvidence(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome filler.SegmentScreeningOutcome, reasonCode string, suitability *fillerairworthiness.AxisEvidence, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
+func NewSegmentScreeningAxisEvidence(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, reasonCode string, suitability *AirworthinessAxisEvidence, rawEvidence []byte, assessedAt time.Time) (RecordedSegmentScreeningAxisEvidence, error) {
 	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
@@ -80,14 +79,14 @@ func ValidateRecordedSegmentScreeningAxisEvidence(record RecordedSegmentScreenin
 }
 
 func ValidateSegmentScreeningAxisEvidence(evidence SegmentScreeningAxisEvidence) error {
-	projected := filler.SegmentScreeningResult{
+	projected := SegmentScreeningResult{
 		Axis: evidence.Profile.Axis, Outcome: evidence.Outcome,
 		AuthoritySHA256: evidence.SHA256, ReasonCode: evidence.ReasonCode,
 	}
 	if evidence.SchemaVersion != SegmentScreeningAxisEvidenceSchemaVersion ||
 		evidence.ContractVersion != SegmentScreeningAxisEvidenceContractVersion ||
 		!filler.IsContentHash(evidence.SubjectSHA256) || ValidateSegmentScreeningAxisProfile(evidence.Profile) != nil ||
-		filler.ValidateSegmentScreeningResult(projected) != nil || !filler.IsContentHash(evidence.RawEvidenceSHA256) ||
+		ValidateSegmentScreeningResult(projected) != nil || !filler.IsContentHash(evidence.RawEvidenceSHA256) ||
 		evidence.AssessedAt.IsZero() || evidence.SHA256 != SegmentScreeningAxisEvidenceSHA256(evidence) {
 		return fmt.Errorf("segment screening axis evidence is invalid")
 	}
@@ -98,12 +97,12 @@ func ValidateSegmentScreeningAxisEvidence(evidence SegmentScreeningAxisEvidence)
 }
 
 func ValidateSegmentScreeningAxisProfile(profile SegmentScreeningAxisProfile) error {
-	if filler.ValidateSegmentScreeningAxis(profile.Axis) != nil || !filler.ValidScreeningReasonCode(profile.EvidenceContract) ||
+	if ValidateSegmentScreeningAxis(profile.Axis) != nil || !ValidScreeningReasonCode(profile.EvidenceContract) ||
 		!filler.IsContentHash(profile.PolicySHA256) || !filler.IsContentHash(profile.CertificationSHA256) || !filler.IsContentHash(profile.ImplementationSHA256) {
 		return fmt.Errorf("segment screening axis profile is invalid")
 	}
 	if axis, safety := airworthinessAxis(profile.Axis); safety {
-		normalized, err := fillerairworthiness.NormalizeAxisProfile(fillerairworthiness.AxisProfile{
+		normalized, err := NormalizeAirworthinessAxisProfile(AirworthinessAxisProfile{
 			Axis: axis, EvidenceContract: profile.EvidenceContract, PolicySHA256: profile.PolicySHA256,
 			CertificationSHA256: profile.CertificationSHA256, ImplementationSHA256: profile.ImplementationSHA256,
 			CertifiedFlags: profile.CertifiedSuitabilityFlags,
@@ -141,38 +140,38 @@ func validateSegmentSuitabilityEvidence(evidence SegmentScreeningAxisEvidence) e
 	}
 	wantProfile, err := segmentAirworthinessProfile(evidence.Profile)
 	if err != nil || !reflect.DeepEqual(evidence.Suitability.Profile, wantProfile) ||
-		fillerairworthiness.ValidateAxisEvidence(*evidence.Suitability, fillerairworthiness.MaximumRenderedDurationMS) != nil {
+		ValidateAirworthinessAxisEvidence(*evidence.Suitability, AirworthinessMaximumRenderedDurationMS) != nil {
 		return fmt.Errorf("safety screening suitability evidence is invalid or profile-drifted")
 	}
 	return nil
 }
 
-func segmentAirworthinessProfile(profile SegmentScreeningAxisProfile) (fillerairworthiness.AxisProfile, error) {
+func segmentAirworthinessProfile(profile SegmentScreeningAxisProfile) (AirworthinessAxisProfile, error) {
 	axis, safety := airworthinessAxis(profile.Axis)
 	if !safety {
-		return fillerairworthiness.AxisProfile{}, fmt.Errorf("screening axis is not an Airworthiness input")
+		return AirworthinessAxisProfile{}, fmt.Errorf("screening axis is not an Airworthiness input")
 	}
-	return fillerairworthiness.NormalizeAxisProfile(fillerairworthiness.AxisProfile{
+	return NormalizeAirworthinessAxisProfile(AirworthinessAxisProfile{
 		Axis: axis, EvidenceContract: profile.EvidenceContract, PolicySHA256: profile.PolicySHA256,
 		CertificationSHA256: profile.CertificationSHA256, ImplementationSHA256: profile.ImplementationSHA256,
 		CertifiedFlags: profile.CertifiedSuitabilityFlags,
 	})
 }
 
-func airworthinessAxis(axis filler.SegmentScreeningAxis) (fillerairworthiness.Axis, bool) {
+func airworthinessAxis(axis SegmentScreeningAxis) (AirworthinessAxis, bool) {
 	switch axis {
-	case filler.ScreenVisualSafety:
-		return fillerairworthiness.AxisVisual, true
-	case filler.ScreenSpokenSafety:
-		return fillerairworthiness.AxisSpoken, true
-	case filler.ScreenWrittenSafety:
-		return fillerairworthiness.AxisWritten, true
+	case ScreenVisualSafety:
+		return AxisVisual, true
+	case ScreenSpokenSafety:
+		return AxisSpoken, true
+	case ScreenWrittenSafety:
+		return AxisWritten, true
 	default:
 		return "", false
 	}
 }
 
-func cloneSuitabilityAxisEvidence(value *fillerairworthiness.AxisEvidence) *fillerairworthiness.AxisEvidence {
+func cloneSuitabilityAxisEvidence(value *AirworthinessAxisEvidence) *AirworthinessAxisEvidence {
 	if value == nil {
 		return nil
 	}
@@ -182,8 +181,8 @@ func cloneSuitabilityAxisEvidence(value *fillerairworthiness.AxisEvidence) *fill
 	return &cloned
 }
 
-func (e SegmentScreeningAxisEvidence) Result() filler.SegmentScreeningResult {
-	return filler.SegmentScreeningResult{Axis: e.Profile.Axis, Outcome: e.Outcome, AuthoritySHA256: e.SHA256, ReasonCode: e.ReasonCode}
+func (e SegmentScreeningAxisEvidence) Result() SegmentScreeningResult {
+	return SegmentScreeningResult{Axis: e.Profile.Axis, Outcome: e.Outcome, AuthoritySHA256: e.SHA256, ReasonCode: e.ReasonCode}
 }
 
 func SegmentScreeningAxisEvidenceSHA256(evidence SegmentScreeningAxisEvidence) string {

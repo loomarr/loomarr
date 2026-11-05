@@ -70,6 +70,13 @@ const useAutoHideControls = (playing: boolean) => {
     else if (hideTimer.current) clearTimeout(hideTimer.current);
   }, [playing, armHide]);
 
+  // The caller clears the picture for a moment of its own (a station-ID card): hide now, unless a
+  // control is holding or playback is paused. The next pointer move or focus brings them back.
+  const hideControls = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (heldRef.current === 0 && playing) setControlsShown(false);
+  }, [playing]);
+
   useEffect(() => {
     // Paused, or a control is holding (open menu) ⇒ keep controls shown. Otherwise, playing: hide
     // after IDLE with the pointer resting on the frame, or after the short GRACE once it has left (or
@@ -85,7 +92,7 @@ const useAutoHideControls = (playing: boolean) => {
     };
   }, [playing, held, hovering, armHide]);
 
-  return { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls };
+  return { controlsShown, hideControls, holdControls, onPointerActive, onPointerLeave, revealControls };
 };
 
 export { useAutoHideControls };

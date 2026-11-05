@@ -22,7 +22,10 @@ func Scanned(id ID, label, addressHint string) Provider {
 // Folder is the watched-directory provider.
 func Folder() Provider {
 	return scanned{id: FolderID, address: folderPath, description: Description{
-		Label: "Folder",
+		Label:        "Folder",
+		AddressHint:  "/data/filler — a full path Loomarr can read",
+		AddressLabel: "Folder path",
+		SourceNoun:   "Folder on this server",
 		BadAddress: Problem{
 			Title: "That doesn't look like a folder Loomarr can watch",
 			Detail: "Give a full path starting with / — for example /data/filler. " +
@@ -34,7 +37,10 @@ func Folder() Provider {
 // Library is the media-server library provider.
 func Library() Provider {
 	return scanned{id: LibraryID, address: libraryName, description: Description{
-		Label: "Media library",
+		Label:        "Media library",
+		AddressHint:  "Commercials — as it appears on your media server",
+		AddressLabel: "Library name",
+		SourceNoun:   "Media server library",
 		BadAddress: Problem{
 			Title:  "That library needs a name",
 			Detail: "Use the library's name as it appears on your media server — for example Commercials.",
