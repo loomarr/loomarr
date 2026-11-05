@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 )
 
 // Problems a pass records for a path it does not import.
@@ -58,8 +60,8 @@ type File struct {
 	Stat Stat
 	// Extra marks a trailer, featurette or other extra of the item beside it.
 	Extra bool
-	// Sidecars are the file's own NFO files, by path, so a changed sidecar changes the file's
-	// identity digest without being read.
+	// Sidecars are the file's own NFO and artwork files, by path, so a changed sidecar changes the
+	// file's identity digest without being read.
 	Sidecars map[string]Stat
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
@@ -78,8 +80,7 @@ type Walk struct {
 // .ignore file, lists disc images as problems, and follows a symlink only when its target is
 // inside the root.
 func walkRoot(ctx context.Context, root string) (Walk, error) {
-	w := walker{root: filepath.Clean(root), visited: map[string]bool{}, nfo: map[string]map[string]Stat{}}
-	w.out.Complete = true
+	w := newWalker(root)
 	real, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		return Walk{}, err
@@ -95,8 +96,7 @@ func walkRoot(ctx context.Context, root string) (Walk, error) {
 // walkFolders lists the media under some folders of root, by the same rules as a walk of the whole
 // root. A folder inside a skipped or extras folder is walked as that folder would be.
 func walkFolders(ctx context.Context, root string, dirs []string) (Walk, error) {
-	w := walker{root: filepath.Clean(root), visited: map[string]bool{}, nfo: map[string]map[string]Stat{}}
-	w.out.Complete = true
+	w := newWalker(root)
 	real, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		return Walk{}, err
@@ -141,11 +141,22 @@ type walker struct {
 	root     string
 	realRoot string
 	visited  map[string]bool
-	// nfo is each folder's NFO files, kept while the walk is under it.
+	// nfo is each folder's NFO and artwork files, kept while the walk is under it.
 	nfo map[string]map[string]Stat
-	out Walk
+	// videos counts each folder's videos, kept alongside nfo.
+	videos map[string]int
+	out    Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
+}
+
+func newWalker(root string) *walker {
+	w := &walker{
+		root: filepath.Clean(root), visited: map[string]bool{},
+		nfo: map[string]map[string]Stat{}, videos: map[string]int{},
+	}
+	w.out.Complete = true
+	return w
 }
 
 func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
@@ -168,18 +179,26 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 		return nil
 	}
 	nfos := map[string]Stat{}
+	videos := 0
 	for _, e := range entries {
 		if e.Name() == ".ignore" {
 			return nil
 		}
-		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".nfo") {
+		if e.IsDir() {
+			continue
+		}
+		if videoExtensions[strings.ToLower(filepath.Ext(e.Name()))] {
+			videos++
+		}
+		if isNFO(e.Name()) || localart.IsImage(e.Name()) {
 			if st, ok := w.stat(filepath.Join(dir, e.Name()), e); ok {
 				nfos[filepath.Join(dir, e.Name())] = st
 			}
 		}
 	}
-	w.nfo[dir] = nfos
+	w.nfo[dir], w.videos[dir] = nfos, videos
 	defer delete(w.nfo, dir)
+	defer delete(w.videos, dir)
 
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
@@ -263,18 +282,47 @@ func (w *walker) rel(path string) string {
 	return filepath.ToSlash(rel)
 }
 
-// sidecars is the NFO files that describe the media file named name in dir: its own
-// <stem>.nfo, and a movie folder's movie.nfo. A sibling's NFO says nothing about it.
+// sidecars is the files that describe the media file named name in dir: its own <stem>.nfo and a
+// movie folder's movie.nfo; its own "<stem>-poster.jpg" and kin; and, when it is the folder's only
+// video, the folder's other images (poster.jpg …). A sibling's sidecars say nothing about it.
 func (w *walker) sidecars(dir, name string) map[string]Stat {
 	out := map[string]Stat{}
-	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	stem := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
+	sole := w.videos[dir] <= 1
 	for path, st := range w.nfo[dir] {
-		base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		if strings.EqualFold(base, stem) || strings.EqualFold(base, "movie") {
+		base := strings.ToLower(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+		switch {
+		case isNFO(path):
+			if base == stem || base == "movie" {
+				out[path] = st
+			}
+		case strings.HasPrefix(base, stem+"-") || sole:
 			out[path] = st
 		}
 	}
 	return out
+}
+
+func isNFO(name string) bool { return strings.EqualFold(filepath.Ext(name), ".nfo") }
+
+// hasNFO reports whether the file has an NFO to read.
+func (f File) hasNFO() bool {
+	for path := range f.Sidecars {
+		if isNFO(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasArt reports whether the file has an artwork sidecar to list.
+func (f File) hasArt() bool {
+	for path := range f.Sidecars {
+		if localart.IsImage(path) {
+			return true
+		}
+	}
+	return false
 }
 
 func extraName(lowerName string) bool {

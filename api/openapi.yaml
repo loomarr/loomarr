@@ -6603,6 +6603,9 @@ components:
           type: string
         name:
           type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its poster; absent when it has none, or while one is still being fetched
         ready:
           description: False while some of its files' details aren't read yet
           type: boolean

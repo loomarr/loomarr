@@ -39,11 +39,40 @@ type libraryItemDTO struct {
 	Year  int    `json:"year,omitempty" doc:"Absent when unknown"`
 	Files int    `json:"files" doc:"Present files; a series counts its episodes' files"`
 	// Ready is false while any file's details are unread.
-	Ready bool `json:"ready" doc:"False while some of its files' details aren't read yet"`
+	Ready  bool      `json:"ready" doc:"False while some of its files' details aren't read yet"`
+	Poster *ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 }
 
-func libraryItemOf(it store.LibraryItemSummary) libraryItemDTO {
-	return libraryItemDTO{ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0}
+func libraryItemOf(it store.LibraryItemSummary, posters map[string]*ImageDTO) libraryItemDTO {
+	return libraryItemDTO{
+		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,
+		Poster: posters[it.Poster],
+	}
+}
+
+// libraryPosters renders the items' posters, by hash. An image whose bytes have not arrived is
+// left out, so the grid shows the title's name rather than a broken image.
+func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*ImageDTO {
+	out := map[string]*ImageDTO{}
+	if s.images == nil {
+		return out
+	}
+	for _, it := range items {
+		if it.Poster == "" {
+			continue
+		}
+		if _, seen := out[it.Poster]; seen {
+			continue
+		}
+		out[it.Poster] = nil
+		rec, err := s.images.Get(ctx, it.Poster)
+		if err != nil || !rec.HasBytes() {
+			continue
+		}
+		dto := s.imageToDTO(ctx, rec)
+		out[it.Poster] = &dto
+	}
+	return out
 }
 
 type listLibraryItemsInput struct {
@@ -74,8 +103,9 @@ func (s *Server) listLibraryItems(ctx context.Context, in *listLibraryItemsInput
 	out := &listLibraryItemsOutput{}
 	out.Body.Total = page.Total
 	out.Body.Items = make([]libraryItemDTO, 0, len(page.Items))
+	posters := s.libraryPosters(ctx, page.Items)
 	for _, it := range page.Items {
-		out.Body.Items = append(out.Body.Items, libraryItemOf(it))
+		out.Body.Items = append(out.Body.Items, libraryItemOf(it, posters))
 	}
 	return out, nil
 }
@@ -130,12 +160,13 @@ func (s *Server) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
-	return &getLibraryItemOutput{Body: libraryItemDetailOf(d)}, nil
+	posters := s.libraryPosters(ctx, []store.LibraryItemSummary{d.LibraryItemSummary})
+	return &getLibraryItemOutput{Body: libraryItemDetailOf(d, posters)}, nil
 }
 
-func libraryItemDetailOf(d scan.ItemDetail) libraryItemDetailDTO {
+func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) libraryItemDetailDTO {
 	out := libraryItemDetailDTO{
-		Item:     libraryItemOf(d.LibraryItemSummary),
+		Item:     libraryItemOf(d.LibraryItemSummary, posters),
 		Overview: d.Facts.Overview, Genres: d.Facts.Genres, Rating: d.Facts.OfficialRating,
 		RuntimeMillis: d.Facts.RuntimeMillis,
 		Files:         make([]libraryItemFileDTO, 0, len(d.Files)),

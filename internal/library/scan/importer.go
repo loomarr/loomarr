@@ -37,6 +37,13 @@ type ImportStore interface {
 	SaveLibraryItems(ctx context.Context, items []store.LibraryItem, at time.Time) error
 }
 
+// Posters puts a title's poster in the image service (#2151 step 10). ref is what precedence
+// resolved: an image file beside the media, or a manager's https URL; "" is none. The title owns
+// one poster: the one it had before is let go.
+type Posters interface {
+	Poster(ctx context.Context, itemID, ref string) error
+}
+
 // Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of
 // files that have none yet. Nothing reads the scanner's origins until the cutover.
@@ -48,6 +55,10 @@ type Importer struct {
 	Managers func() []Manager
 	// NFO reads sidecars; nil reads none.
 	NFO mp.Provider
+	// Art lists artwork sidecars; nil lists none.
+	Art mp.Provider
+	// Posters imports the poster of each title the pass writes; nil imports none.
+	Posters Posters
 	// Resolver applies precedence.
 	Resolver *precedence.Resolver
 	// Header reads one file's container header.
@@ -459,7 +470,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		}
 		row.ItemID = itemID
 		if snapshot.Kind == kindMovie {
-			b.listed(itemID, snapshot)
+			b.listed(ctx, itemID, snapshot)
 		}
 		if id.seriesDir != "" {
 			episodes = append(episodes, episodeRow{at: len(save), seriesDir: id.seriesDir})
