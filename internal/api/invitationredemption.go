@@ -67,7 +67,7 @@ type redeemInvitationInput struct {
 	Body struct {
 		Grant    string `json:"grant" format:"password"`
 		Username string `json:"username,omitempty"`
-		Password string `json:"password" format:"password"`
+		Password string `json:"password" format:"password" minLength:"8"`
 	}
 }
 
@@ -101,7 +101,7 @@ func invitationRedemptionError(err error) error {
 	case errors.Is(err, auth.ErrInvalidInvitation):
 		return errGone("Invitation unavailable", "This invitation is invalid, expired, revoked, or already used. Ask an administrator for a new invitation.")
 	case errors.Is(err, auth.ErrWeakPassword):
-		return errUnprocessable("Password too short", "Use at least 8 characters.")
+		return errPasswordTooShort()
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return errUnauthorized("Account couldn't be verified", "Those Library credentials couldn't verify the invited account. Check them and try again.")
 	case errors.Is(err, auth.ErrInvitationProviderUnavailable):

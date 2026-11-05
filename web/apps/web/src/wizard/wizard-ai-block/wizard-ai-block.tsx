@@ -1,6 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
@@ -54,8 +55,11 @@ const WizardAiBlock = () => {
   // The LIVE provider: an unsaved dropdown edit wins over the resolved value, so the picker
   // surface flips the instant you switch to OpenAI-compatible — before Save.
   const liveProvider =
-    edits["llm.provider"] ?? aiEntries.find((e) => e.key === "llm.provider")?.value ?? status?.provider;
-  const liveBaseUrl = edits["llm.url"] ?? aiEntries.find((e) => e.key === "llm.url")?.value ?? "";
+    edits[SettingKey.LLMProvider] ??
+    aiEntries.find((e) => e.key === SettingKey.LLMProvider)?.value ??
+    status?.provider;
+  const liveBaseUrl =
+    edits[SettingKey.LLMURL] ?? aiEntries.find((e) => e.key === SettingKey.LLMURL)?.value ?? "";
 
   // A model became active (or provider saved): flip the wizard's `llm` checklist dot green.
   const refreshSetupStatus = () =>

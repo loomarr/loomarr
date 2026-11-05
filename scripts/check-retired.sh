@@ -144,12 +144,11 @@ RETIRED=(
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
-  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
-  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # The playout copy-audience query is retired: every client is served the same variant. The VALUE
   # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
-  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
-  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  'target=browser|the playout copy-audience query is retired; every client gets the same variant'
+  'target=mediaserver|the playout copy-audience query is retired; every client gets the same variant'
   # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
   # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
   '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'
@@ -430,6 +429,22 @@ RETIRED=(
   'PolicyFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
   'RequestFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
   'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  # #2147: the whole-video structure assessment (one call over the complete source) was superseded
+  # by the structure-window pipeline, which plans, assesses and stitches windows. Its record,
+  # reservation ledger, operation publication, v9 prompt and ledger table are gone; the window
+  # call record, window ledger and window prompt own those jobs. Window code uses `directVideo*`
+  # names of its own, so only the whole-video symbols are listed.
+  'filler-temporal-structure-direct-video-v9|retired (#2147): the whole-video prompt is gone; the window pipeline owns fillerstructurewindow.DirectVideoPromptVersion'
+  'filler_structure_assessment_ledger|retired (#2147): the whole-video assessment ledger table was dropped; filler_structure_window_call_ledger is the structure ledger'
+  'NewAssessmentRecord|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.NewRecordedAssessment'
+  'fillerstructure.RecordedAssessment|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.RecordedAssessment'
+  'AssessmentLedgerEntry|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.CallLedgerEntry'
+  'NewAssessmentReservation|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.NewCallReservation'
+  'NewAssessmentPublication|retired (#2147): the whole-video assessment publication is gone; use fillerstructurewindow.NewCallPublication'
+  'ReserveStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use ReserveStructureWindowCall'
+  'SettleStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use SettleStructureWindowCall'
+  'PutStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use PutStructureWindowAssessmentEvidence'
+  'FindStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use FindStructureWindowAssessmentEvidence'
   # #2147: nothing wrote an admission decision at runtime, so the ledger, its service and the Filler
   # Manage Activity and Diagnostics panels that read it were deleted whole with their four tables.
   'fillerdecision|#2147: the filler admission decision ledger and its service were deleted; readiness evidence is the terminal-ready event'

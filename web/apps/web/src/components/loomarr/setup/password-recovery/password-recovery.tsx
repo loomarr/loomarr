@@ -1,3 +1,4 @@
+import { redeemPasswordRecoveryBodyPasswordMin } from "@loomarr/api/zod/auth";
 import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -151,8 +152,8 @@ const PasswordRecoveryReset = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        if (password.length < 8) {
-          setValidation("Use at least 8 characters.");
+        if (password.length < redeemPasswordRecoveryBodyPasswordMin) {
+          setValidation(`Use at least ${redeemPasswordRecoveryBodyPasswordMin} characters.`);
           return;
         }
         if (password !== confirmation) {

@@ -10,10 +10,10 @@ export default defineConfig({
   // `maxAcquire` where the wire says `maxAcquisitions` and a user's acquisition cap silently
   // vanished; a picked key that is not on the wire is now a compile error at the schema itself.
   //
-  // ⚠ Generation carries NAMES and TYPES, not validation. This spec declares almost no
-  // constraints (5 `minimum`, 3 `maximum`, 7 `minLength` across ~9k lines, and `maxAcquisitions`
-  // has no bounds at all), so every product rule — trim, lengths, the 0–200 cap — and every
-  // user-facing message stays hand-authored in packages/core. See schemas.ts.
+  // ⚠ Generation carries the limits the server declares (a struct tag's `minLength`, `maximum`, …
+  // becomes a constant such as `bootstrapBodyPasswordMin`), never the user-facing message, which
+  // stays hand-authored in packages/core. A rule the server does not declare cannot be generated:
+  // it lives in schemas.ts until it gets a tag. See schemas.ts.
   loomarrZod: {
     input: {
       target: "../../../api/openapi.yaml",

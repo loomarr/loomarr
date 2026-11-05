@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
+import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
 
@@ -141,6 +142,9 @@ const TasksPage = () => {
   const [openGroups, setOpenGroups] = useState<Set<JobView["group"]>>(() => new Set());
   const [openJobs, setOpenJobs] = useState<Set<string>>(() => new Set());
   const list = unwrap(jobs.data, (body) => body.jobs) ?? [];
+  // A job's schedule choices are the registry's presets on the setting the dialog edits.
+  const entries = useSettingsEntries();
+  const presetsFor = (job: JobView) => entries.find((entry) => entry.key === job.scheduleKey)?.presets ?? [];
 
   const run = jobsApi.useJobsRun({
     mutation: {
@@ -269,7 +273,9 @@ const TasksPage = () => {
                                 className="text-muted-foreground px-4 py-3"
                                 title={job.disabledReason ? undefined : job.schedule}
                               >
-                                {job.disabledReason ? "Not scheduled" : describeCron(job.schedule)}
+                                {job.disabledReason
+                                  ? "Not scheduled"
+                                  : describeCron(job.schedule, presetsFor(job))}
                               </td>
                               <td className="text-muted-foreground px-4 py-3">
                                 {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
@@ -370,6 +376,7 @@ const TasksPage = () => {
       {editing && (
         <JobEditModal
           job={editing}
+          presets={presetsFor(editing)}
           open={editing !== undefined}
           onOpenChange={(open) => !open && setEditing(undefined)}
         />

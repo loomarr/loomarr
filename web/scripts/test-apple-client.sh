@@ -365,6 +365,10 @@ else
   run_expo_build cold
 fi
 # Expo's generic destination builds without physical-device enumeration or an implicit launch.
+# The simulator was booted before the build, but the build can leave it Shut Down (hosted runners
+# have failed install with SimError 405 "Unable to lookup in current state: Shutdown" right after
+# "Build Succeeded"). `bootstatus -b` boots it again if needed and waits until it is ready.
+xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl install "${simulator_id}" "${BUILD_DIR}/${SCHEME}.app"
 record_phase_timing native_build_install "$native_build_started_at"
 

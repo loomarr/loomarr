@@ -35,7 +35,6 @@ var (
 // carries no encoder, cache, or scratch-directory choice; those are Origin implementation details.
 type TuneRequest struct {
 	ChannelID string
-	Plan      EncodePlan
 	Delivery  Delivery
 	// Speculative permits bounded live fallback but must not reclaim another Channel's retained
 	// session. Adjacent Watch warming uses it so optional work cannot displace foreground playback.
@@ -122,15 +121,15 @@ type Asset struct {
 }
 
 type sessionAttacher interface {
-	Attach(context.Context, string, EncodePlan) (Stream, func(), error)
+	Attach(context.Context, string) (Stream, func(), error)
 	StopChannel(channelID string)
 	Stop()
 }
 
 type hlsOrigin interface {
-	// acquirePlaylist(channel, plan, speculative, viewer)
-	acquirePlaylist(string, EncodePlan, bool, string) (hlsPlaylistLease, error)
-	AssetPath(string, EncodePlan, string) (string, bool)
+	// acquirePlaylist(channel, speculative, viewer)
+	acquirePlaylist(string, bool, string) (hlsPlaylistLease, error)
+	AssetPath(string, string) (string, bool)
 	StopChannel(channelID string)
 	StopAll()
 }
@@ -252,13 +251,13 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 		if o.sessions == nil {
 			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
-		stream, release, err := o.sessions.Attach(ctx, request.ChannelID, request.Plan)
+		stream, release, err := o.sessions.Attach(ctx, request.ChannelID)
 		return Presentation{Stream: stream, Release: release}, nil, err
 	case DeliveryHLS:
 		if o.hls == nil {
 			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
-		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan, request.Speculative, ViewerFrom(ctx))
+		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Speculative, ViewerFrom(ctx))
 		return Presentation{}, &lease, err
 	default:
 		return Presentation{}, nil, ErrUnsupportedDelivery
@@ -266,8 +265,8 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 }
 
 // OpenAsset opens a follow-up HLS resource without exposing the live remux layout to callers.
-func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (Asset, bool, error) {
-	asset, lease, ok, err := o.acquireAsset(ctx, channelID, plan, rel, speculative)
+func (o *Origin) OpenAsset(ctx context.Context, channelID string, rel string, speculative bool) (Asset, bool, error) {
+	asset, lease, ok, err := o.acquireAsset(ctx, channelID, rel, speculative)
 	if err != nil || !ok || lease == nil {
 		return asset, ok, err
 	}
@@ -281,7 +280,7 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 	return Asset{Content: nopSeekCloser{bytes.NewReader(body)}, Modified: time.Now(), Playlist: true}, true, nil
 }
 
-func (o *Origin) acquireAsset(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (Asset, *hlsPlaylistLease, bool, error) {
+func (o *Origin) acquireAsset(ctx context.Context, channelID string, rel string, speculative bool) (Asset, *hlsPlaylistLease, bool, error) {
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
 	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
@@ -291,10 +290,10 @@ func (o *Origin) acquireAsset(ctx context.Context, channelID string, plan Encode
 		return Asset{}, nil, false, nil
 	}
 	if mp, ok := o.hls.(mediaPlaylister); ok && strings.HasSuffix(rel, ".m3u8") {
-		lease, ok, err := mp.acquireMediaPlaylist(ctx, channelID, plan, rel, speculative)
+		lease, ok, err := mp.acquireMediaPlaylist(ctx, channelID, rel, speculative)
 		return Asset{}, &lease, ok, err
 	}
-	path, ok := o.hls.AssetPath(channelID, plan, rel)
+	path, ok := o.hls.AssetPath(channelID, rel)
 	if !ok {
 		return Asset{}, nil, false, nil
 	}

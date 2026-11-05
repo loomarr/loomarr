@@ -2,6 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
@@ -331,14 +332,14 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   // answers 501 and three retries is console noise for a state that simply renders nothing.
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
   const settingEntries = unwrap(settings.data, (b) => b.settings) ?? [];
-  const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
+  const defaultBreaksEntry = settingEntries.find((e) => e.key === SettingKey.FillerBreaksPerHour);
   const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
-  const defaultBreakDuration = settingEntries.find((e) => e.key === "filler.break_duration")?.value;
+  const defaultBreakDuration = settingEntries.find((e) => e.key === SettingKey.FillerBreakDuration)?.value;
   // A whole number of seconds; the field reads durations, so it gets the seconds unit.
-  const defaultSpacingSeconds = settingEntries.find((e) => e.key === "filler.cooldown_seconds")?.value;
+  const defaultSpacingSeconds = settingEntries.find((e) => e.key === SettingKey.FillerCooldownSeconds)?.value;
   const defaultCommercialSpacing = defaultSpacingSeconds ? `${defaultSpacingSeconds}s` : undefined;
-  const homeCountry = settingEntries.find((e) => e.key === "filler.home_country")?.value;
-  const homePlace = settingEntries.find((e) => e.key === "filler.home_place")?.value;
+  const homeCountry = settingEntries.find((e) => e.key === SettingKey.FillerHomeCountry)?.value;
+  const homePlace = settingEntries.find((e) => e.key === SettingKey.FillerHomePlace)?.value;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.

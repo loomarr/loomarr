@@ -16,9 +16,9 @@ import "@testing-library/jest-dom/vitest";
 // just later. What it removes is a red build caused by CPU contention rather than by the code.
 configure({ asyncUtilTimeout: 5000 });
 
-// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on mount. The
-// scriptable fake lets components that open the stream render, and lets a test emit frames down
-// it. A test can still replace it with `vi.stubGlobal("EventSource", …)`.
+// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on mount. The one
+// shared fake lets components that open the stream render, and lets a test push spec frames down
+// it with `FakeEventSource.broadcast`. Tests do not stub their own.
 globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
 afterEach(() => FakeEventSource.reset());
 

@@ -1,3 +1,4 @@
+import { redeemInvitationBodyPasswordMin } from "@loomarr/api/zod/invitations";
 import { CalendarClock, Loader2, LogIn, ShieldCheck, UserRound } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -47,8 +48,8 @@ const InvitationJoin = ({
   );
 
   const submit = () => {
-    if (password.length < 8) {
-      setValidation("Use at least 8 characters.");
+    if (password.length < redeemInvitationBodyPasswordMin) {
+      setValidation(`Use at least ${redeemInvitationBodyPasswordMin} characters.`);
       return;
     }
     if (library && username.trim() === "") {

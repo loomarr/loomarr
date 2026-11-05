@@ -9,7 +9,13 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
-const DirectVideoPromptVersion = "filler-temporal-structure-window-direct-video-v2"
+const (
+	DirectVideoPromptVersion = "filler-temporal-structure-window-direct-video-v2"
+	// DirectVideoMaximumSegments bounds the segments one window response may return.
+	DirectVideoMaximumSegments = 128
+	// DirectVideoMaximumDecisiveTime bounds the decisive timestamps one segment may cite.
+	DirectVideoMaximumDecisiveTime = 8
+)
 
 const DirectVideoSystemPrompt = `Segment one complete identity-blind video window. Judge the supplied window's actual item boundaries, not whether its topic resembles an advertisement.
 
@@ -23,8 +29,37 @@ func DirectVideoContent(durationMS int64) string {
 	return fmt.Sprintf("Complete supplied window duration: %d milliseconds. Inspect the complete supplied window and return the closed temporal-structure assessment.", durationMS)
 }
 
+// DirectVideoSchema is the closed structured-output schema for one window of the given duration.
 func DirectVideoSchema(durationMS int64) map[string]any {
-	return fillerstructure.DirectVideoSchema(durationMS)
+	roles := []string{
+		string(fillerstructure.RoleCommercial), string(fillerstructure.RolePromo), string(fillerstructure.RoleBumper),
+		string(fillerstructure.RolePSA), string(fillerstructure.RoleStationID), string(fillerstructure.RoleTrailer),
+		string(fillerstructure.RoleInterstitial), string(fillerstructure.RoleProgrammeFragment),
+		string(fillerstructure.RoleNonFiller), string(fillerstructure.RoleAmbiguous), string(fillerstructure.RoleUnusable),
+	}
+	times := map[string]any{
+		"type": "array", "maxItems": DirectVideoMaximumDecisiveTime,
+		"items": map[string]any{"type": "integer", "minimum": 0, "maximum": durationMS},
+	}
+	segment := map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"endMs", "role", "decisiveAtMs", "reason"},
+		"properties": map[string]any{
+			"endMs": map[string]any{"type": "integer", "minimum": 1, "maximum": durationMS},
+			"role":  map[string]any{"type": "string", "enum": roles}, "decisiveAtMs": times,
+			"reason": map[string]any{"type": "string"},
+		},
+	}
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"segments"},
+		"properties": map[string]any{
+			// The local parser enforces DirectVideoMaximumSegments. Do not emit that
+			// large maxItems bound here: otherwise-compatible strict video routes reject it.
+			"segments": map[string]any{
+				"type": "array", "minItems": 1, "items": segment,
+			},
+		},
+	}
 }
 
 func DirectVideoPromptSHA256(durationMS int64) string {

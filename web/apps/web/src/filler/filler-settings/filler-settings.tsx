@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -200,17 +201,22 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Clip folders",
       description: "Where clips are stored and how files dropped onto this machine enter the catalog.",
-      keys: ["filler.dir", "filler.watch_dir", "filler.source.folder.enabled", "filler.sync_every"],
+      keys: [
+        SettingKey.FillerDir,
+        SettingKey.FillerWatchDir,
+        SettingKey.FillerSourceFolderEnabled,
+        SettingKey.FillerSyncEvery,
+      ],
     },
     {
       section: "downloads",
       group: "filler",
       title: "Automatic downloads",
       description: "Choose how often Loomarr looks for clips and how many each source may add.",
-      keys: ["filler.fetch.every", "filler.fetch.max_per_run", "filler.region_fallback"],
+      keys: [SettingKey.FillerFetchEvery, SettingKey.FillerFetchMaxPerRun, SettingKey.FillerRegionFallback],
       footer: ({ liveValue }) => {
-        const every = liveValue("filler.fetch.every") || "6h";
-        const defaultMax = Math.max(1, Number(liveValue("filler.fetch.max_per_run")) || 10);
+        const every = liveValue(SettingKey.FillerFetchEvery) || "6h";
+        const defaultMax = Math.max(1, Number(liveValue(SettingKey.FillerFetchMaxPerRun)) || 10);
         const activeSources = sources.filter(
           (source) =>
             !source.group &&
@@ -252,7 +258,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Storage",
       description: "Loomarr chooses a safe allowance automatically. Set your own only if you need to.",
-      keys: ["filler.storage.library_budget_gb", "filler.fetch.max_catalog_clips"],
+      keys: [SettingKey.FillerStorageLibraryBudgetGb, SettingKey.FillerFetchMaxCatalogClips],
       footer: <StorageSummary storage={storage} />,
     },
     {
@@ -260,7 +266,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Clip details",
       description: "Help Loomarr identify when and where a clip was made.",
-      keys: ["filler.research.enabled"],
+      keys: [SettingKey.FillerResearchEnabled],
       footer: ({ liveValue, setEdit }) => (
         <ClipDetailsSettings entries={entries} liveValue={liveValue} setEdit={setEdit} />
       ),
@@ -270,7 +276,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Incoming history",
       description: "Choose how long newly ready clips stay visible in Incoming.",
-      keys: ["filler.incoming.ready_window"],
+      keys: [SettingKey.FillerIncomingReadyWindow],
       initialAdvanced: true,
     },
     {
@@ -279,7 +285,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       title: "Break assembly",
       description:
         "Choose the usual break length and number of clips. Each channel can use its own length and frequency.",
-      keys: ["filler.break_duration", "filler.pod_max"],
+      keys: [SettingKey.FillerBreakDuration, SettingKey.FillerPodMax],
     },
     {
       section: "review",
@@ -287,11 +293,11 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       title: "Clip review",
       description: "Choose which background checks may identify, split, or set aside incoming clips.",
       keys: [
-        "filler.transcribe.enabled",
-        "filler.vision.enabled",
-        "filler.autosplit.enabled",
-        "filler.autosplit.min_confidence",
-        "filler.autosplit.max_duration",
+        SettingKey.FillerTranscribeEnabled,
+        SettingKey.FillerVisionEnabled,
+        SettingKey.FillerAutosplitEnabled,
+        SettingKey.FillerAutosplitMinConfidence,
+        SettingKey.FillerAutosplitMaxDuration,
       ],
     },
     {
@@ -300,14 +306,14 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       title: "Clip eligibility and sound",
       initialAdvanced: true,
       keys: [
-        "filler.cooldown_seconds",
-        "filler.min_quality",
-        "filler.weight",
-        "filler.min_duration",
-        "filler.split.review_window",
-        "filler.min_clip_duration",
-        "filler.max_clip_duration",
-        "filler.target_lufs",
+        SettingKey.FillerCooldownSeconds,
+        SettingKey.FillerMinQuality,
+        SettingKey.FillerWeight,
+        SettingKey.FillerMinDuration,
+        SettingKey.FillerSplitReviewWindow,
+        SettingKey.FillerMinClipDuration,
+        SettingKey.FillerMaxClipDuration,
+        SettingKey.FillerTargetLufs,
       ],
     },
     {
@@ -317,14 +323,14 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       description: "Choose how much background work Loomarr can do at once.",
       initialAdvanced: true,
       keys: [
-        "filler.pipeline.max_clips",
-        "filler.transcode.max_per_run",
-        "filler.pipeline.max_whisper",
-        "filler.pipeline.max_vision",
-        "filler.pipeline.max_split_vision",
-        "filler.pipeline.max_splits",
-        "filler.defects.judge_look_cents",
-        "filler.defects.judge_daily_cents",
+        SettingKey.FillerPipelineMaxClips,
+        SettingKey.FillerTranscodeMaxPerRun,
+        SettingKey.FillerPipelineMaxWhisper,
+        SettingKey.FillerPipelineMaxVision,
+        SettingKey.FillerPipelineMaxSplitVision,
+        SettingKey.FillerPipelineMaxSplits,
+        SettingKey.FillerDefectsJudgeLookCents,
+        SettingKey.FillerDefectsJudgeDailyCents,
       ],
     },
     {
@@ -334,11 +340,11 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       initialAdvanced: true,
       description: "Executable and model paths for unusual source installs. The container supplies these.",
       keys: [
-        "ingest.ytdlp_path",
-        "ingest.ffmpeg_path",
-        "ingest.timeout",
-        "ingest.whisper_path",
-        "ingest.whisper_model",
+        SettingKey.IngestYtdlpPath,
+        SettingKey.IngestFFmpegPath,
+        SettingKey.IngestTimeout,
+        SettingKey.IngestWhisperPath,
+        SettingKey.IngestWhisperModel,
       ],
     },
   ];

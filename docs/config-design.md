@@ -300,12 +300,13 @@ credential-bearing webhook URLs. Provider definitions classify fields; a client-
 map cannot downgrade a secret to plaintext configuration. Sessions, device credentials,
 Invitation grants, and password-recovery grants remain one-way hashes and are not encrypted.
 
-The first encryption-aware startup migrates legacy plaintext setting secrets transactionally after
-the installation key and initial wrapped DEK are valid. A versioned envelope makes the migration
-idempotent. Missing keys, authentication failure, unknown envelope versions, or incomplete
-migration stop readiness without clearing or overwriting durable values. Rewriting rows cannot
-erase plaintext already present in old backups, replicas, SQLite free pages, or WAL history;
-operators whose threat model includes those artifacts rotate the upstream credentials after upgrade.
+Startup does not seal plaintext setting secrets. A protected setting stored as plaintext predates
+encrypted settings (v0.2.0-beta.1); boot fails closed with one error per such key, never printing the
+value, telling the operator to upgrade through a v0.2.x release first or clear that setting and
+re-enter it. Missing keys, authentication failure, or unknown envelope versions likewise stop
+readiness without clearing or overwriting durable values. Sealing a value cannot erase plaintext
+already present in old backups, replicas, SQLite free pages, or WAL history; operators whose threat
+model includes those artifacts rotate the upstream credentials.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
@@ -400,7 +401,11 @@ This keeps `720h` as the stable wire/storage value while every UI says “30 day
 ceiling from appearing as an unexplained integer. A plain number stored in a larger unit declares
 that `Unit` (`GiB`, `MiB`, `%`), which the editor shows beside the box. The key suffix (`_gb`, `_mb`,
 `_pct`) and the declared unit must agree, and a registry test enforces it. Enum options remain
-`[]EnumOption{Value, Label}` for the same reason. **Language presentation is the intentional
+`[]EnumOption{Value, Label}` for the same reason. An open-ended setting may also declare
+`Presets []Preset{Value, Label}`: common choices offered ahead of Custom, without closing the set.
+The registry parses every preset as the setting itself would (a preset it would refuse fails the
+build) and publishes it in canonical form (`24h` is served as `24h0m0s`), so a UI matches the
+current value by string and keeps no list of its own. **Language presentation is the intentional
 localization exception:** the registry owns the supported BCP 47 codes, while a client renders those
 codes in its active interface locale through CLDR/`Intl.DisplayNames`; the enum label is only a
 code-shaped fallback for clients without localization support. This prevents English language names

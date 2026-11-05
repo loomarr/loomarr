@@ -1,3 +1,4 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -16,14 +17,14 @@ const DefaultsSettings = () => (
         title: "Schedule horizon",
         description:
           "How much programming Loomarr keeps ready. A channel or scheduling rule can choose a different horizon.",
-        keys: ["sched.window_hours"],
+        keys: [SettingKey.SchedWindowHours],
       },
       {
         group: "filler",
         title: "Commercial breaks",
         description:
           "The starting break frequency for channels. Each channel's Filler page can follow this, turn breaks off, or choose a custom frequency.",
-        keys: ["filler.breaks_per_hour"],
+        keys: [SettingKey.FillerBreaksPerHour],
       },
     ]}
   />

@@ -1,10 +1,13 @@
 package fillerstore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
@@ -107,4 +110,19 @@ func scanStructureWindowCallLedgerRow(scanner scannable) (structureWindowCallLed
 		return structureWindowCallLedgerRow{}, err
 	}
 	return structureWindowCallLedgerRow{Entry: entry, EvaluationID: evaluationID, Attempt: attempt}, nil
+}
+
+// decodeStructureLedgerJSON strictly decodes one stored ledger document: unknown fields and
+// trailing values are drift.
+func decodeStructureLedgerJSON(raw []byte, output any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(output); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("trailing JSON value")
+	}
+	return nil
 }

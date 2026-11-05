@@ -2,6 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
@@ -121,9 +122,10 @@ const ChannelDetailLayout = () => {
   // member doesn't ask for it and gets no link.
   const settingsList = settingsApi.useSettingsList({ query: { enabled: isAdmin, retry: false } });
   const settings = unwrap(settingsList.data, (b) => b.settings) ?? [];
-  const mediaServerUrl = settings.find((e) => e.key === "library.url")?.value || undefined;
+  const mediaServerUrl = settings.find((e) => e.key === SettingKey.LibraryURL)?.value || undefined;
   const mediaServerName =
-    FLAVOR_NAMES[settings.find((e) => e.key === "library.flavor")?.value ?? ""] ?? "your media server";
+    FLAVOR_NAMES[settings.find((e) => e.key === SettingKey.LibraryFlavor)?.value ?? ""] ??
+    "your media server";
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
   // The header's "On now: … · Nm left" reads the shared now/next list; the minutes move on a tick.
   const nowNextBody = unwrap(channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } }).data);

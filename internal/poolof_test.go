@@ -1,7 +1,10 @@
 package internal_test
 
 import (
+	"go/ast"
 	"go/build"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,11 +51,11 @@ func TestOnlyTheCompositionRootTakesTheRawPool(t *testing.T) {
 			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
 				return nil
 			}
-			src, rerr := os.ReadFile(path)
-			if rerr != nil {
-				return rerr
+			calls, perr := callsPoolOf(path)
+			if perr != nil {
+				return perr
 			}
-			if !strings.Contains(string(src), "PoolOf(") {
+			if !calls {
 				return nil
 			}
 			pkg := filepath.Base(filepath.Dir(path))
@@ -74,7 +77,7 @@ func TestOnlyTheCompositionRootTakesTheRawPool(t *testing.T) {
 			"store stops being the one writer.", f)
 	}
 
-	// ⚠ Non-vacuity. If PoolOf is renamed or deleted, the substring above stops matching and this
+	// ⚠ Non-vacuity. If PoolOf is renamed or deleted, the call match above finds nothing and this
 	// test passes over a tree it is no longer checking — silently, forever. Assert the sanctioned
 	// caller is still there, so the gate fails loudly when its own premise moves.
 	appDir := filepath.Join(root, "internal", "app")
@@ -90,11 +93,11 @@ func TestOnlyTheCompositionRootTakesTheRawPool(t *testing.T) {
 		if strings.HasSuffix(e.Name(), "_test.go") || !strings.HasSuffix(e.Name(), ".go") {
 			continue
 		}
-		src, rerr := os.ReadFile(filepath.Join(appDir, e.Name()))
-		if rerr != nil {
-			t.Fatalf("read %s: %v", e.Name(), rerr)
+		calls, perr := callsPoolOf(filepath.Join(appDir, e.Name()))
+		if perr != nil {
+			t.Fatalf("parse %s: %v", e.Name(), perr)
 		}
-		if strings.Contains(string(src), "store.PoolOf(") {
+		if calls {
 			found = true
 			break
 		}
@@ -104,4 +107,28 @@ func TestOnlyTheCompositionRootTakesTheRawPool(t *testing.T) {
 			"`allowed` here) or PoolOf was renamed, in which case this gate is now matching nothing " +
 			"and would never fail again")
 	}
+}
+
+// callsPoolOf reports whether a Go file calls PoolOf, qualified (`store.PoolOf(st)`) or, inside
+// package store, bare.
+func callsPoolOf(path string) (bool, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		return false, err
+	}
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return !found
+		}
+		switch fn := call.Fun.(type) {
+		case *ast.Ident:
+			found = found || fn.Name == "PoolOf"
+		case *ast.SelectorExpr:
+			found = found || fn.Sel.Name == "PoolOf"
+		}
+		return !found
+	})
+	return found, nil
 }

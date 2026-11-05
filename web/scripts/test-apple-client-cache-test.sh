@@ -369,7 +369,7 @@ if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
   exit 1
 fi
 if [[ "$(cat "$test_root/command-order")" != \
-  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_install' ]]; then
+  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_ready\nsimulator_install' ]]; then
   printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
     "$(cat "$test_root/command-order")" >&2
   exit 1

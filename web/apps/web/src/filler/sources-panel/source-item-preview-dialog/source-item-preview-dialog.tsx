@@ -1,6 +1,4 @@
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
-import { ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +6,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface SourceItemPreviewDialogProps {
   /** The item to play; `embedUrl` is the provider's own player, absent when it cannot be embedded. */
@@ -22,8 +22,8 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
   const embedURL = item?.embedUrl;
   return (
     <Dialog open={Boolean(item)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[calc(100%-2rem)] max-w-3xl p-4 sm:p-6">
-        <DialogHeader className="pr-8">
+      <DialogContent size="reading">
+        <DialogHeader>
           <DialogTitle>{item?.title ?? "Item preview"}</DialogTitle>
           <DialogDescription>
             This plays from {providerLabel}. Loomarr has not downloaded it.

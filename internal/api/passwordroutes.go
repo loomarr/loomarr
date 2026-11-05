@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -50,12 +51,19 @@ func (s *Server) registerPasswords(api huma.API) {
 	}, RoleAdmin), s.resetUserPassword)
 }
 
+// errPasswordTooShort is the one refusal every password-setting route returns for a password
+// below auth.MinPasswordLen. Each such route also declares minLength:"8" on its body field, so the
+// spec carries the bound to clients; TestPasswordRoutesDeclareTheMinimum pins those tags to it.
+func errPasswordTooShort() huma.StatusError {
+	return errUnprocessable("Password too short", fmt.Sprintf("Use at least %d characters.", auth.MinPasswordLen))
+}
+
 type changePasswordInput struct {
 	Body struct {
 		// No user id: the target is ALWAYS the caller, resolved from the session. A
 		// body-supplied id would turn this into an admin reset with no admin check.
 		Current string `json:"current" format:"password" doc:"Your current password."`
-		Next    string `json:"next" format:"password" minLength:"8" doc:"The new password (min 8 characters)."`
+		Next    string `json:"next" format:"password" minLength:"8" doc:"The new password."`
 	}
 }
 
@@ -78,7 +86,7 @@ func (s *Server) changePassword(ctx context.Context, in *changePasswordInput) (*
 		return nil, errConflict("Password lives elsewhere",
 			"This account's password is owned by your media server. Change it there; the next successful sign-in refreshes Loomarr's offline verifier.")
 	case errors.Is(err, auth.ErrWeakPassword):
-		return nil, errUnprocessable("Password too short", "Use at least 8 characters.")
+		return nil, errPasswordTooShort()
 	case err != nil:
 		return nil, err
 	}
@@ -112,7 +120,7 @@ func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) 
 	case errors.Is(err, auth.ErrDuplicateUsername):
 		return nil, errConflict("Name already taken", "Someone already signs in with that username. Pick another.")
 	case errors.Is(err, auth.ErrWeakPassword):
-		return nil, errUnprocessable("Password too short", "Use at least 8 characters.")
+		return nil, errPasswordTooShort()
 	case errors.Is(err, auth.ErrInvalidBootstrap):
 		return nil, errUnprocessable("Details required", "Enter a username and a password.")
 	case err != nil:
@@ -140,7 +148,7 @@ func (s *Server) resetUserPassword(ctx context.Context, in *resetPasswordInput) 
 		return nil, errConflict("Nothing to reset",
 			"This account's password is owned by your media server and cannot be reset independently in Loomarr.")
 	case errors.Is(err, auth.ErrWeakPassword):
-		return nil, errUnprocessable("Password too short", "Use at least 8 characters.")
+		return nil, errPasswordTooShort()
 	case err != nil:
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-import type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
+import type { PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
 
 type TuneDirection = -1 | 1;
 
@@ -118,7 +118,6 @@ interface PlayerControllerOptions {
   onTune?: (report: PlayerTuneReport) => void;
   /** Fetches a warmed neighbour's still image ahead of time (e.g. `Image.prefetch`), so the switch overlay paints it from cache. */
   prefetchStill?: (uri: string) => void;
-  profile: DevicePlaybackProfile;
   recovery?: PlayerRecoveryOptions;
   /**
    * Reads the channel the device last watched. The first tune of a catalog goes there when that

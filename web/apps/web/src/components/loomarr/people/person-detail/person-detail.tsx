@@ -1,4 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
+import { resetUserPasswordBodyNextMin } from "@loomarr/api/zod/users";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
@@ -43,8 +44,8 @@ const PersonDetail = ({
 
   const submitReset = async () => {
     if (!onResetPassword) return;
-    if (password.length < 8) {
-      setResetError("Use at least 8 characters.");
+    if (password.length < resetUserPasswordBodyNextMin) {
+      setResetError(`Use at least ${resetUserPasswordBodyNextMin} characters.`);
       return;
     }
     setResetError("");

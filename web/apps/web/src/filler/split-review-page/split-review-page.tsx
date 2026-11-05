@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageExclusion";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
@@ -122,7 +123,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   const minClipDurationMs = durationSettingMs(
     unwrap(
       settings.data,
-      (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
+      (body) => body.settings.find((entry) => entry.key === SettingKey.FillerMinDuration)?.value,
     ),
   );
   // What intake admits is the channels' commercial languages (#2030 decision 13), so a new channel's
