@@ -385,8 +385,10 @@ func fillerSourceProviders(
 	providers, err := sourceprovider.NewRegistry(
 		archiveprovider.New(archiveprovider.Config{Catalog: archiveCatalog, Runtimes: archiveRuntimes, Log: log}),
 		youtube,
-		sourceprovider.Folder(),
+		// Library before Folder: the add form offers local providers in registry order, and a
+		// media-server library is the common case.
 		sourceprovider.Library(),
+		sourceprovider.Folder(),
 	)
 	if err != nil {
 		// The IDs are fixed above, so this is a programming error, never an installation's.

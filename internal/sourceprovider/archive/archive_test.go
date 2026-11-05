@@ -287,3 +287,43 @@ func TestProvider_AddressReadsTheShapesAnOperatorPastes(t *testing.T) {
 		}
 	}
 }
+
+// A finder given an address checks it; given words it searches. A bare word is a valid
+// identifier and also a search, so only a separated slug or a URL counts as an address.
+func TestProvider_RecognizesAddressesNotWords(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for in, want := range map[string]bool{
+		"https://archive.org/details/classic_tv_commercials": true,
+		"archive.org/metadata/classic_tv":                    true,
+		"classic_tv_commercials":                             true,
+		"classic-tv":                                         true,
+		"cartoons":                                           false,
+		"classic tv commercials":                             false,
+		"https://example.com/details/x_y":                    false,
+	} {
+		if got := p.Recognizes(in); got != want {
+			t.Errorf("Recognizes(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestProvider_LinksToItsOwnPages(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for in, want := range map[string]string{
+		"classic_tv":                    "https://archive.org/details/classic_tv",
+		"https://archive.org/details/x": "https://archive.org/details/x",
+		"  ":                            "",
+	} {
+		if got := p.SourceURL(in); got != want {
+			t.Errorf("SourceURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := p.EmbedURL("https://archive.org/details/break_one"); got != "https://archive.org/embed/break_one?autoplay=1" {
+		t.Errorf("EmbedURL = %q", got)
+	}
+	for _, refused := range []string{"https://archive.org/details/a/b", "https://evil.test/details/a", "https://archive.org/search?q=x"} {
+		if got := p.EmbedURL(refused); got != "" {
+			t.Errorf("EmbedURL(%q) = %q, want none", refused, got)
+		}
+	}
+}
