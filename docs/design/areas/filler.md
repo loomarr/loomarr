@@ -20,7 +20,7 @@ One area of the [package map](../package-map.md#start-here).
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`clipfetch`** · 3 importers · → `bgexec`, `filler`, `sourceprovider`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`filler`** · 11 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
+- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filleradmission`**
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.

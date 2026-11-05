@@ -43,8 +43,6 @@ var areas = []area{
 				"client and metrics every remote service call goes through",
 			"channels": "`schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` " +
 				"for the backstop's view of what a channel will play, until both move to a shared vocabulary",
-			"filler": "`filler.Kind`, to classify media-server extras as trailers or bumpers, until the kind " +
-				"vocabulary leaves the filler engine",
 		},
 	},
 	{

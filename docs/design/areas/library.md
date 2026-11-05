@@ -10,7 +10,6 @@ One area of the [package map](../package-map.md#start-here).
 
 - **platform** · 11 imports — the store, settings and jobs behind the provision backstop, and the outbound HTTP client and metrics every remote service call goes through
 - **channels** · 3 imports — `schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` for the backstop's view of what a channel will play, until both move to a shared vocabulary
-- **filler** · 1 import — `filler.Kind`, to classify media-server extras as trailers or bumpers, until the kind vocabulary leaves the filler engine
 
 ## Packages
 
@@ -20,7 +19,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`inventory`** · 6 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
-- **`library`** · 11 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
+- **`library`** · 11 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`metadataprovider`** · 6 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
