@@ -71,8 +71,16 @@ interface PlayerChromeProps {
   density: Density;
   /** The controls are shown (pointer moved, focus inside, paused…); hidden leaves the picture bare. */
   visible: boolean;
-  /** The preview playbar's blocks and window; omitted while the schedule hasn't loaded. */
-  playbar?: { playheadMs: number; segments: readonly PlaybarSegment[]; window: PlaybarWindow };
+  /**
+   * The preview playbar's blocks and window; omitted while the schedule hasn't loaded. With `onSeek`
+   * the past is seekable: a block that has begun takes the viewer to its start (or the window's).
+   */
+  playbar?: {
+    onSeek?: (wallClockMs: number) => void;
+    playheadMs: number;
+    segments: readonly PlaybarSegment[];
+    window: PlaybarWindow;
+  };
   /** Formats a wall-clock instant for the playbar ("8:44 PM"). */
   formatTime: (ms: number) => string;
   /** A preview card opened or closed: the app keeps its controls shown while one is open. */
@@ -88,8 +96,13 @@ interface PlayerTransportProps {
   pointer: boolean;
   playing: boolean;
   onTogglePlay: () => void;
+  /** ⟲/⟳ 10 s through the window; omitted where the player cannot seek. Forward is off while live. */
+  onSeekBack?: () => void;
+  onSeekForward?: () => void;
   live: PlayerLiveState;
   onGoLive: () => void;
+  /** Back to the programme's start; omitted unless it began inside the window. */
+  onStartOver?: () => void;
   muted: boolean;
   /** 0–1. */
   volume: number;

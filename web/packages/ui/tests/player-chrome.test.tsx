@@ -110,10 +110,34 @@ describe("PlayerChrome", () => {
     expect(onGoLive).toHaveBeenCalledOnce();
   });
 
+  it("steps through the window when the player can seek, with no forward from live", () => {
+    const onSeekBack = vi.fn();
+    const onSeekForward = vi.fn();
+    const onStartOver = vi.fn();
+    const atLive = mount(chrome({ transport: transport({ onSeekBack, onSeekForward, onStartOver }) }));
+    act(() => button(atLive, "Back 10 seconds")?.click());
+    act(() => button(atLive, "Forward 10 seconds")?.click());
+    act(() => button(atLive, "Start over")?.click());
+    expect(onSeekBack).toHaveBeenCalledOnce();
+    expect(onSeekForward).not.toHaveBeenCalled();
+    expect(button(atLive, "Forward 10 seconds")?.getAttribute("aria-disabled")).toBe("true");
+    expect(onStartOver).toHaveBeenCalledOnce();
+
+    const behind = mount(
+      chrome({
+        transport: transport({ live: { lagSeconds: 40, mode: "behind" }, onSeekBack, onSeekForward }),
+      }),
+    );
+    act(() => button(behind, "Forward 10 seconds")?.click());
+    expect(onSeekForward).toHaveBeenCalledOnce();
+    expect(button(behind, "Start over")).toBeUndefined();
+  });
+
   it("draws only the tools the platform has", () => {
     const bare = mount(chrome());
     expect(button(bare, "Channels")).toBeUndefined();
     expect(button(bare, "Fullscreen")).toBeUndefined();
+    expect(button(bare, "Back 10 seconds")).toBeUndefined();
 
     const full = mount(
       chrome({ transport: transport({ fullscreen: false, onChannels: vi.fn(), onFullscreen: vi.fn() }) }),

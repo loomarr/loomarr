@@ -145,7 +145,7 @@ interface PlaybarFromTimelineArgs {
  * The player chrome's data, read from a channel's timeline the same way on every client (§9): the
  * lower third for the block at the playhead, and the playbar's blocks over its window — fifteen
  * minutes behind live to about two hours ahead. Blocks outside the window are dropped; the ones it
- * cuts are clipped to it.
+ * cuts are clipped to it. `startOverMs` is where Start over goes, while it has somewhere to go.
  */
 const playbarFromTimeline = ({ airings, channel, live, nowMs, playheadMs }: PlaybarFromTimelineArgs) => {
   const window: PlaybarWindow = { endMs: nowMs + PLAYBAR_AHEAD_MS, nowMs, startMs: nowMs - PLAYBAR_PAST_MS };
@@ -157,7 +157,12 @@ const playbarFromTimeline = ({ airings, channel, live, nowMs, playheadMs }: Play
       stopMs: Math.min(a.stopMs, window.endMs),
     }));
   const atPlayhead = airings.find((a) => playheadMs >= a.startMs && playheadMs < a.stopMs);
-  return { band: bandOf(channel, atPlayhead, playheadMs, live), segments, window };
+  // Start over (#2088 decision 2): the programme at the playhead, when its start is still held.
+  const startOverMs =
+    atPlayhead && atPlayhead.kind !== "filler" && atPlayhead.startMs >= window.startMs
+      ? atPlayhead.startMs
+      : undefined;
+  return { band: bandOf(channel, atPlayhead, playheadMs, live), segments, startOverMs, window };
 };
 
 export { playbarFromTimeline };
