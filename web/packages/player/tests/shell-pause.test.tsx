@@ -39,7 +39,6 @@ const idleController = () => {
     },
   };
   const controller = createPlayerController({
-    profile: {},
     source: { mint: async (channel) => ({ uri: `${channel.id}.m3u8` }) },
     transport,
   });

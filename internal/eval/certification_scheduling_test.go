@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 func TestV8ScheduledMovieDisjointWindowsExcludeTheGap(t *testing.T) {
@@ -19,7 +19,7 @@ func TestV8ScheduledMovieDisjointWindowsExcludeTheGap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 11003, Name: "Synthetic Early Window", Year: 1990, InLibrary: true, LibraryItemID: "fixture-11003", OfficialRating: "PG"},
 		{MediaType: provision.Movie, TMDBID: 11004, Name: "Synthetic Late Window", Year: 2000, InLibrary: true, LibraryItemID: "fixture-11004", OfficialRating: "PG"},
 		{MediaType: provision.Movie, TMDBID: 11005, Name: "Synthetic Gap Distractor", Year: 1996, InLibrary: true, LibraryItemID: "fixture-11005", OfficialRating: "PG"},
@@ -63,7 +63,7 @@ func TestV8ScheduledSeriesAiringWindowsFilterEpisodes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			caseValue := v8ScheduledCase(t, tc.caseName)
-			proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+			proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 				MediaType: provision.Series, TMDBID: tc.tmdbID, Name: "Synthetic series", Year: tc.year,
 				InLibrary: true, LibraryItemID: tc.libraryID, OfficialRating: "TV-PG",
 			}}}
@@ -110,7 +110,7 @@ func v8ScheduledCase(t *testing.T, name string) Case {
 	return c
 }
 
-func assertV8SchedulePass(t *testing.T, c Case, materializer ScheduleMaterializer, proposal suggest.Proposal) {
+func assertV8SchedulePass(t *testing.T, c Case, materializer ScheduleMaterializer, proposal proposal.Proposal) {
 	t.Helper()
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(materializer).Run(context.Background(), []Case{c})
 	if !card.Certified || card.Results[0].FailureStage != "" {
@@ -118,7 +118,7 @@ func assertV8SchedulePass(t *testing.T, c Case, materializer ScheduleMaterialize
 	}
 }
 
-func assertV8ScheduleFailure(t *testing.T, c Case, materializer ScheduleMaterializer, proposal suggest.Proposal) {
+func assertV8ScheduleFailure(t *testing.T, c Case, materializer ScheduleMaterializer, proposal proposal.Proposal) {
 	t.Helper()
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(materializer).Run(context.Background(), []Case{c})
 	if card.Certified || card.Results[0].FailureStage != FailureStageSchedule || card.FailureCounts[FailureStageSchedule] != 1 {
@@ -126,7 +126,7 @@ func assertV8ScheduleFailure(t *testing.T, c Case, materializer ScheduleMaterial
 	}
 }
 
-func assertV8ScheduleFailureWithForbidden(t *testing.T, c Case, materializer ScheduleMaterializer, proposal suggest.Proposal, forbidden string) {
+func assertV8ScheduleFailureWithForbidden(t *testing.T, c Case, materializer ScheduleMaterializer, proposal proposal.Proposal, forbidden string) {
 	t.Helper()
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithMaterializer(materializer).Run(context.Background(), []Case{c})
 	result := card.Results[0]

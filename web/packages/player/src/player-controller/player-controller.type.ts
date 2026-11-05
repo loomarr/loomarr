@@ -1,4 +1,4 @@
-import type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
+import type { PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
 
 type TuneDirection = -1 | 1;
 
@@ -45,6 +45,11 @@ interface PlayerTransport {
   pause: () => void;
   play: () => Promise<void> | void;
   replace: (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => Promise<void>;
+  /**
+   * Moves to a wall-clock instant inside the live window; a target at the live edge goes live.
+   * Absent on a transport that cannot seek within the window.
+   */
+  seek?: (wallClockMs: number) => Promise<void> | void;
   subscribe: (listener: (event: PlayerTransportEvent) => void) => () => void;
 }
 
@@ -114,6 +119,8 @@ interface PlayerController {
   previous: () => Promise<void>;
   reconcile: (channels: readonly PlayerChannel[]) => Promise<void>;
   retry: () => Promise<void>;
+  /** Moves the tuned channel to a wall-clock instant inside its window (the transport's `seek`). */
+  seek: (wallClockMs: number) => Promise<void>;
   step: (direction: TuneDirection) => Promise<void>;
   subscribe: (listener: (snapshot: PlayerSnapshot) => void) => () => void;
   tuneChannel: (channelId: string) => Promise<void>;
@@ -127,7 +134,6 @@ interface PlayerControllerOptions {
   onTune?: (report: PlayerTuneReport) => void;
   /** Fetches a warmed neighbour's still image ahead of time (e.g. `Image.prefetch`), so the switch overlay paints it from cache. */
   prefetchStill?: (uri: string) => void;
-  profile: DevicePlaybackProfile;
   recovery?: PlayerRecoveryOptions;
   /**
    * Reads the channel the device last watched. The first tune of a catalog goes there when that

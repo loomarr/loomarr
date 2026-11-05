@@ -109,7 +109,7 @@ func (t *Tunarr) rescanMediaLibraries(ctx context.Context) {
 			// POST the per-library scan (verified: 202 accepted, ingests newly-landed content).
 			// Fully best-effort: whatever the status or a transport error, keep going — one
 			// library failing must not stop the rest, and none of it fails the reconcile.
-			_, _, _ = t.doStatus(ctx, t.http, http.MethodPost,
+			_ = t.do(ctx, t.http, http.MethodPost,
 				"/api/media-sources/"+src.ID+"/libraries/"+lib.ID+"/scan", nil, nil)
 		}
 	}
@@ -122,16 +122,12 @@ func (t *Tunarr) rescanMediaLibraries(ctx context.Context) {
 func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slot, error) {
 	ctx, _ = t.operation(ctx)
 	var resp lineupResponse
-	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet,
-		"/api/channels/"+tunarrID+"/programming", nil, &resp)
+	err := t.do(ctx, t.http, http.MethodGet, "/api/channels/"+tunarrID+"/programming", nil, &resp)
+	if answeredWith(err, http.StatusBadRequest, http.StatusNotFound) {
+		return []schedule.Slot{}, nil // unprogrammed channel (Phase-0 finding 4)
+	}
 	if err != nil {
 		return nil, err
-	}
-	switch {
-	case status == http.StatusBadRequest || status == http.StatusNotFound:
-		return []schedule.Slot{}, nil // unprogrammed channel (Phase-0 finding 4)
-	case status < 200 || status >= 300:
-		return nil, statusErr("get lineup for "+tunarrID, status, snippet)
 	}
 	slots := make([]schedule.Slot, 0, len(resp.Lineup))
 	for _, it := range resp.Lineup {

@@ -10,6 +10,7 @@ const browser = vi.hoisted(() => ({
     play: vi.fn(),
     previous: vi.fn(),
     retry: vi.fn(),
+    seek: vi.fn(),
     step: vi.fn(),
     tuneChannel: vi.fn(),
     tuneNumber: vi.fn(),
@@ -30,9 +31,6 @@ vi.mock("@loomarr/player/browser", () => ({
   },
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
-vi.mock("../use-hls-player/device-profile", () => ({
-  deviceProfile: () => ({ audio: [], video: [], video10bit: false }),
-}));
 
 import { useWatchPlayer } from "./use-watch-player";
 
@@ -272,13 +270,14 @@ describe("useWatchPlayer", () => {
       });
     });
 
-    it("hands the play, pause and live controls to the shared controller", async () => {
+    it("hands the play, pause, seek and live controls to the shared controller", async () => {
       browser.snapshot = snapshot("playing", ten);
       const { result } = render({ channelId: "ten", channels: lineup });
 
       await act(async () => {
         await result.current.liveTransport.play();
         result.current.liveTransport.pause();
+        await result.current.liveTransport.seek(990_000);
         await result.current.liveTransport.goLive();
         result.current.step(1);
         result.current.tune("thirty");
@@ -287,6 +286,7 @@ describe("useWatchPlayer", () => {
 
       expect(browser.controls.play).toHaveBeenCalledOnce();
       expect(browser.controls.pause).toHaveBeenCalledOnce();
+      expect(browser.controls.seek).toHaveBeenCalledWith(990_000);
       expect(browser.controls.goLive).toHaveBeenCalledOnce();
       expect(browser.controls.step).toHaveBeenCalledWith(1);
       expect(browser.controls.tuneChannel).toHaveBeenCalledWith("thirty");

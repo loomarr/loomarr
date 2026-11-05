@@ -29,6 +29,8 @@ const mmss = (seconds: number): string => {
 
 // The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
 const SCRUB_STEP = 5;
+// A live channel's ⟲/⟳ and ←/→ step (#2088 decision 2).
+const LIVE_SEEK_STEP_MS = 10_000;
 
 const VideoPlayer = ({
   src,
@@ -68,7 +70,7 @@ const VideoPlayer = ({
     // clamp and a stray `endAt` would pause the stream at a number that means nothing.
   } = usePlaybackState(videoRef, live ? {} : { startAt, endAt }, liveTransport);
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
-  const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
+  const { controlsShown, hideControls, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
 
   // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
@@ -92,9 +94,25 @@ const VideoPlayer = ({
       wrapperRef.current?.focus({ preventScroll: true });
   }, []);
 
+  // A live channel's window (#2088 decision 2): ←/→ and the chrome's ⟲/⟳ move 10 s through the
+  // fifteen minutes the stream holds, Start over and the playbar's past name an instant, and L goes
+  // live. Forward from live has nowhere to go. All of it goes through the caller's live transport,
+  // which owns the element; without one (or without its `seek`) they do nothing.
+  const seekLiveTo = (wallClockMs: number) => {
+    if (liveTransport?.seek) void liveTransport.seek(wallClockMs);
+  };
+  const seekLiveBy = (deltaMs: number) => {
+    if (!liveTransport || (deltaMs > 0 && liveTransport.state.mode === "live")) return;
+    seekLiveTo(liveTransport.state.viewerTimeMs + deltaMs);
+  };
+  const goLive = () => {
+    if (liveTransport) void liveTransport.goLive();
+  };
+
   // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows
-  // seek (non-live only). Bound on the player's surface so they cannot fire while it is off-screen,
-  // and skipped when focus is in a control that uses the same keys (Space on a <button> must click).
+  // seek (a live channel within its window), L goes live. Bound on the player's surface so they
+  // cannot fire while it is off-screen, and skipped when focus is in a control that uses the same
+  // keys (Space on a <button> must click).
   const onKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as HTMLElement;
     // Typing belongs to the field: a search box in the panel must be able to take "m" and "k".
@@ -116,15 +134,22 @@ const VideoPlayer = ({
         toggle();
         break;
       case "ArrowLeft":
-        // Live has nothing to seek to, so the scrub shortcuts are inert.
-        if (isSlider || live) return;
+        if (isSlider) return;
         e.preventDefault();
-        seekTo(current - SCRUB_STEP);
+        if (live) seekLiveBy(-LIVE_SEEK_STEP_MS);
+        else seekTo(current - SCRUB_STEP);
         break;
       case "ArrowRight":
-        if (isSlider || live) return;
+        if (isSlider) return;
         e.preventDefault();
-        seekTo(current + SCRUB_STEP);
+        if (live) seekLiveBy(LIVE_SEEK_STEP_MS);
+        else seekTo(current + SCRUB_STEP);
+        break;
+      case "l":
+      case "L":
+        if (!live || !liveTransport) return;
+        e.preventDefault();
+        goLive();
         break;
       case "m":
         e.preventDefault();
@@ -196,9 +221,13 @@ const VideoPlayer = ({
           renderChrome?.({
             controlsShown,
             fullscreen,
+            goLive,
+            hide: hideControls,
             hold: holdControls.hold,
             muted,
             playing,
+            seekBy: seekLiveBy,
+            seekTo: seekLiveTo,
             setMuted,
             setVolume,
             toggle,

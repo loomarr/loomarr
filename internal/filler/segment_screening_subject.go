@@ -138,6 +138,12 @@ func SegmentScreeningSubjectSHA256(subject SegmentScreeningSubject) string {
 	return ScreeningBytesSHA256(raw)
 }
 
+// ScreeningBytesSHA256 is the lowercase hex SHA-256 every screening identity is built from.
+func ScreeningBytesSHA256(raw []byte) string {
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
 // MediaAssetManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
 // deliberately excluding relocatable filesystem paths.
 func MediaAssetManifestAuthoritySHA256(manifest MediaAssetManifest) string {

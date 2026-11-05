@@ -6,7 +6,7 @@ import {
   type PlayerSnapshot,
   type PlayerTuneReport,
 } from "../../player-controller";
-import type { DevicePlaybackProfile, PlayerChannel, PlayerSourcePort } from "../../player-source";
+import type { PlayerChannel, PlayerSourcePort } from "../../player-source";
 import { type BrowserTransport, type BrowserTunePhase, createBrowserTransport } from "../browser-transport";
 
 // useBrowserPlayer — the browser's player: the shared player controller running over the browser
@@ -20,7 +20,6 @@ interface BrowserPlayerOptions {
   onTune?: (report: PlayerTuneReport) => void;
   /** An attempt reached a phase of its tune, for timing. */
   onPhase?: (attemptId: number, phase: BrowserTunePhase) => void;
-  profile: DevicePlaybackProfile;
   recordDiagnostic: (observation: ClientObservation) => void;
   source: PlayerSourcePort;
 }
@@ -28,7 +27,7 @@ interface BrowserPlayerOptions {
 /** What a surface can ask of the player. */
 type BrowserPlayerControls = Pick<
   PlayerController,
-  "goLive" | "pause" | "play" | "previous" | "retry" | "step" | "tuneChannel" | "tuneNumber"
+  "goLive" | "pause" | "play" | "previous" | "retry" | "seek" | "step" | "tuneChannel" | "tuneNumber"
 >;
 
 interface BrowserPlayer {
@@ -55,7 +54,6 @@ const useBrowserPlayer = ({
   channels,
   onPhase,
   onTune,
-  profile,
   recordDiagnostic,
   source,
 }: BrowserPlayerOptions): BrowserPlayer => {
@@ -77,7 +75,6 @@ const useBrowserPlayer = ({
       // The viewer's surface names the channel to tune; the controller starts idle until it does.
       initialTune: "none",
       onTune: (report) => callbacks.current.onTune?.(report),
-      profile,
       source,
       transport,
     });
@@ -87,7 +84,7 @@ const useBrowserPlayer = ({
       created.dispose();
       setRuntime(undefined);
     };
-  }, [profile, source]);
+  }, [source]);
 
   useLayoutEffect(() => {
     if (!runtime || !video) return;
@@ -123,6 +120,7 @@ const useBrowserPlayer = ({
       play: async () => runtime?.controller.play(),
       previous: async () => runtime?.controller.previous(),
       retry: async () => runtime?.controller.retry(),
+      seek: async (wallClockMs) => runtime?.controller.seek(wallClockMs),
       step: async (direction) => runtime?.controller.step(direction),
       tuneChannel: async (channelId) => runtime?.controller.tuneChannel(channelId),
       tuneNumber: async (digits) => runtime?.controller.tuneNumber(digits),

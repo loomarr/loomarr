@@ -36,7 +36,6 @@ export type {
 } from "./src/player-controller";
 export { createPlayerController, playableCatalog } from "./src/player-controller";
 export type {
-  DevicePlaybackProfile,
   PlayerChannel,
   PlayerSource,
   PlayerSourcePort,

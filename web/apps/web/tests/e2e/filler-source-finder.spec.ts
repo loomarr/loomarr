@@ -110,7 +110,7 @@ test("Archive source search stays in flow and registers only after confirmation"
       await expect.poll(() => registrations.length).toBe(1);
       expect(registrations[0]).toEqual({
         kind: "archive",
-        uri: "classic_tv_commercials",
+        uri: "https://archive.org/details/classic_tv_commercials",
         label: "Classic TV Commercials",
       });
     }
@@ -269,7 +269,7 @@ test("Archive source setup falls back to an exact URL and recovers from a failed
   let addAttempts = 0;
   await page.route("**/v1/filler/providers/archive/suggestions?*", async (route) => {
     if (new URL(route.request().url()).searchParams.get("q") === "nothing here") {
-      return route.fulfill({ status: 200, json: { suggestions: [] } });
+      return route.fulfill({ status: 200, json: { exact: false, suggestions: [] } });
     }
     return route.fallback();
   });
@@ -320,6 +320,7 @@ test("registered sources stay compact and open a scalable source workspace", asy
     return {
       id: `archive:${index + 1}`,
       uri: `collection_${index + 1}`,
+      pageUrl: `https://archive.org/details/collection_${index + 1}`,
       kind: "archive",
       target: index === 0 ? sourceName : attention ? "Paused collection" : `Archive collection ${index + 1}`,
       detail: "an archive.org collection",
@@ -620,6 +621,7 @@ for (const viewport of [
             {
               id: "archive:classic_tv_commercials",
               uri: "classic_tv_commercials",
+              pageUrl: "https://archive.org/details/classic_tv_commercials",
               kind: "archive",
               target: "Classic TV Commercials",
               detail: "an Archive.org collection",

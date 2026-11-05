@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -350,8 +351,8 @@ func fetchModels(ctx context.Context, baseURL, apiKey string, allModalities bool
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("models: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "models"); err != nil {
+		return nil, err
 	}
 	var out struct {
 		Data []modelMeta `json:"data"`
@@ -403,25 +404,24 @@ func ValidateKey(ctx context.Context, baseURL, apiKey string) error {
 		return fmt.Errorf("could not reach %s: %w", base, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	err = httpx.CheckStatus(resp)
+	var se *httpx.StatusError
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("key rejected (%d) — check the API key", resp.StatusCode)
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	case err == nil:
 		return nil // authorized
-	case resp.StatusCode == http.StatusBadRequest:
+	case !errors.As(err, &se):
+		return err
+	case httpx.ClassifyStatus(se.Status) == httpx.ClassAuth:
+		return &describedStatusError{text: fmt.Sprintf("key rejected (%d) — check the API key", se.Status), err: se}
+	case se.Status == http.StatusBadRequest:
 		// A 400 means the key was ACCEPTED but the request/model was rejected — the
 		// key is valid (auth happens before request validation). Treat as authorized.
 		return nil
 	default:
-		var e struct {
-			Error struct {
-				Message string `json:"message"`
-			} `json:"error"`
+		text := fmt.Sprintf("provider returned %d", se.Status)
+		if msg := providerMessage(se.Body); msg != "" {
+			text += ": " + msg
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&e)
-		if e.Error.Message != "" {
-			return fmt.Errorf("provider returned %d: %s", resp.StatusCode, e.Error.Message)
-		}
-		return fmt.Errorf("provider returned %d", resp.StatusCode)
+		return &describedStatusError{text: text, err: se}
 	}
 }

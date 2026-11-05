@@ -5,12 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestScore_NamedMembershipAndRetiredComposite(t *testing.T) {
-	series := ProposalItem{MediaType: provision.Series, TVDBID: 90000042, Name: "Continuing Show", InLibrary: true}
-	missing := ProposalItem{MediaType: provision.Series, TVDBID: 90000007, Name: "Missing", InLibrary: false}
+	series := proposal.ProposalItem{MediaType: provision.Series, TVDBID: 90000042, Name: "Continuing Show", InLibrary: true}
+	missing := proposal.ProposalItem{MediaType: provision.Series, TVDBID: 90000007, Name: "Missing", InLibrary: false}
 	key, err := series.Key()
 	if err != nil {
 		t.Fatal(err)
@@ -20,10 +21,10 @@ func TestScore_NamedMembershipAndRetiredComposite(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := Intent{
-		Description:    "named continuing-show lineup",
-		membershipKeys: map[provision.Key]bool{key: true, missingKey: true},
-	}
-	scores := score(intent, []ProposalItem{series}, []ProposalItem{missing}, ValidatedDateMeaning{})
+		Intent:         proposal.Intent{Description: "named continuing-show lineup"},
+		membershipKeys: map[provision.Key]bool{key: true, missingKey: true}}
+
+	scores := score(intent, []proposal.ProposalItem{series}, []proposal.ProposalItem{missing}, ValidatedDateMeaning{})
 	if scores.EraBalance != nil {
 		t.Fatalf("EraBalance = %v, want unassessed nil", *scores.EraBalance)
 	}
@@ -49,7 +50,7 @@ func containsJSONNull(encoded []byte, key string) bool {
 }
 
 func TestHistoricalScoresDoNotAcquireNewAssessmentMeaning(t *testing.T) {
-	var proposal Proposal
+	var proposal proposal.Proposal
 	if err := json.Unmarshal([]byte(`{"scores":{"themeFit":1,"eraBalance":1,"overall":1,"availabilityRatio":0.5}}`), &proposal); err != nil {
 		t.Fatal(err)
 	}

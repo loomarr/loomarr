@@ -93,6 +93,8 @@ type Setting struct {
 
 **The registry is the single source of truth**, with the same committed-artifact discipline as OpenAPI: `make config-docs` generates `docs/reference/settings.md` (grouped tables, owner tasks, env names, defaults, docs) and CI fails on drift (`git diff --exit-code`). The main doc's §15 table is a human mirror; the generated file is the contract. A setting that isn't in the registry does not exist — validation, the API, the UI, the wizard, and the docs all derive from it.
 
+**Code reads a setting through a generated typed handle, never a string key.** `go generate ./internal/settings` (`make settings-keys`, run by `cmd/settings-keys`) writes `internal/settings/keys_gen.go`: one variable per non-`MigrationOnly` setting, typed by its `Kind` (`settings.LibraryURL` is a `StringKey`, `settings.FillerSourceFolderEnabled` a `BoolKey`, and so on for `IntKey`, `DurationKey`, `StringListKey`). A caller writes `settings.LibraryURL.Get(r)` against a `settings.Reader` — `*settings.Service`, the composition root's generation-frozen view, or a test fake — so a misspelt or retired key is a compile error and a kind mismatch cannot be written. A reader that cannot answer (no store, or a key it does not hold) yields the setting's declared default, which keeps a default-on feature on in a degraded boot. `MigrationOnly` settings have no handle. `TestKeysGenIsCurrent` fails when the registry and `keys_gen.go` drift, and `TestNoSettingKeyLiteralsOutsideSettings` fails on any string literal in production code outside `internal/settings` that equals a handle-bearing key.
+
 `Group` and `Owner` answer different questions. A group is the registry's stable form and documentation grouping; an owner identifies the one task where a person changes the value. Every public setting has exactly one known owner. The API exposes that owner id, while one frontend destination catalog maps ids to labels, aliases, role visibility, and paths. The backend never knows browser paths. Action-owned destinations such as database migration, paired devices, diagnostics, and About live only in that catalog because they do not represent registry values.
 
 ---
@@ -241,7 +243,9 @@ The concrete rules are:
   It was a hardcoded `true` on the database switchover response — the only place that could set
   it — which made it a property of *one endpoint* rather than of the instance. It is now derived
   by comparing each restart-scoped key's **running/applied** value against its **resolved/desired**
-  value, so
+  value. Every bootstrap key is restart-scoped (a generation reads them all when it starts,
+  `LOG_LEVEL` included), and `config.ChangedKeys` walks the struct, so a new boot key is covered
+  without a list to maintain. So
   `GET /v1/system/restart` can name the specific key: *"You changed `filler.dir`. Loomarr is still
   running the old value until it restarts."*
   ⚠ **Derived, never a sticky boolean someone remembers to set.** A flag written at the moment of
@@ -296,12 +300,13 @@ credential-bearing webhook URLs. Provider definitions classify fields; a client-
 map cannot downgrade a secret to plaintext configuration. Sessions, device credentials,
 Invitation grants, and password-recovery grants remain one-way hashes and are not encrypted.
 
-The first encryption-aware startup migrates legacy plaintext setting secrets transactionally after
-the installation key and initial wrapped DEK are valid. A versioned envelope makes the migration
-idempotent. Missing keys, authentication failure, unknown envelope versions, or incomplete
-migration stop readiness without clearing or overwriting durable values. Rewriting rows cannot
-erase plaintext already present in old backups, replicas, SQLite free pages, or WAL history;
-operators whose threat model includes those artifacts rotate the upstream credentials after upgrade.
+Startup does not seal plaintext setting secrets. A protected setting stored as plaintext predates
+encrypted settings (v0.2.0-beta.1); boot fails closed with one error per such key, never printing the
+value, telling the operator to upgrade through a v0.2.x release first or clear that setting and
+re-enter it. Missing keys, authentication failure, or unknown envelope versions likewise stop
+readiness without clearing or overwriting durable values. Sealing a value cannot erase plaintext
+already present in old backups, replicas, SQLite free pages, or WAL history; operators whose threat
+model includes those artifacts rotate the upstream credentials.
 
 **Display policy (Sonarr-model, differentiated by purpose):**
 - `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.

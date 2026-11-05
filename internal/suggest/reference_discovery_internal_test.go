@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -28,7 +29,7 @@ func TestNamedBlockLabelPreservesAmbiguityAndNetworkRoles(t *testing.T) {
 		{"Friday Club block", "", "Friday Club"},
 	} {
 		t.Run(tc.description+tc.refinement, func(t *testing.T) {
-			if got := namedBlockLabel(Intent{Description: tc.description, RefineText: tc.refinement}); got != tc.want {
+			if got := namedBlockLabel(Intent{Intent: proposal.Intent{Description: tc.description, RefineText: tc.refinement}}); got != tc.want {
 				t.Fatalf("label=%q want %q", got, tc.want)
 			}
 		})
@@ -43,7 +44,7 @@ func TestReferenceHypothesesOnlyReorderSourceMembers(t *testing.T) {
 }
 
 func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
-	intent := Intent{Description: "QFUN, with Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."}
+	intent := Intent{Intent: proposal.Intent{Description: "QFUN, with Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."}}
 	titles := []string{"Camp Thistle", "Kid Meets Kite", "Hangin' with Mr. Hobb", "Twice, Twice", "Penny the Pocket Witch", "Pinwheel Summer", "Halo Kid", "Wishbone Way", "Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues"}
 	got := prioritizedReferenceTitles(intent, titles, []string{"Camp Thistle", "Kid Meets Kite"})
 	want := []string{"Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues", "Camp Thistle", "Kid Meets Kite", "Hangin' with Mr. Hobb", "Twice, Twice", "Penny the Pocket Witch", "Pinwheel Summer", "Halo Kid", "Wishbone Way"}
@@ -68,7 +69,7 @@ func TestNamedSourceContractInvalidatesPriorSuccessfulProposal(t *testing.T) {
 	// Frozen reference-source-v3 identity, before broader roster inspection and
 	// source media-type preservation changed the named-source result.
 	const prior = "07aca99b45d7b6ea7fbe07bebda7f5aea73623230ac25ec0c33b7a31f4066607"
-	if IntentHash(Intent{Description: "QFUN"}) == prior {
+	if IntentHash(proposal.Intent{Description: "QFUN"}) == prior {
 		t.Fatal("source contract reused the prior proposal cache identity")
 	}
 }

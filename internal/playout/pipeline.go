@@ -39,8 +39,7 @@ import (
 // OutputProfile is the channel's uniform output (maintainer decisions, #1512).
 type OutputProfile struct {
 	Width, Height, FPS int
-	// HEVC keeps today's HEVC-plan sessions uniformly HEVC (§9.1 V49), and is the premium format's
-	// codec (formats.go). The beta.8 baseline is H.264.
+	// HEVC is the premium format's codec (formats.go); the baseline format is H.264.
 	HEVC bool
 	// HDR is an HDR10 output: HEVC Main10, BT.2020 PQ. PQ sources pass through; SDR and HLG sources
 	// are converted (sdrToHDR10). Per-item HDR metadata is stripped; the channel's static HDR10 SEI

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -97,16 +98,15 @@ func TestToolResultCarriesGroundedDiscoveryEvidence(t *testing.T) {
 // leads with "already exists" + the current lineup + the change, and re-asserts the
 // grounding requirement — rather than the fresh "Build a channel" framing.
 func TestUserPrompt_RefineFraming(t *testing.T) {
-	fresh := userPrompt(Intent{Description: "90s action"})
+	fresh := userPrompt(Intent{Intent: proposal.Intent{Description: "90s action"}})
 	if !strings.Contains(fresh, "Build a channel:") {
 		t.Errorf("fresh prompt missing the build framing:\n%s", fresh)
 	}
 
-	refine := userPrompt(Intent{
+	refine := userPrompt(Intent{Intent: proposal.Intent{
 		Description:   "90s action",
 		RefineText:    "add more Juno Castellan",
-		CurrentLineup: []LineupContext{{Name: "Marigold Protocol", Year: 1999}, {Name: "The Seventh Satellite Choir", Year: 1991}},
-	})
+		CurrentLineup: []proposal.LineupContext{{Name: "Marigold Protocol", Year: 1999}, {Name: "The Seventh Satellite Choir", Year: 1991}}}})
 	for _, want := range []string{
 		"already exists",
 		"Marigold Protocol (1999)",
@@ -124,11 +124,10 @@ func TestUserPrompt_RefineFraming(t *testing.T) {
 }
 
 func TestUserPrompt_FindMoreRequestsANewBatchWithoutRepeatingTheLineup(t *testing.T) {
-	prompt := userPrompt(Intent{
+	prompt := userPrompt(Intent{Intent: proposal.Intent{
 		Description:   "90s action",
 		RefineText:    "Find 6–8 additional titles that match this brief. Do not repeat or replace the selected lineup.",
-		CurrentLineup: []LineupContext{{Name: "The Velvet Cartographer", Year: 1995}, {Name: "The Seventh Satellite Choir", Year: 1991}},
-	})
+		CurrentLineup: []proposal.LineupContext{{Name: "The Velvet Cartographer", Year: 1995}, {Name: "The Seventh Satellite Choir", Year: 1991}}}})
 
 	for _, want := range []string{
 		"6-8 new well-matched titles",

@@ -121,6 +121,36 @@ describe("VideoPlayer", () => {
     expect(onChannelStep).not.toHaveBeenCalled();
   });
 
+  // The live window (#2088 decision 2): ←/→ step 10 s from the frame on screen, L goes live.
+  it("moves a live channel through its window from the keys, through its live transport", () => {
+    const transport = (mode: "behind" | "live") => ({
+      state: { mode, lagSeconds: mode === "live" ? 0 : 40, viewerTimeMs: 1_000_000, noticeRevision: 0 },
+      play: vi.fn(),
+      pause: vi.fn(),
+      goLive: vi.fn(),
+      seek: vi.fn(),
+    });
+    const atLive = transport("live");
+    const { container, rerender } = render(
+      <VideoPlayer attach={() => () => undefined} live liveTransport={atLive} />,
+    );
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const frame = video.parentElement as HTMLElement;
+
+    fireEvent.keyDown(frame, { key: "ArrowLeft" });
+    expect(atLive.seek).toHaveBeenCalledExactlyOnceWith(990_000);
+    // Forward from live has nowhere to go.
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    expect(atLive.seek).toHaveBeenCalledOnce();
+
+    const behind = transport("behind");
+    rerender(<VideoPlayer attach={() => () => undefined} live liveTransport={behind} />);
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    expect(behind.seek).toHaveBeenCalledExactlyOnceWith(1_010_000);
+    fireEvent.keyDown(frame, { key: "l" });
+    expect(behind.goLive).toHaveBeenCalledExactlyOnceWith();
+  });
+
   // The live chrome's controls are RN-web Pressables, which render `div[role=button]`.
   it("leaves Space and the arrows to a role=button child, as to a <button>", () => {
     const onChannelStep = vi.fn();

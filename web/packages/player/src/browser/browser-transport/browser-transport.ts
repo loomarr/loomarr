@@ -6,6 +6,7 @@ import type { PlayerSource } from "../../player-source";
 import { parseStartFailureReason } from "../../start-failure";
 import { liveHlsConfig } from "../live-hls-config";
 import { selectLiveLevel } from "../live-level";
+import { liveSeek } from "../live-seek";
 import {
   clearHeldFrame,
   clearTransferredBuffers,
@@ -33,7 +34,7 @@ import {
 //
 // Rendition SELECTION stays with the client: hls.js measures real throughput and switches per
 // segment, and capLevelToPlayerSize keeps it from fetching a rendition larger than the frame. The
-// server only decides which renditions to OFFER, hinted by the device profile.
+// server only decides which renditions to OFFER, hinted by the quality the play-url mint asks for.
 
 type BrowserTunePhase = "first-frame" | "manifest";
 
@@ -183,6 +184,15 @@ const createBrowserTransport = ({
     clock.goLive();
     seekToLiveEdge(video);
     emitLive();
+  };
+
+  /** Back to the live edge, playing: Go live, and a seek that reaches the edge. */
+  const goLive = async () => {
+    if (!video) return;
+    clock.goLive();
+    seekToLiveEdge(video);
+    emitLive();
+    await video.play().catch(() => undefined);
   };
 
   const releaseBind = () => {
@@ -727,13 +737,7 @@ const createBrowserTransport = ({
       listeners.clear();
       for (const waiter of [...videoWaiters]) waiter();
     },
-    goLive: async () => {
-      if (!video) return;
-      clock.goLive();
-      seekToLiveEdge(video);
-      emitLive();
-      await video.play().catch(() => undefined);
-    },
+    goLive,
     pause: () => {
       if (!video) return;
       clock.pause(position());
@@ -764,6 +768,38 @@ const createBrowserTransport = ({
       await el.play().catch(() => undefined);
     },
     playbackSessionId,
+    // A seek keeps the viewer's play state: paused stays paused at the new point, playing plays on
+    // from it. A target at the live edge is Go live. The frame on screen maps the wall-clock target
+    // to media time (liveSeek), clamped to what the element still holds.
+    seek: async (wallClockMs) => {
+      const el = video;
+      if (!el || activeAttemptId === undefined) return;
+      const displayedWallMs = clock.state(position()).viewerTimeMs;
+      const last = el.seekable.length - 1;
+      const liveSyncPosition = active.hls?.liveSyncPosition;
+      const seek = liveSeek({
+        currentTime: el.currentTime,
+        displayedWallMs,
+        liveEdge:
+          liveSyncPosition !== null && liveSyncPosition !== undefined && Number.isFinite(liveSyncPosition)
+            ? liveSyncPosition
+            : last >= 0
+              ? el.seekable.end(last)
+              : undefined,
+        nowMs: clock.now(),
+        seekable: last >= 0 ? { end: el.seekable.end(last), start: el.seekable.start(0) } : undefined,
+        targetWallMs: wallClockMs,
+      });
+      if (seek.kind === "live") {
+        await goLive();
+        return;
+      }
+      active.hls?.startLoad(seek.mediaTime);
+      el.currentTime = seek.mediaTime;
+      if (clock.mode() === "paused") pausedMediaTime = seek.mediaTime;
+      clock.seekTo(seek.wallMs);
+      emitLive();
+    },
     replace: async (source: PlayerSource, { attemptId, signal }) => {
       const mine = ++generation;
       const current = () => !disposed && generation === mine && !signal.aborted;

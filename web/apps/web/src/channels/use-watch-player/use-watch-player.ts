@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { channelSourcePort } from "../channel-play-url";
 import { beginTune, markTunePhase, type TuneAttempt } from "../tuner-timing";
-import { deviceProfile } from "../use-hls-player/device-profile";
 import type {
   UseWatchPlayerOptions,
   WatchLiveTransport,
@@ -25,7 +24,6 @@ const CANT_PLAY = "This channel can't be played in the app.";
 const REMEMBERED_ATTEMPTS = 8;
 
 const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPlayerOptions): WatchPlayer => {
-  const profile = useMemo(() => deviceProfile(), []);
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
 
@@ -59,12 +57,11 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     channels: channels ?? NO_CHANNELS,
     onPhase,
     onTune,
-    profile,
     recordDiagnostic,
     source: channelSourcePort,
   });
   const { snapshot } = player;
-  const { goLive, pause, play, retry, step, tuneChannel } = player.controls;
+  const { goLive, pause, play, retry, seek, step, tuneChannel } = player.controls;
 
   const lineupKnown = channels !== undefined;
   const requested = channels?.find((channel) => channel.id === channelId);
@@ -140,8 +137,8 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     viewerTimeMs: fallbackLive.current,
   };
   const liveTransport = useMemo<WatchLiveTransport>(
-    () => ({ goLive, pause, play, state: live }),
-    [goLive, live, pause, play],
+    () => ({ goLive, pause, play, seek, state: live }),
+    [goLive, live, pause, play, seek],
   );
 
   const channel = parked ? requested : channels?.find((candidate) => candidate.id === tunedId);

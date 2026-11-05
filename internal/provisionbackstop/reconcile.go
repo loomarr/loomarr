@@ -8,7 +8,7 @@
 // The library re-check is not a safety net for a missed inbound hook: the inbound
 // arr hook was deleted and polling is now the ONLY way acquisition state arrives,
 // so this loop is the mechanism, not the backstop for one. And retention no longer
-// rides this ticker — the janitor was removed and became internal/retention, a
+// rides this ticker — the janitor was removed and became internal/housekeeping, a
 // recurring job (§18.1). There is no janitor.go here; there has not been for some
 // time, and a reader who went looking for one found nothing.
 package provisionbackstop

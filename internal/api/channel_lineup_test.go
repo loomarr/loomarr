@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -21,7 +22,7 @@ func seedApprovedProposal(t *testing.T, st store.Store, jobID, propID string) {
 		"acquisitions": null
 	}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: propID, JobID: jobID, Status: "approved", ProposalJSON: proposalJSON,
+		ID: propID, JobID: jobID, Status: "approved", Body: wireProposal(t, proposalJSON),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestCreateChannelRejectsUnapprovedIntent(t *testing.T) {
 	// A proposal exists but is still "submitted" (not approved).
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
 		ID: "prop-x", JobID: "job-unapproved", Status: "submitted",
-		ProposalJSON: `{"intent":{"description":"x"},"lineup":[]}`,
+		Body: proposal.Proposal{Intent: proposal.Intent{Description: "x"}, Lineup: []proposal.ProposalItem{}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func seedApprovedProposalWithAcquisition(t *testing.T, st store.Store, jobID, pr
 		]
 	}`
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
-		ID: propID, JobID: jobID, Status: "approved", ProposalJSON: proposalJSON,
+		ID: propID, JobID: jobID, Status: "approved", Body: wireProposal(t, proposalJSON),
 	}); err != nil {
 		t.Fatal(err)
 	}

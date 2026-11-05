@@ -95,6 +95,13 @@ func Run(t *testing.T, p mp.Provider, c Case) {
 	}
 }
 
+func recCollection(rec mp.Record) *mp.CollectionRef {
+	if rec.Descriptive == nil {
+		return nil
+	}
+	return rec.Descriptive.Collection
+}
+
 // checkRecord checks one record and its children.
 func checkRecord(t *testing.T, p mp.Provider, rec mp.Record) {
 	t.Helper()
@@ -122,6 +129,14 @@ func checkRecord(t *testing.T, p mp.Provider, rec mp.Record) {
 	for _, own := range rec.IDs {
 		if slices.Contains(rec.Parent, own) {
 			t.Errorf("%s record gives its parent's id %+v as its own", rec.Kind, own)
+		}
+	}
+	if c := recCollection(rec); c != nil {
+		if c.ID.Namespace == "" || c.ID.Value == "" {
+			t.Errorf("%s record carries an incomplete collection %+v", rec.Kind, c)
+		}
+		if rec.Kind != mp.KindMovie {
+			t.Errorf("a %s record carries a movie collection", rec.Kind)
 		}
 	}
 	if rec.Numbering != nil && rec.Kind != mp.KindEpisode {

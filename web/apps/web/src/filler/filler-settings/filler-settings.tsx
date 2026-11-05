@@ -9,6 +9,7 @@ import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ClipDetailsSettings } from "../clip-details-settings";
 import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
+import { useFillerProviders } from "../use-filler-providers";
 
 const downloadIntervalSeconds = (value: string): number => {
   if (value === "0") return 0;
@@ -188,6 +189,7 @@ const FillerSettingsIndex = () => (
 
 const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSection }) => {
   const entries = useSettingsEntries();
+  const providers = useFillerProviders();
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: section === "downloads" } });
   const readinessQuery = fillerApi.useFillerReadiness({ query: { enabled: section === "storage" } });
   const sources = unwrap(sourcesQuery.data, (body) => body.sources) ?? [];
@@ -215,7 +217,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
             source.configured &&
             source.effectiveEnabled &&
             source.fetchable &&
-            (source.kind === "archive" || source.kind === "youtube") &&
+            providers.find(source.kind)?.fetched &&
             (source.automaticDownloads?.everySeconds ?? 0) > 0,
         );
         const fullCheckMax = activeSources.reduce(

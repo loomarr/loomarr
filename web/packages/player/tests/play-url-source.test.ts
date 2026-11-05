@@ -28,7 +28,7 @@ describe("play URL source", () => {
     });
     const signal = new AbortController().signal;
 
-    const result = await source.mint(channel, { maxResolution: 2160, video: ["hevc"] }, signal);
+    const result = await source.mint(channel, signal);
 
     expectTypeOf(source).toMatchTypeOf<PlayerSourcePort>();
     expect(result).toEqual({
@@ -38,8 +38,6 @@ describe("play URL source", () => {
     });
     expect(result.headers).toBeUndefined();
     expect(request).toHaveBeenCalledWith("/v1/channels/science-fiction/play-url", {
-      body: JSON.stringify({ maxResolution: 2160, video: ["hevc"] }),
-      headers: { "Content-Type": "application/json" },
       method: "POST",
       signal,
     });
@@ -51,7 +49,7 @@ describe("play URL source", () => {
       fetch: vi.fn().mockResolvedValue(new Response("revoked", { status: 401 })),
     });
 
-    await expect(source.mint(channel, {}, new AbortController().signal)).rejects.toThrow(
+    await expect(source.mint(channel, new AbortController().signal)).rejects.toThrow(
       "Couldn't mint a play URL (401).",
     );
   });
@@ -210,7 +208,7 @@ describe("play URL source", () => {
       ),
     });
 
-    await expect(source.mint(channel, {}, new AbortController().signal)).resolves.toEqual({
+    await expect(source.mint(channel, new AbortController().signal)).resolves.toEqual({
       expiresAt: undefined,
       uri: "https://paired.test/v1/playout/hls/channel.m3u8?sig=three",
     });
@@ -277,7 +275,7 @@ describe("play URL source warm", () => {
         return response;
       });
 
-      const result = await port(request).warm?.(channel, {}, new AbortController().signal);
+      const result = await port(request).warm?.(channel, new AbortController().signal);
 
       expect(result?.warmed).toBe(true);
       expect(drained.sort()).toEqual(
@@ -302,7 +300,7 @@ describe("play URL source warm", () => {
       .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
     const signal = new AbortController().signal;
 
-    const warmed = await port(request).warm?.(channel, {}, signal);
+    const warmed = await port(request).warm?.(channel, signal);
 
     expect(paths(request)).toEqual(["play-url", "master.m3u8?mode=warm", "init-b.mp4", "seg-2.m4s"]);
     expect(warmed?.warmed).toBe(true);
@@ -316,7 +314,7 @@ describe("play URL source warm", () => {
       .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
       .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
 
-    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+    const warmed = await port(request).warm?.(channel, new AbortController().signal);
 
     expect(warmed?.uri).toBe("http://living-room:8080/v1/playout/hls/science/master.m3u8?sig=one&plan=full");
     expect(warmed?.expiresAt).toBe(Date.parse("2999-01-01T00:00:00Z"));
@@ -330,7 +328,7 @@ describe("play URL source warm", () => {
       .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
       .mockImplementation(() => Promise.resolve(new Response("gone", { status: 404 })));
 
-    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+    const warmed = await port(request).warm?.(channel, new AbortController().signal);
 
     expect(warmed?.warmed).toBe(false);
     expect(warmed?.uri).toContain("sig=one");
@@ -351,7 +349,7 @@ describe("play URL source warm", () => {
             new Response(new URL(url).pathname.endsWith(".m3u8") ? manifest : "bytes", { status: 200 }),
           ),
         );
-      return port(request).warm?.(channel, {}, new AbortController().signal);
+      return port(request).warm?.(channel, new AbortController().signal);
     };
 
     const single = await warmWith(master("1080p-h264-sdr.m3u8?sig=one&viewer=v"));
@@ -370,7 +368,7 @@ describe("play URL source warm", () => {
       .mockResolvedValueOnce(mint())
       .mockResolvedValueOnce(new Response("busy", { status: 503 }));
 
-    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+    const warmed = await port(request).warm?.(channel, new AbortController().signal);
 
     expect(warmed?.warmed).toBe(false);
     expect(warmed?.uri).toContain("sig=one");
@@ -386,7 +384,7 @@ describe("play URL source warm", () => {
           new Response("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n1080p-h264-sdr.m3u8?sig=one\n"),
         )
         .mockResolvedValueOnce(media);
-      const result = await port(request).warm?.(channel, {}, new AbortController().signal);
+      const result = await port(request).warm?.(channel, new AbortController().signal);
       expect(result?.warmed).toBe(false);
       expect(result?.mediaUri).toBeUndefined();
       expect(request).toHaveBeenCalledTimes(3);
@@ -412,7 +410,6 @@ describe("play URL source still address", () => {
   const mint = (request: ReturnType<typeof respond>) =>
     createPlayUrlSourcePort({ baseUrl: "http://living-room:8080/", fetch: request }).mint(
       channel,
-      {},
       new AbortController().signal,
     );
 

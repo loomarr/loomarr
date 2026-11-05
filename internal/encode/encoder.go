@@ -20,9 +20,9 @@ const (
 	EncoderVulkan       Encoder = "h264_vulkan"       // cross-vendor, newer
 )
 
-// HEVC encoder variants (§9.1 V49). When an HEVC-capable client's session (EncodePlan hevc8/10)
-// must TRANSCODE a non-HEVC program (a VP9/h264/mpeg2 commercial), it transcodes to HEVC — not h264 —
-// so the fMP4 stream the browser plays stays uniformly one codec. (fMP4/MSE binds ONE decoder from
+// HEVC encoder variants (§9.1 V49). When an HEVC channel's output must TRANSCODE a non-HEVC program
+// (a VP9/h264/mpeg2 commercial), it transcodes to HEVC — not h264 — so the fMP4 stream the
+// browser plays stays uniformly one codec. (fMP4/MSE binds ONE decoder from
 // its init segment and cannot survive a mid-stream codec change; mixing h264 into an HEVC fMP4 is a
 // black frame.) Each is the hevc sibling of the h264 encoder above, on the same hardware engine, so
 // it shares that family's preset vocabulary — see HEVCVariant and the family-keyed VideoArgs.

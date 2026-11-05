@@ -36,7 +36,6 @@ const createPlayerController = ({
   onPlayerError,
   onTune,
   prefetchStill,
-  profile,
   recovery,
   restoreChannelId,
   source,
@@ -59,7 +58,7 @@ const createPlayerController = ({
     status: "empty",
   };
   const listeners = new Set<(next: PlayerSnapshot) => void>();
-  const warmer = createNeighbourWarmer({ prefetchStill, profile, radius: warmRadius, source });
+  const warmer = createNeighbourWarmer({ prefetchStill, radius: warmRadius, source });
 
   const publish = (next: PlayerSnapshot) => {
     snapshot = next;
@@ -233,7 +232,7 @@ const createPlayerController = ({
       if (replacing) {
         await replacing;
       } else {
-        const nextSource = warmedSource ?? (await source.mint(channel, profile, request.signal));
+        const nextSource = warmedSource ?? (await source.mint(channel, request.signal));
         if (!isCurrentAttempt(attemptId, request.signal)) return;
         // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
         // channel's still on demand, so the overlay can show it while the stream starts.
@@ -413,6 +412,10 @@ const createPlayerController = ({
     },
     retry: async () => {
       if (snapshot.channel) await tune(snapshot.channel, "retry", true);
+    },
+    seek: async (wallClockMs) => {
+      if (disposed || !snapshot.channel) return;
+      await transport.seek?.(wallClockMs);
     },
     step: async (direction) => {
       const channel = findAdjacent(direction);

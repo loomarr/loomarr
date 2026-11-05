@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -72,13 +70,14 @@ func currentGeneratedSecret(
 	return current, nil
 }
 
-// Every getter tolerates a nil service, because "no store ⇒ no settings service" is a
-// SUPPORTED state, not a bug: starting without DATABASE_URL logs "running without a
-// store (not ready)" and is expected to keep serving so /readyz can report why. It did
-// not — the first unguarded read panicked during application composition, so a misconfigured
-// container crash-looped instead of answering the probe that would have explained it.
-// An unset key already resolves to a zero value; an absent service is the same answer.
-func (r resolved) value(key string) any {
+// Value makes resolved a settings.Reader: reads go through the typed handles
+// (`settings.LibraryURL.Get(set)`), never a string key.
+//
+// It tolerates a nil service, because "no store ⇒ no settings service" is a SUPPORTED state, not
+// a bug: starting without DATABASE_URL logs "running without a store (not ready)" and is expected
+// to keep serving so /readyz can report why. An absent service answers nil, and every handle then
+// returns the setting's declared default — a default-on feature stays on in that degraded boot.
+func (r resolved) Value(key string) any {
 	if value, ok := r.frozen[key]; ok {
 		return value.Value
 	}
@@ -88,65 +87,12 @@ func (r resolved) value(key string) any {
 	return r.svc.Resolve(key).Value
 }
 
-func (r resolved) str(key string) string {
-	value := r.value(key)
-	if value == nil {
-		return ""
-	}
-	// A string list reads comma-joined, as settings.Service.String gives it.
-	if list, ok := value.([]string); ok {
-		return strings.Join(list, ",")
-	}
-	str, ok := value.(string)
-	if !ok {
-		panic(fmt.Sprintf("app.resolved.str: %s is %T, not string", key, value))
-	}
-	return str
-}
-
 // homeGeography is the installation's location with its region preference (#2035).
 func (r resolved) homeGeography() filler.Geography {
 	return filler.Geography{
-		Country: r.str("filler.home_country"), Place: r.str("filler.home_place"),
-		Fallback: r.str("filler.region_fallback"),
+		Country: settings.FillerHomeCountry.Get(r), Place: settings.FillerHomePlace.Get(r),
+		Fallback: settings.FillerRegionFallback.Joined(r),
 	}.Normalize()
-}
-
-func (r resolved) dur(key string) time.Duration {
-	if d, ok := r.value(key).(time.Duration); ok {
-		return d
-	}
-	return 0
-}
-func (r resolved) intv(key string) int {
-	if n, ok := r.value(key).(int); ok {
-		return n
-	}
-	return 0
-}
-
-// boolOn reads a bool setting whose SAFE value is true.
-//
-// ⚠ `boolv` answers false for a nil service or a non-bool value, which is right for a knob that
-// is off by default and wrong for one that is on by default: inheriting it means a degraded boot
-// silently DISABLES the feature. `filler.source.folder.enabled` is the first of those — a false
-// there stops the catalog scan, so an install whose settings service could not answer would quietly
-// stop finding clips. This fails OPEN instead, matching the declared default.
-func (r resolved) boolOn(key string) bool {
-	if r.svc == nil {
-		return true
-	}
-	if b, ok := r.value(key).(bool); ok {
-		return b
-	}
-	return true
-}
-
-func (r resolved) boolv(key string) bool {
-	if b, ok := r.value(key).(bool); ok {
-		return b
-	}
-	return false
 }
 
 func (r resolved) legacyEmailConfig() (notifications.EmailConfig, error) {
@@ -225,19 +171,19 @@ func (r resolved) libraryConfigured() bool {
 
 // seerrConn is the Seerr connection provider.
 func (r resolved) seerrConn() func() (string, string) {
-	return func() (string, string) { return r.str("seerr.url"), r.str("seerr.api_key") }
+	return func() (string, string) { return settings.SeerrURL.Get(r), settings.SeerrAPIKey.Get(r) }
 }
 
 // arrConns builds the per-app connection + optional override resolvers for the direct
 // Sonarr/Radarr requester (all resolved per call for hot-apply, like seerrConn).
 func (r resolved) arrConns() requester.ArrConns {
 	return requester.ArrConns{
-		Sonarr:               func() (string, string) { return r.str("sonarr.url"), r.str("sonarr.api_key") },
-		Radarr:               func() (string, string) { return r.str("radarr.url"), r.str("radarr.api_key") },
-		SonarrQualityProfile: func() string { return r.str("sonarr.quality_profile") },
-		SonarrRootFolder:     func() string { return r.str("sonarr.root_folder") },
-		RadarrQualityProfile: func() string { return r.str("radarr.quality_profile") },
-		RadarrRootFolder:     func() string { return r.str("radarr.root_folder") },
+		Sonarr:               func() (string, string) { return settings.SonarrURL.Get(r), settings.SonarrAPIKey.Get(r) },
+		Radarr:               func() (string, string) { return settings.RadarrURL.Get(r), settings.RadarrAPIKey.Get(r) },
+		SonarrQualityProfile: func() string { return settings.SonarrQualityProfile.Get(r) },
+		SonarrRootFolder:     func() string { return settings.SonarrRootFolder.Get(r) },
+		RadarrQualityProfile: func() string { return settings.RadarrQualityProfile.Get(r) },
+		RadarrRootFolder:     func() string { return settings.RadarrRootFolder.Get(r) },
 	}
 }
 
@@ -254,7 +200,7 @@ func (r resolved) requesterFor(recorder *metrics.Recorder) requester.Requester {
 // The queue poller (§18.1) needs the concrete *Arr for its QueueStatus capability, which the
 // Requester interface doesn't expose.
 func (r resolved) arrRequester(recorder *metrics.Recorder) *requester.Arr {
-	if r.str("requester.provider") != "arr" {
+	if settings.RequesterProvider.Get(r) != "arr" {
 		return nil
 	}
 	return requester.NewArrObserved(r.arrConns(), recorder)
@@ -266,7 +212,7 @@ func (r resolved) arrRequester(recorder *metrics.Recorder) *requester.Arr {
 // Requester interface doesn't expose. Only meaningful once seerr.url is set — an unconfigured
 // Seerr QueueStatus just errors and the poll pass is a harmless no-op.
 func (r resolved) seerrRequester(recorder *metrics.Recorder) *requester.Seerr {
-	if r.str("requester.provider") == "arr" {
+	if settings.RequesterProvider.Get(r) == "arr" {
 		return nil
 	}
 	return requester.NewSeerrDynamicObserved(r.seerrConn(), recorder)
@@ -281,10 +227,10 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 			return tunarr.Config{}
 		}
 		values := r.svc.ResolveMany(
-			"tunarr.url",
-			"tunarr.transcode_config_id",
-			"filler.weight",
-			"filler.cooldown_seconds",
+			settings.TunarrURL.Key(),
+			settings.TunarrTranscodeConfigID.Key(),
+			settings.FillerWeight.Key(),
+			settings.FillerCooldownSeconds.Key(),
 		)
 		stringValue := func(key string) string {
 			value, _ := values[key].Value.(string)
@@ -295,10 +241,10 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 			return value
 		}
 		return tunarr.Config{
-			BaseURL:               stringValue("tunarr.url"),
-			TranscodeConfigID:     stringValue("tunarr.transcode_config_id"),
-			FillerWeight:          intValue("filler.weight"),
-			FillerCooldownSeconds: intValue("filler.cooldown_seconds"),
+			BaseURL:               stringValue(settings.TunarrURL.Key()),
+			TranscodeConfigID:     stringValue(settings.TunarrTranscodeConfigID.Key()),
+			FillerWeight:          intValue(settings.FillerWeight.Key()),
+			FillerCooldownSeconds: intValue(settings.FillerCooldownSeconds.Key()),
 		}
 	}
 }
@@ -311,7 +257,7 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := loadProtectedSettings(ctx, st, reg, protection)
+		rows, err := openProtectedSettings(ctx, st, reg, protection)
 		if err != nil {
 			return nil, err
 		}

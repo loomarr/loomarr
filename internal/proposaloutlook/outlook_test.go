@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // demoTMDBID is film n's provider id, above every real TMDB id (#1592).
@@ -53,10 +53,10 @@ func TestWindowAndUnknownProgramsDoNotInventARepeatGuarantee(t *testing.T) {
 }
 
 func TestEditorialMixDoesNotReclassifyMissingRunEvidence(t *testing.T) {
-	p := suggest.Proposal{Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: demoTMDBID(1), EditorialRole: suggest.EditorialCore},
-		{MediaType: provision.Movie, TMDBID: demoTMDBID(2), EditorialRole: suggest.EditorialAdjacent},
-		{MediaType: provision.Movie, TMDBID: demoTMDBID(3), EditorialRole: suggest.EditorialDiscovery},
+	p := proposal.Proposal{Lineup: []proposal.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(1), EditorialRole: proposal.EditorialCore},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(2), EditorialRole: proposal.EditorialAdjacent},
+		{MediaType: provision.Movie, TMDBID: demoTMDBID(3), EditorialRole: proposal.EditorialDiscovery},
 		{MediaType: provision.Movie, TMDBID: demoTMDBID(4), InLibrary: true, Source: "library"},
 	}}
 	got := editorialMix(p, []schedule.LineupEntry{{Key: demoKey(1)}, {Key: demoKey(2)}, {Key: demoKey(3)}, {Key: demoKey(4)}, {Key: demoKey(5)}})

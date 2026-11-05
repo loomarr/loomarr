@@ -1,9 +1,8 @@
-import type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
+import type { PlayerChannel, PlayerSource, PlayerSourcePort } from "../player-source";
 
 interface NeighbourWarmerOptions {
   /** Starts fetching a warmed neighbour's still image so the switch overlay can paint it from cache. */
   prefetchStill?: (uri: string) => void;
-  profile: DevicePlaybackProfile;
   /** How many channels each side of the current one to warm. The server still bounds admission. */
   radius?: number;
   source: Pick<PlayerSourcePort, "warm">;

@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -44,7 +45,7 @@ type StructureWindowAssessmentRuntime struct {
 
 func NewStructureWindowAssessmentRuntime(assessors []CompleteWindowStructureAssessor, preparer StructureAssessmentWindowMediaPreparer, evidence StructureWindowEvidenceRepository, boundaryTolerance int64, now func() time.Time) (*StructureWindowAssessmentRuntime, error) {
 	if len(assessors) < 2 || preparer == nil || evidence == nil || boundaryTolerance < 0 ||
-		boundaryTolerance >= fillerstructurewindow.CanonicalProfile().ContextOverlapMS || now == nil {
+		boundaryTolerance >= fillerstructurewindow.ContextOverlapMS || now == nil {
 		return nil, errors.New("structure window runtime requires two assessors, media preparer, evidence repository, tolerance, and clock")
 	}
 	profiles := make([]fillerstructure.AssessorProfile, 0, len(assessors))
@@ -119,7 +120,8 @@ func ValidatePreparedStructureAssessmentWindows(input filler.StructureAssessment
 		return errors.New("structure window runtime source is invalid")
 	}
 	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
+	media, _ := fillerstructuremedia.ProfileBySHA256(prepared.Authority.Plan.Profile.AssessmentMediaProfileSHA256)
+	plan, err := fillerstructurewindow.NewPlan(source, media)
 	if err != nil {
 		return fmt.Errorf("plan structure windows: %w", err)
 	}

@@ -773,6 +773,70 @@ describe("browser transport", () => {
     });
   });
 
+  // The live window (#2088 decision 2): a wall-clock target maps to media time from the frame on
+  // screen, which aired at 992 000 and sits at media 44 s; the live edge is media 98 s.
+  describe("seeking within the window", () => {
+    const seekable = (video: HTMLVideoElement, range: () => [number, number]) =>
+      Object.defineProperty(video, "seekable", {
+        configurable: true,
+        value: { end: () => range()[1], length: 1, start: () => range()[0] },
+      });
+
+    const watching = async () => {
+      hls.supported = true;
+      vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+      const created = createVideo("", { currentTime: 44 });
+      seekable(created.video, () => [0, 100]);
+      const harnessed = harness(created.video);
+      harnessed.open("ch-1");
+      const controller = await loaded(0, "ch-1");
+      controller.playingDate = new Date(992_000);
+      created.fire("timeupdate");
+      // From here the element's own media time carries the mapping, as it does between dated frames.
+      controller.playingDate = null;
+      return { ...created, ...harnessed, controller };
+    };
+
+    it("plays on from the target, behind live by its distance from now", async () => {
+      const { controller, live, transport, video } = await watching();
+
+      await transport.seek?.(982_000);
+
+      expect(controller.startLoad).toHaveBeenCalledWith(34);
+      expect(video.currentTime).toBe(34);
+      expect(live()).toMatchObject({ state: { lagSeconds: 18, mode: "behind", viewerTimeMs: 982_000 } });
+    });
+
+    it("keeps a paused viewer paused at the target, and resumes from it", async () => {
+      const { controller, live, transport, video } = await watching();
+      transport.pause();
+      vi.mocked(video.play).mockClear();
+
+      await transport.seek?.(982_000);
+
+      expect(video.currentTime).toBe(34);
+      expect(video.play).not.toHaveBeenCalled();
+      expect(live()).toMatchObject({ state: { mode: "paused", viewerTimeMs: 982_000 } });
+
+      controller.startLoad.mockClear();
+      await transport.play();
+      expect(controller.startLoad).toHaveBeenCalledWith(34);
+      expect(live()).toMatchObject({ state: { lagSeconds: 18, mode: "behind" } });
+    });
+
+    it("goes live when the target reaches the live edge", async () => {
+      const { controller, live, transport, video } = await watching();
+      await transport.seek?.(982_000);
+      controller.startLoad.mockClear();
+
+      await transport.seek?.(1_000_000);
+
+      expect(controller.startLoad).toHaveBeenCalledWith(-1);
+      expect(video.currentTime).toBe(98);
+      expect(live()).toMatchObject({ state: { lagSeconds: 0, mode: "live" } });
+    });
+  });
+
   describe("the live clock", () => {
     it("anchors live programme time to the frame being shown instead of the wall-clock live edge", async () => {
       hls.supported = true;

@@ -20,6 +20,10 @@ retired-verify: ## retired identifiers must not appear as live instructions (CI 
 config-docs: ## generate docs/reference/settings.md from the settings registry
 	$(GO) run ./cmd/config-docs docs/reference/settings.md
 
+.PHONY: settings-keys
+settings-keys: ## regenerate internal/settings/keys_gen.go (typed setting handles) from the registry
+	$(GO) generate ./internal/settings
+
 .PHONY: config-docs-verify
 config-docs-verify: config-docs ## regenerated config docs must match committed (CI red on drift)
 	@git diff --exit-code docs/reference/settings.md

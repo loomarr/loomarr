@@ -13,10 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
@@ -51,25 +49,6 @@ func (testAuthorizer) Authorize(r *http.Request) api.Role {
 	default:
 		return api.RoleAnonymous
 	}
-}
-
-type apiDiagnosticRecovery struct {
-	mu       sync.Mutex
-	retrying map[string]time.Time
-}
-
-func (r *apiDiagnosticRecovery) DiagnosticRetryStatus(_ context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	retryAt, ok := r.retrying[hash]
-	return fillerdecision.DiagnosticRetryStatus{Automatic: ok, RetryAt: retryAt}, nil
-}
-
-func (r *apiDiagnosticRecovery) RetryDiagnostic(_ context.Context, hash string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.retrying[hash] = time.Now().UTC().Add(time.Minute)
-	return nil
 }
 
 // The migrated-template harness.

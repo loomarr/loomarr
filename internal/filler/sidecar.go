@@ -217,15 +217,18 @@ type SegmentScreeningReference struct {
 	EvidenceSHA256 string `json:"evidenceSha256"`
 }
 
-func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidence SegmentScreeningEvidence) (SegmentScreeningReference, error) {
-	if ValidateSegmentScreeningSubject(subject) != nil || ValidateSegmentScreeningEvidence(evidence) != nil {
+// NewSegmentScreeningReference joins a valid subject to the digest of its aggregate. The aggregate
+// type and its validation belong to internal/fillerscreening, whose constructor of the same name is
+// the only caller.
+func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidenceSHA256 string) (SegmentScreeningReference, error) {
+	if ValidateSegmentScreeningSubject(subject) != nil {
 		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
 	}
 	reference := SegmentScreeningReference{
 		SchemaVersion: segmentScreeningReferenceSchemaVersion,
-		SubjectSHA256: subject.SHA256, EvidenceSHA256: evidence.SHA256,
+		SubjectSHA256: subject.SHA256, EvidenceSHA256: evidenceSHA256,
 	}
-	if err := reference.validate(); err != nil || evidence.SubjectSHA256 != subject.SHA256 {
+	if err := reference.validate(); err != nil {
 		return SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
 	}
 	return reference, nil

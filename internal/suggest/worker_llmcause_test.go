@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -27,13 +28,12 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 
 	cases := []struct {
 		name     string
-		durable  bool
 		handler  http.HandlerFunc
 		wantAll  []string
 		wantNone []string
 	}{
 		{
-			name: "500 JSON body, legacy job path",
+			name: "500 JSON body, prompt echoed in the provider body",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -43,8 +43,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			wantNone: []string{secretPrompt, secretKey},
 		},
 		{
-			name:    "500 JSON body, durable workflow path",
-			durable: true,
+			name: "500 JSON body, key echoed in the provider message",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
@@ -73,12 +72,9 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 			tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 			sug := suggest.New(llm.NewOpenAI(provider.URL, "m", secretKey), catalog.New(lib, tm), tm, 10)
-			svc := suggest.NewService(st, sug, suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour},
-				idGen(), time.Now, testkit.Logger())
-			if tc.durable {
-				svc = svc.WithDurableWorkflow(proposalworkflow.New(st, func() string { return "wf-1" }, time.Now))
-			}
-			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
+			svc := suggest.NewService(st, proposalworkflow.New(st, func() string { return "wf-1" }, time.Now), sug,
+				suggest.Config{Workers: 1, Timeout: 5 * time.Second, CacheTTL: time.Hour}, time.Now, testkit.Logger())
+			jobID, err := svc.Submit(context.Background(), proposal.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 			if err != nil {
 				t.Fatal(err)
 			}

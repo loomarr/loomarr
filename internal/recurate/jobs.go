@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // Job returns the auto-recuration pass as a scheduler job (§18.1) — the per-channel opt-in
@@ -13,7 +14,7 @@ func (r *Runner) Job() jobs.Job {
 	return jobs.Job{
 		Name: "channel-recurate", Group: jobs.GroupChannels, Title: "Re-curate automatic channels",
 		Description: "Refreshes opted-in channel lineups and applies the configured auto-curation rules.",
-		DefaultCron: "0 0 4 * * 0", ScheduleKey: "job.recurate.schedule",
+		DefaultCron: "0 0 4 * * 0", ScheduleKey: settings.JobRecurateSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := r.Run(ctx); return err },
 	}
 }

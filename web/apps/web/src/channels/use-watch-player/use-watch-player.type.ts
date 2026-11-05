@@ -2,12 +2,16 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
 import type { LivePlaybackState, TuneDirection } from "@loomarr/player";
 
-/** The viewer's live position and what moves it: pause stays paused until play, and goLive rejoins the edge. */
+/**
+ * The viewer's live position and what moves it: pause stays paused until play, goLive rejoins the
+ * edge, and seek moves to a wall-clock instant inside the window.
+ */
 interface WatchLiveTransport {
   state: LivePlaybackState;
   play: () => Promise<void> | void;
   pause: () => void;
   goLive: () => Promise<void> | void;
+  seek: (wallClockMs: number) => Promise<void> | void;
 }
 
 interface UseWatchPlayerOptions {

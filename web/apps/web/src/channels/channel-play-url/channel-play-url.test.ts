@@ -18,7 +18,6 @@ vi.mock("@loomarr/api/mutator", () => ({
 
 import { channelSourcePort } from "./channel-play-url";
 
-const profile = { audio: [], video: [], video10bit: false };
 const channel = { id: "ch-2", inAppPlayable: true, name: "Two", number: 2 };
 
 describe("channel source port", () => {
@@ -28,7 +27,7 @@ describe("channel source port", () => {
   });
 
   describe("mint", () => {
-    it("mints with the device profile and prefers the browser's same-origin URL", async () => {
+    it("mints with a quality hint and prefers the browser's same-origin URL", async () => {
       channelPlayUrl.mockResolvedValue({
         expiresAt: "2030-01-01T00:00:00Z",
         relativeUrl: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
@@ -37,14 +36,13 @@ describe("channel source port", () => {
       });
       const controller = new AbortController();
 
-      await expect(channelSourcePort.mint(channel, profile, controller.signal)).resolves.toEqual({
+      await expect(channelSourcePort.mint(channel, controller.signal)).resolves.toEqual({
         expiresAt: new Date("2030-01-01T00:00:00Z").getTime(),
         serverTimeMs: 1_700_000_000_000,
         uri: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
       });
       expect(channelPlayUrl).toHaveBeenCalledWith(
         "ch-2",
-        profile,
         { quality: expect.stringMatching(/^(auto|720|480)$/) },
         { signal: controller.signal },
       );
@@ -58,9 +56,7 @@ describe("channel source port", () => {
         stillUrl: "https://loomarr.example/v1/playout/still/ch-2?sig=signed",
       });
 
-      await expect(
-        channelSourcePort.mint(channel, profile, new AbortController().signal),
-      ).resolves.toMatchObject({
+      await expect(channelSourcePort.mint(channel, new AbortController().signal)).resolves.toMatchObject({
         stillUri: "/v1/playout/still/ch-2?sig=signed",
       });
     });
@@ -68,7 +64,7 @@ describe("channel source port", () => {
     it("says why when the server returns no stream address", async () => {
       channelPlayUrl.mockResolvedValue({}); // neither relativeUrl nor url
 
-      await expect(channelSourcePort.mint(channel, profile, new AbortController().signal)).rejects.toThrow(
+      await expect(channelSourcePort.mint(channel, new AbortController().signal)).rejects.toThrow(
         /couldn't get a stream for this channel/i,
       );
     });
@@ -79,14 +75,14 @@ describe("channel source port", () => {
         throw new Error("network down");
       });
 
-      await expect(channelSourcePort.mint(channel, profile, new AbortController().signal)).rejects.toThrow(
+      await expect(channelSourcePort.mint(channel, new AbortController().signal)).rejects.toThrow(
         "network down",
       );
     });
   });
 
   describe("warm", () => {
-    const warm = () => channelSourcePort.warm?.(channel, profile, new AbortController().signal);
+    const warm = () => channelSourcePort.warm?.(channel, new AbortController().signal);
 
     it("warms live, then fetches init and media bytes while preserving the normal signed URL", async () => {
       channelPlayUrl.mockResolvedValue({

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -13,7 +14,7 @@ import (
 // only facts suitable for persistence or Journey projection.
 type Failure struct {
 	Code  string
-	Trace DecisionTrace
+	Trace proposal.DecisionTrace
 	Cause error
 }
 
@@ -45,7 +46,7 @@ func (f *Failure) TraceJSON() (string, error) {
 const decisionTraceMaxString = 256
 
 // ValidateDecisionTrace is the shared typed boundary for persisted and evaluated traces.
-func ValidateDecisionTrace(trace DecisionTrace) error {
+func ValidateDecisionTrace(trace proposal.DecisionTrace) error {
 	if trace.Version == 0 && len(trace.Candidates) == 0 && trace.Terminal == "" && trace.SurfacedTotal == 0 && trace.RecordedTotal == 0 {
 		return nil // absent trace on pre-v1 proposals
 	}
@@ -64,10 +65,10 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 				return fmt.Errorf("invalid %s", name)
 			}
 		}
-		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) && c.Constraints == (ConstraintMatches{}) {
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonMalformedID && c.Key == "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (proposal.RankTuple{}) && c.Constraints == (proposal.ConstraintMatches{}) {
 			continue
 		}
-		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (RankTuple{}) && c.Constraints == (ConstraintMatches{}) {
+		if c.Disposition == DispositionValidationDropped && c.Reason == ReasonNotSurfaced && c.Key != "" && c.Name == "" && c.Source == "" && c.Ownership == "" && c.Rank == (proposal.RankTuple{}) && c.Constraints == (proposal.ConstraintMatches{}) {
 			if _, _, _, ok := provision.ParseKey(provision.Key(c.Key)); !ok {
 				return fmt.Errorf("invalid canonical key")
 			}
@@ -85,7 +86,7 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 		if c.Rank.Relevance < 0 || c.Rank.Relevance > 1<<31-1 || c.Rank.Preference < -5 || c.Rank.Preference > 3 || c.Rank.Novelty < 0 || c.Rank.Novelty > rankNoveltyMax {
 			return fmt.Errorf("rank tuple outside representation bounds")
 		}
-		if (c.Rank.Relevance > 0) != c.Constraints.any() {
+		if (c.Rank.Relevance > 0) != c.Constraints.Any() {
 			return fmt.Errorf("constraint matches do not explain relevance")
 		}
 		if !validDispositionReason(c.Disposition, c.Reason) {
@@ -93,10 +94,6 @@ func ValidateDecisionTrace(trace DecisionTrace) error {
 		}
 	}
 	return nil
-}
-
-func (m ConstraintMatches) any() bool {
-	return m.Request || m.Tone || m.Era || m.MustInclude || m.MustExclude || m.Refine
 }
 
 func knownTerminal(value string) bool {
@@ -122,7 +119,7 @@ func validDispositionReason(disposition, reason string) bool {
 	return allowed[disposition][reason]
 }
 
-func NewFailure(code string, trace DecisionTrace, cause error) error {
+func NewFailure(code string, trace proposal.DecisionTrace, cause error) error {
 	trace = trace.Clone()
 	return &Failure{Code: code, Trace: trace, Cause: cause}
 }

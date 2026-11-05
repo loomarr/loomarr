@@ -49,7 +49,7 @@ func (p *modeProbePlayout) Tune(ctx context.Context, request playout.TuneRequest
 	return p.presentation, p.err
 }
 
-func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ playout.EncodePlan, _ string, speculative bool) (playout.Asset, bool, error) {
+func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ string, speculative bool) (playout.Asset, bool, error) {
 	p.viewer = playout.ViewerFrom(ctx)
 	p.speculative = speculative
 	return p.asset, p.assetOK, nil
@@ -102,7 +102,7 @@ func TestHLSRetiredPreparedModeNeverStartsPlayout(t *testing.T) {
 func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 	probe := &modeProbePlayout{presentation: liveManifest()}
 	s := modeHandlerServer(t, probe)
-	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/master.m3u8?mode=warm&sig=signed&plan=hevc8", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/master.m3u8?mode=warm&sig=signed&quality=720", nil)
 	req.SetPathValue("id", "ch-one")
 	w := httptest.NewRecorder()
 
@@ -118,7 +118,7 @@ func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 	if strings.Contains(body, "mode=warm") {
 		t.Fatalf("warm hint leaked into asset URL: %q", body)
 	}
-	if !strings.Contains(body, "plan=hevc8") || !strings.Contains(body, "sig=signed") {
+	if !strings.Contains(body, "quality=720") || !strings.Contains(body, "sig=signed") {
 		t.Fatalf("asset URL lost auth or rendition selectors: %q", body)
 	}
 }

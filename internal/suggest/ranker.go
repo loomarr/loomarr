@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -32,55 +33,12 @@ type rankedCandidate struct {
 	relevance   int
 	preference  int
 	novelty     int
-	constraints ConstraintMatches
+	constraints proposal.ConstraintMatches
 }
 
 type rankedCandidates struct {
 	included []rankedCandidate
 	excluded []rankedCandidate
-}
-
-// DecisionTrace is bounded, immutable evidence from one original proposal run.
-// Callers receive value copies and must not use it as current channel evidence.
-type DecisionTrace struct {
-	Version                 int                 `json:"version"`
-	Candidates              []DecisionCandidate `json:"candidates"`
-	SurfacedTotal           int                 `json:"surfacedTotal"`
-	RecordedTotal           int                 `json:"recordedTotal"`
-	Truncated               bool                `json:"truncated"`
-	WindowsCompleted        int                 `json:"windowsCompleted,omitempty"`
-	SourceQueriesDispatched int                 `json:"sourceQueriesDispatched,omitempty"`
-	Terminal                string              `json:"terminal,omitempty"`
-}
-
-type DecisionCandidate struct {
-	Key         string            `json:"key"`
-	Name        string            `json:"name,omitempty"`
-	Source      string            `json:"source,omitempty"`
-	Ownership   string            `json:"ownership"`
-	Rank        RankTuple         `json:"rank,omitempty"`
-	Constraints ConstraintMatches `json:"constraints,omitempty"`
-	Disposition string            `json:"disposition"`
-	Reason      string            `json:"reason"`
-}
-
-// ConstraintMatches identifies which safe intent categories contributed at
-// least one grounded term to Relevance. It never copies caller-authored terms.
-type ConstraintMatches struct {
-	Request     bool `json:"request,omitempty"`
-	Tone        bool `json:"tone,omitempty"`
-	Era         bool `json:"era,omitempty"`
-	MustInclude bool `json:"mustInclude,omitempty"`
-	MustExclude bool `json:"mustExclude,omitempty"`
-	Refine      bool `json:"refine,omitempty"`
-}
-
-// RankTuple is the exact lexicographic ordering tuple. It is not a scalar score.
-type RankTuple struct {
-	Relevance  int    `json:"relevance"`
-	Preference int    `json:"preference"`
-	Novelty    int    `json:"novelty"`
-	TieKey     string `json:"tieKey"`
 }
 
 const DecisionTraceVersion = 1
@@ -121,14 +79,9 @@ const (
 	TerminalProviderTimeout      = "provider_timeout"
 )
 
-func (t DecisionTrace) Clone() DecisionTrace {
-	t.Candidates = append([]DecisionCandidate(nil), t.Candidates...)
-	return t
-}
-
 type RankedCandidates struct {
 	Candidates []catalog.Candidate
-	Trace      DecisionTrace
+	Trace      proposal.DecisionTrace
 }
 
 func RankGroundedCandidatesWithTrace(intent string, candidates []catalog.Candidate, signals []FeedbackSignal) RankedCandidates {
@@ -142,13 +95,13 @@ func rankGroundedCandidatesWithTrace(query rankQuery, candidates []catalog.Candi
 		result = append(result, item.candidate)
 	}
 	recorded := len(ranked.included) + len(ranked.excluded)
-	trace := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: recorded, Candidates: make([]DecisionCandidate, 0, min(recorded, DecisionTraceMaxCandidates))}
+	trace := proposal.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: len(candidates), RecordedTotal: recorded, Candidates: make([]proposal.DecisionCandidate, 0, min(recorded, DecisionTraceMaxCandidates))}
 	appendDecision := func(item rankedCandidate, disposition, reason string) {
 		if len(trace.Candidates) >= DecisionTraceMaxCandidates {
 			trace.Truncated = true
 			return
 		}
-		trace.Candidates = append(trace.Candidates, DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Constraints: item.constraints, Disposition: disposition, Reason: reason})
+		trace.Candidates = append(trace.Candidates, proposal.DecisionCandidate{Key: string(item.key), Name: item.candidate.Name, Source: string(item.candidate.Source), Ownership: ownership(item.candidate.InLibrary), Rank: proposal.RankTuple{Relevance: item.relevance, Preference: item.preference, Novelty: item.novelty, TieKey: string(item.key)}, Constraints: item.constraints, Disposition: disposition, Reason: reason})
 	}
 	for _, item := range ranked.included {
 		appendDecision(item, DispositionNotSelected, ReasonNotSelected)
@@ -196,8 +149,8 @@ func (q rankQuery) all() map[string]bool {
 	return all
 }
 
-func (q rankQuery) match(candidate map[string]bool) ConstraintMatches {
-	return ConstraintMatches{
+func (q rankQuery) match(candidate map[string]bool) proposal.ConstraintMatches {
+	return proposal.ConstraintMatches{
 		Request: overlap(q.request, candidate) > 0, Tone: overlap(q.tone, candidate) > 0,
 		Era: overlap(q.era, candidate) > 0, MustInclude: overlap(q.mustInclude, candidate) > 0,
 		MustExclude: overlap(q.mustExclude, candidate) > 0, Refine: overlap(q.refine, candidate) > 0,
@@ -268,7 +221,7 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 	return result
 }
 
-func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, ConstraintMatches) {
+func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, proposal.ConstraintMatches) {
 	candidateTerms := candidateWordSet(candidate)
 	return overlap(query.all(), candidateTerms), query.match(candidateTerms)
 }

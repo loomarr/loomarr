@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -20,7 +21,7 @@ func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
 		JobID:   "job-1",
 		OwnerID: "member-1",
 		Status:  JobRunning,
-		Intent:  suggest.Intent{Description: "Saturday morning cartoons"},
+		Intent:  proposal.Intent{Description: "Saturday morning cartoons"},
 		Attempts: []Attempt{{
 			Version: WorkflowVersion1, Number: 1, Status: AttemptRunning, StartedAt: started,
 		}},
@@ -61,9 +62,9 @@ func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {
 func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
 	t.Parallel()
 
-	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603"}}}
-	proposal := &ProposalRef{Proposal: suggest.Proposal{Trace: trace}}
+	trace := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000603"}}}
+	proposal := &ProposalRef{Proposal: proposal.Proposal{Trace: trace}}
 	failure := &Failure{Trace: trace}
 	proposalClone := cloneProposal(proposal)
 	failureClone := cloneFailure(failure)
@@ -77,12 +78,12 @@ func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
 func TestSafeFailureMapsKnownTerminalEvidenceAndRemovesPrivateTrace(t *testing.T) {
 	t.Parallel()
 
-	privateTrace := suggest.DecisionTrace{
+	privateTrace := proposal.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Terminal: suggest.TerminalMalformedExhausted,
-		Candidates: []suggest.DecisionCandidate{{
+		Candidates: []proposal.DecisionCandidate{{
 			Key: "movie:tmdb:90000603", Name: "private-library-title", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
+			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
 		}},
 	}
 	failure := safeFailure(FailureBudgetExhausted, privateTrace)
@@ -97,7 +98,7 @@ func TestSafeFailureMapsKnownTerminalEvidenceAndRemovesPrivateTrace(t *testing.T
 func TestSafeFailureUnknownEvidenceIsBoundedGeneric(t *testing.T) {
 	t.Parallel()
 
-	failure := safeFailure(FailureCode("unknown"), suggest.DecisionTrace{Terminal: "private-provider-detail"})
+	failure := safeFailure(FailureCode("unknown"), proposal.DecisionTrace{Terminal: "private-provider-detail"})
 	if failure.Code != FailureGenerationFailed || failure.Reason != FailureReasonGenerationFailed || failure.RecoveryAction != RecoveryActionRetryLater {
 		t.Fatalf("unknown failure = %+v", failure)
 	}
@@ -134,7 +135,7 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal, SurfacedTotal: tt.surfacedTotal, RecordedTotal: tt.surfacedTotal}
+			trace := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: tt.terminal, SurfacedTotal: tt.surfacedTotal, RecordedTotal: tt.surfacedTotal}
 			if err := suggest.ValidateDecisionTrace(trace); err != nil {
 				t.Fatalf("trace must be valid: %v", err)
 			}
@@ -161,7 +162,7 @@ func TestWorkflowInspectFailedMapsAllowlistedTerminals(t *testing.T) {
 func TestWorkflowInspectCatalogFailureDoesNotSendAdminToAISettings(t *testing.T) {
 	t.Parallel()
 
-	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalRetrievalFailure}
+	trace := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalRetrievalFailure}
 	workflow := newWorkflow(&recordingRepository{record: Record{
 		Version: WorkflowVersion1, JobID: "job-catalog-failed", OwnerID: "admin-1", Status: JobFailed,
 		FailureCode: FailureGenerationFailed, FailureTrace: trace,
@@ -182,7 +183,7 @@ func TestWorkflowInspectCatalogFailureDoesNotSendAdminToAISettings(t *testing.T)
 func TestWorkflowInspectProviderFailureOffersAdminAISettings(t *testing.T) {
 	t.Parallel()
 
-	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalProviderFailure}
+	trace := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, Terminal: suggest.TerminalProviderFailure}
 	workflow := newWorkflow(&recordingRepository{record: Record{
 		Version: WorkflowVersion1, JobID: "job-provider-failed", OwnerID: "admin-1", Status: JobFailed,
 		FailureCode: FailureGenerationFailed, FailureTrace: trace,
@@ -219,7 +220,7 @@ func TestWorkflowInspectAwaitingApprovalDerivesRoleSafeActions(t *testing.T) {
 		JobID:   "job-review",
 		OwnerID: "member-1",
 		Status:  JobDone,
-		Intent:  suggest.Intent{Description: "Cozy mysteries"},
+		Intent:  proposal.Intent{Description: "Cozy mysteries"},
 		Attempts: []Attempt{{
 			Version: WorkflowVersion1, Number: 1, Status: AttemptSucceeded,
 		}},
@@ -258,7 +259,7 @@ func TestWorkflowInspectDeniedPreservesRecoveryActions(t *testing.T) {
 		JobID:   "job-denied",
 		OwnerID: "member-1",
 		Status:  JobDone,
-		Intent:  suggest.Intent{Description: "Late-night creature features"},
+		Intent:  proposal.Intent{Description: "Late-night creature features"},
 		Attempts: []Attempt{{
 			Version: WorkflowVersion1, Number: 1, Status: AttemptSucceeded,
 		}},
@@ -532,7 +533,10 @@ func TestWorkflowInspectFailureReturnsSafeGuidanceAndRoleActions(t *testing.T) {
 	}
 }
 
+// recordingRepository fakes only Load. It embeds the Repository interface, so a test that reaches
+// any other method fails loudly on the nil embedded value instead of being answered by a stub.
 type recordingRepository struct {
+	Repository
 	record   Record
 	err      error
 	loadedID string

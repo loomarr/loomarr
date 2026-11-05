@@ -503,7 +503,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	browser, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Plan: PlanBaseline, Delivery: DeliveryHLS})
+	browser, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Delivery: DeliveryHLS})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +524,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 	seen := map[string]bool{}
 	var media float64
 	for media < 30 {
-		pl, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false)
+		pl, ok, err := o.OpenAsset(ctx, "ch", "4k-hevc-hdr.m3u8", false)
 		if err != nil || !ok {
 			t.Fatalf("premium playlist: ok %v err %v", ok, err)
 		}
@@ -544,7 +544,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 				continue
 			}
 			seen[uri] = true
-			a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, uri, false)
+			a, ok, err := o.OpenAsset(ctx, "ch", uri, false)
 			if err != nil || !ok {
 				t.Fatalf("asset %q: ok %v err %v", uri, ok, err)
 			}

@@ -304,7 +304,7 @@ development briefly built a second one to serve it:
   with the continuous-stream design (#1460, #1507). Phase 4 of #1512 (#1547) removed its code
   (decision [0040](decisions/0040-prepared-media-withdrawn.md)).
 - **Load certification** (`playout-load-cert`, `internal/playoutcert`) retired with the chain.
-- **Per-client `EncodePlan` sessions**, direct-play stream copy and the HEVC-follows-content rule
+- **Per-client encode plans**, direct-play stream copy and the HEVC-follows-content rule
   (V47, V48, V50) are **SUPERSEDED** by the uniform-output packager above: a channel's format follows
   its lineup, never the watching device, and there is no copy path.
 
@@ -483,7 +483,8 @@ It plays the HLS pair above. Two facts make this a real feature and not just a `
   existing `playout_token`: **no new secret**, the token never leaves the server, and the URL
   self-expires (the mock's "signed with the playout token, good for 8 hours"). The HLS routes accept
   **either** the device token (a media server) **or** a valid signed URL (a browser/native app);
-  everything else about segment auth below is unchanged.
+  everything else about segment auth below is unchanged. The op takes no request body and no
+  device capabilities: the optional `quality` query is its only per-viewer input.
 
 **Audio track selection is ours to make, because nobody else is left to make it.** With no explicit
 `-map`, ffmpeg picks one stream per type by "best" — for audio that means **the most channels**,
@@ -587,7 +588,12 @@ lineup and filler.
   API key), enables the movie and show libraries and scans them. `/v1/setup/status` reports a
   `tunarr_library` check until that is done. The wizard's dedicated "Give Tunarr your library" step
   (`web-ui.md` §13 step 5) is the only UI that triggers this connect; it exists only on the Tunarr
-  path and is never shown to an internal-playout install.
+  path and is never shown to an internal-playout install. Saving a media-server or Tunarr
+  connection setting re-runs the connect, which pushes the current library token to the source
+  Loomarr created. Channel maintenance re-runs it whenever this process has not yet wired the
+  current library connection: after a restart (an environment-set token can change with no save)
+  or after a failed connect. Tunarr redacts the token it stores, so the process's own last push is
+  the only staleness signal.
 - Programming entries need Tunarr's own program id, so the adapter maps media-server item ids through
   Tunarr's persisted `/programs` index (never the ephemeral browse handles). An unindexed item airs
   as flex, and a reconcile with misses triggers one best-effort library scan.

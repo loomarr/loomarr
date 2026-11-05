@@ -6,6 +6,7 @@ import { ThemeScope } from "@loomarr/design-system";
 import {
   PlayerChrome,
   PlayerCover,
+  PlayerInfo,
   PlayerSettings,
   PlayerSheet,
   playbarFromTimeline,
@@ -71,9 +72,16 @@ interface ChannelWatchProps {
 }
 
 const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
+// The chrome's ⟲/⟳ step, the same as ←/→ (#2088 decision 2).
+const SEEK_STEP_MS = 10_000;
+
+// The station-ID card's time on screen after a settled tune, and the Info sheet's during playback
+// (playback-clients: Station ID, Panels).
+const IDENT_MS = 5_000;
+const INFO_PLAYING_MS = 8_000;
 
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
-type WatchSheet = "channels" | "settings";
+type WatchSheet = "channels" | "info" | "settings";
 
 // HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
 // hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
@@ -83,6 +91,15 @@ const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean 
     hold(true);
     return () => hold(false);
   }, [hold, on]);
+  return null;
+};
+
+// HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
+// mock draws it; moving the pointer brings the controls back in its place.
+const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident: boolean }) => {
+  useEffect(() => {
+    if (ident) hide();
+  }, [hide, ident]);
   return null;
 };
 
@@ -227,13 +244,33 @@ const ChannelWatch = ({
   // The lower third and the playbar, read from the timeline the way every client reads it (§9). The
   // live edge is the server's clock, projected forward since the read; until the first read it is
   // this machine's.
+  const filler = osdChannel.policy?.filler;
   const chromeData = playbarFromTimeline({
     airings,
-    channel: { name: osdChannel.name, number: String(osdChannel.number) },
+    channel: {
+      era: filler?.era,
+      name: osdChannel.name,
+      number: String(osdChannel.number),
+      place: filler?.geography?.place,
+    },
     live: player.liveTransport.state,
     nowMs: serverNowMs ?? Date.now(),
     playheadMs: viewerTimeMs,
   });
+  const { info, startOverMs } = chromeData;
+
+  // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
+  // hidden. A retune drops it until the new channel settles, then shows it afresh.
+  const [ident, setIdent] = useState(false);
+  useEffect(() => {
+    if (tuning || player.status !== "playing") {
+      setIdent(false);
+      return;
+    }
+    setIdent(true);
+    const timer = window.setTimeout(() => setIdent(false), IDENT_MS);
+    return () => window.clearTimeout(timer);
+  }, [tuning, player.status]);
 
   // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
   // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
@@ -272,9 +309,9 @@ const ChannelWatch = ({
   }, [tuning, endSwitchSound]);
   useEffect(() => endSwitchSound, [endSwitchSound]);
 
-  // The one right-hand sheet (Settings or Channels) and 0-9 direct tune (#1659 W1). G opens and
-  // closes Channels; digits open a number entry; Enter tunes it at once; Escape closes the sheet.
-  // Closing a sheet hands focus back to what opened it (its button, or the frame for G).
+  // The one right-hand sheet (Settings, Info or Channels) and 0-9 direct tune (#1659 W1). I opens and
+  // closes Info, G Channels; digits open a number entry; Enter tunes it at once; Escape closes the
+  // sheet. Closing a sheet hands focus back to what opened it (its button, or the frame for a key).
   const [sheet, setSheet] = useState<WatchSheet | undefined>(undefined);
   const sheetOpenerRef = useRef<HTMLElement | null>(null);
   const toggleSheet = (next: WatchSheet) => {
@@ -288,12 +325,23 @@ const ChannelWatch = ({
     sheetOpenerRef.current?.focus({ preventScroll: true });
     sheetOpenerRef.current = null;
   }, [sheet]);
+  // Info closes by itself after eight seconds while the channel plays; paused, it stays to be read.
+  const viewerPaused = player.liveTransport.state.mode === "paused";
+  useEffect(() => {
+    if (sheet !== "info" || viewerPaused) return;
+    const timer = window.setTimeout(closeSheet, INFO_PLAYING_MS);
+    return () => window.clearTimeout(timer);
+  }, [sheet, viewerPaused, closeSheet]);
   // A preview card is open on the playbar: the controls stay shown under it.
   const [previewOpen, setPreviewOpen] = useState(false);
   const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: player.tune });
   const onShortcut = (key: string): boolean => {
     if (key === "Escape" && sheet) {
       closeSheet();
+      return true;
+    }
+    if ((key === "i" || key === "I") && info) {
+      toggleSheet("info");
       return true;
     }
     if (!drawer) return false;
@@ -343,6 +391,16 @@ const ChannelWatch = ({
           switchSound={switchSoundOn}
         />
       </PlayerSheet>
+    ) : sheet === "info" && info ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density={density}
+        icon="info"
+        onClose={closeSheet}
+        title="Info"
+      >
+        <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />
+      </PlayerSheet>
     ) : sheet === "channels" && drawer ? (
       <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
         <ChannelDrawer
@@ -378,15 +436,22 @@ const ChannelWatch = ({
   const renderChrome = (chrome: VideoPlayerChrome) => (
     <>
       <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
+      <HideForIdent hide={chrome.hide} ident={ident} />
       {errorCover ?? (
         <PlayerChrome
           band={chromeData.band}
           density={density}
           formatTime={formatGuideTime}
+          ident={ident}
           onPreviewChange={setPreviewOpen}
           playbar={
             airings.length > 0
-              ? { playheadMs: viewerTimeMs, segments: chromeData.segments, window: chromeData.window }
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
               : undefined
           }
           sheet={openSheet}
@@ -394,13 +459,18 @@ const ChannelWatch = ({
             channelsOpen: drawer ? sheet === "channels" : undefined,
             density,
             fullscreen: chrome.fullscreen,
+            infoOpen: sheet === "info",
             live: player.liveTransport.state,
             muted: chrome.muted,
             onChannels: drawer ? () => toggleSheet("channels") : undefined,
             onFullscreen: chrome.toggleFullscreen,
-            onGoLive: () => void player.liveTransport.goLive(),
+            onGoLive: chrome.goLive,
+            onInfo: info ? () => toggleSheet("info") : undefined,
             onLeave,
+            onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
+            onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
             onSettings: () => toggleSheet("settings"),
+            onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
             onTogglePlay: chrome.toggle,
             onToggleMute: () => chrome.setMuted(!chrome.muted),
             onVolume: chrome.setVolume,

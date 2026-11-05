@@ -6,11 +6,11 @@ import {
 } from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import type { LivePlaybackState } from "@/components/ui/video-player";
 import { channel } from "@/test/fixtures/channels";
@@ -35,6 +35,7 @@ const hls = vi.hoisted(() => ({
     play: vi.fn(),
     pause: vi.fn(),
     goLive: vi.fn(),
+    seek: vi.fn(),
   },
 }));
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
@@ -213,6 +214,62 @@ describe("ChannelWatch pickers", () => {
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
   });
 
+  // Seeking the window (#2088 decision 2). The timeline's clock is the server's: live is 1_060_000.
+  describe("seeking the window", () => {
+    const programmeFrom = (startMs: number) =>
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_060_000,
+        airings: [
+          { kind: "program", scheduleBlockId: "now", title: "Airing Programme", startMs, stopMs: 4_000_000 },
+        ],
+      });
+
+    beforeEach(() => hls.liveTransport.seek.mockClear());
+
+    it("steps 10 s back from ⟲ and forward from ⟳ once behind", async () => {
+      stubTracks();
+      hls.liveTransport.state = {
+        mode: "behind",
+        lagSeconds: 60,
+        viewerTimeMs: 1_000_000,
+        noticeRevision: 0,
+      };
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Back 10 seconds" }));
+      await userEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+      expect(hls.liveTransport.seek.mock.calls.map(([at]) => at)).toEqual([990_000, 1_010_000]);
+    });
+
+    it("offers no forward from live", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      expect(await screen.findByRole("button", { name: "Forward 10 seconds" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+
+    it("starts over at the programme's start while the window still holds it", async () => {
+      stubTracks();
+      server.use(programmeFrom(500_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Start over" }));
+      expect(hls.liveTransport.seek).toHaveBeenCalledWith(500_000);
+    });
+
+    it("has no Start over for a programme that began before the window", async () => {
+      stubTracks();
+      // Live is 1_060_000; the window reaches back fifteen minutes, to 160_000.
+      server.use(programmeFrom(100_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(await screen.findByText("Airing Programme")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Start over" })).not.toBeInTheDocument();
+    });
+  });
+
   it("goes live from the chrome when the viewer is behind", async () => {
     stubTracks();
     hls.liveTransport.state = { mode: "behind", lagSeconds: 23, viewerTimeMs: 977_000, noticeRevision: 0 };
@@ -335,6 +392,115 @@ describe("ChannelWatch — full-bleed route", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
+  });
+
+  // Info (#2088 decision 9): the programme on air and the next one, from ⓘ or I.
+  describe("Info and the station-ID card", () => {
+    const withProgramme = () =>
+      server.use(
+        getChannelTimelineMockHandler({
+          serverNowMs: 1_060_000,
+          airings: [
+            {
+              kind: "program",
+              scheduleBlockId: "now",
+              title: "Airing Programme",
+              description: "A storm cuts the island off.",
+              year: 1994,
+              rating: "TV-PG",
+              startMs: 1_000_000,
+              stopMs: 4_000_000,
+            },
+            {
+              kind: "program",
+              scheduleBlockId: "next",
+              title: "Next Programme",
+              startMs: 4_000_000,
+              stopMs: 5_000_000,
+            },
+          ],
+        }),
+      );
+
+    afterEach(() => vi.useRealTimers());
+
+    it("opens Info from ⓘ and from I, reading the programme and what is up next", async () => {
+      stubTracks();
+      withProgramme();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      const info = screen.getByRole("dialog", { name: "Info" });
+      expect(within(info).getByText("A storm cuts the island off.")).toBeInTheDocument();
+      expect(within(info).getByText("1994 · TV-PG")).toBeInTheDocument();
+      expect(within(info).getByText(/^Up next · .+ · Next Programme$/)).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      await userEvent.keyboard("i");
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+    });
+
+    it("has no Info while nothing is known to be airing", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Info" })).not.toBeInTheDocument();
+    });
+
+    it("closes Info by itself after eight seconds while the channel plays", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      withProgramme();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      act(() => vi.advanceTimersByTime(7_000));
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1_500));
+      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+    });
+
+    it("keeps Info open while the viewer is paused", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      withProgramme();
+      hls.liveTransport.state = {
+        mode: "paused",
+        lagSeconds: 30,
+        viewerTimeMs: 1_030_000,
+        noticeRevision: 0,
+      };
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      act(() => vi.advanceTimersByTime(20_000));
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+    });
+
+    it("names the station's era and place on the card a settled tune shows, for five seconds", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      const coast = channel({
+        id: "ch-1",
+        name: "Coast 90s",
+        number: 7,
+        status: "live",
+        policy: {
+          filler: { era: { from: 1990, to: 1999 }, geography: { country: "US", place: "Portland, ME" } },
+        },
+      });
+      render(<ChannelWatch channel={coast} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      // The picture plays: the card clears the controls, which only a playing player may hide.
+      await screen.findByRole("button", { name: "Settings" });
+      fireEvent.play(document.querySelector("video") as HTMLVideoElement);
+
+      expect(await screen.findByText("CH 7 · Coast 90s · 1990s · Portland, ME")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(5_500));
+      expect(screen.queryByText("CH 7 · Coast 90s · 1990s · Portland, ME")).not.toBeInTheDocument();
+    });
   });
 
   it("covers the picture when the stream stops, with Retry and the way out", async () => {

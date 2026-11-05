@@ -54,6 +54,11 @@ interface LiveClock {
    * when the stream first reports a position more than {@link STALL_REJOIN_LAG_SECONDS} behind live.
    */
   shouldRejoin: (position: LivePosition) => boolean;
+  /**
+   * The viewer moved to `wallClockMs` inside the window, short of the live edge (going live is
+   * `goLive`). A paused viewer stays paused at the new point; a playing one plays on behind live.
+   */
+  seekTo: (wallClockMs: number) => void;
   /** The viewer's live state, reading the displayed frame from `position` when given. */
   state: (position?: LivePosition) => LivePlaybackState;
   /** Buffering began after the attempt's first frame while the viewer had not paused. */
@@ -163,6 +168,12 @@ const createLiveClock = ({ now: deviceNow = () => Date.now() }: LiveClockOptions
       if (lag === undefined) return false;
       rejoinPending = false;
       return lag > STALL_REJOIN_LAG_SECONDS;
+    },
+    seekTo: (wallClockMs) => {
+      viewerTimeMs = wallClockMs;
+      if (mode === "paused") return;
+      mode = "behind";
+      lagMs = Math.max(0, now() - wallClockMs);
     },
     state: (position) => {
       sample(position);

@@ -194,6 +194,32 @@ describe("live clock", () => {
     });
   });
 
+  describe("seeking", () => {
+    it("leaves a playing viewer behind live by the target's distance from now", () => {
+      const clock = createLiveClock();
+      clock.begin();
+      clock.seekTo(START.getTime() - 40_000);
+      expect(clock.state()).toMatchObject({
+        lagSeconds: 40,
+        mode: "behind",
+        viewerTimeMs: START.getTime() - 40_000,
+      });
+      // Behind live, the lag holds as the wall clock moves on.
+      vi.advanceTimersByTime(5_000);
+      expect(clock.state().lagSeconds).toBe(40);
+    });
+
+    it("keeps a paused viewer paused at the target, resuming behind live from it", () => {
+      const clock = createLiveClock();
+      clock.begin();
+      clock.pause({ programTimeMs: START.getTime() });
+      clock.seekTo(START.getTime() - 30_000);
+      expect(clock.state()).toMatchObject({ mode: "paused", viewerTimeMs: START.getTime() - 30_000 });
+      expect(clock.resume()).toBe("behind");
+      expect(clock.state().lagSeconds).toBe(30);
+    });
+  });
+
   describe("stall rejoin", () => {
     const stall = (seconds: number) => {
       const clock = createLiveClock();

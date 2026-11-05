@@ -40,7 +40,7 @@ func (notificationAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *identit
 type acceptingDestinationValidator struct{ means notifications.Means }
 
 func (v acceptingDestinationValidator) Means() notifications.Means { return v.means }
-func (acceptingDestinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+func (acceptingDestinationValidator) ValidateDestination(notifications.ProviderSettings) error {
 	return nil
 }
 

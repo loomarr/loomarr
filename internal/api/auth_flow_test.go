@@ -14,6 +14,8 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -582,8 +584,10 @@ func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string,
 	t.Helper()
 	p.ID, p.CreatedBy, p.Status = id, createdBy, status
 	p.JobID = "job-" + id
-	if p.ProposalJSON == "" {
-		p.ProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}]}`
+	if p.Body.Lineup == nil && p.Body.Acquisitions == nil {
+		p.Body = proposal.Proposal{Acquisitions: []proposal.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 90000100, Name: "Quiet Engines", Year: 1994},
+		}}
 	}
 	if err := createProposalWithJob(st, context.Background(), p); err != nil {
 		t.Fatal(err)

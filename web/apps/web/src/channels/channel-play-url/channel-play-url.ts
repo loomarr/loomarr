@@ -2,7 +2,6 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import {
-  type DevicePlaybackProfile,
   type PlayerChannel,
   type PlayerSource,
   type PlayerSourcePort,
@@ -32,13 +31,9 @@ const qualityHint = (): "auto" | "720" | "480" => {
 // mint is shared by the tuned channel and the neighbour warmer, so a warmed neighbour's exact signed
 // URL can be reused for the real tune. A fresh signature would produce different asset cache keys
 // even though the publication bytes are identical.
-const mint = async (
-  channel: PlayerChannel,
-  profile: DevicePlaybackProfile,
-  signal: AbortSignal,
-): Promise<PlayerSource> => {
+const mint = async (channel: PlayerChannel, signal: AbortSignal): Promise<PlayerSource> => {
   const request = async () =>
-    unwrap(await channelsApi.channelPlayUrl(channel.id, profile, { quality: qualityHint() }, { signal }));
+    unwrap(await channelsApi.channelPlayUrl(channel.id, { quality: qualityHint() }, { signal }));
   let body: Awaited<ReturnType<typeof request>>;
   try {
     body = await request();
@@ -65,12 +60,8 @@ const mint = async (
 // identically; this adds only the browser's transport (same-origin credentials, HTTP cache for the
 // immutable assets) and keeps the exact normal signed URL for the real tune. Capacity and errors
 // remain harmless speculative misses.
-const warm = async (
-  channel: PlayerChannel,
-  profile: DevicePlaybackProfile,
-  signal: AbortSignal,
-): Promise<WarmedSource | undefined> => {
-  const source = await mint(channel, profile, signal);
+const warm = async (channel: PlayerChannel, signal: AbortSignal): Promise<WarmedSource | undefined> => {
+  const source = await mint(channel, signal);
   const { warmed } = await warmSource(new URL(source.uri, window.location.href).toString(), (url, kind) =>
     fetch(url, {
       cache: kind === "playlist" ? "no-store" : "force-cache",

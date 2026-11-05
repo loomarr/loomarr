@@ -105,35 +105,13 @@ func candidates(kind mp.Kind, media string) []string {
 	case mp.KindSeries:
 		return []string{filepath.Join(media, "tvshow.nfo")}
 	case mp.KindMovie:
-		if soleVideo(media) {
+		if mp.SoleVideo(media) {
 			return []string{sidecar(media), filepath.Join(filepath.Dir(media), "movie.nfo")}
 		}
 		return []string{sidecar(media)}
 	default:
 		return []string{sidecar(media)}
 	}
-}
-
-// videoExtensions are the containers a movie folder's video file may use.
-var videoExtensions = map[string]bool{
-	".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true,
-	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
-}
-
-// soleVideo reports whether media is the only video in its folder. Kodi's movie.nfo describes a
-// folder, so in a folder of several movies it describes none of them.
-func soleVideo(media string) bool {
-	entries, err := os.ReadDir(filepath.Dir(media))
-	if err != nil {
-		return false
-	}
-	videos := 0
-	for _, e := range entries {
-		if !e.IsDir() && videoExtensions[strings.ToLower(filepath.Ext(e.Name()))] {
-			videos++
-		}
-	}
-	return videos <= 1
 }
 
 func sidecar(media string) string {

@@ -4,6 +4,7 @@ import {
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getListFillerMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getMeMockHandler,
   getSettingsListMockHandler,
@@ -15,7 +16,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -147,6 +149,10 @@ const renderPage = (tab: FillerPageProps["tab"], initialPath = "/filler/library"
   render(<RouterHarness content={<FillerPage tab={tab} />} initialPath={initialPath} />, {
     wrapper: makeWrapper(),
   });
+
+beforeEach(() => {
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("FillerPage shell", () => {
   it("uses the member-readable watch state without requesting admin settings", async () => {
