@@ -51,7 +51,6 @@ describe("measureSource", () => {
       import { Dialog } from "@base-ui/react/dialog";
       import { Button } from "@/components/ui/button";
       export * from "@/components/ui";
-      import { tokens } from "@loomarr/tokens";
       const lazy = import("@/components/ui/sheet");
       import { Card } from "../../components/ui/card";
       import { formatTime } from "@/lib/time";
@@ -62,7 +61,6 @@ describe("measureSource", () => {
       cva: 1,
       baseUi: 1,
       legacyUi: 4,
-      legacyTokens: 1,
     });
   });
 
@@ -73,9 +71,9 @@ describe("measureSource", () => {
     assert.deepEqual(measureSource(other, appFile("components/ui/dialog/dialog.tsx")), { legacyUi: 1 });
   });
 
-  it("counts legacy token imports in CSS", () => {
-    const css = `@import "tailwindcss";\n@import "@loomarr/tokens/theme.css";\n`;
-    assert.deepEqual(measureSource(css, appFile("styles.css")), { legacyTokens: 1 });
+  it("counts legacy component imports in CSS", () => {
+    const css = `@import "tailwindcss";\n@import "@/components/ui/button/button.css";\n`;
+    assert.deepEqual(measureSource(css, appFile("styles.css")), { legacyUi: 1 });
   });
 });
 

@@ -1,4 +1,4 @@
-import { motion, radius, rowHeight, space } from "@loomarr/tokens";
+import { webMotion, webRadius, webRowHeight, webSpace } from "@loomarr/design-system/web-theme";
 
 // Spacing, radius and motion — the geometry half of the system (§2.3, §2.4, §5.1a).
 //
@@ -19,7 +19,7 @@ const Spacing = () => (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Space</h2>
       <div className="flex flex-col gap-2">
-        {Object.entries(space).map(([step, px]) => (
+        {Object.entries(webSpace).map(([step, px]) => (
           <div key={step} className="flex items-center gap-4">
             <span className="text-2xs text-static-400 w-8 shrink-0 font-mono">{step}</span>
             <span className="text-2xs text-static-400 w-12 shrink-0 font-mono tabular-nums">{`${px}px`}</span>
@@ -32,7 +32,7 @@ const Spacing = () => (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Radius</h2>
       <div className="flex flex-wrap gap-4">
-        {Object.entries(radius).map(([name, px]) => (
+        {Object.entries(webRadius).map(([name, px]) => (
           <div key={name} className="flex flex-col items-center gap-2">
             <div className="border-border bg-static-800 size-16 border" style={{ borderRadius: px }} />
             <span className="text-2xs text-static-400 font-mono">{`${name} · ${px}px`}</span>
@@ -46,10 +46,10 @@ const Spacing = () => (
       <div className="flex flex-col gap-2">
         <div
           className="border-border flex items-center rounded-md border px-3"
-          style={{ height: rowHeight.compact }}
+          style={{ height: webRowHeight.compact }}
         >
           <span className="text-sm">A table row at compact density</span>
-          <span className="text-2xs text-static-400 ml-auto font-mono">{`${rowHeight.compact}px`}</span>
+          <span className="text-2xs text-static-400 ml-auto font-mono">{`${webRowHeight.compact}px`}</span>
         </div>
         <p className="text-muted-foreground max-w-2xl text-sm">
           Tables use the compact row height. A household's library runs to thousands of titles, so rows are
@@ -61,7 +61,7 @@ const Spacing = () => (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Motion</h2>
       <div className="flex flex-col gap-2">
-        {Object.entries(motion.duration).map(([name, value]) => (
+        {Object.entries(webMotion.duration).map(([name, value]) => (
           <div key={name} className="flex items-center gap-4">
             <span className="text-2xs text-static-400 w-14 shrink-0 font-mono">{name}</span>
             <span className="text-2xs text-static-400 w-16 shrink-0 font-mono">{value}</span>
@@ -72,7 +72,7 @@ const Spacing = () => (
         ))}
         <div className="flex items-center gap-4">
           <span className="text-2xs text-static-400 w-14 shrink-0 font-mono">ease</span>
-          <span className="text-2xs text-static-400 shrink-0 font-mono">{motion.ease}</span>
+          <span className="text-2xs text-static-400 shrink-0 font-mono">{webMotion.ease}</span>
         </div>
         <p className="text-muted-foreground max-w-2xl text-sm">
           One ease-out curve everywhere. Motion is short and decelerating — it should confirm that something

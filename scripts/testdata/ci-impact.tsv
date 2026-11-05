@@ -22,7 +22,7 @@ web-unit-test	web/apps/web/src/filler/filler-settings-section/filler-settings-se
 web-knip-config	web/knip.ts	web
 web-unit-test-tsx	web/apps/web/src/diagnostics/application-diagnostics/application-diagnostics.test.tsx	web,image
 web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	contracts,web,visual,image
-web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
+web-runtime-tokens	web/packages/design-system/src/tokens/web-theme/web-theme.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,tuner,image,android
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv,android
 knip-expo-mobile-config	web/apps/mobile/app.config.cjs	clients,apple_mobile,expo_android_mobile
