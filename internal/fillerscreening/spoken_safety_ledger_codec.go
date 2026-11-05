@@ -1,4 +1,4 @@
-package fillersafety
+package fillerscreening
 
 import (
 	"bytes"
@@ -6,11 +6,11 @@ import (
 	"io"
 )
 
-// CanonicalLedgerEvent validates an event and returns the exact payload bytes
+// CanonicalSpokenSafetyLedgerEvent validates an event and returns the exact payload bytes
 // used for idempotency and conflict detection by every store backend.
-func CanonicalLedgerEvent(event LedgerEvent) ([]byte, error) {
+func CanonicalSpokenSafetyLedgerEvent(event SpokenSafetyLedgerEvent) ([]byte, error) {
 	if !boundedLedgerID(event.ID) || !boundedLedgerID(event.RunID) || event.Ordinal < 0 || event.CreatedAt.IsZero() {
-		return nil, ErrLedgerInvalid
+		return nil, ErrSpokenSafetyLedgerInvalid
 	}
 	payloads := []any{event.Source, event.Proposal, event.Reserve, event.Settle, event.Terminal}
 	present := 0
@@ -20,50 +20,50 @@ func CanonicalLedgerEvent(event LedgerEvent) ([]byte, error) {
 		}
 	}
 	if present != 1 || !validEventPayload(event) {
-		return nil, ErrLedgerInvalid
+		return nil, ErrSpokenSafetyLedgerInvalid
 	}
 	raw, err := json.Marshal(payloadForEvent(event))
 	if err != nil || len(raw) > maxLedgerPayload {
-		return nil, ErrLedgerInvalid
+		return nil, ErrSpokenSafetyLedgerInvalid
 	}
 	return raw, nil
 }
 
-func DecodeLedgerEvent(kind LedgerEventKind, raw []byte) (LedgerEvent, error) {
-	event := LedgerEvent{Kind: kind}
+func DecodeSpokenSafetyLedgerEvent(kind SpokenSafetyLedgerEventKind, raw []byte) (SpokenSafetyLedgerEvent, error) {
+	event := SpokenSafetyLedgerEvent{Kind: kind}
 	var target any
 	switch kind {
 	case LedgerSourcePlanned:
-		event.Source = &SourcePlanned{}
+		event.Source = &SpokenSafetySourcePlanned{}
 		target = event.Source
 	case LedgerProposalCompleted:
-		event.Proposal = &ProposalCompleted{}
+		event.Proposal = &SpokenSafetyProposalCompleted{}
 		target = event.Proposal
 	case LedgerInferenceReserved:
-		event.Reserve = &InferenceReserved{}
+		event.Reserve = &SpokenSafetyInferenceReserved{}
 		target = event.Reserve
 	case LedgerInferenceSettled:
-		event.Settle = &InferenceSettled{}
+		event.Settle = &SpokenSafetyInferenceSettled{}
 		target = event.Settle
 	case LedgerTerminal:
-		event.Terminal = &TerminalResult{}
+		event.Terminal = &SpokenSafetyTerminalResult{}
 		target = event.Terminal
 	default:
-		return LedgerEvent{}, ErrLedgerInvalid
+		return SpokenSafetyLedgerEvent{}, ErrSpokenSafetyLedgerInvalid
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return LedgerEvent{}, ErrLedgerInvalid
+		return SpokenSafetyLedgerEvent{}, ErrSpokenSafetyLedgerInvalid
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return LedgerEvent{}, ErrLedgerInvalid
+		return SpokenSafetyLedgerEvent{}, ErrSpokenSafetyLedgerInvalid
 	}
 	return event, nil
 }
 
-func LedgerEventInferenceID(event LedgerEvent) string {
+func SpokenSafetyLedgerEventInferenceID(event SpokenSafetyLedgerEvent) string {
 	if event.Reserve != nil {
 		return event.Reserve.EvaluationID
 	}
@@ -73,7 +73,7 @@ func LedgerEventInferenceID(event LedgerEvent) string {
 	return ""
 }
 
-func payloadForEvent(event LedgerEvent) any {
+func payloadForEvent(event SpokenSafetyLedgerEvent) any {
 	switch event.Kind {
 	case LedgerSourcePlanned:
 		return event.Source
@@ -92,15 +92,15 @@ func payloadForEvent(event LedgerEvent) any {
 
 func nilPayload(value any) bool {
 	switch payload := value.(type) {
-	case *SourcePlanned:
+	case *SpokenSafetySourcePlanned:
 		return payload == nil
-	case *ProposalCompleted:
+	case *SpokenSafetyProposalCompleted:
 		return payload == nil
-	case *InferenceReserved:
+	case *SpokenSafetyInferenceReserved:
 		return payload == nil
-	case *InferenceSettled:
+	case *SpokenSafetyInferenceSettled:
 		return payload == nil
-	case *TerminalResult:
+	case *SpokenSafetyTerminalResult:
 		return payload == nil
 	default:
 		return true

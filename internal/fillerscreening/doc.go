@@ -5,7 +5,9 @@
 // SCREEN conveyor stage that turns the outcome into a pipeline verdict. It owns the four-axis
 // aggregate (SegmentScreeningEvidence), the per-axis result model it is built from, and
 // Airworthiness: the deterministic audience policy that reduces the three safety axes' certified
-// observations to the one decision every aggregate carries.
+// observations to the one decision every aggregate carries. It also owns the spoken-safety
+// cascade: the fail-closed complete-source shadow reduction and the closed contract of its
+// append-only execution ledger, which internal/fillerstore persists.
 //
 // It sits above internal/filler and imports it for the screening subject and the sidecar
 // reference, the clip catalog types and the stage contract; internal/filler knows nothing of it.

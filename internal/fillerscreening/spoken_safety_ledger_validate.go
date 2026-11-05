@@ -1,8 +1,6 @@
-package fillersafety
+package fillerscreening
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,52 +12,44 @@ const (
 	maxProposedIntervalMS = 30_000
 )
 
-func validSHA256(value string) bool {
-	if len(value) != sha256.Size*2 || value != strings.ToLower(value) {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
-}
-
-func ValidateLedgerRun(run LedgerRun) error {
+func ValidateSpokenSafetyLedgerRun(run SpokenSafetyLedgerRun) error {
 	if !boundedLedgerID(run.ID) || !boundedLedgerID(run.ClipHash) ||
 		!validSHA256(run.AuthoritySHA256) || !validSHA256(run.SourceSHA256) ||
 		!validSHA256(run.CertificationSHA256) || !validSHA256(run.PolicySHA256) || !validSHA256(run.ProposerSHA256) ||
 		!boundedLedgerID(run.Implementation) || run.SourceBytes <= 0 || run.DurationMS <= 0 || run.CreatedAt.IsZero() {
-		return ErrLedgerInvalid
+		return ErrSpokenSafetyLedgerInvalid
 	}
 	return nil
 }
 
-// ValidateLedgerAppend owns the closed event grammar shared by every store
+// ValidateSpokenSafetyLedgerAppend owns the closed event grammar shared by every store
 // backend and completed-run replay. It accepts only the next event for one run.
-func ValidateLedgerAppend(prior []LedgerEvent, event LedgerEvent) error {
-	if _, err := CanonicalLedgerEvent(event); err != nil || event.Ordinal != len(prior) {
-		return ErrLedgerConflict
+func ValidateSpokenSafetyLedgerAppend(prior []SpokenSafetyLedgerEvent, event SpokenSafetyLedgerEvent) error {
+	if _, err := CanonicalSpokenSafetyLedgerEvent(event); err != nil || event.Ordinal != len(prior) {
+		return ErrSpokenSafetyLedgerConflict
 	}
 	for index, earlier := range prior {
 		if earlier.RunID != event.RunID || earlier.Ordinal != index || earlier.CreatedAt.After(event.CreatedAt) {
-			return ErrLedgerConflict
+			return ErrSpokenSafetyLedgerConflict
 		}
 	}
 	if len(prior) == 0 {
 		if event.Kind == LedgerSourcePlanned {
 			return nil
 		}
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if prior[len(prior)-1].Kind == LedgerTerminal {
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if len(prior) == 1 {
 		if event.Kind == LedgerProposalCompleted {
 			return nil
 		}
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if event.Kind == LedgerSourcePlanned || event.Kind == LedgerProposalCompleted {
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if event.Settle != nil {
 		reservationFound := false
@@ -69,13 +59,13 @@ func ValidateLedgerAppend(prior []LedgerEvent, event LedgerEvent) error {
 				reservationFound = true
 			}
 			if earlier.Settle != nil && earlier.Settle.ReservationEventID == event.Settle.ReservationEventID {
-				return ErrLedgerConflict
+				return ErrSpokenSafetyLedgerConflict
 			}
 		}
 		if reservationFound {
 			return nil
 		}
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if event.Terminal != nil {
 		ids := make([]string, 0, len(prior))
@@ -87,7 +77,7 @@ func ValidateLedgerAppend(prior []LedgerEvent, event LedgerEvent) error {
 			}
 			if earlier.Settle != nil {
 				if _, exists := unsettled[earlier.Settle.ReservationEventID]; !exists {
-					return ErrLedgerConflict
+					return ErrSpokenSafetyLedgerConflict
 				}
 				delete(unsettled, earlier.Settle.ReservationEventID)
 			}
@@ -95,15 +85,15 @@ func ValidateLedgerAppend(prior []LedgerEvent, event LedgerEvent) error {
 		if len(unsettled) == 0 && slices.Equal(ids, event.Terminal.EventIDs) {
 			return nil
 		}
-		return ErrLedgerConflict
+		return ErrSpokenSafetyLedgerConflict
 	}
 	if event.Kind == LedgerInferenceReserved {
 		return nil
 	}
-	return ErrLedgerConflict
+	return ErrSpokenSafetyLedgerConflict
 }
 
-func validEventPayload(event LedgerEvent) bool {
+func validEventPayload(event SpokenSafetyLedgerEvent) bool {
 	switch event.Kind {
 	case LedgerSourcePlanned:
 		return event.Source != nil && validCompleteSpan(event.Source.Audio) && event.Source.Audio == event.Source.Video
@@ -120,9 +110,9 @@ func validEventPayload(event LedgerEvent) bool {
 	}
 }
 
-func validCompleteSpan(span Span) bool { return span.StartMS == 0 && span.EndMS > 0 }
+func validCompleteSpan(span SpokenSafetySpan) bool { return span.StartMS == 0 && span.EndMS > 0 }
 
-func validProposalLedger(proposal ProposalCompleted) bool {
+func validProposalLedger(proposal SpokenSafetyProposalCompleted) bool {
 	if !validSHA256(proposal.ProposerSHA256) ||
 		(proposal.State != ProposalComplete && proposal.State != ProposalFailed) ||
 		len(proposal.Candidates) > maxProposedCandidates {
@@ -144,7 +134,7 @@ func validProposalLedger(proposal ProposalCompleted) bool {
 	return true
 }
 
-func validReservation(reservation InferenceReserved) bool {
+func validReservation(reservation SpokenSafetyInferenceReserved) bool {
 	if !boundedLedgerID(reservation.EvaluationID) || !validSHA256(reservation.RequestSHA256) ||
 		!boundedPublicIdentity(reservation.RequestedProvider) || !boundedPublicIdentity(reservation.RequestedModel) ||
 		!boundedPublicIdentity(reservation.UpstreamProvider) || !validSHA256(reservation.CapabilitySHA256) ||
@@ -177,7 +167,7 @@ func validReservation(reservation InferenceReserved) bool {
 	return reservation.CandidateID == "" && slices.Equal(modalities, []string{"audio", "video"})
 }
 
-func validSettlement(settlement InferenceSettled) bool {
+func validSettlement(settlement SpokenSafetyInferenceSettled) bool {
 	if !boundedLedgerID(settlement.ReservationEventID) || !boundedLedgerID(settlement.EvaluationID) ||
 		settlement.ChargedNanoUSD < 0 || settlement.AccountedNanoUSD < 0 || settlement.PromptTokens < 0 || settlement.CompletionTokens < 0 {
 		return false
@@ -223,9 +213,9 @@ func optionalLedgerID(value string) bool { return value == "" || boundedLedgerID
 
 func optionalPublicIdentity(value string) bool { return value == "" || boundedPublicIdentity(value) }
 
-func validTerminal(terminal TerminalResult) bool {
+func validTerminal(terminal SpokenSafetyTerminalResult) bool {
 	if _, valid := validateEvidence(terminal.Evidence); !valid ||
-		!reflect.DeepEqual(terminal.Result, Reduce(terminal.Evidence)) || len(terminal.EventIDs) == 0 {
+		!reflect.DeepEqual(terminal.Result, ReduceSpokenSafety(terminal.Evidence)) || len(terminal.EventIDs) == 0 {
 		return false
 	}
 	seen := make(map[string]struct{}, len(terminal.EventIDs))
@@ -251,7 +241,7 @@ func validTerminal(terminal TerminalResult) bool {
 	return true
 }
 
-func validSettlementFailure(value SettlementFailure) bool {
+func validSettlementFailure(value SpokenSafetySettlementFailure) bool {
 	switch value {
 	case FailureTransport, FailureInvalidResponse, FailureRouteMismatch, FailureBudget, FailureInterrupted:
 		return true

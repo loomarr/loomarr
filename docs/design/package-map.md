@@ -83,8 +83,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
-- **`fillersafety`** · 1 importer
-  Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
@@ -295,7 +293,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`devbootstrap`** · → `auth`, `settings`
   Prepares an isolated agent worktree for UI development.
-- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
+- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`housekeeping`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`, `settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.

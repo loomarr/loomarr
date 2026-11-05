@@ -5,17 +5,17 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 )
 
 // ReserveSpokenSafetyCall adapts the domain-owned call contract to the generic
 // V62 inference budget row and commits it with the ledger event atomically.
 func (s *sqlStore) ReserveSpokenSafetyCall(
 	ctx context.Context,
-	command fillersafety.HostedCallReservation,
-) (fillersafety.LedgerEvent, error) {
-	if err := fillersafety.ValidateHostedCallReservation(command); err != nil {
-		return fillersafety.LedgerEvent{}, err
+	command fillerscreening.SpokenSafetyHostedCallReservation,
+) (fillerscreening.SpokenSafetyLedgerEvent, error) {
+	if err := fillerscreening.ValidateSpokenSafetyHostedCallReservation(command); err != nil {
+		return fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	evaluation := InferenceEvaluation{
 		ID: command.EvaluationID, ClipHash: command.ClipHash, RunID: command.RunID,
@@ -49,14 +49,14 @@ func (s *sqlStore) ReserveSpokenSafetyCall(
 // failure class. A provider error string never enters either durable record.
 func (s *sqlStore) SettleSpokenSafetyCall(
 	ctx context.Context,
-	command fillersafety.HostedCallSettlement,
-) (fillersafety.LedgerEvent, error) {
-	if err := fillersafety.ValidateHostedCallSettlement(command); err != nil {
-		return fillersafety.LedgerEvent{}, err
+	command fillerscreening.SpokenSafetyHostedCallSettlement,
+) (fillerscreening.SpokenSafetyLedgerEvent, error) {
+	if err := fillerscreening.ValidateSpokenSafetyHostedCallSettlement(command); err != nil {
+		return fillerscreening.SpokenSafetyLedgerEvent{}, err
 	}
 	state := InferenceCompleted
 	failureReason := ""
-	if command.Failure != fillersafety.FailureNone {
+	if command.Failure != fillerscreening.FailureNone {
 		state = InferenceFailed
 		failureReason = string(command.Failure)
 	}

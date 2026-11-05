@@ -33,7 +33,7 @@ for sub, pkgs in {
     "scheduler/guide": "schedule binder programmer channels plannerreference channelmaint",
     "jobs runtime": "jobs bgexec",
     "filler": "filler filleradmission fillerscreening fillercorpus fillerdecision fillerenrichment fillereval "
-              "fillerresearch fillersafety fillerstructure fillerstructuremedia fillerstructurewindow "
+              "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
               "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
     "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
                 "moviecollections tmdb catalog reference quality",

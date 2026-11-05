@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -17,7 +17,7 @@ import (
 // process. Unknown provider settlement keeps the full reservation accounted.
 func (s *sqlStore) RecoverInterruptedSpokenSafetyRuns(ctx context.Context, at time.Time) (int, error) {
 	if at.IsZero() {
-		return 0, fillersafety.ErrLedgerInvalid
+		return 0, fillerscreening.ErrSpokenSafetyLedgerInvalid
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id FROM filler_spoken_safety_runs r
 		WHERE NOT EXISTS (SELECT 1 FROM filler_spoken_safety_events e
@@ -74,16 +74,16 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 	if err != nil {
 		return false, err
 	}
-	if len(events) > 0 && events[len(events)-1].Kind == fillersafety.LedgerTerminal {
+	if len(events) > 0 && events[len(events)-1].Kind == fillerscreening.LedgerTerminal {
 		return false, nil
 	}
 
 	if len(events) == 0 {
-		event := fillersafety.LedgerEvent{
+		event := fillerscreening.SpokenSafetyLedgerEvent{
 			ID: recoveryLedgerID(runID, "source"), RunID: runID, Ordinal: 0,
-			Kind: fillersafety.LedgerSourcePlanned,
-			Source: &fillersafety.SourcePlanned{
-				Audio: fillersafety.Span{EndMS: run.DurationMS}, Video: fillersafety.Span{EndMS: run.DurationMS},
+			Kind: fillerscreening.LedgerSourcePlanned,
+			Source: &fillerscreening.SpokenSafetySourcePlanned{
+				Audio: fillerscreening.SpokenSafetySpan{EndMS: run.DurationMS}, Video: fillerscreening.SpokenSafetySpan{EndMS: run.DurationMS},
 			},
 			CreatedAt: at,
 		}
@@ -93,11 +93,11 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 		events = append(events, event)
 	}
 	if len(events) == 1 {
-		event := fillersafety.LedgerEvent{
+		event := fillerscreening.SpokenSafetyLedgerEvent{
 			ID: recoveryLedgerID(runID, "proposal"), RunID: runID, Ordinal: 1,
-			Kind: fillersafety.LedgerProposalCompleted,
-			Proposal: &fillersafety.ProposalCompleted{
-				State: fillersafety.ProposalFailed, ProposerSHA256: run.ProposerSHA256, Candidates: []fillersafety.Candidate{},
+			Kind: fillerscreening.LedgerProposalCompleted,
+			Proposal: &fillerscreening.SpokenSafetyProposalCompleted{
+				State: fillerscreening.ProposalFailed, ProposerSHA256: run.ProposerSHA256, Candidates: []fillerscreening.SpokenSafetyCandidate{},
 			},
 			CreatedAt: at,
 		}
@@ -114,7 +114,7 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 		}
 	}
 	for _, reservation := range slices.Clone(events) {
-		if reservation.Reserve == nil || reservation.Reserve.State != fillersafety.ReservationAccepted {
+		if reservation.Reserve == nil || reservation.Reserve.State != fillerscreening.ReservationAccepted {
 			continue
 		}
 		if _, ok := settled[reservation.ID]; ok {
@@ -134,12 +134,12 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 				return false, err
 			}
 		}
-		event := fillersafety.LedgerEvent{
+		event := fillerscreening.SpokenSafetyLedgerEvent{
 			ID: recoveryLedgerID(runID, reservation.ID), RunID: runID, Ordinal: len(events),
-			Kind: fillersafety.LedgerInferenceSettled,
-			Settle: &fillersafety.InferenceSettled{
+			Kind: fillerscreening.LedgerInferenceSettled,
+			Settle: &fillerscreening.SpokenSafetyInferenceSettled{
 				ReservationEventID: reservation.ID, EvaluationID: stored.ID,
-				State: fillersafety.SettlementUnknown, Failure: fillersafety.FailureInterrupted,
+				State: fillerscreening.SettlementUnknown, Failure: fillerscreening.FailureInterrupted,
 				AccountedNanoUSD: stored.ReservedNanoUSD,
 			},
 			CreatedAt: at,
@@ -155,11 +155,11 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 	for _, event := range events {
 		ids = append(ids, event.ID)
 	}
-	terminal := fillersafety.LedgerEvent{
+	terminal := fillerscreening.SpokenSafetyLedgerEvent{
 		ID: recoveryLedgerID(runID, "terminal"), RunID: runID, Ordinal: len(events),
-		Kind: fillersafety.LedgerTerminal,
-		Terminal: &fillersafety.TerminalResult{
-			Evidence: evidence, Result: fillersafety.Reduce(evidence), EventIDs: ids,
+		Kind: fillerscreening.LedgerTerminal,
+		Terminal: &fillerscreening.SpokenSafetyTerminalResult{
+			Evidence: evidence, Result: fillerscreening.ReduceSpokenSafety(evidence), EventIDs: ids,
 		},
 		CreatedAt: at,
 	}
@@ -172,33 +172,33 @@ func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at 
 	return true, nil
 }
 
-func recoveredSpokenSafetyEvidence(events []fillersafety.LedgerEvent) fillersafety.Evidence {
-	failed := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalFailed, Candidates: []fillersafety.Candidate{},
-		Audio: []fillersafety.AudioAssessment{}, Video: fillersafety.VideoNotRun,
+func recoveredSpokenSafetyEvidence(events []fillerscreening.SpokenSafetyLedgerEvent) fillerscreening.SpokenSafetyEvidence {
+	failed := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalFailed, Candidates: []fillerscreening.SpokenSafetyCandidate{},
+		Audio: []fillerscreening.SpokenSafetyAudioAssessment{}, Video: fillerscreening.VideoNotRun,
 	}
-	var proposal *fillersafety.ProposalCompleted
+	var proposal *fillerscreening.SpokenSafetyProposalCompleted
 	for _, event := range events {
 		if event.Proposal != nil {
 			proposal = event.Proposal
 			break
 		}
 	}
-	if proposal == nil || proposal.State != fillersafety.ProposalComplete {
+	if proposal == nil || proposal.State != fillerscreening.ProposalComplete {
 		return failed
 	}
-	evidence := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalComplete, Candidates: slices.Clone(proposal.Candidates),
-		Audio: make([]fillersafety.AudioAssessment, 0, len(proposal.Candidates)), Video: fillersafety.VideoNotRun,
+	evidence := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalComplete, Candidates: slices.Clone(proposal.Candidates),
+		Audio: make([]fillerscreening.SpokenSafetyAudioAssessment, 0, len(proposal.Candidates)), Video: fillerscreening.VideoNotRun,
 	}
 	for _, candidate := range proposal.Candidates {
-		evidence.Audio = append(evidence.Audio, fillersafety.AudioAssessment{
+		evidence.Audio = append(evidence.Audio, fillerscreening.SpokenSafetyAudioAssessment{
 			CandidateID: candidate.ID, State: recoveredAudioState(events, candidate.ID),
 		})
 	}
 	allAbsent := true
 	for _, assessment := range evidence.Audio {
-		if assessment.State != fillersafety.AudioAbsent {
+		if assessment.State != fillerscreening.AudioAbsent {
 			allAbsent = false
 			break
 		}
@@ -209,16 +209,16 @@ func recoveredSpokenSafetyEvidence(events []fillersafety.LedgerEvent) fillersafe
 	return evidence
 }
 
-func recoveredAudioState(events []fillersafety.LedgerEvent, candidateID string) fillersafety.AudioState {
-	states := []fillersafety.AudioState{}
+func recoveredAudioState(events []fillerscreening.SpokenSafetyLedgerEvent, candidateID string) fillerscreening.SpokenSafetyAudioState {
+	states := []fillerscreening.SpokenSafetyAudioState{}
 	for _, event := range events {
 		if event.Reserve == nil || event.Reserve.CandidateID != candidateID {
 			continue
 		}
-		state := fillersafety.AudioFailed
+		state := fillerscreening.AudioFailed
 		for _, later := range events {
-			if later.Settle != nil && later.Settle.ReservationEventID == event.ID && later.Settle.State == fillersafety.SettlementCompleted {
-				state = fillersafety.AudioState(later.Settle.Outcome)
+			if later.Settle != nil && later.Settle.ReservationEventID == event.ID && later.Settle.State == fillerscreening.SettlementCompleted {
+				state = fillerscreening.SpokenSafetyAudioState(later.Settle.Outcome)
 			}
 		}
 		states = append(states, state)
@@ -226,19 +226,19 @@ func recoveredAudioState(events []fillersafety.LedgerEvent, candidateID string) 
 	if len(states) == 1 {
 		return states[0]
 	}
-	return fillersafety.AudioFailed
+	return fillerscreening.AudioFailed
 }
 
-func recoveredVideoState(events []fillersafety.LedgerEvent) fillersafety.VideoState {
-	states := []fillersafety.VideoState{}
+func recoveredVideoState(events []fillerscreening.SpokenSafetyLedgerEvent) fillerscreening.SpokenSafetyVideoState {
+	states := []fillerscreening.SpokenSafetyVideoState{}
 	for _, event := range events {
 		if event.Reserve == nil || event.Reserve.CandidateID != "" {
 			continue
 		}
-		state := fillersafety.VideoFailed
+		state := fillerscreening.VideoFailed
 		for _, later := range events {
-			if later.Settle != nil && later.Settle.ReservationEventID == event.ID && later.Settle.State == fillersafety.SettlementCompleted {
-				state = fillersafety.VideoState(later.Settle.Outcome)
+			if later.Settle != nil && later.Settle.ReservationEventID == event.ID && later.Settle.State == fillerscreening.SettlementCompleted {
+				state = fillerscreening.SpokenSafetyVideoState(later.Settle.Outcome)
 			}
 		}
 		states = append(states, state)
@@ -246,7 +246,7 @@ func recoveredVideoState(events []fillersafety.LedgerEvent) fillersafety.VideoSt
 	if len(states) == 1 {
 		return states[0]
 	}
-	return fillersafety.VideoFailed
+	return fillerscreening.VideoFailed
 }
 
 func recoveryLedgerID(runID, part string) string {
