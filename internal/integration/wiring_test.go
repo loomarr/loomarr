@@ -314,7 +314,7 @@ func TestWiring_FreshInstall(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
 		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
 		{http.MethodPost, "/v1/setup/tunarr-connect", "", http.StatusNotImplemented},
 	}
@@ -372,7 +372,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
 		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
 	}
 	for _, r := range preCheck {
@@ -405,7 +405,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	}
 
 	// ...AND the routes are enabled WITH NO RESTART — the whole point of the fix.
-	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"x"}`, admin); code == http.StatusNotImplemented {
+	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, admin); code == http.StatusNotImplemented {
 		t.Error("POST /v1/proposals still 501 after saving config — not live-enabled (would need a restart)")
 	}
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {
