@@ -84,6 +84,9 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	// dev shell (a sourced .env) would poison the seeded settings. Neutralize the
 	// Loomarr keys for the duration of the test.
 	clearLoomarrEnv(t)
+	// The break-glass token lets the harness write protected settings through the API
+	// without spending the tests' one admin bootstrap.
+	t.Setenv("API_TOKEN", harnessAPIToken)
 
 	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
 	if err != nil {
@@ -146,13 +149,44 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	})
 	h.srv = httptest.NewServer(application.Handler())
 	t.Cleanup(h.srv.Close)
+	if cfg.connections {
+		h.seedSecrets()
+	}
 	return h
 }
 
+const harnessAPIToken = "integration-harness-token"
+
+// seedSecrets writes the protected connection settings through PATCH /v1/settings,
+// the path that seals them; a raw store row would be plaintext, which boot refuses.
+func (h *harness) seedSecrets() {
+	edits := map[string]string{
+		"library.token": h.ms.AdminToken,
+		"tmdb.api_key":  "test-key",
+	}
+	if h.seerr != nil {
+		edits["seerr.api_key"] = "seerr-key"
+	}
+	body, _ := json.Marshal(map[string]any{"edits": edits})
+	req, _ := http.NewRequest(http.MethodPatch, h.srv.URL+"/v1/settings", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer "+harnessAPIToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Loomarr-Csrf", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("seed protected settings → %d, want 200", resp.StatusCode)
+	}
+}
+
 // seedConnections writes the settings rows that point the real adapters at the
-// testkit doubles — the same table bootSettings reads (§3). Large runner intervals
-// keep periodic ticks from racing the assertions; the suggester worker pool is a
-// queue consumer, not a ticker, so it stays live.
+// testkit doubles — the same table bootSettings reads (§3). Protected settings are
+// sealed after boot by seedSecrets. Large runner intervals keep periodic ticks from
+// racing the assertions; the suggester worker pool is a queue consumer, not a
+// ticker, so it stays live.
 func (h *harness) seedConnections(cfg harnessConfig) {
 	set := func(k, v string) {
 		if err := h.store.SetSetting(context.Background(), k, v); err != nil {
@@ -161,8 +195,6 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	}
 	set("library.flavor", "emby")
 	set("library.url", h.ms.URL)
-	set("library.token", h.ms.AdminToken)
-	set("tmdb.api_key", "test-key")
 	set("llm.provider", "ollama")
 	set("llm.url", h.ollama.URL)
 	set("llm.model", "qwen3:8b")
@@ -178,7 +210,6 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	}
 	if h.seerr != nil {
 		set("seerr.url", h.seerr.URL)
-		set("seerr.api_key", "seerr-key")
 	}
 }
 
