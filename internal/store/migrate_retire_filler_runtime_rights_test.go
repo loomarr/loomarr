@@ -87,14 +87,9 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 		t.Fatalf("affected pipeline found = %t, err = %v; want re-enrolment", found, err)
 	}
 	for _, table := range []string{
+		"filler_rights_heads", "filler_rights_grants",
 		"filler_admission_decisions", "filler_admission_actions", "filler_diagnostic_recovery_actions",
 	} {
-		var count int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&count); err != nil || count != 0 {
-			t.Fatalf("%s rows = %d, err = %v; want retired rows removed", table, count, err)
-		}
-	}
-	for _, table := range []string{"filler_rights_heads", "filler_rights_grants"} {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&count); err == nil || err == sql.ErrNoRows {
 			t.Fatalf("retired table %s remains queryable", table)

@@ -592,8 +592,8 @@ within `filler.incoming.ready_window`, default `24h`, one hour to 30 days, hot-a
 window is returned with the projection). Each group is counted by the predicate that returns its
 rows, and row arrays are capped at 100 with separately counted totals. Ready clips age out of
 Incoming but stay in the Library. Rejections, retries, provider failures and optional enrichment
-belong in Activity or Diagnostics. Bumpers, station IDs and compilations are never "add tags"
-tasks.
+stay in the preparing group's processing details. Bumpers, station IDs and compilations are never
+"add tags" tasks.
 
 A row carries one server-owned sentence. Its panel may reveal **Processing details**: the server's
 ordered stages, each with a name, outcome, time and safe explanation, routine skipped stages behind

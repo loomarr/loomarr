@@ -83,10 +83,9 @@ type IncomingReadyEstimateDTO struct {
 }
 
 type IncomingProcessingDTO struct {
-	Attempts        int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
-	NextTryAt       string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
-	DiagnosticsHref string                       `json:"diagnosticsHref,omitempty" doc:"Existing operational owner; absent when no deeper evidence exists"`
-	Stages          []IncomingProcessingStageDTO `json:"stages"`
+	Attempts  int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
+	NextTryAt string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
+	Stages    []IncomingProcessingStageDTO `json:"stages"`
 }
 
 type IncomingProcessingStageDTO struct {
@@ -345,9 +344,6 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 		if stage.Stage == row.Stage && stage.Status == row.Status {
 			currentRecorded = true
 		}
-		if stage.Status == filler.StatusFailed {
-			detail.DiagnosticsHref = "/filler/manage#diagnostics"
-		}
 	}
 	// A running rung is intentionally absent from the stored completed-stage ladder. Append its
 	// current snapshot without replacing a prior failed attempt; both are true and useful. Queued,
@@ -360,9 +356,6 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 			progress = &measured
 		}
 		detail.Stages = append(detail.Stages, incomingProcessingStage(row.Stage, row.Status, row.UpdatedAt, progress))
-	}
-	if row.Status == filler.StatusFailed {
-		detail.DiagnosticsHref = "/filler/manage#diagnostics"
 	}
 	return detail
 }

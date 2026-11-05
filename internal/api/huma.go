@@ -16,7 +16,6 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
@@ -102,15 +101,14 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images          ImageService
-	events          EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
-	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	fillerResearch  FillerResearchService
-	fillerDecisions *fillerdecision.Service          // durable V63 admission audit and projections
-	fillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods            PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy        TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	images         ImageService
+	events         EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown       <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler         FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	fillerResearch FillerResearchService
+	fillerDefects  *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods           PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy       TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
@@ -1069,7 +1067,6 @@ type Options struct {
 	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SourceProviders *sourceprovider.Registry         // /v1/filler/providers and source validation; nil ⇒ none registered
 	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
-	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
 	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
 	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence

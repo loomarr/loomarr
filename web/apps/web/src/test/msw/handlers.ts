@@ -5,9 +5,6 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
-  getFillerDecisionActivityMockHandler,
-  getFillerDecisionDiagnosticsMockHandler,
-  getFillerDecisionOverviewMockHandler,
   getFillerDefectReportMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
@@ -240,13 +237,6 @@ const appHandlers = (): RequestHandler[] => [
     pool: { channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 },
     acquisitions: [],
   }),
-  getFillerDecisionOverviewMockHandler({
-    healthy: true,
-    nextAction: "none",
-    counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
-  }),
-  getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
-  getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
   // The defect floor's report (#2034), read by the Manage hub's Quality row: nothing measured yet.
   getFillerDefectReportMockHandler({
     floorVersion: "floor-v3-provisional",

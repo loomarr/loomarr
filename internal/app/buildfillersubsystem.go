@@ -19,7 +19,6 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
@@ -40,12 +39,11 @@ import (
 )
 
 type fillerBuild struct {
-	service   api.FillerService
-	decisions *fillerdecision.Service
-	defects   *fillerdefectfloor.DefectReports
-	preview   api.PodPreviewer
-	taxonomy  api.TaxonomyEditor
-	research  api.FillerResearchService
+	service  api.FillerService
+	defects  *fillerdefectfloor.DefectReports
+	preview  api.PodPreviewer
+	taxonomy api.TaxonomyEditor
+	research api.FillerResearchService
 	// providers is every provider a filler source can name; the API publishes it and the fetcher
 	// and the service adapter dispatch through it.
 	providers *sourceprovider.Registry
@@ -88,12 +86,6 @@ func buildFillerSubsystem(
 	}
 	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
 	result.intakeLanguages = intakeLanguages(st, set)
-	decisionService, err := fillerdecision.New(st)
-	if err != nil {
-		log.Error("could not construct filler decision service", "err", err)
-	} else {
-		result.decisions = decisionService
-	}
 	result.defects = fillerdefectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
@@ -295,9 +287,6 @@ func buildFillerSubsystem(
 		retire: &fillerGeographyRetirement{clips: st, store: st, log: log, now: time.Now, policy: placePolicy}}
 	registry.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
-	if decisionService != nil {
-		decisionService.WithDiagnosticRecovery(adapter)
-	}
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
 			return err
