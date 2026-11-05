@@ -90,4 +90,9 @@ func TestSettingKeyIsTheRegistrysPublicKeys(t *testing.T) {
 	if got := entry.Properties["key"]; got == nil || got.Ref != "#/components/schemas/SettingKey" {
 		t.Errorf("SettingEntry.key = %+v, want a $ref to SettingKey", got)
 	}
+	// A job names the setting its schedule is edited through, so the Tasks page finds that
+	// setting's presets by a key the compiler checks.
+	if got := schemas["JobView"].Properties["scheduleKey"]; got == nil || got.Ref != "#/components/schemas/SettingKey" {
+		t.Errorf("JobView.scheduleKey = %+v, want a $ref to SettingKey", got)
+	}
 }

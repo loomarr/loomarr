@@ -30,6 +30,13 @@ func (SettingEntry) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schem
 	return s
 }
 
+// TransformSchema publishes JobView.scheduleKey as a SettingKey: it names the setting the
+// Modify Job dialog edits, whose presets are the job's schedule choices.
+func (JobView) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["scheduleKey"] = namedSettingEnum(r, settingKeySchema, settingKeyWire)
+	return s
+}
+
 // namedSettingEnum registers a component once and returns the $ref every use reads.
 func namedSettingEnum(r huma.Registry, name string, build func() *huma.Schema) *huma.Schema {
 	if _, ok := r.Map()[name]; !ok {

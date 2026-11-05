@@ -6503,8 +6503,7 @@ components:
           description: Effective cron expression (settings override or default)
           type: string
         scheduleKey:
-          description: Settings key to PATCH to change the schedule
-          type: string
+          $ref: "#/components/schemas/SettingKey"
         title:
           description: Human label for the Tasks page
           type: string

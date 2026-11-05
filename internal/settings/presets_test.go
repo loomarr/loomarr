@@ -36,6 +36,27 @@ func TestRegistry_PresetsAreCanonical(t *testing.T) {
 	}
 }
 
+// Every cron setting is a job's schedule (backup.schedule included), and each offers the same
+// household choices, so the Tasks page's Modify Job dialog reads them from the setting it edits
+// and keeps no list of its own.
+func TestRegistry_JobSchedulesOfferTheCronPresets(t *testing.T) {
+	var labels []string
+	for _, p := range jobSchedulePresets {
+		labels = append(labels, p.Label)
+	}
+	if len(labels) == 0 || labels[0] != "Every minute" {
+		t.Fatalf("jobSchedulePresets = %v, want the household cron choices", labels)
+	}
+	for _, s := range NewRegistry().All() {
+		if s.Kind != KindCron || s.MigrationOnly {
+			continue
+		}
+		if !slices.Equal(s.Presets, jobSchedulePresets) {
+			t.Errorf("%s presets = %v, want jobSchedulePresets", s.Key, s.Presets)
+		}
+	}
+}
+
 // The household download schedule offers its common choices from the registry.
 func TestRegistry_FillerFetchEveryOffersTheHouseholdSchedule(t *testing.T) {
 	s, _ := NewRegistry().Get(FillerFetchEvery.Key())

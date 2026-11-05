@@ -145,6 +145,23 @@ func positiveDuration(v any) error {
 	return nil
 }
 
+// jobSchedulePresets are the household cron choices every job schedule (each KindCron setting,
+// backup.schedule included) offers in the Tasks
+// page's Modify Job dialog (§18.1), most to least frequent. Each is a 6-field seconds-leading
+// cron; a schedule matching none of them reads as Custom with its raw expression.
+var jobSchedulePresets = []Preset{
+	preset("0 * * * * *", "Every minute"),
+	preset("0 */5 * * * *", "Every 5 minutes"),
+	preset("0 */10 * * * *", "Every 10 minutes"),
+	preset("0 */15 * * * *", "Every 15 minutes"),
+	preset("0 */30 * * * *", "Every 30 minutes"),
+	preset("0 0 * * * *", "Every hour"),
+	preset("0 0 */6 * * *", "Every 6 hours"),
+	preset("0 0 */12 * * *", "Every 12 hours"),
+	preset("0 0 3 * * *", "Daily at 3 am"),
+	preset("0 0 0 * * *", "Daily at midnight"),
+}
+
 func fillerFetchInterval(v any) error {
 	d, ok := v.(time.Duration)
 	if !ok {
@@ -661,7 +678,7 @@ func declared() []Setting {
 		// --- Backup (§16, §15 — added by V4) ---
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
-			Kind: KindCron, Default: "0 30 3 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 30 3 * * *",
 			Doc: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads.",
 		},
 		{
@@ -783,7 +800,7 @@ func declared() []Setting {
 		// --- Self-updating channels / re-curation (programming-design §8.2) ---
 		{
 			Key: "job.recurate.schedule", EnvVar: "JOB_RECURATE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 4 * * 0", Advanced: true,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 4 * * 0", Advanced: true,
 			Doc: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
 		},
 		{
@@ -1396,27 +1413,27 @@ func declared() []Setting {
 		// + an advanced raw-cron field). These OVERRIDE each job's built-in default cron.
 		{
 			Key: "job.system_health.schedule", EnvVar: "JOB_SYSTEM_HEALTH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "*/30 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/30 * * * * *",
 			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
 		},
 		{
 			Key: "job.notification_delivery.schedule", EnvVar: "JOB_NOTIFICATION_DELIVERY_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "*/15 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/15 * * * * *",
 			Doc: "How often Loomarr claims queued invitation and recovery messages for delivery (cron).",
 		},
 		{
 			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr checks on in-progress downloads (cron).",
 		},
 		{
 			Key: "job.channel_maintenance.schedule", EnvVar: "JOB_CHANNEL_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */10 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */10 * * * *",
 			Doc: "How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron).",
 		},
 		{
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */15 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */15 * * * *",
 			Doc: "How often Loomarr syncs the filler catalog (cron).",
 		},
 		{
@@ -1424,7 +1441,7 @@ func declared() []Setting {
 			// so a faster cadence buys nothing and only widens the chance of a pass landing while
 			// an operator is mid-review on a reel one hour past its expiry.
 			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 45 4 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 45 4 * * *",
 			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
 		},
 		{
@@ -1432,7 +1449,7 @@ func declared() []Setting {
 			// ready replaces the old one within the hour, and a pass only decodes clips it has
 			// never fingerprinted (#2033).
 			Key: "job.filler_identity.schedule", EnvVar: "JOB_FILLER_IDENTITY_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 20 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
 			Doc: "How often Loomarr looks for copies of the same ad, keeps the best one, and links shorter or alternate versions (cron).",
 		},
 		{
@@ -1440,7 +1457,7 @@ func declared() []Setting {
 			// (#2036), so the interval is how long admission waits. A pass decodes within a bounded
 			// budget, held clips first, and an idle pass reads the records and decodes nothing.
 			Key: "job.filler_defects.schedule", EnvVar: "JOB_FILLER_DEFECTS_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr measures ads' picture and sound defects against the standard for their era (cron). A new ad waits for this check before it airs, and an ad that fails is removed and a better copy sought.",
 		},
 		{
@@ -1473,7 +1490,7 @@ func declared() []Setting {
 			// startup on `Resolve` of an undeclared key — so a new job and its key always land in
 			// the same change.
 			Key: "job.filler_pipeline.schedule", EnvVar: "JOB_FILLER_PIPELINE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */2 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */2 * * * *",
 			Doc: "How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron).",
 		},
 		// --- The image service jobs (§22, V52) ---
@@ -1487,7 +1504,7 @@ func declared() []Setting {
 			// placeholder. A pass is bounded by the concurrency cap and an indexed work-list
 			// query, so an idle install costs one cheap SELECT.
 			Key: "job.images_fetch.schedule", EnvVar: "JOB_IMAGES_FETCH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
 		},
 		{
@@ -1497,7 +1514,7 @@ func declared() []Setting {
 			// work list selects only clips with artwork on disk and no image identity yet, so a
 			// healthy install pays one indexed query.
 			Key: "job.images_adopt_artwork.schedule", EnvVar: "JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see.",
 		},
 		{
@@ -1506,22 +1523,22 @@ func declared() []Setting {
 			// genuinely contends for the box — §22 keeps it off request latency so a cold grid of
 			// 50 posters cannot launch 50 encodes at once.
 			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 20 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
 			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
 		},
 		{
 			Key: "job.images_maintenance.schedule", EnvVar: "JOB_IMAGES_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 5 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 5 * * *",
 			Doc: "When Loomarr restores recoverable artwork, enforces retention, and cleans up image storage.",
 		},
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr scans the media server for newly-added titles to mark requested items available (cron).",
 		},
 		{
 			Key: "job.library_full_scan.schedule", EnvVar: "JOB_LIBRARY_FULL_SCAN_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 3 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 3 * * *",
 			Doc: "How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron).",
 		},
 		{
@@ -1536,12 +1553,12 @@ func declared() []Setting {
 		},
 		{
 			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",
 		},
 		{
 			Key: "job.seerr_queue_poll.schedule", EnvVar: "JOB_SEERR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only).",
 		},
 		{
@@ -1587,7 +1604,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "job.housekeeping.schedule", EnvVar: "JOB_HOUSEKEEPING_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 30 4 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 30 4 * * *",
 			Doc: "When Loomarr removes expired sessions and operational records beyond their retention periods.",
 		},
 		{
