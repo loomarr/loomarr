@@ -139,6 +139,23 @@ describe("playbarFromTimeline", () => {
     ]);
   });
 
+  it("starts over at the programme under the playhead, only while the window holds its start", () => {
+    const read = (from: number, playheadMs = NOW) =>
+      playbarFromTimeline({
+        airings: [programme("p", from, 30), breakAt("b", 30, [spot("station_id", "", 10)])],
+        channel,
+        live,
+        nowMs: NOW,
+        playheadMs,
+      }).startOverMs;
+
+    expect(read(-12)).toBe(at(-12));
+    // Began before the fifteen minutes the stream holds: nowhere to start over from.
+    expect(read(-20)).toBeUndefined();
+    // A break has no programme start to go back to.
+    expect(read(-12, at(30) + 5_000)).toBeUndefined();
+  });
+
   it("is the channel alone while nothing is known to be airing", () => {
     const { band, segments } = playbarFromTimeline({
       airings: [],

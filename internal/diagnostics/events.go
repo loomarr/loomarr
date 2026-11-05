@@ -85,7 +85,7 @@ type EventView struct {
 	OccurredAt        int64          `json:"occurredAt"`
 	ReceivedAt        int64          `json:"receivedAt"`
 	Level             Level          `json:"level" enum:"debug,info,warn,error"`
-	Source            Source         `json:"source" enum:"server,web,android_tv"`
+	Source            Source         `json:"source" enum:"server,web,android_tv,apple_tv,ios,android"`
 	Subsystem         string         `json:"subsystem,omitempty"`
 	Event             string         `json:"event"`
 	Message           string         `json:"message,omitempty"`
@@ -220,12 +220,8 @@ func (l *EventLog) validate(query EventQuery) (EventStoreQuery, int, error) {
 			return EventStoreQuery{}, 0, invalidEventQuery("unknown level")
 		}
 	}
-	if query.Source != "" {
-		switch query.Source {
-		case SourceServer, SourceWeb, SourceAndroidTV:
-		default:
-			return EventStoreQuery{}, 0, invalidEventQuery("unknown source")
-		}
+	if query.Source != "" && !query.Source.valid() {
+		return EventStoreQuery{}, 0, invalidEventQuery("unknown source")
 	}
 	for name, value := range map[string]string{
 		"event": query.Event, "subsystem": query.Subsystem, "requestId": query.RequestID,

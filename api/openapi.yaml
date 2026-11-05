@@ -1571,11 +1571,17 @@ components:
             - android_tv
             - shield_tv
             - unknown_android_tv
+            - apple_tv
+            - ios
+            - android
           type: string
         source:
           enum:
             - web
             - android_tv
+            - apple_tv
+            - ios
+            - android
           type: string
       required:
         - source
@@ -3603,6 +3609,9 @@ components:
             - server
             - web
             - android_tv
+            - apple_tv
+            - ios
+            - android
           type: string
         subsystem:
           type: string
@@ -13795,6 +13804,9 @@ paths:
               - server
               - web
               - android_tv
+              - apple_tv
+              - ios
+              - android
             type: string
         - description: Exact stable event name
           explode: false

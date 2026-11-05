@@ -27,7 +27,7 @@ type playbackIntegrityRawEvidence struct {
 	Playback           segmentScreeningArtifactObservation `json:"playback"`
 	ManifestSHA256     string                              `json:"manifestSha256"`
 	ConditioningSHA256 string                              `json:"conditioningSha256,omitempty"`
-	Outcome            filler.SegmentScreeningOutcome      `json:"outcome"`
+	Outcome            SegmentScreeningOutcome             `json:"outcome"`
 	ReasonCode         string                              `json:"reasonCode"`
 }
 
@@ -41,7 +41,7 @@ type PlaybackIntegrityEvaluator struct {
 }
 
 func NewPlaybackIntegrityEvaluator(profile SegmentScreeningAxisProfile, replay SegmentScreeningAxisEvidenceReplay, now func() time.Time) (*PlaybackIntegrityEvaluator, error) {
-	if ValidateSegmentScreeningAxisProfile(profile) != nil || profile.Axis != filler.ScreenPlayback || profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
+	if ValidateSegmentScreeningAxisProfile(profile) != nil || profile.Axis != ScreenPlayback || profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
 		return nil, fmt.Errorf("playback integrity evaluator profile is invalid")
 	}
 	if replay == nil || now == nil {
@@ -50,10 +50,10 @@ func NewPlaybackIntegrityEvaluator(profile SegmentScreeningAxisProfile, replay S
 	return &PlaybackIntegrityEvaluator{profile: profile, replay: replay, now: now}, nil
 }
 
-func (e *PlaybackIntegrityEvaluator) Axis() filler.SegmentScreeningAxis { return filler.ScreenPlayback }
+func (e *PlaybackIntegrityEvaluator) Axis() SegmentScreeningAxis { return ScreenPlayback }
 
 func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error) {
-	if e == nil || e.replay == nil || e.now == nil || ValidateSegmentScreeningAxisProfile(e.profile) != nil || e.profile.Axis != filler.ScreenPlayback || e.profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
+	if e == nil || e.replay == nil || e.now == nil || ValidateSegmentScreeningAxisProfile(e.profile) != nil || e.profile.Axis != ScreenPlayback || e.profile.EvidenceContract != playbackIntegrityEvidenceContractVersion {
 		return RecordedSegmentScreeningAxisEvidence{}, fmt.Errorf("playback integrity evaluator is unavailable")
 	}
 	if err := validateSegmentScreeningMedia(media); err != nil {
@@ -65,7 +65,7 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 	if err != nil {
 		return RecordedSegmentScreeningAxisEvidence{}, err
 	}
-	outcome, reasonCode := filler.ScreenHold, playbackArtifactHoldReason(observation)
+	outcome, reasonCode := ScreenHold, playbackArtifactHoldReason(observation)
 	manifestSHA256 := ""
 	conditioningSHA256 := ""
 	if matches {
@@ -99,11 +99,11 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 			}
 			switch verdict, _, _ := filler.EvaluateMediaQuality(tags.MediaAssets.Playback.Quality); verdict {
 			case filler.VerdictReject:
-				outcome, reasonCode = filler.ScreenReject, "playback_quality_reject"
+				outcome, reasonCode = ScreenReject, "playback_quality_reject"
 			case filler.VerdictReview:
-				outcome, reasonCode = filler.ScreenHold, "playback_quality_hold"
+				outcome, reasonCode = ScreenHold, "playback_quality_hold"
 			default:
-				outcome, reasonCode = filler.ScreenPass, "playback_verified"
+				outcome, reasonCode = ScreenPass, "playback_verified"
 			}
 		}
 	}

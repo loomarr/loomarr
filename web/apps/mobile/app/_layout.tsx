@@ -1,24 +1,11 @@
-import { LoomarrProvider } from "@loomarr/design-system";
+import { NativeAppRoot } from "@loomarr/native-app";
 import { Stack } from "expo-router";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-import { startCrashReporting } from "../src/crash-reports";
-
-// Before the first render, so a crash while the app starts is captured too.
-startCrashReporting();
-
-const ClientLayout = () => {
-  const insets = useSafeAreaInsets();
-  return (
-    <LoomarrProvider insets={insets}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </LoomarrProvider>
-  );
-};
+import { nativeApp } from "../src/native-app";
 
 const RootLayout = () => (
-  <SafeAreaProvider>
-    <ClientLayout />
-  </SafeAreaProvider>
+  <NativeAppRoot app={nativeApp}>
+    <Stack screenOptions={{ headerShown: false }} />
+  </NativeAppRoot>
 );
 
 export default RootLayout;
