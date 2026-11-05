@@ -10,7 +10,7 @@ import type { PlayerTransportProps } from "../player-chrome.type";
 // over · volume, then, pushed right, view options · window. Play/pause is the one primary control, a
 // white disc; every other tool is a quiet glyph (one size, one weight) with a hover well, an amber
 // glyph and dot when active, and on a pointer a tooltip naming its key. A tool the caller leaves out
-// (the player cannot seek; Subtitles and Info until their steps) is not drawn.
+// (the player cannot seek; Info with no programme; Subtitles until its step) is not drawn.
 
 const Capsule = ({ children, end }: { children: ReactNode; end?: boolean }) => (
   <View
@@ -369,6 +369,17 @@ const PlayerTransport = (props: PlayerTransportProps) => {
           onPress={props.onSettings}
           pointer={pointer}
         />
+        {props.onInfo ? (
+          <ToolButton
+            active={props.infoOpen}
+            density={density}
+            icon="info"
+            keyHint="I"
+            label="Info"
+            onPress={props.onInfo}
+            pointer={pointer}
+          />
+        ) : null}
         {props.onChannels ? (
           <ToolButton
             active={props.channelsOpen}
