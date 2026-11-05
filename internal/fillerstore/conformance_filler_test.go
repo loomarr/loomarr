@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
@@ -1039,7 +1039,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	digest := strings.Repeat("b", 64)
-	if err := s.PutSpokenSafetyRun(ctx, fillersafety.LedgerRun{
+	if err := s.PutSpokenSafetyRun(ctx, fillerscreening.SpokenSafetyLedgerRun{
 		ID: "ready-safety-run", ClipHash: old.Hash, AuthoritySHA256: digest, SourceSHA256: digest,
 		SourceBytes: 4096, DurationMS: 30_000, CertificationSHA256: digest, PolicySHA256: digest, ProposerSHA256: digest,
 		Implementation: "spoken-safety-v1", CreatedAt: at,
@@ -5600,7 +5600,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	at := time.Date(2026, 9, 2, 14, 0, 0, 123, time.UTC)
 	hash := strings.Repeat("a", 64)
-	run := fillersafety.LedgerRun{
+	run := fillerscreening.SpokenSafetyLedgerRun{
 		ID: "safety-run-1", ClipHash: "clip-safety-1", AuthoritySHA256: hash, SourceSHA256: hash,
 		SourceBytes: 4096, DurationMS: 10_000, CertificationSHA256: hash, PolicySHA256: hash, ProposerSHA256: hash,
 		Implementation: "spoken-safety-v1", CreatedAt: at,
@@ -5610,7 +5610,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	invalidRun := run
 	invalidRun.ID = "source.mp4"
-	if err := s.PutSpokenSafetyRun(ctx, invalidRun); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.PutSpokenSafetyRun(ctx, invalidRun); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("source-shaped run ID = %v, want ErrLedgerInvalid", err)
 	}
 	if _, err := s.GetSpokenSafetyRun(ctx, invalidRun.ID); !errors.Is(err, ErrNotFound) {
@@ -5621,7 +5621,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	conflict := run
 	conflict.SourceBytes++
-	if err := s.PutSpokenSafetyRun(ctx, conflict); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.PutSpokenSafetyRun(ctx, conflict); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("conflicting run = %v, want ErrLedgerConflict", err)
 	}
 	gotRun, err := s.GetSpokenSafetyRun(ctx, run.ID)
@@ -5634,32 +5634,32 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("run did not survive fresh store pool: %+v, %v, close=%v", fromSecond, err, closeErr)
 	}
 
-	plan := fillersafety.LedgerEvent{
-		ID: "safety-event-plan", RunID: run.ID, Ordinal: 0, Kind: fillersafety.LedgerSourcePlanned,
-		Source: &fillersafety.SourcePlanned{
-			Audio: fillersafety.Span{EndMS: 10_000}, Video: fillersafety.Span{EndMS: 10_000},
+	plan := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-plan", RunID: run.ID, Ordinal: 0, Kind: fillerscreening.LedgerSourcePlanned,
+		Source: &fillerscreening.SpokenSafetySourcePlanned{
+			Audio: fillerscreening.SpokenSafetySpan{EndMS: 10_000}, Video: fillerscreening.SpokenSafetySpan{EndMS: 10_000},
 		}, CreatedAt: at.Add(time.Nanosecond),
 	}
 	invalidEvent := plan
 	invalidEvent.ID = "source.mp4"
-	if err := s.AppendSpokenSafetyEvent(ctx, invalidEvent); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, invalidEvent); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("source-shaped event ID = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, run.ID); err != nil || len(events) != 0 {
 		t.Fatalf("invalid event persisted: %+v, %v", events, err)
 	}
-	proposal := fillersafety.LedgerEvent{
-		ID: "safety-event-proposal", RunID: run.ID, Ordinal: 1, Kind: fillersafety.LedgerProposalCompleted,
-		Proposal:  &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{}},
+	proposal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-proposal", RunID: run.ID, Ordinal: 1, Kind: fillerscreening.LedgerProposalCompleted,
+		Proposal:  &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{}},
 		CreatedAt: at.Add(2 * time.Nanosecond),
 	}
-	evidence := fillersafety.Evidence{ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{}, Audio: []fillersafety.AudioAssessment{}, Video: fillersafety.VideoNoSignal}
-	terminal := fillersafety.LedgerEvent{
-		ID: "safety-event-terminal", RunID: run.ID, Ordinal: 2, Kind: fillersafety.LedgerTerminal,
-		Terminal:  &fillersafety.TerminalResult{Evidence: evidence, Result: fillersafety.Reduce(evidence), EventIDs: []string{plan.ID, proposal.ID}},
+	evidence := fillerscreening.SpokenSafetyEvidence{ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{}, Audio: []fillerscreening.SpokenSafetyAudioAssessment{}, Video: fillerscreening.VideoNoSignal}
+	terminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-terminal", RunID: run.ID, Ordinal: 2, Kind: fillerscreening.LedgerTerminal,
+		Terminal:  &fillerscreening.SpokenSafetyTerminalResult{Evidence: evidence, Result: fillerscreening.ReduceSpokenSafety(evidence), EventIDs: []string{plan.ID, proposal.ID}},
 		CreatedAt: at.Add(3 * time.Nanosecond),
 	}
-	for _, event := range []fillersafety.LedgerEvent{plan, proposal, terminal} {
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{plan, proposal, terminal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatalf("append %s: %v", event.Kind, err)
 		}
@@ -5676,18 +5676,18 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("event %d ordinal = %d", index, event.Ordinal)
 		}
 	}
-	if events[2].Terminal == nil || events[2].Terminal.Result.Outcome != fillersafety.OutcomeCandidateRejected {
+	if events[2].Terminal == nil || events[2].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeCandidateRejected {
 		t.Fatalf("terminal event = %+v", events[2])
 	}
 
 	afterTerminal := proposal
 	afterTerminal.ID, afterTerminal.Ordinal = "safety-event-after-terminal", 3
-	if err := s.AppendSpokenSafetyEvent(ctx, afterTerminal); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.AppendSpokenSafetyEvent(ctx, afterTerminal); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("append after terminal = %v, want ErrLedgerConflict", err)
 	}
 	wrongOrdinal := terminal
 	wrongOrdinal.ID, wrongOrdinal.Ordinal = "safety-event-gap", 8
-	if err := s.AppendSpokenSafetyEvent(ctx, wrongOrdinal); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.AppendSpokenSafetyEvent(ctx, wrongOrdinal); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("ordinal gap = %v, want ErrLedgerConflict", err)
 	}
 	if _, err := s.GetSpokenSafetyRun(ctx, "missing-run"); !errors.Is(err, ErrNotFound) {
@@ -5699,13 +5699,13 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutSpokenSafetyRun(ctx, callRun); err != nil {
 		t.Fatal(err)
 	}
-	candidate := fillersafety.Candidate{ID: "candidate-call", StartMS: 100, EndMS: 500}
+	candidate := fillerscreening.SpokenSafetyCandidate{ID: "candidate-call", StartMS: 100, EndMS: 500}
 	callPlan := plan
 	callPlan.ID, callPlan.RunID, callPlan.CreatedAt = "call-plan", callRun.ID, callRun.CreatedAt.Add(time.Nanosecond)
 	callProposal := proposal
 	callProposal.ID, callProposal.RunID, callProposal.CreatedAt = "call-proposal", callRun.ID, callRun.CreatedAt.Add(2*time.Nanosecond)
-	callProposal.Proposal = &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{candidate}}
-	for _, event := range []fillersafety.LedgerEvent{callPlan, callProposal} {
+	callProposal.Proposal = &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate}}
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{callPlan, callProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -5726,25 +5726,25 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		EventID: "call-reserve", RunID: callRun.ID, CandidateID: candidate.ID,
 		RequestSHA256: hash, Ordinal: 2, CreatedAt: reserveAt,
 	}
-	forgedReserve := fillersafety.LedgerEvent{
-		ID: "call-forged-reserve", RunID: callRun.ID, Ordinal: 3, Kind: fillersafety.LedgerInferenceReserved,
-		Reserve: &fillersafety.InferenceReserved{
+	forgedReserve := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-forged-reserve", RunID: callRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerInferenceReserved,
+		Reserve: &fillerscreening.SpokenSafetyInferenceReserved{
 			EvaluationID: evaluation.ID, RequestSHA256: reserveCommand.RequestSHA256,
 			RequestedProvider: evaluation.RequestedProvider, RequestedModel: evaluation.RequestedModel,
 			UpstreamProvider: evaluation.UpstreamProvider, CapabilitySHA256: evaluation.Versions.CapabilitySnapshot,
 			PromptSHA256: evaluation.Versions.Prompt, CandidateID: candidate.ID,
 			Modalities: evaluation.Modalities, RequestedNanoUSD: evaluation.ReservedNanoUSD,
-			ReservedNanoUSD: evaluation.ReservedNanoUSD, State: fillersafety.ReservationAccepted,
+			ReservedNanoUSD: evaluation.ReservedNanoUSD, State: fillerscreening.ReservationAccepted,
 		},
 		CreatedAt: reserveAt.Add(time.Nanosecond),
 	}
-	if _, err := fillersafety.CanonicalLedgerEvent(forgedReserve); err != nil {
+	if _, err := fillerscreening.CanonicalSpokenSafetyLedgerEvent(forgedReserve); err != nil {
 		t.Fatalf("forged reservation must be canonical-valid: %v", err)
 	}
 	reserved, reserveEvent, err := s.ReserveSpokenSafetyInference(ctx, reserveCommand, evaluation,
 		InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
 	if err != nil || reserved.State != InferenceReserved || reserveEvent.Reserve == nil ||
-		reserveEvent.Reserve.State != fillersafety.ReservationAccepted {
+		reserveEvent.Reserve.State != fillerscreening.ReservationAccepted {
 		t.Fatalf("atomic reservation = %+v, %+v, %v", reserved, reserveEvent, err)
 	}
 	if reserveEvent.Reserve.RequestedProvider != evaluation.RequestedProvider ||
@@ -5756,7 +5756,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000}); err != nil || again.ID != reserved.ID || event.ID != reserveEvent.ID {
 		t.Fatalf("idempotent atomic reservation = %+v, %+v, %v", again, event, err)
 	}
-	if err := s.AppendSpokenSafetyEvent(ctx, forgedReserve); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, forgedReserve); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("generic reservation = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, callRun.ID); err != nil || len(events) != 3 {
@@ -5772,29 +5772,29 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		ResolvedProvider: "OpenRouter Route", ResolvedModel: "openai/gpt-5-mini.2026-08-07", UpstreamProvider: "OpenAI Provider",
 		Tokens: InferenceTokens{Prompt: 20, Completion: 4, Audio: 10}, ChargedAmount: "0.00000005",
 		ChargedCurrency: "USD", ChargedNanoUSD: 50, Attempts: 1, GenerationID: "generation-1",
-		Outcome: string(fillersafety.AudioAbsent), State: InferenceCompleted, UpdatedAt: settleAt,
+		Outcome: string(fillerscreening.AudioAbsent), State: InferenceCompleted, UpdatedAt: settleAt,
 	}
 	settleCommand := SpokenSafetyInferenceSettlement{
 		EventID: "call-settle", RunID: callRun.ID, ReservationEventID: reserveEvent.ID,
 		ResponseSHA256: strings.Repeat("b", 64), ChargeKnown: true, Ordinal: 3, CreatedAt: settleAt,
 	}
-	forgedSettlement := fillersafety.LedgerEvent{
-		ID: "call-forged-settle", RunID: callRun.ID, Ordinal: 3, Kind: fillersafety.LedgerInferenceSettled,
-		Settle: &fillersafety.InferenceSettled{
+	forgedSettlement := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-forged-settle", RunID: callRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerInferenceSettled,
+		Settle: &fillerscreening.SpokenSafetyInferenceSettled{
 			ReservationEventID: reserveEvent.ID, EvaluationID: evaluation.ID,
 			ResponseSHA256: settleCommand.ResponseSHA256, ResolvedProvider: settlement.ResolvedProvider,
 			ResolvedModel: settlement.ResolvedModel, UpstreamProvider: settlement.UpstreamProvider,
-			GenerationID: settlement.GenerationID, State: fillersafety.SettlementCompleted,
-			Outcome: string(fillersafety.AudioAbsent), ChargedAmountUSD: "0.0000001",
+			GenerationID: settlement.GenerationID, State: fillerscreening.SettlementCompleted,
+			Outcome: string(fillerscreening.AudioAbsent), ChargedAmountUSD: "0.0000001",
 			ChargedNanoUSD: evaluation.ReservedNanoUSD, AccountedNanoUSD: evaluation.ReservedNanoUSD,
 			ChargeKnown: true, PromptTokens: settlement.Tokens.Prompt, CompletionTokens: settlement.Tokens.Completion,
 		},
 		CreatedAt: settleAt,
 	}
-	if _, err := fillersafety.CanonicalLedgerEvent(forgedSettlement); err != nil {
+	if _, err := fillerscreening.CanonicalSpokenSafetyLedgerEvent(forgedSettlement); err != nil {
 		t.Fatalf("forged settlement must be canonical-valid: %v", err)
 	}
-	if err := s.AppendSpokenSafetyEvent(ctx, forgedSettlement); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, forgedSettlement); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("generic settlement = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, callRun.ID); err != nil || len(events) != 3 {
@@ -5805,7 +5805,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	settled, settleEvent, err := s.SettleSpokenSafetyInference(ctx, settleCommand, settlement)
 	if err != nil || settled.State != InferenceCompleted || settleEvent.Settle == nil ||
-		settleEvent.Settle.State != fillersafety.SettlementCompleted {
+		settleEvent.Settle.State != fillerscreening.SettlementCompleted {
 		t.Fatalf("atomic settlement = %+v, %+v, %v", settled, settleEvent, err)
 	}
 	if settleEvent.Settle.ResolvedProvider != settlement.ResolvedProvider ||
@@ -5814,14 +5814,14 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("atomic settlement response identities = %+v", settleEvent.Settle)
 	}
 
-	callEvidence := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{candidate},
-		Audio: []fillersafety.AudioAssessment{{CandidateID: candidate.ID, State: fillersafety.AudioAbsent}},
-		Video: fillersafety.VideoNoSignal,
+	callEvidence := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate},
+		Audio: []fillerscreening.SpokenSafetyAudioAssessment{{CandidateID: candidate.ID, State: fillerscreening.AudioAbsent}},
+		Video: fillerscreening.VideoNoSignal,
 	}
-	callTerminal := fillersafety.LedgerEvent{
-		ID: "call-terminal", RunID: callRun.ID, Ordinal: 4, Kind: fillersafety.LedgerTerminal,
-		Terminal: &fillersafety.TerminalResult{Evidence: callEvidence, Result: fillersafety.Reduce(callEvidence),
+	callTerminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-terminal", RunID: callRun.ID, Ordinal: 4, Kind: fillerscreening.LedgerTerminal,
+		Terminal: &fillerscreening.SpokenSafetyTerminalResult{Evidence: callEvidence, Result: fillerscreening.ReduceSpokenSafety(callEvidence),
 			EventIDs: []string{callPlan.ID, callProposal.ID, reserveEvent.ID, settleEvent.ID}},
 		CreatedAt: callRun.CreatedAt.Add(5 * time.Nanosecond),
 	}
@@ -5841,7 +5841,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		EventID: "rollback-event", RunID: rollbackRun.ID, CandidateID: candidate.ID, RequestSHA256: hash, Ordinal: 4,
 		CreatedAt: rollbackRun.CreatedAt,
 	}, rollbackEvaluation, InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
-	if !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("invalid ledger append = %v, want ErrLedgerConflict", err)
 	}
 	if _, err := s.GetInferenceEvaluation(ctx, rollbackEvaluation.ID); !errors.Is(err, ErrNotFound) {
@@ -5856,8 +5856,8 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	heldPlan, heldProposal := plan, proposal
 	heldPlan.ID, heldPlan.RunID, heldPlan.CreatedAt = "held-plan", heldRun.ID, heldRun.CreatedAt.Add(time.Nanosecond)
 	heldProposal.ID, heldProposal.RunID, heldProposal.CreatedAt = "held-proposal", heldRun.ID, heldRun.CreatedAt.Add(2*time.Nanosecond)
-	heldProposal.Proposal = &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{candidate}}
-	for _, event := range []fillersafety.LedgerEvent{heldPlan, heldProposal} {
+	heldProposal.Proposal = &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate}}
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{heldPlan, heldProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -5870,17 +5870,17 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		RequestSHA256: hash, Ordinal: 2, CreatedAt: heldEvaluation.CreatedAt,
 	}, heldEvaluation, InferenceBudget{})
 	if err != nil || held.State != InferenceHeldBudget || heldEvent.Reserve == nil ||
-		heldEvent.Reserve.State != fillersafety.ReservationHeldBudget || heldEvent.Reserve.ReservedNanoUSD != 0 {
+		heldEvent.Reserve.State != fillerscreening.ReservationHeldBudget || heldEvent.Reserve.ReservedNanoUSD != 0 {
 		t.Fatalf("held reservation = %+v, %+v, %v", held, heldEvent, err)
 	}
-	heldEvidence := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{candidate},
-		Audio: []fillersafety.AudioAssessment{{CandidateID: candidate.ID, State: fillersafety.AudioFailed}},
-		Video: fillersafety.VideoNotRun,
+	heldEvidence := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate},
+		Audio: []fillerscreening.SpokenSafetyAudioAssessment{{CandidateID: candidate.ID, State: fillerscreening.AudioFailed}},
+		Video: fillerscreening.VideoNotRun,
 	}
-	heldTerminal := fillersafety.LedgerEvent{
-		ID: "held-terminal", RunID: heldRun.ID, Ordinal: 3, Kind: fillersafety.LedgerTerminal,
-		Terminal: &fillersafety.TerminalResult{Evidence: heldEvidence, Result: fillersafety.Reduce(heldEvidence),
+	heldTerminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "held-terminal", RunID: heldRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerTerminal,
+		Terminal: &fillerscreening.SpokenSafetyTerminalResult{Evidence: heldEvidence, Result: fillerscreening.ReduceSpokenSafety(heldEvidence),
 			EventIDs: []string{heldPlan.ID, heldProposal.ID, heldEvent.ID}},
 		CreatedAt: heldRun.CreatedAt.Add(4 * time.Nanosecond),
 	}
@@ -5894,7 +5894,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	recoveredEvents, err := s.ListSpokenSafetyEvents(ctx, rollbackRun.ID)
 	if err != nil || len(recoveredEvents) != 3 || recoveredEvents[2].Terminal == nil ||
-		recoveredEvents[2].Terminal.Result.Outcome != fillersafety.OutcomeHold {
+		recoveredEvents[2].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeHold {
 		t.Fatalf("header-only recovery = %+v, %v", recoveredEvents, err)
 	}
 
@@ -5906,7 +5906,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	interruptedPlan, interruptedProposal := callPlan, callProposal
 	interruptedPlan.ID, interruptedPlan.RunID, interruptedPlan.CreatedAt = "interrupted-plan", interruptedRun.ID, interruptedRun.CreatedAt.Add(time.Nanosecond)
 	interruptedProposal.ID, interruptedProposal.RunID, interruptedProposal.CreatedAt = "interrupted-proposal", interruptedRun.ID, interruptedRun.CreatedAt.Add(2*time.Nanosecond)
-	for _, event := range []fillersafety.LedgerEvent{interruptedPlan, interruptedProposal} {
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{interruptedPlan, interruptedProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -5926,9 +5926,9 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	interruptedEvents, err := s.ListSpokenSafetyEvents(ctx, interruptedRun.ID)
 	if err != nil || len(interruptedEvents) != 5 || interruptedEvents[3].Settle == nil ||
-		interruptedEvents[3].Settle.State != fillersafety.SettlementUnknown ||
+		interruptedEvents[3].Settle.State != fillerscreening.SettlementUnknown ||
 		interruptedEvents[3].Settle.AccountedNanoUSD != evaluation.ReservedNanoUSD ||
-		interruptedEvents[4].Terminal == nil || interruptedEvents[4].Terminal.Result.Outcome != fillersafety.OutcomeHold {
+		interruptedEvents[4].Terminal == nil || interruptedEvents[4].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeHold {
 		t.Fatalf("unsettled recovery = %+v, %v", interruptedEvents, err)
 	}
 	recoveredInference, err := s.GetInferenceEvaluation(ctx, interruptedEvaluation.ID)

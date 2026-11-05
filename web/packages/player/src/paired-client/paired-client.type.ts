@@ -12,8 +12,8 @@ import type { PlayerController, PlayerSnapshot, PlayerTuneReport } from "../play
 interface PairedClientOptions {
   credential: PairingCredential;
   /**
-   * Who reports playback diagnostics. Only a client the diagnostics API names can report, so a
-   * client without one (the phone, until the API lists it) runs without them.
+   * Who reports playback diagnostics: the runtime and platform the diagnostics API names, and the
+   * app version. The platform also decides the transport label the observations carry.
    */
   diagnostics?: ClientDiagnosticsIdentity;
   /** How much of the schedule the guide loads from now; the phone reads 2 hours, as the web phone does. */

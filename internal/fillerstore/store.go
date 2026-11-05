@@ -25,7 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
@@ -117,10 +117,10 @@ type FillerStructureAssessmentStore interface {
 // FillerSafetyStore owns the path-free, append-only execution ledger for the
 // spoken-safety shadow cascade. It is distinct from terminal admission policy.
 type FillerSafetyStore interface {
-	fillersafety.LedgerRepository
-	fillersafety.ExecutionRepository
-	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, fillersafety.LedgerEvent, error)
-	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, fillersafety.LedgerEvent, error)
+	fillerscreening.SpokenSafetyLedgerRepository
+	fillerscreening.SpokenSafetyExecutionRepository
+	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error)
+	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, fillerscreening.SpokenSafetyLedgerEvent, error)
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 

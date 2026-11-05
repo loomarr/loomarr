@@ -19,7 +19,20 @@ const (
 	SourceServer    Source = "server"
 	SourceWeb       Source = "web"
 	SourceAndroidTV Source = "android_tv"
+	SourceAppleTV   Source = "apple_tv"
+	SourceIOS       Source = "ios"
+	SourceAndroid   Source = "android"
 )
+
+// valid reports whether the source is one of the runtimes Diagnostics records.
+func (s Source) valid() bool {
+	switch s {
+	case SourceServer, SourceWeb, SourceAndroidTV, SourceAppleTV, SourceIOS, SourceAndroid:
+		return true
+	default:
+		return false
+	}
+}
 
 // Event is the small caller-facing interface for one technical observation. The recorder owns
 // identifiers, receipt time, normalization, redaction, JSON encoding, and retained-size accounting.
