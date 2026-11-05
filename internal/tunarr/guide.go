@@ -75,17 +75,14 @@ func (t *Tunarr) Guide(ctx context.Context, from, to time.Time) (map[string][]Gu
 	q.Set("dateTo", to.UTC().Format(time.RFC3339))
 
 	var resp map[string]guideChannel
-	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/guide/channels?"+q.Encode(), nil, &resp)
-	if err != nil {
-		return nil, err
-	}
+	err := t.do(ctx, t.http, http.MethodGet, "/api/guide/channels?"+q.Encode(), nil, &resp)
 	// A guide that has not been generated yet is not an error — the channel simply has
 	// nothing to show, the same way an unprogrammed lineup reads as empty (finding 4).
-	if status == http.StatusBadRequest || status == http.StatusNotFound {
+	if answeredWith(err, http.StatusBadRequest, http.StatusNotFound) {
 		return map[string][]GuideEntry{}, nil
 	}
-	if status < 200 || status >= 300 {
-		return nil, statusErr("get guide", status, snippet)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make(map[string][]GuideEntry, len(resp))

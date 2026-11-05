@@ -118,10 +118,7 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	if err != nil {
 		return suggest.Decision{Reason: "airing history unavailable"}, nil
 	}
-	res, err := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
-	if err != nil {
-		return suggest.Decision{Reason: "proposal unreadable"}, err
-	}
+	res := filterAcquisitionsProtected(p, ch, minScore, maxTitles, protected, lastAired, c.now())
 	filtered := res.Proposal
 
 	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitions` wrote them into the

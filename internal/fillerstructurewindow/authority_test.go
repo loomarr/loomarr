@@ -96,7 +96,7 @@ func TestWindowMaterializationAuthorityCannotAuthorizeCompleteVideo(t *testing.T
 
 func windowAuthorityArtifactFixture(t *testing.T) fillerstructure.Artifact {
 	t.Helper()
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func windowAuthorityFixture(artifact fillerstructure.Artifact) MaterializationAu
 	authority := MaterializationAuthority{
 		SchemaVersion: MaterializationAuthoritySchemaVersion, ContractVersion: MaterializationAuthorityContractVersion,
 		WindowCertificationSHA256: strings.Repeat("c", 64), ShortLongShadowSHA256: strings.Repeat("d", 64),
-		WindowProfileSHA256: CanonicalProfile().SHA256, AssessmentMediaProfileSHA256: artifact.Decision.Input.ProfileSHA256,
+		WindowProfileSHA256: ProfileFor(softwareMedia).SHA256, AssessmentMediaProfileSHA256: artifact.Decision.Input.ProfileSHA256,
 		MinimumSourceDurationMS: 1, MaximumSourceDurationMS: artifact.Decision.Source.DurationMS,
 		MaximumWindowBytes: artifact.Decision.Input.Items[0].Bytes, MaximumWindows: len(artifact.Decision.Input.Items),
 		ReducerVersion: artifact.ReducerVersion, BoundaryToleranceMS: artifact.BoundaryToleranceMS,

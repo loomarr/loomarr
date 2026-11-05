@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -28,26 +29,26 @@ type preparedToolCall struct {
 
 // prepareToolCall performs every untrusted-input check and computes the exact
 // extra window reservation without calling a source.
-func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMeaning) (preparedToolCall, string, DecisionTrace, bool) {
+func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMeaning) (preparedToolCall, string, proposal.DecisionTrace, bool) {
 	if tc.Name != catalogToolName {
-		return preparedToolCall{}, fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), DecisionTrace{}, false
+		return preparedToolCall{}, fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), proposal.DecisionTrace{}, false
 	}
 	arguments := tc.Arguments
 	meaning, dateErr := validatedToolDateMeaning(intent, arguments)
 	if dateErr != nil {
 		if accepted == nil && isDateMeaningConflict(dateErr) {
-			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}, true
+			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}, true
 		}
-		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), DecisionTrace{}, false
+		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, dateErr.Error()), proposal.DecisionTrace{}, false
 	}
 	if accepted != nil && !accepted.Equal(meaning) {
-		return preparedToolCall{}, `{"error":"dateMeaning does not match accepted tool interpretation"}`, DecisionTrace{}, false
+		return preparedToolCall{}, `{"error":"dateMeaning does not match accepted tool interpretation"}`, proposal.DecisionTrace{}, false
 	}
 	if _, present := arguments["era"]; present {
-		return preparedToolCall{}, `{"error":"era is retired"}`, DecisionTrace{}, false
+		return preparedToolCall{}, `{"error":"era is retired"}`, proposal.DecisionTrace{}, false
 	}
 	if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
-		return preparedToolCall{meaning: meaning}, `{"error":"clarify_dates"}`, DecisionTrace{}, true
+		return preparedToolCall{meaning: meaning}, `{"error":"clarify_dates"}`, proposal.DecisionTrace{}, true
 	}
 	rawMode, present := arguments["mode"]
 	if !present {
@@ -61,26 +62,26 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 	}
 	if present {
 		if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) {
-			return preparedToolCall{}, `{"error":"network programming identity requires network discovery, not a guessed collection roster"}`, DecisionTrace{}, false
+			return preparedToolCall{}, `{"error":"network programming identity requires network discovery, not a guessed collection roster"}`, proposal.DecisionTrace{}, false
 		}
 		mode, ok := rawMode.(string)
 		if !ok || strings.TrimSpace(mode) != "collection" {
-			return preparedToolCall{}, `{"error":"mode must be collection when provided"}`, DecisionTrace{}, false
+			return preparedToolCall{}, `{"error":"mode must be collection when provided"}`, proposal.DecisionTrace{}, false
 		}
 		for key := range arguments {
 			if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
-				return preparedToolCall{}, `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, DecisionTrace{}, false
+				return preparedToolCall{}, `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, proposal.DecisionTrace{}, false
 			}
 		}
 		// Validate collection arguments now; execution can then be delayed until
 		// after source initialization.
 		if _, err := collectionTitleAnchors(arguments["titles"]); err != nil {
-			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, err.Error()), DecisionTrace{}, false
+			return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, err.Error()), proposal.DecisionTrace{}, false
 		}
 		if !provision.MediaType(stringArg(arguments["media_type"])).Valid() {
-			return preparedToolCall{}, `{"error":"collection mode requires media_type movie or series"}`, DecisionTrace{}, false
+			return preparedToolCall{}, `{"error":"collection mode requires media_type movie or series"}`, proposal.DecisionTrace{}, false
 		}
-		return preparedToolCall{arguments: arguments, meaning: meaning, collection: true}, "", DecisionTrace{}, true
+		return preparedToolCall{arguments: arguments, meaning: meaning, collection: true}, "", proposal.DecisionTrace{}, true
 	}
 	discovery, discoveryMode, parseErr := parseDiscoveryQueryWithDateMeaning(arguments, meaning)
 	if parseErr == nil && !discoveryMode {
@@ -96,10 +97,10 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 		}
 	}
 	if parseErr != nil {
-		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, parseErr.Error()), DecisionTrace{}, false
+		return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, parseErr.Error()), proposal.DecisionTrace{}, false
 	}
 	if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) && strings.TrimSpace(discovery.Network) == "" {
-		return preparedToolCall{}, `{"error":"this network programming-identity request requires structured discovery with the catalog-resolved network name and media_type series; title-name matches and generic genres cannot establish network ties"}`, DecisionTrace{}, false
+		return preparedToolCall{}, `{"error":"this network programming-identity request requires structured discovery with the catalog-resolved network name and media_type series; title-name matches and generic genres cannot establish network ties"}`, proposal.DecisionTrace{}, false
 	}
 	if networkStyleRequest(intent) {
 		for _, qualifier := range []struct {
@@ -110,7 +111,7 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 			{"vote_count_min", float64(discovery.VoteCountMin)}, {"vote_average_min", discovery.VoteAverageMin},
 		} {
 			if qualifier.value > 0 && !networkScalarRequested(intent, qualifier.field) {
-				return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, qualifier.field+" was not requested; omit unrequested runtime/popularity thresholds from network discovery"), DecisionTrace{}, false
+				return preparedToolCall{}, fmt.Sprintf(`{"error":%q}`, qualifier.field+" was not requested; omit unrequested runtime/popularity thresholds from network discovery"), proposal.DecisionTrace{}, false
 			}
 		}
 	}
@@ -132,7 +133,7 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 			}
 		}
 	}
-	return prepared, "", DecisionTrace{}, true
+	return prepared, "", proposal.DecisionTrace{}, true
 }
 
 // projectThematicTitleSearch repairs a narrow provider mistake without guessing
@@ -165,7 +166,7 @@ func stringSliceAsAny(values []string) []any {
 	return result
 }
 
-func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
+func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, proposal.DecisionTrace, bool) {
 	if prepared.collection {
 		blob, cands, trace, ok := s.runCollectionTool(ctx, prepared.arguments, intent, feedback)
 		if !ok || len(cands) == 0 || intent.exampleFill == nil || stringArg(prepared.arguments["media_type"]) != string(provision.Movie) {
@@ -192,7 +193,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 		cands, err = s.catalog.Search(ctx, stringArg(arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
 	}
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 	}
 	if !discoveryMode {
 		query := stringArg(arguments["query"])
@@ -204,7 +205,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 	}
 	for _, candidate := range cands {
 		if resolveErr := s.resolveMembershipSource(ctx, intent, candidate.Name); resolveErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
+			return fmt.Sprintf(`{"error":%q}`, resolveErr.Error()), nil, proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure, WindowsCompleted: union.WindowsCompleted, SourceQueriesDispatched: union.SourceQueriesDispatched}, true
 		}
 	}
 	if mtArg != "" {
@@ -272,25 +273,25 @@ func projectDiscoveryWindows(base catalog.DiscoveryQuery, meaning ValidatedDateM
 // runCollectionTool resolves only the exact constituent titles the model names.
 // It intentionally does not use network, genre, era, or adjacent discovery as
 // membership evidence: those are thematic evidence, not a named set's roster.
-func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
+func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]any, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, proposal.DecisionTrace, bool) {
 	for key := range arguments {
 		if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
-			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, DecisionTrace{}, false
+			return `{"error":"collection mode accepts only media_type and exact titles; discovery filters cannot prove membership"}`, nil, proposal.DecisionTrace{}, false
 		}
 	}
 	mediaType := provision.MediaType(stringArg(arguments["media_type"]))
 	if !mediaType.Valid() {
-		return `{"error":"collection mode requires media_type movie or series"}`, nil, DecisionTrace{}, false
+		return `{"error":"collection mode requires media_type movie or series"}`, nil, proposal.DecisionTrace{}, false
 	}
 	titles, err := collectionTitleAnchors(arguments["titles"])
 	if err != nil {
-		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, DecisionTrace{}, false
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil, proposal.DecisionTrace{}, false
 	}
 	candidates := make([]catalog.Candidate, 0, len(titles))
 	for _, title := range titles {
 		results, searchErr := s.catalog.Search(ctx, title.name, catalog.ScopeAll, catalogSearchLimit)
 		if searchErr != nil {
-			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
+			return fmt.Sprintf(`{"error":%q}`, searchErr.Error()), nil, proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure}, true
 		}
 		candidate, found := exactCandidateForPick(results, pick{MediaType: string(mediaType), Name: title.name, Year: title.year})
 		if !found {
@@ -304,7 +305,7 @@ func (s *Suggester) runCollectionTool(ctx context.Context, arguments map[string]
 		candidates = append(candidates, candidate)
 	}
 	if len(candidates) == 0 {
-		return `{"error":"No exact member titles matched; provide constituent titles, not a block or network name."}`, nil, DecisionTrace{}, true
+		return `{"error":"No exact member titles matched; provide constituent titles, not a block or network name."}`, nil, proposal.DecisionTrace{}, true
 	}
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), candidates, feedback)
 	blob, _ := json.Marshal(toolResult(ranked.Candidates))
@@ -650,7 +651,7 @@ func finiteNumber(value any) (float64, error) {
 	return number, nil
 }
 
-func mergeDecisionTrace(dst, src *DecisionTrace) {
+func mergeDecisionTrace(dst, src *proposal.DecisionTrace) {
 	if src == nil || src.Version == 0 {
 		return
 	}
@@ -689,14 +690,14 @@ func mergeDecisionTrace(dst, src *DecisionTrace) {
 	}
 }
 
-func filterAdjacentFeedback(adjacent []AdjacentContext, signals []FeedbackSignal) []AdjacentContext {
+func filterAdjacentFeedback(adjacent []proposal.AdjacentContext, signals []FeedbackSignal) []proposal.AdjacentContext {
 	never := make(map[provision.Key]bool)
 	for _, signal := range signals {
 		if signal.Action == FeedbackNever {
 			never[signal.Target] = true
 		}
 	}
-	out := make([]AdjacentContext, 0, len(adjacent))
+	out := make([]proposal.AdjacentContext, 0, len(adjacent))
 	for _, candidate := range adjacent {
 		if !never[provision.Key(candidate.Key)] {
 			out = append(out, candidate)

@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
@@ -58,7 +59,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
+      invalidateSettings(queryClient),
       queryClient.invalidateQueries({ queryKey: fillerApi.getFillerResearchStatusQueryKey() }),
     ]);
   };

@@ -40,24 +40,16 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	desired := "/data/filler"
+	live := mapSettings{"filler.dir": "/data/filler", "filler.home_country": "US"}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
 		Auth:         testAuthorizer{},
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
-		LiveConfig: func(key string) string {
-			if key == "filler.dir" {
-				return desired
-			}
-			if key == "filler.home_country" {
-				return "US"
-			}
-			return ""
-		},
+		LiveSettings: live,
 	})
 
-	desired = "" // persisted desired clear; the current generation still has one applied source
+	live["filler.dir"] = "" // persisted desired clear; the current generation still has one applied source
 	req := httptest.NewRequest(http.MethodGet, "/v1/filler/watch", nil)
 	req.Header.Set("Authorization", "Bearer "+memberToken)
 	rec := httptest.NewRecorder()

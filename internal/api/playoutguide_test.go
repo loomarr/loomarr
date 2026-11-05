@@ -87,7 +87,7 @@ func newPlayoutGuideHarness(t *testing.T, guide api.PlayoutGuide) *playoutGuideH
 			Log:           defaults.Log,
 			PlayoutSecret: func() string { return playoutToken },
 			PlayoutGuide:  guide,
-			LiveConfig:    func(key string) string { return cfg[key] },
+			LiveSettings:  stringSettings(func(key string) string { return cfg[key] }),
 		})
 	})
 	return &playoutGuideHarness{apiHarness: base}

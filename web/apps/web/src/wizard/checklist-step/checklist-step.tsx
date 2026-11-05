@@ -2,6 +2,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -67,11 +68,8 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        // Refresh field values AND the server checklist — a saved key can flip a check.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
+        // Field values AND the server checklist (a saved key can flip a check) refetch together.
+        await invalidateSettings(queryClient);
         setEdits({}); // saved values are the new baseline
       },
     },
@@ -84,12 +82,8 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
   const envOverride = settingsApi.useSettingsEnvOverride({
     mutation: {
       onSuccess: async () => {
-        // Both, for the same reason the patch above refreshes both: taking a key back can
-        // change the resolved value, and a resolved value can flip a check.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
+        // Taking a key back can change the resolved value, and a resolved value can flip a check.
+        await invalidateSettings(queryClient);
       },
     },
   });

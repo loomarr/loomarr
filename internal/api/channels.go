@@ -10,8 +10,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channeledit"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -222,7 +224,7 @@ type iconSuggestionsOutput struct {
 // (§icon P2): a Star Trek channel's five series posters, rather than a generic
 // placeholder. Read-only — any authenticated user may call it, matching get-channel.
 func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
-	if s.icons == nil || s.unconfigured("tmdb.api_key") {
+	if s.icons == nil || s.unconfigured(settings.TMDBAPIKey) {
 		return nil, errNotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
@@ -491,10 +493,10 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 
 // lineupContext turns a channel's stored lineup entries into the lightweight
 // name/year/key context the refiner reasons about.
-func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
-	out := make([]suggest.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposal.LineupContext {
+	out := make([]proposal.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, suggest.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposal.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }

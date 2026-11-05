@@ -8,8 +8,7 @@ import (
 
 func TestEnsureDevEncryptionKeyCreatesPrivateStableKeyBesideSQLite(t *testing.T) {
 	dir := t.TempDir()
-	databaseURL := "sqlite://" + filepath.Join(dir, "loomarr.db")
-	if err := ensureDevEncryptionKey(databaseURL); err != nil {
+	if err := ensureDevEncryptionKey(dir); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "encryption.key")
@@ -27,7 +26,7 @@ func TestEnsureDevEncryptionKeyCreatesPrivateStableKeyBesideSQLite(t *testing.T)
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("key mode = %v; want 0600", info.Mode().Perm())
 	}
-	if err := ensureDevEncryptionKey(databaseURL); err != nil {
+	if err := ensureDevEncryptionKey(dir); err != nil {
 		t.Fatal(err)
 	}
 	second, err := os.ReadFile(path)

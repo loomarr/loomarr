@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // registerSetup mounts /v1/setup/* (§7/§13). These power the operator wizard +
@@ -54,17 +56,20 @@ type SetupCheck struct {
 // setup/status, reusing the §8 setup/test registry (SettingsService.Test). Each
 // maps a probe name to its Troubleshooting anchor. `filler` is optional — shown
 // only when a filler dir is configured (§13 "if configured").
-// targetKey names the setting holding what this probe connects TO, so the Services panel
-// (§12, V31) can show `emby.lan:8096` beside a red dot. Empty where there is nothing to
+// target names the setting holding what this probe connects TO, so the Services panel
+// (§12, V31) can show `emby.lan:8096` beside a red dot. Nil where there is nothing to
 // show — TMDB is a fixed vendor endpoint nobody configures, so a "target" there would be a
 // constant dressed up as diagnostics.
-var connectionChecklist = []struct{ name, docHref, targetKey string }{
-	{"media_server", "troubleshooting#media-server", "library.url"},
-	{"requester", "troubleshooting#seerr", "seerr.url"},
-	{"tunarr", "troubleshooting#tunarr", "tunarr.url"},
-	{"llm", "troubleshooting#llm", "llm.url"},
-	{"tmdb", "troubleshooting#tmdb", ""},
-	{"filler", "troubleshooting#filler", "filler.dir"},
+var connectionChecklist = []struct {
+	name, docHref string
+	target        *settings.StringKey
+}{
+	{"media_server", "troubleshooting#media-server", &settings.LibraryURL},
+	{"requester", "troubleshooting#seerr", &settings.SeerrURL},
+	{"tunarr", "troubleshooting#tunarr", &settings.TunarrURL},
+	{"llm", "troubleshooting#llm", &settings.LLMURL},
+	{"tmdb", "troubleshooting#tmdb", nil},
+	{"filler", "troubleshooting#filler", &settings.FillerDir},
 }
 
 type setupStatusOutput struct {
@@ -103,13 +108,13 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 	// the shared registry. filler is optional — shown only when configured.
 	if s.settings != nil {
 		for _, c := range connectionChecklist {
-			if c.name == "filler" && s.configValue("filler.dir") == "" {
+			if c.name == "filler" && s.configValue(settings.FillerDir) == "" {
 				continue
 			}
 			ok, hint := s.settings.Test(ctx, c.name)
 			target := ""
-			if c.targetKey != "" {
-				target = s.configValue(c.targetKey)
+			if c.target != nil {
+				target = s.configValue(*c.target)
 			}
 			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target})
 		}
@@ -147,13 +152,13 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 }
 
 // configValue reads a live setting for gating optional checks; empty when the
-// composition root didn't wire liveConfig (unit tests) — then optional checks are
+// composition root didn't wire liveSettings (unit tests) — then optional checks are
 // simply omitted.
-func (s *Server) configValue(key string) string {
-	if s.liveConfig == nil {
+func (s *Server) configValue(key settings.StringKey) string {
+	if s.liveSettings == nil {
 		return ""
 	}
-	return s.liveConfig(key)
+	return key.Get(s.liveSettings)
 }
 
 type tunarrConnectOutput struct {
@@ -166,7 +171,7 @@ type tunarrConnectOutput struct {
 // tunarrConnectHandler wires the media server as Tunarr's media source + scans it
 // (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
 func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
-	if s.tunarrConnect == nil || s.unconfigured("tunarr.url") || s.libraryUnconfigured() {
+	if s.tunarrConnect == nil || s.unconfigured(settings.TunarrURL) || s.libraryUnconfigured() {
 		return nil, errNotImplemented("Setup incomplete",
 			"Connect Tunarr and your media server in Settings before wiring them together.",
 			"troubleshooting#tunarr")
@@ -205,13 +210,11 @@ func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*live
 	return out, nil
 }
 
-// configInt reads a live INTEGER setting. It deliberately does NOT parse configValue:
-// settings.String panics on a non-string key, so routing an int setting through the
-// string seam is a 500 waiting to happen — which is exactly what it was. Unwired ⇒ 0,
-// which callers treat as "no configured value" rather than as a real limit of zero.
-func (s *Server) configInt(key string) int {
-	if s.liveConfigInt == nil {
+// configInt reads a live INTEGER setting. Unwired ⇒ 0, which callers treat as "no configured
+// value" rather than as a real limit of zero.
+func (s *Server) configInt(key settings.IntKey) int {
+	if s.liveSettings == nil {
 		return 0
 	}
-	return s.liveConfigInt(key)
+	return key.Get(s.liveSettings)
 }

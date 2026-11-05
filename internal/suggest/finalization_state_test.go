@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/reference"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -18,7 +18,7 @@ import (
 func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T) {
 	for _, dated := range []bool{false, true} {
 		name, meaning := "none", dateMeaningNone()
-		intent := suggest.Intent{Description: "Use https://lineups.example/friday"}
+		intent := proposal.Intent{Description: "Use https://lineups.example/friday"}
 		if dated {
 			name, meaning = "dated", dateMeaning1990()
 			intent.Description = "1990s films from https://lineups.example/friday"
@@ -75,7 +75,7 @@ func TestSuggest_FinalizationCarriesAcceptedMeaningThroughRepair(t *testing.T) {
 	for _, dated := range []bool{false, true} {
 		name := "none"
 		meaning := dateMeaningNone()
-		intent := suggest.Intent{Description: "action films"}
+		intent := proposal.Intent{Description: "action films"}
 		if dated {
 			name = "dated"
 			meaning = dateMeaning1990()

@@ -3,21 +3,11 @@ package tmdb
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
-
-// StatusError is a TMDB response outside 2xx that the caller did not treat as "not found".
-// It exists so a failure can be CLASSIFIED (FailureClass) instead of being matched by message.
-type StatusError struct {
-	Path   string
-	Status int
-}
-
-func (e *StatusError) Error() string {
-	return fmt.Sprintf("tmdb GET %s: status %d", e.Path, e.Status)
-}
 
 // decodeError marks a 2xx body that did not parse.
 type decodeError struct{ err error }
@@ -41,9 +31,9 @@ const (
 
 // FailureClass buckets a TMDB error so an operator can tell a bad key from a rate limit from a
 // dropped connection. A caller that swallows failures (best-effort artwork) must still be able to
-// say WHICH kind it is swallowing.
+// say WHICH kind it is swallowing. A non-2xx answer is an *httpx.StatusError, bucketed by status.
 func FailureClass(err error) string {
-	var status *StatusError
+	var status *httpx.StatusError
 	var dec *decodeError
 	var netErr net.Error
 	switch {

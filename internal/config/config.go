@@ -25,7 +25,23 @@ type Config struct {
 	// Core / harness — process topology, needed before anything else.
 	ListenAddr string `env:"LISTEN_ADDR" envDefault:":8080"`
 	LogLevel   string `env:"LOG_LEVEL" envDefault:"info"`
-	TZ         string `env:"TZ"`
+
+	// AgentDisableLiveTVTuner is the env-only flag scripts/dev-env.sh exports for an agent lane
+	// (#1555): any non-blank value stops the lane adding or retiring a Live TV tuner on whatever
+	// media server its library.* settings point at. Deliberately NOT a registry setting, so
+	// nothing the Settings UI saves can turn it off. Read it through TunerPublishingDisabled.
+	AgentDisableLiveTVTuner string `env:"LOOMARR_AGENT_DISABLE_LIVETV_TUNER"`
+
+	// DataDir is the directory holding the bootstrap file, the generated installation key and
+	// other boot-owned state. It is decided once (the SQLite database's directory, else /data)
+	// and recorded in the bootstrap file by PersistDataDir; every later boot reads it back, so
+	// a database cutover cannot move it. It has no env var of its own.
+	DataDir string `env:"-"`
+
+	// bootstrapDir is where the bootstrap file was found ("" when there was none), and
+	// dataDirRecorded reports whether that file already carried DATA_DIR.
+	bootstrapDir    string
+	dataDirRecorded bool
 
 	// Store — needed to OPEN the database, so necessarily pre-registry.
 	// Defaults to the SQLite volume path so `docker run -v loomarr-data:/data
@@ -71,15 +87,21 @@ type Config struct {
 // See bootstrapfile.go. Env still wins, so a GitOps pin is never overridden by
 // something the wizard wrote.
 func Load() (*Config, error) {
+	return LoadEnv(processEnvironment())
+}
+
+// LoadEnv is Load over an explicit environment map. The process environment is neither read
+// nor written, so precedence is decided here and tests need no os.Setenv to steer it.
+func LoadEnv(environ map[string]string) (*Config, error) {
 	// Resolve the data directory the file lives in from the env-level DATABASE_URL
 	// first: if an operator pinned a SQLite path, that is where the file belongs. This
 	// is deliberately a chicken-and-egg the ENV side resolves — the file can relocate
 	// the database, but never itself.
 	var envOnly Config
-	if err := env.Parse(&envOnly); err != nil {
+	if err := env.ParseWithOptions(&envOnly, env.Options{Environment: environ}); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	fileValues, err := loadBootstrapSearch(BootstrapDirsFor(envOnly.DatabaseURL))
+	fileValues, fileDir, err := loadBootstrapSearch(BootstrapDirsFor(envOnly.DatabaseURL))
 	if err != nil {
 		// Loud, not silent: this runs before the store opens, so a bad file must stop
 		// the boot rather than let the process start with configuration the operator
@@ -87,56 +109,86 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	// Apply the file as DEFAULTS beneath the real environment: env.ParseWithOptions'
-	// DefaultValueTagName isn't a lookup hook, so the tier is expressed by setting only
-	// the vars the environment does NOT already define, then parsing once. That keeps
+	// The file is DEFAULTS beneath the real environment: merge it into a copy of the map
+	// for every key the environment does NOT already define, then parse once. That keeps
 	// precedence in one obvious place instead of spread across per-field merges.
-	restore := map[string]bool{}
+	merged := make(map[string]string, len(environ)+len(fileValues))
 	for k, v := range fileValues {
-		if _, pinned := os.LookupEnv(k); pinned {
-			continue // env wins — the file never overrides a pin
-		}
-		if err := os.Setenv(k, v); err != nil {
-			return nil, fmt.Errorf("apply %s from %s: %w", k, BootstrapFileName, err)
-		}
-		restore[k] = true
+		merged[k] = v
 	}
-	defer func() {
-		// Leave the process environment as we found it: Load is called once in main,
-		// but tests call it repeatedly and a leaked var would make them order-dependent.
-		for k := range restore {
-			_ = os.Unsetenv(k)
-		}
-	}()
+	for k, v := range environ {
+		merged[k] = v // env wins — the file never overrides a pin, even an empty one
+	}
 
 	var c Config
-	if err := env.Parse(&c); err != nil {
+	if err := env.ParseWithOptions(&c, env.Options{Environment: merged}); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	if err := resolveMetricsTokenFile(&c); err != nil {
+	if err := resolveMetricsTokenFile(&c, environ); err != nil {
 		return nil, err
 	}
+	c.bootstrapDir = fileDir
+	if recorded := fileValues[dataDirKey]; recorded != "" {
+		c.DataDir, c.dataDirRecorded = recorded, true
+	} else {
+		c.DataDir = DataDirFor(c.DatabaseURL)
+	}
 	return &c, nil
+}
+
+// TunerPublishingDisabled reports whether the agent-lane flag is set (any non-blank value).
+func (c *Config) TunerPublishingDisabled() bool {
+	return strings.TrimSpace(c.AgentDisableLiveTVTuner) != ""
+}
+
+// processEnvironment is the process environment as a map, the one place Load reads it.
+func processEnvironment() map[string]string {
+	environ := os.Environ()
+	m := make(map[string]string, len(environ))
+	for _, kv := range environ {
+		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
+			m[k] = v
+		}
+	}
+	return m
+}
+
+// PersistDataDir records the decided DataDir in the bootstrap file so later boots read it
+// back instead of re-deriving it. It is a no-op once recorded. The value is written into the
+// file Load found, or a new one in DataDir itself on a first boot, preserving every other value.
+func (c *Config) PersistDataDir() error {
+	if c.dataDirRecorded || c.DataDir == "" {
+		return nil
+	}
+	dir := c.bootstrapDir
+	if dir == "" {
+		dir = c.DataDir
+	}
+	if err := UpdateBootstrapFile(dir, map[string]string{dataDirKey: c.DataDir}); err != nil {
+		return fmt.Errorf("record data directory: %w", err)
+	}
+	c.dataDirRecorded = true
+	return nil
 }
 
 // resolveMetricsTokenFile applies the <VAR>_FILE half of the secret idiom (config-design §3).
 // A non-empty <VAR> together with <VAR>_FILE is ambiguous and refused; an unreadable file stops
 // the boot rather than leaving the operator believing a token is set. Errors name the variable
 // and path, never the value.
-func resolveMetricsTokenFile(c *Config) error {
+func resolveMetricsTokenFile(c *Config, environ map[string]string) error {
 	c.MetricsToken = strings.TrimSpace(c.MetricsToken) // a blank/whitespace pin means "unset", never a token
-	path := os.Getenv("LOOMARR_METRICS_TOKEN_FILE")
+	path := environ["LOOMARR_METRICS_TOKEN_FILE"]
 	if path == "" {
 		return nil
 	}
 	if c.MetricsToken != "" {
 		return fmt.Errorf("LOOMARR_METRICS_TOKEN and LOOMARR_METRICS_TOKEN_FILE are both set (ambiguous)")
 	}
-	b, err := os.ReadFile(path) //nolint:gosec // path is operator-supplied config, by design
+	token, err := ReadSecret(path)
 	if err != nil {
-		return fmt.Errorf("read LOOMARR_METRICS_TOKEN_FILE (%s): %w", path, err)
+		return fmt.Errorf("LOOMARR_METRICS_TOKEN_FILE: %w", err)
 	}
-	c.MetricsToken = strings.TrimSpace(string(b))
+	c.MetricsToken = token
 	return nil
 }
 

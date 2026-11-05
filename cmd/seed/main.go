@@ -25,7 +25,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -38,6 +37,7 @@ import (
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -181,7 +181,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		libPick("demo-film-27", 7440000), // 124m
 	}
 	lineup := items(picks)
-	acquisitions := []suggest.ProposalItem{
+	acquisitions := []proposal.ProposalItem{
 		acqItem("demo-film-08"),
 		acqItem("demo-film-26"),
 		acqItem("demo-film-29"),
@@ -212,15 +212,11 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		},
 	}
 
-	prop := suggest.Proposal{
-		Intent:       suggest.Intent{Description: "90s movie night — mysteries, comedies and a little sci-fi", Era: "1990s"},
+	prop := proposal.Proposal{
+		Intent:       proposal.Intent{Description: "90s movie night — mysteries, comedies and a little sci-fi", Era: "1990s"},
 		Lineup:       lineup,
 		Acquisitions: acquisitions,
 		Policy:       policy,
-	}
-	propJSON, err := json.Marshal(prop)
-	if err != nil {
-		return fmt.Errorf("marshal proposal: %w", err)
 	}
 	propID := newID("prop")()
 	// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
@@ -238,13 +234,13 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}, store.Proposal{
-		ID:           propID,
-		JobID:        jobID,
-		Status:       "submitted",
-		CreatedBy:    adminID,
-		ProposalJSON: string(propJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:        propID,
+		JobID:     jobID,
+		Status:    "submitted",
+		CreatedBy: adminID,
+		Body:      prop,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
@@ -284,7 +280,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 // domain event via provision.Apply, then persists it. Grabbed needs a fresh
 // downloading deadline; LibraryConfirmed carries the library id. This is the honest
 // way to reach a later state — it walks the machine rather than forging the target.
-func advance(ctx context.Context, st store.Store, item suggest.ProposalItem, kind provision.EventKind, libID string) error {
+func advance(ctx context.Context, st store.Store, item proposal.ProposalItem, kind provision.EventKind, libID string) error {
 	key, err := item.Key()
 	if err != nil {
 		return fmt.Errorf("key for %q: %w", item.Name, err)
@@ -435,14 +431,14 @@ func (a seedAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolut
 // pick pairs an in-library ProposalItem with its runtime, which ProposalItem itself
 // doesn't carry — the channel's slots need a real duration (Tunarr rejects <= 0).
 type pick struct {
-	item   suggest.ProposalItem
+	item   proposal.ProposalItem
 	durMs  int64
 	rating string
 }
 
 // items projects the proposal-item view out of the picks (for the proposal body).
-func items(ps []pick) []suggest.ProposalItem {
-	out := make([]suggest.ProposalItem, len(ps))
+func items(ps []pick) []proposal.ProposalItem {
+	out := make([]proposal.ProposalItem, len(ps))
 	for i, p := range ps {
 		out[i] = p.item
 	}
@@ -461,15 +457,15 @@ func demoFilm(id string) demolibrary.Title {
 
 func libPick(id string, durMs int64) pick {
 	t := demoFilm(id)
-	return pick{item: suggest.ProposalItem{
+	return pick{item: proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
 		InLibrary: true, LibraryItemID: t.ID(),
 	}, durMs: durMs, rating: t.Rating}
 }
 
-func acqItem(id string) suggest.ProposalItem {
+func acqItem(id string) proposal.ProposalItem {
 	t := demoFilm(id)
-	return suggest.ProposalItem{
+	return proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
 		InLibrary: false,
 	}

@@ -59,6 +59,10 @@ classify() {
     cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
       select_gate contracts
       ;;
+    # inventedGoFixtures: Go test fixtures written as invented data.
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/movie.json|internal/testkit/fixtures/radarr/config_metadata.json|internal/metadataprovider/nfo/testdata/*)
+      select_gate contracts
+      ;;
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;

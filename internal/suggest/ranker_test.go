@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -155,23 +156,23 @@ func TestRankGroundedCandidatesWithTraceClassifiesRetrievalEmpty(t *testing.T) {
 }
 
 func TestDecisionRankQueryRecordsMatchedConstraintCategoriesWithoutRawTerms(t *testing.T) {
-	intent := Intent{
+	intent := Intent{Intent: proposal.Intent{
 		Description: "science fiction", Tone: "energetic", Era: "1990s",
-		MustInclude: []string{"marigold"}, MustExclude: []string{"comedy"}, RefineText: "more sequels",
-	}
+		MustInclude: []string{"marigold"}, MustExclude: []string{"comedy"}, RefineText: "more sequels"}}
+
 	candidate := catalog.Candidate{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol sequel",
 		Overview: "An energetic 1990s science fiction story with more sequels",
 	}
 	got := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), []catalog.Candidate{candidate}, nil).Trace.Candidates[0]
-	want := ConstraintMatches{Request: true, Tone: true, Era: true, MustInclude: true, Refine: true}
+	want := proposal.ConstraintMatches{Request: true, Tone: true, Era: true, MustInclude: true, Refine: true}
 	if got.Constraints != want || got.Rank.Relevance != 7 {
 		t.Fatalf("constraint evidence = %+v relevance=%d, want %+v relevance=7", got.Constraints, got.Rank.Relevance, want)
 	}
 }
 
 func TestDecisionRankQueryDoesNotTreatRequestScaffoldingAsEvidence(t *testing.T) {
-	intent := Intent{Description: "Please build a channel like this reference"}
+	intent := Intent{Intent: proposal.Intent{Description: "Please build a channel like this reference"}}
 	candidate := catalog.Candidate{
 		MediaType: provision.Movie, TMDBID: 90000604, Name: "Unrelated Mechanics",
 		Overview: "They build this machine for a difficult job.",
@@ -204,7 +205,7 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"the XYZ programming block",
 		"lineup from Friday Family Showcase",
 	} {
-		if !requiresMembershipEvidence(Intent{Description: description}) {
+		if !requiresMembershipEvidence(Intent{Intent: proposal.Intent{Description: description}}) {
 			t.Fatalf("named-set request was not gated: %q", description)
 		}
 	}
@@ -224,7 +225,7 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 		"Classic Science Fiction",
 		"Comedy Classics",
 	} {
-		if requiresMembershipEvidence(Intent{Description: description}) {
+		if requiresMembershipEvidence(Intent{Intent: proposal.Intent{Description: description}}) {
 			t.Fatalf("ordinary theme request was over-gated: %q", description)
 		}
 	}
@@ -251,10 +252,10 @@ func TestMembershipEvidenceGateTargetsNamedSetsWithoutHardcodingOneBlock(t *test
 }
 
 func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t *testing.T) {
-	dst := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAdjacent)}}}
-	src := DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
-		Candidates: []DecisionCandidate{
+	dst := proposal.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAdjacent)}}}
+	src := proposal.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 70, RecordedTotal: 70, Truncated: true,
+		Candidates: []proposal.DecisionCandidate{
 			{Key: "movie:tmdb:90000603", Source: string(catalog.ScopeAll)},
 			{Key: "movie:tmdb:90000604", Source: string(catalog.ScopeAll)},
 		}}
@@ -266,9 +267,9 @@ func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t
 		t.Fatalf("latest decision facts did not replace adjacency facts: %+v", dst.Candidates[0])
 	}
 
-	full := DecisionTrace{Version: DecisionTraceVersion, RecordedTotal: DecisionTraceMaxCandidates,
-		Candidates: make([]DecisionCandidate, DecisionTraceMaxCandidates)}
-	traceDecision(&full, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+	full := proposal.DecisionTrace{Version: DecisionTraceVersion, RecordedTotal: DecisionTraceMaxCandidates,
+		Candidates: make([]proposal.DecisionCandidate, DecisionTraceMaxCandidates)}
+	traceDecision(&full, proposal.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
 	if full.RecordedTotal != DecisionTraceMaxCandidates+1 || !full.Truncated {
 		t.Fatalf("truncated decision total = %+v", full)
 	}

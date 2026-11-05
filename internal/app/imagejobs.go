@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 const (
@@ -35,7 +36,7 @@ const (
 // building a second one keeps the SSRF allowlist and the concurrency cap identical whoever asks.
 func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Service, st imageStore, layout filler.Layout, set resolved, rec *activity.Recorder, log *slog.Logger) *images.Fetcher {
 	fetcher := images.NewFetcher(svc, st,
-		func() bool { return set.boolv("images.remote_fetch_enabled") },
+		func() bool { return settings.ImagesRemoteFetchEnabled.Get(set) },
 		func() int { return imageRemoteConcurrency },
 		func() []string { return imageFetchHosts(set) },
 		log)
@@ -64,7 +65,7 @@ func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Serv
 	}
 	reg.Add(images.MaintenanceJob(fetcher, images.NewGC(svc, st,
 		func() time.Duration { return imageRemoteTTL },
-		func() int { return set.intv("images.cache_budget_mb") },
+		func() int { return settings.ImagesCacheBudgetMb.Get(set) },
 		notify, log)))
 
 	return fetcher
@@ -83,7 +84,7 @@ func registerImageJobs(ctx context.Context, reg *jobs.Registry, svc *images.Serv
 // Fetcher.checkURL.
 func imageFetchHosts(set resolved) []string {
 	hosts := []string{"tmdb.org"} // covers image.tmdb.org and any sibling CDN name
-	if raw := strings.TrimSpace(set.str("library.url")); raw != "" {
+	if raw := strings.TrimSpace(settings.LibraryURL.Get(set)); raw != "" {
 		if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
 			hosts = append(hosts, u.Hostname())
 		}
