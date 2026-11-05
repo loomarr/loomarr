@@ -130,23 +130,6 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	return nil
 }
 
-// settlePipelineTx settles the clip's pipeline row at `to`, done, if its disposition is one of
-// from. It reports whether the row changed. An admission decision settles the row in its own
-// transaction.
-func (s *sqlStore) settlePipelineTx(ctx context.Context, tx store.Tx, hash string, from []filler.Disposition, to filler.Disposition, at time.Time) (bool, error) {
-	marks := make([]string, len(from))
-	args := make([]any, 0, len(from)+3)
-	args = append(args, string(to), epoch(at))
-	for i, disposition := range from {
-		marks[i] = "?"
-		args = append(args, string(disposition))
-	}
-	args = append(args, hash)
-	return affectedOne(tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline
-		SET disposition = ?, status = 'done', next_run = 0, updated_at = ?
-		WHERE disposition IN (`+strings.Join(marks, ",")+`) AND clip_hash = ?`), args...))
-}
-
 // advancePipelineTx moves the clip's pipeline row from one disposition to the next, leaving its
 // status and schedule alone, and reports whether it moved. Split confirmation completes the reel's
 // row and starts its children's.

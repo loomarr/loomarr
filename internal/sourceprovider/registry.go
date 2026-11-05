@@ -92,6 +92,28 @@ func (r *Registry) Addresser(id ID) (Addresser, bool) {
 	return a, ok
 }
 
+// Linker returns the registered provider's Linker: false when the provider is not registered or
+// has no pages to link to.
+func (r *Registry) Linker(id ID) (Linker, bool) {
+	p, ok := r.Get(id)
+	if !ok {
+		return nil, false
+	}
+	l, ok := p.(Linker)
+	return l, ok
+}
+
+// Recognizer returns the registered provider's Recognizer: false when the provider is not
+// registered or cannot tell an address from a search.
+func (r *Registry) Recognizer(id ID) (Recognizer, bool) {
+	p, ok := r.Get(id)
+	if !ok {
+		return nil, false
+	}
+	rec, ok := p.(Recognizer)
+	return rec, ok
+}
+
 // Fetched reports whether id names a registered provider whose sources are downloaded rather than
 // scanned where they are.
 func (r *Registry) Fetched(id ID) bool {

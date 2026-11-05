@@ -1,3 +1,4 @@
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink, Loader2, Play } from "lucide-react";
@@ -6,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
 interface SourceContentPreviewProps {
-  kind: "archive" | "youtube";
+  /** The provider the source belongs to, from the provider registry. */
+  provider: FillerProviderDescriptionDTO;
   canonicalUrl: string;
   previewItems?: FillerSourcePreviewItemDTO[];
   loading?: boolean;
@@ -14,15 +16,13 @@ interface SourceContentPreviewProps {
 }
 
 const SourceContentPreview = ({
-  kind,
+  provider,
   canonicalUrl,
   previewItems,
   loading = false,
   error,
 }: SourceContentPreviewProps) => {
   const [previewing, setPreviewing] = useState<FillerSourcePreviewItemDTO>();
-  const provider = kind === "archive" ? "Archive.org" : "YouTube";
-  const heading = kind === "archive" ? "Popular videos in this collection" : "A few videos from this source";
   const showExamples = loading || Boolean(error) || Boolean(previewItems?.length);
 
   return (
@@ -33,13 +33,13 @@ const SourceContentPreview = ({
         target="_blank"
         rel="noreferrer"
       >
-        Open on {provider}
+        Open on {provider.label}
         <ExternalLink className="size-3" aria-hidden />
       </a>
 
       {showExamples && (
         <div className="border-border mt-3 border-t pt-3">
-          <p className="text-xs font-medium">{heading}</p>
+          {provider.previewHeading && <p className="text-xs font-medium">{provider.previewHeading}</p>}
           {loading && (
             <div
               className="text-muted-foreground mt-2 flex items-center gap-2 text-xs"
@@ -89,7 +89,11 @@ const SourceContentPreview = ({
         </div>
       )}
 
-      <SourceItemPreviewDialog item={previewing} kind={kind} onClose={() => setPreviewing(undefined)} />
+      <SourceItemPreviewDialog
+        item={previewing}
+        providerLabel={provider.label}
+        onClose={() => setPreviewing(undefined)}
+      />
     </>
   );
 };

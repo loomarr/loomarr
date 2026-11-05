@@ -2,6 +2,7 @@ import type { FillerReadinessDTO } from "@loomarr/api";
 import {
   getFillerReadinessQueryKey,
   getFillerResearchStatusQueryKey,
+  getListFillerProvidersQueryKey,
   getListFillerSourcesQueryKey,
 } from "@loomarr/api/endpoints/filler";
 import { getSettingsListQueryKey } from "@loomarr/api/endpoints/settings";
@@ -9,6 +10,7 @@ import { fillerRefinementSettings } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { FillerSettings } from "./filler-settings";
 
@@ -54,6 +56,11 @@ const withSettings: Decorator = (Story) => {
   client.setQueryData(getListFillerSourcesQueryKey(), {
     status: 200,
     data: { sources: [], total: 0 },
+    headers: new Headers(),
+  });
+  client.setQueryData(getListFillerProvidersQueryKey(), {
+    status: 200,
+    data: { providers: fillerProviders },
     headers: new Headers(),
   });
   client.setQueryData(getFillerReadinessQueryKey(), {

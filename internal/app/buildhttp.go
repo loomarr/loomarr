@@ -127,7 +127,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Filler:               fillerSvc,
 		SourceProviders:      deps.fillers.providers,
 		FillerResearch:       deps.fillers.research,
-		FillerDecisions:      deps.fillers.decisions,
 		IntakeLanguages:      deps.fillers.intakeLanguages,
 		FillerDefects:        deps.fillers.defects,
 		Pods:                 podPreview,

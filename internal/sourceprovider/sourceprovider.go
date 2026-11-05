@@ -50,6 +50,33 @@ type Description struct {
 	// BadAddress is what an operator reads when the address they typed is not one this provider
 	// can use. It names the shape the provider accepts.
 	BadAddress Problem
+	// Blurb is the sentence under the provider's heading on the source page, saying what it offers.
+	Blurb string
+	// SourceNoun names what one registered source of this provider is, as the drawer's subtitle:
+	// "Archive.org collection", "Folder on this server".
+	SourceNoun string
+	// AddressLabel names the field an operator types a source's address into when the provider
+	// takes sources by hand and has no finder: "Folder path".
+	AddressLabel string
+	// PreviewHeading introduces the examples shown from a source. Empty for a provider with no
+	// previews.
+	PreviewHeading string
+	// Find is the copy of the finder a Finder provider offers. Zero for any other.
+	Find FindCopy
+}
+
+// FindCopy is the words around a provider's source finder.
+type FindCopy struct {
+	// Label names the finder's field: "Find a YouTube channel or playlist".
+	Label string
+	// Placeholder shows the two ways in, a search and an address.
+	Placeholder string
+	// Add is the button that registers the chosen source.
+	Add string
+	// NoMatches is what a search with no results tells the operator to do next.
+	NoMatches string
+	// MinQuery is the fewest characters a search is worth running with.
+	MinQuery int
 }
 
 // Problem is a refusal's headline and the way out of it.
@@ -64,6 +91,24 @@ type Addresser interface {
 	// provider validates by its own grammar: an archive.org identifier and a YouTube URL share no
 	// rule.
 	Address(raw string) string
+}
+
+// Linker gives the places an operator can look at a provider's material in the provider's own
+// service. A provider without one has nothing to link to.
+type Linker interface {
+	// SourceURL is the public page of a registered source, from the address stored for it, or ""
+	// when it has none.
+	SourceURL(address string) string
+	// EmbedURL is a player that plays an item the provider listed, from the item's page URL, or ""
+	// when the provider does not allow the item to be embedded.
+	EmbedURL(itemURL string) string
+}
+
+// Recognizer tells an address from words to search for, so a finder given either does the right
+// thing with it. It is stricter than Addresser: a bare word is a valid address and also a search.
+type Recognizer interface {
+	// Recognizes reports whether input is an address of one of this provider's sources.
+	Recognizes(input string) bool
 }
 
 // Capabilities are the optional interfaces a provider implements, as the UI needs to know them.
