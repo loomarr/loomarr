@@ -1,6 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
@@ -50,8 +51,8 @@ const blocksFor = (): (typeof BLOCKS)[number][] => BLOCKS.filter((b) => b.id !==
 // titleFor appends the chosen-provider suffix for the provider-selected blocks (requester,
 // AI), reading the saved value from the settings entries; every other block keeps its title.
 const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): string => {
-  if (block.id === "requester") return blockTitle(entries, block.title, "requester.provider");
-  if (block.id === "ai") return blockTitle(entries, block.title, "llm.provider");
+  if (block.id === "requester") return blockTitle(entries, block.title, SettingKey.RequesterProvider);
+  if (block.id === "ai") return blockTitle(entries, block.title, SettingKey.LLMProvider);
   return block.title;
 };
 

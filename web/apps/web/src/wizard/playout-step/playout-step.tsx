@@ -1,5 +1,6 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
@@ -70,12 +71,12 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
 
   const choose = (next: PlayoutBackend) => {
     if (next === value || pinnedBy) return;
-    patch.mutate({ data: { edits: { "playout.backend": next } } });
+    patch.mutate({ data: { edits: { [SettingKey.PlayoutBackend]: next } } });
   };
 
   // --- Tunarr's own connection form, shown inline once Tunarr is chosen ---
   const entries = useSettingsEntries();
-  const publicURLEntries = entries.filter((e) => e.key === "server.public_url");
+  const publicURLEntries = entries.filter((e) => e.key === SettingKey.ServerPublicURL);
   // Essentials only, exactly as the checklist does it (§6): advanced keys live in Settings.
   const tunarrEntries = entries.filter((e) => e.group === "connections.tunarr" && !e.advanced);
   const status = setupApi.useSetupStatus();
@@ -201,7 +202,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
             values={publicURLEdits}
             onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
             results={patchResults}
-            descriptionIds={{ "server.public_url": "server-public-url-requirement" }}
+            descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
           <p id="server-public-url-requirement" className="text-muted-foreground mt-3 text-sm">
             Required for Loomarr playback. Your media server must be able to reach this address to fetch the
