@@ -6,7 +6,11 @@ Turning "I want a channel that feels like X" into a lineup a person can approve.
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** library (8), platform (8), channels (5)
+## Imports from other areas
+
+- **library** · 8 imports — grounding each suggested title in the real library, catalog, TMDB and collections, and the `provision` records for titles the household lacks
+- **platform** · 8 imports — the store, the language model, the holiday vocabulary and whole-word matching the suggester checks titles with, and the storage governor's size confidence
+- **channels** · 5 imports — the `schedule` values a proposal describes, and the reconcile engine the outlook runs to preview a proposal before approval
 
 ## Packages
 

@@ -40,9 +40,10 @@ func render(table []area, pkgs []Package) string {
 	b.WriteString("## Start here\n\n")
 	b.WriteString("The packages under `internal/` group into the areas below. Each area has its own " +
 		"generated page listing its packages, what each one imports, how many packages import it, " +
-		"and which other areas it reaches into (counted as package-to-package imports). The area " +
-		"table lives in `cmd/arch-docs/areas.go`; a new package must be added to one area before " +
-		"it merges.\n\n")
+		"and which other areas it reaches into (counted as package-to-package imports), each with " +
+		"the reason. The area table lives in `cmd/arch-docs/areas.go`; a new package must be added " +
+		"to one area before it merges, and a new import into another area must be declared there " +
+		"with its reason. A reason ending \"until …\" is an import that should go.\n\n")
 	for _, a := range table {
 		fmt.Fprintf(&b, "### [%s](%s/%s.md)\n\n%s\n\n", a.Title, areaPagesDir, a.Name, a.Description)
 	}
@@ -90,7 +91,7 @@ func renderAreaPages(table []area, pkgs []Package) map[string]string {
 			"DO NOT EDIT BY HAND. -->\n\n")
 		fmt.Fprintf(&b, "%s\n\n", a.Description)
 		b.WriteString("One area of the [package map](../package-map.md#start-here).\n\n")
-		fmt.Fprintf(&b, "**Imports from other areas:** %s\n\n", crossAreaImports(a, byName, areaOf, table))
+		renderAreaImports(&b, a, crossAreaImports(a, byName, areaOf, table))
 		b.WriteString("## Packages\n\n")
 
 		names := append([]string(nil), a.Packages...)
@@ -120,6 +121,28 @@ func renderAreaPages(table []area, pkgs []Package) map[string]string {
 		pages[a.Name] = b.String()
 	}
 	return pages
+}
+
+// renderAreaImports writes the other areas a imports from, busiest first, each with the reason
+// its MayImport declares. An area that may import any area gets the counts on one line.
+func renderAreaImports(b *strings.Builder, a area, counts []areaCount) {
+	if len(counts) == 0 {
+		b.WriteString("**Imports from other areas:** none\n\n")
+		return
+	}
+	if a.ImportsAnyArea {
+		parts := make([]string, len(counts))
+		for i, c := range counts {
+			parts[i] = fmt.Sprintf("%s (%d)", c.Area, c.Count)
+		}
+		fmt.Fprintf(b, "**Imports from other areas:** any, by design — %s\n\n", strings.Join(parts, ", "))
+		return
+	}
+	b.WriteString("## Imports from other areas\n\n")
+	for _, c := range counts {
+		fmt.Fprintf(b, "- **%s** · %d %s — %s\n", c.Area, c.Count, plural(c.Count, "import"), a.MayImport[c.Area])
+	}
+	b.WriteString("\n")
 }
 
 // renderSpine lists the packages that most of the tree depends on, without their importer

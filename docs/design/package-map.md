@@ -15,7 +15,7 @@ For the rules the layering follows, and the package names that are easy to confu
 
 ## Start here
 
-The packages under `internal/` group into the areas below. Each area has its own generated page listing its packages, what each one imports, how many packages import it, and which other areas it reaches into (counted as package-to-package imports). The area table lives in `cmd/arch-docs/areas.go`; a new package must be added to one area before it merges.
+The packages under `internal/` group into the areas below. Each area has its own generated page listing its packages, what each one imports, how many packages import it, and which other areas it reaches into (counted as package-to-package imports), each with the reason. The area table lives in `cmd/arch-docs/areas.go`; a new package must be added to one area before it merges, and a new import into another area must be declared there with its reason. A reason ending "until …" is an import that should go.
 
 ### [Library](areas/library.md)
 
