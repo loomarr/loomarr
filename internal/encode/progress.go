@@ -1,4 +1,4 @@
-package playout
+package encode
 
 import (
 	"bufio"
@@ -20,10 +20,10 @@ type Progress struct {
 
 // ReadProgress parses ffmpeg's `-progress` stream and calls onProgress once per block.
 //
-// ⚠ **Exported so the filler transcode stage shares this parser rather than growing a second
-// copy** (§10 V51b). It is the same key set and the same block-boundary rule, and the two would
-// drift the moment ffmpeg changed a field name — `out_time_ms` already reports MICROSECONDS
-// despite its name, which is exactly the sort of fact that gets fixed in one copy.
+// ⚠ **One parser for every ffmpeg caller** (§10 V51b): the playout packager and the filler
+// transcode stage both read it here rather than each growing a copy. Two copies would drift the
+// moment ffmpeg changed a field name — `out_time_ms` already reports MICROSECONDS despite its
+// name, which is exactly the sort of fact that gets fixed in one copy.
 //
 // It takes ownership of r and closes it. A nil onProgress still DRAINS the pipe: a full pipe
 // blocks ffmpeg's writes and stalls the encode.
@@ -36,16 +36,17 @@ func ReadProgress(r io.ReadCloser, onProgress func(Progress)) {
 	var cur Progress
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
-		if consumeProgressLine(strings.TrimSpace(sc.Text()), &cur) {
+		if ConsumeProgressLine(strings.TrimSpace(sc.Text()), &cur) {
 			onProgress(cur)
 		}
 	}
 }
 
-// consumeProgressLine parses one ffmpeg progress-protocol line into cur and reports whether it
+// ConsumeProgressLine parses one ffmpeg progress-protocol line into cur and reports whether it
 // closed a block (progress=continue|end), so a consumer sees whole samples, never half-updated ones.
-// A malformed value leaves cur unchanged.
-func consumeProgressLine(line string, cur *Progress) (complete bool) {
+// A malformed value leaves cur unchanged. Exported for the one caller that must watch a value
+// mid-block: the playout capability probe keeps the peak speed of every line.
+func ConsumeProgressLine(line string, cur *Progress) (complete bool) {
 	k, v, ok := strings.Cut(line, "=")
 	if !ok {
 		return false

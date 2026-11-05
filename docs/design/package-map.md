@@ -92,7 +92,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `jobs` | `store` |
 | `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
-| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
+| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
 | `notifications` | `httpx` |

@@ -8,7 +8,7 @@ import "time"
 //
 // # Contract for the caller (the phase 2 channel packager)
 //
-// Feed one SpeedSample per -progress block (ReadProgress) of the item encoder, with the wall clock
+// Feed one SpeedSample per -progress block (encode.ReadProgress) of the item encoder, with the wall clock
 // of the block and, when the platform can read it, the encoder process's CPU time (user+sys). When
 // Observe returns a Step, the monitor has already moved to the new rung. The caller then:
 //

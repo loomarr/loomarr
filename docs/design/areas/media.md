@@ -10,7 +10,6 @@ One area of the [package map](../package-map.md#start-here).
 
 - **platform** · 6 imports — the diagnostics process manager every ffmpeg run goes through, the image jobs and their schedules, the outbound HTTP client for fetched artwork, and start-up configuration
 - **library** · 2 imports — the `inventory` stream, keyframe and break values that header reads and measurements fill in
-- **playout** · 1 import — `playout.ReadProgress` and `playout.DefaultProfile`, until ffmpeg progress parsing and the encode profile live in media, where both belong
 
 ## Packages
 
@@ -21,7 +20,7 @@ One area of the [package map](../package-map.md#start-here).
 - **`defects`** · 7 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`encode`** · 8 importers · → `config`
-  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
+  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, each family's encoder flags and rate control, and the parser for ffmpeg's `-progress` stream.
 - **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`, `settings`
   One pipeline every image in Loomarr travels (§22).
 - **`images/rustgen`** · 4 importers
@@ -34,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
-- **`mediatools`** · 6 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout`
+- **`mediatools`** · 6 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `encode`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
