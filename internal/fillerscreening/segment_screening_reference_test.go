@@ -16,7 +16,7 @@ import (
 func TestSegmentScreeningReferenceRoundTripsBesideRenderedChild(t *testing.T) {
 	subject := screeningChildSubjectFixture(t)
 	aggregate := screeningAggregateFixture(t, subject)
-	reference, err := filler.NewSegmentScreeningReference(subject, aggregate)
+	reference, err := NewSegmentScreeningReference(subject, aggregate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,19 +40,19 @@ func TestSegmentScreeningReferenceRejectsSubjectDrift(t *testing.T) {
 	other := subject
 	other.CatalogHash = strings.Repeat("f", 64)
 	other.SHA256 = filler.SegmentScreeningSubjectSHA256(other)
-	if _, err := filler.NewSegmentScreeningReference(other, aggregate); err == nil {
+	if _, err := NewSegmentScreeningReference(other, aggregate); err == nil {
 		t.Fatal("reference joined an aggregate to a different subject")
 	}
 }
 
-func screeningAggregateFixture(t *testing.T, subject filler.SegmentScreeningSubject) filler.SegmentScreeningEvidence {
+func screeningAggregateFixture(t *testing.T, subject filler.SegmentScreeningSubject) SegmentScreeningEvidence {
 	t.Helper()
 	records := passingAxisEvidence(t, subject)
-	results := make([]filler.SegmentScreeningResult, 0, len(records))
+	results := make([]SegmentScreeningResult, 0, len(records))
 	for _, recorded := range records {
 		results = append(results, recorded.Evidence.Result())
 	}
-	aggregate, err := filler.NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 4, 0, 0, 0, time.UTC))
+	aggregate, err := NewSegmentScreeningEvidence(subject, results, screeningAirworthinessDecision(t, subject, records), time.Date(2026, time.September, 12, 4, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}

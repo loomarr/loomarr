@@ -146,3 +146,41 @@ func TestClientIngestorDerivesMediaErrorSeverity(t *testing.T) {
 		t.Fatalf("records = %+v", got)
 	}
 }
+
+func TestClientIngestorAcceptsEachNativeRuntimeWithItsOwnPlatform(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	for _, tc := range []struct {
+		source   Source
+		platform string
+		accepted bool
+	}{
+		{SourceAppleTV, "apple_tv", true},
+		{SourceIOS, "ios", true},
+		{SourceAndroid, "android", true},
+		{SourceAndroidTV, "shield_tv", true},
+		{SourceAppleTV, "android_tv", false},
+		{SourceAndroidTV, "apple_tv", false},
+		{SourceIOS, "android", false},
+		{SourceWeb, "apple_tv", false},
+	} {
+		t.Run(string(tc.source)+"/"+tc.platform, func(t *testing.T) {
+			ingestor, sink, recorder := clientTestIngestor(t, now)
+			_, err := ingestor.Ingest(t.Context(), "user_1", ClientBatch{
+				Source: tc.source, ClientVersion: "0.1.0", Platform: tc.platform,
+				Events: []ClientObservation{{
+					Event: PlayerAttached, OccurredAt: now.UnixMilli(), PlaybackSessionID: "play_1",
+					ChannelID: "ch_1", Transport: "native_hls",
+				}},
+			})
+			if tc.accepted != (err == nil) {
+				t.Fatalf("Ingest(%s, %s) error = %v, want accepted=%v", tc.source, tc.platform, err, tc.accepted)
+			}
+			if err := recorder.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if records := sink.snapshot(); tc.accepted && (len(records) != 1 || records[0].Source != tc.source) {
+				t.Fatalf("records = %+v, want one from %s", records, tc.source)
+			}
+		})
+	}
+}

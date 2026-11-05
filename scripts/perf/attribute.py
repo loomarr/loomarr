@@ -32,8 +32,8 @@ for sub, pkgs in {
     "API": "api httpx auth web setup invitation contact secretprotection",
     "scheduler/guide": "schedule binder programmer channels plannerreference channelmaint",
     "jobs runtime": "jobs bgexec",
-    "filler": "filler filleradmission fillerairworthiness fillercorpus fillerdecision fillerenrichment fillereval "
-              "fillerresearch fillersafety fillerstructure fillerstructuremedia fillerstructurewindow "
+    "filler": "filler filleradmission fillerscreening fillercorpus fillerdecision fillerenrichment fillereval "
+              "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
               "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
     "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
                 "moviecollections tmdb catalog reference quality",

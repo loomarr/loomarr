@@ -67,7 +67,7 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 		}
 		return segmentScreeningReview(clip, "a rendered-child screening authority is unavailable"), nil
 	}
-	reference, err := filler.NewSegmentScreeningReference(subject, aggregate)
+	reference, err := NewSegmentScreeningReference(subject, aggregate)
 	if err != nil {
 		return segmentScreeningReview(clip, "rendered-child screening evidence is invalid"), nil
 	}
@@ -77,13 +77,13 @@ func (s *SegmentScreeningStage) Run(ctx context.Context, clip filler.StoreClip) 
 	}
 	filler.ReportProgress(ctx, filler.StageScreen, 100)
 
-	if axes := segmentScreeningAxesWithOutcome(aggregate, filler.ScreenReject); len(axes) != 0 {
+	if axes := segmentScreeningAxesWithOutcome(aggregate, ScreenReject); len(axes) != 0 {
 		return filler.StageResult{
 			Clip: clip, Verdict: filler.VerdictReject, Reason: filler.ReasonScreening,
 			Detail: "rendered child rejected by " + strings.Join(axes, ", "),
 		}, nil
 	}
-	if axes := segmentScreeningAxesWithOutcome(aggregate, filler.ScreenHold); len(axes) != 0 {
+	if axes := segmentScreeningAxesWithOutcome(aggregate, ScreenHold); len(axes) != 0 {
 		return segmentScreeningReview(clip, "rendered-child screening requires review: "+strings.Join(axes, ", ")), nil
 	}
 	if !aggregate.Passes() {
@@ -105,7 +105,7 @@ func segmentScreeningReview(clip filler.StoreClip, note string) filler.StageResu
 	return filler.StageResult{Clip: clip, Verdict: filler.VerdictReview, Note: note}
 }
 
-func segmentScreeningAxesWithOutcome(evidence filler.SegmentScreeningEvidence, outcome filler.SegmentScreeningOutcome) []string {
+func segmentScreeningAxesWithOutcome(evidence SegmentScreeningEvidence, outcome SegmentScreeningOutcome) []string {
 	axes := make([]string, 0, len(evidence.Results))
 	for _, result := range evidence.Results {
 		if result.Outcome == outcome {

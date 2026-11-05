@@ -115,6 +115,9 @@ importers:
       '@loomarr/lan-discovery-native':
         specifier: workspace:*
         version: link:../../packages/lan-discovery-native
+      '@loomarr/native-app':
+        specifier: workspace:*
+        version: link:../../packages/native-app
       '@loomarr/player':
         specifier: workspace:*
         version: link:../../packages/player
@@ -209,6 +212,9 @@ importers:
       '@loomarr/lan-discovery-native':
         specifier: workspace:*
         version: link:../../packages/lan-discovery-native
+      '@loomarr/native-app':
+        specifier: workspace:*
+        version: link:../../packages/native-app
       '@loomarr/player':
         specifier: workspace:*
         version: link:../../packages/player
@@ -224,9 +230,15 @@ importers:
       expo:
         specifier: 58.0.23
         version: 58.0.23(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(@expo/metro-runtime@58.0.17)(expo-router@58.0.30)(react-dom@19.3.0(react@19.3.0))(react-native-tvos@0.88.1-0)(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(react-native-tvos@0.88.1-0)(react@19.3.0))(react@19.3.0)(typescript@7.0.2)
+      expo-constants:
+        specifier: 58.0.15
+        version: 58.0.15(expo@58.0.23)(react-native-tvos@0.88.1-0)(typescript@7.0.2)
       expo-crypto:
         specifier: 58.0.7
         version: 58.0.7(expo@58.0.23)
+      expo-file-system:
+        specifier: 58.0.13
+        version: 58.0.13(expo@58.0.23)(react-native-tvos@0.88.1-0)
       expo-font:
         specifier: 58.0.11
         version: 58.0.11(expo@58.0.23)(react-native-tvos@0.88.1-0)(react@19.3.0)
@@ -610,6 +622,55 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.5)(jsdom@30.1.3)(msw@3.0.3(@types/node@26.6.5)(graphql@16.14.2)(typescript@7.0.2)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)))(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/native-app:
+    dependencies:
+      '@loomarr/api':
+        specifier: workspace:*
+        version: link:../api
+      '@loomarr/core':
+        specifier: workspace:*
+        version: link:../core
+      '@loomarr/crash-reports-native':
+        specifier: workspace:*
+        version: link:../crash-reports-native
+      '@loomarr/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+    devDependencies:
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      expo-constants:
+        specifier: 58.0.15
+        version: 58.0.15(expo@58.0.23)(react-native-tvos@0.88.1-0)(typescript@7.0.2)
+      expo-file-system:
+        specifier: 58.0.13
+        version: 58.0.13(expo@58.0.23)(react-native-tvos@0.88.1-0)
+      jsdom:
+        specifier: 30.0.1
+        version: 30.0.1
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-native:
+        specifier: npm:react-native-tvos@0.88.1-0
+        version: react-native-tvos@0.88.1-0(patch_hash=4c1dc8b06dfcf2712a092b515330c3786a042f8d3482fca3afe20f6f7bd6460e)(@babel/core@7.29.7)(@react-native/metro-config@0.88.1(@babel/core@7.29.7))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)
+      react-native-safe-area-context:
+        specifier: 5.11.1
+        version: 5.11.1(react-native-tvos@0.88.1-0)(react@19.3.0)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@26.6.5)(jsdom@30.0.1)(msw@3.0.3(@types/node@26.6.5)(graphql@16.14.2)(typescript@7.0.2)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)))(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/player:
     dependencies:

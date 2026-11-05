@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/filler"
 )
 
 func TestFileSegmentScreeningEvidenceRepositoryReplaysOneSettledAxisOperation(t *testing.T) {
@@ -32,8 +30,8 @@ func TestFileSegmentScreeningEvidenceRepositoryReplaysOneSettledAxisOperation(t 
 
 	raw := []byte("different-observation")
 	conflicting, err := NewSegmentScreeningAxisEvidence(
-		subject, recorded.Evidence.Profile, filler.ScreenHold, "manual_review_required",
-		screeningSuitabilityForOutcome(subject, recorded.Evidence.Profile, filler.ScreenHold, raw), raw,
+		subject, recorded.Evidence.Profile, ScreenHold, "manual_review_required",
+		screeningSuitabilityForOutcome(subject, recorded.Evidence.Profile, ScreenHold, raw), raw,
 		time.Date(2026, time.September, 13, 2, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
@@ -74,7 +72,7 @@ func TestFileSegmentScreeningEvidenceRepositoryReportsUnsettledAxisOperation(t *
 		t.Fatal(err)
 	}
 	subject := screeningChildSubjectFixture(t)
-	profile := screeningProfileFixture(filler.ScreenPlayback, "7")
+	profile := screeningProfileFixture(ScreenPlayback, "7")
 	if _, found, err := repository.FindSegmentScreeningAxisEvidence(t.Context(), subject.SHA256, profile); err != nil || found {
 		t.Fatalf("found=%v error=%v", found, err)
 	}
