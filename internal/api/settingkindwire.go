@@ -6,13 +6,16 @@ import (
 	"github.com/loomarr/loomarr/internal/settings"
 )
 
-// settingKindSchema names the one component every setting's kind reads, so orval emits a single
-// SettingKind symbol for the frontend to switch on instead of re-typing the registry's kinds.
-const settingKindSchema = "SettingKind"
+// The components every setting entry reads, so orval emits one SettingKind and one SettingKey
+// symbol for the frontend to use instead of re-typing the registry.
+const (
+	settingKindSchema = "SettingKind"
+	settingKeySchema  = "SettingKey"
+)
 
-// TransformSchema publishes SettingEntry.kind as the registry's closed set. The Go field stays a
-// string; the enum comes from settings.Kinds, so a new kind reaches the spec without a second
-// list to keep in step.
+// TransformSchema publishes SettingEntry.kind and SettingEntry.key as the registry's closed sets.
+// The Go fields stay strings; the enums come from the registry, so a new kind or key reaches the
+// spec without a second list to keep in step.
 func (SettingEntry) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
 	if _, ok := r.Map()[settingKindSchema]; !ok {
 		values := make([]any, 0, len(settings.Kinds()))
@@ -25,6 +28,30 @@ func (SettingEntry) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schem
 			Description: "A setting's value type (config-design §2): it decides how the value parses and which control edits it.",
 		}
 	}
+	if _, ok := r.Map()[settingKeySchema]; !ok {
+		r.Map()[settingKeySchema] = settingKeyWire()
+	}
 	s.Properties["kind"] = &huma.Schema{Ref: "#/components/schemas/" + settingKindSchema}
+	s.Properties["key"] = &huma.Schema{Ref: "#/components/schemas/" + settingKeySchema}
 	return s
+}
+
+// settingKeyWire lists every public key in registry order. x-enum-varnames gives each generated
+// member the Go handle's name, so SettingKey.FillerHomeCountry and settings.FillerHomeCountry
+// name the same key; orval would otherwise drop the dots and emit fillerhome_country.
+func settingKeyWire() *huma.Schema {
+	var keys, names []any
+	for _, s := range settings.NewRegistry().All() {
+		if s.MigrationOnly {
+			continue
+		}
+		keys = append(keys, s.Key)
+		names = append(names, settings.HandleName(s.Key))
+	}
+	return &huma.Schema{
+		Type:        huma.TypeString,
+		Enum:        keys,
+		Extensions:  map[string]any{"x-enum-varnames": names},
+		Description: "A public setting key (config-design §2). Member names match the backend's typed handles.",
+	}
 }

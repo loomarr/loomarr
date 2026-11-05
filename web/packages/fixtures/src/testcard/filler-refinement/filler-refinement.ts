@@ -1,6 +1,7 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingsListOutputBody } from "@loomarr/api/models/settingsListOutputBody";
 import { taggedClip, untaggedClip } from "../testcard";
 
@@ -57,7 +58,7 @@ const fillerRefinementTaxonomy: ListTaxonomyOutputBody = {
 };
 
 const fillerSetting = (
-  key: string,
+  key: SettingKey,
   label: string,
   value: string,
   kind: SettingEntry["kind"],

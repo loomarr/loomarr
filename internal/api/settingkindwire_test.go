@@ -37,3 +37,35 @@ func TestSettingKindIsTheRegistrysClosedSet(t *testing.T) {
 		t.Error("SettingEntry.kind is no longer required")
 	}
 }
+
+// Every public setting key is one named enum whose member names are the Go handle names, so the
+// frontend reads SettingKey.FillerHomeCountry where the backend reads settings.FillerHomeCountry
+// and a mistyped key is a compile error on both sides (#2147 wave 4).
+func TestSettingKeyIsTheRegistrysPublicKeys(t *testing.T) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	schemas := humaAPI.OpenAPI().Components.Schemas.Map()
+
+	named, ok := schemas["SettingKey"]
+	if !ok {
+		t.Fatal("components.schemas.SettingKey is missing")
+	}
+	var keys, names []any
+	for _, s := range settings.NewRegistry().All() {
+		if s.MigrationOnly {
+			continue
+		}
+		keys = append(keys, s.Key)
+		names = append(names, settings.HandleName(s.Key))
+	}
+	if named.Type != "string" || !slices.Equal(named.Enum, keys) {
+		t.Errorf("SettingKey = type %q enum %v, want string %v", named.Type, named.Enum, keys)
+	}
+	if got, _ := named.Extensions["x-enum-varnames"].([]any); !slices.Equal(got, names) {
+		t.Errorf("SettingKey x-enum-varnames = %v, want %v", got, names)
+	}
+
+	entry := schemas["SettingEntry"]
+	if got := entry.Properties["key"]; got == nil || got.Ref != "#/components/schemas/SettingKey" {
+		t.Errorf("SettingEntry.key = %+v, want a $ref to SettingKey", got)
+	}
+}

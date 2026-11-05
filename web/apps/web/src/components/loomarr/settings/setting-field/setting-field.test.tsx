@@ -157,13 +157,13 @@ describe("SettingField", () => {
     const onChange = vi.fn();
     render(
       <SettingField
-        entry={entry({ key: "notifications.email.enabled", kind: "bool", presentation: "switch" })}
+        entry={entry({ key: "filler.research.enabled", kind: "bool", presentation: "switch" })}
         value="false"
         onChange={onChange}
       />,
     );
 
-    const control = screen.getByRole("switch", { name: "Notifications email enabled" });
+    const control = screen.getByRole("switch", { name: "Filler research enabled" });
     expect(control).not.toBeChecked();
     await userEvent.click(control);
     expect(onChange).toHaveBeenCalledWith("true");
