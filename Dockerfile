@@ -255,6 +255,9 @@ RUN set -eux; \
     # transport. Snapshots carry an old `Valid-Until`, so updates use `Check-Valid-Until=false`.
     printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
       "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
+    # snapshot.debian.org sheds load with 503 "No healthy backends", so every apt fetch in this
+    # stage retries with backoff instead of failing the image build on one refused request.
+    printf 'Acquire::Retries "8";\nAcquire::Retries::Delay::Maximum "60";\n' > /etc/apt/apt.conf.d/80-retries; \
     apt-get -o Acquire::Check-Valid-Until=false update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
