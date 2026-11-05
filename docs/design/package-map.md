@@ -90,7 +90,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `inventory` | — |
 | `invitation` | `contact` |
 | `jobs` | `store` |
-| `library` | `filler`, `httpx`, `inventory`, `metrics` |
+| `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
 | `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
 | `metadataprovider` | — |
