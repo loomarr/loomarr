@@ -93,7 +93,7 @@ func TestArrHooks(t *testing.T) {
 	hooks.Scanner.mu.Lock()
 	queued := hooks.Scanner.folders[h.root]
 	hooks.Scanner.mu.Unlock()
-	if !queued[h.root+"/Romeo/Season 01"] || len(queued) != 1 {
+	if _, ok := queued[h.root+"/Romeo/Season 01"]; !ok || len(queued) != 1 {
 		t.Fatalf("queued = %v, want the episode's season folder", queued)
 	}
 	if err := hooks.Receive(ctx, "lidarr", []byte(body)); !errors.Is(err, ErrHookUnknownApp) {

@@ -60,6 +60,23 @@ func TestChangedDirsPassesParentsOnce(t *testing.T) {
 	if got := changedDirs(root, nil); !slices.Equal(got, []string{root}) {
 		t.Fatalf("an unnamed change = %q, want the root", got)
 	}
+	// A download still being written, or a desktop's leftovers, pass nothing.
+	if got := changedDirs(root, []string{"Show (2001)/Season 2/b.mkv.part", "Show (2001)/Thumbs.db", "._a.mkv"}); len(got) != 0 {
+		t.Fatalf("junk changes = %q, want none", got)
+	}
+}
+
+func TestIgnoredChange(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]bool{
+		"/m/Show/a.mkv": false, "/m/Show/poster.jpg": false, "/m/Show/a.nfo": false, "/m/Show": false,
+		"/m/Show/a.mkv.partial": true, "/m/Show/a.MKV.PART": true, "/m/Show/.DS_Store": true,
+		"/m/Show/._a.mkv": true, "/m/Show/a.mkv.!qB": true, "/m/Show/a.nfo~": true,
+	} {
+		if got := ignoredChange(name); got != want {
+			t.Errorf("ignoredChange(%q) = %v, want %v", name, got, want)
+		}
+	}
 }
 
 // Against a real SMB mount: LOOMARR_SMB_DIR is a folder on one. With LOOMARR_SMB_WRITABLE=1 the

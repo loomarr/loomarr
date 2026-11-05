@@ -116,28 +116,45 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if err != nil {
 		return mp.Record{}, err
 	}
-	files := map[string]string{}
+	var names []string
 	videos := 0
 	for _, e := range entries {
 		if !e.Type().IsRegular() {
 			continue
 		}
-		files[strings.ToLower(e.Name())] = e.Name()
+		names = append(names, e.Name())
 		if mp.IsVideoFile(e.Name()) {
 			videos++
 		}
 	}
+	return Beside(ref.Kind, media, names, videos <= 1)
+}
+
+// Beside picks the artwork for media from names, the regular files in its folder, without reading
+// the folder: a scanner that has just listed it passes what it saw. For a series, media is the
+// folder. sole is whether a movie is its folder's only video, the condition for the folder's own
+// art to be the movie's. No artwork is ErrNotFound.
+func Beside(kind mp.Kind, media string, names []string, sole bool) (mp.Record, error) {
+	media = filepath.Clean(media)
+	dir := filepath.Dir(media)
+	if kind == mp.KindSeries {
+		dir = media
+	}
+	files := make(map[string]string, len(names))
+	for _, name := range names {
+		files[strings.ToLower(filepath.Base(name))] = filepath.Base(name)
+	}
 
 	stem := strings.TrimSuffix(filepath.Base(media), filepath.Ext(media))
 	var rules []rule
-	switch ref.Kind {
+	switch kind {
 	case mp.KindEpisode:
 		rules = []rule{{KindThumb, []string{stem + "-thumb"}}}
 	case mp.KindMovie:
 		for _, kind := range movieKinds {
 			rules = append(rules, rule{kind, []string{stem + "-" + kind}})
 		}
-		if videos <= 1 {
+		if sole {
 			rules = append(rules, folderRules...)
 		}
 	case mp.KindSeries:
@@ -156,9 +173,9 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 		}
 	}
 	if len(art) == 0 {
-		return mp.Record{}, fmt.Errorf("localart: no artwork for %s: %w", ref.Kind, mp.ErrNotFound)
+		return mp.Record{}, fmt.Errorf("localart: no artwork for %s: %w", kind, mp.ErrNotFound)
 	}
-	return mp.Record{Source: mp.Source{Provider: mp.IDLocalArt, Basis: mp.BasisSidecar}, Kind: ref.Kind, Artwork: art}, nil
+	return mp.Record{Source: mp.Source{Provider: mp.IDLocalArt, Basis: mp.BasisSidecar}, Kind: kind, Artwork: art}, nil
 }
 
 // find returns the first of names present with an image extension, as the folder spells it.

@@ -18,6 +18,10 @@ type Event struct {
 	// Folders are the folders the event touched, in the arr's own paths, sorted. Empty for an
 	// event that changes no file (Grab, Health, Test).
 	Folders []string
+	// SeriesTVDB is the series a Sonarr event is about, MovieTMDB the movie a Radarr event is
+	// about; 0 when the event names none.
+	SeriesTVDB int
+	MovieTMDB  int
 }
 
 // IsTest reports whether the arr sent its connection test.
@@ -37,10 +41,12 @@ type renamed struct {
 type payload struct {
 	EventType string `json:"eventType"`
 	Series    *struct {
-		Path string `json:"path"`
+		Path   string `json:"path"`
+		TVDBID int    `json:"tvdbId"`
 	} `json:"series"`
 	Movie *struct {
 		FolderPath string `json:"folderPath"`
+		TMDBID     int    `json:"tmdbId"`
 	} `json:"movie"`
 	EpisodeFile         *file     `json:"episodeFile"`
 	EpisodeFiles        []file    `json:"episodeFiles"`
@@ -66,11 +72,12 @@ func Parse(body []byte) (Event, error) {
 		return Event{}, fmt.Errorf("arrhook: no eventType")
 	}
 	base := ""
+	ev := Event{Type: p.EventType}
 	switch {
 	case p.Series != nil:
-		base = p.Series.Path
+		base, ev.SeriesTVDB = p.Series.Path, max(p.Series.TVDBID, 0)
 	case p.Movie != nil:
-		base = p.Movie.FolderPath
+		base, ev.MovieTMDB = p.Movie.FolderPath, max(p.Movie.TMDBID, 0)
 	}
 	folders := map[string]bool{}
 	addFile := func(f file) {
@@ -105,7 +112,8 @@ func Parse(body []byte) (Event, error) {
 		out = append(out, f)
 	}
 	slices.Sort(out)
-	return Event{Type: p.EventType, Folders: out}, nil
+	ev.Folders = out
+	return ev, nil
 }
 
 // slashed is p with forward slashes: an arr on Windows names folders with backslashes, and the

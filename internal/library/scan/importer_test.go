@@ -32,13 +32,33 @@ func (c *countingInventory) ApplySnapshot(ctx context.Context, s inventory.Snaps
 	return c.Service.ApplySnapshot(ctx, s)
 }
 
-// fakeLister is an arr's whole library.
+// fakeLister is an arr's whole library. It counts listings and single-item reads; fetchErr fails
+// the reads.
 type fakeLister struct {
-	records []mp.Record
-	err     error
+	records  []mp.Record
+	err      error
+	fetchErr error
+	lists    int
+	fetches  int
 }
 
-func (l *fakeLister) List(context.Context) ([]mp.Record, error) { return l.records, l.err }
+func (l *fakeLister) List(context.Context) ([]mp.Record, error) {
+	l.lists++
+	return l.records, l.err
+}
+
+func (l *fakeLister) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
+	l.fetches++
+	if l.fetchErr != nil {
+		return mp.Record{}, l.fetchErr
+	}
+	for _, rec := range l.records {
+		if rec.Kind == ref.Kind && slices.Contains(rec.IDs, ref.ID) {
+			return rec, nil
+		}
+	}
+	return mp.Record{}, mp.ErrNotFound
+}
 
 type harness struct {
 	t      *testing.T

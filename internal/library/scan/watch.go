@@ -113,7 +113,7 @@ func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 				return errors.New("library scan: the watch closed")
 			}
 			root := rootOf(ev.Name, roots)
-			if root == "" {
+			if root == "" || ev.Op == fsnotify.Chmod || ignoredChange(ev.Name) {
 				continue
 			}
 			if ev.Has(fsnotify.Create) {
@@ -140,6 +140,28 @@ func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 			}
 		}
 	}
+}
+
+// ignoredSuffixes are files still being written by a download or copy, and ignoredNames files a
+// desktop leaves behind: neither is media, and each change to one would restart its folder's wait.
+// The finished file's own name arrives as a change of its own.
+var (
+	ignoredSuffixes = []string{".part", ".partial", ".tmp", ".temp", ".crdownload", ".download", ".!qb", ".!ut", ".swp", "~"}
+	ignoredNames    = map[string]bool{".ds_store": true, "thumbs.db": true, "desktop.ini": true}
+)
+
+// ignoredChange reports whether a change to name can be dropped before it reaches the folder queue.
+func ignoredChange(name string) bool {
+	base := strings.ToLower(filepath.Base(name))
+	if ignoredNames[base] || strings.HasPrefix(base, "._") {
+		return true
+	}
+	for _, suffix := range ignoredSuffixes {
+		if strings.HasSuffix(base, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // shareFailed logs a share whose watch stopped. One that cannot report changes is left to the

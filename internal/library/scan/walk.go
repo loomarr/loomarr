@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
@@ -63,6 +64,8 @@ type File struct {
 	// Sidecars are the file's own NFO and artwork files, by path, so a changed sidecar changes the
 	// file's identity digest without being read.
 	Sidecars map[string]Stat
+	// Sole is whether it is its folder's only video, so the folder's own sidecars are its.
+	Sole bool
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
 }
@@ -79,8 +82,10 @@ type Walk struct {
 // walkRoot lists the media under root. It skips media-server by-products and folders holding an
 // .ignore file, lists disc images as problems, and follows a symlink only when its target is
 // inside the root.
-func walkRoot(ctx context.Context, root string) (Walk, error) {
-	w := newWalker(root)
+// steps, when not nil, counts each folder listed and file read, so a caller can tell a walk that
+// is slow from one that is stuck.
+func walkRoot(ctx context.Context, root string, steps *atomic.Int64) (Walk, error) {
+	w := newWalker(root, steps)
 	real, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		return Walk{}, err
@@ -95,8 +100,8 @@ func walkRoot(ctx context.Context, root string) (Walk, error) {
 
 // walkFolders lists the media under some folders of root, by the same rules as a walk of the whole
 // root. A folder inside a skipped or extras folder is walked as that folder would be.
-func walkFolders(ctx context.Context, root string, dirs []string) (Walk, error) {
-	w := newWalker(root)
+func walkFolders(ctx context.Context, root string, dirs []string, steps *atomic.Int64) (Walk, error) {
+	w := newWalker(root, steps)
 	real, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		return Walk{}, err
@@ -145,15 +150,20 @@ type walker struct {
 	nfo map[string]map[string]Stat
 	// videos counts each folder's videos, kept alongside nfo.
 	videos map[string]int
-	out    Walk
+	// steps counts folders listed and files read.
+	steps *atomic.Int64
+	out   Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
 }
 
-func newWalker(root string) *walker {
+func newWalker(root string, steps *atomic.Int64) *walker {
+	if steps == nil {
+		steps = new(atomic.Int64)
+	}
 	w := &walker{
 		root: filepath.Clean(root), visited: map[string]bool{},
-		nfo: map[string]map[string]Stat{}, videos: map[string]int{},
+		nfo: map[string]map[string]Stat{}, videos: map[string]int{}, steps: steps,
 	}
 	w.out.Complete = true
 	return w
@@ -174,6 +184,7 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 	}
 	w.visited[real] = true
 	entries, err := os.ReadDir(dir)
+	w.steps.Add(1)
 	if err != nil {
 		w.out.Complete = false
 		return nil
@@ -239,7 +250,7 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st, Extra: extras || extraName(lower),
-				Sidecars: w.sidecars(dir, e.Name()),
+				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1,
 			})
 		}
 	}
@@ -260,6 +271,7 @@ func (w *walker) inside(path string) (string, bool) {
 }
 
 func (w *walker) stat(path string, e fs.DirEntry) (Stat, bool) {
+	defer w.steps.Add(1)
 	info, err := e.Info()
 	if err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		info, err = os.Stat(path)
@@ -315,14 +327,15 @@ func (f File) hasNFO() bool {
 	return false
 }
 
-// hasArt reports whether the file has an artwork sidecar to list.
-func (f File) hasArt() bool {
+// art is the file's artwork sidecars, by name.
+func (f File) art() []string {
+	var names []string
 	for path := range f.Sidecars {
 		if localart.IsImage(path) {
-			return true
+			names = append(names, filepath.Base(path))
 		}
 	}
-	return false
+	return names
 }
 
 func extraName(lowerName string) bool {

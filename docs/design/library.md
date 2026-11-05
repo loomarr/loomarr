@@ -207,9 +207,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
 - **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
-  once folder changes have been quiet for 5 s (`Importer.RunFolders`): it writes and removes what
-  is under them, under the same removal guard, and still counts every file outside them as
-  present. A folder deleted whole is a change to the one above it.
+  (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
+  and still counts every file outside them as present. A folder deleted whole is a change to the
+  one above it. Each folder waits on its own until its changes have been quiet for 5 s, or have
+  waited 2 minutes, so a long copy into one folder holds back no other. Changes to files still
+  being written (`.part`, `.partial`, `.tmp`, `.crdownload`, `.!qb` …), to desktop leftovers
+  (`Thumbs.db`, `.DS_Store`, `._*`) and permission-only changes are dropped before they queue.
   - `scan.Watcher` watches each in-use root on a local filesystem with inotify. A kernel queue
     overflow asks for a full pass. inotify sees only changes made through this machine, so an NFS
     or FUSE root is not watched.
@@ -229,6 +232,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
     (`secret.arr_webhook`, never shown) sent as the basic-auth password. `GET /v1/library/status`
     lists each arr's state (registered, not connected, no address, failed) and its last event,
     and `POST /v1/library/hooks/{app}/test` registers again and asks the arr to send its test.
+- **Arr listings are reused.** A full pass lists every connected arr (Sonarr's listing is two
+  requests per series); a folder pass reuses that listing. An arr's webhook names the series (TVDB
+  id) or movie (TMDB id) it changed, and the next folder pass reads just that one again, dropping
+  it when the arr no longer has it. A change naming no item, a read that fails, a changed path
+  map, a changed arr address, or a listing an arr failed lists the arrs again.
+- **Renames keep their header.** A file the walk no longer finds and a new one with the same size
+  and modification time are the same bytes renamed or moved: the new path takes the header read
+  at the old one rather than opening the file again. A size and time two vanished files share
+  matches neither.
+- **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
+  minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
+  blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook

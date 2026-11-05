@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -55,8 +57,9 @@ type Importer struct {
 	Managers func() []Manager
 	// NFO reads sidecars; nil reads none.
 	NFO mp.Provider
-	// Art lists artwork sidecars; nil lists none.
-	Art mp.Provider
+	// Art lists artwork sidecars; nil lists none. A file's come from the walk's own listing; a
+	// series folder's are listed when the series is written.
+	Art *localart.Provider
 	// Posters imports the poster of each title the pass writes; nil imports none.
 	Posters Posters
 	// Resolver applies precedence.
@@ -73,13 +76,27 @@ type Importer struct {
 	Log    *slog.Logger
 	// Poll is the wait between busy checks; zero means 5 s.
 	Poll time.Duration
+	// WalkStall is how long a walk may make no progress before the pass gives up on it; zero
+	// means walkStall.
+	WalkStall time.Duration
 	// RootReadability hears when a pass finds a root stopped opening, or opens again (decision
 	// 32). Nil hears nothing.
 	RootReadability func(ctx context.Context, root string, readable bool)
 
-	run      sync.Mutex
+	run sync.Mutex
+	// index is the arr index the last listing built, reused by folder passes, and indexPaths the
+	// path map and arr addresses it was built with. Guarded by run.
+	index      *managerIndex
+	indexPaths string
+
 	mu       sync.Mutex
 	progress Progress
+	// arrChanged are arr items to read again before the next folder pass uses the index; relist
+	// asks for every arr to be listed again. Guarded by mu.
+	arrChanged []ArrItem
+	relist     bool
+	// stalledWalks are roots whose walk was given up on, until it ends. Guarded by mu.
+	stalledWalks map[string]<-chan struct{}
 	// confirmed are roots whose held removal the maintainer confirmed, applied by their next pass.
 	confirmed map[string]bool
 }
@@ -177,14 +194,7 @@ func (im *Importer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var managers []Manager
-	if im.Managers != nil {
-		managers = im.Managers()
-	}
-	idx, errs := indexManagers(ctx, managers, all.Paths)
-	for _, err := range errs {
-		im.log().Warn("library scan: an arr did not list", "err", err)
-	}
+	idx := im.arrIndex(ctx, all.Paths, true)
 	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
 	roots := scannedRoots(all.Roots)
 	if err := im.forgetReleased(ctx, roots); err != nil {
@@ -234,14 +244,7 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 	if !scannedRoots(all.Roots)[root] {
 		return nil
 	}
-	var managers []Manager
-	if im.Managers != nil {
-		managers = im.Managers()
-	}
-	idx, errs := indexManagers(ctx, managers, all.Paths)
-	for _, err := range errs {
-		im.log().Warn("library scan: an arr did not list", "err", err)
-	}
+	idx := im.arrIndex(ctx, all.Paths, false)
 	im.setProgress(func(p *Progress) { p.Stage, p.ArrIncomplete = StageWalking, !idx.complete })
 	defer im.setProgress(func(p *Progress) { p.Stage = StageIdle })
 	result, queue, err := im.scanRoot(ctx, root, idx, dirs)
@@ -257,6 +260,84 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 		}
 	})
 	return im.readHeaders(ctx, queue)
+}
+
+// ArrChanged notes that an arr changed item, or changed files without naming the item (nil): the
+// next folder pass reads it again, or lists every arr again, before trusting its index.
+func (im *Importer) ArrChanged(item *ArrItem) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	if item == nil {
+		im.relist = true
+		return
+	}
+	im.arrChanged = append(im.arrChanged, *item)
+}
+
+// arrIndex is what the arrs say each local file is. A full pass lists every arr, as does a folder
+// pass with no index yet, an index from a listing an arr failed, a changed path map, or a change
+// it cannot read alone. Otherwise a folder pass reuses the last listing, reading again just the
+// items an arr said changed: Sonarr's listing costs two requests per series. Call it holding run.
+func (im *Importer) arrIndex(ctx context.Context, paths []store.LibraryRootPath, full bool) managerIndex {
+	im.mu.Lock()
+	changed, relist := im.arrChanged, im.relist
+	im.arrChanged, im.relist = nil, false
+	im.mu.Unlock()
+
+	var managers []Manager
+	if im.Managers != nil {
+		managers = im.Managers()
+	}
+	key := fmt.Sprint(paths)
+	for _, m := range managers {
+		if m.Address != nil {
+			key += "|" + m.Authority + "=" + m.Address()
+		}
+	}
+	if full || relist || im.index == nil || !im.index.complete || im.indexPaths != key {
+		return im.listArrs(ctx, managers, paths, key)
+	}
+	for _, item := range changed {
+		if !im.refreshArrItem(ctx, managers, paths, item) {
+			return im.listArrs(ctx, managers, paths, key)
+		}
+	}
+	return *im.index
+}
+
+func (im *Importer) listArrs(ctx context.Context, managers []Manager, paths []store.LibraryRootPath, key string) managerIndex {
+	idx, errs := indexManagers(ctx, managers, paths)
+	for _, err := range errs {
+		im.log().Warn("library scan: an arr did not list", "err", err)
+	}
+	im.index, im.indexPaths = &idx, key
+	return idx
+}
+
+// refreshArrItem reads one changed item into the index. It reports false when it cannot, and the
+// arr must be listed whole instead.
+func (im *Importer) refreshArrItem(ctx context.Context, managers []Manager, paths []store.LibraryRootPath, item ArrItem) bool {
+	for _, m := range managers {
+		if m.Authority != item.Authority {
+			continue
+		}
+		if m.Fetcher == nil {
+			return false
+		}
+		rec, err := m.Fetcher.Fetch(ctx, item.Ref)
+		switch {
+		case errors.Is(err, mp.ErrNotFound):
+			im.index.refresh(m.Authority, pathMapper(m.Authority, paths), item.Ref, nil)
+		case err != nil:
+			im.log().Warn("library scan: an arr did not answer for one item; listing it whole",
+				"arr", m.Authority, "err", err)
+			return false
+		default:
+			im.index.refresh(m.Authority, pathMapper(m.Authority, paths), item.Ref, &rec)
+		}
+		return true
+	}
+	return true // an arr no longer configured manages nothing
 }
 
 // recordReadability keeps the root's readability as the pass found it, for the status strip, and
@@ -363,13 +444,24 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		result.State = RootUnreadable
 		return result, nil, nil
 	}
-	var walk Walk
-	var err error
-	if scope == nil {
-		walk, err = walkRoot(ctx, root)
-	} else {
+	if im.stalled(root) {
+		// The last walk is still blocked on this share: it reads as offline, and nothing in it
+		// is marked missing.
+		result.State = RootUnreadable
+		return result, nil, nil
+	}
+	walk, done, err := watchedWalk(ctx, orDuration(im.WalkStall, walkStall), func(steps *atomic.Int64) (Walk, error) {
+		if scope == nil {
+			return walkRoot(ctx, root, steps)
+		}
 		scope = existingFolders(root, scope)
-		walk, err = walkFolders(ctx, root, scope)
+		return walkFolders(ctx, root, scope, steps)
+	})
+	if errors.Is(err, errWalkStalled) {
+		im.log().Warn("library scan: a media folder stopped answering mid-walk; nothing in it is marked missing", "root", root)
+		im.markStalled(root, done)
+		result.State = RootUnreadable
+		return result, nil, nil
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -403,6 +495,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		found[file.Path] = true
 	}
 	inScope := func(path string) bool { return scope == nil || under(path, scope) }
+	moved := movedFrom(prev, found, inScope)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
 	for _, r := range rows {
@@ -456,6 +549,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			header = im.lastHeader(ctx, snapshot.Origin)
 			if header == nil {
 				row.Header = store.LibraryHeaderPending
+			}
+		} else if from, ok := moved[file.Stat]; ok && !sameBytes {
+			// Renamed or moved: the header read at its old path is this file's, and it is not
+			// opened again.
+			delete(moved, file.Stat)
+			if rel, err := filepath.Rel(root, from.Path); err == nil {
+				if header = im.lastHeader(ctx, fileOrigin(root, filepath.ToSlash(rel))); header != nil {
+					row.Header = store.LibraryHeaderRead
+				}
 			}
 		}
 		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
@@ -559,6 +661,28 @@ func (im *Importer) applyFile(ctx context.Context, snapshot inventory.Snapshot) 
 // removals is every present file in the walk's scope that it did not find, and how many
 // importable files the root held. A problem file that is gone is a removal too, but never counts
 // toward a hold.
+// movedFrom is each file this pass no longer finds whose header was read, by its size and
+// modification time: a new path with the same pair is the same bytes renamed or moved, as Sonarr
+// and Radarr do on every rename. A pair two vanished files share names neither.
+func movedFrom(prev map[string]store.LibraryFile, found map[string]bool, inScope func(string) bool) map[Stat]store.LibraryFile {
+	out := map[Stat]store.LibraryFile{}
+	shared := map[Stat]bool{}
+	for path, r := range prev {
+		if found[path] || !inScope(path) || !r.MissingAt.IsZero() || r.Problem != "" || r.Header != store.LibraryHeaderRead {
+			continue
+		}
+		key := Stat{Size: r.Size, ModifiedNs: r.ModifiedNs}
+		if _, ok := out[key]; ok {
+			shared[key] = true
+		}
+		out[key] = r
+	}
+	for key := range shared {
+		delete(out, key)
+	}
+	return out
+}
+
 func removals(prev map[string]store.LibraryFile, found map[string]bool, inScope func(string) bool) ([]store.LibraryFile, int) {
 	var removed []store.LibraryFile
 	present := 0
