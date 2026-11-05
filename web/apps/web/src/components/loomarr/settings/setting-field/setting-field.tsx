@@ -1,4 +1,5 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { FieldHint } from "@loomarr/design-system";
@@ -20,9 +21,9 @@ import type { SettingFieldProps } from "./setting-field.type";
 // options, `doc` is the help text, `provenance: env` LOCKS the field with a "set via
 // environment" chip (env > database > default, visible provenance), and a secret shows
 // its masked tail with replace-only editing (§4 — a stored secret is never echoed).
-const inputTypeFor = (kind: string): string => {
-  if (kind === "int") return "number";
-  if (kind === "url") return "url";
+const inputTypeFor = (kind: SettingKind): string => {
+  if (kind === SettingKind.int) return "number";
+  if (kind === SettingKind.url) return "url";
   return "text";
 };
 
@@ -110,7 +111,7 @@ const SettingField = ({
   // the key, and the surface must have supplied a handler.
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
-  const inlineSwitch = entry.kind === "bool" && entry.presentation === "switch";
+  const inlineSwitch = entry.kind === SettingKind.bool && entry.presentation === "switch";
   const problem = invalid ? result?.problem : undefined;
   // Compact mode renders none of the explanatory elements, so pointing at one would be a dangling
   // reference. Full fields associate the ordinary help, any unavailable reason, and the server's
@@ -131,7 +132,7 @@ const SettingField = ({
   const secretLocked = entry.secret && entry.set && !replacing;
 
   const control = () => {
-    if (entry.kind === "bool") {
+    if (entry.kind === SettingKind.bool) {
       if (entry.presentation === "switch") {
         return (
           <Switch
@@ -155,7 +156,7 @@ const SettingField = ({
         />
       );
     }
-    if (entry.kind === "enum") {
+    if (entry.kind === SettingKind.enum) {
       return (
         <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
           <SelectTrigger
@@ -246,7 +247,7 @@ const SettingField = ({
         </div>
       );
     }
-    if (entry.kind === "duration") {
+    if (entry.kind === SettingKind.duration) {
       const current = durationParts(value);
       return (
         <div className="flex gap-2">

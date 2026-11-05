@@ -1,4 +1,5 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { SettingKind } from "@loomarr/api/models/settingKind";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SettingField } from "../setting-field";
@@ -17,8 +18,8 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 // Kinds that need the FULL row width in the 2-col grid: secrets (the masked value + Replace
 // button), urls (long addresses), and string_list. The compact controls (bool/int/enum) sit
 // two-per-row.
-const spansFullWidth = (kind: string, secret: boolean, presentation?: string): boolean =>
-  secret || kind === "url" || kind === "string_list" || presentation === "switch";
+const spansFullWidth = (kind: SettingKind, secret: boolean, presentation?: string): boolean =>
+  secret || kind === SettingKind.url || kind === SettingKind.string_list || presentation === "switch";
 
 const SettingsFields = ({
   entries,

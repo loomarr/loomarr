@@ -10305,7 +10305,7 @@ components:
         key:
           type: string
         kind:
-          type: string
+          $ref: "#/components/schemas/SettingKind"
         label:
           description: Registry-owned human label for workflow forms.
           type: string
@@ -10373,6 +10373,19 @@ components:
         - value
         - label
       type: object
+    SettingKind:
+      description: "A setting's value type (config-design §2): it decides how the value parses and which control edits it."
+      enum:
+        - string
+        - int
+        - bool
+        - duration
+        - url
+        - enum
+        - secret
+        - string_list
+        - cron
+      type: string
     SettingResult:
       additionalProperties: false
       properties:

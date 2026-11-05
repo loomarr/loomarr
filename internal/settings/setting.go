@@ -28,6 +28,11 @@ const (
 	KindCron       Kind = "cron" // a 6-field seconds-leading cron expr (job schedules, §18.1)
 )
 
+// Kinds is the closed set, in declaration order, for the wire schema.
+func Kinds() []Kind {
+	return []Kind{KindString, KindInt, KindBool, KindDuration, KindURL, KindEnum, KindSecret, KindStringList, KindCron}
+}
+
 // Presentation describes how a valid stored value should be edited and explained.
 // Kind owns validation; Presentation owns the human control. Keeping those separate lets an
 // integer remain an integer on the wire while the UI edits it as bytes or megabytes.
