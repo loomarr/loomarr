@@ -1,8 +1,9 @@
 package api_test
 
 import (
-	"os"
-	"regexp"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"sort"
 	"strings"
 	"testing"
@@ -23,33 +24,12 @@ import (
 // live mux — cannot distinguish "absent because it drifted" from "absent because it is
 // nil-guarded", which several routes legitimately are.
 func TestRegisterListsMatchBetweenRouterAndExporter(t *testing.T) {
-	// ⚠ **The delimiter after `humaAPI` is `[,)]`, not `)`, and that is a bug fix.** The pattern
-	// used to demand exactly `(humaAPI)`, so the first registrar taking a second argument —
-	// `srv.registerOps(humaAPI, opts.Pprof)` — was invisible to this guard. It was missing from
-	// export.go, its routes served traffic, and the spec did not list them: the exact
-	// live-but-undocumented failure recorded above, walking straight through the check meant to
-	// catch it, because the check was matching a call SHAPE rather than a call.
-	call := regexp.MustCompile(`srv\.(register[A-Za-z]+)\(humaAPI[,)]`)
-
-	read := func(path string) []string {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var out []string
-		for _, m := range call.FindAllStringSubmatch(string(b), -1) {
-			out = append(out, m[1])
-		}
-		sort.Strings(out)
-		return out
-	}
-
-	live := read("api.go")
-	exported := read("export.go")
+	live := registrarCalls(t, "api.go")
+	exported := registrarCalls(t, "export.go")
 
 	if len(live) == 0 || len(exported) == 0 {
-		t.Fatalf("found %d live and %d exported register calls — the regex stopped matching, "+
-			"so this guard is no longer guarding anything", len(live), len(exported))
+		t.Fatalf("found %d live and %d exported register calls — the syntax match stopped finding "+
+			"them, so this guard is no longer guarding anything", len(live), len(exported))
 	}
 
 	missing := diff(live, exported)
@@ -66,6 +46,36 @@ func TestRegisterListsMatchBetweenRouterAndExporter(t *testing.T) {
 			"These are in the spec and the generated client, but nothing mounts them — a "+
 			"client call would 404.", strings.Join(extra, ", "))
 	}
+}
+
+// registrarCalls parses one file and returns, sorted, the name of every `srv.registerX(humaAPI,
+// …)` call in it: a call on srv whose method starts with "register" and whose first argument is
+// humaAPI, whatever else it takes (`srv.registerOps(humaAPI, opts.Pprof)` counts).
+func registrarCalls(t *testing.T, path string) []string {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || !strings.HasPrefix(sel.Sel.Name, "register") {
+			return true
+		}
+		recv, ok := sel.X.(*ast.Ident)
+		arg, isIdent := call.Args[0].(*ast.Ident)
+		if ok && recv.Name == "srv" && isIdent && arg.Name == "humaAPI" {
+			out = append(out, sel.Sel.Name)
+		}
+		return true
+	})
+	sort.Strings(out)
+	return out
 }
 
 // diff returns the elements of a that are not in b.

@@ -3,13 +3,17 @@ package api_test
 import (
 	"bufio"
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,11 +32,11 @@ import (
 //
 // So there are two guards, and they catch different halves:
 //
-//   - TestEveryPublishedEventIsInTheEventTypeMap scans what internal/app actually publishes
+//   - TestEveryPublishedEventIsInTheEventTypeMap parses what internal/app actually publishes
 //     and checks the name→type binding. Catches a NEW frame added without a map entry.
 //   - TestEveryFrameStreamsWithItsEventName puts each payload through the real router and
-//     reads the bytes off the wire. Catches the binding being wrong in a way source-reading
-//     cannot see.
+//     reads the bytes off the wire. Catches the binding being wrong in a way the syntax tree
+//     cannot show.
 
 // fakeBus is an EventSource whose channel the test drives.
 type fakeBus struct{ ch chan events.Event }
@@ -53,41 +57,83 @@ func newEventsServer(t *testing.T) (*httptest.Server, *fakeBus) {
 	return srv, bus
 }
 
-// publishedFrame matches `Type: "name", Payload: api.TypeName{` across a publish site, which
-// the repo writes both on one line and split across two.
-var publishedFrame = regexp.MustCompile(`Type:\s*"([a-z_]+)",\s*\n?\s*Payload:\s*api\.([A-Za-z]+)\{`)
-
-// TestEveryPublishedEventIsInTheEventTypeMap reads the real publish sites in internal/app and
-// asserts each one's (name, payload type) pair is what registerEvents binds.
-//
-// Source-scanning a sibling package is unusual, and deliberate: the binding being guarded
-// spans the two packages, and there is no runtime seam that sees a publish site which has not
-// fired yet. The vacuous-guard check below is what keeps a regex that stopped matching from
-// passing forever.
-func TestEveryPublishedEventIsInTheEventTypeMap(t *testing.T) {
+// publishedFrames parses the production files of internal/app and returns each publish site's
+// event name and payload type: every `events.Event{Type: "name", Payload: api.TypeName{…}}`
+// composite literal, by syntax tree rather than by text, so formatting cannot hide one.
+func publishedFrames(t *testing.T) map[string]string {
+	t.Helper()
 	entries, err := os.ReadDir("../app")
 	if err != nil {
 		t.Fatal(err)
 	}
 	published := map[string]string{} // event name -> payload type name
 	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 			continue
 		}
-		b, err := os.ReadFile("../app/" + name)
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "app", e.Name()), nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range publishedFrame.FindAllStringSubmatch(string(b), -1) {
-			published[m[1]] = m[2]
+		ast.Inspect(file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.CompositeLit); ok && isSelector(lit.Type, "events", "Event") {
+				if name, payload := publishSite(lit); name != "" && payload != "" {
+					published[name] = payload
+				}
+			}
+			return true
+		})
+	}
+	return published
+}
+
+// publishSite returns the Type string and the api payload type name of one events.Event literal.
+func publishSite(lit *ast.CompositeLit) (name, payload string) {
+	for _, el := range lit.Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, _ := kv.Key.(*ast.Ident)
+		switch {
+		case key == nil:
+		case key.Name == "Type":
+			if s, ok := kv.Value.(*ast.BasicLit); ok && s.Kind == token.STRING {
+				name, _ = strconv.Unquote(s.Value)
+			}
+		case key.Name == "Payload":
+			if p, ok := kv.Value.(*ast.CompositeLit); ok {
+				if sel, ok := p.Type.(*ast.SelectorExpr); ok && isSelector(sel, "api", sel.Sel.Name) {
+					payload = sel.Sel.Name
+				}
+			}
 		}
 	}
+	return name, payload
+}
+
+func isSelector(e ast.Expr, pkg, name string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != name {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && id.Name == pkg
+}
+
+// TestEveryPublishedEventIsInTheEventTypeMap parses the real publish sites in internal/app and
+// asserts each one's (name, payload type) pair is what registerEvents binds.
+//
+// Parsing a sibling package is unusual, and deliberate: the binding being guarded spans the two
+// packages, and there is no runtime seam that sees a publish site which has not fired yet. The
+// vacuous-guard check below is what keeps a guard that stopped finding sites from passing forever.
+func TestEveryPublishedEventIsInTheEventTypeMap(t *testing.T) {
+	published := publishedFrames(t)
 
 	// ⚠ A guard that matches nothing passes forever.
 	if len(published) < 8 {
-		t.Fatalf("only %d publish sites found (%v) — the regex stopped matching, so this guard "+
-			"is no longer guarding anything", len(published), published)
+		t.Fatalf("only %d publish sites found (%v) — the syntax match stopped finding them, so "+
+			"this guard is no longer guarding anything", len(published), published)
 	}
 
 	declared := api.EventFrameTypes()

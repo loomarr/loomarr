@@ -4,10 +4,10 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/llm"
@@ -158,28 +158,42 @@ func TestRunnerAggregatesRetrievalAndGenerationFailuresSeparately(t *testing.T) 
 // certification corpus. Pin their exact starter ids/descriptions/constraints
 // together so either side changing cannot silently certify a different request.
 func TestCorpusContainsExactShippedStarterIntents(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join("..", "..", "web", "packages", "core", "src", "templates", "templates.ts"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "web", "packages", "core", "src", "templates", "templates.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(source)
-	wantIDs := []string{"saturday-cartoons", "cozy-mystery", "late-night-scifi", "action-marathon"}
-	seen := make(map[string]bool, len(wantIDs))
+	var shipped []struct {
+		ID          string `json:"id"`
+		Description string `json:"description"`
+		Era         string `json:"era"`
+		Tone        string `json:"tone"`
+	}
+	if err := json.Unmarshal(raw, &shipped); err != nil {
+		t.Fatal(err)
+	}
+	if len(shipped) == 0 {
+		t.Fatal("templates.json ships no starter templates")
+	}
+	cases := map[string]Case{}
 	for _, c := range Corpus {
-		if c.TemplateID == "" {
-			continue
-		}
-		seen[c.TemplateID] = true
-		for _, exact := range []string{c.TemplateID, c.Intent.Description, c.Intent.Era, c.Intent.Tone} {
-			if exact != "" && !strings.Contains(text, exact) {
-				t.Errorf("template %q certification value %q is absent from shipped templates", c.TemplateID, exact)
-			}
+		if c.TemplateID != "" {
+			cases[c.TemplateID] = c
 		}
 	}
-	for _, id := range wantIDs {
-		if !seen[id] {
-			t.Errorf("shipped starter template %q has no exact certification case", id)
+	for _, tpl := range shipped {
+		c, ok := cases[tpl.ID]
+		if !ok {
+			t.Errorf("shipped starter template %q has no exact certification case", tpl.ID)
+			continue
 		}
+		delete(cases, tpl.ID)
+		got := [3]string{c.Intent.Description, c.Intent.Era, c.Intent.Tone}
+		if want := [3]string{tpl.Description, tpl.Era, tpl.Tone}; got != want {
+			t.Errorf("template %q certifies description/era/tone %q, but the shipped template is %q", tpl.ID, got, want)
+		}
+	}
+	for id := range cases {
+		t.Errorf("certification case names template %q, which the product does not ship", id)
 	}
 }
 

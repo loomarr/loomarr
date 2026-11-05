@@ -1,9 +1,13 @@
 package api_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"os"
-	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,11 +35,11 @@ func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 
 	// ⚠ A guard that matches nothing passes forever. This used to assert a MINIMUM COUNT, which
 	// was right while raw registrations were plentiful and became wrong the moment the migration
-	// finished — a count cannot tell "the regex broke" from "there is nothing left to find", and
+	// finished — a count cannot tell "the match broke" from "there is nothing left to find", and
 	// it started failing on success.
 	//
 	// The SPA catch-all is the one registration that must always exist (it serves the embedded
-	// frontend and is not an API route), so its presence is what proves the regex still matches.
+	// frontend and is not an API route), so its presence is what proves the match still works.
 	// That stays true no matter how few raw routes remain.
 	var sawSPA bool
 	for _, p := range found {
@@ -44,8 +48,8 @@ func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 		}
 	}
 	if !sawSPA {
-		t.Fatalf(`the SPA catch-all mux.Handle("/", …) was not found among %v — the regex stopped `+
-			"matching, so this guard is no longer guarding anything", found)
+		t.Fatalf(`the SPA catch-all mux.Handle("/", …) was not found among %v — the syntax match `+
+			"stopped finding it, so this guard is no longer guarding anything", found)
 	}
 
 	var escaped []string
@@ -158,13 +162,12 @@ func TestTheSPACatchAllIsTheOnlyRawMuxRoute(t *testing.T) {
 	}
 }
 
-// muxRegistration matches `mux.HandleFunc("GET /path", …)` and `mux.Handle("/path", …)`.
-var muxRegistration = regexp.MustCompile(`mux\.(?:HandleFunc|Handle)\(\s*"([^"]*)"`)
-
-// rawMuxRoutes returns every route pattern registered directly on the ServeMux, across the whole
-// package — not just api.go. Scanning every file is the point: registerSSO mounts its two routes
-// from ssoroutes.go, so a guard reading only api.go would miss them, which is how the
-// export-parity guard came to have a blind spot in the first place.
+// rawMuxRoutes returns every route pattern registered directly on the ServeMux — each
+// `mux.HandleFunc(pattern, …)` and `mux.Handle(pattern, …)` call — across the whole package, not
+// just api.go. Scanning every file is the point: registerSSO mounted its two routes from
+// ssoroutes.go, so a guard reading only api.go missed them, which is how the export-parity guard
+// came to have a blind spot in the first place. A pattern that is not a string literal is
+// reported as its Go expression, so it cannot slip past as an unnamed route.
 func rawMuxRoutes(t *testing.T) []string {
 	t.Helper()
 	entries, err := os.ReadDir(".")
@@ -173,17 +176,36 @@ func rawMuxRoutes(t *testing.T) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 			continue
 		}
-		b, err := os.ReadFile(name)
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, e.Name(), nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range muxRegistration.FindAllStringSubmatch(string(b), -1) {
-			out = append(out, m[1])
-		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) == 0 {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || (sel.Sel.Name != "Handle" && sel.Sel.Name != "HandleFunc") {
+				return true
+			}
+			if recv, ok := sel.X.(*ast.Ident); !ok || recv.Name != "mux" {
+				return true
+			}
+			if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				pattern, _ := strconv.Unquote(lit.Value)
+				out = append(out, pattern)
+				return true
+			}
+			var expr strings.Builder
+			_ = printer.Fprint(&expr, fset, call.Args[0])
+			out = append(out, expr.String())
+			return true
+		})
 	}
 	sort.Strings(out)
 	return out

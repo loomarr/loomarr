@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -47,19 +47,6 @@ const findStory = (kebab: string): string | null => {
   return null;
 };
 
-const allStoryFiles = (dir: string): string[] => {
-  const out: string[] = [];
-  const walk = (d: string) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith(".stories.tsx")) out.push(p);
-    }
-  };
-  walk(dir);
-  return out;
-};
-
 const loomarrComponents = componentsOf(loomarr);
 const uiComponents = componentsOf(ui);
 
@@ -99,26 +86,24 @@ describe("Primitive coverage", () => {
 // §5.1a: the sidebar has to stay navigable. A bare `Loomarr/<Name>` title is what 46 components
 // under one flat namespace looked like — every story present, and none of them findable.
 describe("Story grouping", () => {
-  // Anchored to the META block, not to the first `title:` in the file. Several stories carry
-  // fixture data with its own `title` ("Cold Relay" — a series name), and matching
-  // the first occurrence reported those as malformed story titles.
-  const titleOf = (file: string): string | null => {
-    const src = readFileSync(file, "utf8");
-    const meta = /const meta\s*=\s*\{[\s\S]*?\n\}/.exec(src)?.[0] ?? src;
-    return /title:\s*"([^"]+)"/.exec(meta)?.[1] ?? null;
-  };
-
-  const storyFiles = [...allStoryFiles(LOOMARR_DIR), ...allStoryFiles(UI_DIR), ...allStoryFiles(DESIGN_DIR)];
+  // The title Storybook files a story under is its module's CSF meta — the default export — so
+  // the check reads it from the loaded module, not from the file's text.
+  const storyModules = import.meta.glob<{ default: { title?: string } }>([
+    "../components/loomarr/**/*.stories.tsx",
+    "../components/ui/**/*.stories.tsx",
+    "../design/**/*.stories.tsx",
+  ]);
+  const storyFiles = Object.keys(storyModules).sort();
 
   it("has stories to check", () => {
     expect(storyFiles.length).toBeGreaterThanOrEqual(55);
   });
 
-  it.each(storyFiles.map((f) => [f.replace(SRC, "src"), f] as const))(
+  it.each(storyFiles.map((f) => [f.replace(/^\.\.\//, "src/"), f] as const))(
     "%s carries a group prefix",
-    (_label, file) => {
-      const title = titleOf(file);
-      expect(title, `${file}: no title in meta`).not.toBeNull();
+    async (_label, file) => {
+      const title = (await storyModules[file]?.())?.default.title;
+      expect(title, `${file}: no title in meta`).toBeDefined();
       // "Channels/ChannelCard" — a group, then the component.
       expect(title, `${title}: needs a <Group>/<Name> title`).toMatch(/^[A-Za-z]+\/.+/);
       expect(title?.startsWith("Loomarr/"), `${title}: "Loomarr/" is the flat namespace §5.1a replaced`).toBe(
