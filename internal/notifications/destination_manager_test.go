@@ -17,7 +17,7 @@ type destinationValidator struct {
 
 func (v destinationValidator) Means() notifications.Means { return v.means }
 
-func (v destinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+func (v destinationValidator) ValidateDestination(notifications.ProviderSettings) error {
 	return v.err
 }
 
@@ -214,7 +214,7 @@ type switchableDestinationValidator struct {
 
 func (v *switchableDestinationValidator) Means() notifications.Means { return v.means }
 
-func (v *switchableDestinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+func (v *switchableDestinationValidator) ValidateDestination(notifications.ProviderSettings) error {
 	return v.err
 }
 

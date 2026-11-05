@@ -34,8 +34,8 @@ func NewMQTTAdapter(publicURL func() string) *MQTTAdapter {
 
 func (*MQTTAdapter) Means() Means { return MeansMQTT }
 
-func (*MQTTAdapter) ValidateDestination(configuration, credentials map[string]string) error {
-	_, err := mqttProviderConfig(configuration, credentials)
+func (*MQTTAdapter) ValidateDestination(settings ProviderSettings) error {
+	_, err := mqttProviderConfig(settings)
 	return err
 }
 
@@ -43,7 +43,7 @@ func (a *MQTTAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if a == nil || delivery.Destination == nil || delivery.Destination.Means != MeansMQTT {
 		return providerConfigurationFailure()
 	}
-	config, err := mqttProviderConfig(delivery.Destination.Configuration, delivery.Destination.Credentials)
+	config, err := mqttProviderConfig(delivery.Destination.ProviderSettings())
 	if err != nil {
 		return providerConfigurationFailure()
 	}
@@ -107,8 +107,8 @@ type mqttConfig struct {
 	tlsConfig *tls.Config
 }
 
-func mqttProviderConfig(configuration, credentials map[string]string) (mqttConfig, error) {
-	rawURL := strings.TrimSpace(credentials["brokerUrl"])
+func mqttProviderConfig(settings ProviderSettings) (mqttConfig, error) {
+	rawURL := strings.TrimSpace(settings.secret(keyBrokerURL))
 	target, err := url.Parse(rawURL)
 	if err != nil || target.Hostname() == "" || (target.Scheme != "mqtt" && target.Scheme != "mqtts") ||
 		target.User != nil || (target.Path != "" && target.Path != "/") || target.RawQuery != "" || target.Fragment != "" {
@@ -120,18 +120,18 @@ func mqttProviderConfig(configuration, credentials map[string]string) (mqttConfi
 			return mqttConfig{}, fmt.Errorf("MQTT broker port must be from 1 through 65535")
 		}
 	}
-	baseTopic := strings.Trim(strings.TrimSpace(configuration["baseTopic"]), "/")
+	baseTopic := strings.Trim(strings.TrimSpace(settings.plain(keyBaseTopic)), "/")
 	if baseTopic == "" || strings.ContainsAny(baseTopic, "+#\x00") || len(baseTopic) > 512 {
 		return mqttConfig{}, fmt.Errorf("MQTT base topic must be non-empty and cannot contain wildcards")
 	}
-	qosValue := configuration["qos"]
+	qosValue := settings.plain(keyQoS)
 	if qosValue == "" {
 		qosValue = "0"
 	}
 	if qosValue != "0" && qosValue != "1" {
 		return mqttConfig{}, fmt.Errorf("MQTT QoS must be 0 or 1")
 	}
-	retainValue := configuration["retain"]
+	retainValue := settings.plain(keyRetain)
 	if retainValue == "" {
 		retainValue = "false"
 	}
@@ -139,30 +139,31 @@ func mqttProviderConfig(configuration, credentials map[string]string) (mqttConfi
 	if err != nil {
 		return mqttConfig{}, fmt.Errorf("MQTT retain must be true or false")
 	}
-	if len(configuration["username"]) > 65535 || len(credentials["password"]) > 65535 {
+	username, password := settings.plain(keyUsername), settings.secret(keyPassword)
+	if len(username) > 65535 || len(password) > 65535 {
 		return mqttConfig{}, fmt.Errorf("MQTT credentials are too long")
 	}
-	if configuration["username"] == "" && credentials["password"] != "" {
+	if username == "" && password != "" {
 		return mqttConfig{}, fmt.Errorf("an MQTT password requires a username")
 	}
-	clientID := strings.TrimSpace(configuration["clientId"])
+	clientID := strings.TrimSpace(settings.plain(keyClientID))
 	if clientID != "" && !validMQTTString(clientID) {
 		return mqttConfig{}, fmt.Errorf("MQTT client ID must be valid UTF-8 without null bytes and at most 65535 bytes")
 	}
-	tlsConfig, err := mqttTLSConfig(target, credentials)
+	tlsConfig, err := mqttTLSConfig(target, settings)
 	if err != nil {
 		return mqttConfig{}, err
 	}
 	return mqttConfig{
-		target: target, username: configuration["username"], password: credentials["password"],
+		target: target, username: username, password: password,
 		baseTopic: baseTopic, qos: qosValue[0] - '0', retain: retain, clientID: clientID, tlsConfig: tlsConfig,
 	}, nil
 }
 
-func mqttTLSConfig(target *url.URL, credentials map[string]string) (*tls.Config, error) {
-	caPEM := strings.TrimSpace(credentials["tlsCaCertificate"])
-	certificatePEM := strings.TrimSpace(credentials["tlsClientCertificate"])
-	keyPEM := strings.TrimSpace(credentials["tlsClientKey"])
+func mqttTLSConfig(target *url.URL, settings ProviderSettings) (*tls.Config, error) {
+	caPEM := strings.TrimSpace(settings.secret(keyTLSCACertificate))
+	certificatePEM := strings.TrimSpace(settings.secret(keyTLSClientCertificate))
+	keyPEM := strings.TrimSpace(settings.secret(keyTLSClientKey))
 	if target.Scheme != "mqtts" {
 		if caPEM != "" || certificatePEM != "" || keyPEM != "" {
 			return nil, fmt.Errorf("MQTT TLS certificates require an mqtts:// broker URL")

@@ -99,24 +99,24 @@ func TestWebPushValidationRejectsNonHTTPSOrInvalidSubscriptionKeys(t *testing.T)
 	}, &providerDoer{}, nil)
 	credentials := validWebPushCredentials(t)
 	credentials["endpoint"] = "http://push.example.test/subscription"
-	if err := adapter.ValidateDestination(nil, credentials); err == nil {
+	if err := adapter.ValidateDestination(notifications.NewProviderSettings(nil, credentials)); err == nil {
 		t.Fatal("accepted a non-HTTPS Push endpoint")
 	}
 	credentials = validWebPushCredentials(t)
 	credentials["endpoint"] = "https://127.0.0.1/subscription"
-	if err := adapter.ValidateDestination(nil, credentials); err == nil {
+	if err := adapter.ValidateDestination(notifications.NewProviderSettings(nil, credentials)); err == nil {
 		t.Fatal("accepted a private Push endpoint")
 	}
 	for _, endpoint := range []string{"https://100.100.100.100/subscription", "https://[::ffff:100.64.0.1]/subscription", "https://[64:ff9b::a00:1]/subscription"} {
 		credentials = validWebPushCredentials(t)
 		credentials["endpoint"] = endpoint
-		if err := adapter.ValidateDestination(nil, credentials); err == nil {
+		if err := adapter.ValidateDestination(notifications.NewProviderSettings(nil, credentials)); err == nil {
 			t.Fatalf("accepted the non-public Push endpoint %s", endpoint)
 		}
 	}
 	credentials = validWebPushCredentials(t)
 	credentials["p256dh"] = base64.RawURLEncoding.EncodeToString([]byte("not-a-P256-point"))
-	if err := adapter.ValidateDestination(nil, credentials); err == nil {
+	if err := adapter.ValidateDestination(notifications.NewProviderSettings(nil, credentials)); err == nil {
 		t.Fatal("accepted an invalid browser public key")
 	}
 }

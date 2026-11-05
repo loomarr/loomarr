@@ -46,7 +46,7 @@ type DestinationUpdateCommand struct {
 
 type DestinationValidator interface {
 	Means() Means
-	ValidateDestination(configuration, credentials map[string]string) error
+	ValidateDestination(ProviderSettings) error
 }
 
 type DestinationRepository interface {
@@ -316,7 +316,7 @@ func (m *DestinationManager) Delete(
 			if openErr != nil {
 				return DestinationDeleteResult{}, openErr
 			}
-			fingerprint = webPushSubscriptionFingerprint(opened.Credentials["endpoint"])
+			fingerprint = webPushSubscriptionFingerprint(opened.ProviderSettings().secret(keyEndpoint))
 		}
 		result.UnsubscribeCurrentBrowser = sameFingerprint(
 			fingerprint,
@@ -375,7 +375,7 @@ func (m *DestinationManager) matchingWebPushDestinations(
 			if openErr != nil {
 				return nil, openErr
 			}
-			fingerprint = webPushSubscriptionFingerprint(legacy.Credentials["endpoint"])
+			fingerprint = webPushSubscriptionFingerprint(legacy.ProviderSettings().secret(keyEndpoint))
 		}
 		if sameFingerprint(fingerprint, destination.SubscriptionFingerprint) {
 			matches = append(matches, candidate)
@@ -414,7 +414,7 @@ func (m *DestinationManager) replaceWebPushDestinations(
 
 func setWebPushSubscriptionFingerprint(destination *Destination) {
 	if destination != nil && destination.Means == MeansWebPush {
-		destination.SubscriptionFingerprint = webPushSubscriptionFingerprint(destination.Credentials["endpoint"])
+		destination.SubscriptionFingerprint = webPushSubscriptionFingerprint(destination.ProviderSettings().secret(keyEndpoint))
 	}
 }
 
@@ -465,7 +465,7 @@ func (m *DestinationManager) validateProvider(destination Destination) error {
 	if validator == nil {
 		return ErrMeansUnavailable
 	}
-	if err := validator.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+	if err := validator.ValidateDestination(destination.ProviderSettings()); err != nil {
 		return fmt.Errorf("validate %s destination: %w", destination.Means, err)
 	}
 	return nil
