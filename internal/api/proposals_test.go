@@ -180,6 +180,37 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 	}
 }
 
+// The intent's bounds are the spec's, refused before any job exists: a description under
+// proposal.MinDescriptionLen (raw, or once trimmed), and an acquisition cap or runtime target
+// outside its declared range. Exactly the minimum, and a cap of 200, are accepted.
+func TestSubmit_RefusesAnIntentOutsideItsBounds(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, fs := harness.Server, harness.Suggest
+	for name, body := range map[string]string{
+		"short":            `{"description":"ab"}`,
+		"blank":            `{"description":"   "}`,
+		"padded short":     `{"description":"  ab  "}`,
+		"cap over":         `{"description":"90s action","maxAcquisitions":201}`,
+		"cap negative":     `{"description":"90s action","maxAcquisitions":-1}`,
+		"runtime negative": `{"description":"90s action","runtimeTargetMin":-5}`,
+	} {
+		resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s: submit → %d, want a 400/422 refusal", name, resp.StatusCode)
+		}
+	}
+	if fs.submits != 0 {
+		t.Fatalf("refused intents created %d jobs, want none", fs.submits)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken,
+		`{"description":"`+strings.Repeat("a", proposal.MinDescriptionLen)+`","maxAcquisitions":200}`)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fs.submits != 1 {
+		t.Fatalf("an intent exactly at its bounds → %d (%d jobs), want 200 and one job", resp.StatusCode, fs.submits)
+	}
+}
+
 func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
 	harness := newProposalHarness(t, proposalHarnessConfig{Settings: &fakeSettings{}})
 	srv, fs := harness.Server, harness.Suggest

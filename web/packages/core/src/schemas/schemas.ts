@@ -15,17 +15,23 @@
 // one thing: *that field does not exist on the wire schema.*
 //
 // ⚠ **A limit the server declares is read from the generated constant; the MESSAGE stays here.**
-// The password minimum is `bootstrapBodyPasswordMin`, from the server's `minLength` on that route,
-// so the form and the API cannot disagree about it. OpenAPI has nowhere to put a user-facing
-// message, so every message is authored below. Rules the server does not declare — the trims, the
-// 3-character description, the 0–200 cap, the password confirmation — are still hand-authored
-// here; moving one to the server means a struct tag there and its generated constant here.
+// The password minimum, the description minimum and the acquisition cap are generated constants
+// (`bootstrapBodyPasswordMin`, `submitProposalBodyDescriptionMin`, …) from the server's struct
+// tags, so the form and the API cannot disagree about them. OpenAPI has nowhere to put a
+// user-facing message, so every message is authored below. Rules the server does not declare —
+// the trims, the password confirmation — are still hand-authored here; moving one to the server
+// means a struct tag there and its generated constant here.
 // ⚠ PascalCase because orval 8.24 renamed generated zod SCHEMA exports (`loginBody` →
 // `LoginBody`). Scalar constraint constants kept their camelCase (`changePasswordBodyNextMin`),
 // so the casing here is not a blanket rule — it tracks what the generator emits per symbol.
 import { LoginBody } from "@loomarr/api/zod/auth";
 import { NotificationProvidersUpdateBody } from "@loomarr/api/zod/notifications";
-import { SubmitProposalBody } from "@loomarr/api/zod/proposals";
+import {
+  SubmitProposalBody,
+  submitProposalBodyDescriptionMin,
+  submitProposalBodyMaxAcquisitionsMax,
+  submitProposalBodyMaxAcquisitionsMin,
+} from "@loomarr/api/zod/proposals";
 import { BootstrapBody, bootstrapBodyPasswordMin } from "@loomarr/api/zod/setup";
 import { z } from "zod";
 
@@ -45,11 +51,21 @@ const intentShape = SubmitProposalBody.pick({
 });
 
 const intentSchema = intentShape.extend({
-  description: z.string().trim().min(3, "Describe the channel you want (a sentence is plenty)."),
+  description: z
+    .string()
+    .trim()
+    .min(submitProposalBodyDescriptionMin, "Describe the channel you want (a sentence is plenty)."),
   era: z.string().trim().optional(),
   tone: z.string().trim().optional(),
+  // positive, not the spec's minimum of 0: the server reads 0 as "no target", which the form
+  // expresses by leaving the field empty.
   runtimeTargetMin: z.number().int().positive().optional(),
-  maxAcquisitions: z.number().int().min(0).max(200).optional(),
+  maxAcquisitions: z
+    .number()
+    .int()
+    .min(submitProposalBodyMaxAcquisitionsMin)
+    .max(submitProposalBodyMaxAcquisitionsMax)
+    .optional(),
   mustInclude: z.array(z.string().trim()).optional(),
   mustExclude: z.array(z.string().trim()).optional(),
 });

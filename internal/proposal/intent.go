@@ -1,16 +1,24 @@
 package proposal
 
+// MinDescriptionLen is the shortest channel description a request may carry, counted after
+// trimming. Intent.Description's minLength tag declares the same number to the spec.
+const MinDescriptionLen = 3
+
 // Intent is a channel request: an NL description plus optional constraints (§8).
 // It is the persisted request a proposal, a job and a channel store; the evidence one
 // suggester run gathers while serving it lives in the suggester, never here.
 type Intent struct {
-	Description string   `json:"description"`                // "90s action movies"
-	Era         string   `json:"era,omitempty"`              // e.g. "1990s"
-	Tone        string   `json:"tone,omitempty"`             // e.g. "high-energy"
-	RuntimeTgt  int      `json:"runtimeTargetMin,omitempty"` // total target minutes
-	MustInclude []string `json:"mustInclude,omitempty"`      // titles/terms to include
-	MustExclude []string `json:"mustExclude,omitempty"`      // titles/terms to exclude
-	MaxAcquire  int      `json:"maxAcquisitions,omitempty"`  // cap on acquisitions (§8 quota)
+	// The bounds below are declared for the spec, so a client form reads them from the generated
+	// constants instead of keeping its own copy. Huma enforces them on every request body that
+	// carries an Intent (submit and revise); the handlers also refuse a description that is
+	// shorter than MinDescriptionLen once trimmed.
+	Description string   `json:"description" minLength:"3"`                           // "90s action movies"
+	Era         string   `json:"era,omitempty"`                                       // e.g. "1990s"
+	Tone        string   `json:"tone,omitempty"`                                      // e.g. "high-energy"
+	RuntimeTgt  int      `json:"runtimeTargetMin,omitempty" minimum:"0"`              // total target minutes; 0 ⇒ none
+	MustInclude []string `json:"mustInclude,omitempty"`                               // titles/terms to include
+	MustExclude []string `json:"mustExclude,omitempty"`                               // titles/terms to exclude
+	MaxAcquire  int      `json:"maxAcquisitions,omitempty" minimum:"0" maximum:"200"` // cap on acquisitions (§8 quota); 0 ⇒ the quota alone
 	// ChannelName is a name the requester fixed (the manual builder's typed name when it hands
 	// over to AI, #1914). When set, the proposal keeps it instead of the model's; empty ⇒ the
 	// model names the channel.

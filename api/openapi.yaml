@@ -5926,11 +5926,14 @@ components:
             $ref: "#/components/schemas/LineupContext"
           type: array
         description:
+          minLength: 3
           type: string
         era:
           type: string
         maxAcquisitions:
           format: int64
+          maximum: 200
+          minimum: 0
           type: integer
         mustExclude:
           items:
@@ -5944,6 +5947,7 @@ components:
           type: string
         runtimeTargetMin:
           format: int64
+          minimum: 0
           type: integer
         tone:
           type: string

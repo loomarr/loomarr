@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -93,6 +95,17 @@ type submitOutput struct {
 	}
 }
 
+// checkDescription refuses a channel description shorter than proposal.MinDescriptionLen once
+// trimmed. The spec's minLength counts raw characters, so three spaces pass it; this is the
+// check that makes the rule the same one the web form applies.
+func checkDescription(description string) error {
+	if utf8.RuneCountInString(strings.TrimSpace(description)) < proposal.MinDescriptionLen {
+		return errBadRequest("Description too short",
+			fmt.Sprintf("Describe the channel you want in at least %d characters (a sentence is plenty).", proposal.MinDescriptionLen))
+	}
+	return nil
+}
+
 // suggestionConfigurationError maps the settings-owned readiness explanation to
 // one user-facing recovery contract. Proposal creation and channel refinement share
 // it so a missing grounding source cannot be called an AI failure on one surface and
@@ -131,8 +144,8 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 	if err := s.suggestionConfigurationError(ctx); err != nil {
 		return nil, err
 	}
-	if in.Body.Description == "" {
-		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
+	if err := checkDescription(in.Body.Description); err != nil {
+		return nil, err
 	}
 	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
 	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)

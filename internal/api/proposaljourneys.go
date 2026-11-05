@@ -197,8 +197,8 @@ func (s *Server) reviseProposalJourney(
 	if err := s.suggestionConfigurationError(ctx); err != nil {
 		return nil, err
 	}
-	if in.Body.Description == "" {
-		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
+	if err := checkDescription(in.Body.Description); err != nil {
+		return nil, err
 	}
 	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
