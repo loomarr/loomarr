@@ -102,7 +102,7 @@ func TestNewNamedObservedRecordsIntoTheSuppliedGeneration(t *testing.T) {
 	t.Cleanup(upstream.Close)
 	recorder := metrics.New(metrics.Options{})
 
-	response, err := NewNamedObserved("library", time.Second, recorder).Get(upstream.URL)
+	response, err := NewNamedObserved(TargetLibrary, time.Second, recorder).Get(upstream.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

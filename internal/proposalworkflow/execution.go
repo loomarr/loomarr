@@ -2,14 +2,15 @@ package proposalworkflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")
+// ErrStaleAttempt reports a terminal write from an Attempt that recovery or a requeue replaced.
+var ErrStaleAttempt = suggest.ErrStaleAttempt
 
 // Work is a versioned lease token. The Job id alone is never sufficient to
 // commit an activity result because an expired worker may finish after recovery
@@ -20,7 +21,7 @@ type Work = suggest.WorkflowWork
 // Attempt transitions either all become visible or none do.
 type Completion struct {
 	Work     Work
-	Proposal suggest.Proposal
+	Proposal proposal.Proposal
 }
 
 type AttemptFailure struct {
@@ -30,22 +31,13 @@ type AttemptFailure struct {
 	TraceJSON  string
 }
 
-type executionRepository interface {
-	ClaimAttempts(context.Context, time.Time, time.Duration, int) ([]Work, error)
-	CompleteAttempt(context.Context, Completion) (suggest.WorkflowProposal, error)
-	FailAttempt(context.Context, AttemptFailure) error
-}
-
 // Claim leases bounded work. Lease recovery and monotonically numbered Attempt
 // creation are one repository transaction behind this module-owned command.
 func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Work, error) {
 	if lease <= 0 || limit <= 0 {
 		return nil, fmt.Errorf("%w: invalid claim lease=%s limit=%d", ErrInvalidState, lease, limit)
 	}
-	if w.execution == nil {
-		return nil, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
-	works, err := w.execution.ClaimAttempts(ctx, now, lease, limit)
+	works, err := w.repository.ClaimAttempts(ctx, now, lease, limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim Proposal Jobs: %w", err)
 	}
@@ -59,26 +51,23 @@ func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration
 
 // Complete atomically publishes a grounded Proposal and closes the current
 // Attempt. A stale lease token must be rejected by the repository guard.
-func (w *Workflow) Complete(ctx context.Context, work Work, proposal suggest.Proposal) (suggest.WorkflowProposal, error) {
+func (w *Workflow) Complete(ctx context.Context, work Work, prop proposal.Proposal) (suggest.WorkflowProposal, error) {
 	if err := validateWork(work); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if len(proposal.Lineup)+len(proposal.Acquisitions)+len(proposal.Alternates)+len(proposal.Refused) == 0 {
+	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates)+len(prop.Refused) == 0 {
 		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
 	}
-	if err := validateProposalIdentities(proposal); err != nil {
+	if err := validateProposalIdentities(prop); err != nil {
 		return suggest.WorkflowProposal{}, err
 	}
-	if proposal.Trace.Version != suggest.DecisionTraceVersion {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, proposal.Trace.Version, suggest.DecisionTraceVersion)
+	if prop.Trace.Version != suggest.DecisionTraceVersion {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, suggest.DecisionTraceVersion)
 	}
-	if err := suggest.ValidateDecisionTrace(proposal.Trace); err != nil {
+	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
-	if w.execution == nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
-	completed, err := w.execution.CompleteAttempt(ctx, Completion{Work: work, Proposal: proposal})
+	completed, err := w.repository.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})
 	if err != nil {
 		return suggest.WorkflowProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
@@ -95,14 +84,11 @@ func (w *Workflow) Fail(ctx context.Context, work Work, code string, diagnostic 
 	if boundedCode != FailureNoGroundedTitles && boundedCode != FailureSelectionEmpty && boundedCode != FailureBudgetExhausted {
 		boundedCode = FailureGenerationFailed
 	}
-	if w.execution == nil {
-		return fmt.Errorf("%w: execution repository unavailable", ErrInvalidState)
-	}
 	trace := ""
 	if len(traceJSON) > 0 {
 		trace = traceJSON[0]
 	}
-	if err := w.execution.FailAttempt(ctx, AttemptFailure{
+	if err := w.repository.FailAttempt(ctx, AttemptFailure{
 		Work: work, Code: boundedCode, Diagnostic: diagnostic,
 		TraceJSON: trace,
 	}); err != nil {
@@ -118,8 +104,8 @@ func validateWork(work Work) error {
 	return nil
 }
 
-func validateProposalIdentities(proposal suggest.Proposal) error {
-	groups := [][]suggest.ProposalItem{proposal.Lineup, proposal.Acquisitions, proposal.Alternates}
+func validateProposalIdentities(prop proposal.Proposal) error {
+	groups := [][]proposal.ProposalItem{prop.Lineup, prop.Acquisitions, prop.Alternates}
 	for _, items := range groups {
 		for _, item := range items {
 			if _, err := item.Key(); err != nil {
@@ -127,7 +113,7 @@ func validateProposalIdentities(proposal suggest.Proposal) error {
 			}
 		}
 	}
-	for _, refused := range proposal.Refused {
+	for _, refused := range prop.Refused {
 		if _, err := refused.Item.Key(); err != nil {
 			return fmt.Errorf("%w: Proposal contains an ungrounded refused identity: %v", ErrInvalidState, err)
 		}

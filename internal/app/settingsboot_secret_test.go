@@ -83,7 +83,8 @@ func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
 	if strings.Contains(logs.String(), password) {
 		t.Fatalf("SMTP password leaked through application logger: %s", logs.String())
 	}
-	if got := set.str("notifications.smtp.password"); got != password {
+	// A MigrationOnly key has no handle, so the test reads it by key.
+	if got, _ := set.Value("notifications.smtp.password").(string); got != password {
 		t.Fatalf("resolved SMTP password = %q, want plaintext in memory", got)
 	}
 	stored, err := st.GetSetting(context.Background(), "notifications.smtp.password")

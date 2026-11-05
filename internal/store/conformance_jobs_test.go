@@ -2,14 +2,15 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -213,7 +214,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	job = claimed[0]
 	proposal := Proposal{
 		ID: "proposal-success", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, proposal, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
@@ -375,7 +376,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 	job = claimed[0]
 	first := Proposal{
 		ID: "proposal-first", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"lineup":[{"name":"First"}]}`, CreatedAt: now, UpdatedAt: now,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, first, now); err != nil {
 		t.Fatal(err)
@@ -410,7 +411,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 
 	second := Proposal{
 		ID: "proposal-second", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"lineup":[{"name":"Second"}]}`, CreatedAt: now, UpdatedAt: now,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 2, second, now); err != nil {
 		t.Fatal(err)
@@ -445,7 +446,7 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 	first := Proposal{
 		ID: "proposal-original", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"lineup":[{"name":"First"}]}`, CreatedAt: now, UpdatedAt: now,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, first, now); err != nil {
 		t.Fatal(err)
@@ -497,7 +498,7 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 	second := Proposal{
 		ID: "proposal-replacement", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"lineup":[{"name":"Second"}]}`, CreatedAt: now, UpdatedAt: now,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 3, second, now); err != nil {
 		t.Fatal(err)
@@ -534,7 +535,7 @@ func testProposalRevisionFallbackApproval(t *testing.T, newStore NewStoreFunc) {
 	}
 	proposal := Proposal{
 		ID: "proposal-fallback", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, proposal, now); err != nil {
 		t.Fatal(err)
@@ -582,7 +583,7 @@ func testProposalRevisionFallbackDenial(t *testing.T, newStore NewStoreFunc) {
 	}
 	proposal := Proposal{
 		ID: "proposal-discard", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, proposal, now); err != nil {
 		t.Fatal(err)
@@ -625,7 +626,12 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	sourceProposal := Proposal{
 		ID: "proposal-source", JobID: source.ID, Status: "approved", CreatedBy: source.CreatedBy,
-		ApprovedBy: "admin", ProposalJSON: `{"lineup":[{"name":"Marigold Protocol"}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000603","ownership":"library","disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`,
+		ApprovedBy: "admin", Body: proposal.Proposal{
+			Lineup: []proposal.ProposalItem{{Name: "Marigold Protocol"}},
+			Trace: proposal.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposal.DecisionCandidate{
+				{Key: "movie:tmdb:90000603", Ownership: "library", Disposition: "selected", Reason: "selected"},
+			}},
+		},
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, sourceProposal); err != nil {
@@ -643,19 +649,11 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	if clone.ID != "proposal-clone" || clone.JobID != cloneJob.ID || clone.Status != "submitted" {
 		t.Fatalf("cloned proposal identity = %+v", clone)
 	}
-	if clone.CreatedBy != "bob" || clone.ApprovedBy != "" || clone.ProposalJSON != sourceProposal.ProposalJSON {
+	if clone.CreatedBy != "bob" || clone.ApprovedBy != "" || !reflect.DeepEqual(clone.Body.Lineup, sourceProposal.Body.Lineup) || !reflect.DeepEqual(clone.Body.Trace, sourceProposal.Body.Trace) {
 		t.Fatalf("cloned proposal lifecycle/payload = %+v", clone)
 	}
-	var roundTrip struct {
-		Trace struct {
-			Version    int `json:"version"`
-			Candidates []struct {
-				Key string `json:"key"`
-			} `json:"candidates"`
-		} `json:"trace"`
-	}
-	if err := json.Unmarshal([]byte(clone.ProposalJSON), &roundTrip); err != nil || roundTrip.Trace.Version != 1 || len(roundTrip.Trace.Candidates) != 1 || roundTrip.Trace.Candidates[0].Key != "movie:tmdb:90000603" {
-		t.Fatalf("cloned trace did not round-trip: %+v %v", roundTrip, err)
+	if trace := clone.Body.Trace; trace.Version != 1 || len(trace.Candidates) != 1 || trace.Candidates[0].Key != "movie:tmdb:90000603" {
+		t.Fatalf("cloned trace did not round-trip: %+v", trace)
 	}
 	gotJob, err := s.GetJob(ctx, cloneJob.ID)
 	if err != nil {
@@ -774,7 +772,7 @@ func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	}
 	older := Proposal{
 		ID: "proposal-older", JobID: job.ID, Status: "approved", CreatedBy: job.CreatedBy,
-		ApprovedBy: "admin", ProposalJSON: `{"name":"older"}`, CreatedAt: now, UpdatedAt: now,
+		ApprovedBy: "admin", Body: proposal.Proposal{ChannelName: "older"}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, older); err != nil {
 		t.Fatal(err)
@@ -793,7 +791,7 @@ func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	newer.Status = "denied"
 	newer.ApprovedBy = ""
 	newer.DenyReason = "not this time"
-	newer.ProposalJSON = `{"name":"newer"}`
+	newer.Body = proposal.Proposal{ChannelName: "newer"}
 	newer.CreatedAt = now.Add(time.Minute)
 	newer.UpdatedAt = newer.CreatedAt
 	if err := s.CreateProposal(ctx, newer); err != nil {
@@ -956,10 +954,10 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	mk := func(id, status, creator string) Proposal {
 		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
-			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
+			Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now, UpdatedAt: now}
 	}
 	p1Seed := mk("p1", "submitted", "alice")
-	p1Seed.ProposalJSON = `{"lineup":[],"trace":{"version":1,"candidates":[],"surfacedTotal":0,"recordedTotal":0,"truncated":false}}`
+	p1Seed.Body.Trace = proposal.DecisionTrace{Version: 1, Candidates: []proposal.DecisionCandidate{}}
 	_ = s.CreateProposal(ctx, p1Seed)
 	_ = s.CreateProposal(ctx, mk("p2", "submitted", "bob"))
 	_ = s.CreateProposal(ctx, mk("p3", "approved", "alice"))
@@ -989,7 +987,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	after, _ := s.GetProposal(ctx, "p1")
-	if after.Status != "approved" || after.ApprovedBy != "admin" || after.ProposalJSON != p1Seed.ProposalJSON {
+	if after.Status != "approved" || after.ApprovedBy != "admin" || !reflect.DeepEqual(after.Body.Trace, p1Seed.Body.Trace) {
 		t.Errorf("approve didn't persist: %+v", after)
 	}
 	if _, err := s.GetProposal(ctx, "missing"); !errors.Is(err, ErrNotFound) {
@@ -1003,7 +1001,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
-		ProposalJSON: `{"lineup":[]}`, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
 	if err := s.CreateProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -1081,7 +1079,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 
-	loser := Proposal{ID: "denied", JobID: "job-denied", Status: "denied", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+	loser := Proposal{ID: "denied", JobID: "job-denied", Status: "denied", CreatedAt: now, UpdatedAt: now}
 	if err := s.CreateProposal(ctx, loser); err != nil {
 		t.Fatal(err)
 	}
@@ -1107,7 +1105,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("approve missing proposal = %v, want ErrNotFound", err)
 	}
 
-	invalid := Proposal{ID: "invalid", JobID: "job-invalid", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+	invalid := Proposal{ID: "invalid", JobID: "job-invalid", Status: "submitted", CreatedAt: now, UpdatedAt: now}
 	if err := s.CreateProposal(ctx, invalid); err != nil {
 		t.Fatal(err)
 	}
@@ -1129,7 +1127,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 
 	invalidChannelProposal := Proposal{
 		ID: "invalid-channel", JobID: "job-invalid-channel", Status: "submitted",
-		ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, invalidChannelProposal); err != nil {
 		t.Fatal(err)
@@ -1188,7 +1186,7 @@ func testProposalApprovalSameIntentConflict(t *testing.T, newStore NewStoreFunc)
 	const jobID = "job-shared-intent"
 
 	seed := func(id string, createdAt time.Time) Proposal {
-		p := Proposal{ID: id, JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
+		p := Proposal{ID: id, JobID: jobID, Status: "submitted",
 			CreatedAt: createdAt, UpdatedAt: createdAt}
 		if err := s.CreateProposal(ctx, p); err != nil {
 			t.Fatal(err)
@@ -1255,7 +1253,7 @@ func testProposalApprovalStaleChannel(t *testing.T, newStore NewStoreFunc) {
 	winner = mustSaveChannel(t, s, winner)
 
 	p := Proposal{
-		ID: "proposal-stale-channel", JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
+		ID: "proposal-stale-channel", JobID: jobID, Status: "submitted",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, p); err != nil {
@@ -1296,11 +1294,11 @@ func testProposalApprovalSuperseded(t *testing.T, newStore NewStoreFunc) {
 	const jobID = "job-superseded-approval"
 
 	older := Proposal{
-		ID: "proposal-older", JobID: jobID, Status: "submitted", ProposalJSON: `{}`,
+		ID: "proposal-older", JobID: jobID, Status: "submitted",
 		CreatedAt: now, UpdatedAt: now,
 	}
 	newer := Proposal{
-		ID: "proposal-newer", JobID: jobID, Status: "approved", ProposalJSON: `{}`,
+		ID: "proposal-newer", JobID: jobID, Status: "approved",
 		// Equal timestamps are deliberately ambiguous at the persisted precision and
 		// therefore fail closed rather than allowing either proposal to roll the other back.
 		CreatedAt: now, UpdatedAt: now,
@@ -1347,7 +1345,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		s := newStore(t)
 		ctx := context.Background()
 		now := time.Unix(1_800_000_000, 0).UTC()
-		seed := Proposal{ID: "race-approve", JobID: "job", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+		seed := Proposal{ID: "race-approve", JobID: "job", Status: "submitted", CreatedAt: now, UpdatedAt: now}
 		if err := s.CreateProposal(ctx, seed); err != nil {
 			t.Fatal(err)
 		}
@@ -1363,7 +1361,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 			go func() {
 				<-start
 				p := seed
-				p.Status, p.ApprovedBy, p.ProposalJSON = "approved", actor, `{"winner":"`+actor+`"}`
+				p.Status, p.ApprovedBy, p.Body = "approved", actor, proposal.Proposal{ChannelName: actor}
 				_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
 					Key: key, Title: provision.Title{MediaType: provision.Movie, TMDBID: map[string]int{"admin-a": 90000010, "admin-b": 90000020}[actor]}, State: provision.Wanted, Deadline: now,
 				}}, Channel: approvalChannel(channelID, p.JobID, 110+i)})
@@ -1378,7 +1376,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 			if result.err == nil {
 				wins++
 				got, _ := s.GetProposal(ctx, seed.ID)
-				if got.ApprovedBy != result.actor || got.ProposalJSON != `{"winner":"`+result.actor+`"}` {
+				if got.ApprovedBy != result.actor || got.Body.ChannelName != result.actor {
 					t.Errorf("proposal does not match winner %s: %+v", result.actor, got)
 				}
 				if _, err := s.GetTitle(ctx, provision.Key(result.key)); err != nil {
@@ -1403,7 +1401,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 		s := newStore(t)
 		ctx := context.Background()
 		now := time.Unix(1_800_000_000, 0).UTC()
-		seed := Proposal{ID: "race-decision", JobID: "job", Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+		seed := Proposal{ID: "race-decision", JobID: "job", Status: "submitted", CreatedAt: now, UpdatedAt: now}
 		if err := s.CreateProposal(ctx, seed); err != nil {
 			t.Fatal(err)
 		}
@@ -1462,7 +1460,7 @@ func testProposalApprovalOverlappingTitles(t *testing.T, newStore NewStoreFunc) 
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	for _, id := range []string{"overlap-a", "overlap-b"} {
-		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: id, Status: "submitted", ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}); err != nil {
+		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: id, Status: "submitted", CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1566,21 +1564,21 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 
 	// --- proposals: newest approved for a job ---
 	older := Proposal{
-		ID: "p-old", JobID: "job-a", Status: "approved", ProposalJSON: `{"rationale":"first"}`,
+		ID: "p-old", JobID: "job-a", Status: "approved", Body: proposal.Proposal{Rationale: "first"},
 		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now,
 	}
 	newer := Proposal{
-		ID: "p-new", JobID: "job-a", Status: "approved", ProposalJSON: `{"rationale":"refined"}`,
+		ID: "p-new", JobID: "job-a", Status: "approved", Body: proposal.Proposal{Rationale: "refined"},
 		CreatedAt: now, UpdatedAt: now,
 	}
 	// Same job, still SUBMITTED — must never be returned for an "approved" ask, however new.
 	pending := Proposal{
-		ID: "p-pending", JobID: "job-a", Status: "submitted", ProposalJSON: `{}`,
+		ID: "p-pending", JobID: "job-a", Status: "submitted",
 		CreatedAt: now.Add(time.Hour), UpdatedAt: now,
 	}
 	// A different job's approved proposal — the row a job_id-blind query would wrongly return.
 	other := Proposal{
-		ID: "p-other", JobID: "job-b", Status: "approved", ProposalJSON: `{}`,
+		ID: "p-other", JobID: "job-b", Status: "approved",
 		CreatedAt: now.Add(2 * time.Hour), UpdatedAt: now,
 	}
 	// Inserted oldest-last so a query relying on insertion order rather than created_at fails.
@@ -1627,8 +1625,10 @@ func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
 	job.Status = "done"
 	proposal := Proposal{
 		ID: "proposal-idea", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: `{"channelName":"Comedy Movies","lineup":[{"mediaType":"movie","tmdbId":90000001,"name":"A","inLibrary":true}]}`,
-		CreatedAt:    now, UpdatedAt: now,
+		Body: proposal.Proposal{ChannelName: "Comedy Movies", Lineup: []proposal.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 90000001, Name: "A", InLibrary: true},
+		}},
+		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateSuggestionResult(ctx, job, proposal); err != nil {
 		t.Fatal(err)
@@ -1645,7 +1645,7 @@ func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("attempts = %+v", snapshot.Attempts)
 	}
 	if snapshot.Proposal == nil || snapshot.Proposal.ID != proposal.ID || snapshot.Proposal.Status != "submitted" ||
-		snapshot.Proposal.ProposalJSON != proposal.ProposalJSON {
+		snapshot.Proposal.Body.ChannelName != proposal.Body.ChannelName || len(snapshot.Proposal.Body.Lineup) != 1 {
 		t.Fatalf("proposal = %+v", snapshot.Proposal)
 	}
 	queue, err := s.ListProposalsByStatus(ctx, "submitted")

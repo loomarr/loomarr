@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -30,13 +31,13 @@ var randWords = []string{
 func pickWord(r *rand.Rand) string { return randWords[r.Intn(len(randWords))] }
 
 // randIntent builds an arbitrary Intent from the seeded source.
-func randIntent(r *rand.Rand) suggest.Intent {
+func randIntent(r *rand.Rand) proposal.Intent {
 	nMust := r.Intn(3)
 	must := make([]string, nMust)
 	for i := range must {
 		must[i] = pickWord(r)
 	}
-	return suggest.Intent{
+	return proposal.Intent{
 		Description: pickWord(r) + " " + pickWord(r) + " " + pickWord(r),
 		Era:         pickWord(r),
 		Tone:        pickWord(r),
@@ -47,7 +48,7 @@ func randIntent(r *rand.Rand) suggest.Intent {
 // randItem builds an arbitrary ProposalItem. Year is sometimes 0 (unknown) so the
 // eraBalance "no year info" branch is hit; genres/overview/rationale/name draw from
 // the shared vocabulary so themeFit sometimes matches.
-func randItem(r *rand.Rand) suggest.ProposalItem {
+func randItem(r *rand.Rand) proposal.ProposalItem {
 	var year int
 	switch r.Intn(3) {
 	case 0:
@@ -60,7 +61,7 @@ func randItem(r *rand.Rand) suggest.ProposalItem {
 	for i := range genres {
 		genres[i] = pickWord(r)
 	}
-	return suggest.ProposalItem{
+	return proposal.ProposalItem{
 		MediaType: provision.Movie,
 		TMDBID:    r.Intn(100000),
 		Name:      pickWord(r) + " " + pickWord(r),
@@ -72,11 +73,11 @@ func randItem(r *rand.Rand) suggest.ProposalItem {
 }
 
 // randItems builds n arbitrary items.
-func randItems(r *rand.Rand, n int) []suggest.ProposalItem {
+func randItems(r *rand.Rand, n int) []proposal.ProposalItem {
 	if n == 0 {
 		return nil
 	}
-	items := make([]suggest.ProposalItem, n)
+	items := make([]proposal.ProposalItem, n)
 	for i := range items {
 		items[i] = randItem(r)
 	}
@@ -172,15 +173,15 @@ func TestScore_EmptyInputZeroScores(t *testing.T) {
 		}
 	}
 	// Explicit empty (non-nil) slices behave the same as nil.
-	if got := suggest.ScoreForTest(suggest.Intent{Description: "action"}, []suggest.ProposalItem{}, []suggest.ProposalItem{}); got.ThemeFit != nil || got.EraBalance != nil || got.AvailabilityRatio != 0 {
+	if got := suggest.ScoreForTest(proposal.Intent{Description: "action"}, []proposal.ProposalItem{}, []proposal.ProposalItem{}); got.ThemeFit != nil || got.EraBalance != nil || got.AvailabilityRatio != 0 {
 		t.Fatalf("empty (non-nil) slices should give zero Scores, got %+v", got)
 	}
 }
 
 func TestThemeFitDoesNotUseModelRationaleAsEvidence(t *testing.T) {
 	got := suggest.ThemeFitForTest(
-		suggest.Intent{Description: "friday family showcase"},
-		[]suggest.ProposalItem{{
+		proposal.Intent{Description: "friday family showcase"},
+		[]proposal.ProposalItem{{
 			Name: "Orbital Detectives", Genres: []string{"Science Fiction"},
 			Rationale: "A perfect match for the Friday Family Showcase.",
 		}},
@@ -195,7 +196,7 @@ func TestThemeFitDoesNotUseModelRationaleAsEvidence(t *testing.T) {
 func TestThemeFit_NoTermsIsUnassessed(t *testing.T) {
 	r := rand.New(rand.NewSource(3))
 	for i := 0; i < 200; i++ {
-		if got := suggest.ThemeFitForTest(suggest.Intent{Description: "a channel of the"}, randItems(r, 1+r.Intn(5)), nil); got != nil {
+		if got := suggest.ThemeFitForTest(proposal.Intent{Description: "a channel of the"}, randItems(r, 1+r.Intn(5)), nil); got != nil {
 			t.Fatalf("no requested theme earned credit: %v", *got)
 		}
 	}
@@ -217,7 +218,7 @@ func TestThemeFit_QualifierCoverageAndRepetition(t *testing.T) {
 	r := rand.New(rand.NewSource(0xBEEF))
 	for i := 0; i < propIters; i++ {
 		n, hits := 1+r.Intn(8), 0
-		items := make([]suggest.ProposalItem, n)
+		items := make([]proposal.ProposalItem, n)
 		for j := range items {
 			items[j].Overview = "A catalog synopsis"
 			if r.Intn(2) == 0 {
@@ -229,7 +230,7 @@ func TestThemeFit_QualifierCoverageAndRepetition(t *testing.T) {
 				hits++
 			}
 		}
-		intent := suggest.Intent{Description: "action comedy action", Tone: "comedy"}
+		intent := proposal.Intent{Description: "action comedy action", Tone: "comedy"}
 		s := suggest.ScoreForTest(intent, items, nil)
 		want := float64(hits) / float64(2*n)
 		if s.ThemeFit == nil || *s.ThemeFit != want || len(s.Theme.Qualifiers) != 2 {

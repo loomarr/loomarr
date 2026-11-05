@@ -26,7 +26,7 @@ type StructureWindowFamilyRuntime struct {
 
 func NewStructureWindowFamilyRuntime(assessor CompleteWindowStructureAssessor, evidence StructureWindowEvidenceRepository, boundaryTolerance int64) (*StructureWindowFamilyRuntime, error) {
 	if assessor == nil || evidence == nil || boundaryTolerance < 0 ||
-		boundaryTolerance >= fillerstructurewindow.CanonicalProfile().ContextOverlapMS {
+		boundaryTolerance >= fillerstructurewindow.ContextOverlapMS {
 		return nil, errors.New("structure window family runtime requires an assessor, evidence repository, and valid tolerance")
 	}
 	profile := assessor.Profile()

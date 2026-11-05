@@ -176,8 +176,8 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		return Response{}, fmt.Errorf("ollama chat: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("ollama chat: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama chat"); err != nil {
+		return Response{}, err
 	}
 	var out ollamaChatResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -251,8 +251,8 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		return Response{}, fmt.Errorf("ollama vision: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("ollama vision: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama vision"); err != nil {
+		return Response{}, err
 	}
 	var out ollamaChatResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -386,8 +386,8 @@ func (o *Ollama) Warm(ctx context.Context) error {
 		return fmt.Errorf("ollama warm: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ollama warm: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama warm"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -426,8 +426,8 @@ func (o *Ollama) Evict(ctx context.Context) error {
 		return fmt.Errorf("ollama evict: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ollama evict: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama evict"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -465,8 +465,8 @@ func (o *Ollama) ListResident(ctx context.Context) ([]ResidentModel, error) {
 		return nil, fmt.Errorf("ollama ps: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ollama ps: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama ps"); err != nil {
+		return nil, err
 	}
 	var ps ollamaPSResp
 	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {

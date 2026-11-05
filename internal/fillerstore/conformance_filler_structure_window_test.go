@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -101,7 +102,7 @@ func testFillerStructureWindowCallLedger(t *testing.T, newStore NewStoreFunc) {
 func structureWindowCallReservationFixture(t *testing.T, requestDigit, sourceDigit string, at time.Time) fillerstructurewindow.CallReservation {
 	t.Helper()
 	source := fillerstructure.Source{SHA256: strings.Repeat(sourceDigit, 64), Bytes: 8_192, DurationMS: 10_000}
-	plan, err := fillerstructurewindow.NewPlan(source)
+	plan, err := fillerstructurewindow.NewPlan(source, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}

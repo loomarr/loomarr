@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // defectJudgeRole names the judge's rows in the filler inference ledger (#551).
@@ -26,7 +27,7 @@ const nanoUSDPerCent = 10_000_000
 // endpoint actually serves, and decides "free" from the endpoint rather than the provider's name.
 // Vision switched off, or configured with nothing it can reach, is no judge.
 func (h *hotVisionProvider) defectJudgeEndpoint() (fillerdefectfloor.DefectJudgeEndpoint, error) {
-	if !h.set.boolv("filler.vision.enabled") {
+	if !settings.FillerVisionEnabled.Get(h.set) {
 		return fillerdefectfloor.DefectJudgeEndpoint{}, fillerdefectfloor.ErrNoDefectJudge
 	}
 	p, err := h.resolve()
@@ -59,7 +60,7 @@ func (l fillerDefectJudgeLedger) lookNanoUSD(e fillerdefectfloor.DefectJudgeEndp
 	if e.SelfHosted {
 		return 0
 	}
-	return int64(max(l.set.intv("filler.defects.judge_look_cents"), 0)) * nanoUSDPerCent
+	return int64(max(settings.FillerDefectsJudgeLookCents.Get(l.set), 0)) * nanoUSDPerCent
 }
 
 func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHash string, e fillerdefectfloor.DefectJudgeEndpoint, at time.Time) (string, bool, error) {
@@ -67,7 +68,7 @@ func (l fillerDefectJudgeLedger) ReserveDefectJudge(ctx context.Context, clipHas
 	if look == 0 && !e.SelfHosted {
 		return "", true, nil // a hosted look with no allowance waits
 	}
-	daily := int64(max(l.set.intv("filler.defects.judge_daily_cents"), 0)) * nanoUSDPerCent
+	daily := int64(max(settings.FillerDefectsJudgeDailyCents.Get(l.set), 0)) * nanoUSDPerCent
 	ev, err := l.st.ReserveInferenceEvaluation(ctx, fillerstore.InferenceEvaluation{
 		ID: newID(), ClipHash: clipHash, Role: defectJudgeRole, Rung: "defects",
 		RequestedProvider: e.Provider, RequestedModel: e.Model, Modalities: []string{"image", "text"},

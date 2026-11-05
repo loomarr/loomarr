@@ -1,5 +1,6 @@
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -35,7 +36,7 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        await invalidateSettings(queryClient);
         // The scheduler re-reads the cron on its next tick; nudge /v1/jobs so the new
         // schedule + next-run show immediately rather than on the next SSE frame. Use the
         // generated query key (["/v1/jobs"]) — a hand-written ["jobsList"] matches nothing.

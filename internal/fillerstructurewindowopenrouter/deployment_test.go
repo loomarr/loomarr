@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -58,7 +59,7 @@ func deploymentFixture(authority fillerstructurewindow.MaterializationAuthority)
 }
 
 func deploymentAuthorityFixture() fillerstructurewindow.MaterializationAuthority {
-	profile := fillerstructurewindow.CanonicalProfile()
+	profile := fillerstructurewindow.ProfileFor(fillerstructuremedia.SoftwareProfile())
 	authority := fillerstructurewindow.MaterializationAuthority{
 		SchemaVersion:             fillerstructurewindow.MaterializationAuthoritySchemaVersion,
 		ContractVersion:           fillerstructurewindow.MaterializationAuthorityContractVersion,

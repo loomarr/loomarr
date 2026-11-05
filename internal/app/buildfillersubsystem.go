@@ -31,6 +31,7 @@ import (
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
@@ -45,6 +46,9 @@ type fillerBuild struct {
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
+	// providers is every provider a filler source can name; the API publishes it and the fetcher
+	// and the service adapter dispatch through it.
+	providers *sourceprovider.Registry
 	// intakeLanguages is the language gate's live wanted set, for split review to compare against.
 	intakeLanguages func(context.Context) (string, error)
 }
@@ -53,8 +57,8 @@ type fillerBuild struct {
 // probe marks compilations by, both live on every call (#1773).
 func compilationGate(set resolved) filler.CompilationGate {
 	return filler.CompilationGate{
-		Take: func() bool { return set.boolv("filler.acquisition.compilations") },
-		Over: func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+		Take: func() bool { return settings.FillerAcquisitionCompilations.Get(set) },
+		Over: func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 	}
 }
 
@@ -139,21 +143,29 @@ func buildFillerSubsystem(
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
-	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
+	ytDlpPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
+	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
+	// folder there is nothing to download into, and the cache lives in memory only.
+	runtimesPath := ""
+	if dir := layout.ClipDir(); dir != "" {
+		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+	}
+	providers := fillerSourceProviders(ytDlpPath,
+		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		// The compilation gate can only hold back a runtime it knows (#1773).
+		func() bool { return !settings.FillerAcquisitionCompilations.Get(set) }, log)
+	result.providers = providers
 	adapter := fillerServiceAdapter{
-		syncer: syncer, fetcher: fetcher,
-		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
+		providers: providers,
+		syncer:    syncer, fetcher: fetcher,
+		bus: eventBus, log: log, newID: newID, timeout: settings.IngestTimeout.Get(set),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, acquisitions: st, readiness: st, now: time.Now,
-		archiveFinder: clipfetch.NewArchiveSourceFinder(),
-		home:          set.homeGeography,
-		splitter:      splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
+		home:     set.homeGeography,
+		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 		storage: storageGovernor, storagePath: layout.ClipDir(),
-		storageAutomatic: func() bool { return set.intv("filler.storage.library_budget_gb") == 0 },
+		storageAutomatic: func() bool { return settings.FillerStorageLibraryBudgetGb.Get(set) == 0 },
 		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
-	}
-	if ytDlpPath != "" {
-		adapter.youtubeFinder = clipfetch.NewYouTubeSourceFinder(ytDlpPath)
 	}
 
 	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
@@ -169,8 +181,8 @@ func buildFillerSubsystem(
 
 	registry.Add(fillerSyncJob(syncer))
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
-		"every", set.dur("filler.sync_every"))
-	ffmpegPath := set.str("playout.ffmpeg_path")
+		"every", settings.FillerSyncEvery.Get(set))
+	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
 	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
 	defectTools := buildFillerMediaTools(set, metricRecorder)
 	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
@@ -192,27 +204,27 @@ func buildFillerSubsystem(
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		enrichmentSignals.Load,
-		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	)
 	enrichmentCoordinator := fillerenrichment.NewCoordinator(
 		enrichment, fillerEnrichmentRepository{st: st},
 		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
 		enrichmentSignals.Load,
-		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
+		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	).WithCapabilities(
 		fillerenrichment.NewCapabilityRunner(
 			fillerenrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
 			func() fillerenrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
 			fillerMediaExecutor{store: st, transcript: transcribeStage,
 				kind: fillerenrichment.CapabilityTranscript}.Run,
-			func() int { return set.intv("filler.pipeline.max_whisper") }, time.Now,
+			func() int { return settings.FillerPipelineMaxWhisper.Get(set) }, time.Now,
 		),
 		fillerenrichment.NewCapabilityRunner(
 			fillerenrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
 			func() fillerenrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
 			fillerMediaExecutor{store: st, vision: visionStage,
 				kind: fillerenrichment.CapabilityVision}.Run,
-			func() int { return set.intv("filler.pipeline.max_vision") }, time.Now,
+			func() int { return settings.FillerPipelineMaxVision.Get(set) }, time.Now,
 		),
 	)
 	selection := activeFillerTextSelection(set, metricRecorder)
@@ -233,13 +245,13 @@ func buildFillerSubsystem(
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
 		wikidataSource, wikidataSwitchErr := fillerresearch.NewSwitchable(wikidata,
-			func() bool { return set.boolOn("filler.research.wikidata_enabled") })
+			func() bool { return settings.FillerResearchWikidataEnabled.Get(set) })
 		wikipediaSource, wikipediaSwitchErr := fillerresearch.NewSwitchable(wiki,
-			func() bool { return set.boolOn("filler.research.wikipedia_enabled") })
+			func() bool { return settings.FillerResearchWikipediaEnabled.Get(set) })
 		archiveSource, archiveSwitchErr := fillerresearch.NewSwitchable(archive,
-			func() bool { return set.boolOn("filler.research.archive_enabled") })
+			func() bool { return settings.FillerResearchArchiveEnabled.Get(set) })
 		locSource, locSwitchErr := fillerresearch.NewSwitchable(loc,
-			func() bool { return set.boolOn("filler.research.loc_enabled") })
+			func() bool { return settings.FillerResearchLocEnabled.Get(set) })
 		retriever, retrievalErr := fillerresearch.NewFederated(
 			wikidataSource, wikipediaSource, archiveSource, locSource,
 		)
@@ -249,10 +261,10 @@ func buildFillerSubsystem(
 		} else {
 			web := fillerresearch.NewWeb(func() fillerresearch.WebConfig {
 				return fillerresearch.WebConfig{
-					Provider:     fillerresearch.WebProvider(set.str("filler.research.web_provider")),
-					BraveAPIKey:  set.str("filler.research.brave_api_key"),
-					SearXNGURL:   set.str("filler.research.searxng_url"),
-					MonthlyLimit: set.intv("filler.research.monthly_limit"),
+					Provider:     fillerresearch.WebProvider(settings.FillerResearchWebProvider.Get(set)),
+					BraveAPIKey:  settings.FillerResearchBraveAPIKey.Get(set),
+					SearXNGURL:   settings.FillerResearchSearxngURL.Get(set),
+					MonthlyLimit: settings.FillerResearchMonthlyLimit.Get(set),
 				}
 			}, st, fillerresearch.WebOptions{
 				Client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, metricRecorder),
@@ -263,17 +275,17 @@ func buildFillerSubsystem(
 			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
 				func() int {
-					structuredEnabled := set.boolOn("filler.research.wikidata_enabled") ||
-						set.boolOn("filler.research.wikipedia_enabled") ||
-						set.boolOn("filler.research.archive_enabled") ||
-						set.boolOn("filler.research.loc_enabled")
-					return fillerResearchRunLimit(set.boolOn("filler.research.enabled"), structuredEnabled,
-						set.str("filler.research.web_provider"), set.intv("filler.pipeline.max_clips"))
+					structuredEnabled := settings.FillerResearchWikidataEnabled.Get(set) ||
+						settings.FillerResearchWikipediaEnabled.Get(set) ||
+						settings.FillerResearchArchiveEnabled.Get(set) ||
+						settings.FillerResearchLocEnabled.Get(set)
+					return fillerResearchRunLimit(settings.FillerResearchEnabled.Get(set), structuredEnabled,
+						settings.FillerResearchWebProvider.Get(set), settings.FillerPipelineMaxClips.Get(set))
 				})
 		}
 	}
 	local := &localStations{stations: stations,
-		radiusKM: func() int { return set.intv("filler.local_radius_km") }, log: log}
+		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
 	// The places' policy: the household's geography, region fallback included, so a fallback
 	// country's national clips stay usable.
 	placePolicy := func() filler.Policy {
@@ -297,14 +309,14 @@ func buildFillerSubsystem(
 	}
 	registry.Add(fillerSplitSweepJob(filler.NewSplitSweeper(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
-		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
+		func() time.Duration { return settings.FillerSplitReviewWindow.Get(set) }, time.Now, log,
 	)))
 	registry.Add(fillerIdentityJob(filler.NewCreativeIdentity(
 		fillerIdentityStoreAdapter{st}, buildFillerMediaTools(set, metricRecorder), layout.ClipDir(),
 		func() float64 {
 			// `filler.target_lufs` is a string whose empty value turns correction off; with no
 			// target, NaN makes the loudness rung a tie for every pair rather than ranking toward 0.
-			lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+			lufs, err := strconv.ParseFloat(settings.FillerTargetLufs.Get(set), 64)
 			if err != nil {
 				return math.NaN()
 			}
@@ -312,29 +324,19 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
-	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
-	// folder there is nothing to download into, and the cache lives in memory only.
-	runtimesPath := ""
-	if dir := layout.ClipDir(); dir != "" {
-		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
-	}
-	providers := fillerSourceProviders(ytDlpPath,
-		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
-		// The compilation gate can only hold back a runtime it knows (#1773).
-		func() bool { return !set.boolv("filler.acquisition.compilations") }, log)
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,
-			fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") },
+			fetchEvery: func() time.Duration { return settings.FillerFetchEvery.Get(set) },
 			home:       set.homeGeography,
 		},
 		providers, adapter,
 		filler.FetchLimits{
-			MaxPerRun:         func() int { return set.intv("filler.fetch.max_per_run") },
+			MaxPerRun:         func() int { return settings.FillerFetchMaxPerRun.Get(set) },
 			MaxProviderPerRun: func() int { return 50 },
-			MaxCatalogClips:   func() int { return set.intv("filler.fetch.max_catalog_clips") },
-			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
-			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+			MaxCatalogClips:   func() int { return settings.FillerFetchMaxCatalogClips.Get(set) },
+			MinDuration:       func() time.Duration { return settings.FillerMinDuration.Get(set) },
+			MaxDuration:       func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 			Compilations:      compilationGate(set),
 		}, log,
 	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
@@ -353,7 +355,7 @@ func buildFillerSubsystem(
 			windows[ch.ChannelID] = ch.Report.EraWindows
 		}
 		now := time.Now()
-		spacing := time.Duration(set.intv("filler.cooldown_seconds")) * time.Second
+		spacing := time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second
 		gaps := filler.CoverageGapsFrom(pool, filler.SizePool(airings, windows, spacing, now), now.Year())
 		if !gaps.Met() {
 			// A short pass also looks for the stations near each place, in the eras it is short of
@@ -375,22 +377,27 @@ func buildFillerSubsystem(
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	registry.Add(fillerFetchJob(autoFetch, localCuratedSources{store: st, policy: placePolicy, log: log}))
-	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
-		"max_per_run", set.intv("filler.fetch.max_per_run"))
+	log.Info("filler auto-fetch registered", "every", settings.FillerFetchEvery.Get(set),
+		"max_per_run", settings.FillerFetchMaxPerRun.Get(set))
 	return result
 }
 
 // fillerSourceProviders is every provider a filler source can name. YouTube and archive.org are
 // fetched; the folder and the media library are scanned where they are. A source whose provider is
-// missing here is inert, so adding a provider is its package plus one line below.
+// missing here is inert, so adding a provider is its package plus one line below. The order is the
+// order the source list shows them in.
 func fillerSourceProviders(
 	ytDlpPath string, archiveCatalog archiveprovider.Catalog, archiveRuntimes func() bool, log *slog.Logger,
 ) *sourceprovider.Registry {
+	youtube := youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath)))
+	if ytDlpPath != "" {
+		youtube.WithFinder(clipfetch.NewYouTubeSourceFinder(ytDlpPath))
+	}
 	providers, err := sourceprovider.NewRegistry(
-		youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath))),
 		archiveprovider.New(archiveprovider.Config{Catalog: archiveCatalog, Runtimes: archiveRuntimes, Log: log}),
-		sourceprovider.Scanned("folder", "Folder", ""),
-		sourceprovider.Scanned("library", "Media library", ""),
+		youtube,
+		sourceprovider.Folder(),
+		sourceprovider.Library(),
 	)
 	if err != nil {
 		// The IDs are fixed above, so this is a programming error, never an installation's.

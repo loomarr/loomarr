@@ -15,7 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
@@ -384,11 +384,16 @@ func (h *harness) patchSettings(admin *http.Cookie, edits map[string]string) int
 
 // ---- pipeline helpers ---------------------------------------------------------
 
+// workerWait bounds how long a test polls for a River worker's result. Polls return as soon as the
+// result lands, so the bound only matters on failure; it is wide because the race-enabled CI
+// runner can take several seconds to schedule a job.
+const workerWait = 30 * time.Second
+
 // awaitProposal polls the submitted queue until the job's proposal appears (the
 // worker ran) or the deadline passes; a worker failure surfaces the job's error.
-func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, suggest.Proposal) {
+func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, proposal.Proposal) {
 	h.t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var list struct {
 			Proposals []struct {
@@ -400,7 +405,7 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.getJSON("/v1/proposals?status=submitted", cookie, &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop suggest.Proposal
+				var prop proposal.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					h.t.Fatalf("decode proposal: %v", err)
 				}
@@ -413,5 +418,5 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	h.t.Fatalf("proposal never appeared for job %s", jobID)
-	return "", suggest.Proposal{}
+	return "", proposal.Proposal{}
 }

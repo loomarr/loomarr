@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseDirectVideoResponseProjectsWindowLocalTimelineOntoSource(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestParseDirectVideoResponseProjectsWindowLocalTimelineOntoSource(t *testin
 }
 
 func TestParseDirectVideoResponseRejectsIncompleteWindowTimeline(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

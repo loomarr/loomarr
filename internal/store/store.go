@@ -197,8 +197,11 @@ type SeriesEpisodeStore interface {
 	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
 }
 
-// JobStore is the suggester job queue (§8).
-type JobStore interface {
+// ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
+// produce them (§8): the job queue, the proposals it yields, and the approval decisions on them.
+// A proposal's body is the typed proposal.Proposal; the repository is the only place its JSON is
+// encoded or decoded.
+type ProposalRepository interface {
 	CreateJob(ctx context.Context, j Job) error
 	GetJob(ctx context.Context, id string) (Job, error)
 	// ListProposalJobIDs returns user-submitted generation jobs newest-first.
@@ -245,24 +248,9 @@ type JobStore interface {
 	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
 	// In-flight jobs (queued/running) are never removed by age.
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
-}
 
-// ProposalApprovalReader is the transaction-bound read view available to an
-// unattended approval guard. Reads and the eventual approval commit use the same
-// transaction/connection, so losing a Postgres session loses both ordering and work.
-type ProposalApprovalReader interface {
-	GetUser(ctx context.Context, id string) (User, error)
-	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
-	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-}
+	// --- proposals ---
 
-// ProposalApprovalGuard runs after requester ordering is acquired and before any
-// approval mutation. Any error rolls the transaction back and leaves the proposal
-// submitted; callers may use a private sentinel for a safe policy decline.
-type ProposalApprovalGuard func(context.Context, ProposalApprovalReader) error
-
-// ProposalStore is the suggester proposal surface (§8).
-type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
 	// CommitProposalApproval atomically wins the submitted -> approved decision,
@@ -289,6 +277,20 @@ type ProposalStore interface {
 	// indefinitely; submitted ones are still awaiting an answer.
 	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
 }
+
+// ProposalApprovalReader is the transaction-bound read view available to an
+// unattended approval guard. Reads and the eventual approval commit use the same
+// transaction/connection, so losing a Postgres session loses both ordering and work.
+type ProposalApprovalReader interface {
+	GetUser(ctx context.Context, id string) (User, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
+// ProposalApprovalGuard runs after requester ordering is acquired and before any
+// approval mutation. Any error rolls the transaction back and leaves the proposal
+// submitted; callers may use a private sentinel for a safe policy decline.
+type ProposalApprovalGuard func(context.Context, ProposalApprovalReader) error
 
 // DiscoveryQualityStore is the local privacy-safe quality ledger (§17).
 type DiscoveryQualityStore interface {
@@ -573,6 +575,10 @@ type AiringStore interface {
 	// window opens (#1674). A unit that has never aired is absent — callers treat absence as
 	// "least recently aired", which sorts it first.
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+	// LastAiredByKey returns the latest airing of any unit of each provisioning key on one
+	// channel, for ranking lineup entries by how long they have gone without airing. A key that
+	// has not aired inside the retained history is absent — callers read that as "never aired".
+	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout
@@ -762,8 +768,7 @@ type Store interface {
 	TitleStore
 	ChannelStore
 	SeriesEpisodeStore
-	JobStore
-	ProposalStore
+	ProposalRepository
 	ScheduledJobStore
 	UserStore
 	ClipStore

@@ -90,3 +90,30 @@ func (s *sqlStore) LastAiredByChannel(ctx context.Context, channelID string, bef
 	}
 	return out, nil
 }
+
+// LastAiredByKey returns, per provisioning key, the latest airing of ANY of its units on one
+// channel. A series key covers many episodes, so this is "when did this title last air", the
+// question a lineup entry asks. A key that has not aired inside the retained history is absent;
+// callers read absence as "never aired".
+func (s *sqlStore) LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT key, MAX(aired_at) FROM airings WHERE channel_id = ? GROUP BY key`), channelID)
+	if err != nil {
+		return nil, fmt.Errorf("list airings by key %s: %w", channelID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := map[provision.Key]time.Time{}
+	for rows.Next() {
+		var key string
+		var airedAt int64
+		if serr := rows.Scan(&key, &airedAt); serr != nil {
+			return nil, fmt.Errorf("scan airing by key: %w", serr)
+		}
+		out[provision.Key(key)] = time.Unix(airedAt, 0)
+	}
+	if rerr := rows.Err(); rerr != nil {
+		return nil, fmt.Errorf("iterate airings by key %s: %w", channelID, rerr)
+	}
+	return out, nil
+}

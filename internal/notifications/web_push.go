@@ -39,25 +39,25 @@ func NewWebPushAdapter(identity WebPushIdentity, client HTTPDoer, publicURL func
 
 func (*WebPushAdapter) Means() Means { return MeansWebPush }
 
-func (a *WebPushAdapter) ValidateDestination(_ map[string]string, credentials map[string]string) error {
+func (a *WebPushAdapter) ValidateDestination(settings ProviderSettings) error {
 	if a == nil || a.identity.PublicKey == "" || a.identity.PrivateKey == "" {
 		return fmt.Errorf("browser push identity is unavailable")
 	}
-	endpoint, err := url.Parse(credentials["endpoint"])
+	endpoint, err := url.Parse(settings.secret(keyEndpoint))
 	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
 		return fmt.Errorf("browser push requires an HTTPS subscription endpoint")
 	}
 	if address := net.ParseIP(endpoint.Hostname()); address != nil && !httpx.IsPublicIP(address) {
 		return fmt.Errorf("browser push endpoint must use a public push service")
 	}
-	publicKey, err := decodeWebPushValue(credentials["p256dh"])
+	publicKey, err := decodeWebPushValue(settings.secret(keyP256dh))
 	if err != nil || len(publicKey) != 65 {
 		return fmt.Errorf("browser push public key is invalid")
 	}
 	if _, err := ecdh.P256().NewPublicKey(publicKey); err != nil {
 		return fmt.Errorf("browser push public key is invalid")
 	}
-	auth, err := decodeWebPushValue(credentials["auth"])
+	auth, err := decodeWebPushValue(settings.secret(keyAuth))
 	if err != nil || len(auth) < 16 || len(auth) > 64 {
 		return fmt.Errorf("browser push authentication secret is invalid")
 	}
@@ -77,7 +77,7 @@ func safeWebPushHTTPClient() *http.Client {
 
 func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if a == nil || delivery.Destination == nil || delivery.Destination.Means != MeansWebPush ||
-		a.ValidateDestination(delivery.Destination.Configuration, delivery.Destination.Credentials) != nil {
+		a.ValidateDestination(delivery.Destination.ProviderSettings()) != nil {
 		return providerConfigurationFailure()
 	}
 	message := providerMessage(delivery.Intent, a.publicURL)
@@ -91,10 +91,10 @@ func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result 
 	if err != nil {
 		return providerConfigurationFailure()
 	}
-	credentials := delivery.Destination.Credentials
+	settings := delivery.Destination.ProviderSettings()
 	response, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
-		Endpoint: credentials["endpoint"],
-		Keys:     webpush.Keys{P256dh: credentials["p256dh"], Auth: credentials["auth"]},
+		Endpoint: settings.secret(keyEndpoint),
+		Keys:     webpush.Keys{P256dh: settings.secret(keyP256dh), Auth: settings.secret(keyAuth)},
 	}, &webpush.Options{
 		HTTPClient: a.client, Subscriber: webPushSubscriber(a.publicURL), TTL: 300,
 		Topic: "loomarr-" + truncate(string(message.EventType), 24), Urgency: webpush.UrgencyNormal,
@@ -114,19 +114,7 @@ func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result 
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return Result{Status: StatusDelivered}
 	}
-	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeDestinationUnavailable}
-	}
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return Result{Status: StatusFailed, FailureClass: FailurePermanent, OutcomeCode: OutcomeRecipientRejected}
-	}
-	if response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooEarly ||
-		response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
-		result := providerTransientFailure()
-		result.RetryAfter = providerRetryAfter(response.Header.Get("Retry-After"), time.Now())
-		return result
-	}
-	return providerConfigurationFailure()
+	return failureForStatus(response)
 }
 
 func decodeWebPushValue(value string) ([]byte, error) {

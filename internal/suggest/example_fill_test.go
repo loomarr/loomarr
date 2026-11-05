@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -90,9 +91,9 @@ func exampleFillCorpusOf(rows []titleRow) *catalogfixture.Corpus {
 	return corpus
 }
 
-func exampleFillNames(p suggest.Proposal) []string {
+func exampleFillNames(p proposal.Proposal) []string {
 	var names []string
-	for _, item := range append(append([]suggest.ProposalItem(nil), p.Lineup...), p.Acquisitions...) {
+	for _, item := range append(append([]proposal.ProposalItem(nil), p.Lineup...), p.Acquisitions...) {
 		names = append(names, item.Name)
 	}
 	return names
@@ -122,7 +123,7 @@ func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 		finalResponseWithDateMeaning(pickJSON(corpus, "Tessaline", "Aetherion"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Tessaline and Aetherion"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Tessaline and Aetherion"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Darling, I Folded the Twins"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +223,7 @@ func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 		finalResponseWithDateMeaning(`{"picks":[]}`, none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +251,7 @@ func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
 				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 			)
 			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies " + phrase + " Back to the Lighthouse and Gloomwings for a family night"})
+			proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies " + phrase + " Back to the Lighthouse and Gloomwings for a family night"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +272,7 @@ func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) 
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers", "Gusto"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +300,7 @@ func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "A channel of the Back to the Lighthouse and Gloomwings movies"}); err != nil {
+	if _, err := s.Suggest(context.Background(), proposal.Intent{Description: "A channel of the Back to the Lighthouse and Gloomwings movies"}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(model.Prompt(), "Fogcatchers") {
@@ -319,7 +320,7 @@ func TestSuggest_TitlesWithoutModeAreACollectionLookupNotADeadEnd(t *testing.T) 
 		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Lighthouse", "Gloomwings", "Fogcatchers"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
+	proposal, err := s.Suggest(context.Background(), proposal.Intent{Description: "Movies like Back to the Lighthouse and Gloomwings for a family night"})
 	if err != nil {
 		t.Fatalf("titles without mode exhausted the rounds: %v", err)
 	}

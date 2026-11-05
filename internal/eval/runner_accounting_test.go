@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -35,7 +36,7 @@ func TestRunnerRejectsInvalidScoresFromAnyJudge(t *testing.T) {
 	}
 	for name, scores := range tests {
 		t.Run(name, func(t *testing.T) {
-			proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+			proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 				MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 			}}}
 			card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
@@ -53,7 +54,7 @@ func TestRunnerRejectsInvalidScoresFromAnyJudge(t *testing.T) {
 
 func TestRunnerRejectsInvalidProposalKeyBeforeJudge(t *testing.T) {
 	judge := newSemanticRecordingJudge(nil)
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, Name: "Grounded item missing canonical id",
 	}}}
 	card := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
@@ -91,8 +92,8 @@ func withReason(scores JudgeScores, value string) JudgeScores {
 }
 
 func TestRunnerRejectsProposalMissingExactRequiredKey(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner"}},
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner"}},
 	}}, RunnerConfig{Trials: 1, Profile: "hermetic", Generator: ModelIdentity{Provider: "fixture", Model: "fixture-v1"}})
 
 	scorecard := runner.Run(context.Background(), []Case{{
@@ -142,8 +143,8 @@ func TestCorpusUsesProductionStructuralBoundsAndDurableMixAssertions(t *testing.
 }
 
 func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{
 			MediaType: provision.Series, TMDBID: 90000456, Name: "The Mudpuddles",
 			InLibrary: true, LibraryItemID: "show-mudpuddles", SeasonMin: 1, SeasonMax: 1,
 		}},
@@ -174,13 +175,13 @@ func TestRunnerChecksConcreteProgramsAfterScheduleFiltering(t *testing.T) {
 }
 
 func TestRunnerReportsRepeatedTrialPassRate(t *testing.T) {
-	marigold := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	marigold := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
-	unrelated := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	unrelated := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner",
 	}}}
-	generator := &sequenceGenerator{proposals: []suggest.Proposal{marigold, unrelated, marigold}}
+	generator := &sequenceGenerator{proposals: []proposal.Proposal{marigold, unrelated, marigold}}
 	runner := NewRunner(generator, RunnerConfig{Trials: 3})
 
 	card := runner.Run(context.Background(), []Case{{
@@ -211,7 +212,7 @@ func TestRunnerReportsDeterministicCallBudget(t *testing.T) {
 }
 
 func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	judge := &sequenceJudge{scores: []JudgeScores{
@@ -251,8 +252,8 @@ func TestRunnerReportsLowScoreAsThresholdResultAndQualityRange(t *testing.T) {
 }
 
 func TestRunnerFailsRubricWhenJudgeIsMissing(t *testing.T) {
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{})
 
 	card := runner.Run(context.Background(), []Case{{
@@ -276,8 +277,8 @@ func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
 	provider.Delay = time.Second
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
 
 	card := runner.Run(ctx, []Case{{
@@ -298,8 +299,8 @@ func TestRunnerFailsRubricWhenJudgeReturnsError(t *testing.T) {
 
 func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
 	provider := testkit.NewLLM(testkit.FinalResponse("definitely not judge JSON"))
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
+		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 	}}, RunnerConfig{}).WithJudge(modelJudge{provider: provider})
 
 	card := runner.Run(context.Background(), []Case{{
@@ -323,7 +324,7 @@ func TestRunnerFailsRubricWhenJudgeOutputIsUnparseable(t *testing.T) {
 }
 
 func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
@@ -343,7 +344,7 @@ func TestJudgeScoreRejectsMissingRequiredScoreFields(t *testing.T) {
 }
 
 func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
@@ -366,7 +367,7 @@ func TestJudgeScoreRejectsOutOfRangeScores(t *testing.T) {
 }
 
 func TestJudgeScoreRejectsMissingOrBlankReason(t *testing.T) {
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	caseUnderTest := Case{Intent: Intent{Description: "science fiction"}, JudgeRubric: "Relevant science fiction"}
@@ -388,7 +389,7 @@ func TestRunnerRecordsStructuralObservationForEveryTrial(t *testing.T) {
 	observer := &scriptedObserver{value: Observation{
 		ToolCalls: 2, CandidatesSurfaced: 24, GroundingStage: "grounded",
 	}}
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{}}, RunnerConfig{Trials: 2}).WithObserver(observer)
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{}}, RunnerConfig{Trials: 2}).WithObserver(observer)
 
 	card := runner.Run(context.Background(), []Case{{Name: "observed"}})
 
@@ -405,7 +406,7 @@ func TestRunnerRecordsStructuralObservationForEveryTrial(t *testing.T) {
 func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
 	generator := ModelIdentity{Provider: "ollama", Model: "qwen3:14b"}
 	judge := ModelIdentity{Provider: "openai", Model: "openai/gpt-5.6"}
-	runner := NewRunner(scriptedGenerator{proposal: suggest.Proposal{}}, RunnerConfig{
+	runner := NewRunner(scriptedGenerator{proposal: proposal.Proposal{}}, RunnerConfig{
 		Generator: generator,
 		Judge:     judge,
 	})
@@ -450,7 +451,7 @@ func TestRunnerRecordsGeneratorAndJudgeIdentitiesIndependently(t *testing.T) {
 
 func TestRunnerRejectsForbiddenIdentityMediaMixDiversityAndStructuralBudget(t *testing.T) {
 	observer := &scriptedObserver{value: Observation{ToolCalls: 3, CandidatesSurfaced: 25}}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Genres: []string{"Science Fiction"},
 	}}}
 	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).WithObserver(observer)

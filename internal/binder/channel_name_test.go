@@ -1,11 +1,10 @@
 package binder
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // channelNameFromIntent prefers the LLM's proposed channelName (a real network-style name),
@@ -13,32 +12,31 @@ import (
 // smoke: a raw prompt made a half-assed title.
 func TestChannelNameFromIntent(t *testing.T) {
 	t.Parallel()
-	mk := func(p suggest.Proposal) store.Proposal {
-		b, _ := json.Marshal(p)
-		return store.Proposal{ProposalJSON: string(b)}
+	mk := func(p proposal.Proposal) store.Proposal {
+		return store.Proposal{Body: p}
 	}
 
 	cases := []struct {
 		name string
-		prop suggest.Proposal
+		prop proposal.Proposal
 		want string
 	}{
 		{
 			name: "prefers the LLM channelName",
-			prop: suggest.Proposal{
+			prop: proposal.Proposal{
 				ChannelName: "Mudpuddle Classics",
-				Intent:      suggest.Intent{Description: "A channel with old-school Mudpuddles episodes"},
+				Intent:      proposal.Intent{Description: "A channel with old-school Mudpuddles episodes"},
 			},
 			want: "Mudpuddle Classics",
 		},
 		{
 			name: "falls back to the intent when no channelName",
-			prop: suggest.Proposal{Intent: suggest.Intent{Description: "90s Saturday morning cartoons"}},
+			prop: proposal.Proposal{Intent: proposal.Intent{Description: "90s Saturday morning cartoons"}},
 			want: "90s Saturday morning cartoons",
 		},
 		{
 			name: "generic label when nothing usable",
-			prop: suggest.Proposal{},
+			prop: proposal.Proposal{},
 			want: "Suggested channel",
 		},
 	}
