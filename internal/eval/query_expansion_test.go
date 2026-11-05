@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -866,27 +867,27 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 	intenseAdventure := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:329")
 	intenseAdventureWithPaddington := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:346648", "movie:tmdb:329")
 	warmPG := ownedAndMissing(0, "movie:tmdb:862")
-	warmPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	warmPG.Acquisitions[0].OfficialRating = "G"
 	warmPGWithJaws := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862")
-	warmPGWithJaws.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPGWithJaws.Policy.Audience.Ceiling = rating.Rating("PG")
 	warmPGWithJaws.Lineup[0].OfficialRating = "PG"
 	warmPGWithJaws.Acquisitions[0].OfficialRating = "G"
 	pg := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
-	pg.Policy.Audience.Ceiling = schedule.Rating("PG")
+	pg.Policy.Audience.Ceiling = rating.Rating("PG")
 	for i := range pg.Lineup {
 		pg.Lineup[i].OfficialRating = "PG"
 	}
 	overPG := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
-	overPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	overPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	overPG.Lineup[0].OfficialRating = "PG"
 	overPG.Lineup[1].OfficialRating = "PG-13"
 	mpaPG := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862")
-	mpaPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	mpaPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	mpaPG.Lineup[0].OfficialRating = "PG"
 	mpaPG.Acquisitions[0].OfficialRating = "G"
 	mpaOverPG := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862", "movie:tmdb:329")
-	mpaOverPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	mpaOverPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	mpaOverPG.Lineup[0].OfficialRating = "PG"
 	mpaOverPG.Acquisitions[0].OfficialRating = "G"
 	mpaOverPG.Acquisitions[1].OfficialRating = "PG-13"

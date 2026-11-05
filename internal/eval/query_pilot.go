@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -192,7 +193,7 @@ func loadQueryDevelopmentCorpus(path string) (QueryPilotCorpus, error) {
 			seenMediaTypes[mediaType] = true
 		}
 		for _, ceiling := range []string{c.ExpectCeiling, c.ForbidRatingsAbove} {
-			if ceiling != "" && schedule.NormalizeRating(ceiling) == "" {
+			if ceiling != "" && rating.Normalize(ceiling) == "" {
 				return QueryPilotCorpus{}, fmt.Errorf("query pilot case %q has an unsupported rating ceiling", c.ID)
 			}
 		}
