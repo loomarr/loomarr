@@ -6,7 +6,13 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PlayerChrome, type PlayerChromeProps, PlayerCover, type PlayerTransportProps } from "../index";
+import {
+  PlayerChrome,
+  type PlayerChromeProps,
+  PlayerCover,
+  PlayerInfo,
+  type PlayerTransportProps,
+} from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -146,6 +152,35 @@ describe("PlayerChrome", () => {
     expect(button(full, "Fullscreen")).toBeDefined();
   });
 
+  it("stands the band alone as the station-ID card, with the station's era and place", () => {
+    const host = mount(
+      chrome({
+        band: { channelName: "Coast 90s", channelNumber: "7", station: "1990s · Portland, ME" },
+        ident: true,
+        visible: false,
+      }),
+    );
+
+    expect(bandHidden(host)).toBe(false);
+    expect(host.textContent).toContain("CH 7 · Coast 90s · 1990s · Portland, ME");
+    expect(button(host, "Pause")).toBeUndefined();
+
+    // Shown controls take its place: the plain band and the transport.
+    const shown = mount(
+      chrome({ band: { channelName: "Coast 90s", channelNumber: "7", station: "1990s" }, ident: true }),
+    );
+    expect(shown.textContent).not.toContain("1990s");
+    expect(button(shown, "Pause")).toBeDefined();
+  });
+
+  it("offers Info when there is a programme to describe", () => {
+    const onInfo = vi.fn();
+    expect(button(mount(chrome()), "Info")).toBeUndefined();
+    const host = mount(chrome({ transport: transport({ onInfo }) }));
+    act(() => button(host, "Info")?.click());
+    expect(onInfo).toHaveBeenCalledOnce();
+  });
+
   it("leaves the picture bare when hidden, out of reach of the pointer and assistive tech", () => {
     expect(bandHidden(mount(chrome()))).toBe(false);
     expect(bandHidden(mount(chrome({ visible: false })))).toBe(true);
@@ -164,6 +199,39 @@ describe("PlayerChrome", () => {
 
     expect(host.querySelector('[role="dialog"]')?.textContent).toBe("sheet");
     expect(bandHidden(host)).toBe(true);
+  });
+});
+
+describe("PlayerInfo", () => {
+  it("reads the programme, its time and what is up next", () => {
+    const host = mount(
+      <PlayerInfo
+        density="pointer"
+        formatTime={(ms) => `t${ms}`}
+        info={{
+          facts: "1994 · TV-PG · Mystery",
+          progress: 0.4,
+          startMs: 1,
+          stopMs: 2,
+          synopsis: "A storm cuts the island off.",
+          timeLabel: "9m in · 13m left",
+          title: "Coastline Mysteries · S2 E4",
+          upNext: { line: "S1 E1 “Pilot”", name: "Night Shift Diner", startMs: 3 },
+        }}
+      />,
+    );
+
+    for (const text of [
+      "Coastline Mysteries · S2 E4",
+      "1994 · TV-PG · Mystery",
+      "A storm cuts the island off.",
+      "t1",
+      "9m in · 13m left",
+      "t2",
+      "Up next · t3 · Night Shift Diner",
+      "S1 E1 “Pilot”",
+    ])
+      expect(host.textContent).toContain(text);
   });
 });
 

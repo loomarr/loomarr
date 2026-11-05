@@ -6,6 +6,7 @@ import type {
   PlaybarSpot,
   PlaybarWindow,
   PlayerBandData,
+  PlayerInfoData,
   PlayerLiveState,
 } from "../player-chrome.type";
 
@@ -92,15 +93,37 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
 
 const minutes = (ms: number) => Math.max(0, Math.round(ms / MINUTE));
 
+// The station's era as its ident reads it: a whole decade is "1990s", any other span its years. A span
+// open at either end says nothing a viewer can read, so it is left off.
+const eraLabel = (era: { from?: number; to?: number } | undefined) => {
+  const { from, to } = era ?? {};
+  if (!from || !to) return undefined;
+  if (from % 10 === 0 && to === from + 9) return `${from}s`;
+  return from === to ? String(from) : `${from}–${to}`;
+};
+
+interface ChromeChannel {
+  name: string;
+  number: string;
+  /** The years the channel airs as (its filler era) and where (its filler place), for the ident. */
+  era?: { from?: number; to?: number };
+  place?: string;
+}
+
 // The lower third reads the block under the PLAYHEAD, not under live: a viewer behind is watching
 // what aired then.
 const bandOf = (
-  channel: { name: string; number: string },
+  channel: ChromeChannel,
   airing: TimelineAiring | undefined,
   playheadMs: number,
   live: PlayerLiveState,
 ): PlayerBandData => {
-  const base = { channelName: channel.name, channelNumber: channel.number };
+  const station = [eraLabel(channel.era), channel.place?.trim()].filter(Boolean).join(" · ");
+  const base = {
+    channelName: channel.name,
+    channelNumber: channel.number,
+    station: station || undefined,
+  };
   if (!airing) return base;
   const progress = Math.min(1, Math.max(0, (playheadMs - airing.startMs) / (airing.stopMs - airing.startMs)));
   const behind = live.mode === "live" ? undefined : `${formatClipDuration(live.lagSeconds * 1000)} behind`;
@@ -131,9 +154,42 @@ const bandOf = (
   };
 };
 
+// The Info sheet (§9, mock "info"): the block at the playhead as the band reads it, with the
+// programme's still, facts and synopsis, then the next programme — a break is never "up next".
+const infoOf = (
+  airings: readonly TimelineAiring[],
+  airing: TimelineAiring | undefined,
+  band: PlayerBandData,
+): PlayerInfoData | undefined => {
+  if (!airing || !band.programmeLine) return undefined;
+  const next = airings.find((a) => a.kind !== "filler" && a.startMs >= airing.stopMs);
+  const nextSegment = next ? segmentOf(next) : undefined;
+  const facts =
+    airing.kind === "filler"
+      ? ""
+      : [airing.year ? String(airing.year) : "", airing.rating ?? "", ...(airing.genres ?? [])]
+          .filter(Boolean)
+          .join(" · ");
+  const segment = segmentOf(airing);
+  return {
+    facts: facts || undefined,
+    progress: band.progress ?? 0,
+    startMs: airing.startMs,
+    stillUri: segment.kind === "programme" ? segment.stillUri : undefined,
+    stopMs: airing.stopMs,
+    synopsis: segment.kind === "programme" ? segment.synopsis : undefined,
+    timeLabel: band.timeLabel,
+    title: band.programmeLine,
+    upNext:
+      next && nextSegment?.kind === "programme"
+        ? { line: nextSegment.line, name: nextSegment.name, startMs: next.startMs }
+        : undefined,
+  };
+};
+
 interface PlaybarFromTimelineArgs {
   airings: readonly TimelineAiring[];
-  channel: { name: string; number: string };
+  channel: ChromeChannel;
   live: PlayerLiveState;
   /** The live edge, on the server's clock. */
   nowMs: number;
@@ -143,7 +199,7 @@ interface PlaybarFromTimelineArgs {
 
 /**
  * The player chrome's data, read from a channel's timeline the same way on every client (§9): the
- * lower third for the block at the playhead, and the playbar's blocks over its window — fifteen
+ * lower third and the Info sheet for the block at the playhead, and the playbar's blocks over its window — fifteen
  * minutes behind live to about two hours ahead. Blocks outside the window are dropped; the ones it
  * cuts are clipped to it. `startOverMs` is where Start over goes, while it has somewhere to go.
  */
@@ -162,7 +218,8 @@ const playbarFromTimeline = ({ airings, channel, live, nowMs, playheadMs }: Play
     atPlayhead && atPlayhead.kind !== "filler" && atPlayhead.startMs >= window.startMs
       ? atPlayhead.startMs
       : undefined;
-  return { band: bandOf(channel, atPlayhead, playheadMs, live), segments, startOverMs, window };
+  const band = bandOf(channel, atPlayhead, playheadMs, live);
+  return { band, info: infoOf(airings, atPlayhead, band), segments, startOverMs, window };
 };
 
 export { playbarFromTimeline };

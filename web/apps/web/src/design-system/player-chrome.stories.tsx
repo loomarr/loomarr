@@ -1,7 +1,14 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
-import { PlayerChrome, PlayerCover, PlayerSettings, PlayerSheet, playbarFromTimeline } from "@loomarr/ui";
+import {
+  PlayerChrome,
+  PlayerCover,
+  PlayerInfo,
+  PlayerSettings,
+  PlayerSheet,
+  playbarFromTimeline,
+} from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ReactNode } from "react";
 import { fn } from "storybook/test";
@@ -127,8 +134,9 @@ const airings: GuideAiring[] = [
   ),
 ];
 
-const channel = { name: "Coast 90s", number: "7" };
+const channel = { era: { from: 1990, to: 1999 }, name: "Coast 90s", number: "7", place: "a coastal town" };
 const live = { lagSeconds: 0, mode: "live" as const };
+const liveData = playbarFromTimeline({ airings, channel, live, nowMs: NOW, playheadMs: NOW });
 
 const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }) => {
   const playheadMs = NOW - state.lagSeconds * 1000;
@@ -154,6 +162,7 @@ const transport = {
   onChannels: fn(),
   onFullscreen: fn(),
   onGoLive: fn(),
+  onInfo: fn(),
   onLeave: fn(),
   onSeekBack: fn(),
   onSeekForward: fn(),
@@ -247,6 +256,21 @@ const Settings: Story = {
   },
 };
 
+// The station-ID card: a settled tune, the controls hidden — the band alone, fuller, with the
+// station's era and place.
+const StationId: Story = { args: { ident: true, visible: false } };
+
+const Info: Story = {
+  args: {
+    sheet: liveData.info ? (
+      <PlayerSheet channelLabel="CH 7 · Coast 90s" density="pointer" icon="info" onClose={fn()} title="Info">
+        <PlayerInfo density="pointer" formatTime={formatTime} info={liveData.info} />
+      </PlayerSheet>
+    ) : undefined,
+    transport: { ...transport, infoOpen: true },
+  },
+};
+
 // The full-picture states take the chrome's place.
 const StreamStopped: Story = {
   render: () => (
@@ -279,4 +303,4 @@ const OffAir: Story = {
 };
 
 export default meta;
-export { Behind, Commercials, NoSchedule, OffAir, Playing, Settings, StreamStopped, Touch };
+export { Behind, Commercials, Info, NoSchedule, OffAir, Playing, Settings, StationId, StreamStopped, Touch };

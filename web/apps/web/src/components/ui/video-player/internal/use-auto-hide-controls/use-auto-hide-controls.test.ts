@@ -43,6 +43,25 @@ describe("useAutoHideControls", () => {
     expect(result.current.controlsShown).toBe(false);
   });
 
+  // The caller's own moment (a station-ID card) clears the controls at once; a move brings them back.
+  // Held or paused controls stay, as they would for any hide.
+  it("hides at the caller's word during playback, but not while held or paused", () => {
+    const { result } = renderHook(() => useAutoHideControls(true));
+    act(() => result.current.onPointerActive());
+    act(() => result.current.hideControls());
+    expect(result.current.controlsShown).toBe(false);
+    act(() => result.current.onPointerActive());
+    expect(result.current.controlsShown).toBe(true);
+
+    act(() => result.current.holdControls.hold(true));
+    act(() => result.current.hideControls());
+    expect(result.current.controlsShown).toBe(true);
+
+    const paused = renderHook(() => useAutoHideControls(false));
+    act(() => paused.result.current.hideControls());
+    expect(paused.result.current.controlsShown).toBe(true);
+  });
+
   it("hides shortly after the pointer leaves during playback", () => {
     const { result } = renderHook(() => useAutoHideControls(true));
     act(() => result.current.onPointerActive());

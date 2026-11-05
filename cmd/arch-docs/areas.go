@@ -93,7 +93,7 @@ var areas = []area{
 			"then admitted or refused; admitted clips are catalogued with their tags and the TV stations " +
 			"they name; and the catalog is assembled into the pods that fill a channel's breaks.",
 		Packages: []string{
-			"filler", "filleradmission", "fillerdecision", "fillerdefectfloor",
+			"filler", "filleradmission", "fillerdefectfloor",
 			"fillerenrichment", "fillereval", "fillerresearch", "fillerscreening",
 			"fillerstore", "fillerstructure", "fillerstructureassessment", "fillerstructuremedia",
 			"fillerstructurewindow", "fillerstructurewindowopenrouter", "clipcatalog", "clipfetch",
@@ -181,8 +181,8 @@ var flows = []flow{
 			"clip folder, while `fillerstore` records the sources, pulls and acquisition runs. Each clip " +
 			"is then checked: `fillerscreening` for what it says and shows, and whether it is safe to air, " +
 			"`fillerstructureassessment` for long reels that need splitting, and `fillerdefectfloor` " +
-			"for picture and sound defects. `filleradmission` turns that evidence into an admit or " +
-			"refuse decision, which `fillerdecision` records. Admitted clips enter the catalog, whose " +
+			"for picture and sound defects; `filleradmission` is the certification tooling that weighs " +
+			"that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose " +
 			"values are `clipcatalog`, whose tags are `taxonomy`, and which `store/catalogstore` " +
 			"persists. When `schedule` leaves a break in a channel's programming, the `channels` engine " +
 			"asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.",
