@@ -7,11 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
-
-// segmentScreeningAxisOrder is the canonical axis order, read once from the aggregate's owner.
-var segmentScreeningAxisOrder = filler.SegmentScreeningAxes()
 
 // SegmentScreeningMedia supplies an evaluator with the exact rendered-child artifacts named by
 // Subject. Paths are private runtime locators rather than authority: each evaluator must reopen
@@ -27,7 +23,7 @@ type SegmentScreeningMedia struct {
 // SegmentScreeningEvaluator owns one repeat-safe, authority-bound axis operation. A retry for the
 // same subject must replay its closed result instead of repeating a possibly billed call.
 type SegmentScreeningEvaluator interface {
-	Axis() filler.SegmentScreeningAxis
+	Axis() SegmentScreeningAxis
 	Evaluate(context.Context, SegmentScreeningMedia) (RecordedSegmentScreeningAxisEvidence, error)
 }
 
@@ -37,20 +33,20 @@ type SegmentScreeningEvaluator interface {
 type SegmentScreeningRuntime struct {
 	evaluators    []SegmentScreeningEvaluator
 	evidence      SegmentScreeningEvidenceRepository
-	airworthiness *fillerairworthiness.Evaluator
+	airworthiness *AirworthinessEvaluator
 }
 
-func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository, airworthiness *fillerairworthiness.Evaluator) (*SegmentScreeningRuntime, error) {
+func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence SegmentScreeningEvidenceRepository, airworthiness *AirworthinessEvaluator) (*SegmentScreeningRuntime, error) {
 	if len(evaluators) != len(segmentScreeningAxisOrder) || evidence == nil || airworthiness == nil {
 		return nil, fmt.Errorf("segment screening runtime requires four evaluators, evidence repository, and Airworthiness policy")
 	}
-	byAxis := make(map[filler.SegmentScreeningAxis]SegmentScreeningEvaluator, len(evaluators))
+	byAxis := make(map[SegmentScreeningAxis]SegmentScreeningEvaluator, len(evaluators))
 	for _, evaluator := range evaluators {
 		if evaluator == nil {
 			return nil, fmt.Errorf("segment screening runtime contains a nil evaluator")
 		}
 		axis := evaluator.Axis()
-		if err := filler.ValidateSegmentScreeningAxis(axis); err != nil {
+		if err := ValidateSegmentScreeningAxis(axis); err != nil {
 			return nil, fmt.Errorf("segment screening runtime contains an unknown axis %q", axis)
 		}
 		if _, duplicate := byAxis[axis]; duplicate {
@@ -69,40 +65,40 @@ func NewSegmentScreeningRuntime(evaluators []SegmentScreeningEvaluator, evidence
 	return &SegmentScreeningRuntime{evaluators: ordered, evidence: evidence, airworthiness: airworthiness}, nil
 }
 
-func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScreeningMedia) (filler.SegmentScreeningEvidence, error) {
+func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScreeningMedia) (SegmentScreeningEvidence, error) {
 	if r == nil || len(r.evaluators) != len(segmentScreeningAxisOrder) || r.evidence == nil || r.airworthiness == nil {
-		return filler.SegmentScreeningEvidence{}, fmt.Errorf("segment screening runtime is unavailable")
+		return SegmentScreeningEvidence{}, fmt.Errorf("segment screening runtime is unavailable")
 	}
 	if err := validateSegmentScreeningMedia(media); err != nil {
-		return filler.SegmentScreeningEvidence{}, err
+		return SegmentScreeningEvidence{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return filler.SegmentScreeningEvidence{}, err
+		return SegmentScreeningEvidence{}, err
 	}
 	if err := r.evidence.PutSegmentScreeningSubject(ctx, media.Subject); err != nil {
-		return filler.SegmentScreeningEvidence{}, fmt.Errorf("persist segment screening subject: %w", err)
+		return SegmentScreeningEvidence{}, fmt.Errorf("persist segment screening subject: %w", err)
 	}
 
-	results := make([]filler.SegmentScreeningResult, 0, len(r.evaluators))
+	results := make([]SegmentScreeningResult, 0, len(r.evaluators))
 	records := make([]RecordedSegmentScreeningAxisEvidence, 0, len(r.evaluators))
 	var aggregateAssessedAt time.Time
 	for index, evaluator := range r.evaluators {
 		if err := ctx.Err(); err != nil {
-			return filler.SegmentScreeningEvidence{}, err
+			return SegmentScreeningEvidence{}, err
 		}
 		recorded, err := evaluator.Evaluate(ctx, media)
 		if err != nil {
-			return filler.SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q produced no authority: %w", evaluator.Axis(), err)
+			return SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q produced no authority: %w", evaluator.Axis(), err)
 		}
 		if err := ValidateRecordedSegmentScreeningAxisEvidence(recorded); err != nil || recorded.Evidence.SubjectSHA256 != media.Subject.SHA256 {
-			return filler.SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q returned invalid or subject-drifted evidence", evaluator.Axis())
+			return SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q returned invalid or subject-drifted evidence", evaluator.Axis())
 		}
 		result := recorded.Evidence.Result()
-		if result.Axis != segmentScreeningAxisOrder[index] || result.Axis != evaluator.Axis() || filler.ValidateSegmentScreeningResult(result) != nil {
-			return filler.SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q returned invalid or axis-drifted evidence", evaluator.Axis())
+		if result.Axis != segmentScreeningAxisOrder[index] || result.Axis != evaluator.Axis() || ValidateSegmentScreeningResult(result) != nil {
+			return SegmentScreeningEvidence{}, fmt.Errorf("screen child axis %q returned invalid or axis-drifted evidence", evaluator.Axis())
 		}
 		if err := r.evidence.PutSegmentScreeningAxisEvidence(ctx, recorded); err != nil {
-			return filler.SegmentScreeningEvidence{}, fmt.Errorf("persist screen child axis %q: %w", evaluator.Axis(), err)
+			return SegmentScreeningEvidence{}, fmt.Errorf("persist screen child axis %q: %w", evaluator.Axis(), err)
 		}
 		results = append(results, result)
 		records = append(records, recorded)
@@ -112,14 +108,14 @@ func (r *SegmentScreeningRuntime) Screen(ctx context.Context, media SegmentScree
 	}
 	airworthiness, err := evaluateSegmentAirworthiness(media.Subject, records, r.airworthiness)
 	if err != nil {
-		return filler.SegmentScreeningEvidence{}, fmt.Errorf("evaluate child Airworthiness: %w", err)
+		return SegmentScreeningEvidence{}, fmt.Errorf("evaluate child Airworthiness: %w", err)
 	}
-	aggregate, err := filler.NewSegmentScreeningEvidence(media.Subject, results, airworthiness, aggregateAssessedAt)
+	aggregate, err := NewSegmentScreeningEvidence(media.Subject, results, airworthiness, aggregateAssessedAt)
 	if err != nil {
-		return filler.SegmentScreeningEvidence{}, fmt.Errorf("assemble child screening: %w", err)
+		return SegmentScreeningEvidence{}, fmt.Errorf("assemble child screening: %w", err)
 	}
 	if err := r.evidence.PutSegmentScreeningEvidence(ctx, aggregate); err != nil {
-		return filler.SegmentScreeningEvidence{}, fmt.Errorf("persist child screening: %w", err)
+		return SegmentScreeningEvidence{}, fmt.Errorf("persist child screening: %w", err)
 	}
 	return aggregate, nil
 }

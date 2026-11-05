@@ -1,4 +1,4 @@
-package fillerairworthiness
+package fillerscreening
 
 type policyAction uint8
 
@@ -8,7 +8,7 @@ const (
 	policyReject
 )
 
-func policyActionFor(profile Profile, observation Observation) policyAction {
+func policyActionFor(profile AirworthinessProfile, observation AirworthinessObservation) policyAction {
 	if profile == ProfileRestrictedArchive {
 		return policyAllow
 	}
@@ -18,7 +18,7 @@ func policyActionFor(profile Profile, observation Observation) policyAction {
 	return generalAudienceAction(observation)
 }
 
-func allAgesAction(observation Observation) policyAction {
+func allAgesAction(observation AirworthinessObservation) policyAction {
 	switch observation.Flag {
 	case FlagAdultNudity, FlagGraphicViolenceOrGore, FlagHatefulTargeting,
 		FlagMinorNudityOrSexualRisk, FlagRegulatedProductPromotion,
@@ -55,7 +55,7 @@ func allAgesAction(observation Observation) policyAction {
 	}
 }
 
-func generalAudienceAction(observation Observation) policyAction {
+func generalAudienceAction(observation AirworthinessObservation) policyAction {
 	switch observation.Flag {
 	case FlagAdultNudity, FlagGraphicViolenceOrGore, FlagHatefulTargeting,
 		FlagMinorNudityOrSexualRisk, FlagRegulatedProductPromotion,
@@ -141,6 +141,6 @@ func generalAudienceAction(observation Observation) policyAction {
 	}
 }
 
-func promotionOrInstruction(context Context) bool {
+func promotionOrInstruction(context AirworthinessContext) bool {
 	return context == ContextPromotion || context == ContextInstruction
 }

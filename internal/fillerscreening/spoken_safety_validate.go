@@ -1,4 +1,4 @@
-package fillersafety
+package fillerscreening
 
 import (
 	"encoding/hex"
@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// ValidPolicyRuleID reports whether value is an opaque 96-bit rule identifier.
-func ValidPolicyRuleID(value string) bool {
+// ValidSpokenSafetyPolicyRuleID reports whether value is an opaque 96-bit rule identifier.
+func ValidSpokenSafetyPolicyRuleID(value string) bool {
 	if len(value) != len("rule-")+24 || !strings.HasPrefix(value, "rule-") {
 		return false
 	}
@@ -15,18 +15,18 @@ func ValidPolicyRuleID(value string) bool {
 	return err == nil
 }
 
-func validateEvidence(evidence Evidence) ([]Reason, bool) {
+func validateEvidence(evidence SpokenSafetyEvidence) ([]SpokenSafetyReason, bool) {
 	if evidence.ProposalState != ProposalComplete && evidence.ProposalState != ProposalFailed {
-		return []Reason{ReasonInvalidEvidence}, false
+		return []SpokenSafetyReason{SpokenSafetyReasonInvalidEvidence}, false
 	}
 	if evidence.ProposalState == ProposalFailed {
 		if len(evidence.Candidates) != 0 || len(evidence.Audio) != 0 || evidence.Video != VideoNotRun {
-			return []Reason{ReasonInvalidEvidence}, false
+			return []SpokenSafetyReason{SpokenSafetyReasonInvalidEvidence}, false
 		}
 		return nil, true
 	}
 	if !validCandidates(evidence.Candidates) || !validAudio(evidence.Candidates, evidence.Audio) {
-		return []Reason{ReasonInvalidEvidence}, false
+		return []SpokenSafetyReason{SpokenSafetyReasonInvalidEvidence}, false
 	}
 
 	allAbsent := true
@@ -38,15 +38,15 @@ func validateEvidence(evidence Evidence) ([]Reason, bool) {
 	}
 	if allAbsent {
 		if !validCompletedVideoState(evidence.Video) {
-			return []Reason{ReasonInvalidEvidence}, false
+			return []SpokenSafetyReason{SpokenSafetyReasonInvalidEvidence}, false
 		}
 	} else if evidence.Video != VideoNotRun {
-		return []Reason{ReasonInvalidEvidence}, false
+		return []SpokenSafetyReason{SpokenSafetyReasonInvalidEvidence}, false
 	}
 	return nil, true
 }
 
-func validCandidates(candidates []Candidate) bool {
+func validCandidates(candidates []SpokenSafetyCandidate) bool {
 	seen := make(map[string]struct{}, len(candidates))
 	for index, candidate := range candidates {
 		if strings.TrimSpace(candidate.ID) == "" || candidate.StartMS < 0 || candidate.EndMS <= candidate.StartMS {
@@ -66,7 +66,7 @@ func validCandidates(candidates []Candidate) bool {
 	return true
 }
 
-func validAudio(candidates []Candidate, audio []AudioAssessment) bool {
+func validAudio(candidates []SpokenSafetyCandidate, audio []SpokenSafetyAudioAssessment) bool {
 	if len(audio) != len(candidates) {
 		return false
 	}
@@ -81,12 +81,12 @@ func validAudio(candidates []Candidate, audio []AudioAssessment) bool {
 
 // Historical terminal events predate rule attribution, so nil remains valid
 // durable evidence. Certification treats nil attribution as a miss, never a hit.
-func validStoredMatchedRuleIDs(state AudioState, ruleIDs []string) bool {
+func validStoredMatchedRuleIDs(state SpokenSafetyAudioState, ruleIDs []string) bool {
 	if ruleIDs == nil {
 		return true
 	}
 	if !slices.IsSorted(ruleIDs) || len(slices.Compact(slices.Clone(ruleIDs))) != len(ruleIDs) ||
-		slices.ContainsFunc(ruleIDs, func(id string) bool { return !ValidPolicyRuleID(id) }) {
+		slices.ContainsFunc(ruleIDs, func(id string) bool { return !ValidSpokenSafetyPolicyRuleID(id) }) {
 		return false
 	}
 	if state == AudioAbsent || state == AudioFailed || state == AudioInvalidResponse {
@@ -95,7 +95,7 @@ func validStoredMatchedRuleIDs(state AudioState, ruleIDs []string) bool {
 	return true
 }
 
-func validAudioState(state AudioState) bool {
+func validAudioState(state SpokenSafetyAudioState) bool {
 	switch state {
 	case AudioDetected, AudioDetectedUnprojectable, AudioAbsent, AudioUnclear, AudioFailed, AudioInvalidResponse:
 		return true
@@ -104,7 +104,7 @@ func validAudioState(state AudioState) bool {
 	}
 }
 
-func validCompletedVideoState(state VideoState) bool {
+func validCompletedVideoState(state SpokenSafetyVideoState) bool {
 	switch state {
 	case VideoProhibited, VideoProhibitedUnprojectable, VideoNoSignal, VideoIncomplete, VideoFailed, VideoInvalidResponse:
 		return true

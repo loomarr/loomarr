@@ -1,4 +1,4 @@
-package fillerairworthiness
+package fillerscreening
 
 import (
 	"crypto/sha256"
@@ -10,11 +10,11 @@ import (
 	"strings"
 )
 
-func normalizeAxisProfile(profile AxisProfile) (AxisProfile, error) {
+func normalizeAxisProfile(profile AirworthinessAxisProfile) (AirworthinessAxisProfile, error) {
 	if !validAxis(profile.Axis) || !validToken(profile.EvidenceContract) ||
 		!validSHA256(profile.PolicySHA256) || !validSHA256(profile.CertificationSHA256) ||
 		!validSHA256(profile.ImplementationSHA256) {
-		return AxisProfile{}, fmt.Errorf("airworthiness axis profile identity is invalid")
+		return AirworthinessAxisProfile{}, fmt.Errorf("airworthiness axis profile identity is invalid")
 	}
 	normalized := profile
 	normalized.CertifiedFlags = slices.Clone(profile.CertifiedFlags)
@@ -22,25 +22,25 @@ func normalizeAxisProfile(profile AxisProfile) (AxisProfile, error) {
 	for index, flag := range normalized.CertifiedFlags {
 		if !validFlag(flag) || !axisOwnsFlag(profile.Axis, flag) ||
 			(index > 0 && normalized.CertifiedFlags[index-1] == flag) {
-			return AxisProfile{}, fmt.Errorf("airworthiness axis profile has invalid certified flags")
+			return AirworthinessAxisProfile{}, fmt.Errorf("airworthiness axis profile has invalid certified flags")
 		}
 	}
 	if normalized.CertifiedFlags == nil {
-		normalized.CertifiedFlags = []Flag{}
+		normalized.CertifiedFlags = []AirworthinessFlag{}
 	}
 	return normalized, nil
 }
 
-// NormalizeAxisProfile validates and canonicalizes one immutable safety-axis
+// NormalizeAirworthinessAxisProfile validates and canonicalizes one immutable safety-axis
 // authority for use at package boundaries.
-func NormalizeAxisProfile(profile AxisProfile) (AxisProfile, error) {
+func NormalizeAirworthinessAxisProfile(profile AirworthinessAxisProfile) (AirworthinessAxisProfile, error) {
 	return normalizeAxisProfile(profile)
 }
 
-// ValidateAxisEvidence validates the closed public portion of one safety-axis
+// ValidateAirworthinessAxisEvidence validates the closed public portion of one safety-axis
 // observation record. Cross-axis profile and observation-id checks belong to
-// Evaluator.Evaluate, where the complete document is available.
-func ValidateAxisEvidence(evidence AxisEvidence, durationMS int64) error {
+// AirworthinessEvaluator.Evaluate, where the complete document is available.
+func ValidateAirworthinessAxisEvidence(evidence AirworthinessAxisEvidence, durationMS int64) error {
 	profile, err := normalizeAxisProfile(evidence.Profile)
 	if err != nil || evidence.Profile.Axis != profile.Axis || !validSHA256(evidence.SubjectSHA256) ||
 		!validSHA256(evidence.EvidenceSHA256) || !validCoverage(evidence.Coverage) ||
@@ -60,7 +60,7 @@ func ValidateAxisEvidence(evidence AxisEvidence, durationMS int64) error {
 	return nil
 }
 
-func sameAxisProfile(actual, expected AxisProfile) bool {
+func sameAxisProfile(actual, expected AirworthinessAxisProfile) bool {
 	normalized, err := normalizeAxisProfile(actual)
 	return err == nil && reflect.DeepEqual(normalized, expected)
 }
@@ -87,34 +87,34 @@ func validToken(value string) bool {
 	return true
 }
 
-func validCoverage(value Coverage) bool {
+func validCoverage(value AirworthinessCoverage) bool {
 	return value == CoverageComplete || value == CoverageIncomplete ||
 		value == CoverageFailed || value == CoverageConflict
 }
 
-func validObservation(observation Observation, axis Axis, durationMS int64) bool {
+func validObservation(observation AirworthinessObservation, axis AirworthinessAxis, durationMS int64) bool {
 	return validToken(observation.ID) && validFlag(observation.Flag) && axisOwnsFlag(axis, observation.Flag) &&
 		validSeverity(observation.Severity) && validContext(observation.Context) &&
 		observation.StartMS >= 0 && observation.EndMS > observation.StartMS && observation.EndMS <= durationMS
 }
 
-func finalizeDecision(decision Decision) Decision {
+func finalizeDecision(decision AirworthinessDecision) AirworthinessDecision {
 	decision.ReasonCodes = sortedCompact(decision.ReasonCodes)
 	decision.ObservedFlags = sortedCompact(decision.ObservedFlags)
 	decision.EvidenceSHA256s = sortedCompact(decision.EvidenceSHA256s)
 	decision.HeldAxes = orderAxes(decision.HeldAxes)
 	slices.SortFunc(decision.Triggers, compareTriggers)
 	if decision.ReasonCodes == nil {
-		decision.ReasonCodes = []Reason{}
+		decision.ReasonCodes = []AirworthinessReason{}
 	}
 	if decision.ObservedFlags == nil {
-		decision.ObservedFlags = []Flag{}
+		decision.ObservedFlags = []AirworthinessFlag{}
 	}
 	if decision.Triggers == nil {
-		decision.Triggers = []Trigger{}
+		decision.Triggers = []AirworthinessTrigger{}
 	}
 	if decision.HeldAxes == nil {
-		decision.HeldAxes = []Axis{}
+		decision.HeldAxes = []AirworthinessAxis{}
 	}
 	if decision.EvidenceSHA256s == nil {
 		decision.EvidenceSHA256s = []string{}
@@ -129,12 +129,12 @@ func sortedCompact[T ~string](values []T) []T {
 	return slices.Compact(result)
 }
 
-func orderAxes(values []Axis) []Axis {
-	set := make(map[Axis]struct{}, len(values))
+func orderAxes(values []AirworthinessAxis) []AirworthinessAxis {
+	set := make(map[AirworthinessAxis]struct{}, len(values))
 	for _, value := range values {
 		set[value] = struct{}{}
 	}
-	result := make([]Axis, 0, len(set))
+	result := make([]AirworthinessAxis, 0, len(set))
 	for _, axis := range axisOrder {
 		if _, exists := set[axis]; exists {
 			result = append(result, axis)
@@ -143,7 +143,7 @@ func orderAxes(values []Axis) []Axis {
 	return result
 }
 
-func compareTriggers(left, right Trigger) int {
+func compareTriggers(left, right AirworthinessTrigger) int {
 	leftKey := fmt.Sprintf("%s\x00%s\x00%020d\x00%020d\x00%s\x00%s\x00%s\x00%s\x00%s",
 		left.Axis, left.ObservationID, left.StartMS, left.EndMS, left.Flag, left.Severity,
 		left.Context, left.Effect, left.EvidenceSHA256)
@@ -153,7 +153,7 @@ func compareTriggers(left, right Trigger) int {
 	return strings.Compare(leftKey, rightKey)
 }
 
-func decisionSHA256(decision Decision) string {
+func decisionSHA256(decision AirworthinessDecision) string {
 	decision.SHA256 = ""
 	raw, err := json.Marshal(decision)
 	if err != nil {
@@ -163,11 +163,11 @@ func decisionSHA256(decision Decision) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// ValidateDecision verifies that a decision is canonical, self-addressed, and
+// ValidateAirworthinessDecision verifies that a decision is canonical, self-addressed, and
 // contains only values from the public Airworthiness contract.
-func ValidateDecision(decision Decision) error {
-	if decision.SchemaVersion != DecisionSchemaVersion || decision.ContractVersion != DecisionContractVersion ||
-		decision.PolicyVersion != PolicyVersion || decision.VocabularyVersion != VocabularyVersion ||
+func ValidateAirworthinessDecision(decision AirworthinessDecision) error {
+	if decision.SchemaVersion != AirworthinessDecisionSchemaVersion || decision.ContractVersion != AirworthinessDecisionContractVersion ||
+		decision.PolicyVersion != AirworthinessPolicyVersion || decision.VocabularyVersion != AirworthinessVocabularyVersion ||
 		!validProfile(decision.Profile) || !validSHA256(decision.SubjectSHA256) ||
 		!validSHA256(decision.AuthoritySHA256) || !validVerdict(decision.Verdict) ||
 		!validSHA256(decision.SHA256) {
@@ -208,8 +208,8 @@ func ValidateDecision(decision Decision) error {
 	return nil
 }
 
-func validDecisionMeaning(decision Decision) bool {
-	hasReason := func(want Reason) bool { return slices.Contains(decision.ReasonCodes, want) }
+func validDecisionMeaning(decision AirworthinessDecision) bool {
+	hasReason := func(want AirworthinessReason) bool { return slices.Contains(decision.ReasonCodes, want) }
 	hasRejectTrigger := false
 	hasReviewTrigger := false
 	for _, trigger := range decision.Triggers {
@@ -218,10 +218,10 @@ func validDecisionMeaning(decision Decision) bool {
 	}
 	switch decision.Verdict {
 	case VerdictPass:
-		return reflect.DeepEqual(decision.ReasonCodes, []Reason{ReasonEvidenceSatisfied}) &&
+		return reflect.DeepEqual(decision.ReasonCodes, []AirworthinessReason{ReasonEvidenceSatisfied}) &&
 			len(decision.Triggers) == 0 && len(decision.HeldAxes) == 0
 	case VerdictReject:
-		return reflect.DeepEqual(decision.ReasonCodes, []Reason{ReasonProhibitedObservation}) &&
+		return reflect.DeepEqual(decision.ReasonCodes, []AirworthinessReason{ReasonProhibitedObservation}) &&
 			hasRejectTrigger && !hasReviewTrigger && len(decision.HeldAxes) == 0
 	case VerdictHold:
 		return len(decision.ReasonCodes) > 0 && !hasReason(ReasonEvidenceSatisfied) &&
@@ -232,11 +232,11 @@ func validDecisionMeaning(decision Decision) bool {
 	}
 }
 
-func validVerdict(verdict Verdict) bool {
+func validVerdict(verdict AirworthinessVerdict) bool {
 	return verdict == VerdictPass || verdict == VerdictReject || verdict == VerdictHold
 }
 
-func validReason(reason Reason) bool {
+func validReason(reason AirworthinessReason) bool {
 	switch reason {
 	case ReasonEvidenceSatisfied, ReasonProhibitedObservation, ReasonObservationRequiresReview,
 		ReasonCoverageIncomplete, ReasonCertificationIncomplete, ReasonEvidenceInvalid,
@@ -247,7 +247,7 @@ func validReason(reason Reason) bool {
 	}
 }
 
-func validTrigger(trigger Trigger) bool {
+func validTrigger(trigger AirworthinessTrigger) bool {
 	return validToken(trigger.ObservationID) && validAxis(trigger.Axis) && validFlag(trigger.Flag) &&
 		axisOwnsFlag(trigger.Axis, trigger.Flag) && validSeverity(trigger.Severity) &&
 		validContext(trigger.Context) && trigger.StartMS >= 0 && trigger.EndMS > trigger.StartMS &&

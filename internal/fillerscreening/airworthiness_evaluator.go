@@ -1,4 +1,4 @@
-package fillerairworthiness
+package fillerscreening
 
 import (
 	"crypto/sha256"
@@ -8,21 +8,21 @@ import (
 	"slices"
 )
 
-// Evaluator is the pure policy seam. It owns the audience rules and the exact
+// AirworthinessEvaluator is the pure policy seam. It owns the audience rules and the exact
 // axis profiles whose certification claims are allowed to satisfy coverage.
-type Evaluator struct {
-	profile         Profile
-	axisProfiles    map[Axis]AxisProfile
+type AirworthinessEvaluator struct {
+	profile         AirworthinessProfile
+	axisProfiles    map[AirworthinessAxis]AirworthinessAxisProfile
 	authoritySHA256 string
 }
 
-// New constructs one evaluator from the intended audience profile and the
+// NewAirworthinessEvaluator constructs one evaluator from the intended audience profile and the
 // three immutable safety-axis profiles selected by a release authority.
-func New(profile Profile, profiles []AxisProfile) (*Evaluator, error) {
+func NewAirworthinessEvaluator(profile AirworthinessProfile, profiles []AirworthinessAxisProfile) (*AirworthinessEvaluator, error) {
 	if !validProfile(profile) || len(profiles) != maximumEvidenceAxes {
 		return nil, fmt.Errorf("airworthiness requires one known audience profile and three axis profiles")
 	}
-	byAxis := make(map[Axis]AxisProfile, len(profiles))
+	byAxis := make(map[AirworthinessAxis]AirworthinessAxisProfile, len(profiles))
 	for _, value := range profiles {
 		normalized, err := normalizeAxisProfile(value)
 		if err != nil {
@@ -33,7 +33,7 @@ func New(profile Profile, profiles []AxisProfile) (*Evaluator, error) {
 		}
 		byAxis[normalized.Axis] = normalized
 	}
-	canonical := make([]AxisProfile, 0, len(axisOrder))
+	canonical := make([]AirworthinessAxisProfile, 0, len(axisOrder))
 	for _, axis := range axisOrder {
 		value, exists := byAxis[axis]
 		if !exists {
@@ -42,22 +42,22 @@ func New(profile Profile, profiles []AxisProfile) (*Evaluator, error) {
 		canonical = append(canonical, value)
 	}
 	identity := struct {
-		PolicyVersion     string        `json:"policyVersion"`
-		VocabularyVersion string        `json:"vocabularyVersion"`
-		Profile           Profile       `json:"profile"`
-		Axes              []AxisProfile `json:"axes"`
-	}{PolicyVersion, VocabularyVersion, profile, canonical}
+		PolicyVersion     string                     `json:"policyVersion"`
+		VocabularyVersion string                     `json:"vocabularyVersion"`
+		Profile           AirworthinessProfile       `json:"profile"`
+		Axes              []AirworthinessAxisProfile `json:"axes"`
+	}{AirworthinessPolicyVersion, AirworthinessVocabularyVersion, profile, canonical}
 	raw, err := json.Marshal(identity)
 	if err != nil {
 		return nil, fmt.Errorf("marshal airworthiness authority identity: %w", err)
 	}
 	digest := sha256.Sum256(raw)
-	return &Evaluator{profile: profile, axisProfiles: byAxis, authoritySHA256: hex.EncodeToString(digest[:])}, nil
+	return &AirworthinessEvaluator{profile: profile, axisProfiles: byAxis, authoritySHA256: hex.EncodeToString(digest[:])}, nil
 }
 
 // AuthoritySHA256 identifies the exact audience rules, vocabulary, and axis
 // profiles consumed by this evaluator.
-func (e *Evaluator) AuthoritySHA256() string {
+func (e *AirworthinessEvaluator) AuthoritySHA256() string {
 	if e == nil {
 		return ""
 	}
@@ -65,43 +65,43 @@ func (e *Evaluator) AuthoritySHA256() string {
 }
 
 type evaluatedObservation struct {
-	axisEvidence AxisEvidence
-	observation  Observation
-	axis         Axis
+	axisEvidence AirworthinessAxisEvidence
+	observation  AirworthinessObservation
+	axis         AirworthinessAxis
 }
 
 // Evaluate returns one canonical public decision. A valid rejecting
 // observation wins before incomplete coverage or review-level observations;
 // only full certified negative coverage can pass.
-func (e *Evaluator) Evaluate(document Document) Decision {
+func (e *AirworthinessEvaluator) Evaluate(document AirworthinessDocument) AirworthinessDecision {
 	if e == nil {
-		return finalizeDecision(Decision{
-			SchemaVersion: DecisionSchemaVersion, ContractVersion: DecisionContractVersion,
-			SubjectSHA256: document.SubjectSHA256, PolicyVersion: PolicyVersion,
-			VocabularyVersion: VocabularyVersion, Verdict: VerdictHold,
-			ReasonCodes: []Reason{ReasonEvidenceInvalid},
+		return finalizeDecision(AirworthinessDecision{
+			SchemaVersion: AirworthinessDecisionSchemaVersion, ContractVersion: AirworthinessDecisionContractVersion,
+			SubjectSHA256: document.SubjectSHA256, PolicyVersion: AirworthinessPolicyVersion,
+			VocabularyVersion: AirworthinessVocabularyVersion, Verdict: VerdictHold,
+			ReasonCodes: []AirworthinessReason{ReasonEvidenceInvalid},
 		})
 	}
-	decision := Decision{
-		SchemaVersion: DecisionSchemaVersion, ContractVersion: DecisionContractVersion,
-		SubjectSHA256: document.SubjectSHA256, Profile: e.profile, PolicyVersion: PolicyVersion,
-		VocabularyVersion: VocabularyVersion, AuthoritySHA256: e.authoritySHA256,
+	decision := AirworthinessDecision{
+		SchemaVersion: AirworthinessDecisionSchemaVersion, ContractVersion: AirworthinessDecisionContractVersion,
+		SubjectSHA256: document.SubjectSHA256, Profile: e.profile, PolicyVersion: AirworthinessPolicyVersion,
+		VocabularyVersion: AirworthinessVocabularyVersion, AuthoritySHA256: e.authoritySHA256,
 	}
 	if !validProfile(e.profile) || !validSHA256(e.authoritySHA256) {
 		decision.Profile = ""
 		decision.Verdict = VerdictHold
-		decision.ReasonCodes = []Reason{ReasonEvidenceInvalid}
+		decision.ReasonCodes = []AirworthinessReason{ReasonEvidenceInvalid}
 		return finalizeDecision(decision)
 	}
-	if document.SchemaVersion != EvidenceSchemaVersion || document.ContractVersion != EvidenceContractVersion ||
+	if document.SchemaVersion != AirworthinessEvidenceSchemaVersion || document.ContractVersion != AirworthinessEvidenceContractVersion ||
 		!validSHA256(document.SubjectSHA256) || document.DurationMS <= 0 ||
 		document.DurationMS > maximumRenderedDurationMS || len(document.Axes) != maximumEvidenceAxes {
 		decision.Verdict = VerdictHold
-		decision.ReasonCodes = []Reason{ReasonEvidenceInvalid}
+		decision.ReasonCodes = []AirworthinessReason{ReasonEvidenceInvalid}
 		return finalizeDecision(decision)
 	}
 
-	byAxis := make(map[Axis]AxisEvidence, len(document.Axes))
+	byAxis := make(map[AirworthinessAxis]AirworthinessAxisEvidence, len(document.Axes))
 	structureInvalid := false
 	for _, axisEvidence := range document.Axes {
 		if !validAxis(axisEvidence.Profile.Axis) {
@@ -117,8 +117,8 @@ func (e *Evaluator) Evaluate(document Document) Decision {
 
 	seenObservationIDs := make(map[string]struct{})
 	var observations []evaluatedObservation
-	invalidAxes := make(map[Axis]struct{})
-	coverageAxes := make(map[Axis]struct{})
+	invalidAxes := make(map[AirworthinessAxis]struct{})
+	coverageAxes := make(map[AirworthinessAxis]struct{})
 	evidenceSHA256s := make([]string, 0, len(axisOrder))
 	for _, axis := range axisOrder {
 		axisEvidence, exists := byAxis[axis]
@@ -150,12 +150,12 @@ func (e *Evaluator) Evaluate(document Document) Decision {
 	}
 	if len(decision.Triggers) > 0 {
 		decision.Verdict = VerdictReject
-		decision.ReasonCodes = []Reason{ReasonProhibitedObservation}
+		decision.ReasonCodes = []AirworthinessReason{ReasonProhibitedObservation}
 		return finalizeDecision(decision)
 	}
 
-	reasons := make([]Reason, 0, 5)
-	heldAxes := make(map[Axis]struct{})
+	reasons := make([]AirworthinessReason, 0, 5)
+	heldAxes := make(map[AirworthinessAxis]struct{})
 	if structureInvalid || len(invalidAxes) > 0 {
 		reasons = append(reasons, ReasonEvidenceInvalid)
 		copyAxisSet(heldAxes, invalidAxes)
@@ -191,11 +191,11 @@ func (e *Evaluator) Evaluate(document Document) Decision {
 		return finalizeDecision(decision)
 	}
 	decision.Verdict = VerdictPass
-	decision.ReasonCodes = []Reason{ReasonEvidenceSatisfied}
+	decision.ReasonCodes = []AirworthinessReason{ReasonEvidenceSatisfied}
 	return finalizeDecision(decision)
 }
 
-func (e *Evaluator) inspectAxis(document Document, axis Axis, evidence AxisEvidence, seenIDs map[string]struct{}) ([]evaluatedObservation, bool) {
+func (e *AirworthinessEvaluator) inspectAxis(document AirworthinessDocument, axis AirworthinessAxis, evidence AirworthinessAxisEvidence, seenIDs map[string]struct{}) ([]evaluatedObservation, bool) {
 	expected := e.axisProfiles[axis]
 	baseValid := evidence.SubjectSHA256 == document.SubjectSHA256 && sameAxisProfile(evidence.Profile, expected) &&
 		validSHA256(evidence.EvidenceSHA256) && validCoverage(evidence.Coverage) &&
@@ -218,8 +218,8 @@ func (e *Evaluator) inspectAxis(document Document, axis Axis, evidence AxisEvide
 	return observations, invalid
 }
 
-func (e *Evaluator) incompleteCertificationAxes() map[Axis]struct{} {
-	result := make(map[Axis]struct{})
+func (e *AirworthinessEvaluator) incompleteCertificationAxes() map[AirworthinessAxis]struct{} {
+	result := make(map[AirworthinessAxis]struct{})
 	for _, flag := range policyFlags {
 		for _, axis := range flagOwners(flag) {
 			if !slices.Contains(e.axisProfiles[axis].CertifiedFlags, flag) {
@@ -230,16 +230,16 @@ func (e *Evaluator) incompleteCertificationAxes() map[Axis]struct{} {
 	return result
 }
 
-func triggerFor(item evaluatedObservation, effect Effect) Trigger {
+func triggerFor(item evaluatedObservation, effect AirworthinessEffect) AirworthinessTrigger {
 	value := item.observation
-	return Trigger{
+	return AirworthinessTrigger{
 		ObservationID: value.ID, Axis: item.axis, Flag: value.Flag, Severity: value.Severity,
 		Context: value.Context, StartMS: value.StartMS, EndMS: value.EndMS,
 		EvidenceSHA256: item.axisEvidence.EvidenceSHA256, Effect: effect,
 	}
 }
 
-func copyAxisSet(destination, source map[Axis]struct{}) {
+func copyAxisSet(destination, source map[AirworthinessAxis]struct{}) {
 	for axis := range source {
 		destination[axis] = struct{}{}
 	}

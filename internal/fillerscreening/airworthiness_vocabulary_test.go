@@ -1,4 +1,4 @@
-package fillerairworthiness
+package fillerscreening
 
 import (
 	"slices"
@@ -7,7 +7,7 @@ import (
 
 func TestVocabularyIsClosedSortedAndUniquelyOwned(t *testing.T) {
 	t.Parallel()
-	flags := Vocabulary()
+	flags := airworthinessVocabulary()
 	if len(flags) != 27 || !slices.IsSorted(flags) {
 		t.Fatalf("vocabulary length/sort = %d/%v", len(flags), slices.IsSorted(flags))
 	}
@@ -25,8 +25,8 @@ func TestVocabularyIsClosedSortedAndUniquelyOwned(t *testing.T) {
 			}
 		}
 	}
-	flags[0] = Flag("mutated")
-	if Vocabulary()[0] == flags[0] {
+	flags[0] = AirworthinessFlag("mutated")
+	if airworthinessVocabulary()[0] == flags[0] {
 		t.Fatal("Vocabulary returned mutable package storage")
 	}
 }
@@ -36,12 +36,18 @@ func TestAxisProfileRejectsUnknownDuplicateOrForeignCertification(t *testing.T) 
 	base := testProfiles()[0]
 	tests := []struct {
 		name   string
-		mutate func(*AxisProfile)
+		mutate func(*AirworthinessAxisProfile)
 	}{
-		{"unknown", func(profile *AxisProfile) { profile.CertifiedFlags = append(profile.CertifiedFlags, Flag("unknown")) }},
-		{"duplicate", func(profile *AxisProfile) { profile.CertifiedFlags = append(profile.CertifiedFlags, FlagAdultNudity) }},
-		{"foreign", func(profile *AxisProfile) { profile.CertifiedFlags = append(profile.CertifiedFlags, FlagProfanity) }},
-		{"invalid digest", func(profile *AxisProfile) { profile.CertificationSHA256 = "invalid" }},
+		{"unknown", func(profile *AirworthinessAxisProfile) {
+			profile.CertifiedFlags = append(profile.CertifiedFlags, AirworthinessFlag("unknown"))
+		}},
+		{"duplicate", func(profile *AirworthinessAxisProfile) {
+			profile.CertifiedFlags = append(profile.CertifiedFlags, FlagAdultNudity)
+		}},
+		{"foreign", func(profile *AirworthinessAxisProfile) {
+			profile.CertifiedFlags = append(profile.CertifiedFlags, FlagProfanity)
+		}},
+		{"invalid digest", func(profile *AirworthinessAxisProfile) { profile.CertificationSHA256 = "invalid" }},
 	}
 	for _, test := range tests {
 		test := test
