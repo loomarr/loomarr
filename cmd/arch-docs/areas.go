@@ -63,8 +63,6 @@ var areas = []area{
 				"their schedules, the outbound HTTP client for fetched artwork, and start-up configuration",
 			"library": "the `inventory` stream, keyframe and break values that header reads and measurements " +
 				"fill in",
-			"playout": "`playout.ReadProgress` and `playout.DefaultProfile`, until ffmpeg progress parsing " +
-				"and the encode profile live in media, where both belong",
 		},
 	},
 	{
