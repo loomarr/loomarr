@@ -1,10 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
+import "sort"
 
 // area is one part of the product a newcomer can hold in their head: a plain-words
 // description and the packages under internal/ that make it up.
@@ -18,6 +14,13 @@ type area struct {
 	Description string
 	// Packages are full paths below internal/, test-only packages included.
 	Packages []string
+	// MayImport names each other area this one's production code may import, with the reason
+	// in plain words. TestArchDocs_AreaImportsAreDeclared fails on an import of an area missing
+	// here, and on an entry no package uses any more, so the list is always the real one.
+	MayImport map[string]string
+	// ImportsAnyArea is for the two areas whose job is to see everything: the composition root
+	// and the test support. Their imports are not checked.
+	ImportsAnyArea bool
 }
 
 var areas = []area{
@@ -35,6 +38,14 @@ var areas = []area{
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
 			"metadataprovider/tmdb",
 		},
+		MayImport: map[string]string{
+			"platform": "the store, settings and jobs behind the provision backstop, and the outbound HTTP " +
+				"client and metrics every remote service call goes through",
+			"channels": "`schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` " +
+				"for the backstop's view of what a channel will play, until both move to a shared vocabulary",
+			"filler": "`filler.Kind`, to classify media-server extras as trailers or bumpers, until the kind " +
+				"vocabulary leaves the filler engine",
+		},
 	},
 	{
 		Name:  "media",
@@ -47,6 +58,14 @@ var areas = []area{
 			"media", "mediaheader", "mediameasure", "mediatools", "images", "images/rustgen",
 			"encode", "bgexec", "proctree", "loudness", "creative", "defects",
 		},
+		MayImport: map[string]string{
+			"platform": "the diagnostics process manager every ffmpeg run goes through, the image jobs and " +
+				"their schedules, the outbound HTTP client for fetched artwork, and start-up configuration",
+			"library": "the `inventory` stream, keyframe and break values that header reads and measurements " +
+				"fill in",
+			"playout": "`playout.ReadProgress` and `playout.DefaultProfile`, until ffmpeg progress parsing " +
+				"and the encode profile live in media, where both belong",
+		},
 	},
 	{
 		Name:  "channels",
@@ -57,6 +76,18 @@ var areas = []area{
 			"are re-curated here, Home's channel ideas come from here, and so does who is watching now.",
 		Packages: []string{
 			"schedule", "channels", "channeledit", "binder", "recurate", "ideas", "recommend", "viewing",
+		},
+		MayImport: map[string]string{
+			"platform": "the store every channel write goes through, the jobs and settings behind " +
+				"reconcile and re-curation, the activity feed, the language model for recommendations, and " +
+				"the holiday and language vocabularies",
+			"library": "the titles a channel plays: `provision` keys and states, `inventory` break " +
+				"analysis, and `catalog` candidates for re-curation",
+			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
+				"channel through the suggester",
+			"filler": "asking the filler engine for the pod that fills a break",
+			"playout": "handing reconciled programming to the backend that plays it: Loomarr's own " +
+				"`playout` engine or `tunarr`",
 		},
 	},
 	{
@@ -71,6 +102,14 @@ var areas = []area{
 			"proposal", "proposalworkflow", "proposaloutlook", "suggest", "reference",
 			"plannerreference", "quality",
 		},
+		MayImport: map[string]string{
+			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
+				"suggester checks titles with, and the storage governor's size confidence",
+			"library": "grounding each suggested title in the real library, catalog, TMDB and collections, " +
+				"and the `provision` records for titles the household lacks",
+			"channels": "the `schedule` values a proposal describes, and the reconcile engine the outlook " +
+				"runs to preview a proposal before approval",
+		},
 	},
 	{
 		Name:  "playout",
@@ -83,6 +122,15 @@ var areas = []area{
 		Packages: []string{
 			"playout", "playout/packager", "playoutbench", "watermark", "tunarr", "tunarr/tunarrtest",
 			"livetvpublish", "backendtransition", "landiscovery",
+		},
+		MayImport: map[string]string{
+			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
+				"backend transition, start-up configuration, and Tunarr's HTTP client and metrics",
+			"channels": "the `schedule` programming a backend plays",
+			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
+				"naming what a slot plays",
+			"media": "the encoder choice, loudness, media facts and process-tree control the stream is built " +
+				"from",
 		},
 	},
 	{
@@ -100,6 +148,14 @@ var areas = []area{
 			"taxonomy", "broadcaststation", "sourceprovider", "sourceprovider/archive",
 			"sourceprovider/youtube", "installationlocation",
 		},
+		MayImport: map[string]string{
+			"platform": "the store that records sources, pulls and the catalog, the language models that " +
+				"screen and enrich clips, the storage governor, the diagnostics process manager, and the " +
+				"OpenRouter clients",
+			"media": "ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound " +
+				"and creative-identity checks every clip passes",
+			"channels": "the holiday season and filler selection a channel's `schedule` asks for",
+		},
 	},
 	{
 		Name:  "people",
@@ -109,6 +165,11 @@ var areas = []area{
 			"Loomarr keeps in its database.",
 		Packages: []string{
 			"auth", "invitation", "recovery", "contact", "secretprotection", "notifications",
+		},
+		MayImport: map[string]string{
+			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
+				"notifications are sent through, and the configured installation secret",
+			"library": "signing a member in with their media-server account",
 		},
 	},
 	{
@@ -126,13 +187,27 @@ var areas = []area{
 			"devbootstrap", "llm", "openroutercatalog", "openroutermedia", "holidayvocab", "langcode",
 			"textmatch",
 		},
+		MayImport: map[string]string{
+			"library": "the store persists inventory, provision and episode-evidence values, and settings " +
+				"parses the media-server connection",
+			"channels":  "the store persists the `schedule` channel, lineup and slot values",
+			"proposals": "the store persists proposals and suggestion-quality runs",
+			"filler":    "the store persists the clip catalog, its taxonomy and broadcast stations",
+			"media": "the store persists creative fingerprints and defect verdicts, and metrics count image " +
+				"generation",
+			"people": "the identity store persists accounts, invitations, recovery, contacts, notifications " +
+				"and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the " +
+				"dev admin",
+			"test": "`store/storetest` starts the Postgres test image, until that helper moves into test support",
+		},
 	},
 	{
 		Name:  "edge",
 		Title: "Edge",
 		Description: "Where the outside world comes in. The api package is Loomarr's HTTP surface, and app " +
 			"is the composition root that builds every other area and hands them to it.",
-		Packages: []string{"api", "app"},
+		Packages:       []string{"api", "app"},
+		ImportsAnyArea: true,
 	},
 	{
 		Name:  "test",
@@ -147,6 +222,7 @@ var areas = []area{
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "demolibrary", "integration",
 			"eval",
 		},
+		ImportsAnyArea: true,
 	},
 }
 
@@ -204,8 +280,63 @@ func areaInventory(table []area) (listed map[string]bool, duplicates []string) {
 	return listed, duplicates
 }
 
-// crossAreaImports summarises a's imports of packages in other areas, busiest area first.
-func crossAreaImports(a area, byName map[string]Package, areaOf map[string]string, table []area) string {
+// areaEdge is one import of a package in another area: the importing package, and the
+// package it imports.
+type areaEdge struct{ From, To string }
+
+// areaImportViolations compares the imports the scan sees against each area's MayImport.
+// undeclared holds, per "from → to" area pair, the package edges that no entry allows; unused
+// holds the "from → to" entries no package edge needs.
+func areaImportViolations(table []area, pkgs []Package) (undeclared map[string][]areaEdge, unused []string) {
+	areaOf := map[string]string{}
+	for _, a := range table {
+		for _, p := range a.Packages {
+			areaOf[p] = a.Name
+		}
+	}
+	byArea := map[string]area{}
+	for _, a := range table {
+		byArea[a.Name] = a
+	}
+	used := map[string]bool{}
+	undeclared = map[string][]areaEdge{}
+	for _, p := range pkgs {
+		from := byArea[areaOf[p.Name]]
+		if from.ImportsAnyArea {
+			continue
+		}
+		for _, dep := range p.Imports {
+			to, ok := areaOf[dep]
+			if !ok || to == from.Name {
+				continue
+			}
+			pair := from.Name + " → " + to
+			if _, allowed := from.MayImport[to]; allowed {
+				used[pair] = true
+				continue
+			}
+			undeclared[pair] = append(undeclared[pair], areaEdge{From: p.Name, To: dep})
+		}
+	}
+	for _, a := range table {
+		for to := range a.MayImport {
+			if pair := a.Name + " → " + to; !used[pair] {
+				unused = append(unused, pair)
+			}
+		}
+	}
+	sort.Strings(unused)
+	return undeclared, unused
+}
+
+// areaCount is how many of an area's package imports land in one other area.
+type areaCount struct {
+	Area  string
+	Count int
+}
+
+// crossAreaImports counts a's imports of packages in other areas, busiest area first.
+func crossAreaImports(a area, byName map[string]Package, areaOf map[string]string, table []area) []areaCount {
 	counts := map[string]int{}
 	for _, name := range a.Packages {
 		for _, dep := range byName[name].Imports {
@@ -213,9 +344,6 @@ func crossAreaImports(a area, byName map[string]Package, areaOf map[string]strin
 				counts[other]++
 			}
 		}
-	}
-	if len(counts) == 0 {
-		return "none"
 	}
 	order := map[string]int{}
 	for i, t := range table {
@@ -231,9 +359,9 @@ func crossAreaImports(a area, byName map[string]Package, areaOf map[string]strin
 		}
 		return order[names[i]] < order[names[j]]
 	})
-	parts := make([]string, len(names))
+	out := make([]areaCount, len(names))
 	for i, n := range names {
-		parts[i] = fmt.Sprintf("%s (%d)", n, counts[n])
+		out[i] = areaCount{Area: n, Count: counts[n]}
 	}
-	return strings.Join(parts, ", ")
+	return out
 }

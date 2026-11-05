@@ -6,7 +6,11 @@ Commercials, bumpers and station IDs. Sources such as YouTube, archive.org and l
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** media (15), platform (15), channels (1)
+## Imports from other areas
+
+- **media** · 15 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **platform** · 15 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
+- **channels** · 1 import — the holiday season and filler selection a channel's `schedule` asks for
 
 ## Packages
 

@@ -6,7 +6,11 @@ Shared tools for looking at and working on media files: reading what a file's he
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** platform (6), library (2), playout (1)
+## Imports from other areas
+
+- **platform** · 6 imports — the diagnostics process manager every ffmpeg run goes through, the image jobs and their schedules, the outbound HTTP client for fetched artwork, and start-up configuration
+- **library** · 2 imports — the `inventory` stream, keyframe and break values that header reads and measurements fill in
+- **playout** · 1 import — `playout.ReadProgress` and `playout.DefaultProfile`, until ffmpeg progress parsing and the encode profile live in media, where both belong
 
 ## Packages
 

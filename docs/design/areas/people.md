@@ -6,7 +6,10 @@ Who may use Loomarr and how they are reached: sign-in sessions, invitations, pas
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** platform (4), library (1)
+## Imports from other areas
+
+- **platform** · 4 imports — the identity store accounts and sessions live in, the outbound HTTP client notifications are sent through, and the configured installation secret
+- **library** · 1 import — signing a member in with their media-server account
 
 ## Packages
 

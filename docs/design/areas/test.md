@@ -6,7 +6,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** library (14), proposals (7), channels (5), platform (5), people (2), media (1), playout (1), filler (1)
+**Imports from other areas:** any, by design — library (14), proposals (7), channels (5), platform (5), people (2), media (1), playout (1), filler (1)
 
 ## Packages
 

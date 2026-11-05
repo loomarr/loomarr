@@ -6,7 +6,15 @@ The ground everything else stands on: the store and its two databases, settings 
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** people (13), filler (6), library (5), media (5), channels (2), proposals (2), test (1)
+## Imports from other areas
+
+- **people** · 13 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the dev admin
+- **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
+- **library** · 5 imports — the store persists inventory, provision and episode-evidence values, and settings parses the media-server connection
+- **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
+- **channels** · 2 imports — the store persists the `schedule` channel, lineup and slot values
+- **proposals** · 2 imports — the store persists proposals and suggestion-quality runs
+- **test** · 1 import — `store/storetest` starts the Postgres test image, until that helper moves into test support
 
 ## Packages
 

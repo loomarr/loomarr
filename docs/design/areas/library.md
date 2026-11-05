@@ -6,7 +6,11 @@ What the household owns and wants. Talks to the media server (Emby or Jellyfin),
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** platform (11), channels (3), filler (1)
+## Imports from other areas
+
+- **platform** · 11 imports — the store, settings and jobs behind the provision backstop, and the outbound HTTP client and metrics every remote service call goes through
+- **channels** · 3 imports — `schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` for the backstop's view of what a channel will play, until both move to a shared vocabulary
+- **filler** · 1 import — `filler.Kind`, to classify media-server extras as trailers or bumpers, until the kind vocabulary leaves the filler engine
 
 ## Packages
 

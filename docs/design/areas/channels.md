@@ -6,7 +6,13 @@ Channels and what they play. A channel's lineup becomes an ordered schedule, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** platform (13), library (8), proposals (4), playout (2), filler (1)
+## Imports from other areas
+
+- **platform** · 13 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday and language vocabularies
+- **library** · 8 imports — the titles a channel plays: `provision` keys and states, `inventory` break analysis, and `catalog` candidates for re-curation
+- **proposals** · 4 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
+- **playout** · 2 imports — handing reconciled programming to the backend that plays it: Loomarr's own `playout` engine or `tunarr`
+- **filler** · 1 import — asking the filler engine for the pod that fills a break
 
 ## Packages
 

@@ -6,7 +6,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** platform (29), filler (26), media (11), proposals (11), people (11), channels (10), library (9), playout (6)
+**Imports from other areas:** any, by design — platform (29), filler (26), media (11), proposals (11), people (11), channels (10), library (9), playout (6)
 
 ## Packages
 

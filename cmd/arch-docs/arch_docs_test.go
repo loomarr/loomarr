@@ -125,6 +125,56 @@ func TestArchDocs_FlowsNameListedPackages(t *testing.T) {
 	}
 }
 
+// Every import that crosses from one area into another is one the importing area declares,
+// with its reason, in cmd/arch-docs/areas.go; and every declaration is still used. A new
+// cross-area import is therefore a decision someone writes down, not an accident the map
+// merely reports afterwards.
+func TestArchDocs_AreaImportsAreDeclared(t *testing.T) {
+	pkgs, err := scan(filepath.Join(repoRoot(t), "internal"))
+	if err != nil {
+		t.Fatalf("scan internal/: %v", err)
+	}
+	undeclared, unused := areaImportViolations(areas, pkgs)
+	pairs := make([]string, 0, len(undeclared))
+	for pair := range undeclared {
+		pairs = append(pairs, pair)
+	}
+	sort.Strings(pairs)
+	for _, pair := range pairs {
+		var edges []string
+		for _, e := range undeclared[pair] {
+			edges = append(edges, e.From+" → "+e.To)
+		}
+		t.Errorf("%s is not in that area's MayImport in cmd/arch-docs/areas.go — declare it with a reason, "+
+			"or remove the import: %s", pair, strings.Join(edges, ", "))
+	}
+	for _, pair := range unused {
+		t.Errorf("%s is declared in cmd/arch-docs/areas.go but no package imports across it — remove the entry", pair)
+	}
+}
+
+func TestAreaImportViolations_ReportsUndeclaredAndUnused(t *testing.T) {
+	table := []area{
+		{Name: "a", Packages: []string{"a1"}, MayImport: map[string]string{"c": "reason"}},
+		{Name: "b", Packages: []string{"b1"}},
+		{Name: "c", Packages: []string{"c1"}},
+		{Name: "root", Packages: []string{"r1"}, ImportsAnyArea: true},
+	}
+	pkgs := []Package{
+		{Name: "a1", Imports: []string{"b1"}},
+		{Name: "b1"},
+		{Name: "c1"},
+		{Name: "r1", Imports: []string{"a1", "b1"}},
+	}
+	undeclared, unused := areaImportViolations(table, pkgs)
+	if got := undeclared["a → b"]; len(got) != 1 || got[0] != (areaEdge{From: "a1", To: "b1"}) || len(undeclared) != 1 {
+		t.Errorf("undeclared = %v, want only a → b via a1 → b1", undeclared)
+	}
+	if len(unused) != 1 || unused[0] != "a → c" {
+		t.Errorf("unused = %v, want [a → c]", unused)
+	}
+}
+
 func TestAreaInventoryReportsDuplicates(t *testing.T) {
 	listed, duplicates := areaInventory([]area{
 		{Name: "one", Packages: []string{"a", "b"}},
@@ -140,9 +190,15 @@ func TestAreaInventoryReportsDuplicates(t *testing.T) {
 
 var (
 	fixtureAreas = []area{
-		{Name: "channels", Title: "Channels", Description: "Channel things.", Packages: []string{"schedule", "binder"}},
+		{
+			Name: "channels", Title: "Channels", Description: "Channel things.", Packages: []string{"schedule", "binder"},
+			MayImport: map[string]string{"platform": "the store", "library": "the titles"},
+		},
 		{Name: "platform", Title: "Platform", Description: "Shared ground.", Packages: []string{"store", "httpx"}},
-		{Name: "library", Title: "Library", Description: "What is owned.", Packages: []string{"library", "itest"}},
+		{
+			Name: "library", Title: "Library", Description: "What is owned.", Packages: []string{"library", "itest"},
+			ImportsAnyArea: true,
+		},
 	}
 	fixturePackages = []Package{
 		{Name: "binder", Synopsis: "Plans a channel.", Imports: []string{"httpx", "library", "schedule", "store"}},
@@ -154,18 +210,20 @@ var (
 )
 
 // An area's page counts the package-to-package imports that cross into each other area,
-// busiest first, and lists only its own packages: each with its importers, its imports and
-// its synopsis, and test-only packages by name.
+// busiest first, each with the reason the area declares, and lists only its own packages:
+// each with its importers, its imports and its synopsis, and test-only packages by name.
 func TestRenderAreaPages_EachPageOwnsItsPackages(t *testing.T) {
 	pages := renderAreaPages(fixtureAreas, fixturePackages)
 	for name, want := range map[string][]string{
 		"channels": {
-			"**Imports from other areas:** platform (3), library (1)",
+			"## Imports from other areas\n\n- **platform** · 3 imports — the store\n- **library** · 1 import — the titles\n",
 			"- **`binder`** · → `httpx`, `library`, `schedule`, `store`\n  Plans a channel.",
 			"- **`schedule`** · 1 importer · → `store`\n  Scheduler.",
 		},
 		"platform": {"**Imports from other areas:** none", "- **`store`** · 2 importers\n  Persistence."},
-		"library":  {"**Imports from other areas:** platform (1)", "**Tests only:** `itest`"},
+		"library": {
+			"**Imports from other areas:** any, by design — platform (1)", "**Tests only:** `itest`",
+		},
 	} {
 		for _, w := range want {
 			if !strings.Contains(pages[name], w) {
