@@ -28,7 +28,7 @@ func TestSegmentScreeningStageHoldsChildWhenRuntimeOrReleaseIsUnavailable(t *tes
 		t.Fatalf("missing runtime did not hold child: out=%+v err=%v", out, err)
 	}
 
-	runtime, _, _ := screeningStageRuntime(t, filler.ScreenPass)
+	runtime, _, _ := screeningStageRuntime(t, ScreenPass)
 	stage = NewSegmentScreeningStage(runtime, nil, root)
 	out, err = stage.Run(t.Context(), clip)
 	if err != nil || out.Verdict != filler.VerdictReview || out.Note != "rendered-child screening passed but production release is not authorized" {
@@ -42,7 +42,7 @@ func TestSegmentScreeningStageHoldsChildWhenRuntimeOrReleaseIsUnavailable(t *tes
 
 func TestSegmentScreeningStageMapsClosedRejectWithoutPublishingRestrictedDetail(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, _, _ := screeningStageRuntime(t, filler.ScreenReject)
+	runtime, _, _ := screeningStageRuntime(t, ScreenReject)
 	stage := NewSegmentScreeningStage(runtime, nil, root)
 	out, err := stage.Run(t.Context(), clip)
 	if err != nil || out.Verdict != filler.VerdictReject || out.Reason != filler.ReasonScreening ||
@@ -53,7 +53,7 @@ func TestSegmentScreeningStageMapsClosedRejectWithoutPublishingRestrictedDetail(
 
 func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, repository, profiles := screeningStageRuntime(t, filler.ScreenPass)
+	runtime, repository, profiles := screeningStageRuntime(t, ScreenPass)
 	certification, err := NewSegmentScreeningCertification(
 		screeningReleaseFixture(profiles, true), repository,
 	)
@@ -69,7 +69,7 @@ func TestSegmentScreeningStageRequiresTerminalCertificationBeforeContinuing(t *t
 
 func TestSegmentScreeningStageTurnsOperationalFailureIntoReview(t *testing.T) {
 	clip, _, root := renderedChildStageFixture(t)
-	runtime, _, _ := screeningStageRuntime(t, filler.ScreenPass)
+	runtime, _, _ := screeningStageRuntime(t, ScreenPass)
 	evaluator := runtime.evaluators[1].(*capturedSegmentScreeningEvaluator)
 	evaluator.err = errors.New("private provider response")
 	stage := NewSegmentScreeningStage(runtime, nil, root)
@@ -100,11 +100,11 @@ func renderedChildStageFixture(t *testing.T) (filler.StoreClip, filler.SidecarTa
 	return clip, tags, root
 }
 
-func screeningStageRuntime(t *testing.T, spokenOutcome filler.SegmentScreeningOutcome) (*SegmentScreeningRuntime, *FileSegmentScreeningEvidenceRepository, []SegmentScreeningAxisProfile) {
+func screeningStageRuntime(t *testing.T, spokenOutcome SegmentScreeningOutcome) (*SegmentScreeningRuntime, *FileSegmentScreeningEvidenceRepository, []SegmentScreeningAxisProfile) {
 	t.Helper()
 	order := []string{}
 	evaluators := segmentScreeningEvaluatorFixtures(&order)
-	evaluators[filler.ScreenSpokenSafety].outcome = spokenOutcome
+	evaluators[ScreenSpokenSafety].outcome = spokenOutcome
 	repository, err := NewFileSegmentScreeningEvidenceRepository(filepath.Join(t.TempDir(), "evidence"))
 	if err != nil {
 		t.Fatal(err)

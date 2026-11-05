@@ -16,12 +16,10 @@ One area of the [package map](../package-map.md#start-here).
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
 - **`clipfetch`** · 3 importers · → `bgexec`, `filler`, `sourceprovider`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`filler`** · 11 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
+- **`filler`** · 11 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filleradmission`** · 3 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerairworthiness`** · 2 importers
-  Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
@@ -32,11 +30,9 @@ One area of the [package map](../package-map.md#start-here).
   The budget arithmetic that paid filler assessment shares with certification.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`fillersafety`** · 1 importer
-  Owns the fail-closed spoken-safety cascade and its shadow evidence.
-- **`fillerscreening`** · 1 importer · → `filler`, `fillerairworthiness`, `fillerstructureassessment`, `mediatools`
+- **`fillerscreening`** · 2 importers · → `filler`, `fillerstructureassessment`, `mediatools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
-- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
+- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.

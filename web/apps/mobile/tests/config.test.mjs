@@ -165,12 +165,19 @@ test("captures crashes for the paired server, with MetricKit linked into the iPh
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
   assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
 
+  // The shared bootstrap installs capture at module load, before the layout's first render.
+  const bootstrap = await readFile(new URL("../src/native-app.ts", import.meta.url), "utf8");
+  assert.match(bootstrap, /^const nativeApp = createNativeApp\(\);$/m);
   const layout = await readFile(new URL("../app/_layout.tsx", import.meta.url), "utf8");
-  assert.match(layout, /^startCrashReporting\(\);$/m);
+  assert.match(layout, /<NativeAppRoot app=\{nativeApp\}>/);
   const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
   assert.match(shell, /useCrashReportUpload\(credential, session\)/);
+  assert.match(shell, /diagnostics: nativeApp\.diagnostics/);
   // The test trigger is gated on a bundle-time variable, never on a runtime value.
-  const capture = await readFile(new URL("../src/crash-reports.ts", import.meta.url), "utf8");
+  const capture = await readFile(
+    new URL("../../../packages/native-app/src/crash-reporting/crash-reporting.ts", import.meta.url),
+    "utf8",
+  );
   assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && /);
 });
 

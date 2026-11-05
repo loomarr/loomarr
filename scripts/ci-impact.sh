@@ -221,6 +221,13 @@ classify() {
       select_gate apple_mobile
       select_gate expo_android_mobile
       ;;
+    web/packages/native-app/*)
+      # The bootstrap both native apps call: every native client builds it.
+      known=true
+      select_gate clients
+      select_all_native_clients
+      select_gate android
+      ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
