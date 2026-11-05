@@ -8,9 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
 func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFourAxisEvidence(t *testing.T) {
@@ -30,23 +27,23 @@ func TestQualificationSegmentScreeningRuntimeRecordsTruthfulFourAxisEvidence(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[filler.SegmentScreeningAxis]struct {
-		outcome filler.SegmentScreeningOutcome
+	want := map[SegmentScreeningAxis]struct {
+		outcome SegmentScreeningOutcome
 		reason  string
 	}{
-		filler.ScreenVisualSafety:  {filler.ScreenHold, "visual_safety_not_certified"},
-		filler.ScreenSpokenSafety:  {filler.ScreenHold, "spoken_safety_not_certified"},
-		filler.ScreenWrittenSafety: {filler.ScreenHold, "written_safety_not_certified"},
-		filler.ScreenPlayback:      {filler.ScreenPass, "playback_verified"},
+		ScreenVisualSafety:  {ScreenHold, "visual_safety_not_certified"},
+		ScreenSpokenSafety:  {ScreenHold, "spoken_safety_not_certified"},
+		ScreenWrittenSafety: {ScreenHold, "written_safety_not_certified"},
+		ScreenPlayback:      {ScreenPass, "playback_verified"},
 	}
 	if first.Passes() || len(first.Results) != len(want) || clockCalls != len(want) {
 		t.Fatalf("qualification aggregate = %+v, clock calls = %d", first, clockCalls)
 	}
-	if first.Airworthiness.Profile != fillerairworthiness.ProfileAllAges ||
-		first.Airworthiness.Verdict != fillerairworthiness.VerdictHold ||
-		!slices.Contains(first.Airworthiness.ReasonCodes, fillerairworthiness.ReasonCoverageIncomplete) ||
-		!slices.Contains(first.Airworthiness.ReasonCodes, fillerairworthiness.ReasonCertificationIncomplete) ||
-		fillerairworthiness.ValidateDecision(first.Airworthiness) != nil {
+	if first.Airworthiness.Profile != ProfileAllAges ||
+		first.Airworthiness.Verdict != VerdictHold ||
+		!slices.Contains(first.Airworthiness.ReasonCodes, ReasonCoverageIncomplete) ||
+		!slices.Contains(first.Airworthiness.ReasonCodes, ReasonCertificationIncomplete) ||
+		ValidateAirworthinessDecision(first.Airworthiness) != nil {
 		t.Fatalf("qualification Airworthiness = %+v", first.Airworthiness)
 	}
 	evidence, err := NewFileSegmentScreeningEvidenceRepository(evidenceRoot)

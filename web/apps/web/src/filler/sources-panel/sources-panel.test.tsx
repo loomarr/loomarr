@@ -7,6 +7,7 @@ import {
   getFetchFillerSourceMockHandler,
   getFillerReadinessMockHandler,
   getGetFillerAcquisitionMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getLocationsSearchMockHandler,
   getMeMockHandler,
@@ -15,6 +16,7 @@ import {
   getResolveFillerSourceMockHandler,
   getSetFillerProviderEnabledMockHandler,
   getSetFillerSourceEnabledMockHandler,
+  getSuggestFillerSourcesMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -22,6 +24,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { SourcesPanel } from "./sources-panel";
@@ -193,7 +196,11 @@ const stubSources = () => {
         title: "Classic TV",
         alreadyAdded: true,
         previewItems: [
-          { title: "First station break", url: "https://archive.org/details/station_break_one" },
+          {
+            title: "First station break",
+            url: "https://archive.org/details/station_break_one",
+            embedUrl: "https://archive.org/embed/station_break_one?autoplay=1",
+          },
           { title: "Second station break", url: "https://archive.org/details/station_break_two" },
         ],
       };
@@ -268,7 +275,10 @@ const PanelHarness = ({
 const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })], initialSourceID?: string) =>
   render(<PanelHarness sources={sources} initialSourceID={initialSourceID} />, { wrapper: makeWrapper() });
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("SourcesPanel", () => {
   it("shows one calm server-owned storage summary", async () => {
@@ -394,7 +404,7 @@ describe("SourcesPanel", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Classic TV Commercials" })).toBeInTheDocument();
-    expect(screen.getByText("Archive.org collection")).toBeInTheDocument();
+    expect(await screen.findByText("Archive.org collection")).toBeInTheDocument();
   });
 
   it("returns focus to the selected row when the source workspace closes", async () => {
@@ -420,6 +430,8 @@ describe("SourcesPanel", () => {
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     const local = await screen.findByRole("region", { name: "Your files" });
+    await userEvent.click(await within(local).findByRole("combobox", { name: "Kind of source to add" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Media library" }));
     const library = await within(local).findByRole("textbox", { name: "Library name" });
     await userEvent.type(library, "Commercials");
     await userEvent.click(within(local).getByRole("button", { name: /add source/i }));
@@ -429,16 +441,39 @@ describe("SourcesPanel", () => {
     });
   });
 
+  it("offers a source finder only for a provider the registry says can be discovered", async () => {
+    stubSources();
+    server.use(
+      getListFillerProvidersMockHandler({
+        providers: fillerProviders.map((provider) =>
+          provider.id === "youtube" ? { ...provider, discoverable: false } : provider,
+        ),
+      }),
+    );
+    renderPanel([
+      source({ kind: "archive", id: "provider:archive", target: "Archive.org", group: true }),
+      source({ kind: "youtube", id: "provider:youtube", target: "YouTube", group: true }),
+    ]);
+
+    expect(await screen.findByRole("combobox", { name: "Find an Archive.org collection" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "Find a YouTube channel or playlist" })).toBeNull();
+  });
+
   it("adds remote targets inside their provider without a kind selector", async () => {
     const { adds } = stubSources();
     server.use(
-      getResolveFillerSourceMockHandler({
-        provider: "youtube",
-        targetType: "channel",
-        canonicalId: "UC-retroads",
-        canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
-        title: "Retro Ads",
-        alreadyAdded: false,
+      getSuggestFillerSourcesMockHandler({
+        exact: true,
+        suggestions: [
+          {
+            provider: "youtube",
+            targetType: "channel",
+            canonicalId: "UC-retroads",
+            canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
+            title: "Retro Ads",
+            alreadyAdded: false,
+          },
+        ],
       }),
     );
     renderPanel([
@@ -454,7 +489,11 @@ describe("SourcesPanel", () => {
     ]);
 
     const input = await screen.findByRole("combobox", { name: "Find a YouTube channel or playlist" });
-    expect(screen.queryByRole("combobox", { name: /kind of source/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "YouTube" })).queryByRole("combobox", {
+        name: /kind of source/i,
+      }),
+    ).not.toBeInTheDocument();
     await userEvent.type(input, "https://www.youtube.com/@retroads/videos");
     await userEvent.click(await screen.findByRole("button", { name: "Add source" }));
 
@@ -665,6 +704,7 @@ describe("SourcesPanel", () => {
         kind: "archive",
         id: "archive:classic",
         uri: "classic_tv",
+        pageUrl: "https://archive.org/details/classic_tv",
         target: "Classic TV",
         searchable: true,
       }),

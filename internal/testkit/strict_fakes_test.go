@@ -159,8 +159,8 @@ func TestApprovalStoreRefusesAnInvalidCommit(t *testing.T) {
 		"invalid channel": func(c *store.ProposalApproval) { c.Channel.Name = "" },
 		"title key mismatch": func(c *store.ProposalApproval) {
 			c.Titles = []provision.Record{{
-				Key:   "movie:tmdb:1",
-				Title: provision.Title{Name: "Two", MediaType: provision.Movie, TMDBID: 2},
+				Key:   "movie:tmdb:90000001",
+				Title: provision.Title{Name: "Two", MediaType: provision.Movie, TMDBID: 90000002},
 				State: provision.Wanted, Deadline: time.Unix(1_900_000_000, 0),
 			}}
 		},

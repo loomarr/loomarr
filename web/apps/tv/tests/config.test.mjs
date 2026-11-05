@@ -224,9 +224,25 @@ test("declares the shared TV journey and native playback boundaries", async () =
   const bundled = await bundledNativeModules();
   assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
   assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
-  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.0-0");
+  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.1-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
+});
+
+test("boots through the shared native app and reports its crashes to the paired server", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const bundled = await bundledNativeModules();
+  assert.equal(manifest.dependencies["@loomarr/native-app"], "workspace:*");
+  // The crash files and the app version come from first-party Expo modules at the SDK's versions.
+  for (const name of ["expo-constants", "expo-file-system"]) {
+    assert.equal(`~${manifest.dependencies[name]}`, bundled[name]);
+  }
+
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+  assert.match(appSource, /createNativeApp\(\{/);
+  assert.match(appSource, /useCrashReportUpload\(credential, session\)/);
+  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>/);
+  assert.doesNotMatch(appSource, /SafeAreaProvider|LoomarrProvider/);
 });
 
 test("starts from SecureStore without the abandoned Compose credential bridge", async () => {
@@ -245,8 +261,8 @@ test("starts from SecureStore without the abandoned Compose credential bridge", 
 test("composes the production TV root around shared dark pairing and paired API transport", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /<SafeAreaProvider>/);
-  assert.match(appSource, /<LoomarrProvider insets=\{insets\} theme="dark">/);
+  // The shared root draws the safe-area and Loomarr providers (the provider's default theme is dark).
+  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>\s+<TvClient \/>\s+<\/NativeAppRoot>/);
   assert.match(appSource, /<PairingShell/);
   assert.match(appSource, /allowServerEntry/);
   assert.match(appSource, /discovery=\{discovery\}/);
@@ -498,8 +514,9 @@ test("reports playback diagnostics to the paired server and recovers player erro
 
   const pairedClient = await readPairedClient();
 
-  assert.match(appSource, /platform: "android_tv", source: "android_tv"/);
-  assert.match(appSource, /diagnostics: tvDiagnostics/);
+  // Who the TV is follows the platform it runs on (Apple TV is not android_tv), so the shared bootstrap derives it.
+  assert.doesNotMatch(appSource, /android_tv/);
+  assert.match(appSource, /diagnostics: nativeApp\.diagnostics/);
   assert.match(pairedClient, /createAuthenticatedBatchSender\(request,/);
   assert.match(pairedClient, /onPlayerError: reporting\?\.playback\.playerError/);
   assert.match(pairedClient, /transport\.subscribe\(reporting\.playback\.transportEvent\)/);

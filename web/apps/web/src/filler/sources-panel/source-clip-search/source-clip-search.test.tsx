@@ -1,9 +1,13 @@
-import { getDiscoverFillerMockHandler, getMeMockHandler } from "@loomarr/api/msw";
+import {
+  getDiscoverFillerMockHandler,
+  getListFillerProvidersMockHandler,
+  getMeMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { fillerSource } from "@/test/fixtures/filler";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { SourceClipSearch } from "./source-clip-search";
@@ -25,6 +29,10 @@ const renderSearch = () =>
       <SourceClipSearch source={archive} />
     </QueryClientProvider>,
   );
+
+beforeEach(() => {
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("SourceClipSearch", () => {
   it("searches the source's own collection only once a query is submitted", async () => {

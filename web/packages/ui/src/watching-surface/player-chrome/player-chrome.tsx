@@ -18,6 +18,7 @@ const PlayerChrome = ({
   band,
   density,
   formatTime,
+  ident = false,
   onPreviewChange,
   playbar,
   sheet,
@@ -30,7 +31,10 @@ const PlayerChrome = ({
     onPreviewChange?.(open);
   };
   const touch = density === "touch";
-  const shown = visible && !sheet;
+  const controls = visible && !sheet;
+  // The station-ID card stands in for hidden controls: the band alone, fuller (mock "station-id").
+  const card = ident && !visible && !sheet;
+  const shown = controls || card;
   return (
     <ThemeScope theme="dark">
       <View
@@ -54,19 +58,25 @@ const PlayerChrome = ({
           ...webOnly({ transition: "opacity 220ms ease" }),
         }}
       >
-        <LowerThirdBand band={band} density={density} steppedBack={previewOpen && transport.pointer} />
-        {playbar ? (
+        <LowerThirdBand
+          band={band}
+          density={density}
+          ident={card}
+          steppedBack={previewOpen && transport.pointer}
+        />
+        {card ? null : playbar ? (
           <PreviewPlaybar
             density={density}
             formatTime={formatTime}
             onPreviewChange={preview}
+            onSeek={playbar.onSeek}
             playheadMs={playbar.playheadMs}
             pointer={transport.pointer}
             segments={playbar.segments}
             window={playbar.window}
           />
         ) : null}
-        <PlayerTransport {...transport} />
+        {card ? null : <PlayerTransport {...transport} />}
       </View>
       {sheet ? (
         <>

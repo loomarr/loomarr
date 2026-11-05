@@ -13,6 +13,8 @@ package archive
 import (
 	"context"
 	"log/slog"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -92,7 +94,56 @@ func (*Provider) Describe() sourceprovider.Description {
 			Title:  "That doesn't look like an archive.org collection",
 			Detail: "Paste a collection identifier (like classic_tv_commercials) or its archive.org URL.",
 		},
+		Blurb:          "Public collections of commercials, bumpers, and other broadcast material.",
+		SourceNoun:     "Archive.org collection",
+		PreviewHeading: "Popular videos in this collection",
+		Find: sourceprovider.FindCopy{
+			Label:       "Find an Archive.org collection",
+			Placeholder: "Search collections or paste an archive.org URL",
+			Add:         "Add collection",
+			NoMatches:   "No collections found. Paste the exact URL to check it.",
+			MinQuery:    2,
+		},
 	}
+}
+
+var (
+	// archiveURL is an archive.org collection page or its metadata.
+	archiveURL = regexp.MustCompile(`(?i)^(https?://)?(www\.)?archive\.org/(details|metadata)/`)
+	// archiveSlug is a bare identifier. It must carry a separator, or any single word would pass
+	// for a collection and a search for "cartoons" would be checked as one.
+	archiveSlug = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9_-]*[_-][a-z0-9_-]+$`)
+)
+
+// Recognizes implements sourceprovider.Recognizer.
+func (*Provider) Recognizes(input string) bool {
+	input = strings.TrimSpace(input)
+	return archiveURL.MatchString(input) || archiveSlug.MatchString(input)
+}
+
+// SourceURL implements sourceprovider.Linker: a stored identifier is a collection's details page.
+func (*Provider) SourceURL(address string) string {
+	v := strings.TrimSpace(address)
+	if v == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(v), "http://") || strings.HasPrefix(strings.ToLower(v), "https://") {
+		return v
+	}
+	return "https://archive.org/details/" + url.PathEscape(v)
+}
+
+// EmbedURL implements sourceprovider.Linker: an item's details page plays in archive.org's embed.
+func (*Provider) EmbedURL(itemURL string) string {
+	u, err := url.Parse(itemURL)
+	if err != nil || strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") != "archive.org" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 2 || parts[0] != "details" || parts[1] == "" {
+		return ""
+	}
+	return "https://archive.org/embed/" + url.PathEscape(parts[1]) + "?autoplay=1"
 }
 
 // Suggest implements sourceprovider.Finder.
